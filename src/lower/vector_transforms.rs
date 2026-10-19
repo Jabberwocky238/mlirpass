@@ -336,6 +336,54 @@ fn arr<'a>(v: &[i64]) -> Attribute<'a> {
     Attribute::Array(v.iter().map(|x| Attribute::Int { lit: format!("{x}").into(), ty: None }).collect())
 }
 
+/// `createUnrollIterator(type, 1)`: the positions of the leading dims, up to the first
+/// scalable one.
+fn unroll_positions(shape: &[i64], scal: &[bool]) -> Option<Vec<Vec<i64>>> {
+    if shape.len() <= 1 {
+        return None;
+    }
+    let lead = &scal[..shape.len() - 1];
+    let k = lead.iter().position(|s| *s).unwrap_or(lead.len());
+    if k == 0 {
+        return None;
+    }
+    let mut out = Vec::new();
+    let mut pos = vec![0i64; k];
+    loop {
+        out.push(pos.clone());
+        let mut d = k;
+        loop {
+            if d == 0 {
+                return Some(out);
+            }
+            d -= 1;
+            pos[d] += 1;
+            if pos[d] < shape[d] {
+                break;
+            }
+            pos[d] = 0;
+        }
+    }
+}
+
+/// `unrollVectorOp`: a rank-n result rebuilt from `make(i)` rank-(n-1) pieces.
+fn unroll_op<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, mut make: impl FnMut(&mut Rewriter<'_, 'a>, Type<'a>, i64) -> ValueId) -> bool {
+    let rt = rw.body[rw.body[op].results[0]].ty.clone();
+    let Some((shape, scal)) = vshape(&rt) else { return false };
+    if shape.len() < 2 || scal[0] {
+        return false;
+    }
+    rw.set_before(op);
+    let mut r = rw.poison(rt.clone());
+    let sub = vector_type(&shape[1..], &scal[1..], elem(&rt).clone());
+    for i in 0..shape[0] {
+        let v = make(rw, sub.clone(), i);
+        r = rw.vinsert(v, r, &[i]);
+    }
+    rw.replace_op(op, &[r]);
+    true
+}
+
 /// `createContractArithOp`.
 fn contract_arith<'a>(rw: &mut Rewriter<'_, 'a>, x: ValueId, y: ValueId, acc: Option<ValueId>, kind: &str, is_int: bool, mask: Option<ValueId>) -> Option<ValueId> {
     let ty = rw.body[x].ty.clone();
@@ -423,35 +471,149 @@ rewrites! {
         let b = &*rw.body;
         let rt = b[b[op].results[0]].ty.clone();
         let Some((shape, scal)) = vshape(&rt) else { return false };
-        // `createUnrollIterator`: leading non-scalable dims down to rank 1.
-        if shape.len() <= 1 || scal[..shape.len() - 1].contains(&true) {
-            return false;
-        }
-        let k = shape.len() - 1;
+        let Some(positions) = unroll_positions(&shape, &scal) else { return false };
+        let k = positions[0].len();
         let bt = vector_type(&shape[k..], &scal[k..], elem(&rt).clone());
         let src = b[op].operands[0];
         rw.set_before(op);
         let mut r = rw.poison(rt);
-        let mut pos = vec![0i64; k];
-        loop {
+        for pos in positions {
             let e = rw.vextract_(src, &pos);
             let c = rw.make1(OpData::build("vector.bitcast").operands(&[e]), bt.clone());
             r = rw.vinsert(c, r, &pos);
-            let mut d = k;
-            let more = loop {
-                if d == 0 {
-                    break false;
-                }
-                d -= 1;
-                pos[d] += 1;
-                if pos[d] < shape[d] {
-                    break true;
-                }
-                pos[d] = 0;
-            };
-            if !more {
-                break;
+        }
+        rw.replace_op(op, &[r]);
+        true
+    }
+
+    /// `UnrollInterleaveOp` to rank 1.
+    UnrollInterleaveOp("vector.interleave", 1) |rw, op| {
+        let b = &*rw.body;
+        let rt = b[b[op].results[0]].ty.clone();
+        let Some((shape, scal)) = vshape(&rt) else { return false };
+        let Some(positions) = unroll_positions(&shape, &scal) else { return false };
+        let (l, r0) = (b[op].operands[0], b[op].operands[1]);
+        let k = positions[0].len();
+        let it = vector_type(&shape[k..], &scal[k..], elem(&rt).clone());
+        rw.set_before(op);
+        let mut res = rw.constant(zeros(&rt), rt);
+        for pos in positions {
+            let (a, c) = (rw.vextract_(l, &pos), rw.vextract_(r0, &pos));
+            let i = rw.make1(OpData::build("vector.interleave").operands(&[a, c]), it.clone());
+            res = rw.vinsert(i, res, &pos);
+        }
+        rw.replace_op(op, &[res]);
+        true
+    }
+
+    /// `UnrollDeinterleaveOp` to rank 1.
+    UnrollDeinterleaveOp("vector.deinterleave", 1) |rw, op| {
+        let b = &*rw.body;
+        let rt = b[b[op].results[0]].ty.clone();
+        let Some((shape, scal)) = vshape(&rt) else { return false };
+        let Some(positions) = unroll_positions(&shape, &scal) else { return false };
+        let src = b[op].operands[0];
+        let k = positions[0].len();
+        let dt = vector_type(&shape[k..], &scal[k..], elem(&rt).clone());
+        rw.set_before(op);
+        let empty = rw.constant(zeros(&rt), rt);
+        let (mut even, mut odd) = (empty, empty);
+        for pos in positions {
+            let x = rw.vextract_(src, &pos);
+            let d = rw.make(OpData::build("vector.deinterleave").operands(&[x]), &[dt.clone(), dt.clone()]);
+            let (e, o) = (rw.body[d].results[0], rw.body[d].results[1]);
+            even = rw.vinsert(e, even, &pos);
+            odd = rw.vinsert(o, odd, &pos);
+        }
+        rw.replace_op(op, &[even, odd]);
+        true
+    }
+
+    /// `StepToArithConstantOpRewrite`.
+    StepToArithConstantOpRewrite("vector.step", 1) |rw, op| {
+        let b = &*rw.body;
+        let rt = b[b[op].results[0]].ty.clone();
+        let Some((shape, scal)) = vshape(&rt) else { return false };
+        if scal.contains(&true) {
+            return false;
+        }
+        let n: i64 = shape.iter().product();
+        let c: Attribute = Const { ty: rt.clone(), values: (0..n).map(|i| Scalar::Int(ApInt::new(64, i128::from(i)))).collect(), elements: true }.into();
+        rw.replace_with(op, OpData::build("arith.constant").with("value", c), &[rt]);
+        true
+    }
+
+    /// `UnrollGather`.
+    UnrollGather("vector.gather", 1) |rw, op| {
+        let b = &*rw.body;
+        let ops = b[op].operands.clone();
+        let n = ops.len();
+        let (idx, mask, pass) = (ops[n - 3], ops[n - 2], ops[n - 1]);
+        let fixed = ops[..n - 3].to_vec();
+        let align = b[op].get("alignment").cloned();
+        unroll_op(rw, op, |rw, sub, i| {
+            let (a, m, p) = (rw.vextract_(idx, &[i]), rw.vextract_(mask, &[i]), rw.vextract_(pass, &[i]));
+            let mut operands = fixed.clone();
+            operands.extend([a, m, p]);
+            let mut d = OpData::build("vector.gather").operands(&operands);
+            if let Some(al) = &align {
+                d.set("alignment", al.clone());
             }
+            rw.make1(d, sub)
+        })
+    }
+
+    /// `UnrollFromElements`.
+    UnrollFromElements("vector.from_elements", 1) |rw, op| {
+        let all = rw.body[op].operands.clone();
+        unroll_op(rw, op, |rw, sub, i| {
+            let n: i64 = vshape(&sub).map_or(1, |s| s.0.iter().product());
+            let slice = &all[(i * n) as usize..((i + 1) * n) as usize];
+            rw.make1(OpData::build("vector.from_elements").operands(slice), sub)
+        })
+    }
+
+    /// `UnrollToElements`.
+    UnrollToElements("vector.to_elements", 1) |rw, op| {
+        let b = &*rw.body;
+        let src = b[op].operands[0];
+        let Some((shape, scal)) = vshape(&b[src].ty) else { return false };
+        if shape.len() < 2 || scal[0] {
+            return false;
+        }
+        let et = elem(&b[src].ty).clone();
+        rw.set_before(op);
+        let mut results = Vec::new();
+        let subs: Vec<ValueId> = (0..shape[0]).map(|i| rw.vextract_(src, &[i])).collect();
+        for v in subs {
+            let n: i64 = vshape(&rw.body[v].ty).map_or(1, |s| s.0.iter().product());
+            let t = rw.make(OpData::build("vector.to_elements").operands(&[v]), &vec![et.clone(); n as usize]);
+            results.extend(rw.body[t].results.clone());
+        }
+        rw.replace_op(op, &results);
+        true
+    }
+
+    /// `Convert1DExtractStridedSliceIntoExtractInsertChain`, for scalable vectors.
+    Convert1DExtractStridedSliceIntoExtractInsertChain("vector.extract_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let dt = b[b[op].results[0]].ty.clone();
+        let src = b[op].operands[0];
+        let scalable = vshape(&dt).is_some_and(|s| s.1.contains(&true)) || vshape(&b[src].ty).is_some_and(|s| s.1.contains(&true));
+        let (offs, sizes, strides) = (i64s(b, op, "offsets"), i64s(b, op, "sizes"), i64s(b, op, "strides"));
+        if !scalable || offs.len() != 1 {
+            return false;
+        }
+        rw.set_before(op);
+        let mut elems = Vec::new();
+        let mut i = offs[0];
+        while i < offs[0] + sizes[0] * strides[0] {
+            elems.push(rw.vextract_(src, &[i]));
+            i += strides[0];
+        }
+        let mut r = rw.constant(zeros(&dt), dt);
+        for (k, e) in elems.into_iter().enumerate() {
+            r = rw.vinsert(e, r, &[k as i64]);
         }
         rw.replace_op(op, &[r]);
         true
@@ -837,12 +999,19 @@ pub fn pre_patterns(force32: bool) -> PatternSet {
     set.add(DecomposeNDExtractStridedSlice);
     set.add(ConvertSameRankInsertStridedSliceIntoShuffle);
     set.add(Convert1DExtractStridedSliceIntoShuffle);
+    set.add(UnrollInterleaveOp);
+    set.add(UnrollDeinterleaveOp);
     set.add(TransferReadToLoad1);
     set.add(TransferWriteToStore1);
     set.add(CreateMaskMaterialize(Force32(force32)));
     set.add(MaterializeTransferMask("vector.transfer_read", Force32(force32)));
     set.add(MaterializeTransferMask("vector.transfer_write", Force32(force32)));
     set.add(FoldI1Select);
+    set.add(Convert1DExtractStridedSliceIntoExtractInsertChain);
+    set.add(StepToArithConstantOpRewrite);
     set.add(VectorFMAOpNDRewritePattern);
+    set.add(UnrollGather);
+    set.add(UnrollFromElements);
+    set.add(UnrollToElements);
     set
 }

@@ -921,9 +921,8 @@ impl VectorToLlvm {
     /// `populateVectorToLLVMConversionPatterns`.
     pub fn populate<'p>(patterns: &mut ConversionPatterns<'p>, tc: usize, o: VectorOptions<'p>) {
         type F<'p> = for<'r, 'a, 'q> fn(&mut Cr<'r, 'a, 'q>, OpId, &[Vec<ValueId>], VectorOptions<'p>) -> bool;
-        let table: [(&'static str, F<'p>); 27] = [
+        let table: [(&'static str, F<'p>); 26] = [
             ("vector.reduction", Self::reduction),
-            ("vector.create_mask", Self::create_mask),
             ("vector.load", Self::load_store),
             ("vector.maskedload", Self::load_store),
             ("vector.store", Self::load_store),
@@ -953,5 +952,7 @@ impl VectorToLlvm {
         for (root, f) in table {
             patterns.add_with(tc, OptLowering { root, opts: o, f });
         }
+        // `VectorCreateMaskOpConversion` has no type converter: its operand stays an index.
+        patterns.add(OptLowering { root: "vector.create_mask", opts: o, f: Self::create_mask });
     }
 }
