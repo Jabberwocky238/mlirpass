@@ -823,6 +823,10 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
 
     /// `legalizeWithFold`.
     fn legalize_with_fold<'a>(&mut self, body: &mut Body<'a>, state: &mut ConvState<'a>, op: OpId) -> bool {
+        // `OpBuilder::tryFold`: a constant is already as folded as it gets.
+        if body.constant_value(op).is_some() {
+            return false;
+        }
         let snapshot = (body.clone(), state.clone());
         state.new_ops.clear();
         state.modified_ops.clear();

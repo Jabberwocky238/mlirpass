@@ -105,6 +105,18 @@ fn defaults<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
         "arith.addi" | "arith.subi" | "arith.muli" | "arith.shli" | "arith.trunci" => alloc::vec![("overflowFlags", Attribute::dialect("arith.overflow", "<none>"))],
         "arith.addf" | "arith.subf" | "arith.mulf" | "arith.divf" | "arith.remf" | "arith.negf" | "arith.maximumf" | "arith.maxnumf" | "arith.minimumf" | "arith.minnumf" | "arith.cmpf" => alloc::vec![("fastmath", Attribute::dialect("arith.fastmath", "<none>"))],
         "ub.poison" => alloc::vec![("value", Attribute::dialect("ub.poison", ""))],
+        // LLVM ops: the fast-math and overflow flags default to none.
+        n if n.starts_with("llvm.") => {
+            let inherent = crate::OpInfo::of(n).map_or(&[][..], |i| i.inherent);
+            let mut out = Vec::new();
+            if inherent.contains(&"fastmathFlags") {
+                out.push(("fastmathFlags", Attribute::dialect("llvm.fastmath", "<none>")));
+            }
+            if inherent.contains(&"overflowFlags") {
+                out.push(("overflowFlags", Attribute::Int { lit: "0".into(), ty: Some(Type::int(32)) }));
+            }
+            out
+        }
         _ => Vec::new(),
     }
 }

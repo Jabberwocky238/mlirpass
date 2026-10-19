@@ -5,6 +5,7 @@ use alloc::boxed::Box;
 use mlirformat::Error;
 
 use super::{Options, Pass};
+use crate::lower::*;
 use crate::transforms::*;
 
 /// A registered pass.
@@ -35,6 +36,9 @@ macro_rules! registry {
 }
 
 registry! {
+    "convert-arith-to-llvm" => ConvertArithToLlvm,
+    "convert-to-llvm" => ConvertToLlvm,
+    "reconcile-unrealized-casts" => ReconcileUnrealizedCasts,
     "canonicalize" => Canonicalize,
     "cse" => Cse,
     "strip-debuginfo" => StripDebugInfo,
