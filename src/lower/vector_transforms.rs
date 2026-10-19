@@ -324,6 +324,18 @@ fn cast_index_like<'a>(rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, v: ValueId) -> 
     rw.make1(OpData::build(if a > b { "arith.extsi" } else { "arith.trunci" }).operands(&[v]), ty.clone())
 }
 
+fn i64s(b: &Body<'_>, op: OpId, name: &str) -> Vec<i64> {
+    match b[op].get(name) {
+        Some(Attribute::Array(a)) => a.iter().filter_map(|x| if let Attribute::Int { lit, .. } = x { lit.parse().ok() } else { None }).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// An `ArrayAttr` of `i64`.
+fn arr<'a>(v: &[i64]) -> Attribute<'a> {
+    Attribute::Array(v.iter().map(|x| Attribute::Int { lit: format!("{x}").into(), ty: None }).collect())
+}
+
 /// `createContractArithOp`.
 fn contract_arith<'a>(rw: &mut Rewriter<'_, 'a>, x: ValueId, y: ValueId, acc: Option<ValueId>, kind: &str, is_int: bool, mask: Option<ValueId>) -> Option<ValueId> {
     let ty = rw.body[x].ty.clone();
@@ -577,6 +589,142 @@ rewrites! {
         true
     }
 
+    /// `DecomposeDifferentRankInsertStridedSlice`.
+    DecomposeDifferentRankInsertStridedSlice("vector.insert_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let (src, dst) = (b[op].operands[0], b[op].operands[1]);
+        let offsets = i64s(b, op, "offsets");
+        let strides = i64s(b, op, "strides");
+        if offsets.is_empty() {
+            return false;
+        }
+        let (Some((ss, _)), Some((ds, _))) = (vshape(&b[src].ty), vshape(&b[dst].ty)) else { return false };
+        let diff = ds.len() - ss.len();
+        if diff == 0 {
+            return false;
+        }
+        let rest = ds.len() - diff;
+        let lead = &offsets[..offsets.len() - rest];
+        rw.set_before(op);
+        let x = rw.vextract_(dst, lead);
+        let xt = rw.body[x].ty.clone();
+        let inner = rw.make1(OpData::build("vector.insert_strided_slice").operands(&[src, x]).with("offsets", arr(&offsets[diff..])).with("strides", arr(&strides)), xt);
+        let dt = rw.body[dst].ty.clone();
+        rw.replace_with(op, OpData::build("vector.insert").operands(&[inner, dst]).with("static_position", dense_i64(lead)), &[dt]);
+        true
+    }
+
+    /// `DecomposeNDExtractStridedSlice`.
+    DecomposeNDExtractStridedSlice("vector.extract_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let (offs, sizes, strides) = (i64s(b, op, "offsets"), i64s(b, op, "sizes"), i64s(b, op, "strides"));
+        if offs.len() == 1 {
+            return false;
+        }
+        let dt = b[b[op].results[0]].ty.clone();
+        let src = b[op].operands[0];
+        let et = elem(&dt).clone();
+        rw.set_before(op);
+        let zero_attr = match &et {
+            Type::Float(_) => Attribute::Float { lit: "0.000000e+00".into(), ty: Some(et.clone()) },
+            _ => Attribute::Int { lit: "0".into(), ty: Some(et.clone()) },
+        };
+        let z = rw.constant(zero_attr, et);
+        let mut res = rw.broadcast(dt, z);
+        let (offset, size, stride) = (offs[0], sizes[0], strides[0]);
+        let mut idx = 0;
+        let mut off = offset;
+        while off < offset + size * stride {
+            let one = rw.vextract_(src, &[off]);
+            let (os, osc) = vshape(&rw.body[one].ty).unwrap_or_default();
+            let mut shape = os.clone();
+            for (i, s) in sizes[1..].iter().enumerate() {
+                shape[i] = *s;
+            }
+            let t = vector_type(&shape, &osc, elem(&rw.body[one].ty).clone());
+            let x = rw.make1(OpData::build("vector.extract_strided_slice").operands(&[one]).with("offsets", arr(&offs[1..])).with("sizes", arr(&sizes[1..])).with("strides", arr(&strides[1..])), t);
+            res = rw.vinsert(x, res, &[idx]);
+            off += stride;
+            idx += 1;
+        }
+        rw.replace_op(op, &[res]);
+        true
+    }
+
+    /// `ConvertSameRankInsertStridedSliceIntoShuffle`.
+    ConvertSameRankInsertStridedSliceIntoShuffle("vector.insert_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let (src, dst) = (b[op].operands[0], b[op].operands[1]);
+        let (st, dt) = (b[src].ty.clone(), b[dst].ty.clone());
+        let (Some((ss, ssc)), Some((ds, dsc))) = (vshape(&st), vshape(&dt)) else { return false };
+        if (ssc.contains(&true) || dsc.contains(&true)) && ss.len() == 1 {
+            return false;
+        }
+        let offsets = i64s(b, op, "offsets");
+        let strides = i64s(b, op, "strides");
+        if offsets.is_empty() || ds.len() != ss.len() {
+            return false;
+        }
+        if st == dt {
+            rw.replace_op(op, &[src]);
+            return true;
+        }
+        let (offset, size, stride) = (offsets[0], ss[0], strides[0]);
+        rw.set_before(op);
+        if ss.len() == 1 {
+            let (ns, nd) = (ss[0], ds[0]);
+            let mut mask = vec![0i64; nd as usize];
+            for i in 0..ns {
+                mask[i as usize] = i;
+            }
+            let t = vector_type(&[nd], &[false], elem(&st).clone());
+            let scaled = rw.make1(OpData::build("vector.shuffle").operands(&[src, src]).with("mask", dense_i64(&mask)), t);
+            let e = offset + size * stride;
+            let mask: Vec<i64> = (0..nd).map(|i| if i < offset || i >= e || (i - offset) % stride != 0 { nd + i } else { (i - offset) / stride }).collect();
+            rw.replace_with(op, OpData::build("vector.shuffle").operands(&[scaled, dst]).with("mask", dense_i64(&mask)), &[dt]);
+            return true;
+        }
+        let mut res = dst;
+        let mut off = offset;
+        let mut idx = 0;
+        while off < offset + size * stride {
+            let mut x = rw.vextract_(src, &[idx]);
+            if vshape(&rw.body[x].ty).is_some() {
+                let xd = rw.vextract_(dst, &[off]);
+                let t = rw.body[xd].ty.clone();
+                x = rw.make1(OpData::build("vector.insert_strided_slice").operands(&[x, xd]).with("offsets", arr(&offsets[1..])).with("strides", arr(&strides[1..])), t);
+            }
+            res = rw.vinsert(x, res, &[off]);
+            off += stride;
+            idx += 1;
+        }
+        rw.replace_op(op, &[res]);
+        true
+    }
+
+    /// `Convert1DExtractStridedSliceIntoShuffle`.
+    Convert1DExtractStridedSliceIntoShuffle("vector.extract_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let dt = b[b[op].results[0]].ty.clone();
+        let src = b[op].operands[0];
+        let (Some((_, dsc)), Some((_, ssc))) = (vshape(&dt), vshape(&b[src].ty)) else { return false };
+        if dsc.contains(&true) || ssc.contains(&true) {
+            return false;
+        }
+        let (offs, sizes, strides) = (i64s(b, op, "offsets"), i64s(b, op, "sizes"), i64s(b, op, "strides"));
+        if offs.len() != 1 {
+            return false;
+        }
+        let mut mask = Vec::new();
+        let mut off = offs[0];
+        while off < offs[0] + sizes[0] * strides[0] {
+            mask.push(off);
+            off += strides[0];
+        }
+        rw.replace_with(op, OpData::build("vector.shuffle").operands(&[src, src]).with("mask", dense_i64(&mask)), &[dt]);
+        true
+    }
+
     /// `FoldI1Select`.
     FoldI1Select("arith.select", 1) |rw, op| {
         let b = &*rw.body;
@@ -685,6 +833,10 @@ pub fn pre_patterns(force32: bool) -> PatternSet {
     set.add(OuterProductOpLowering);
     set.add(CreateMaskOpLowering);
     set.add(ConstantMaskOpLowering);
+    set.add(DecomposeDifferentRankInsertStridedSlice);
+    set.add(DecomposeNDExtractStridedSlice);
+    set.add(ConvertSameRankInsertStridedSliceIntoShuffle);
+    set.add(Convert1DExtractStridedSliceIntoShuffle);
     set.add(TransferReadToLoad1);
     set.add(TransferWriteToStore1);
     set.add(CreateMaskMaterialize(Force32(force32)));
