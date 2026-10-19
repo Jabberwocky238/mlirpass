@@ -203,6 +203,8 @@ impl<'a> Folder<'_, 'a> {
             }
             "extract_strided_slice" => self.extract_strided_slice(),
             "load" | "maskedload" | "store" | "maskedstore" => self.memref_cast(),
+            "transfer_read" => self.transfer_read(),
+            "transfer_write" => self.transfer_write(),
             _ => Fold::Failed,
         }
     }
@@ -941,20 +943,179 @@ impl<'a> Folder<'_, 'a> {
         if self.b.operand_ty(op, 0) == rt {
             return Self::value(self.b[op].operands[0]);
         }
-        let dest_rank = vrank(&rt).unwrap_or(0);
-        let offsets = self.array_attr(op, "offsets");
-        let num_dims = self.b.dense_array(op, "sizes").len().max(self.array_attr(op, "sizes").len());
-        let _ = num_dims;
-        if let Some(f) = self.insert_strided_chain(offsets, dest_rank, |b, op, v, diffs| {
-            b.set_operand(op, 0, v);
-            b[op].set("offsets", Attribute::Array(diffs.into_iter().map(Attribute::i64).collect()));
-        }) {
+        if self.strided_from_insert_chain() {
+            return Fold::InPlace;
+        }
+        let Some(c) = self.dense(0) else { return Fold::Failed };
+        if c.is_splat() {
+            return Self::attr(Const::splat(c.values[0], rt).into());
+        }
+        // `foldExtractStridedSliceNonSplatConstant`.
+        if self.array_attr(op, "strides").iter().any(|s| *s != 1) {
+            return Fold::Failed;
+        }
+        let (Some((src, _)), Some((slice, _))) = (vshape(&c.ty), vshape(&rt)) else { return Fold::Failed };
+        let st = strides(&src);
+        let mut offsets = vec![0; slice.len()];
+        for (i, o) in self.array_attr(op, "offsets").into_iter().enumerate() {
+            offsets[i] = o;
+        }
+        let mut pos = offsets.clone();
+        let mut values = Vec::new();
+        loop {
+            values.push(c.values[linearize(&pos, &st) as usize]);
+            let mut d = pos.len();
+            let more = loop {
+                if d == 0 {
+                    break false;
+                }
+                d -= 1;
+                pos[d] += 1;
+                if pos[d] < slice[d] + offsets[d] {
+                    break true;
+                }
+                pos[d] = offsets[d];
+            };
+            if !more {
+                break;
+            }
+        }
+        Self::attr(Const { ty: rt, values, elements: true }.into())
+    }
+
+    /// `foldExtractStridedOpFromInsertChain` for `vector.extract_strided_slice`.
+    fn strided_from_insert_chain(&mut self) -> bool {
+        let op = self.op;
+        let (eo, es, esz) = (self.array_attr(op, "offsets"), self.array_attr(op, "strides"), self.array_attr(op, "sizes"));
+        let src_rank = vrank(&self.b.operand_ty(op, 0));
+        let mut ins = self.def(0, "vector.insert_strided_slice");
+        while let Some(i) = ins {
+            if src_rank != vrank(&self.b.operand_ty(i, 0)) {
+                return false;
+            }
+            let (io, is) = (self.array_attr(i, "offsets"), self.array_attr(i, "strides"));
+            if eo.len() > io.len() {
+                return false;
+            }
+            let (ishape, _) = vshape(&self.b.operand_ty(i, 0)).unwrap_or_default();
+            let (mut partial, mut disjoint) = (false, false);
+            let mut diffs = Vec::new();
+            for dim in 0..eo.len() {
+                if es[dim] != is[dim] {
+                    return false;
+                }
+                let (start, offset, size) = (io[dim], eo[dim], esz[dim]);
+                let end = start + ishape[dim];
+                if start <= offset && offset < end {
+                    if offset + size > end {
+                        partial = true;
+                    }
+                    diffs.push(offset - start);
+                    continue;
+                }
+                disjoint = true;
+                break;
+            }
+            if !disjoint && !partial {
+                let v = self.b[i].operands[0];
+                self.b.set_operand(op, 0, v);
+                self.b[op].set("offsets", array_i64(&diffs));
+                return true;
+            }
+            if !disjoint {
+                return false;
+            }
+            ins = self.b.def_named(self.b[i].operands[1], "vector.insert_strided_slice");
+        }
+        false
+    }
+
+    fn transfer_read(&mut self) -> Fold<'a> {
+        if let Some(v) = self.fold_raw() {
+            return Self::value(v);
+        }
+        if self.b.transfer_in_bounds(self.op) || self.b.transfer_full_mask(self.op) {
+            return Fold::InPlace;
+        }
+        if let f @ Fold::InPlace = self.memref_cast() {
             return f;
         }
-        match self.dense(0) {
-            Some(c) if c.is_splat() => Self::attr(Const::splat(c.values[0], rt).into()),
-            _ => Fold::Failed,
+        self.tensor_cast()
+    }
+
+    fn transfer_write(&mut self) -> Fold<'a> {
+        let op = self.op;
+        let b = &*self.b;
+        let base = b[op].operands[1];
+        let tensor = matches!(&b[base].ty, Type::Shaped(s) if s.kind == ShapedKind::Tensor && s.shape.is_some());
+        if tensor && let Some(read) = b.def_named(b[op].operands[0], "vector.transfer_read") {
+            // `foldReadInitWrite`.
+            let (rp, wp) = (b.perm(read), b.perm(op));
+            let minor = |p: &Option<Perm>| p.as_ref().is_some_and(Perm::minor_identity);
+            let zero = |vs: Vec<ValueId>| vs.iter().all(|v| const_int(b, *v) == Some(0));
+            let rshape = vshape(&b.result_ty(read)).map(|s| s.0);
+            let tshape = attr::shape_of(&b[base].ty).map(|d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { DYNAMIC }).collect::<Vec<_>>());
+            if b.transfer_rank(op) != 0
+                && b.transfer_rank(read) != 0
+                && minor(&rp)
+                && minor(&wp)
+                && b.transfer_rank(read) == b.transfer_rank(op)
+                && !b.out_of_bounds(read)
+                && !b.out_of_bounds(op)
+                && b[b[read].operands[0]].ty == b[base].ty
+                && b.result_ty(read) == b.operand_ty(op, 0)
+                && rshape == tshape
+                && zero(b.transfer_indices(read))
+                && zero(b.transfer_indices(op))
+            {
+                return Self::value(b[read].operands[0]);
+            }
+            // `foldWAR`.
+            if b[read].operands[0] == base && b.transfer_indices(read) == b.transfer_indices(op) && b[read].get("permutation_map") == b[op].get("permutation_map") && b.result_ty(read) == b.operand_ty(op, 0) && b.transfer_mask(read).is_none() && b.transfer_mask(op).is_none() {
+                return Self::value(b[read].operands[0]);
+            }
         }
+        if self.b.transfer_in_bounds(op) || self.b.transfer_full_mask(op) {
+            return Fold::InPlace;
+        }
+        self.memref_cast()
+    }
+
+    /// `foldRAW`: a read of what a write to the same tensor just wrote.
+    fn fold_raw(&self) -> Option<ValueId> {
+        let (b, op) = (&*self.b, self.op);
+        let base = b[op].operands[0];
+        if !matches!(&b[base].ty, Type::Shaped(s) if s.kind == ShapedKind::Tensor && s.shape.is_some()) {
+            return None;
+        }
+        let mut w = b.def_named(base, "vector.transfer_write");
+        while let Some(write) = w {
+            let same = !b.out_of_bounds(write) && b.transfer_indices(write) == b.transfer_indices(op) && b.operand_ty(write, 0) == b.result_ty(op) && b[write].get("permutation_map") == b[op].get("permutation_map") && b.transfer_mask(write).is_none() && b.transfer_mask(op).is_none();
+            if same {
+                return Some(b[write].operands[0]);
+            }
+            if !b.disjoint_transfers(write, op) {
+                break;
+            }
+            w = b.def_named(b[write].operands[1], "vector.transfer_write");
+        }
+        None
+    }
+
+    /// `tensor::foldTensorCast`: a `tensor.cast` that loses static information folds away.
+    fn tensor_cast(&mut self) -> Fold<'a> {
+        let op = self.op;
+        let mut changed = false;
+        for i in 0..self.b[op].operands.len() {
+            let v = self.b[op].operands[i];
+            let Some(cast) = self.b.def_named(v, "tensor.cast") else { continue };
+            let src = self.b[cast].operands[0];
+            if tensor_cast_foldable(&self.b[src].ty, &self.b[v].ty) {
+                self.b.set_operand(op, i, src);
+                changed = true;
+            }
+        }
+        if changed { Fold::InPlace } else { Fold::Failed }
     }
 
     /// `memref::foldMemRefCast`: a `memref.cast` to a less static type folds away.
@@ -1028,6 +1189,164 @@ pub fn vector_type<'a>(shape: &[i64], scalable: &[bool], elem: Type<'a>) -> Type
     Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(shape.iter().zip(scalable.iter().chain(core::iter::repeat(&false))).map(|(n, s)| if *s { Dim::Scalable(*n) } else { Dim::Static(*n) }).collect()), elem: elem.into(), extras: Vec::new() })
 }
 
+/// `tensor::preservesStaticInformation(dst, src)`.
+fn tensor_cast_foldable(src: &Type<'_>, dst: &Type<'_>) -> bool {
+    let (Type::Shaped(s), Type::Shaped(d)) = (src, dst) else { return false };
+    let (Some(ss), Some(ds)) = (&s.shape, &d.shape) else { return false };
+    s.kind == ShapedKind::Tensor && d.kind == s.kind && s.elem == d.elem && s.extras == d.extras && ss.len() == ds.len() && !ds.iter().zip(ss).any(|(a, b)| matches!(a, Dim::Static(_)) && !matches!(b, Dim::Static(_)))
+}
+
+/// A transfer op's permutation map: per result, the dim it reads, or `None` for a
+/// broadcast (constant `0`).
+#[derive(Debug, Clone, PartialEq)]
+struct Perm {
+    dims: usize,
+    results: Vec<Option<usize>>,
+}
+
+impl Perm {
+    fn parse(body: &str) -> Option<Self> {
+        let (dims, results) = body.trim().trim_start_matches('<').trim_end_matches('>').split_once("->")?;
+        let list = |t: &str| -> Vec<String> { t.trim().trim_start_matches('(').trim_end_matches(')').split(',').map(|x| x.trim().into()).filter(|x: &String| !x.is_empty()).collect() };
+        let dims = list(dims.split('[').next()?).len();
+        let results = list(results).into_iter().map(|r| if r == "0" { Some(None) } else { r.strip_prefix('d')?.parse().ok().map(Some) }).collect::<Option<Vec<_>>>()?;
+        Some(Self { dims, results })
+    }
+
+    fn minor_identity(&self) -> bool {
+        let n = self.results.len();
+        n <= self.dims && self.results.iter().enumerate().all(|(i, r)| *r == Some(self.dims - n + i))
+    }
+}
+
+use alloc::string::String;
+
+impl<'a> Body<'a> {
+    fn perm(&self, op: OpId) -> Option<Perm> {
+        match self[op].get("permutation_map")? {
+            Attribute::Builtin { body, .. } => Perm::parse(body),
+            _ => None,
+        }
+    }
+
+    /// The vector rank of a transfer.
+    fn transfer_rank(&self, op: OpId) -> usize {
+        let v = if self[op].name == "vector.transfer_read" { self.result_ty(op) } else { self.operand_ty(op, 0) };
+        vrank(&v).unwrap_or(0)
+    }
+
+    /// (base, indices, padding?, mask?) operand ranges of a transfer.
+    fn transfer_segments(&self, op: OpId) -> Vec<usize> {
+        self.segments(op, "operandSegmentSizes").unwrap_or_default()
+    }
+
+    fn transfer_indices(&self, op: OpId) -> Vec<ValueId> {
+        let s = self.transfer_segments(op);
+        let start = if self[op].name == "vector.transfer_read" { s[0] } else { s[0] + s[1] };
+        let n = if self[op].name == "vector.transfer_read" { s[1] } else { s[2] };
+        self[op].operands[start..start + n].to_vec()
+    }
+
+    fn transfer_mask(&self, op: OpId) -> Option<ValueId> {
+        let s = self.transfer_segments(op);
+        (s.last() == Some(&1)).then(|| *self[op].operands.last().expect("mask"))
+    }
+
+    fn in_bounds(&self, op: OpId) -> Vec<bool> {
+        match self[op].get("in_bounds") {
+            Some(Attribute::Array(a)) => a.iter().map(|x| matches!(x, Attribute::Bool(true))).collect(),
+            _ => vec![false; self.transfer_rank(op)],
+        }
+    }
+
+    fn out_of_bounds(&self, op: OpId) -> bool {
+        self.in_bounds(op).contains(&false)
+    }
+
+    /// `foldTransferInBoundsAttribute`.
+    fn transfer_in_bounds(&mut self, op: OpId) -> bool {
+        let rank = self.transfer_rank(op);
+        if rank == 0 {
+            return false;
+        }
+        let Some(perm) = self.perm(op) else { return false };
+        let shaped = if self[op].name == "vector.transfer_read" { self.operand_ty(op, 0) } else { self.operand_ty(op, 1) };
+        let sshape: Vec<i64> = attr::shape_of(&shaped).map_or(Vec::new(), |d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { DYNAMIC }).collect());
+        let vt = if self[op].name == "vector.transfer_read" { self.result_ty(op) } else { self.operand_ty(op, 0) };
+        let (vs, _) = vshape(&vt).unwrap_or_default();
+        let indices = self.transfer_indices(op);
+        let old = self.in_bounds(op);
+        let mut new = Vec::new();
+        let mut changed = false;
+        let mut non_bcast = Vec::new();
+        for i in 0..rank {
+            if old[i] {
+                new.push(true);
+                continue;
+            }
+            let mut ib = false;
+            if let Some(Some(d)) = perm.results.get(i) {
+                ib = sshape.get(*d).is_some_and(|s| *s != DYNAMIC) && const_int(self, indices[*d]).is_some_and(|c| c + vs[i] <= sshape[*d]);
+                non_bcast.push(i);
+            }
+            new.push(ib);
+            changed |= ib;
+        }
+        if non_bcast.iter().all(|i| new[*i]) {
+            for (i, r) in perm.results.iter().enumerate() {
+                if r.is_none() {
+                    changed |= !new[i];
+                    new[i] = true;
+                }
+            }
+        }
+        if !changed {
+            return false;
+        }
+        self[op].set("in_bounds", Attribute::Array(new.into_iter().map(Attribute::Bool).collect()));
+        true
+    }
+
+    /// `foldTransferFullMask`: an all-true mask goes.
+    fn transfer_full_mask(&mut self, op: OpId) -> bool {
+        let Some(m) = self.transfer_mask(op) else { return false };
+        if self.mask_format(m) != Some(true) {
+            return false;
+        }
+        let mut ops = self[op].operands.clone();
+        ops.pop();
+        self.set_operands(op, ops);
+        let mut s = self.transfer_segments(op);
+        *s.last_mut().expect("segments") = 0;
+        self[op].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: s.iter().map(|x| alloc::format!("{x}").into()).collect() });
+        true
+    }
+
+    /// `isDisjointTransferIndices` (constant indices only).
+    fn disjoint_transfers(&self, a: OpId, b: OpId) -> bool {
+        let vt = |o: OpId| if self[o].name == "vector.transfer_read" { self.result_ty(o) } else { self.operand_ty(o, 0) };
+        let (ta, tb) = (vt(a), vt(b));
+        if ta != tb {
+            return false;
+        }
+        let (ia, ib) = (self.transfer_indices(a), self.transfer_indices(b));
+        let (vs, _) = vshape(&ta).unwrap_or_default();
+        let offset = ia.len() - vs.len();
+        for i in 0..ia.len() {
+            let (ca, cb) = (const_int(self, ia[i]), const_int(self, ib[i]));
+            let (Some(x), Some(y)) = (ca, cb) else { continue };
+            if i < offset {
+                if x != y {
+                    return true;
+                }
+            } else if (x - y).abs() >= vs[i - offset] {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 // ---- canonicalization patterns -----------------------------------------------------------
 
 /// `getConstantIntValue`: an integer `arith.constant` (or other constant) behind `v`.
@@ -1051,8 +1370,9 @@ fn kind(b: &Body<'_>, op: OpId) -> Option<alloc::string::String> {
     }
 }
 
+/// An `ArrayAttr` of `i64` integers (the type is implied, so not spelled).
 fn array_i64<'a>(v: &[i64]) -> Attribute<'a> {
-    Attribute::Array(v.iter().map(|x| Attribute::i64(*x)).collect())
+    Attribute::Array(v.iter().map(|x| Attribute::Int { lit: alloc::format!("{x}").into(), ty: None }).collect())
 }
 
 fn dense_i64<'a>(v: &[i64]) -> Attribute<'a> {
@@ -1998,6 +2318,41 @@ super::rewrites! {
         rw.replace_unary(op, "vector.broadcast", src, rt)
     }
 
+    /// `CanonicalizeContractAdd<arith::AddIOp>`.
+    CanonicalizeContractAddI("arith.addi", 1) |rw, op| {
+        contract_add(rw, op)
+    }
+
+    /// `CanonicalizeContractAdd<arith::AddFOp>`.
+    CanonicalizeContractAddF("arith.addf", 1) |rw, op| {
+        contract_add(rw, op)
+    }
+
+    /// `FoldWaw`: a write overwriting an earlier identical one skips it.
+    FoldWaw("vector.transfer_write", 1) |rw, op| {
+        let b = &*rw.body;
+        let base = b[op].operands[1];
+        if !matches!(&b[base].ty, Type::Shaped(s) if s.kind == ShapedKind::Tensor && s.shape.is_some()) {
+            return false;
+        }
+        let mut target = op;
+        let mut w = b.def_named(base, "vector.transfer_write");
+        while let Some(def) = w {
+            let same = b.transfer_indices(def) == b.transfer_indices(op) && b.transfer_mask(def) == b.transfer_mask(op) && b.operand_ty(def, 0) == b.operand_ty(op, 0) && b[def].get("permutation_map") == b[op].get("permutation_map");
+            if same {
+                let nb = b[def].operands[1];
+                rw.modify(target, |b| b.set_operand(target, 1, nb));
+                return true;
+            }
+            if !b.disjoint_transfers(def, op) || b[b[def].results[0]].uses.len() != 1 {
+                break;
+            }
+            target = def;
+            w = b.def_named(b[def].operands[1], "vector.transfer_write");
+        }
+        false
+    }
+
     /// `CreateMaskFolder`: constant bounds make a `vector.constant_mask`.
     CreateMaskFolder("vector.create_mask", 1) |rw, op| {
         let b = &*rw.body;
@@ -2082,6 +2437,32 @@ super::rewrites! {
     }
 }
 
+/// `CanonicalizeContractAdd`: `add(contract(a, b, 0), c)` is `contract(a, b, c)`.
+fn contract_add(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
+    for (x, other) in [(0, 1), (1, 0)] {
+        let b = &*rw.body;
+        let (v, o) = (b[op].operands[x], b[op].operands[other]);
+        let Some(c) = b.def_named(v, "vector.contract") else { continue };
+        let acc = b[c].operands[2];
+        let Some(k) = b.def_named(acc, "arith.constant") else { continue };
+        let zero = b[k].get("value").and_then(|a| Const::try_from(a).ok()).is_some_and(|c| c.values.iter().all(|s| match s {
+            Scalar::Int(i) => i.is_zero(),
+            Scalar::Float(f) => f.bits == 0,
+        }));
+        if !zero {
+            continue;
+        }
+        let mut map = crate::Mapping::default();
+        map.map(acc, o);
+        rw.set_before(op);
+        let n = rw.clone(c, &mut map);
+        let r = rw.body[n].results[0];
+        rw.replace_op(op, &[r]);
+        return true;
+    }
+    false
+}
+
 /// `isZeroBasedContiguousSeq`: a `vector.step`, or the constant `[0, 1, ...]`.
 fn zero_based_seq(b: &Body<'_>, v: ValueId) -> bool {
     let Some((s, sc)) = vshape(&b[v].ty) else { return false };
@@ -2137,6 +2518,7 @@ pub fn patterns(set: &mut crate::PatternSet) {
     set.add(StridedSliceBroadcast);
     set.add(StridedSliceSplat);
     set.add(ContiguousExtractStridedSliceToExtract);
+    set.add(FoldWaw);
     set.add(MaskedLoadFolder);
     set.add(MaskedStoreFolder);
     set.add(GatherFolder);
@@ -2153,6 +2535,8 @@ pub fn patterns(set: &mut crate::PatternSet) {
     set.add(FoldTransposeSplat);
     set.add(FoldTransposeFromElements);
     set.add(FoldTransposeBroadcast);
+    set.add(CanonicalizeContractAddI);
+    set.add(CanonicalizeContractAddF);
     set.add(CreateMaskFolder);
     set.add(CanonicalizeEmptyMaskOp);
     set.add(StepCompareFolder);
