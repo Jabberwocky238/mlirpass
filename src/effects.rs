@@ -142,6 +142,74 @@ impl Body<'_> {
         self.nested_ops(op).into_iter().all(|o| self.is_memory_effect_free(o))
     }
 
+    /// `getSpeculatability`: `None` not speculatable, `Some(false)` speculatable, `Some(true)`
+    /// recursively (as far as its regions are).
+    fn speculatability(&self, op: OpId) -> Option<bool> {
+        if self.has(op, Trait::AlwaysSpeculatableImplTrait) {
+            return Some(false);
+        }
+        if self.has(op, Trait::RecursivelySpeculatableImplTrait) {
+            return Some(true);
+        }
+        if !self.has(op, Trait::ConditionallySpeculatable) {
+            return None;
+        }
+        let c = |v: ValueId| crate::Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int().map(|i| i.signed());
+        let name = &*self[op].name;
+        match name {
+            "arith.divui" | "arith.ceildivui" | "llvm.udiv" => c(self[op].operands[1]).filter(|v| *v != 0).map(|_| false),
+            "arith.divsi" | "arith.ceildivsi" | "llvm.sdiv" => c(self[op].operands[1]).filter(|v| *v != 0 && *v != -1).map(|_| false),
+            "scf.for" => (c(self[op].operands[2]) == Some(1)).then_some(true),
+            "affine.for" => (self[op].get("step").and_then(|a| if let mlirformat::Attribute::Int { lit, .. } = a { lit.parse::<i64>().ok() } else { None }) == Some(1)).then_some(true),
+            "tensor.dim" | "memref.dim" => {
+                let i = c(self[op].operands[1])?;
+                let rank = crate::attr::shape_of(&self[self[op].operands[0]].ty)?.len() as i128;
+                (i < rank).then_some(false)
+            }
+            "test.conditionally_speculatable_op" => self.def_named(self[op].operands[0], "arith.constant").map(|_| false),
+            "linalg.pack" | "linalg.unpack" => {
+                let pack = name == "linalg.pack";
+                let segs = self.segments(op, "operandSegmentSizes");
+                if pack && segs.as_ref().is_some_and(|s| s.get(2) == Some(&1)) {
+                    return Some(false);
+                }
+                let tiles: Vec<i64> = match self[op].get("static_inner_tiles") {
+                    Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
+                    _ => Vec::new(),
+                };
+                let first_dynamic = if pack { segs.as_ref().map_or(2, |s| s[..3].iter().sum()) } else { 2 };
+                let mut dynamic = self[op].operands[first_dynamic..].iter();
+                let packed = &self[self[op].operands[usize::from(pack)]].ty;
+                let shape = crate::attr::shape_of(packed)?;
+                let dims = &shape[shape.len() - tiles.len()..];
+                for (d, t) in dims.iter().zip(&tiles) {
+                    let constant = *t != i64::MIN || dynamic.next().is_some_and(|v| c(*v).is_some());
+                    if !constant || !matches!(d, mlirformat::Dim::Static(_)) {
+                        return None;
+                    }
+                }
+                Some(false)
+            }
+            "vector.transfer_read" | "vector.transfer_write" => self[op].operands.iter().all(|v| !self.is_memref(*v)).then_some(false),
+            n if n.starts_with("linalg.") => self[op].operands.iter().all(|v| !self.is_memref(*v)).then_some(true),
+            _ => None,
+        }
+    }
+
+    /// `isSpeculatable`.
+    pub fn is_speculatable(&self, op: OpId) -> bool {
+        match self.speculatability(op) {
+            None => false,
+            Some(false) => true,
+            Some(true) => self.nested_ops(op).into_iter().all(|o| self.is_speculatable(o)),
+        }
+    }
+
+    /// `isPure`: speculatable and free of memory effects.
+    pub fn is_pure(&self, op: OpId) -> bool {
+        self.is_speculatable(op) && self.is_memory_effect_free(op)
+    }
+
     /// `hasSingleEffect<kind>(op)`: it has effects, and all of them are `kind`.
     pub fn has_only_effect(&self, op: OpId, kind: EffectKind) -> bool {
         self.effects_of(op).is_some_and(|e| !e.is_empty() && e.iter().all(|x| x.kind == kind))

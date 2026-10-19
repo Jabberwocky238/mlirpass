@@ -48,6 +48,7 @@ registry! {
     "set-llvm-module-datalayout" on "builtin.module" => SetLlvmModuleDataLayout,
     "canonicalize" => Canonicalize,
     "cse" => Cse,
+    "loop-invariant-code-motion" => LoopInvariantCodeMotion,
     "llvm-request-c-wrappers" on "func.func" => RequestCWrappers,
     "strip-debuginfo" => StripDebugInfo,
     "symbol-dce" => SymbolDce,
