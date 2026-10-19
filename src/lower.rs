@@ -1,8 +1,10 @@
 //! ⭐ Lowerings, as `mlir/lib/Conversion`: one file per source dialect and target.
 
 mod affine_to_std;
+mod arith_to_emitc;
 mod arith_to_llvm;
 mod cf_to_llvm;
+mod emitc;
 mod func_to_llvm;
 mod index_to_llvm;
 mod math_to_llvm;
@@ -23,8 +25,10 @@ use crate::canon::AttrExt;
 use crate::{Action, ConversionRewriter, ConversionTarget, LlvmType, OpData, OpId, TypeConverter, ValueId};
 
 pub use affine_to_std::AffineToStd;
+pub use arith_to_emitc::ArithToEmitc;
 pub use arith_to_llvm::ArithToLlvm;
 pub use cf_to_llvm::{AssertLowering, CfToLlvm};
+pub use emitc::Emitc;
 pub use func_to_llvm::FuncToLlvm;
 pub use index_to_llvm::{IndexToLlvm, UbToLlvm};
 pub use math_to_llvm::MathToLlvm;
@@ -634,6 +638,87 @@ impl Pass for LowerAffine {
         AffineToStd::populate(&mut patterns);
         let mut target = ConversionTarget::default();
         target.legal_dialect("arith").legal_dialect("memref").legal_dialect("scf").legal_dialect("vector");
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}
+
+/// `convert-arith-to-emitc`.
+pub struct ConvertArithToEmitc;
+
+impl TryFrom<&Options<'_>> for ConvertArithToEmitc {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-arith-to-emitc", &[])?;
+        Ok(Self)
+    }
+}
+
+impl Pass for ConvertArithToEmitc {
+    fn name(&self) -> &str {
+        "convert-arith-to-emitc"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let mut tc = Emitc::converter(false);
+        Emitc::size_t_conversions(&mut tc);
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        ArithToEmitc::populate(&mut patterns, i);
+        let mut target = ConversionTarget::default();
+        target.legal_dialect("emitc").illegal_dialect("arith");
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}
+
+/// The dialects that implement `ConvertToEmitCPatternInterface`, by namespace.
+const TO_EMITC: &[&str] = &["arith", "func", "memref", "scf"];
+/// Those ported so far.
+const TO_EMITC_PORTED: &[&str] = &["arith"];
+
+/// `convert-to-emitc`: every dialect's `ConvertToEmitCPatternInterface` patterns (or those of
+/// `filter-dialects`) with the types EmitC supports.
+pub struct ConvertToEmitc {
+    filter: Vec<String>,
+}
+
+impl TryFrom<&Options<'_>> for ConvertToEmitc {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-to-emitc", &["filter-dialects"])?;
+        let filter: Vec<String> = o.list("filter-dialects").into_iter().map(String::from).collect();
+        let wanted: Vec<&str> = if filter.is_empty() { TO_EMITC.to_vec() } else { filter.iter().map(String::as_str).collect() };
+        if let Some(d) = wanted.iter().find(|d| TO_EMITC.contains(d) && !TO_EMITC_PORTED.contains(d)) {
+            return Err(Error(format!("convert-to-emitc: the {d} lowering is not ported")));
+        }
+        Ok(Self { filter })
+    }
+}
+
+impl Pass for ConvertToEmitc {
+    fn name(&self) -> &str {
+        "convert-to-emitc"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let dialects: Vec<&str> = if self.filter.is_empty() { TO_EMITC.to_vec() } else { self.filter.iter().map(String::as_str).collect() };
+        if let Some(d) = dialects.iter().find(|d| !TO_EMITC.contains(d)) {
+            return Err(Error(format!("dialect does not implement ConvertToEmitCPatternInterface: {d}")));
+        }
+        let mut tc = Emitc::converter(true);
+        for d in &dialects {
+            if matches!(*d, "arith" | "scf") {
+                Emitc::size_t_conversions(&mut tc);
+            }
+        }
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        for d in dialects {
+            if d == "arith" {
+                ArithToEmitc::populate(&mut patterns, i);
+            }
+        }
+        let mut target = ConversionTarget::default();
+        target.legal_dialect("emitc");
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
 }

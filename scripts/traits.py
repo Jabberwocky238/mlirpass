@@ -117,6 +117,10 @@ class Records:
         for arg, name in (dag or {}).get("args", []):
             rec = self.d.get(arg["def"]) if isinstance(arg, dict) else None
             sup = (rec or {}).get("!superclasses", [])
+            # `Arg<Constraint, "doc">`: the constraint it wraps.
+            if "Arg" in sup and isinstance(rec.get("constraint"), dict):
+                rec = self.d.get(rec["constraint"]["def"])
+                sup = (rec or {}).get("!superclasses", [])
             if "TypeConstraint" not in sup and ("Attr" in sup or "AttrConstraint" in sup or "Property" in sup):
                 out.append(name)
         return out

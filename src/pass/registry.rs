@@ -45,6 +45,8 @@ registry! {
     "convert-math-to-llvm" => ConvertMathToLlvm,
     "convert-ub-to-llvm" => ConvertUbToLlvm,
     "convert-to-llvm" => ConvertToLlvm,
+    "convert-arith-to-emitc" => ConvertArithToEmitc,
+    "convert-to-emitc" => ConvertToEmitc,
     "reconcile-unrealized-casts" => ReconcileUnrealizedCasts,
     "set-llvm-module-datalayout" on "builtin.module" => SetLlvmModuleDataLayout,
     "canonicalize" => Canonicalize,
