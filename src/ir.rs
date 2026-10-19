@@ -164,7 +164,9 @@ impl<'a> OpData<'a> {
     pub fn set(&mut self, name: &str, value: Attribute<'a>) {
         let inherent = self.inherent(name);
         let d = self.dict_mut(inherent);
-        let named = NamedAttr { name: alloc::string::String::from(name).into(), value: Some(value) };
+        // A unit attribute is written bare: `{name}`.
+        let value = (value != Attribute::Unit).then_some(value);
+        let named = NamedAttr { name: alloc::string::String::from(name).into(), value };
         match d.binary_search_by(|a| (*a.name).cmp(name)) {
             Ok(i) => d[i] = named,
             Err(i) => d.insert(i, named),

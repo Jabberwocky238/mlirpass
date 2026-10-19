@@ -10,6 +10,7 @@
 
 extern crate alloc;
 
+mod attr;
 mod branch;
 mod canon;
 mod dominance;
@@ -18,6 +19,7 @@ mod equivalence;
 mod fold;
 mod greedy;
 mod invocation;
+mod num;
 mod ir;
 mod pass;
 mod region;
@@ -26,11 +28,13 @@ mod symbol;
 mod traits;
 mod transforms;
 
+pub use attr::*;
 pub use dominance::*;
 pub use effects::*;
 pub use fold::*;
 pub use greedy::*;
 pub use ir::*;
+pub use num::*;
 pub use invocation::*;
 pub use pass::*;
 pub use rewrite::*;

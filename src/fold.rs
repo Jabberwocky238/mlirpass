@@ -102,6 +102,7 @@ impl<'a> Body<'a> {
                 Trait::IsCommutative => self.fold_commutative(op, consts),
                 Trait::IsInvolution => self.fold_involution(op),
                 Trait::IsIdempotent => self.fold_idempotent(op),
+                Trait::CastOpInterface => self.fold_cast(op),
                 _ => Fold::Failed,
             };
             if f != Fold::Failed {
@@ -128,6 +129,15 @@ impl<'a> Body<'a> {
         }
         self.set_operands(op, moved);
         Fold::InPlace
+    }
+
+    /// `foldCastInterfaceOp`: a cast whose operand types are its result types is a no-op.
+    fn fold_cast(&self, op: OpId) -> Fold<'a> {
+        let d = &self[op];
+        if d.operands.is_empty() || self.types(&d.operands) != self.types(&d.results) {
+            return Fold::Failed;
+        }
+        Fold::Results(d.operands.iter().map(|v| Folded::Value(*v)).collect())
     }
 
     /// `op(op(x)) = x`.
