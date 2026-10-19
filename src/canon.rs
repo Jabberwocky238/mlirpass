@@ -4,6 +4,7 @@
 mod arith;
 mod cf;
 mod scf;
+mod vector;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -130,6 +131,23 @@ fn defaults<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
     }
 }
 
+/// `memref::CastOp::canFoldIntoConsumerOp`: a cast from `src` to the less static `dst`.
+pub fn memref_cast_foldable(src: &Type<'_>, dst: &Type<'_>) -> bool {
+    let (Type::Shaped(s), Type::Shaped(d)) = (src, dst) else { return false };
+    if s.kind != mlirformat::ShapedKind::MemRef || d.kind != s.kind || s.elem != d.elem {
+        return false;
+    }
+    let (Some(ss), Some(ds)) = (&s.shape, &d.shape) else { return false };
+    if ss.len() != ds.len() {
+        return false;
+    }
+    let opts = crate::LlvmOptions::default();
+    let (Some((sst, so)), Some((dst_, doff))) = (opts.strides_and_offset(s), opts.strides_and_offset(d)) else { return false };
+    let more_static = |a: i64, b: i64| a == crate::DYNAMIC && b != crate::DYNAMIC;
+    let dim = |x: &mlirformat::Dim| if let mlirformat::Dim::Static(n) = x { *n } else { crate::DYNAMIC };
+    !(ss.iter().zip(ds).any(|(a, b)| more_static(dim(a), dim(b))) || more_static(so, doff) || sst.iter().zip(&dst_).any(|(a, b)| more_static(*a, *b)))
+}
+
 impl<'a> Body<'a> {
     /// The op defining `v`, if it is named `name`.
     pub fn def_named(&self, v: ValueId, name: &str) -> Option<OpId> {
@@ -142,6 +160,7 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
     match body[op].name.split_once('.').map(|(ns, _)| ns) {
         Some("arith") => arith::Folder { b: body, op, c: consts }.fold(),
         Some("scf") => scf::fold(body, op),
+        Some("vector") => vector::Folder { b: body, op, c: consts }.fold(),
         _ => Fold::Failed,
     }
 }
@@ -150,6 +169,7 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
 pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
     match ns {
         "arith" => arith::materialize(value, ty),
+        "vector" => vector::materialize(value, ty),
         "ub" => crate::is_poison(value).then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,
     }
