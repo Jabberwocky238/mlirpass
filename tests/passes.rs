@@ -20,7 +20,7 @@ use mlirpass::mlirformat::MlirOpt;
 use mlirpass::{Body, Invocation};
 
 /// Chunks matching exactly; raise it whenever a change makes more match.
-const FLOOR: usize = 1122;
+const FLOOR: usize = 1461;
 
 #[derive(Default, Clone, Copy)]
 struct Tally {
@@ -115,6 +115,6 @@ fn passes() {
     eprintln!("{:<44} {:>6} {:>8} {:>6} {:>11}", "total", total.exact, total.mismatch, total.error, total.unsupported);
     let mut missing: Vec<_> = unsupported.into_iter().collect();
     missing.sort_by(|a, b| b.1.cmp(&a.1));
-    eprintln!("most wanted: {}", missing.iter().take(12).map(|(e, n)| format!("{e} ({n})")).collect::<Vec<_>>().join(", "));
+    eprintln!("most wanted: {}", missing.iter().take(std::env::var("WANTED").ok().and_then(|n| n.parse().ok()).unwrap_or(12)).map(|(e, n)| format!("{e} ({n})")).collect::<Vec<_>>().join(", "));
     assert!(total.exact >= FLOOR, "exact {} fell below the floor {FLOOR}", total.exact);
 }

@@ -7,6 +7,7 @@ mod index_to_llvm;
 mod math_to_llvm;
 mod memref_desc;
 mod memref_to_llvm;
+mod vector_to_llvm;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -26,6 +27,7 @@ pub use index_to_llvm::{IndexToLlvm, UbToLlvm};
 pub use math_to_llvm::MathToLlvm;
 pub use memref_desc::DYNAMIC;
 pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
+pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
 
 /// Fast-math flags, by name, in LLVM's bit order.
 const LLVM_FASTMATH: [&str; 7] = ["nnan", "ninf", "nsz", "arcp", "contract", "afn", "reassoc"];
@@ -496,7 +498,7 @@ impl TryFrom<&Options<'_>> for ConvertToLlvm {
 }
 
 /// The dialects that implement `ConvertToLLVMPatternInterface`, by namespace.
-const TO_LLVM: &[&str] = &["arith", "cf", "func", "index", "math", "memref", "ub"];
+const TO_LLVM: &[&str] = &["arith", "cf", "func", "index", "math", "memref", "ub", "vector"];
 
 impl Pass for ConvertToLlvm {
     fn name(&self) -> &str {
@@ -515,6 +517,7 @@ impl Pass for ConvertToLlvm {
                 "math" => MathToLlvm::populate(&mut patterns, i, true),
                 "ub" => UbToLlvm::populate(&mut patterns, i),
                 "func" => FuncToLlvm::populate(&mut patterns, i, LlvmOptions::derived().at(body, op)),
+                "vector" => VectorToLlvm::populate(&mut patterns, i, VectorOptions { llvm: LlvmOptions::derived().at(body, op), reassociate_fp_reductions: false, force_32bit_indices: true, use_vector_alignment: false, counter: &self.counter }),
                 "memref" => MemrefToLlvm::populate(&mut patterns, i, MemrefOptions { llvm: LlvmOptions::derived().at(body, op), aligned_alloc: false, generic: false }),
                 "cf" => {
                     CfToLlvm::populate(&mut patterns, i);

@@ -32,41 +32,41 @@ const GEP_DYNAMIC: i64 = i32::MIN as i64;
 
 /// One `llvm.getelementptr` index.
 #[derive(Clone, Copy)]
-enum Gep {
+pub(super) enum Gep {
     C(i64),
     V(ValueId),
 }
 
-type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
+pub(super) type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
 impl MemrefToLlvm {
-    fn memref<'t, 'a>(t: &'t Type<'a>) -> Option<&'t Shaped<'a>> {
+    pub(super) fn memref<'t, 'a>(t: &'t Type<'a>) -> Option<&'t Shaped<'a>> {
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::MemRef => Some(s),
             _ => None,
         }
     }
 
-    fn operand_memref<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, i: usize) -> Option<Shaped<'a>> {
+    pub(super) fn operand_memref<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, i: usize) -> Option<Shaped<'a>> {
         let v = *cr.rw.body[op].operands.get(i)?;
         Self::memref(&cr.rw.body[v].ty).cloned()
     }
 
-    fn result_memref<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Option<Shaped<'a>> {
+    pub(super) fn result_memref<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Option<Shaped<'a>> {
         let v = *cr.rw.body[op].results.first()?;
         Self::memref(&cr.rw.body[v].ty).cloned()
     }
 
-    fn rank(s: &Shaped<'_>) -> usize {
+    pub(super) fn rank(s: &Shaped<'_>) -> usize {
         s.shape.as_ref().map_or(0, Vec::len)
     }
 
-    fn dims(s: &Shaped<'_>) -> Vec<i64> {
+    pub(super) fn dims(s: &Shaped<'_>) -> Vec<i64> {
         s.shape.iter().flatten().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect()
     }
 
     /// `MemRefLayoutAttrInterface::isIdentity`: no layout, `strided<[1]>`, or `(d0, ...) -> (d0, ...)`.
-    fn identity_layout(s: &Shaped<'_>) -> bool {
+    pub(super) fn identity_layout(s: &Shaped<'_>) -> bool {
         s.extras.iter().all(|a| match a {
             Attribute::Builtin { name, body, .. } if name == "strided" => {
                 let inner: String = body.chars().filter(|c| !c.is_whitespace()).collect();
@@ -87,7 +87,7 @@ impl MemrefToLlvm {
         Self::identity_layout(s) && cr.type_converter().is_some_and(|tc| tc.convert(&Type::Shaped(s.clone())).is_some()) && opts.address_space(s).is_some()
     }
 
-    fn elem<'a>(cr: &Cr<'_, 'a, '_>, t: &Type<'a>) -> Option<Type<'a>> {
+    pub(super) fn elem<'a>(cr: &Cr<'_, 'a, '_>, t: &Type<'a>) -> Option<Type<'a>> {
         cr.type_converter()?.convert(t)
     }
 
@@ -95,11 +95,11 @@ impl MemrefToLlvm {
         LlvmType::Ptr(opts.address_space(s).unwrap_or(0)).into()
     }
 
-    fn const_index<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, v: i64) -> ValueId {
+    pub(super) fn const_index<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, v: i64) -> ValueId {
         cr.index_const(&opts.index(), v)
     }
 
-    fn arith<'a>(cr: &mut Cr<'_, 'a, '_>, name: &str, a: ValueId, b: ValueId) -> ValueId {
+    pub(super) fn arith<'a>(cr: &mut Cr<'_, 'a, '_>, name: &str, a: ValueId, b: ValueId) -> ValueId {
         let ty = cr.rw.body[a].ty.clone();
         cr.build(OpData::build(name).operands(&[a, b]), ty)
     }
@@ -109,7 +109,7 @@ impl MemrefToLlvm {
         cr.build(OpData::build(name).operands(&[a, b]).with("overflowFlags", Attribute::Int { lit: format!("{flags}").into(), ty: Some(Type::int(32)) }), ty)
     }
 
-    fn gep<'a>(cr: &mut Cr<'_, 'a, '_>, res: Type<'a>, elem: Type<'a>, base: ValueId, idx: &[Gep], flags: i64) -> ValueId {
+    pub(super) fn gep<'a>(cr: &mut Cr<'_, 'a, '_>, res: Type<'a>, elem: Type<'a>, base: ValueId, idx: &[Gep], flags: i64) -> ValueId {
         let mut operands = vec![base];
         let mut raw = Vec::new();
         for i in idx {
@@ -126,15 +126,15 @@ impl MemrefToLlvm {
         cr.build(data, res)
     }
 
-    fn load<'a>(cr: &mut Cr<'_, 'a, '_>, ty: Type<'a>, ptr: ValueId) -> ValueId {
+    pub(super) fn load<'a>(cr: &mut Cr<'_, 'a, '_>, ty: Type<'a>, ptr: ValueId) -> ValueId {
         cr.build(OpData::build("llvm.load").operands(&[ptr]), ty)
     }
 
-    fn store<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, ptr: ValueId) {
+    pub(super) fn store<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, ptr: ValueId) {
         cr.rw.create(OpData::build("llvm.store").operands(&[v, ptr]), &[]);
     }
 
-    fn alloca<'a>(cr: &mut Cr<'_, 'a, '_>, res: Type<'a>, elem: Type<'a>, n: ValueId, align: i64) -> ValueId {
+    pub(super) fn alloca<'a>(cr: &mut Cr<'_, 'a, '_>, res: Type<'a>, elem: Type<'a>, n: ValueId, align: i64) -> ValueId {
         let mut d = OpData::build("llvm.alloca").operands(&[n]).with("elem_type", Attribute::Type(elem));
         if align != 0 {
             d.set("alignment", Attribute::i64(align));
@@ -215,7 +215,7 @@ impl MemrefToLlvm {
     }
 
     /// `MemRefDescriptor::bufferPtr`: the aligned pointer moved by the offset.
-    fn buffer_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId) -> Option<ValueId> {
+    pub(super) fn buffer_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId) -> Option<ValueId> {
         let (_, offset) = opts.strides_and_offset(s)?;
         let ptr = cr.extract(desc, &[1]);
         if offset == 0 {
@@ -228,7 +228,7 @@ impl MemrefToLlvm {
     }
 
     /// `getStridedElementPtr`.
-    fn strided_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId, indices: &[ValueId], flags: i64) -> Option<ValueId> {
+    pub(super) fn strided_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId, indices: &[ValueId], flags: i64) -> Option<ValueId> {
         let (strides, _) = opts.strides_and_offset(s)?;
         let base = Self::buffer_ptr(cr, opts, s, desc)?;
         let overflow = i64::from(flags & 2 != 0) | (i64::from(flags & 4 != 0) << 1);
@@ -313,7 +313,7 @@ impl MemrefToLlvm {
         Self::int(cr.rw.body[d].get("value")?)
     }
 
-    fn int(a: &Attribute<'_>) -> Option<i64> {
+    pub(super) fn int(a: &Attribute<'_>) -> Option<i64> {
         match a {
             Attribute::Int { lit, .. } => lit.parse().ok(),
             Attribute::Bool(b) => Some(i64::from(*b)),
@@ -792,7 +792,7 @@ impl MemrefToLlvm {
     }
 
     /// `isStaticShapeAndContiguousRowMajor`.
-    fn contiguous(opts: LlvmOptions, s: &Shaped<'_>) -> bool {
+    pub(super) fn contiguous(opts: LlvmOptions, s: &Shaped<'_>) -> bool {
         let dims = Self::dims(s);
         if s.shape.is_none() || dims.contains(&DYNAMIC) {
             return false;
