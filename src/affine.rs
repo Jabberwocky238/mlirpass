@@ -51,6 +51,11 @@ fn gcd(a: u64, b: u64) -> u64 {
     if b == 0 { a } else { gcd(b, a % b) }
 }
 
+/// `std::gcd` on unsigned values.
+pub fn gcd_u64(a: u64, b: u64) -> u64 {
+    gcd(a, b)
+}
+
 impl AffineExpr {
     fn raw(k: Bin, l: AffineExpr, r: AffineExpr) -> Self {
         AffineExpr::Bin(k, Box::new(l), Box::new(r))
@@ -474,6 +479,14 @@ impl AffineExpr {
             e = e.add_const(c);
         }
         e
+    }
+
+    /// The flattened form `[dims, symbols, locals, constant]` and the number of locals.
+    pub fn flatten(&self, dims: u32, syms: u32) -> Option<(Vec<i64>, usize)> {
+        let mut fl = Flattener::new(dims, syms);
+        fl.walk(self)?;
+        let n = fl.locals.len();
+        Some((fl.stack.pop()?, n))
     }
 
     /// `simplifyAffineExpr`.
