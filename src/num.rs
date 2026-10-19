@@ -573,6 +573,13 @@ impl ApFloat {
     }
 
     /// The default quiet NaN `APFloat` makes for an invalid operation (positive).
+    /// `APFloat::getLargest`.
+    pub fn largest(kind: FloatKind, negative: bool) -> Self {
+        let l = Layout::of(kind).expect("unsupported float format");
+        let bits = (((1u64 << l.exp) - 2) << l.mant) | ((1u64 << l.mant) - 1) | (u64::from(negative) << (l.exp + l.mant));
+        Self { kind, bits }
+    }
+
     pub fn nan(kind: FloatKind) -> Self {
         let l = Layout::of(kind).expect("unsupported float format");
         Self { kind, bits: (((1u64 << l.exp) - 1) << l.mant) | (1 << (l.mant - 1)) }
