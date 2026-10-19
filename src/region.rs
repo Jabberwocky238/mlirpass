@@ -450,7 +450,7 @@ impl Body<'_> {
     }
 }
 
-impl crate::Rewriter<'_, '_> {
+impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
     /// `eraseUnreachableBlocks`; whether any block went.
     pub fn erase_unreachable_blocks(&mut self, regions: &[RegionId]) -> bool {
         let mut erased = false;

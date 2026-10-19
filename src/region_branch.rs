@@ -215,7 +215,7 @@ impl<'a> Body<'a> {
     }
 }
 
-impl<'a> crate::Rewriter<'_, 'a> {
+impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
     /// `OpBuilder::clone`: a copy at the insertion point; the listener hears of it and of every
     /// op inside it.
     pub fn clone(&mut self, op: OpId, map: &mut Mapping) -> OpId {

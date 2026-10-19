@@ -16,7 +16,12 @@ use crate::{Body, BlockId, OpData, OpId, RegionId, ValueId};
 /// Told about every change a [`Rewriter`] makes. `body` is the IR just before (erased) or just
 /// after (the rest) the change.
 pub trait Listener<'a> {
+    /// A new op was placed.
     fn inserted(&mut self, _body: &Body<'a>, _op: OpId) {}
+    /// A placed op moved; the greedy driver treats it as inserted.
+    fn moved(&mut self, body: &Body<'a>, op: OpId) {
+        self.inserted(body, op)
+    }
     fn modified(&mut self, _body: &Body<'a>, _op: OpId) {}
     fn replaced(&mut self, _body: &Body<'a>, _op: OpId, _with: &[ValueId]) {}
     fn erased(&mut self, _body: &Body<'a>, _op: OpId) {}
@@ -36,9 +41,9 @@ pub struct InsertPoint {
 }
 
 /// ⭐ A body being rewritten, its listener, and an insertion point.
-pub struct Rewriter<'r, 'a> {
+pub struct Rewriter<'r, 'a, L: Listener<'a> + ?Sized = dyn Listener<'a> + 'r> {
     pub body: &'r mut Body<'a>,
-    listener: &'r mut dyn Listener<'a>,
+    pub listener: &'r mut L,
     pub ip: Option<InsertPoint>,
 }
 
@@ -46,7 +51,16 @@ impl<'r, 'a> Rewriter<'r, 'a> {
     pub fn new(body: &'r mut Body<'a>, listener: &'r mut dyn Listener<'a>) -> Self {
         Self { body, listener, ip: None }
     }
+}
 
+impl<'r, 'a, L: Listener<'a>> Rewriter<'r, 'a, L> {
+    /// A rewriter whose listener keeps its concrete type.
+    pub fn typed(body: &'r mut Body<'a>, listener: &'r mut L) -> Self {
+        Self { body, listener, ip: None }
+    }
+}
+
+impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
     // ---- insertion point -------------------------------------------------------------
 
     pub fn set_before(&mut self, op: OpId) {
@@ -190,7 +204,7 @@ impl<'r, 'a> Rewriter<'r, 'a> {
             Some(b) => self.body.insert_before(op, b),
             None => self.body.insert(op, block, None),
         }
-        self.listener.inserted(self.body, op);
+        self.listener.moved(self.body, op);
     }
 
     /// `inlineBlockBefore`: `source`'s arguments become `args`, its ops move before `before` in

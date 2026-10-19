@@ -280,3 +280,58 @@ pub fn bit_width(ty: &Type<'_>) -> Option<u32> {
         _ => None,
     }
 }
+
+/// A deep copy that borrows nothing (`Cow::Borrowed` text made owned).
+pub trait Owned {
+    type Out;
+    fn owned(&self) -> Self::Out;
+}
+
+fn own_str(s: &mlirformat::Str<'_>) -> mlirformat::Str<'static> {
+    Cow::Owned(String::from(&**s))
+}
+
+impl Owned for Extended<'_> {
+    type Out = Extended<'static>;
+    fn owned(&self) -> Extended<'static> {
+        Extended { name: own_str(&self.name), body: self.body.as_ref().map(own_str), params: self.params.iter().map(Owned::owned).collect() }
+    }
+}
+
+impl Owned for Type<'_> {
+    type Out = Type<'static>;
+    fn owned(&self) -> Type<'static> {
+        match self {
+            Type::Integer { signedness, width } => Type::Integer { signedness: *signedness, width: *width },
+            Type::Float(k) => Type::Float(*k),
+            Type::Index => Type::Index,
+            Type::NoneType => Type::NoneType,
+            Type::Complex(e) => Type::Complex(e.owned().into()),
+            Type::Tuple(ts) => Type::Tuple(ts.iter().map(Owned::owned).collect()),
+            Type::Function(f) => Type::Function(mlirformat::FunctionType { inputs: f.inputs.iter().map(Owned::owned).collect(), results: f.results.iter().map(Owned::owned).collect() }),
+            Type::Shaped(s) => Type::Shaped(Shaped { kind: s.kind, shape: s.shape.clone(), elem: s.elem.owned().into(), extras: s.extras.iter().map(Owned::owned).collect() }),
+            Type::Extended(e) => Type::Extended(e.owned()),
+        }
+    }
+}
+
+impl Owned for Attribute<'_> {
+    type Out = Attribute<'static>;
+    fn owned(&self) -> Attribute<'static> {
+        let ty = |t: &Option<Type<'_>>| t.as_ref().map(Owned::owned);
+        match self {
+            Attribute::Unit => Attribute::Unit,
+            Attribute::Bool(b) => Attribute::Bool(*b),
+            Attribute::Int { lit, ty: t } => Attribute::Int { lit: own_str(lit), ty: ty(t) },
+            Attribute::Float { lit, ty: t } => Attribute::Float { lit: own_str(lit), ty: ty(t) },
+            Attribute::Str { lit, ty: t } => Attribute::Str { lit: own_str(lit), ty: ty(t) },
+            Attribute::Type(t) => Attribute::Type(t.owned()),
+            Attribute::Array(xs) => Attribute::Array(xs.iter().map(Owned::owned).collect()),
+            Attribute::Dict(d) => Attribute::Dict(d.iter().map(|n| mlirformat::NamedAttr { name: own_str(&n.name), value: n.value.as_ref().map(Owned::owned) }).collect()),
+            Attribute::SymbolRef(p) => Attribute::SymbolRef(p.iter().map(own_str).collect()),
+            Attribute::DenseArray { ty: t, values } => Attribute::DenseArray { ty: t.owned(), values: values.iter().map(own_str).collect() },
+            Attribute::Builtin { name, body, ty: t } => Attribute::Builtin { name: own_str(name), body: own_str(body), ty: ty(t) },
+            Attribute::Extended { ext, ty: t } => Attribute::Extended { ext: ext.owned(), ty: ty(t) },
+        }
+    }
+}
