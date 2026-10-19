@@ -187,6 +187,19 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
     }
 }
 
+/// `populateVectorToVectorCanonicalizationPatterns`.
+pub fn vector_to_vector_canonicalization(set: &mut PatternSet) {
+    set.add(vector::CreateMaskFolder);
+    set.add(vector::MaskedLoadFolder);
+    set.add(vector::MaskedStoreFolder);
+    set.add(vector::GatherFolder);
+    set.add(vector::ScatterFolder);
+    set.add(vector::ExpandLoadFolder);
+    set.add(vector::CompressStoreFolder);
+    set.add(vector::StridedSliceConstantMaskFolder);
+    set.add(vector::TransposeFolder);
+}
+
 /// Every dialect's and op's canonicalization patterns, in registration order.
 pub fn patterns() -> PatternSet {
     let mut set = PatternSet::default();

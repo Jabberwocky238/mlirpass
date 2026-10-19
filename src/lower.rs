@@ -9,6 +9,7 @@ mod math_to_llvm;
 mod memref_desc;
 mod memref_to_llvm;
 mod vector_to_llvm;
+mod vector_transforms;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -30,6 +31,7 @@ pub use math_to_llvm::MathToLlvm;
 pub use memref_desc::DYNAMIC;
 pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
 pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
+pub use vector_transforms::{Build, transfer_read_to_load, transfer_write_to_store};
 
 /// Fast-math flags, by name, in LLVM's bit order.
 const LLVM_FASTMATH: [&str; 7] = ["nnan", "ninf", "nsz", "arcp", "contract", "afn", "reassoc"];
@@ -556,6 +558,58 @@ impl Pass for SetLlvmModuleDataLayout {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         body[op].set("llvm.data_layout", Attribute::string(&self.layout));
         Ok(())
+    }
+}
+
+/// `convert-vector-to-llvm`: the vector-to-vector lowerings greedily, then the conversion.
+pub struct ConvertVectorToLlvm {
+    reassociate: bool,
+    force32: bool,
+    vector_alignment: bool,
+    counter: core::cell::Cell<u32>,
+}
+
+impl TryFrom<&Options<'_>> for ConvertVectorToLlvm {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        let flags = ["enable-amx", "enable-arm-neon", "enable-arm-sve", "enable-arm-i8mm", "enable-arm-bf16", "enable-x86vector"];
+        let mut known = alloc::vec!["reassociate-fp-reductions", "force-32bit-vector-indices", "use-vector-alignment", "vector-contract-lowering", "vector-transpose-lowering"];
+        known.extend(flags);
+        o.only("convert-vector-to-llvm", &known)?;
+        for f in flags {
+            if o.flag(f, false)? {
+                return Err(Error(format!("convert-vector-to-llvm: {f} is not ported")));
+            }
+        }
+        for (k, default) in [("vector-contract-lowering", "dot"), ("vector-transpose-lowering", "eltwise")] {
+            if o.get(k).is_some_and(|v| v != default) {
+                return Err(Error(format!("convert-vector-to-llvm: {k} is not ported")));
+            }
+        }
+        Ok(Self { reassociate: o.flag("reassociate-fp-reductions", false)?, force32: o.flag("force-32bit-vector-indices", true)?, vector_alignment: o.flag("use-vector-alignment", false)?, counter: core::cell::Cell::new(0) })
+    }
+}
+
+impl Pass for ConvertVectorToLlvm {
+    fn name(&self) -> &str {
+        "convert-vector-to-llvm"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let pre = vector_transforms::pre_patterns(self.force32);
+        for r in body[op].regions.clone() {
+            body.apply_greedily(r, &pre, &crate::GreedyConfig::default());
+        }
+        let opts = LlvmOptions::default();
+        let tc = LlvmConverter::build(opts);
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        patterns.add(Lowering { root: "vector.transfer_read", benefit: 1, f: |cr, op, _| transfer_read_to_load(cr, op, None) });
+        patterns.add(Lowering { root: "vector.transfer_write", benefit: 1, f: |cr, op, _| transfer_write_to_store(cr, op, None) });
+        VectorToLlvm::populate(&mut patterns, i, VectorOptions { llvm: opts, reassociate_fp_reductions: self.reassociate, force_32bit_indices: self.force32, use_vector_alignment: self.vector_alignment, counter: &self.counter });
+        let mut target = llvm_target();
+        target.legal_dialect("arith").legal_dialect("memref");
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
 }
 
