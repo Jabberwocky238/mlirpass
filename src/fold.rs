@@ -59,7 +59,12 @@ impl<'a> Body<'a> {
         let ext = |name: &str| Attribute::Extended { ext: Extended { name: alloc::string::String::from(name).into(), body: None, params: Vec::new() }, ty: None };
         match &*d.name {
             "ub.poison" => Some(d.get("value").cloned().unwrap_or_else(|| ext("ub.poison"))),
-            "llvm.mlir.zero" => Some(ext("llvm.zero")),
+            // `ZeroOp::fold`: a builtin zero where the type has one.
+            "llvm.mlir.zero" => Some(match &self[d.results[0]].ty {
+                t @ (Type::Integer { .. } | Type::Index) => Attribute::Int { lit: "0".into(), ty: Some(t.clone()) },
+                t @ Type::Float(_) => Attribute::Float { lit: "0.000000e+00".into(), ty: Some(t.clone()) },
+                _ => ext("llvm.zero"),
+            }),
             "llvm.mlir.undef" => Some(ext("llvm.undef")),
             "llvm.mlir.poison" => Some(ext("llvm.poison")),
             _ => d.get("value").cloned(),

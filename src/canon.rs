@@ -4,6 +4,7 @@
 mod affine;
 mod arith;
 mod cf;
+mod llvm;
 mod memref;
 mod scf;
 mod vector;
@@ -43,6 +44,8 @@ macro_rules! rewrites {
     )*};
 }
 pub(crate) use rewrites;
+pub use affine::map_attr;
+pub use memref::Ofr as MemrefOfr;
 
 /// Constructors for the attributes ops carry.
 pub trait AttrExt<'a>: Sized {
@@ -108,7 +111,7 @@ fn defaults<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
         "arith.addi" | "arith.subi" | "arith.muli" | "arith.shli" | "arith.trunci" => alloc::vec![("overflowFlags", Attribute::dialect("arith.overflow", "<none>"))],
         "arith.addf" | "arith.subf" | "arith.mulf" | "arith.divf" | "arith.remf" | "arith.negf" | "arith.maximumf" | "arith.maxnumf" | "arith.minimumf" | "arith.minnumf" | "arith.cmpf" => alloc::vec![("fastmath", Attribute::dialect("arith.fastmath", "<none>"))],
         "ub.poison" => alloc::vec![("value", Attribute::dialect("ub.poison", ""))],
-        "vector.load" | "vector.store" => alloc::vec![("nontemporal", Attribute::Bool(false))],
+        "vector.load" | "vector.store" | "memref.load" | "memref.store" => alloc::vec![("nontemporal", Attribute::Bool(false))],
         // LLVM ops: the fast-math and overflow flags default to none.
         n if n.starts_with("llvm.") => {
             let inherent = crate::OpInfo::of(n).map_or(&[][..], |i| i.inherent);
@@ -165,6 +168,7 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("scf") => scf::fold(body, op),
         Some("affine") => affine::fold(body, op),
         Some("memref") => memref::fold(body, op),
+        Some("llvm") => llvm::fold(body, op, consts),
         Some("vector") => vector::Folder { b: body, op, c: consts }.fold(),
         _ => Fold::Failed,
     }
@@ -176,6 +180,7 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
         "arith" => arith::materialize(value, ty),
         "affine" => affine::materialize(value, ty),
         "memref" => memref::materialize(value, ty),
+        "llvm" => llvm::materialize(value, ty),
         "vector" => vector::materialize(value, ty),
         "ub" => crate::is_poison(value).then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,

@@ -1,5 +1,6 @@
 //! ⭐ Lowerings, as `mlir/lib/Conversion`: one file per source dialect and target.
 
+mod affine_to_std;
 mod arith_to_llvm;
 mod cf_to_llvm;
 mod func_to_llvm;
@@ -20,6 +21,7 @@ use mlirformat::{Attribute, Dim, NamedAttr, Shaped, ShapedKind, Type};
 use crate::canon::AttrExt;
 use crate::{Action, ConversionRewriter, ConversionTarget, LlvmType, OpData, OpId, TypeConverter, ValueId};
 
+pub use affine_to_std::AffineToStd;
 pub use arith_to_llvm::ArithToLlvm;
 pub use cf_to_llvm::{AssertLowering, CfToLlvm};
 pub use func_to_llvm::FuncToLlvm;
@@ -554,6 +556,31 @@ impl Pass for SetLlvmModuleDataLayout {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         body[op].set("llvm.data_layout", Attribute::string(&self.layout));
         Ok(())
+    }
+}
+
+/// `lower-affine`.
+pub struct LowerAffine;
+
+impl TryFrom<&Options<'_>> for LowerAffine {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("lower-affine", &[])?;
+        Ok(Self)
+    }
+}
+
+impl Pass for LowerAffine {
+    fn name(&self) -> &str {
+        "lower-affine"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let mut patterns = ConversionPatterns::default();
+        AffineToStd::populate(&mut patterns);
+        let mut target = ConversionTarget::default();
+        target.legal_dialect("arith").legal_dialect("memref").legal_dialect("scf").legal_dialect("vector");
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
 }
 

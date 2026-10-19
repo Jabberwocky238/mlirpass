@@ -110,7 +110,9 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
             Some(b) => self.body.insert_before(op, b),
             None => self.body.insert(op, ip.block, None),
         }
-        if let crate::Fold::Results(folded) = self.body.fold(op) {
+        // `tryFold`: a constant stays as built.
+        let constant = self.body.has(op, crate::Trait::ConstantLike);
+        if !constant && let crate::Fold::Results(folded) = self.body.fold(op) {
             let name = alloc::string::String::from(&*self.body[op].name);
             let mut out = Vec::new();
             let mut constants = Vec::new();
