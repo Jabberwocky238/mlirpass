@@ -14,7 +14,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Block, BlockArg, Error, Extended, FunctionType, Item, Module, NamedAttr, Operation, Region, ResultDef, Shaped, Type, Value};
+use mlirformat::{Attribute, Block, BlockArg, Error, Extended, FunctionType, Item, Module, NamedAttr, Operation, Region, ResultDef, Shaped, Str, Type, Value};
 
 use super::{Body, BlockId, OpData, OpId, RegionId, ValueId};
 
@@ -23,9 +23,36 @@ use super::{Body, BlockId, OpData, OpId, RegionId, ValueId};
 struct Aliases<'a> {
     attrs: BTreeMap<String, Attribute<'a>>,
     types: BTreeMap<String, Type<'a>>,
+    /// Location aliases (`#loc3 = loc("f":1:2)`), by name, as the text inside `loc(...)`.
+    locs: BTreeMap<String, String>,
 }
 
 impl<'a> Aliases<'a> {
+    /// A location's raw text with every location alias in it spelled out.
+    fn loc(&self, raw: &Option<Str<'a>>) -> Option<Str<'a>> {
+        let raw = raw.as_ref()?;
+        if !raw.contains('#') || self.locs.is_empty() {
+            return Some(raw.clone());
+        }
+        let mut out = String::new();
+        let mut rest = &**raw;
+        while let Some(i) = rest.find('#') {
+            out.push_str(&rest[..i]);
+            let tail = &rest[i + 1..];
+            let end = tail.find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '$' | '-'))).unwrap_or(tail.len());
+            match self.locs.get(&tail[..end]) {
+                Some(body) => out.push_str(body),
+                None => {
+                    out.push('#');
+                    out.push_str(&tail[..end]);
+                }
+            }
+            rest = &tail[end..];
+        }
+        out.push_str(rest);
+        Some(Cow::Owned(out))
+    }
+
     /// `name` names an alias rather than a dialect symbol (`#map`, not `#arith.fastmath<...>`).
     fn alias<'x>(ext: &'x Extended<'_>) -> Option<&'x str> {
         (ext.body.is_none() && ext.params.is_empty() && !ext.name.contains('.')).then_some(&*ext.name)
@@ -121,7 +148,7 @@ impl<'m, 'a> Import<'m, 'a> {
         let data = OpData {
             properties: op.properties.as_ref().map(|p| a.attr(p)),
             attributes: a.dict(&op.attributes),
-            loc: op.loc.clone(),
+            loc: a.loc(&op.loc),
             ..OpData::named(op.name.clone())
         };
         let types = a.tys(&op.ty.results);
@@ -170,7 +197,7 @@ impl<'m, 'a> Import<'m, 'a> {
             if r.blocks.len() == 1 && b.label.is_none() && b.args.is_empty() && b.ops.is_empty() {
                 break;
             }
-            let args: Vec<_> = b.args.iter().map(|a| (self.aliases.ty(&a.ty), a.loc.clone())).collect();
+            let args: Vec<_> = b.args.iter().map(|a| (self.aliases.ty(&a.ty), self.aliases.loc(&a.loc))).collect();
             let block = self.body.add_block(region, &args);
             if let Some(label) = &b.label {
                 self.scope().labels.insert(label, block);
@@ -196,6 +223,13 @@ impl<'m, 'a> TryFrom<&'m Module<'a>> for Body<'a> {
         let mut items = Vec::new();
         for item in &m.items {
             match item {
+                // Location aliases are spelled out where used (so the IR prints them inline).
+                Item::AttrAlias { name, value: Attribute::Builtin { name: kw, body, .. } } if kw == "loc" => {
+                    let inner = body.strip_prefix('(').and_then(|b| b.strip_suffix(')')).unwrap_or(body);
+                    let resolved = aliases.loc(&Some(Cow::Owned(String::from(inner)))).map(String::from).unwrap_or_default();
+                    aliases.locs.insert(String::from(&**name), resolved);
+                    continue;
+                }
                 Item::AttrAlias { name, value } => {
                     let value = aliases.attr(value);
                     aliases.attrs.insert(String::from(&**name), value);
