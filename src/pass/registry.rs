@@ -40,6 +40,7 @@ registry! {
     "convert-cf-to-llvm" => ConvertCfToLlvm,
     "finalize-memref-to-llvm" => FinalizeMemrefToLlvm,
     "convert-vector-to-llvm" => ConvertVectorToLlvm,
+    "convert-vector-to-scf" => ConvertVectorToScf,
     "convert-func-to-llvm" on "builtin.module" => ConvertFuncToLlvm,
     "convert-index-to-llvm" => ConvertIndexToLlvm,
     "convert-math-to-llvm" => ConvertMathToLlvm,

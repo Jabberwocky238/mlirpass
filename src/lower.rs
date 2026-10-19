@@ -15,6 +15,7 @@ mod memref_to_emitc;
 mod memref_to_llvm;
 mod scf_to_emitc;
 mod vector_to_llvm;
+mod vector_to_scf;
 mod vector_transforms;
 
 use alloc::borrow::Cow;
@@ -43,6 +44,7 @@ pub use memref_to_emitc::MemrefToEmitc;
 pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
 pub use scf_to_emitc::ScfToEmitc;
 pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
+pub use vector_to_scf::{ConvertVectorToScf, VectorToScfOptions};
 pub use vector_transforms::{Build, transfer_read_to_load, transfer_write_to_store};
 
 /// Fast-math flags, by name, in LLVM's bit order.
