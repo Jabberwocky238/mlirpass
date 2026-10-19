@@ -1,0 +1,2 @@
+-split-input-file
+-pass-pipeline=builtin.module(convert-math-to-funcs{convert-ctlz})

@@ -1,0 +1,2 @@
+-allow-unregistered-dialect
+-convert-scf-to-emitc

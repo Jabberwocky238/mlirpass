@@ -1,0 +1,6 @@
+-split-input-file
+-allow-unregistered-dialect
+-map-memref-spirv-storage-class
+-verify-diagnostics
+-o
+-

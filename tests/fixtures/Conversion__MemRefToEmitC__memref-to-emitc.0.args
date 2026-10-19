@@ -1,0 +1,2 @@
+-convert-memref-to-emitc
+-split-input-file

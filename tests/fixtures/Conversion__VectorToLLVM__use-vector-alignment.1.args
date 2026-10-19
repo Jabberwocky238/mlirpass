@@ -1,0 +1,2 @@
+--convert-vector-to-llvm=use-vector-alignment=1
+--split-input-file

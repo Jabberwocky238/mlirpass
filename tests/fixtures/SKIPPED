@@ -1,0 +1,95 @@
+Conversion__ArithToLLVM__type-conversion.0	test-only pass -test-llvm-legalize-patterns
+Conversion__ArithToLLVM__type-conversion.1	test-only pass -test-llvm-legalize-patterns=allow-pattern-rollback=0
+Conversion__ConvertToEmitC__tosa.0	lit substitution --pass-pipeline=%{pipeline}
+Conversion__ConvertToSPIRV__argmax-kernel.0	test-only pass -test-convert-to-spirv
+Conversion__ConvertToSPIRV__arith.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
+Conversion__ConvertToSPIRV__combined.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
+Conversion__ConvertToSPIRV__convert-gpu-modules-nested.0	test-only pass -test-convert-to-spirv=convert-gpu-modules=true nest-in-gpu-module=true run-signature-conversion=false run-vector-unrolling=false
+Conversion__ConvertToSPIRV__convert-gpu-modules.0	test-only pass -test-convert-to-spirv=convert-gpu-modules=true run-signature-conversion=false run-vector-unrolling=false
+Conversion__ConvertToSPIRV__func-signature-vector-unroll.0	test-only pass -test-spirv-func-signature-conversion
+Conversion__ConvertToSPIRV__gpu.0	test-only pass -test-convert-to-spirv
+Conversion__ConvertToSPIRV__index.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
+Conversion__ConvertToSPIRV__memref.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
+Conversion__ConvertToSPIRV__scf.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
+Conversion__ConvertToSPIRV__simple.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
+Conversion__ConvertToSPIRV__ub.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
+Conversion__ConvertToSPIRV__vector-unroll.0	test-only pass -test-spirv-vector-unrolling
+Conversion__ConvertToSPIRV__vector.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
+Conversion__GPUToSPIRV__entry-point.0	test-only pass -test-spirv-entry-point-abi
+Conversion__GPUToSPIRV__entry-point.1	test-only pass -test-spirv-entry-point-abi=workgroup-size=32
+Conversion__GPUToSPIRV__entry-point.2	test-only pass -test-spirv-entry-point-abi=subgroup-size=4
+Conversion__GPUToSPIRV__entry-point.3	test-only pass -test-spirv-entry-point-abi=target-width=32
+Conversion__GPUToSPIRV__entry-point.4	test-only pass -test-spirv-entry-point-abi=workgroup-size=32,8 subgroup-size=4 target-width=32
+Conversion__MemRefToLLVM__memref-to-llvm-with-transforms.0	test-only pass -test-memref-to-llvm-with-transforms
+Conversion__MemRefToLLVM__type-conversion.0	test-only pass -test-llvm-legalize-patterns
+Conversion__MemRefToLLVM__type-conversion.1	test-only pass -test-llvm-legalize-patterns=allow-pattern-rollback=0
+Conversion__ShapeToStandard__convert-shape-constraints.0	lit substitution <%s
+Conversion__VectorToLLVM__pass-option-serialization.0	mlir-opt failed: mlir-opt: Too many positional arguments specified!
+Conversion__VectorToLLVM__pass-option-serialization.1	mlir-opt failed: mlir-opt: Too many positional arguments specified!
+Conversion__VectorToLLVM__vector-scalable-memcpy.0	pipes into mlir-opt
+Conversion__VectorToSPIRV__vector-reduction-to-spirv-dot-prod.0	test-only pass --test-vector-reduction-to-spirv-dot-prod
+Dialect__ArmSME__canonicalize.0	pipes into mlir-opt
+Transforms__compose-subview.0	test-only pass -test-compose-subview
+Transforms__composite-pass.0	test-only pass --test-composite-fixed-point-pass
+Transforms__constant-fold-debuginfo.0	test-only pass -test-single-fold
+Transforms__constant-fold.0	test-only pass -test-single-fold
+Transforms__control-flow-sink-test.0	test-only pass -test-control-flow-sink
+Transforms__decompose-call-graph-types.0	test-only pass -test-decompose-call-graph-types
+Transforms__inlining-dump-default-pipeline.0	mlir-opt failed: mlir-opt: Too many positional arguments specified!
+Transforms__invalid-outer-loop-size.0	not mlir-opt: ['not']
+Transforms__invalid-parallel-loop-collapsing.0	not mlir-opt: ['not']
+Transforms__invalid-parallel-loop-collapsing.1	not mlir-opt: ['not']
+Transforms__invalid-parallel-loop-collapsing.2	not mlir-opt: ['not']
+Transforms__invalid-parallel-loop-collapsing.3	not mlir-opt: ['not']
+Transforms__invalid-parallel-loop-collapsing.4	not mlir-opt: ['not']
+Transforms__location-snapshot.0	lit substitution -snapshot-op-locations=filename=%/t
+Transforms__location-snapshot.1	lit substitution -snapshot-op-locations=filename=%/t tag=tagged
+Transforms__location-snapshot.2	lit substitution -snapshot-op-locations=filename=%/t print-debuginfo
+Transforms__make-isolated-from-above.0	test-only pass -test-make-isolated-from-above=simple
+Transforms__make-isolated-from-above.1	test-only pass -test-make-isolated-from-above=clone-ops-with-no-operands
+Transforms__make-isolated-from-above.2	test-only pass -test-make-isolated-from-above=clone-ops-with-operands
+Transforms__parametric-tiling.0	test-only pass -test-extract-fixed-outer-loops=test-outer-loop-sizes=7
+Transforms__parametric-tiling.1	test-only pass -test-extract-fixed-outer-loops=test-outer-loop-sizes=7,4
+Transforms__print-op-graph-back-edges.0	lit substitution %t
+Transforms__print-op-graph-cycles.0	lit substitution %t
+Transforms__print-op-graph.0	lit substitution %t
+Transforms__print-op-graph.1	lit substitution %t
+Transforms__scf-if-utils.0	test-only pass -test-scf-if-utils
+Transforms__scf-loop-unroll.0	test-only pass --test-loop-unrolling=unroll-factor=3
+Transforms__scf-loop-unroll.1	test-only pass --test-loop-unrolling=unroll-factor=1
+Transforms__scf-loop-unroll.2	test-only pass --test-loop-unrolling=unroll-factor=-1
+Transforms__scf-replace-with-new-yields.0	test-only pass -test-scf-for-utils=test-replace-with-new-yields
+Transforms__test-commutativity-utils.0	test-only pass -test-commutativity-utils
+Transforms__test-context-aware-type-converter.0	test-only pass -test-legalize-type-conversion=allow-pattern-rollback=0
+Transforms__test-convert-call-op.0	test-only pass -test-convert-call-op
+Transforms__test-convert-func-op.0	test-only pass -test-convert-func-op
+Transforms__test-dialect-conversion-pdll.0	test-only pass -test-dialect-conversion-pdll
+Transforms__test-inlining-callback.0	test-only pass -test-inline-callback
+Transforms__test-inlining.0	test-only pass -test-inline
+Transforms__test-legalize-erased-op-with-uses.0	test-only pass -test-legalize-unknown-root-patterns
+Transforms__test-legalize-remapped-value.0	test-only pass -test-remapped-value
+Transforms__test-legalize-target-materialization-no-uses.0	test-only pass -test-target-materialization-with-no-uses
+Transforms__test-legalize-type-conversion.0	test-only pass -test-legalize-type-conversion
+Transforms__test-legalize-unknown-root.0	test-only pass -test-legalize-unknown-root-patterns
+Transforms__test-legalizer-analysis.0	test-only pass -test-legalize-patterns=test-legalize-mode=analysis
+Transforms__test-legalizer-fold-after.0	test-only pass -test-legalize-patterns=test-legalize-folding-mode=after-patterns
+Transforms__test-legalizer-fold-before.0	test-only pass -test-legalize-patterns=test-legalize-folding-mode=before-patterns
+Transforms__test-legalizer-full-rollback.0	test-only pass -test-legalize-patterns=test-legalize-mode=full
+Transforms__test-legalizer-full.0	test-only pass -test-legalize-patterns=test-legalize-mode=full
+Transforms__test-legalizer-no-fold.0	test-only pass -test-legalize-patterns=test-legalize-folding-mode=never
+Transforms__test-legalizer-no-materializations.0	test-only pass -test-legalize-patterns=allow-pattern-rollback=0 build-materializations=0 attach-debug-materialization-kind=1
+Transforms__test-legalizer-no-rollback.0	test-only pass -test-legalize-patterns=allow-pattern-rollback=0
+Transforms__test-legalizer-rollback.0	test-only pass -test-legalize-patterns
+Transforms__test-legalizer.0	test-only pass -test-legalize-patterns=allow-pattern-rollback=1
+Transforms__test-legalizer.1	test-only pass -test-legalize-patterns=allow-pattern-rollback=1
+Transforms__test-legalizer.2	test-only pass -test-legalize-patterns=allow-pattern-rollback=0
+Transforms__test-merge-blocks.0	test-only pass -test-merge-blocks
+Transforms__test-operation-folder.0	test-only pass -test-greedy-patterns=top-down=false
+Transforms__test-operation-folder.1	test-only pass -test-greedy-patterns=top-down=true
+Transforms__test-operation-folder.2	test-only pass -test-greedy-patterns=cse-constants=false
+Transforms__test-operation-folder.3	test-only pass -test-greedy-patterns=fold=false
+Transforms__test-pattern-selective-replacement.0	test-only pass -test-pattern-selective-replacement
+Transforms__test-rewrite-dynamic-op.0	test-only pass -test-rewrite-dynamic-op
+Transforms__test-strict-pattern-driver.0	test-only pass -test-strict-pattern-driver=strictness=AnyOp
+Transforms__test-strict-pattern-driver.1	test-only pass -test-strict-pattern-driver=strictness=ExistingAndNewOps
+Transforms__test-strict-pattern-driver.2	test-only pass -test-strict-pattern-driver=strictness=ExistingOps

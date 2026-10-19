@@ -1,0 +1,3 @@
+-pass-pipeline=builtin.module(func.func(convert-vector-to-scf))
+-split-input-file
+-allow-unregistered-dialect

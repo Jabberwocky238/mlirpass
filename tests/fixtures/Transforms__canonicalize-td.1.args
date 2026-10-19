@@ -1,0 +1,2 @@
+-allow-unregistered-dialect
+-pass-pipeline=builtin.module(func.func(canonicalize))

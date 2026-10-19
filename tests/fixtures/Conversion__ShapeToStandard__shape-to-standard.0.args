@@ -1,0 +1,3 @@
+--split-input-file
+--convert-shape-to-std
+--verify-diagnostics

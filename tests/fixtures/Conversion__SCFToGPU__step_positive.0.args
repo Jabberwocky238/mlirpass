@@ -1,0 +1,1 @@
+-pass-pipeline=builtin.module(func.func(convert-affine-for-to-gpu{gpu-block-dims=1 gpu-thread-dims=1}))

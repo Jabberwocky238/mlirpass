@@ -1,0 +1,21 @@
+[package]
+name = "mlirpass"
+version = "0.1.0"
+edition = "2024"
+description = "MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion and the upstream lowerings, on top of mlirformat"
+license = "MIT"
+repository = "https://github.com/Jabberwocky238/mlirpass"
+readme = "README.md"
+keywords = ["mlir", "compiler", "ir", "pass", "lowering"]
+categories = ["compilers", "no-std"]
+# The mlir-opt fixtures stay in the repository.
+exclude = ["tests", ".github"]
+
+[dependencies]
+mlirformat = { path = "../mlirformat.rs", version = "0.3.0", default-features = false }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+thiserror = { version = "2", default-features = false }
+
+[features]
+default = ["std"]
+std = ["mlirformat/std", "serde/std", "thiserror/std"]

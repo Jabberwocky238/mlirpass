@@ -1,0 +1,2 @@
+-convert-vector-to-llvm=reassociate-fp-reductions
+-split-input-file

@@ -1,0 +1,3 @@
+-split-input-file
+-convert-spirv-to-llvm
+-verify-diagnostics

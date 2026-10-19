@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+-inline
+-split-input-file

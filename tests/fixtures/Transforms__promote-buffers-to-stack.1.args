@@ -1,0 +1,2 @@
+-promote-buffers-to-stack=max-alloc-size-in-bytes=64
+-split-input-file

@@ -1,0 +1,2 @@
+-split-input-file
+-convert-to-emitc=filter-dialects=func

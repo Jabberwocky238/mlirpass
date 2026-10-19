@@ -1,0 +1,5 @@
+--split-input-file
+--tosa-to-arith=include-apply-rescale=false
+-verify-diagnostics
+-o
+-

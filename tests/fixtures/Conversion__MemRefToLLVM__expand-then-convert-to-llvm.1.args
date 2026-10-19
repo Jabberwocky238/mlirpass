@@ -1,0 +1,6 @@
+-expand-strided-metadata
+-finalize-memref-to-llvm=index-bitwidth=32
+-lower-affine
+-convert-arith-to-llvm=index-bitwidth=32
+-cse
+-split-input-file

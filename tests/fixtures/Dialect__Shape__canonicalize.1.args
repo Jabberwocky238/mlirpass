@@ -1,0 +1,3 @@
+-split-input-file
+-allow-unregistered-dialect
+-canonicalize=test-convergence top-down=0

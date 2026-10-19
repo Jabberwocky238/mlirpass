@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+-convert-scf-to-cf=allow-pattern-rollback=0
+-split-input-file

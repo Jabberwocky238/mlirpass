@@ -1,0 +1,2 @@
+-split-input-file
+-finalize-memref-to-llvm=use-aligned-alloc=1

@@ -1,0 +1,3 @@
+--split-input-file
+--tosa-to-arith=include-apply-rescale=true use-32-bit=true
+-verify-diagnostics

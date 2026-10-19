@@ -1,0 +1,3 @@
+-convert-parallel-loops-to-gpu
+-split-input-file
+-verify-diagnostics

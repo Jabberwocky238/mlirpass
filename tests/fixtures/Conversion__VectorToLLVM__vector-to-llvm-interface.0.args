@@ -1,0 +1,2 @@
+--convert-to-llvm=filter-dialects=vector
+--split-input-file

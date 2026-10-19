@@ -1,0 +1,4 @@
+-allow-unregistered-dialect
+-p
+builtin.module(buffer-results-to-out-params{hoist-dynamic-allocs})
+-split-input-file

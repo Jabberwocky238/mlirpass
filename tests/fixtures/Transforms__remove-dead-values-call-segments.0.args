@@ -1,0 +1,3 @@
+--split-input-file
+--remove-dead-values
+--mlir-print-op-generic

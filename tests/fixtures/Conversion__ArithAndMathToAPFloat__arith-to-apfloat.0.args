@@ -1,0 +1,3 @@
+--convert-arith-to-apfloat
+-split-input-file
+-verify-diagnostics

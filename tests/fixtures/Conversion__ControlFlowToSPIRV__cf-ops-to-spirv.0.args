@@ -1,0 +1,3 @@
+--split-input-file
+--convert-cf-to-spirv
+--verify-diagnostics

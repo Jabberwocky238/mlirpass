@@ -1,0 +1,1 @@
+--convert-to-llvm=filter-dialects=arith,cf,func,math

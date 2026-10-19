@@ -1,0 +1,2 @@
+-pass-pipeline=builtin.module(func.func(convert-vector-to-gpu),canonicalize)
+--split-input-file

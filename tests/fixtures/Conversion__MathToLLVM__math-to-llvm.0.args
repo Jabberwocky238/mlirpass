@@ -1,0 +1,2 @@
+-split-input-file
+-pass-pipeline=builtin.module(func.func(convert-math-to-llvm))

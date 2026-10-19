@@ -1,0 +1,4 @@
+--allow-unregistered-dialect
+--transform-interpreter
+--split-input-file
+--verify-diagnostics

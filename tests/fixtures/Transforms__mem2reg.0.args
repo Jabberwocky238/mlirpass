@@ -1,0 +1,2 @@
+--pass-pipeline=builtin.module(any(mem2reg))
+--split-input-file

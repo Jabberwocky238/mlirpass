@@ -1,0 +1,2 @@
+-pass-pipeline=builtin.module(func.func(convert-ub-to-llvm))
+-split-input-file

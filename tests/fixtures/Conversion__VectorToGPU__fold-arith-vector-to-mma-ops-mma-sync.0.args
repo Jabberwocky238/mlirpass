@@ -1,0 +1,2 @@
+-split-input-file
+-pass-pipeline=builtin.module(func.func(test-fold-arith-extf-into-vector-contract-patterns,convert-vector-to-gpu{use-nvgpu=true},cse))

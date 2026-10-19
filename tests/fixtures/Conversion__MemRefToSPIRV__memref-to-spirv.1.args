@@ -1,0 +1,2 @@
+--split-input-file
+-pass-pipeline=builtin.module(convert-memref-to-spirv{bool-num-bits=8 use-64bit-index=true}, cse)

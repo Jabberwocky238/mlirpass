@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+-p
+builtin.module(buffer-results-to-out-params{hoist-static-allocs})

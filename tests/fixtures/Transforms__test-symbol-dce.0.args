@@ -1,0 +1,4 @@
+-allow-unregistered-dialect
+-symbol-dce
+-split-input-file
+-verify-diagnostics

@@ -1,0 +1,2 @@
+--convert-to-llvm=filter-dialects=func dynamic=true
+--split-input-file

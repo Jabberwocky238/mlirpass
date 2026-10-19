@@ -1,0 +1,1 @@
+-pass-pipeline=builtin.module(func.func(convert-complex-to-standard),convert-complex-to-llvm,func.func(convert-math-to-llvm,convert-arith-to-llvm),convert-func-to-llvm,reconcile-unrealized-casts)

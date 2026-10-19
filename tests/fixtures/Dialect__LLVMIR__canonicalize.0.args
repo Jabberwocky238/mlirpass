@@ -1,0 +1,2 @@
+--pass-pipeline=builtin.module(llvm.func(canonicalize{test-convergence}))
+-split-input-file

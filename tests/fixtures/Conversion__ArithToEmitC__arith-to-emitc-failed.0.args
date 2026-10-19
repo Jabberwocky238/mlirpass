@@ -1,0 +1,3 @@
+-convert-arith-to-emitc
+-split-input-file
+-verify-diagnostics

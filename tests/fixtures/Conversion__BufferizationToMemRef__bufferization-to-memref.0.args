@@ -1,0 +1,3 @@
+-verify-diagnostics
+-convert-bufferization-to-memref
+-split-input-file

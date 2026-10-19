@@ -1,0 +1,5 @@
+--split-input-file
+--tosa-to-scf
+-verify-diagnostics
+-o
+-

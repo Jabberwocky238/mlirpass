@@ -1,0 +1,5 @@
+-split-input-file
+-convert-memref-to-spirv=bool-num-bits=8
+-cse
+-o
+-

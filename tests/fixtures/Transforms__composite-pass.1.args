@@ -1,0 +1,3 @@
+--log-actions-to=-
+--composite-fixed-point-pass=name=TestCompositePass pipeline=any(canonicalize,cse)
+-split-input-file

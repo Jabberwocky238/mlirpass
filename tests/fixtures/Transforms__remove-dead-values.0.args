@@ -1,0 +1,2 @@
+-remove-dead-values=canonicalize=0
+-split-input-file

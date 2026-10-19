@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+--convert-gpu-to-rocdl
+--split-input-file

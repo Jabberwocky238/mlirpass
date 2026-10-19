@@ -1,0 +1,2 @@
+-p
+builtin.module(buffer-results-to-out-params{modify-public-functions})

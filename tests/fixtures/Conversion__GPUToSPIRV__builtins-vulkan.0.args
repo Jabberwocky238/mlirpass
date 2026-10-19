@@ -1,0 +1,4 @@
+-split-input-file
+-convert-gpu-to-spirv=use-64bit-index=false
+-o
+-

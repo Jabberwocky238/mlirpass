@@ -1,0 +1,3 @@
+--split-input-file
+--tosa-to-linalg-pipeline
+-verify-diagnostics

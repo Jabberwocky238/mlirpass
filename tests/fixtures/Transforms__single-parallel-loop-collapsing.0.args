@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+-pass-pipeline=builtin.module(func.func(test-scf-parallel-loop-collapsing{collapsed-indices-0=0,1}, canonicalize))
+--mlir-print-local-scope

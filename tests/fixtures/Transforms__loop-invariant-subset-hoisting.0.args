@@ -1,0 +1,2 @@
+-split-input-file
+-loop-invariant-subset-hoisting

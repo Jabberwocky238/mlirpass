@@ -1,0 +1,4 @@
+-allow-unregistered-dialect
+-mlir-print-debuginfo
+-mlir-print-local-scope
+-strip-debuginfo

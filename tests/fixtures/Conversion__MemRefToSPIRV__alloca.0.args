@@ -1,0 +1,6 @@
+-split-input-file
+-convert-memref-to-spirv
+-canonicalize
+-verify-diagnostics
+-o
+-

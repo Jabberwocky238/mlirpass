@@ -1,0 +1,4 @@
+-allow-unregistered-dialect
+-convert-scf-to-spirv
+-o
+-

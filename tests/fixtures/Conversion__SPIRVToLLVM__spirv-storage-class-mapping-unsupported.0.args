@@ -1,0 +1,2 @@
+-convert-spirv-to-llvm=client-api=Metal
+-verify-diagnostics

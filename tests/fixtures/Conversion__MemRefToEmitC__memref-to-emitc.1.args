@@ -1,0 +1,2 @@
+-convert-to-emitc=filter-dialects=memref
+-split-input-file

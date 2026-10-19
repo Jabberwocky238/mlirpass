@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+-sccp
+-split-input-file

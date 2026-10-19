@@ -1,0 +1,4 @@
+-allow-unregistered-dialect
+-split-input-file
+-convert-gpu-to-spirv
+-verify-diagnostics

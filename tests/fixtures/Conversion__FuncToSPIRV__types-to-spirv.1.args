@@ -1,0 +1,2 @@
+-split-input-file
+-convert-func-to-spirv=emulate-lt-32-bit-scalar-types=false

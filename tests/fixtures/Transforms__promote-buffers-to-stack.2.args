@@ -1,0 +1,2 @@
+-promote-buffers-to-stack=max-rank-of-allocated-memref=2
+-split-input-file

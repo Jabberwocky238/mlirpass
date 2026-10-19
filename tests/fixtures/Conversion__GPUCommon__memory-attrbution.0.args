@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+--convert-gpu-to-nvvm
+--split-input-file

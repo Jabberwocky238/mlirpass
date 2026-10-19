@@ -1,0 +1,2 @@
+-pass-pipeline=builtin.module(finalize-memref-to-llvm{use-generic-functions=1 use-aligned-alloc=1})
+-split-input-file

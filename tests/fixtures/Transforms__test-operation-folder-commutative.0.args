@@ -1,0 +1,1 @@
+--pass-pipeline=builtin.module(test-greedy-patterns)

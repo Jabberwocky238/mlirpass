@@ -1,0 +1,2 @@
+--convert-to-llvm=filter-dialects=math
+--split-input-file

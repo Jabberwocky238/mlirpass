@@ -1,0 +1,2 @@
+-set-llvm-module-datalayout
+-convert-func-to-llvm

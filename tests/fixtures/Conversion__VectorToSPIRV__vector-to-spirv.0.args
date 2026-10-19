@@ -1,0 +1,5 @@
+-split-input-file
+-convert-vector-to-spirv
+-verify-diagnostics
+-o
+-

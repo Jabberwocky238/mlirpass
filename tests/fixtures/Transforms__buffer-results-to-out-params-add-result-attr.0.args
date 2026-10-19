@@ -1,0 +1,4 @@
+-p
+builtin.module(buffer-results-to-out-params{add-result-attr})
+-split-input-file
+-verify-diagnostics

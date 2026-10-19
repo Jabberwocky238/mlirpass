@@ -1,0 +1,3 @@
+-pass-pipeline=builtin.module(func.func(canonicalize{test-convergence}))
+-split-input-file
+-mlir-print-debuginfo

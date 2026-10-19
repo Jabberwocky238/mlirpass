@@ -1,0 +1,3 @@
+-convert-func-to-llvm
+-verify-diagnostics
+-split-input-file

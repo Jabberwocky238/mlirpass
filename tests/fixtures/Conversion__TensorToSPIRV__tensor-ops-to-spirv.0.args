@@ -1,0 +1,3 @@
+--split-input-file
+--convert-tensor-to-spirv
+--verify-diagnostics

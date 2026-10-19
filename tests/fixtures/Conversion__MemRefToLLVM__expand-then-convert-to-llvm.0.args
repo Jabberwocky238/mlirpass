@@ -1,0 +1,6 @@
+-expand-strided-metadata
+-finalize-memref-to-llvm
+-lower-affine
+-convert-arith-to-llvm
+-cse
+-split-input-file

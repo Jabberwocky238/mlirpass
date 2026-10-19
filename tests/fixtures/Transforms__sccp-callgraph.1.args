@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+-pass-pipeline=builtin.module(builtin.module(sccp))
+-split-input-file

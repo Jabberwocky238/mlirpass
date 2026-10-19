@@ -1,0 +1,2 @@
+--allow-unregistered-dialect
+--map-memref-spirv-storage-class=client-api=vulkan

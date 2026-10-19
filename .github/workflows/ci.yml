@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      # mlirpass depends on mlirformat by path (`../mlirformat.rs`), so both are checked out side by side.
+      - uses: actions/checkout@v5
+        with:
+          path: mlirpass
+      - uses: actions/checkout@v5
+        with:
+          repository: Jabberwocky238/mlirformat
+          path: mlirformat.rs
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mlirpass
+      - run: cargo build --all-targets
+        working-directory: mlirpass
+      - run: cargo test -p mlirpass
+        working-directory: mlirpass
+      - run: cargo build -p mlirpass --no-default-features
+        working-directory: mlirpass

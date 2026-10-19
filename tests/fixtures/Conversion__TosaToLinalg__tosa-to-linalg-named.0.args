@@ -1,0 +1,6 @@
+--verify-each
+--split-input-file
+-pass-pipeline=builtin.module(func.func(tosa-to-linalg-named))
+-verify-diagnostics
+-o
+-

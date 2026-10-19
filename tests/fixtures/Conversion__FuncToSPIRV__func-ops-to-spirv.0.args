@@ -1,0 +1,3 @@
+-split-input-file
+-convert-func-to-spirv
+-verify-diagnostics

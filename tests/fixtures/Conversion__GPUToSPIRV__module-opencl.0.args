@@ -1,0 +1,6 @@
+-allow-unregistered-dialect
+-convert-gpu-to-spirv=use-64bit-index=true
+-verify-diagnostics
+-split-input-file
+-o
+-

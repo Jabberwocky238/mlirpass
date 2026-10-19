@@ -1,0 +1,3 @@
+-split-input-file
+-convert-arith-to-spirv
+-verify-diagnostics

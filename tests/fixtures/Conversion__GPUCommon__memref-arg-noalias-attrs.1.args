@@ -1,0 +1,2 @@
+-split-input-file
+-convert-gpu-to-nvvm=use-bare-ptr-memref-call-conv=1

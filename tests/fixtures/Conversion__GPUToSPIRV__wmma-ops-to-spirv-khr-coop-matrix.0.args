@@ -1,0 +1,4 @@
+--convert-gpu-to-spirv
+--cse
+--split-input-file
+--verify-diagnostics

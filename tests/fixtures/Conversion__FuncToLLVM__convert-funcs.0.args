@@ -1,0 +1,5 @@
+-convert-func-to-llvm
+-convert-cf-to-llvm
+-reconcile-unrealized-casts
+-split-input-file
+-verify-diagnostics
