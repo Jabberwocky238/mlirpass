@@ -780,6 +780,8 @@ impl AffineExpr {
 pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     match &*b[op].name {
         "affine.apply" => fold_apply(b, op),
+        "affine.delinearize_index" => fold_delinearize(b, op),
+        "affine.linearize_index" => fold_linearize(b, op),
         _ => Fold::Failed,
     }
 }
@@ -801,6 +803,231 @@ fn fold_apply<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         Err(()) => Folded::Attr(Attribute::dialect("ub.poison", "")).into(),
         Ok(Some(r)) => Folded::Attr(index_attr(r[0])).into(),
         Ok(None) => Fold::Failed,
+    }
+}
+
+/// An `OpFoldResult` of a basis: a constant, a value, or nothing (no outer bound).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ofr {
+    C(i64),
+    V(ValueId),
+    None,
+}
+
+impl<'a> Body<'a> {
+    fn static_basis(&self, op: OpId) -> Vec<i64> {
+        match self[op].get("static_basis") {
+            Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The dynamic basis operands of a (de)linearize.
+    fn dynamic_basis(&self, op: OpId) -> Vec<ValueId> {
+        if self[op].name == "affine.delinearize_index" {
+            return self[op].operands[1..].to_vec();
+        }
+        let segs = self.segments(op, "operandSegmentSizes").unwrap_or_default();
+        self[op].operands[segs[0]..].to_vec()
+    }
+
+    fn multi_index(&self, op: OpId) -> Vec<ValueId> {
+        let segs = self.segments(op, "operandSegmentSizes").unwrap_or_default();
+        self[op].operands[..segs[0]].to_vec()
+    }
+
+    /// `getMixedBasis`.
+    fn mixed_basis(&self, op: OpId) -> Vec<Ofr> {
+        let mut d = self.dynamic_basis(op).into_iter();
+        self.static_basis(op).into_iter().map(|b| if b == i64::MIN { Ofr::V(d.next().expect("dynamic basis")) } else { Ofr::C(b) }).collect()
+    }
+
+    fn has_outer_bound(&self, op: OpId) -> bool {
+        let n = if self[op].name == "affine.delinearize_index" { self[op].results.len() } else { self.multi_index(op).len() };
+        n == self.static_basis(op).len()
+    }
+
+    /// `getPaddedBasis`.
+    fn padded_basis(&self, op: OpId) -> Vec<Ofr> {
+        let mut b = self.mixed_basis(op);
+        if !self.has_outer_bound(op) {
+            b.insert(0, Ofr::None);
+        }
+        b
+    }
+
+    fn ofr_const(&self, o: Ofr) -> Option<i64> {
+        match o {
+            Ofr::C(c) => Some(c),
+            Ofr::V(v) => self.const_index(v),
+            Ofr::None => None,
+        }
+    }
+
+    /// `foldCstValueToCstAttrBasis`: constant dynamic basis entries become static.
+    fn fold_constant_basis(&mut self, op: OpId) -> bool {
+        let dynamic = self.dynamic_basis(op);
+        if !dynamic.iter().any(|v| self.const_index(*v).is_some()) {
+            return false;
+        }
+        let mixed = self.mixed_basis(op);
+        let statics: Vec<i64> = mixed.iter().map(|o| self.ofr_const(*o).unwrap_or(i64::MIN)).collect();
+        let keep: Vec<ValueId> = dynamic.iter().filter(|v| self.const_index(**v).is_none()).copied().collect();
+        let delin = self[op].name == "affine.delinearize_index";
+        let mut operands = if delin { vec![self[op].operands[0]] } else { self.multi_index(op) };
+        let n = operands.len();
+        operands.extend(&keep);
+        self.set_operands(op, operands);
+        if !delin {
+            self[op].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec![format!("{n}").into(), format!("{}", keep.len()).into()] });
+        }
+        self[op].set("static_basis", Attribute::DenseArray { ty: Type::int(64), values: statics.iter().map(|x| format!("{x}").into()).collect() });
+        true
+    }
+}
+
+fn fold_delinearize<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
+    if b.fold_constant_basis(op) {
+        return Fold::InPlace;
+    }
+    if b[op].results.len() == 1 {
+        return Folded::Value(b[op].operands[0]).into();
+    }
+    let Some(mut high) = b.const_index(b[op].operands[0]) else { return Fold::Failed };
+    if !b.dynamic_basis(op).is_empty() {
+        return Fold::Failed;
+    }
+    let mut basis = b.static_basis(op);
+    if b.has_outer_bound(op) {
+        basis.remove(0);
+    }
+    let ty = b[b[op].operands[0]].ty.clone();
+    let attr = |v: i64| Attribute::Int { lit: format!("{v}").into(), ty: Some(ty.clone()) };
+    let mut out = Vec::new();
+    for m in basis.iter().rev() {
+        out.push(Folded::Attr(attr(high.rem_euclid(*m))));
+        high = high.div_euclid(*m);
+    }
+    out.push(Folded::Attr(attr(high)));
+    out.reverse();
+    Fold::Results(out)
+}
+
+fn fold_linearize<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
+    if b.fold_constant_basis(op) {
+        return Fold::InPlace;
+    }
+    let multi = b.multi_index(op);
+    let ty = b[b[op].results[0]].ty.clone();
+    if multi.is_empty() {
+        return Folded::Attr(Attribute::Int { lit: "0".into(), ty: Some(ty) }).into();
+    }
+    if multi.len() == 1 {
+        return Folded::Value(multi[0]).into();
+    }
+    let Some(idx) = multi.iter().map(|v| b.const_index(*v)).collect::<Option<Vec<i64>>>() else { return Fold::Failed };
+    if !b.dynamic_basis(op).is_empty() {
+        return Fold::Failed;
+    }
+    let basis = b.static_basis(op);
+    let (mut result, mut stride) = (0i64, 1i64);
+    for (len, i) in basis.iter().rev().zip(idx.iter().rev()) {
+        result += i * stride;
+        stride *= len;
+    }
+    if !b.has_outer_bound(op) {
+        result += idx[0] * stride;
+    }
+    Folded::Attr(Attribute::Int { lit: format!("{result}").into(), ty: Some(ty) }).into()
+}
+
+impl<'a> crate::Rewriter<'_, 'a> {
+    /// `AffineDelinearizeIndexOp::create(index, basis, hasOuterBound)`.
+    fn delinearize(&mut self, index: ValueId, basis: &[Ofr], outer: bool) -> Vec<ValueId> {
+        let (basis, outer) = if outer && basis.first() == Some(&Ofr::None) { (&basis[1..], false) } else { (basis, outer) };
+        let mut dynamic = Vec::new();
+        let statics: Vec<i64> = basis
+            .iter()
+            .map(|o| match o {
+                Ofr::C(c) => *c,
+                Ofr::V(v) => {
+                    dynamic.push(*v);
+                    i64::MIN
+                }
+                Ofr::None => i64::MIN,
+            })
+            .collect();
+        let n = if outer { statics.len() } else { statics.len() + 1 };
+        let ty = self.body[index].ty.clone();
+        let mut ops = vec![index];
+        ops.extend(dynamic);
+        let d = OpData::build("affine.delinearize_index").operands(&ops).with("static_basis", Attribute::DenseArray { ty: Type::int(64), values: statics.iter().map(|x| format!("{x}").into()).collect() });
+        let o = self.create(d, &vec![ty; n]);
+        self.body[o].results.clone()
+    }
+
+    /// `AffineLinearizeIndexOp::create(multiIndex, basis, disjoint)` (a leading `None` dropped).
+    fn linearize_data(&self, multi: &[ValueId], basis: &[Ofr], disjoint: bool) -> OpData<'a> {
+        let basis = if basis.first() == Some(&Ofr::None) { &basis[1..] } else { basis };
+        let mut dynamic = Vec::new();
+        let statics: Vec<i64> = basis
+            .iter()
+            .map(|o| match o {
+                Ofr::C(c) => *c,
+                Ofr::V(v) => {
+                    dynamic.push(*v);
+                    i64::MIN
+                }
+                Ofr::None => i64::MIN,
+            })
+            .collect();
+        let mut ops = multi.to_vec();
+        ops.extend(&dynamic);
+        OpData::build("affine.linearize_index")
+            .operands(&ops)
+            .with("disjoint", Attribute::Bool(disjoint))
+            .with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec![format!("{}", multi.len()).into(), format!("{}", dynamic.len()).into()] })
+            .with("static_basis", Attribute::DenseArray { ty: Type::int(64), values: statics.iter().map(|x| format!("{x}").into()).collect() })
+    }
+
+    fn linearize(&mut self, multi: &[ValueId], basis: &[Ofr], disjoint: bool) -> ValueId {
+        let d = self.linearize_data(multi, basis, disjoint);
+        let o = self.create(d, &[Type::Index]);
+        self.body[o].results[0]
+    }
+
+    fn index_constant(&mut self, v: i64) -> ValueId {
+        let o = self.create(OpData::build("arith.constant").with("value", index_attr(v)), &[Type::Index]);
+        self.body[o].results[0]
+    }
+
+    /// `computeProduct`: constants multiply out; anything else goes through an `affine.apply`.
+    fn product(&mut self, terms: &[Ofr]) -> Ofr {
+        let mut e = AffineExpr::Const(1);
+        let mut dynamic = Vec::new();
+        for t in terms {
+            match self.body.ofr_const(*t) {
+                _ if *t == Ofr::None => return Ofr::None,
+                Some(c) => e = e.mul(AffineExpr::Const(c)),
+                None => {
+                    let Ofr::V(v) = t else { unreachable!() };
+                    e = e.mul(AffineExpr::Sym(dynamic.len() as u32));
+                    dynamic.push(*v);
+                }
+            }
+        }
+        if let Some(c) = e.as_const() {
+            return Ofr::C(c);
+        }
+        let mut syms = 0;
+        e.walk(&mut |x| {
+            if let AffineExpr::Sym(s) = x {
+                syms = syms.max(s + 1);
+            }
+        });
+        let map = AffineMap { dims: 0, syms, results: vec![e] };
+        let o = self.create(OpData::build("affine.apply").operands(&dynamic).with("map", map_attr(&map)), &[Type::Index]);
+        Ofr::V(self.body[o].results[0])
     }
 }
 
@@ -841,6 +1068,256 @@ fn simplify_affine_op(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
 }
 
 super::rewrites! {
+    /// `CancelDelinearizeOfLinearizeDisjointExactTail`.
+    CancelDelinearizeOfLinearizeDisjointExactTail("affine.delinearize_index", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(lin) = b.def_named(b[op].operands[0], "affine.linearize_index") else { return false };
+        if !matches!(b[lin].get("disjoint"), Some(Attribute::Bool(true))) {
+            return false;
+        }
+        let ins = b.multi_index(lin);
+        let (lb, db) = (b.mixed_basis(lin), b.mixed_basis(op));
+        let matches = lb.iter().rev().zip(db.iter().rev()).take_while(|(a, c)| a == c).count();
+        if matches == 0 {
+            return false;
+        }
+        if matches == lb.len() && matches == db.len() && ins.len() == b[op].results.len() {
+            rw.replace_op(op, &ins);
+            return true;
+        }
+        let outer = b.has_outer_bound(op);
+        rw.set_before(op);
+        let nl = rw.linearize(&ins[..ins.len() - matches], &lb[..lb.len() - matches], true);
+        let mut results = rw.delinearize(nl, &db[..db.len() - matches], outer);
+        results.extend(&ins[ins.len() - matches..]);
+        rw.replace_op(op, &results);
+        true
+    }
+
+    /// `DropUnitExtentBasis`.
+    DropUnitExtentBasis("affine.delinearize_index", 1) |rw, op| {
+        let b = &*rw.body;
+        let padded = b.padded_basis(op);
+        let n = b[op].results.len();
+        let index = b[op].operands[0];
+        let unit: Vec<bool> = padded.iter().map(|o| *o != Ofr::None && b.ofr_const(*o) == Some(1)).collect();
+        let new_basis: Vec<Ofr> = padded.iter().zip(&unit).filter(|(_, u)| !**u).map(|(o, _)| *o).collect();
+        if new_basis.len() == n {
+            return false;
+        }
+        rw.set_before(op);
+        let mut zero = None;
+        let mut repl = vec![None; n];
+        for (i, u) in unit.iter().enumerate() {
+            if *u {
+                let z = *zero.get_or_insert_with(|| rw.index_constant(0));
+                repl[i] = Some(z);
+            }
+        }
+        if !new_basis.is_empty() {
+            let mut fresh = rw.delinearize(index, &new_basis, true).into_iter();
+            for r in &mut repl {
+                if r.is_none() {
+                    *r = fresh.next();
+                }
+            }
+        }
+        let repl: Vec<ValueId> = repl.into_iter().map(|r| r.expect("replaced")).collect();
+        rw.replace_op(op, &repl);
+        true
+    }
+
+    /// `SplitDelinearizeSpanningLastLinearizeArg`.
+    SplitDelinearizeSpanningLastLinearizeArg("affine.delinearize_index", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(lin) = b.def_named(b[op].operands[0], "affine.linearize_index") else { return false };
+        if !matches!(b[lin].get("disjoint"), Some(Attribute::Bool(true))) {
+            return false;
+        }
+        let lsb = b.static_basis(lin);
+        let Some(&target) = lsb.last() else { return false };
+        if target == i64::MIN {
+            return false;
+        }
+        let basis = b.static_basis(op);
+        let (mut size, mut elems) = (1i64, 0usize);
+        for e in basis.iter().rev() {
+            if *e == i64::MIN {
+                return false;
+            }
+            size *= e;
+            elems += 1;
+            if size > target {
+                return false;
+            }
+            if size == target {
+                break;
+            }
+        }
+        if size < target || elems < 2 {
+            return false;
+        }
+        let ins = b.multi_index(lin);
+        let lin_dyn = b.dynamic_basis(lin);
+        let lin_basis: Vec<Ofr> = { let mut d = lin_dyn.iter(); lsb[..lsb.len() - 1].iter().map(|x| if *x == i64::MIN { Ofr::V(*d.next().expect("dyn")) } else { Ofr::C(*x) }).collect() };
+        let del_dyn = b.dynamic_basis(op);
+        let del_basis: Vec<Ofr> = { let mut d = del_dyn.iter(); basis[..basis.len() - elems].iter().map(|x| if *x == i64::MIN { Ofr::V(*d.next().expect("dyn")) } else { Ofr::C(*x) }).collect() };
+        let outer = b.has_outer_bound(op);
+        let back: Vec<Ofr> = basis[basis.len() - elems..].iter().map(|x| Ofr::C(*x)).collect();
+        let last = *ins.last().expect("an index");
+        rw.set_before(op);
+        let without = rw.linearize(&ins[..ins.len() - 1], &lin_basis, true);
+        let mut results = rw.delinearize(without, &del_basis, outer);
+        results.extend(rw.delinearize(last, &back, true));
+        rw.replace_op(op, &results);
+        true
+    }
+
+    /// `CancelLinearizeOfDelinearizePortion`.
+    CancelLinearizeOfDelinearizePortion("affine.linearize_index", 1) |rw, op| {
+        let b = &*rw.body;
+        let lin_basis = b.padded_basis(op);
+        let multi = b.multi_index(op);
+        let disjoint = matches!(b[op].get("disjoint"), Some(Attribute::Bool(true)));
+        struct M { d: OpId, lin_start: usize, delin_start: usize, len: usize }
+        let mut matches: Vec<M> = Vec::new();
+        let mut seen = Vec::new();
+        let mut i = 0;
+        while i < multi.len() {
+            let Def::Result(d, r) = b[multi[i]].def else { i += 1; continue };
+            if b[d].name != "affine.delinearize_index" {
+                i += 1;
+                continue;
+            }
+            let r = r as usize;
+            let delin_basis = b.padded_basis(d);
+            let (fd, fl) = (delin_basis[r], lin_basis[i]);
+            let bounds_match = fd == fl;
+            let both_front = i == 0 && r == 0;
+            let known = disjoint && r == 0 && fd == Ofr::None;
+            if !bounds_match && !both_front && !known {
+                i += 1;
+                continue;
+            }
+            let outs = b[d].results.len();
+            let mut j = 1;
+            while j + i < multi.len() && j + r < outs {
+                if multi[i + j] != b[d].results[r + j] || lin_basis[i + j] != delin_basis[r + j] {
+                    break;
+                }
+                j += 1;
+            }
+            if j <= 1 || seen.contains(&d) {
+                i += 1;
+                continue;
+            }
+            seen.push(d);
+            matches.push(M { d, lin_start: i, delin_start: r, len: j });
+            i += j;
+        }
+        if matches.is_empty() {
+            return false;
+        }
+        let mut repls: Vec<Vec<ValueId>> = Vec::new();
+        let mut new_index = Vec::new();
+        let mut new_basis = Vec::new();
+        let mut prev = 0;
+        for m in &matches {
+            new_index.extend(&multi[prev..m.lin_start]);
+            new_basis.extend(&lin_basis[prev..m.lin_start]);
+            prev = m.lin_start + m.len;
+            rw.set_before(m.d);
+            let merge = lin_basis[m.lin_start..m.lin_start + m.len].to_vec();
+            let size = rw.product(&merge);
+            let b = &*rw.body;
+            if m.len == b[m.d].results.len() {
+                new_index.push(b[m.d].operands[0]);
+                new_basis.push(size);
+                repls.push(Vec::new());
+                continue;
+            }
+            let mut nb = b.padded_basis(m.d);
+            nb.splice(m.delin_start..m.delin_start + m.len, [size]);
+            let index = b[m.d].operands[0];
+            let fresh = rw.delinearize(index, &nb, true);
+            let combined = fresh[m.delin_start];
+            let residual = rw.delinearize(combined, &merge, true);
+            let mut r = fresh[..m.delin_start].to_vec();
+            r.extend(residual);
+            r.extend(&fresh[m.delin_start + 1..]);
+            repls.push(r);
+            new_index.push(combined);
+            new_basis.push(size);
+        }
+        new_index.extend(&multi[prev..]);
+        new_basis.extend(&lin_basis[prev..]);
+        let data = rw.linearize_data(&new_index, &new_basis, disjoint);
+        rw.replace_with(op, data, &[Type::Index]);
+        for (m, r) in matches.iter().zip(repls) {
+            if !r.is_empty() {
+                rw.replace_op(m.d, &r);
+            }
+        }
+        true
+    }
+
+    /// `DropLinearizeLeadingZero`.
+    DropLinearizeLeadingZero("affine.linearize_index", 1) |rw, op| {
+        let b = &*rw.body;
+        let multi = b.multi_index(op);
+        let Some(&lead) = multi.first() else { return false };
+        if b.const_index(lead) != Some(0) {
+            return false;
+        }
+        if multi.len() == 1 {
+            rw.replace_op(op, &[lead]);
+            return true;
+        }
+        let mut basis = b.mixed_basis(op);
+        if b.has_outer_bound(op) {
+            basis.remove(0);
+        }
+        let disjoint = matches!(b[op].get("disjoint"), Some(Attribute::Bool(true)));
+        let data = rw.linearize_data(&multi[1..], &basis, disjoint);
+        rw.replace_with(op, data, &[Type::Index]);
+        true
+    }
+
+    /// `DropLinearizeUnitComponentsIfDisjointOrZero`.
+    DropLinearizeUnitComponentsIfDisjointOrZero("affine.linearize_index", 1) |rw, op| {
+        let b = &*rw.body;
+        let multi = b.multi_index(op);
+        let n = multi.len();
+        let disjoint = matches!(b[op].get("disjoint"), Some(Attribute::Bool(true)));
+        let (mut idx, mut basis) = (Vec::new(), Vec::new());
+        let mut rest = &multi[..];
+        if !b.has_outer_bound(op) {
+            idx.push(multi[0]);
+            rest = &multi[1..];
+        }
+        for (i, e) in rest.iter().zip(b.mixed_basis(op)) {
+            if b.ofr_const(e) != Some(1) {
+                idx.push(*i);
+                basis.push(e);
+                continue;
+            }
+            if !disjoint && b.const_index(*i) != Some(0) {
+                idx.push(*i);
+                basis.push(e);
+            }
+        }
+        if idx.len() == n {
+            return false;
+        }
+        if idx.is_empty() {
+            rw.replace_with(op, OpData::build("arith.constant").with("value", index_attr(0)), &[Type::Index]);
+            return true;
+        }
+        let data = rw.linearize_data(&idx, &basis, disjoint);
+        rw.replace_with(op, data, &[Type::Index]);
+        true
+    }
+
     /// `SimplifyAffineOp<AffineApplyOp>`.
     SimplifyAffineApply("affine.apply", 1) |rw, op| { simplify_affine_op(rw, op) }
     /// `SimplifyAffineOp<AffineLoadOp>`.
@@ -858,6 +1335,12 @@ super::rewrites! {
 /// The affine dialect's canonicalization patterns.
 pub fn patterns(set: &mut crate::PatternSet) {
     set.add(SimplifyAffineApply);
+    set.add(CancelDelinearizeOfLinearizeDisjointExactTail);
+    set.add(DropUnitExtentBasis);
+    set.add(SplitDelinearizeSpanningLastLinearizeArg);
+    set.add(CancelLinearizeOfDelinearizePortion);
+    set.add(DropLinearizeLeadingZero);
+    set.add(DropLinearizeUnitComponentsIfDisjointOrZero);
     set.add(SimplifyAffineLoad);
     set.add(SimplifyAffineStore);
     set.add(SimplifyAffineVectorLoad);
