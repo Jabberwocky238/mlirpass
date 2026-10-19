@@ -698,6 +698,31 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         Some(Some(self.apply_signature_conversion(first, &sig, Some(converter))))
     }
 
+    /// `inlineBlockBefore`: `source`'s arguments are replaced by `args` (recorded, so uses
+    /// see the mapping), its ops move before `before` in `dest`, and `source` goes.
+    pub fn inline_block_before(&mut self, source: BlockId, dest: BlockId, before: Option<OpId>, args: &[ValueId]) {
+        let current = self.current;
+        for (a, v) in self.rw.body[source].args.clone().into_iter().zip(args) {
+            self.replace_value_with(a, vec![*v], current);
+        }
+        for o in self.rw.body[source].ops.clone() {
+            self.rw.body.detach(o);
+            match before {
+                Some(b) => self.rw.body.insert_before(o, b),
+                None => self.rw.body.insert(o, dest, None),
+            }
+        }
+        if self.rw.ip.is_some_and(|ip| ip.block == source) {
+            self.rw.ip = Some(InsertPoint { block: dest, before });
+        }
+        self.rw.body.remove_block(source);
+    }
+
+    /// `mergeBlocks`: `source` appended to `dest`.
+    pub fn merge_blocks(&mut self, source: BlockId, dest: BlockId, args: &[ValueId]) {
+        self.inline_block_before(source, dest, None, args);
+    }
+
     /// `inlineRegionBefore` (moves blocks; nothing to record with snapshot rollback).
     pub fn inline_region(&mut self, region: RegionId, into: RegionId, before: Option<BlockId>) {
         self.rw.inline_region_before(region, into, before);

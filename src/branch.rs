@@ -120,4 +120,21 @@ impl Body<'_> {
         self.set_operands(op, operands);
         self.resize_successor_group(op, i, -1);
     }
+
+    /// `BranchOpInterface`'s verifier over everything in `root`: forwarded operands have the
+    /// types of their successor's arguments.
+    pub fn verify_branches(&self, root: OpId) -> Result<(), mlirformat::Error> {
+        for op in self.ops_in(root) {
+            for (i, succ) in self[op].successors.iter().enumerate() {
+                let Some(range) = self.successor_operands(op, i) else { continue };
+                let args = &self[*succ].args;
+                for (j, (v, a)) in self[op].operands[range].iter().zip(args).enumerate() {
+                    if self[*v].ty != self[*a].ty {
+                        return Err(mlirformat::Error(format!("'{}' op type mismatch for bb argument #{j} of successor #{i}", self[op].name)));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }

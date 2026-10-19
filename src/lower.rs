@@ -5,11 +5,15 @@ mod arith_to_emitc;
 mod arith_to_llvm;
 mod cf_to_llvm;
 mod emitc;
+mod func_to_emitc;
 mod func_to_llvm;
 mod index_to_llvm;
+mod math_to_emitc;
 mod math_to_llvm;
 mod memref_desc;
+mod memref_to_emitc;
 mod memref_to_llvm;
+mod scf_to_emitc;
 mod vector_to_llvm;
 mod vector_transforms;
 
@@ -29,11 +33,15 @@ pub use arith_to_emitc::ArithToEmitc;
 pub use arith_to_llvm::ArithToLlvm;
 pub use cf_to_llvm::{AssertLowering, CfToLlvm};
 pub use emitc::Emitc;
+pub use func_to_emitc::FuncToEmitc;
 pub use func_to_llvm::FuncToLlvm;
 pub use index_to_llvm::{IndexToLlvm, UbToLlvm};
+pub use math_to_emitc::MathToEmitc;
 pub use math_to_llvm::MathToLlvm;
 pub use memref_desc::DYNAMIC;
+pub use memref_to_emitc::MemrefToEmitc;
 pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
+pub use scf_to_emitc::ScfToEmitc;
 pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
 pub use vector_transforms::{Build, transfer_read_to_load, transfer_write_to_store};
 
@@ -670,10 +678,131 @@ impl Pass for ConvertArithToEmitc {
     }
 }
 
+/// `convert-func-to-emitc`.
+pub struct ConvertFuncToEmitc;
+
+impl TryFrom<&Options<'_>> for ConvertFuncToEmitc {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-func-to-emitc", &[])?;
+        Ok(Self)
+    }
+}
+
+impl Pass for ConvertFuncToEmitc {
+    fn name(&self) -> &str {
+        "convert-func-to-emitc"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let tc = Emitc::converter(false);
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        FuncToEmitc::populate(&mut patterns, i);
+        let mut target = ConversionTarget::default();
+        target.legal_dialect("emitc").illegal_op("func.call").illegal_op("func.func").illegal_op("func.return");
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}
+
+/// `convert-math-to-emitc`.
+pub struct ConvertMathToEmitc {
+    cpp11: bool,
+}
+
+impl TryFrom<&Options<'_>> for ConvertMathToEmitc {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-math-to-emitc", &["language-target"])?;
+        let target: String = o.value("language-target", String::from("c99"))?;
+        match &*target {
+            "c99" | "cpp11" => Ok(Self { cpp11: target == "cpp11" }),
+            t => Err(Error(format!("convert-math-to-emitc: unknown language target {t}"))),
+        }
+    }
+}
+
+impl Pass for ConvertMathToEmitc {
+    fn name(&self) -> &str {
+        "convert-math-to-emitc"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let mut patterns = ConversionPatterns::default();
+        MathToEmitc::populate(&mut patterns, self.cpp11);
+        let mut target = ConversionTarget::default();
+        target.legal_op("emitc.call_opaque");
+        for r in MathToEmitc::roots() {
+            target.illegal_op(r);
+        }
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}
+
+/// `convert-scf-to-emitc`.
+pub struct ConvertScfToEmitc;
+
+impl TryFrom<&Options<'_>> for ConvertScfToEmitc {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-scf-to-emitc", &[])?;
+        Ok(Self)
+    }
+}
+
+impl Pass for ConvertScfToEmitc {
+    fn name(&self) -> &str {
+        "convert-scf-to-emitc"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let mut tc = Emitc::converter(true);
+        Emitc::size_t_conversions(&mut tc);
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        ScfToEmitc::populate(&mut patterns, i);
+        let mut target = ConversionTarget::default();
+        target.illegal_op("scf.for").illegal_op("scf.if").illegal_op("scf.index_switch").illegal_op("scf.while").unknown(Action::Legal);
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}
+
+/// `convert-memref-to-emitc`.
+pub struct ConvertMemrefToEmitc {
+    cpp: bool,
+}
+
+impl TryFrom<&Options<'_>> for ConvertMemrefToEmitc {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-memref-to-emitc", &["lower-to-cpp"])?;
+        Ok(Self { cpp: o.flag("lower-to-cpp", false)? })
+    }
+}
+
+impl Pass for ConvertMemrefToEmitc {
+    fn name(&self) -> &str {
+        "convert-memref-to-emitc"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let mut tc = Emitc::converter(true);
+        Emitc::memref_conversions(&mut tc, false);
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        MemrefToEmitc::populate(&mut patterns, i);
+        let mut target = ConversionTarget::default();
+        target.illegal_dialect("memref").legal_dialect("emitc");
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)?;
+        MemrefToEmitc::add_headers(body, op, self.cpp);
+        Ok(())
+    }
+}
+
 /// The dialects that implement `ConvertToEmitCPatternInterface`, by namespace.
 const TO_EMITC: &[&str] = &["arith", "func", "memref", "scf"];
 /// Those ported so far.
-const TO_EMITC_PORTED: &[&str] = &["arith"];
+const TO_EMITC_PORTED: &[&str] = &["arith", "func", "memref", "scf"];
 
 /// `convert-to-emitc`: every dialect's `ConvertToEmitCPatternInterface` patterns (or those of
 /// `filter-dialects`) with the types EmitC supports.
@@ -705,16 +834,23 @@ impl Pass for ConvertToEmitc {
             return Err(Error(format!("dialect does not implement ConvertToEmitCPatternInterface: {d}")));
         }
         let mut tc = Emitc::converter(true);
+        let size_t = dialects.iter().any(|d| matches!(*d, "arith" | "scf"));
         for d in &dialects {
-            if matches!(*d, "arith" | "scf") {
-                Emitc::size_t_conversions(&mut tc);
+            match *d {
+                "arith" | "scf" => Emitc::size_t_conversions(&mut tc),
+                "memref" => Emitc::memref_conversions(&mut tc, size_t),
+                _ => {}
             }
         }
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         for d in dialects {
-            if d == "arith" {
-                ArithToEmitc::populate(&mut patterns, i);
+            match d {
+                "arith" => ArithToEmitc::populate(&mut patterns, i),
+                "func" => FuncToEmitc::populate(&mut patterns, i),
+                "scf" => ScfToEmitc::populate(&mut patterns, i),
+                "memref" => MemrefToEmitc::populate(&mut patterns, i),
+                _ => {}
             }
         }
         let mut target = ConversionTarget::default();

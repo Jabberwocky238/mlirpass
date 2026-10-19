@@ -5,7 +5,9 @@ use alloc::borrow::Cow;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, Extended, FloatKind, ShapedKind, Signedness, Type};
+use core::fmt::Display;
+
+use mlirformat::{Attribute, Dim, Extended, FloatKind, Shaped, ShapedKind, Signedness, Type};
 
 use crate::canon::AttrExt;
 use crate::{ConversionRewriter, OpData, OpId, Rewriter, TypeConverter, ValueId};
@@ -24,6 +26,77 @@ impl Emitc {
 
     pub fn ptrdiff_t<'a>() -> Type<'a> {
         Self::named("emitc.ptrdiff_t")
+    }
+
+    /// `!emitc.<name><body>`.
+    fn wrapped<'a>(name: &'static str, body: alloc::string::String) -> Type<'a> {
+        Type::Extended(Extended { name: Cow::Borrowed(name), body: Some(Cow::Owned(body)), params: Vec::new() })
+    }
+
+    /// `!emitc.lvalue<ty>`.
+    pub fn lvalue<'a>(ty: impl Display) -> Type<'a> {
+        Self::wrapped("emitc.lvalue", alloc::format!("<{ty}>"))
+    }
+
+    /// `!emitc.ptr<ty>`.
+    pub fn ptr<'a>(ty: impl Display) -> Type<'a> {
+        Self::wrapped("emitc.ptr", alloc::format!("<{ty}>"))
+    }
+
+    /// `!emitc.ptr<!emitc.opaque<"void">>`.
+    pub fn void_ptr<'a>() -> Type<'a> {
+        Self::ptr("!emitc.opaque<\"void\">")
+    }
+
+    /// `!emitc.array<dims x elem>`.
+    pub fn array<'a>(dims: &[i64], elem: &Type<'_>) -> Type<'a> {
+        let mut body = alloc::string::String::from("<");
+        for d in dims {
+            body.push_str(&alloc::format!("{d}x"));
+        }
+        Self::wrapped("emitc.array", alloc::format!("{body}{elem}>"))
+    }
+
+    /// The rank and the element (as text) of an `!emitc.array`.
+    pub fn array_parts<'x>(t: &'x Type<'_>) -> Option<(usize, &'x str)> {
+        let Type::Extended(e) = t else { return None };
+        if e.name != "emitc.array" {
+            return None;
+        }
+        let mut rest = e.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?;
+        let mut rank = 0;
+        while let Some((_, tail)) = rest.split_once('x').filter(|(d, _)| !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit())) {
+            rank += 1;
+            rest = tail;
+        }
+        Some((rank, rest))
+    }
+
+    /// `isMemRefTypeLegalForEmitC`: static, identity layout, ranked and not empty.
+    pub fn memref_legal(s: &Shaped<'_>) -> bool {
+        let dims = super::MemrefToLlvm::dims(s);
+        s.kind == ShapedKind::MemRef && s.shape.is_some() && !dims.is_empty() && dims.iter().all(|d| *d > 0) && super::MemrefToLlvm::identity_layout(s)
+    }
+
+    /// `populateMemRefToEmitCTypeConversion`: legal memrefs are arrays; `size_t` says whether
+    /// `index` elements convert too.
+    pub fn memref_conversions(tc: &mut TypeConverter<'_>, size_t: bool) {
+        tc.conversion(move |t| match t {
+            Type::Shaped(s) if s.kind == ShapedKind::MemRef && Self::memref_legal(s) => {
+                let elem = match &*s.elem {
+                    Type::Index if size_t => Self::size_t(),
+                    e if Self::supported(e) => e.clone(),
+                    _ => return None,
+                };
+                Some(Some(vec![Self::array(&super::MemrefToLlvm::dims(s), &elem)]))
+            }
+            _ => None,
+        });
+        tc.source(|rw, ty, inputs| Self::cast(rw, ty, inputs));
+        tc.target(|rw, tys, inputs, _| match tys {
+            [ty] => Self::cast(rw, ty, inputs).map(|v| vec![v]),
+            _ => None,
+        });
     }
 
     /// The `emitc.` type `t` names, if any.

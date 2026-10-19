@@ -194,7 +194,10 @@ impl PassManager {
         }
         for e in &self.entries {
             match e {
-                Entry::Pass(p) => p.run(body, op)?,
+                Entry::Pass(p) => {
+                    p.run(body, op)?;
+                    body.verify_branches(op)?;
+                }
                 Entry::Adaptor(mgrs) => {
                     for child in body.children(op) {
                         let name = &body[child].name;
