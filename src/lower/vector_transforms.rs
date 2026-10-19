@@ -324,6 +324,34 @@ fn cast_index_like<'a>(rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, v: ValueId) -> 
     rw.make1(OpData::build(if a > b { "arith.extsi" } else { "arith.trunci" }).operands(&[v]), ty.clone())
 }
 
+/// `createContractArithOp`.
+fn contract_arith<'a>(rw: &mut Rewriter<'_, 'a>, x: ValueId, y: ValueId, acc: Option<ValueId>, kind: &str, is_int: bool, mask: Option<ValueId>) -> Option<ValueId> {
+    let ty = rw.body[x].ty.clone();
+    let mul = if is_int {
+        if matches!(kind, "minnumf" | "maxnumf" | "minimumf" | "maximumf") {
+            return None;
+        }
+        rw.make1(OpData::build("arith.muli").operands(&[x, y]), ty)
+    } else {
+        if matches!(kind, "and" | "minui" | "minsi" | "maxui" | "maxsi" | "or" | "xor") {
+            return None;
+        }
+        if let Some(a) = acc
+            && vshape(&rw.body[a].ty).is_some()
+            && kind == "add"
+        {
+            let mut f = rw.make1(OpData::build("vector.fma").operands(&[x, y, a]), ty.clone());
+            if let Some(m) = mask {
+                f = rw.make1(OpData::build("arith.select").operands(&[m, f, a]), ty);
+            }
+            return Some(f);
+        }
+        rw.make1(OpData::build("arith.mulf").operands(&[x, y]), ty)
+    };
+    let Some(a) = acc else { return Some(mul) };
+    Some(rw.arith_reduction(kind, mul, a, None, mask))
+}
+
 /// Options of the pre-pass patterns that need them.
 #[derive(Clone, Copy)]
 struct Force32(bool);
@@ -508,6 +536,47 @@ rewrites! {
     /// `TransferWriteToVectorStoreLowering` (rank 1).
     TransferWriteToStore1("vector.transfer_write", 1) |rw, op| { transfer_write_to_store(rw, op, Some(1)) }
 
+    /// `OuterProductOpLowering`.
+    OuterProductOpLowering("vector.outerproduct", 1) |rw, op| {
+        let b = &*rw.body;
+        let rt = b[b[op].results[0]].ty.clone();
+        let Some((rshape, rscal)) = vshape(&rt) else { return false };
+        if rshape.len() >= 2 && rscal.iter().all(|s| *s) {
+            return false;
+        }
+        let (lhs, rhs) = (b[op].operands[0], b[op].operands[1]);
+        let acc = b[op].operands.get(2).copied();
+        let et = elem(&rt).clone();
+        let is_int = matches!(et, Type::Integer { .. } | Type::Index);
+        let kind = match b[op].get("kind") {
+            Some(Attribute::Extended { ext, .. }) => alloc::string::String::from(ext.body.as_deref().unwrap_or("<add>").trim_matches(|c| c == '<' || c == '>')),
+            _ => "add".into(),
+        };
+        let mask_op = b.parent_op(op).filter(|p| b[*p].name == "vector.mask");
+        let root = mask_op.unwrap_or(op);
+        let mask = mask_op.map(|m| b[m].operands[0]);
+        let lt = b[lhs].ty.clone();
+        let rhs_ty = b[rhs].ty.clone();
+        rw.set_before(root);
+        if vshape(&rhs_ty).is_none() {
+            let bc = rw.broadcast(lt, rhs);
+            let Some(m) = contract_arith(rw, lhs, bc, acc, &kind, is_int, mask) else { return false };
+            rw.replace_op(root, &[m]);
+            return true;
+        }
+        let mut result = rw.constant(zeros(&rt), rt.clone());
+        for d in 0..rshape[0] {
+            let x = rw.vextract_(lhs, &[d]);
+            let a = rw.broadcast(rhs_ty.clone(), x);
+            let r = acc.map(|acc| rw.vextract_(acc, &[d]));
+            let em = mask.map(|m| rw.vextract_(m, &[d]));
+            let Some(m) = contract_arith(rw, a, rhs, r, &kind, is_int, em) else { return false };
+            result = rw.vinsert(m, result, &[d]);
+        }
+        rw.replace_op(root, &[result]);
+        true
+    }
+
     /// `FoldI1Select`.
     FoldI1Select("arith.select", 1) |rw, op| {
         let b = &*rw.body;
@@ -613,6 +682,7 @@ pub fn pre_patterns(force32: bool) -> PatternSet {
     crate::canon::vector_to_vector_canonicalization(&mut set);
     set.add(UnrollBitCastOp);
     set.add(BroadcastOpLowering);
+    set.add(OuterProductOpLowering);
     set.add(CreateMaskOpLowering);
     set.add(ConstantMaskOpLowering);
     set.add(TransferReadToLoad1);

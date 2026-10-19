@@ -1398,7 +1398,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
     }
 
     /// `makeArithReduction`: `v1 kind acc`, selected against `acc` by `mask`.
-    fn arith_reduction(&mut self, kind: &str, v1: ValueId, acc: ValueId, fastmath: Option<Attribute<'a>>, mask: Option<ValueId>) -> ValueId {
+    pub(crate) fn arith_reduction(&mut self, kind: &str, v1: ValueId, acc: ValueId, fastmath: Option<Attribute<'a>>, mask: Option<ValueId>) -> ValueId {
         let ty = self.body[v1].ty.clone();
         let float = matches!(elem(&ty), Type::Float(_));
         let name = match (kind, float) {
