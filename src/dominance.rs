@@ -55,7 +55,7 @@ impl Body<'_> {
     /// whose C++ `getRegionKind` says graph for the ops named here.
     pub fn has_ssa_dominance(&self, region: RegionId) -> bool {
         let op = self[region].parent;
-        !self.has(op, Trait::HasOnlyGraphRegion) && !matches!(&*self[op].name, "ml_program.func" | "test.graph_region" | "test.isolated_graph_region")
+        !self.has(op, Trait::HasOnlyGraphRegion) && !matches!(&*self[op].name, "test.graph_region" | "test.isolated_graph_region")
     }
 
     /// ⭐ The dominator tree of `region` (which must have a block).
