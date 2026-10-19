@@ -10,7 +10,17 @@
 
 extern crate alloc;
 
+mod invocation;
 mod ir;
+mod pass;
+mod symbol;
+mod traits;
+mod transforms;
 
 pub use ir::*;
+pub use invocation::*;
+pub use pass::*;
+pub use symbol::*;
+pub use transforms::*;
+pub use traits::*;
 pub use mlirformat;

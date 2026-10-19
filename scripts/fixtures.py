@@ -79,7 +79,8 @@ def args_of(cmd: str):
 # Flags whose output is a log or a dump instead of (only) the resulting IR.
 LOGS = ("log-actions", "mlir-print-ir", "mlir-timing", "dump-pass-pipeline", "debug", "mlir-pass-statistics")
 
-# Arguments that change how the input is read, not what is done to it.
+# Arguments that change how the input is read, not what is done to it (and every `-mlir-print-*`:
+# the input must print the way the output does, locations included).
 READING = ("-allow-unregistered-dialect", "--allow-unregistered-dialect", "-split-input-file", "--split-input-file")
 
 
@@ -122,7 +123,7 @@ def main():
             if generic.returncode != 0:
                 skipped.append(f"{name}.{k}\tmlir-opt failed (generic)")
                 continue
-            reading = mlir_opt(opts.mlir_opt, [a for a in args if a in READING], path, True)
+            reading = mlir_opt(opts.mlir_opt, [a for a in args if a in READING or a.lstrip("-").startswith("mlir-print")], path, True)
             if reading.returncode != 0:
                 skipped.append(f"{name}.{k}\tmlir-opt failed (reading the input)")
                 continue

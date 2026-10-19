@@ -166,6 +166,10 @@ impl<'m, 'a> Import<'m, 'a> {
         self.scopes.push(Scope::default());
         let mut pending = Vec::new();
         for b in &r.blocks {
+            // `({ })` holds no block at all; mlirformat reads it as one empty, unlabeled block.
+            if r.blocks.len() == 1 && b.label.is_none() && b.args.is_empty() && b.ops.is_empty() {
+                break;
+            }
             let args: Vec<_> = b.args.iter().map(|a| (self.aliases.ty(&a.ty), a.loc.clone())).collect();
             let block = self.body.add_block(region, &args);
             if let Some(label) = &b.label {
@@ -246,10 +250,9 @@ struct Export<'b, 'a> {
 }
 
 impl<'b, 'a> Export<'b, 'a> {
-    /// Ops whose regions start numbering afresh. Until op traits exist: the children of a
-    /// symbol-table op (functions, nested modules), and the root.
+    /// Ops whose regions start numbering afresh.
     fn isolated(&self, op: OpId) -> bool {
-        op == self.body.root || self.body.parent_op(op).is_some_and(|p| matches!(&*self.body[p].name, "builtin.module" | "gpu.module" | "spirv.module"))
+        op == self.body.root || self.body.has(op, crate::Trait::IsIsolatedFromAbove)
     }
 
     fn name_op(&mut self, op: OpId) {

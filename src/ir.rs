@@ -125,15 +125,73 @@ impl<'a> OpData<'a> {
         Self { name: name.into(), operands: Vec::new(), results: Vec::new(), successors: Vec::new(), properties: None, regions: Vec::new(), attributes: Vec::new(), loc: None, parent: None }
     }
 
-    /// A property, from the `<{...}>` dictionary.
-    pub fn prop(&self, name: &str) -> Option<&Attribute<'a>> {
-        let Some(Attribute::Dict(d)) = &self.properties else { return None };
-        d.iter().find(|a| a.name == name).and_then(|a| a.value.as_ref())
+    /// Whether attribute `name` is inherent (declared by the op's ODS): it then lives in the
+    /// `<{...}>` properties, else among the discardable `{...}` attributes.
+    pub fn inherent(&self, name: &str) -> bool {
+        crate::OpInfo::of(&self.name).is_some_and(|i| i.inherent.contains(&name))
     }
 
-    /// A discardable attribute.
-    pub fn attr(&self, name: &str) -> Option<&Attribute<'a>> {
-        self.attributes.iter().find(|a| a.name == name).and_then(|a| a.value.as_ref())
+    fn dict(&self, inherent: bool) -> &[NamedAttr<'a>] {
+        match (inherent, &self.properties) {
+            (true, Some(Attribute::Dict(d))) => d,
+            (true, _) => &[],
+            (false, _) => &self.attributes,
+        }
+    }
+
+    fn dict_mut(&mut self, inherent: bool) -> &mut Vec<NamedAttr<'a>> {
+        if !inherent {
+            return &mut self.attributes;
+        }
+        if !matches!(self.properties, Some(Attribute::Dict(_))) {
+            self.properties = Some(Attribute::Dict(Vec::new()));
+        }
+        let Some(Attribute::Dict(d)) = &mut self.properties else { unreachable!() };
+        d
+    }
+
+    /// Attribute `name`, inherent or discardable.
+    pub fn get(&self, name: &str) -> Option<&Attribute<'a>> {
+        let find = |d: &[NamedAttr<'a>]| d.iter().position(|a| a.name == name);
+        let d = self.dict(self.inherent(name));
+        // An op outside the table keeps whatever the text said: look in both.
+        let d = if find(d).is_some() { d } else { self.dict(!self.inherent(name)) };
+        let a = &d[find(d)?];
+        Some(a.value.as_ref().unwrap_or(&Attribute::Unit))
+    }
+
+    /// Sets attribute `name`, keeping the dictionary sorted as MLIR's `DictionaryAttr` does.
+    pub fn set(&mut self, name: &str, value: Attribute<'a>) {
+        let inherent = self.inherent(name);
+        let d = self.dict_mut(inherent);
+        let named = NamedAttr { name: alloc::string::String::from(name).into(), value: Some(value) };
+        match d.binary_search_by(|a| (*a.name).cmp(name)) {
+            Ok(i) => d[i] = named,
+            Err(i) => d.insert(i, named),
+        }
+    }
+
+    /// Removes attribute `name`; whether it was there.
+    pub fn remove(&mut self, name: &str) -> bool {
+        let mut gone = false;
+        for inherent in [true, false] {
+            let d = self.dict_mut(inherent);
+            let before = d.len();
+            d.retain(|a| a.name != name);
+            gone |= d.len() != before;
+        }
+        if matches!(&self.properties, Some(Attribute::Dict(d)) if d.is_empty()) {
+            self.properties = None;
+        }
+        gone
+    }
+
+    /// A string attribute's contents (still escaped).
+    pub fn get_str(&self, name: &str) -> Option<&str> {
+        match self.get(name)? {
+            Attribute::Str { lit, .. } => Some(lit),
+            _ => None,
+        }
     }
 }
 

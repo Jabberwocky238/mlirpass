@@ -17,5 +17,12 @@ serde = { version = "1", default-features = false, features = ["derive", "alloc"
 thiserror = { version = "2", default-features = false }
 
 [features]
-default = ["std"]
+default = ["std", "cli"]
 std = ["mlirformat/std", "serde/std", "thiserror/std"]
+# The `mlirpass` command line (`cargo install mlirpass`).
+cli = ["std"]
+
+[[bin]]
+name = "mlirpass"
+path = "src/cli/main.rs"
+required-features = ["cli"]
