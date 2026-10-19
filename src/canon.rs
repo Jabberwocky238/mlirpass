@@ -7,6 +7,7 @@ mod cf;
 mod llvm;
 mod memref;
 mod scf;
+mod shape;
 mod vector;
 
 use alloc::borrow::Cow;
@@ -170,6 +171,7 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("memref") => memref::fold(body, op),
         Some("llvm") => llvm::fold(body, op, consts),
         Some("vector") => vector::Folder { b: body, op, c: consts }.fold(),
+        Some("shape") => shape::fold(body, op, consts),
         _ => Fold::Failed,
     }
 }
@@ -182,6 +184,7 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
         "memref" => memref::materialize(value, ty),
         "llvm" => llvm::materialize(value, ty),
         "vector" => vector::materialize(value, ty),
+        "shape" => shape::materialize(value, ty),
         "ub" => crate::is_poison(value).then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,
     }
@@ -207,6 +210,7 @@ pub fn patterns() -> PatternSet {
     arith::patterns(&mut set);
     cf::patterns(&mut set);
     scf::patterns(&mut set);
+    shape::patterns(&mut set);
     vector::patterns(&mut set);
     set
 }

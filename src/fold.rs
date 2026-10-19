@@ -67,6 +67,8 @@ impl<'a> Body<'a> {
             }),
             "llvm.mlir.undef" => Some(ext("llvm.undef")),
             "llvm.mlir.poison" => Some(ext("llvm.poison")),
+            "shape.const_shape" => d.get("shape").cloned(),
+            "shape.const_witness" => d.get("passing").cloned(),
             _ => d.get("value").cloned(),
         }
     }
