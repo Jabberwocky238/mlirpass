@@ -274,6 +274,35 @@ impl Default for LlvmOptions {
 }
 
 impl LlvmOptions {
+    /// Index bitwidth 0: taken from the data layout (`kDeriveIndexBitwidthFromDataLayout`).
+    pub fn derived() -> Self {
+        Self { index_bitwidth: 0, ..Self::default() }
+    }
+
+    /// Resolves a derived index bitwidth from the `dlti.dl_spec` at or above `op`
+    /// (`DataLayoutAnalysis::getAtOrAbove`); 64 without one.
+    pub fn at(self, body: &crate::Body<'_>, op: crate::OpId) -> Self {
+        if self.index_bitwidth != 0 {
+            return self;
+        }
+        let mut at = Some(op);
+        while let Some(o) = at {
+            if let Some(bits) = body[o].get("dlti.dl_spec").and_then(Self::spec_index) {
+                return Self { index_bitwidth: bits, ..self };
+            }
+            at = body.parent_op(o);
+        }
+        Self { index_bitwidth: 64, ..self }
+    }
+
+    /// The `index` entry of a `#dlti.dl_spec<...>`: `#dlti.dl_entry<index, 32>` or `index = 32`.
+    fn spec_index(a: &Attribute<'_>) -> Option<u32> {
+        let Attribute::Extended { ext, .. } = a else { return None };
+        let body = ext.body.as_deref()?;
+        let (_, rest) = body.split_once("dl_entry<index,").or_else(|| body.split_once("index ="))?;
+        rest.trim_start().split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
+    }
+
     pub fn index(&self) -> Type<'static> {
         Type::int(self.index_bitwidth)
     }
@@ -289,12 +318,9 @@ impl LlvmOptions {
         }
     }
 
-    /// Whether the memref's layout is strided (identity or `strided<...>`).
+    /// `isStrided`: an identity, `strided<...>` or linear `affine_map` layout.
     pub fn strided(&self, s: &Shaped<'_>) -> bool {
-        s.extras.iter().all(|a| match a {
-            Attribute::Builtin { name, .. } => name == "strided",
-            _ => true,
-        })
+        s.extras.iter().all(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "affine_map")) || self.strides_and_offset(s).is_some()
     }
 
     /// `getMemRefDescriptorFields`.
@@ -380,7 +406,66 @@ impl LlvmConverter {
         });
         tc.source(|rw, ty, inputs| Some(Self::cast(rw, ty, inputs)));
         tc.target(|rw, tys, inputs, _| (tys.len() == 1).then(|| vec![Self::cast(rw, &tys[0], inputs)]));
+        // Memrefs from their unpacked fields (or a bare pointer): the descriptor, then a cast.
+        tc.source(move |rw, ty, inputs| match ty {
+            Type::Shaped(s) if s.kind == ShapedKind::MemRef && s.shape.is_none() => {
+                let packed = Self::pack_unranked(rw, options, inputs)?;
+                Some(Self::cast(rw, ty, &[packed]))
+            }
+            _ => None,
+        });
+        tc.source(move |rw, ty, inputs| match ty {
+            Type::Shaped(s) if s.kind == ShapedKind::MemRef && s.shape.is_some() => {
+                let packed = Self::pack_ranked(rw, options, s, inputs)?;
+                Some(Self::cast(rw, ty, &[packed]))
+            }
+            _ => None,
+        });
+        tc.target(move |rw, tys, inputs, original| {
+            let original = original?;
+            let [ty] = tys else { return None };
+            let Type::Shaped(s) = original else { return None };
+            if s.kind != ShapedKind::MemRef || Self::convert_memref(options, s).as_ref() != Some(ty) {
+                return None;
+            }
+            let packed = if s.shape.is_some() { Self::pack_ranked(rw, options, s, inputs)? } else { Self::pack_unranked(rw, options, inputs)? };
+            Some(vec![packed])
+        });
         tc
+    }
+
+    /// The descriptor struct a memref type converts to.
+    pub fn convert_memref<'a>(options: LlvmOptions, s: &Shaped<'a>) -> Option<Type<'a>> {
+        if s.shape.is_none() {
+            return Self::scalar(&s.elem, options).map(|_| LlvmType::literal(vec![options.index(), LlvmType::ptr()]));
+        }
+        let ok = Self::scalar(&s.elem, options).is_some();
+        options.descriptor_fields(s, ok, false).map(LlvmType::literal)
+    }
+
+    /// `packRankedMemRefDesc`: from a bare pointer (static shape) or the unpacked fields.
+    fn pack_ranked<'a, L: crate::Listener<'a> + ?Sized>(rw: &mut crate::Rewriter<'_, 'a, L>, options: LlvmOptions, s: &Shaped<'a>, inputs: &[crate::ValueId]) -> Option<crate::ValueId> {
+        let desc = Self::convert_memref(options, s)?;
+        let input_types = rw.body.types(inputs);
+        if let [p] = inputs
+            && matches!(LlvmType::try_from(&rw.body[*p].ty), Ok(LlvmType::Ptr(_)))
+        {
+            return rw.desc_from_static(options, s, desc, *p);
+        }
+        let ok = Self::scalar(&s.elem, options).is_some();
+        if Some(input_types) != options.descriptor_fields(s, ok, true) {
+            return None;
+        }
+        let rank = s.shape.as_ref().map_or(0, Vec::len);
+        Some(rw.pack_desc(desc, rank, inputs))
+    }
+
+    /// `packUnrankedMemRefDesc`.
+    fn pack_unranked<'a, L: crate::Listener<'a> + ?Sized>(rw: &mut crate::Rewriter<'_, 'a, L>, options: LlvmOptions, inputs: &[crate::ValueId]) -> Option<crate::ValueId> {
+        if rw.body.types(inputs) != vec![options.index(), LlvmType::ptr()] {
+            return None;
+        }
+        Some(rw.pack_unranked(LlvmType::literal(vec![options.index(), LlvmType::ptr()]), inputs))
     }
 
     fn cast<'a, L: crate::Listener<'a> + ?Sized>(rw: &mut crate::Rewriter<'_, 'a, L>, ty: &Type<'a>, inputs: &[crate::ValueId]) -> crate::ValueId {

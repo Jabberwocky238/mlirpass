@@ -114,7 +114,20 @@ impl Invocation {
         if !self.debuginfo {
             m.items.retain(|i| !matches!(i, Item::AttrAlias { value: mlirformat::Attribute::Builtin { name, .. }, .. } if name == "loc"));
         }
-        if self.generic { format!("{}", MlirOpt::new().show(&m)) } else { format!("{}", opt.show(&m)) }
+        // Aliases are inlined on import; keep only those raw dialect text still names.
+        let show = |m: &Module<'_>| if self.generic { format!("{}", MlirOpt::new().show(m)) } else { format!("{}", opt.show(m)) };
+        let bare = Module { items: m.items.iter().filter(|i| !matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. })).cloned().collect() };
+        let text = show(&bare);
+        let named = |sigil: char, name: &str| {
+            let pat = format!("{sigil}{name}");
+            text.match_indices(&pat).any(|(i, _)| !text[i + pat.len()..].starts_with(|c: char| c.is_ascii_alphanumeric() || "_$.-".contains(c)))
+        };
+        m.items.retain(|i| match i {
+            Item::AttrAlias { name, .. } => named('#', name),
+            Item::TypeAlias { name, .. } => named('!', name),
+            _ => true,
+        });
+        show(&m)
     }
 
     /// The whole input, chunk by chunk, joined as `mlir-opt` joins them.

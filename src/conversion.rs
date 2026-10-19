@@ -255,6 +255,11 @@ impl<'a> SignatureConversion<'a> {
     pub fn converted_types(&self) -> &[Type<'a>] {
         &self.types
     }
+
+    /// How original argument `orig` is mapped.
+    pub fn mapping(&self, orig: usize) -> Option<&InputMap> {
+        self.remapped.get(orig)?.as_ref()
+    }
 }
 
 // ---- conversion state --------------------------------------------------------------------

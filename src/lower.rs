@@ -2,8 +2,10 @@
 
 mod arith_to_llvm;
 mod cf_to_llvm;
+mod func_to_llvm;
 mod index_to_llvm;
 mod math_to_llvm;
+mod memref_desc;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -18,8 +20,10 @@ use crate::{Action, ConversionRewriter, ConversionTarget, LlvmType, OpData, OpId
 
 pub use arith_to_llvm::ArithToLlvm;
 pub use cf_to_llvm::{AssertLowering, CfToLlvm};
+pub use func_to_llvm::FuncToLlvm;
 pub use index_to_llvm::{IndexToLlvm, UbToLlvm};
 pub use math_to_llvm::MathToLlvm;
+pub use memref_desc::DYNAMIC;
 
 /// Fast-math flags, by name, in LLVM's bit order.
 const LLVM_FASTMATH: [&str; 7] = ["nnan", "ninf", "nsz", "arcp", "contract", "afn", "reassoc"];
@@ -260,7 +264,7 @@ impl TryFrom<&Options<'_>> for ConvertArithToLlvm {
     fn try_from(o: &Options<'_>) -> Result<Self, Error> {
         o.only("convert-arith-to-llvm", &["index-bitwidth"])?;
         let bits: u32 = o.value("index-bitwidth", 0)?;
-        Ok(Self { options: LlvmOptions { index_bitwidth: if bits == 0 { 64 } else { bits }, ..LlvmOptions::default() } })
+        Ok(Self { options: LlvmOptions { index_bitwidth: bits, ..LlvmOptions::default() } })
     }
 }
 
@@ -270,7 +274,7 @@ impl Pass for ConvertArithToLlvm {
     }
 
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(self.options);
+        let tc = LlvmConverter::build(self.options.at(body, op));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         ArithToLlvm::populate(&mut patterns, i);
@@ -292,7 +296,7 @@ macro_rules! to_llvm_pass {
             fn try_from(o: &Options<'_>) -> Result<Self, Error> {
                 o.only($name, &["index-bitwidth"])?;
                 let bits: u32 = o.value("index-bitwidth", 0)?;
-                Ok(Self { options: LlvmOptions { index_bitwidth: if bits == 0 { 64 } else { bits }, ..LlvmOptions::default() } })
+                Ok(Self { options: LlvmOptions { index_bitwidth: bits, ..LlvmOptions::default() } })
             }
         }
 
@@ -302,7 +306,7 @@ macro_rules! to_llvm_pass {
             }
 
             fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-                let tc = LlvmConverter::build(self.options);
+                let tc = LlvmConverter::build(self.options.at(body, op));
                 let mut patterns = ConversionPatterns::default();
                 let i = patterns.converter(&tc);
                 $populate(&mut patterns, i);
@@ -344,7 +348,7 @@ impl Pass for ConvertMathToLlvm {
     }
 
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(LlvmOptions::default());
+        let tc = LlvmConverter::build(LlvmOptions::derived().at(body, op));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         MathToLlvm::populate(&mut patterns, i, self.approximate_log1p);
@@ -364,7 +368,7 @@ impl TryFrom<&Options<'_>> for ConvertCfToLlvm {
     fn try_from(o: &Options<'_>) -> Result<Self, Error> {
         o.only("convert-cf-to-llvm", &["index-bitwidth"])?;
         let bits: u32 = o.value("index-bitwidth", 0)?;
-        Ok(Self { options: LlvmOptions { index_bitwidth: if bits == 0 { 64 } else { bits }, ..LlvmOptions::default() }, counter: core::cell::Cell::new(0) })
+        Ok(Self { options: LlvmOptions { index_bitwidth: bits, ..LlvmOptions::default() }, counter: core::cell::Cell::new(0) })
     }
 }
 
@@ -374,13 +378,43 @@ impl Pass for ConvertCfToLlvm {
     }
 
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(self.options);
+        let tc = LlvmConverter::build(self.options.at(body, op));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         CfToLlvm::populate(&mut patterns, i);
         patterns.add_with(i, AssertLowering(&self.counter));
         let mut target = llvm_target();
         target.unknown(Action::Dynamic(alloc::boxed::Box::new(|b: &Body<'_>, o: OpId| Some(!b[o].name.starts_with("cf.")))));
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}
+
+/// `convert-func-to-llvm`.
+pub struct ConvertFuncToLlvm {
+    options: LlvmOptions,
+}
+
+impl TryFrom<&Options<'_>> for ConvertFuncToLlvm {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-func-to-llvm", &["use-bare-ptr-memref-call-conv", "index-bitwidth"])?;
+        let bits: u32 = o.value("index-bitwidth", 0)?;
+        let bare_ptr = o.flag("use-bare-ptr-memref-call-conv", false)?;
+        Ok(Self { options: LlvmOptions { index_bitwidth: bits, bare_ptr, ..LlvmOptions::default() } })
+    }
+}
+
+impl Pass for ConvertFuncToLlvm {
+    fn name(&self) -> &str {
+        "convert-func-to-llvm"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let tc = LlvmConverter::build(self.options.at(body, op));
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        FuncToLlvm::populate(&mut patterns, i, self.options.at(body, op));
+        let target = llvm_target();
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
 }
@@ -407,7 +441,7 @@ impl TryFrom<&Options<'_>> for ConvertToLlvm {
 }
 
 /// The dialects that implement `ConvertToLLVMPatternInterface`, by namespace.
-const TO_LLVM: &[&str] = &["arith", "cf", "index", "math", "ub"];
+const TO_LLVM: &[&str] = &["arith", "cf", "func", "index", "math", "ub"];
 
 impl Pass for ConvertToLlvm {
     fn name(&self) -> &str {
@@ -415,7 +449,7 @@ impl Pass for ConvertToLlvm {
     }
 
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(LlvmOptions::default());
+        let tc = LlvmConverter::build(LlvmOptions::derived().at(body, op));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         let dialects: Vec<&str> = if self.filter.is_empty() { TO_LLVM.to_vec() } else { self.filter.iter().map(String::as_str).collect() };
@@ -425,6 +459,7 @@ impl Pass for ConvertToLlvm {
                 "index" => IndexToLlvm::populate(&mut patterns, i),
                 "math" => MathToLlvm::populate(&mut patterns, i, true),
                 "ub" => UbToLlvm::populate(&mut patterns, i),
+                "func" => FuncToLlvm::populate(&mut patterns, i, LlvmOptions::derived().at(body, op)),
                 "cf" => {
                     CfToLlvm::populate(&mut patterns, i);
                     patterns.add_with(i, AssertLowering(&self.counter));
@@ -436,6 +471,30 @@ impl Pass for ConvertToLlvm {
         let mut target = ConversionTarget::default();
         target.legal_dialect("llvm");
         Converter::new(&target, &patterns, ConversionConfig { rollback: self.rollback, ..ConversionConfig::default() }).apply(body, &[op], Mode::Partial)
+    }
+}
+
+/// `set-llvm-module-datalayout`.
+pub struct SetLlvmModuleDataLayout {
+    layout: String,
+}
+
+impl TryFrom<&Options<'_>> for SetLlvmModuleDataLayout {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("set-llvm-module-datalayout", &["data-layout"])?;
+        Ok(Self { layout: o.value("data-layout", String::new())? })
+    }
+}
+
+impl Pass for SetLlvmModuleDataLayout {
+    fn name(&self) -> &str {
+        "set-llvm-module-datalayout"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        body[op].set("llvm.data_layout", Attribute::string(&self.layout));
+        Ok(())
     }
 }
 
