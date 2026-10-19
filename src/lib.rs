@@ -10,6 +10,7 @@
 
 extern crate alloc;
 
+mod affine;
 mod attr;
 mod branch;
 mod canon;
@@ -32,6 +33,7 @@ mod symbol;
 mod traits;
 mod transforms;
 
+pub use affine::{AffineExpr, AffineMap, Bin as AffineBin, IntegerSet};
 pub use attr::*;
 pub use conversion::*;
 pub use dominance::*;
