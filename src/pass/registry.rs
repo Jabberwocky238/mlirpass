@@ -46,6 +46,7 @@ registry! {
     "convert-math-to-llvm" => ConvertMathToLlvm,
     "convert-ub-to-llvm" => ConvertUbToLlvm,
     "convert-to-llvm" => ConvertToLlvm,
+    "convert-complex-to-standard" => ConvertComplexToStandard,
     "convert-arith-to-emitc" => ConvertArithToEmitc,
     "convert-to-emitc" => ConvertToEmitc,
     "convert-memref-to-emitc" on "builtin.module" => ConvertMemrefToEmitc,

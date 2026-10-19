@@ -4,6 +4,7 @@ mod affine_to_std;
 mod arith_to_emitc;
 mod arith_to_llvm;
 mod cf_to_llvm;
+mod complex_to_std;
 mod emitc;
 mod func_to_emitc;
 mod func_to_llvm;
@@ -33,6 +34,7 @@ pub use affine_to_std::AffineToStd;
 pub use arith_to_emitc::ArithToEmitc;
 pub use arith_to_llvm::ArithToLlvm;
 pub use cf_to_llvm::{AssertLowering, CfToLlvm};
+pub use complex_to_std::ComplexToStd;
 pub use emitc::Emitc;
 pub use func_to_emitc::FuncToEmitc;
 pub use func_to_llvm::FuncToLlvm;
@@ -857,6 +859,37 @@ impl Pass for ConvertToEmitc {
         }
         let mut target = ConversionTarget::default();
         target.legal_dialect("emitc");
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}
+
+/// `convert-complex-to-standard`.
+pub struct ConvertComplexToStandard {
+    improved: bool,
+}
+
+impl TryFrom<&Options<'_>> for ConvertComplexToStandard {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-complex-to-standard", &["complex-range"])?;
+        match o.get("complex-range").unwrap_or("improved") {
+            "improved" => Ok(Self { improved: true }),
+            "basic" | "none" => Ok(Self { improved: false }),
+            r => Err(Error(format!("convert-complex-to-standard: bad complex-range `{r}`"))),
+        }
+    }
+}
+
+impl Pass for ConvertComplexToStandard {
+    fn name(&self) -> &str {
+        "convert-complex-to-standard"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let mut patterns = ConversionPatterns::default();
+        ComplexToStd::populate(&mut patterns, self.improved);
+        let mut target = ConversionTarget::default();
+        target.legal_dialect("arith").legal_dialect("math").legal_op("complex.create").legal_op("complex.im").legal_op("complex.re");
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
 }
