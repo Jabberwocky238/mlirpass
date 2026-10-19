@@ -1111,6 +1111,11 @@ impl<'a> Body<'a> {
         self.static_basis(op).into_iter().map(|b| if b == i64::MIN { Ofr::V(d.next().expect("dynamic basis")) } else { Ofr::C(b) }).collect()
     }
 
+    /// `UnitProp` `disjoint`: printed bare when set, `= false` otherwise.
+    fn disjoint(&self, op: OpId) -> bool {
+        matches!(self[op].get("disjoint"), Some(Attribute::Unit | Attribute::Bool(true)))
+    }
+
     fn has_outer_bound(&self, op: OpId) -> bool {
         let n = if self[op].name == "affine.delinearize_index" { self[op].results.len() } else { self.multi_index(op).len() };
         n == self.static_basis(op).len()
@@ -1254,7 +1259,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
         ops.extend(&dynamic);
         OpData::build("affine.linearize_index")
             .operands(&ops)
-            .with("disjoint", Attribute::Bool(disjoint))
+            .with("disjoint", if disjoint { Attribute::Unit } else { Attribute::Bool(false) })
             .with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec![format!("{}", multi.len()).into(), format!("{}", dynamic.len()).into()] })
             .with("static_basis", Attribute::DenseArray { ty: Type::int(64), values: statics.iter().map(|x| format!("{x}").into()).collect() })
     }
@@ -1341,7 +1346,7 @@ super::rewrites! {
     CancelDelinearizeOfLinearizeDisjointExactTail("affine.delinearize_index", 1) |rw, op| {
         let b = &*rw.body;
         let Some(lin) = b.def_named(b[op].operands[0], "affine.linearize_index") else { return false };
-        if !matches!(b[lin].get("disjoint"), Some(Attribute::Bool(true))) {
+        if !b.disjoint(lin) {
             return false;
         }
         let ins = b.multi_index(lin);
@@ -1400,7 +1405,7 @@ super::rewrites! {
     SplitDelinearizeSpanningLastLinearizeArg("affine.delinearize_index", 1) |rw, op| {
         let b = &*rw.body;
         let Some(lin) = b.def_named(b[op].operands[0], "affine.linearize_index") else { return false };
-        if !matches!(b[lin].get("disjoint"), Some(Attribute::Bool(true))) {
+        if !b.disjoint(lin) {
             return false;
         }
         let lsb = b.static_basis(lin);
@@ -1447,7 +1452,7 @@ super::rewrites! {
         let b = &*rw.body;
         let lin_basis = b.padded_basis(op);
         let multi = b.multi_index(op);
-        let disjoint = matches!(b[op].get("disjoint"), Some(Attribute::Bool(true)));
+        let disjoint = b.disjoint(op);
         struct M { d: OpId, lin_start: usize, delin_start: usize, len: usize }
         let mut matches: Vec<M> = Vec::new();
         let mut seen = Vec::new();
@@ -1546,7 +1551,7 @@ super::rewrites! {
         if b.has_outer_bound(op) {
             basis.remove(0);
         }
-        let disjoint = matches!(b[op].get("disjoint"), Some(Attribute::Bool(true)));
+        let disjoint = b.disjoint(op);
         let data = rw.linearize_data(&multi[1..], &basis, disjoint);
         rw.replace_with(op, data, &[Type::Index]);
         true
@@ -1557,7 +1562,7 @@ super::rewrites! {
         let b = &*rw.body;
         let multi = b.multi_index(op);
         let n = multi.len();
-        let disjoint = matches!(b[op].get("disjoint"), Some(Attribute::Bool(true)));
+        let disjoint = b.disjoint(op);
         let (mut idx, mut basis) = (Vec::new(), Vec::new());
         let mut rest = &multi[..];
         if !b.has_outer_bound(op) {
