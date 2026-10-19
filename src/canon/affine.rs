@@ -488,9 +488,64 @@ impl<'a> Body<'a> {
         true
     }
 
-    /// `replaceAffineDelinearizeIndexInverseExpression`: not ported yet; never fires.
-    fn replace_delinearize_inverse(&self, _d: OpId, _v: ValueId, _map: &mut AffineMap, _dims: &mut [Option<ValueId>], _syms: &mut [Option<ValueId>]) -> bool {
-        false
+    /// `replaceAffineDelinearizeIndexInverseExpression`: `q * s + r` over all the results of a
+    /// delinearization becomes its input.
+    fn replace_delinearize_inverse(&self, d: OpId, v: ValueId, map: &mut AffineMap, dims: &mut Vec<Option<ValueId>>, syms: &mut Vec<Option<ValueId>>) -> bool {
+        if !self.dynamic_basis(d).is_empty() || self[d].results.last() != Some(&v) {
+            return false;
+        }
+        let n = self[d].results.len();
+        let mut res: Vec<Option<AffineExpr>> = vec![None; n];
+        for (pos, x) in dims.iter().enumerate() {
+            if let Some(x) = x
+                && let Def::Result(o, r) = self[*x].def
+                && o == d
+            {
+                res[r as usize] = Some(AffineExpr::Dim(pos as u32));
+            }
+        }
+        for (pos, x) in syms.iter().enumerate() {
+            if let Some(x) = x
+                && let Def::Result(o, r) = self[*x].def
+                && o == d
+            {
+                res[r as usize] = Some(AffineExpr::Sym(pos as u32));
+            }
+        }
+        let Some(res) = res.into_iter().collect::<Option<Vec<AffineExpr>>>() else { return false };
+        let is_dim = res.iter().all(|e| matches!(e, AffineExpr::Dim(_)));
+        let basis = self.static_basis(d);
+        let mut stride = 1i64;
+        let mut expected = Vec::new();
+        for (bnd, size) in res.iter().rev().zip(basis.iter().rev()) {
+            expected.push(bnd.clone().mul_const(stride));
+            stride *= size;
+        }
+        if res.len() != basis.len() {
+            expected.push(res[0].clone().mul_const(stride));
+        }
+        let input = if is_dim { AffineExpr::Dim(dims.len() as u32) } else { AffineExpr::Sym(syms.len() as u32) };
+        let mut repl: Vec<(AffineExpr, AffineExpr)> = Vec::new();
+        for e in &map.results {
+            shorten_add_chains(e, &expected, &input, &mut repl);
+        }
+        if repl.is_empty() {
+            return false;
+        }
+        if is_dim {
+            dims.push(Some(self[d].operands[0]));
+        } else {
+            syms.push(Some(self[d].operands[0]));
+        }
+        *map = AffineMap { dims: dims.len() as u32, syms: syms.len() as u32, results: map.results.iter().map(|r| r.replace_all(&repl)).collect() };
+        for e in &res {
+            match e {
+                AffineExpr::Dim(p) if !map.uses_dim(*p) => dims[*p as usize] = None,
+                AffineExpr::Sym(p) if !map.uses_sym(*p) => syms[*p as usize] = None,
+                _ => {}
+            }
+        }
+        true
     }
 
     /// `composeAffineMapAndOperands`.
@@ -771,6 +826,69 @@ impl AffineExpr {
             }
         }
         Some(b + flat.last()?)
+    }
+}
+
+/// `shortenAddChainsContainingAll`: an add chain holding every expected term maps to `new`
+/// plus the rest.
+fn shorten_add_chains(e: &AffineExpr, expected: &[AffineExpr], new: &AffineExpr, repl: &mut Vec<(AffineExpr, AffineExpr)>) {
+    use crate::AffineBin as B;
+    let AffineExpr::Bin(k, l, r) = e else { return };
+    if *k != B::Add {
+        shorten_add_chains(l, expected, new, repl);
+        shorten_add_chains(r, expected, new, repl);
+        return;
+    }
+    let mut keep = Vec::new();
+    let mut tracker: Vec<AffineExpr> = expected.to_vec();
+    let mut this: Option<&AffineExpr> = Some(r);
+    let mut next: Option<&AffineExpr> = Some(l);
+    while let Some(t) = this {
+        if let Some(i) = tracker.iter().position(|x| x == t) {
+            tracker.remove(i);
+        } else {
+            keep.push(t.clone());
+            shorten_add_chains(t, expected, new, repl);
+        }
+        match next {
+            Some(AffineExpr::Bin(B::Add, nl, nr)) => {
+                this = Some(nr);
+                next = Some(nl);
+            }
+            other => {
+                this = other;
+                next = None;
+            }
+        }
+    }
+    if !tracker.is_empty() {
+        return;
+    }
+    let mut n = new.clone();
+    for k in keep.into_iter().rev() {
+        n = n.add(k);
+    }
+    if !repl.iter().any(|(f, _)| f == e) {
+        repl.push((e.clone(), n));
+    }
+}
+
+impl AffineExpr {
+    /// `replace(DenseMap)`: whole subexpressions found in `map` are swapped.
+    pub fn replace_all(&self, map: &[(AffineExpr, AffineExpr)]) -> AffineExpr {
+        if let Some((_, to)) = map.iter().find(|(f, _)| f == self) {
+            return to.clone();
+        }
+        match self {
+            AffineExpr::Bin(k, l, r) => {
+                let (nl, nr) = (l.replace_all(map), r.replace_all(map));
+                if nl == **l && nr == **r {
+                    return self.clone();
+                }
+                AffineExpr::binary(*k, nl, nr)
+            }
+            _ => self.clone(),
+        }
     }
 }
 
