@@ -28,7 +28,7 @@ pub type Operand = (OpId, usize);
 impl<'a> Body<'a> {
     /// Whether `op` implements the interface, as far as this crate describes it.
     pub fn is_region_branch(&self, op: OpId) -> bool {
-        matches!(&*self[op].name, "scf.for" | "scf.if" | "scf.while" | "scf.execute_region" | "scf.index_switch")
+        matches!(&*self[op].name, "scf.for" | "scf.if" | "scf.while" | "scf.execute_region" | "scf.index_switch" | "test.region_if")
     }
 
     /// The entry block's arguments of region `r` of `op`, from `skip` on.
@@ -54,6 +54,12 @@ impl<'a> Body<'a> {
                 Point::Terminator(t) if self[t].name == "scf.condition" => vec![(Succ::Region(1), self.region_args(op, 1, 0)), (Succ::Parent, results)],
                 Point::Terminator(_) => vec![(Succ::Region(0), self.region_args(op, 0, 0))],
             },
+            // The then and else regions take the operands, both go to the join region.
+            "test.region_if" => match point {
+                Point::Parent => vec![(Succ::Region(0), self.region_args(op, 0, 0)), (Succ::Region(1), self.region_args(op, 1, 0))],
+                Point::Terminator(t) if self[t].parent.and_then(|b| self[b].parent) == Some(self[op].regions[2]) => vec![(Succ::Parent, results)],
+                Point::Terminator(_) => vec![(Succ::Region(2), self.region_args(op, 2, 0))],
+            },
             "scf.execute_region" | "scf.index_switch" => match point {
                 Point::Parent => (0..self[op].regions.len()).map(|r| (Succ::Region(r), Vec::new())).collect(),
                 Point::Terminator(_) => vec![(Succ::Parent, results)],
@@ -67,7 +73,7 @@ impl<'a> Body<'a> {
         match point {
             Point::Parent => match &*self[op].name {
                 "scf.for" => (3..self[op].operands.len()).map(|i| (op, i)).collect(),
-                "scf.while" => (0..self[op].operands.len()).map(|i| (op, i)).collect(),
+                "scf.while" | "test.region_if" => (0..self[op].operands.len()).map(|i| (op, i)).collect(),
                 _ => Vec::new(),
             },
             Point::Terminator(t) => {
@@ -83,7 +89,7 @@ impl<'a> Body<'a> {
         for r in &self[op].regions {
             for b in &self[*r].blocks {
                 if let Some(&t) = self[*b].ops.last()
-                    && matches!(&*self[t].name, "scf.yield" | "scf.condition")
+                    && matches!(&*self[t].name, "scf.yield" | "scf.condition" | "test.region_if_yield")
                 {
                     out.push(Point::Terminator(t));
                 }

@@ -58,6 +58,7 @@ registry! {
     "expand-strided-metadata" => ExpandStridedMetadata,
     "lower-affine" => LowerAffine,
     "loop-invariant-code-motion" => LoopInvariantCodeMotion,
+    "promote-buffers-to-stack" on "func.func" => PromoteBuffersToStack,
     "llvm-request-c-wrappers" on "func.func" => RequestCWrappers,
     "strip-debuginfo" => StripDebugInfo,
     "symbol-dce" => SymbolDce,
