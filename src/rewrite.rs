@@ -358,7 +358,8 @@ impl PatternSet {
     /// The patterns for op `name`, in the order they are tried.
     pub fn for_op(&self, name: &str) -> Vec<&dyn Pattern> {
         let mut out: Vec<&dyn Pattern> = self.patterns.iter().map(Box::as_ref).filter(|p| p.root().is_none_or(|r| r == name)).collect();
-        out.sort_by(|a, b| b.benefit().cmp(&a.benefit()));
+        // Op-specific patterns go before any-op ones of the same benefit.
+        out.sort_by(|a, b| b.benefit().cmp(&a.benefit()).then(a.root().is_none().cmp(&b.root().is_none())));
         out
     }
 

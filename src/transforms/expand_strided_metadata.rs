@@ -81,7 +81,7 @@ struct Metadata {
 
 impl<'a> Rewriter<'_, 'a> {
     /// `makeComposedFoldedAffineApply`.
-    fn composed_folded_apply(&mut self, map: AffineMap, operands: &[Ofr]) -> Ofr {
+    pub(crate) fn composed_folded_apply(&mut self, map: AffineMap, operands: &[Ofr]) -> Ofr {
         // `foldAttributesIntoMap`.
         let mut values = Vec::new();
         let (mut nd, mut ns) = (0, 0);
@@ -136,7 +136,7 @@ impl<'a> Rewriter<'_, 'a> {
     }
 
     /// `getValueOrCreateConstantIndexOp`.
-    fn value_of(&mut self, o: Ofr) -> ValueId {
+    pub(crate) fn value_of(&mut self, o: Ofr) -> ValueId {
         match o {
             Ofr::V(v) => v,
             Ofr::C(c) => {

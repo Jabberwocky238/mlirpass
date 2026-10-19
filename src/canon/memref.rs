@@ -145,8 +145,8 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
             None => Fold::Failed,
         },
         "memref.reinterpret_cast" => fold_reinterpret_cast(b, op),
-        "memref.expand_shape" => fold_reshape(b, op, "memref.collapse_shape"),
-        "memref.collapse_shape" => fold_reshape(b, op, "memref.expand_shape"),
+        "memref.expand_shape" => b.fold_reshape(op, "memref.collapse_shape", None),
+        "memref.collapse_shape" => b.fold_reshape(op, "memref.expand_shape", None),
         "memref.subview" => fold_subview(b, op),
         "memref.view" => {
             let (src, res) = (b[op].operands[0], b[op].results[0]);
@@ -225,32 +225,6 @@ fn fold_reinterpret_cast<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let static_shape = b.dims_of(res).is_some_and(|d| !d.contains(&DYNAMIC));
     if static_shape && b[src].ty == b[res].ty && b.dense_i64(op, "static_offsets").first() == Some(&0) {
         return Folded::Value(src).into();
-    }
-    Fold::Failed
-}
-
-/// `foldReshapeOp<ReshapeOp, InverseReshapeOp>`.
-fn fold_reshape<'a>(b: &mut Body<'a>, op: OpId, inverse: &str) -> Fold<'a> {
-    let (src, res) = (b[op].operands[0], b[op].results[0]);
-    if b[src].ty == b[res].ty {
-        return Folded::Value(src).into();
-    }
-    let Some(p) = b.def_named(src, inverse) else { return Fold::Failed };
-    let psrc = b[p].operands[0];
-    if b[psrc].ty != b[res].ty {
-        return Fold::Failed;
-    }
-    let dyn_count = b.dims_of(psrc).map_or(0, |d| d.iter().filter(|x| **x == DYNAMIC).count());
-    if dyn_count < 2 {
-        return Folded::Value(psrc).into();
-    }
-    if b[op].get("reassociation") != b[p].get("reassociation") {
-        return Fold::Failed;
-    }
-    let rank = |v: ValueId| crate::attr::shape_of(&b[v].ty).map_or(0, |s| s.len());
-    let (sr, pr) = (rank(psrc), rank(b[p].results[0]));
-    if sr < pr {
-        return Folded::Value(psrc).into();
     }
     Fold::Failed
 }

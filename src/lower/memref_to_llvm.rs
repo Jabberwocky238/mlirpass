@@ -66,7 +66,7 @@ impl MemrefToLlvm {
     }
 
     /// `MemRefLayoutAttrInterface::isIdentity`: no layout, `strided<[1]>`, or `(d0, ...) -> (d0, ...)`.
-    pub(super) fn identity_layout(s: &Shaped<'_>) -> bool {
+    pub fn identity_layout(s: &Shaped<'_>) -> bool {
         s.extras.iter().all(|a| match a {
             Attribute::Builtin { name, body, .. } if name == "strided" => {
                 let inner: String = body.chars().filter(|c| !c.is_whitespace()).collect();
