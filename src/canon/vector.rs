@@ -1118,20 +1118,9 @@ impl<'a> Folder<'_, 'a> {
         if changed { Fold::InPlace } else { Fold::Failed }
     }
 
-    /// `memref::foldMemRefCast`: a `memref.cast` to a less static type folds away.
+    /// `memref::foldMemRefCast`.
     fn memref_cast(&mut self) -> Fold<'a> {
-        let op = self.op;
-        let mut changed = false;
-        for i in 0..self.b[op].operands.len() {
-            let v = self.b[op].operands[i];
-            let Some(cast) = self.b.def_named(v, "memref.cast") else { continue };
-            let src = self.b[cast].operands[0];
-            if crate::canon::memref_cast_foldable(&self.b[src].ty, &self.b[v].ty) {
-                self.b.set_operand(op, i, src);
-                changed = true;
-            }
-        }
-        if changed { Fold::InPlace } else { Fold::Failed }
+        if self.b.fold_memref_cast(self.op, None) { Fold::InPlace } else { Fold::Failed }
     }
 }
 

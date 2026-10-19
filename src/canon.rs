@@ -4,6 +4,7 @@
 mod affine;
 mod arith;
 mod cf;
+mod memref;
 mod scf;
 mod vector;
 
@@ -163,6 +164,7 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("arith") => arith::Folder { b: body, op, c: consts }.fold(),
         Some("scf") => scf::fold(body, op),
         Some("affine") => affine::fold(body, op),
+        Some("memref") => memref::fold(body, op),
         Some("vector") => vector::Folder { b: body, op, c: consts }.fold(),
         _ => Fold::Failed,
     }
@@ -173,6 +175,7 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
     match ns {
         "arith" => arith::materialize(value, ty),
         "affine" => affine::materialize(value, ty),
+        "memref" => memref::materialize(value, ty),
         "vector" => vector::materialize(value, ty),
         "ub" => crate::is_poison(value).then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,
