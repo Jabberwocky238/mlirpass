@@ -49,6 +49,7 @@ macro_rules! rewrites {
 pub(crate) use rewrites;
 pub use affine::map_attr;
 pub use memref::Ofr as MemrefOfr;
+pub use reshape::Reshape;
 
 /// Constructors for the attributes ops carry.
 pub trait AttrExt<'a>: Sized {

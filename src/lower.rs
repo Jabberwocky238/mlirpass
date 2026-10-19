@@ -15,6 +15,7 @@ mod memref_desc;
 mod memref_to_emitc;
 mod memref_to_llvm;
 mod scf_to_emitc;
+mod tosa_to_tensor;
 mod vector_to_llvm;
 mod vector_to_scf;
 mod vector_transforms;
@@ -46,6 +47,7 @@ pub use memref_to_emitc::MemrefToEmitc;
 pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
 pub use scf_to_emitc::ScfToEmitc;
 pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
+pub use tosa_to_tensor::TosaToTensor;
 pub use vector_to_scf::{ConvertVectorToScf, VectorToScfOptions};
 pub use vector_transforms::{Build, transfer_read_to_load, transfer_write_to_store};
 
@@ -890,6 +892,33 @@ impl Pass for ConvertComplexToStandard {
         ComplexToStd::populate(&mut patterns, self.improved);
         let mut target = ConversionTarget::default();
         target.legal_dialect("arith").legal_dialect("math").legal_op("complex.create").legal_op("complex.im").legal_op("complex.re");
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}
+
+/// `tosa-to-tensor`.
+pub struct TosaToTensorPass;
+
+impl TryFrom<&Options<'_>> for TosaToTensorPass {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("tosa-to-tensor", &[])?;
+        Ok(Self)
+    }
+}
+
+impl Pass for TosaToTensorPass {
+    fn name(&self) -> &str {
+        "tosa-to-tensor"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let tc = TosaToTensor::converter();
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        TosaToTensor::populate(&mut patterns, i);
+        let mut target = ConversionTarget::default();
+        target.illegal_op("tosa.concat").illegal_op("tosa.reshape").illegal_op("tosa.slice").illegal_op("tosa.pad").legal_dialect("arith").legal_dialect("tensor");
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
 }

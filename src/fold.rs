@@ -69,6 +69,7 @@ impl<'a> Body<'a> {
             "llvm.mlir.poison" => Some(ext("llvm.poison")),
             "shape.const_shape" => d.get("shape").cloned(),
             "shape.const_witness" => d.get("passing").cloned(),
+            "tosa.const" | "tosa.const_shape" => d.get("values").cloned(),
             _ => d.get("value").cloned(),
         }
     }
