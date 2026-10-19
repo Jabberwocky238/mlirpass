@@ -781,6 +781,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     match &*b[op].name {
         "affine.apply" => fold_apply(b, op),
         "affine.delinearize_index" => fold_delinearize(b, op),
+        "affine.min" | "affine.max" => fold_min_max(b, op),
         "affine.linearize_index" => fold_linearize(b, op),
         _ => Fold::Failed,
     }
@@ -804,6 +805,105 @@ fn fold_apply<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         Ok(Some(r)) => Folded::Attr(index_attr(r[0])).into(),
         Ok(None) => Fold::Failed,
     }
+}
+
+/// `foldMinMaxOp`.
+fn fold_min_max<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
+    let Some(map) = b.affine_map(op, "map") else { return Fold::Failed };
+    let consts: Vec<Option<i64>> = b[op].operands.iter().map(|v| b.const_index(*v)).collect();
+    let mut folded = map.clone();
+    let mut results = Some(Vec::new());
+    for r in &mut folded.results {
+        match r.const_eval(map.dims, &consts).ok().flatten() {
+            Some(c) => {
+                *r = AffineExpr::Const(c);
+                if let Some(v) = &mut results {
+                    v.push(c);
+                }
+            }
+            None => results = None,
+        }
+    }
+    if folded.syms == 1 && folded.results == [AffineExpr::Sym(0)] {
+        return Folded::Value(b[op].operands[0]).into();
+    }
+    let Some(results) = results.filter(|r| !r.is_empty()) else {
+        if folded == map {
+            return Fold::Failed;
+        }
+        b[op].set("map", map_attr(&folded));
+        return Fold::InPlace;
+    };
+    let v = if b[op].name == "affine.min" { results.iter().min() } else { results.iter().max() };
+    Folded::Attr(index_attr(*v.expect("non-empty"))).into()
+}
+
+/// `canonicalizeMapExprAndTermOrder`: results sorted by their flattened forms.
+fn sort_min_max_terms(map: &AffineMap) -> Option<AffineMap> {
+    let mut flat = Vec::new();
+    for r in &map.results {
+        if !r.is_pure_affine() {
+            return None;
+        }
+        let (f, locals) = r.flatten(map.dims, map.syms)?;
+        if locals != 0 {
+            return None;
+        }
+        flat.push(f);
+    }
+    if flat.windows(2).all(|w| w[0] <= w[1]) {
+        return None;
+    }
+    let mut perm: Vec<usize> = (0..map.results.len()).collect();
+    perm.sort_by(|a, b| flat[*a].cmp(&flat[*b]));
+    Some(AffineMap { results: perm.into_iter().map(|i| map.results[i].clone()).collect(), ..map.clone() })
+}
+
+fn replace_min_max(rw: &mut crate::Rewriter<'_, '_>, op: OpId, name: &str, map: &AffineMap, operands: &[ValueId]) -> bool {
+    rw.replace_with(op, OpData::build(name).operands(operands).with("map", map_attr(map)), &[Type::Index]);
+    true
+}
+
+/// `MergeAffineMinMaxOp`: a min (max) of a min (max) flattens.
+fn merge_min_max(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
+    let b = &*rw.body;
+    let name = b[op].name.clone();
+    let Some(old) = b.affine_map(op, "map") else { return false };
+    let ops = &b[op].operands;
+    let (dims, syms) = (&ops[..old.dims as usize], &ops[old.dims as usize..]);
+    let (mut nd, mut ns) = (dims.to_vec(), syms.to_vec());
+    let mut exprs = Vec::new();
+    let mut producers = Vec::new();
+    for e in &old.results {
+        let v = match e {
+            AffineExpr::Sym(p) => Some(syms[*p as usize]),
+            AffineExpr::Dim(p) => Some(dims[*p as usize]),
+            _ => None,
+        };
+        if let Some(p) = v.and_then(|v| b.def_named(v, &name)) {
+            producers.push(p);
+            continue;
+        }
+        exprs.push(e.clone());
+    }
+    if producers.is_empty() {
+        return false;
+    }
+    let (mut used_d, mut used_s) = (old.dims, old.syms);
+    for p in producers {
+        let Some(pm) = b.affine_map(p, "map") else { return false };
+        let pops = &b[p].operands;
+        nd.extend(&pops[..pm.dims as usize]);
+        ns.extend(&pops[pm.dims as usize..]);
+        let dr: Vec<AffineExpr> = (0..pm.dims).map(|d| AffineExpr::Dim(d + used_d)).collect();
+        let sr: Vec<AffineExpr> = (0..pm.syms).map(|s| AffineExpr::Sym(s + used_s)).collect();
+        exprs.extend(pm.results.iter().map(|r| r.replace(&dr, &sr)));
+        used_d += pm.dims;
+        used_s += pm.syms;
+    }
+    let map = AffineMap { dims: used_d, syms: used_s, results: exprs };
+    nd.extend(ns);
+    replace_min_max(rw, op, &name, &map, &nd)
 }
 
 /// An `OpFoldResult` of a basis: a constant, a value, or nothing (no outer bound).
@@ -1318,6 +1418,27 @@ super::rewrites! {
         true
     }
 
+    /// `CanonicalizeSingleResultAffineMinMaxOp<AffineMinOp>`.
+    SingleResultAffineMin("affine.min", 1) |rw, op| { single_result_min_max(rw, op) }
+    /// `DeduplicateAffineMinMaxExpressions<AffineMinOp>`.
+    DeduplicateAffineMin("affine.min", 1) |rw, op| { dedup_min_max(rw, op) }
+    /// `MergeAffineMinMaxOp<AffineMinOp>`.
+    MergeAffineMin("affine.min", 1) |rw, op| { merge_min_max(rw, op) }
+    /// `SimplifyAffineOp<AffineMinOp>`.
+    SimplifyAffineMin("affine.min", 1) |rw, op| { simplify_affine_op(rw, op) }
+    /// `CanonicalizeAffineMinMaxOpExprAndTermOrder<AffineMinOp>`.
+    OrderAffineMin("affine.min", 1) |rw, op| { order_min_max(rw, op) }
+    /// `CanonicalizeSingleResultAffineMinMaxOp<AffineMaxOp>`.
+    SingleResultAffineMax("affine.max", 1) |rw, op| { single_result_min_max(rw, op) }
+    /// `DeduplicateAffineMinMaxExpressions<AffineMaxOp>`.
+    DeduplicateAffineMax("affine.max", 1) |rw, op| { dedup_min_max(rw, op) }
+    /// `MergeAffineMinMaxOp<AffineMaxOp>`.
+    MergeAffineMax("affine.max", 1) |rw, op| { merge_min_max(rw, op) }
+    /// `SimplifyAffineOp<AffineMaxOp>`.
+    SimplifyAffineMax("affine.max", 1) |rw, op| { simplify_affine_op(rw, op) }
+    /// `CanonicalizeAffineMinMaxOpExprAndTermOrder<AffineMaxOp>`.
+    OrderAffineMax("affine.max", 1) |rw, op| { order_min_max(rw, op) }
+
     /// `SimplifyAffineOp<AffineApplyOp>`.
     SimplifyAffineApply("affine.apply", 1) |rw, op| { simplify_affine_op(rw, op) }
     /// `SimplifyAffineOp<AffineLoadOp>`.
@@ -1332,9 +1453,49 @@ super::rewrites! {
     SimplifyAffinePrefetch("affine.prefetch", 1) |rw, op| { simplify_affine_op(rw, op) }
 }
 
+fn single_result_min_max(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
+    let b = &*rw.body;
+    let Some(map) = b.affine_map(op, "map").filter(|m| m.results.len() == 1) else { return false };
+    let ops = b[op].operands.clone();
+    replace_min_max(rw, op, "affine.apply", &map, &ops)
+}
+
+fn dedup_min_max(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
+    let b = &*rw.body;
+    let Some(map) = b.affine_map(op, "map") else { return false };
+    let mut exprs: Vec<AffineExpr> = Vec::new();
+    for e in &map.results {
+        if !exprs.contains(e) {
+            exprs.push(e.clone());
+        }
+    }
+    if exprs.len() == map.results.len() {
+        return false;
+    }
+    let (name, ops) = (b[op].name.clone(), b[op].operands.clone());
+    replace_min_max(rw, op, &name, &AffineMap { results: exprs, ..map }, &ops)
+}
+
+fn order_min_max(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
+    let b = &*rw.body;
+    let Some(map) = b.affine_map(op, "map").and_then(|m| sort_min_max_terms(&m)) else { return false };
+    let (name, ops) = (b[op].name.clone(), b[op].operands.clone());
+    replace_min_max(rw, op, &name, &map, &ops)
+}
+
 /// The affine dialect's canonicalization patterns.
 pub fn patterns(set: &mut crate::PatternSet) {
     set.add(SimplifyAffineApply);
+    set.add(SingleResultAffineMin);
+    set.add(DeduplicateAffineMin);
+    set.add(MergeAffineMin);
+    set.add(SimplifyAffineMin);
+    set.add(OrderAffineMin);
+    set.add(SingleResultAffineMax);
+    set.add(DeduplicateAffineMax);
+    set.add(MergeAffineMax);
+    set.add(SimplifyAffineMax);
+    set.add(OrderAffineMax);
     set.add(CancelDelinearizeOfLinearizeDisjointExactTail);
     set.add(DropUnitExtentBasis);
     set.add(SplitDelinearizeSpanningLastLinearizeArg);
