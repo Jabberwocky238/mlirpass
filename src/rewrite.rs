@@ -101,6 +101,50 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.insert(op)
     }
 
+    /// `createOrFold`: builds an op at the insertion point and folds it; when the fold yields
+    /// values (constants materialized in its place) the op goes again, unannounced.
+    pub fn create_or_fold(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> Vec<ValueId> {
+        let op = self.body.create(data, types);
+        let ip = self.ip.expect("no insertion point");
+        match ip.before {
+            Some(b) => self.body.insert_before(op, b),
+            None => self.body.insert(op, ip.block, None),
+        }
+        if let crate::Fold::Results(folded) = self.body.fold(op) {
+            let name = alloc::string::String::from(&*self.body[op].name);
+            let mut out = Vec::new();
+            let mut constants = Vec::new();
+            let mut ok = true;
+            for (f, r) in folded.into_iter().zip(self.body[op].results.clone()) {
+                match f {
+                    crate::Folded::Value(v) => out.push(v),
+                    crate::Folded::Attr(a) => {
+                        let ty = self.body[r].ty.clone();
+                        match self.body.materialize(&name, &a, &ty) {
+                            Some(d) => {
+                                let loc = self.body[op].loc.clone();
+                                let c = self.body.create(OpData { loc, ..d }, &[ty]);
+                                out.push(self.body[c].results[0]);
+                                constants.push(c);
+                            }
+                            None => ok = false,
+                        }
+                    }
+                }
+            }
+            if ok && !out.is_empty() {
+                for c in constants {
+                    self.body.insert_before(c, op);
+                    self.listener.inserted(self.body, c);
+                }
+                self.body.erase(op);
+                return out;
+            }
+        }
+        self.listener.inserted(self.body, op);
+        self.body[op].results.clone()
+    }
+
     /// Builds an op with regions: `regions` fills them (on the body) before it is inserted, so
     /// the listener hears about the op once, whole.
     pub fn create_with(&mut self, data: OpData<'a>, types: &[Type<'a>], regions: impl FnOnce(&mut Body<'a>, OpId)) -> OpId {

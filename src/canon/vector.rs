@@ -1027,3 +1027,1133 @@ impl<'a> Body<'a> {
 pub fn vector_type<'a>(shape: &[i64], scalable: &[bool], elem: Type<'a>) -> Type<'a> {
     Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(shape.iter().zip(scalable.iter().chain(core::iter::repeat(&false))).map(|(n, s)| if *s { Dim::Scalable(*n) } else { Dim::Static(*n) }).collect()), elem: elem.into(), extras: Vec::new() })
 }
+
+// ---- canonicalization patterns -----------------------------------------------------------
+
+/// `getConstantIntValue`: an integer `arith.constant` (or other constant) behind `v`.
+fn const_int(b: &Body<'_>, v: ValueId) -> Option<i64> {
+    let c = Const::try_from(&b.constant_of(v)?).ok().filter(|c| !c.elements)?;
+    Some(c.as_int()?.signed() as i64)
+}
+
+/// `getScalarSplatSource`: the scalar a `vector.broadcast` splats.
+fn splat_source(b: &Body<'_>, v: ValueId) -> Option<ValueId> {
+    let d = b.def_named(v, "vector.broadcast")?;
+    let s = b[d].operands[0];
+    vrank(&b[s].ty).is_none().then_some(s)
+}
+
+/// The `#vector.kind<...>` of an op.
+fn kind(b: &Body<'_>, op: OpId) -> Option<alloc::string::String> {
+    match b[op].get("kind")? {
+        Attribute::Extended { ext, .. } => Some(ext.body.as_deref()?.trim_matches(|c| c == '<' || c == '>').into()),
+        _ => None,
+    }
+}
+
+fn array_i64<'a>(v: &[i64]) -> Attribute<'a> {
+    Attribute::Array(v.iter().map(|x| Attribute::i64(*x)).collect())
+}
+
+fn dense_i64<'a>(v: &[i64]) -> Attribute<'a> {
+    Attribute::DenseArray { ty: Type::int(64), values: v.iter().map(|x| alloc::format!("{x}").into()).collect() }
+}
+
+fn i64_array(b: &Body<'_>, op: OpId, name: &str) -> Vec<i64> {
+    match b[op].get(name) {
+        Some(Attribute::Array(a)) => a.iter().filter_map(|x| if let Attribute::Int { lit, .. } = x { lit.parse().ok() } else { None }).collect(),
+        _ => Vec::new(),
+    }
+}
+
+impl<'a> crate::Rewriter<'_, 'a> {
+    /// `vector.extract %src[pos]`, its type inferred.
+    fn vextract(&mut self, src: ValueId, pos: &[i64]) -> ValueId {
+        let ty = self.body[src].ty.clone();
+        let (shape, scal) = vshape(&ty).expect("a vector");
+        let rt = if pos.len() == shape.len() { elem(&ty).clone() } else { vector_type(&shape[pos.len()..], &scal[pos.len()..], elem(&ty).clone()) };
+        let o = self.create(OpData::build("vector.extract").operands(&[src]).with("static_position", dense_i64(pos)), &[rt]);
+        self.body[o].results[0]
+    }
+
+    fn vextract_or_fold(&mut self, src: ValueId, pos: &[i64]) -> ValueId {
+        let ty = self.body[src].ty.clone();
+        let (shape, scal) = vshape(&ty).expect("a vector");
+        let rt = if pos.len() == shape.len() { elem(&ty).clone() } else { vector_type(&shape[pos.len()..], &scal[pos.len()..], elem(&ty).clone()) };
+        self.create_or_fold(OpData::build("vector.extract").operands(&[src]).with("static_position", dense_i64(pos)), &[rt])[0]
+    }
+
+    fn replace_unary(&mut self, op: OpId, name: &str, src: ValueId, ty: Type<'a>) -> bool {
+        self.replace_with(op, OpData::build(name).operands(&[src]), &[ty]);
+        true
+    }
+
+    /// `makeArithReduction`: `v1 kind acc`, selected against `acc` by `mask`.
+    fn arith_reduction(&mut self, kind: &str, v1: ValueId, acc: ValueId, fastmath: Option<Attribute<'a>>, mask: Option<ValueId>) -> ValueId {
+        let ty = self.body[v1].ty.clone();
+        let float = matches!(elem(&ty), Type::Float(_));
+        let name = match (kind, float) {
+            ("add", false) => "arith.addi",
+            ("add", true) => "arith.addf",
+            ("mul", false) => "arith.muli",
+            ("mul", true) => "arith.mulf",
+            ("and", _) => "arith.andi",
+            ("or", _) => "arith.ori",
+            ("xor", _) => "arith.xori",
+            ("maxnumf", _) => "arith.maxnumf",
+            ("maximumf", _) => "arith.maximumf",
+            ("minnumf", _) => "arith.minnumf",
+            ("minimumf", _) => "arith.minimumf",
+            ("maxsi", _) => "arith.maxsi",
+            ("minsi", _) => "arith.minsi",
+            ("maxui", _) => "arith.maxui",
+            _ => "arith.minui",
+        };
+        let mut d = OpData::build(name).operands(&[v1, acc]);
+        if float && let Some(f) = fastmath {
+            d.set("fastmath", f);
+        }
+        let r = self.create_or_fold(d, &[ty.clone()])[0];
+        match mask {
+            Some(m) => self.create_or_fold(OpData::build("arith.select").operands(&[m, r, acc]), &[ty])[0],
+            None => r,
+        }
+    }
+}
+
+/// The `vector.mask` around `op`, if it is the maskable op of one.
+fn masking_op(b: &Body<'_>, op: OpId) -> Option<OpId> {
+    let p = b.parent_op(op)?;
+    (b[p].name == "vector.mask").then_some(p)
+}
+
+super::rewrites! {
+    /// `ElideUnitDimsInMultiDimReduction`.
+    ElideUnitDimsInMultiDimReduction("vector.multi_reduction", 1) |rw, op| {
+        let b = &*rw.body;
+        let (shape, _) = vshape(&b.operand_ty(op, 0)).unwrap_or_default();
+        let reduced = b.dense_array(op, "reduction_dims");
+        if shape.iter().enumerate().any(|(i, d)| reduced.contains(&(i as i64)) && *d != 1) {
+            return false;
+        }
+        let Some(k) = kind(b, op) else { return false };
+        let mask_op = masking_op(b, op);
+        let root = mask_op.unwrap_or(op);
+        let mask = mask_op.map(|m| b[m].operands[0]);
+        let (src, acc) = (b[op].operands[0], b[op].operands[1]);
+        let dt = b.result_ty(op);
+        rw.set_before(root);
+        let (cast, mask) = if let Some((ds, dsc)) = vshape(&dt) {
+            let mask = mask.map(|m| {
+                let mt = vector_type(&ds, &dsc, Type::int(1));
+                let o = rw.create(OpData::build("vector.shape_cast").operands(&[m]), &[mt]);
+                rw.body[o].results[0]
+            });
+            let o = rw.create(OpData::build("vector.shape_cast").operands(&[src]), &[dt]);
+            (rw.body[o].results[0], mask)
+        } else {
+            let mask = mask.map(|m| {
+                let r = vrank(&rw.body[m].ty).unwrap_or(0);
+                rw.vextract(m, &vec![0; r])
+            });
+            let r = vrank(&rw.body[src].ty).unwrap_or(0);
+            (rw.vextract(src, &vec![0; r]), mask)
+        };
+        let r = rw.arith_reduction(&k, acc, cast, None, mask);
+        rw.replace_op(root, &[r]);
+        true
+    }
+
+    /// `ElideSingleElementReduction`.
+    ElideSingleElementReduction("vector.reduction", 1) |rw, op| {
+        let b = &*rw.body;
+        let (shape, _) = vshape(&b.operand_ty(op, 0)).unwrap_or_default();
+        if !shape.is_empty() && shape[0] != 1 {
+            return false;
+        }
+        let Some(k) = kind(b, op) else { return false };
+        let mask_op = masking_op(b, op);
+        let root = mask_op.unwrap_or(op);
+        let mask = mask_op.map(|m| b[m].operands[0]);
+        let v = b[op].operands[0];
+        let acc = b[op].operands.get(1).copied();
+        let fm = b[op].get("fastmath").cloned();
+        rw.set_before(root);
+        let mask = mask.map(|m| {
+            let r = vrank(&rw.body[m].ty).unwrap_or(0);
+            rw.vextract(m, &vec![0; r])
+        });
+        let r = vrank(&rw.body[v].ty).unwrap_or(0);
+        let mut result = rw.vextract(v, &vec![0; r]);
+        if let Some(a) = acc {
+            result = rw.arith_reduction(&k, result, a, fm, mask);
+        }
+        rw.replace_op(root, &[result]);
+        true
+    }
+
+    /// `ExtractOpFromBroadcast`.
+    ExtractOpFromBroadcast("vector.extract", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(def) = b.def_op(b[op].operands[0]).filter(|d| b.broadcast_like(*d)) else { return false };
+        let rt = b.result_ty(op);
+        if vrank(&rt).is_none() {
+            return false;
+        }
+        let src = b[def].operands[0];
+        if !broadcastable(&b[src].ty, &rt) {
+            return false;
+        }
+        rw.replace_unary(op, "vector.broadcast", src, rt)
+    }
+
+    /// `ExtractOpFromCreateMask`.
+    ExtractOpFromCreateMask("vector.extract", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(cm) = b.def_named(b[op].operands[0], "vector.create_mask") else { return false };
+        let rt = b.result_ty(op);
+        if vrank(&rt).is_none() {
+            return false;
+        }
+        let operands = b[cm].operands.clone();
+        let pos = b.static_position(op);
+        let (mshape, _) = vshape(&b.result_ty(cm)).unwrap_or_default();
+        let mut unknown = false;
+        let mut all_false = b.mask_format(b[op].operands[0]) == Some(false);
+        let mut i = 0;
+        while !all_false && i < pos.len() {
+            let Some(bound) = b.def_named(operands[i], "arith.constant").and_then(|c| const_int(b, b[c].results[0])) else {
+                unknown = true;
+                i += 1;
+                continue;
+            };
+            if pos[i] != DYNAMIC {
+                all_false |= pos[i] >= bound;
+            } else if bound < mshape[i] {
+                unknown = true;
+            }
+            i += 1;
+        }
+        if all_false {
+            let c: Attribute = Const::splat(Scalar::Int(ApInt::new(1, 0)), rt.clone()).into();
+            rw.replace_with(op, OpData::build("arith.constant").with("value", c), &[rt]);
+        } else if !unknown {
+            rw.replace_with(op, OpData::build("vector.create_mask").operands(&operands[pos.len()..]), &[rt]);
+        } else {
+            return false;
+        }
+        true
+    }
+
+    /// `foldExtractFromShapeCastToShapeCast`.
+    ExtractFromShapeCastToShapeCast("vector.extract", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(sc) = b.def_named(b[op].operands[0], "vector.shape_cast") else { return false };
+        let rt = b.result_ty(op);
+        let (Some((ts, _)), Some((ss, _))) = (vshape(&rt), vshape(&b.operand_ty(sc, 0))) else { return false };
+        if ts.iter().product::<i64>() != ss.iter().product::<i64>() {
+            return false;
+        }
+        let s = b[sc].operands[0];
+        rw.replace_unary(op, "vector.shape_cast", s, rt)
+    }
+
+    /// `foldExtractFromFromElements`.
+    ExtractFromFromElements("vector.extract", 1) |rw, op| {
+        let b = &*rw.body;
+        if b.has_dynamic_position(op) {
+            return false;
+        }
+        let rt = b.result_ty(op);
+        let Some((rs, rsc)) = vshape(&rt) else { return false };
+        let Some(fe) = b.def_named(b[op].operands[0], "vector.from_elements") else { return false };
+        let Some((is, isc)) = vshape(&b.result_ty(fe)) else { return false };
+        if rsc.contains(&true) || isc.contains(&true) {
+            return false;
+        }
+        let mut first = b.static_position(op);
+        first.extend(core::iter::repeat_n(0, rs.len()));
+        let flat = linearize(&first, &strides(&is)) as usize;
+        let n: i64 = rs.iter().product();
+        let elems = b[fe].operands[flat..flat + n as usize].to_vec();
+        rw.replace_with(op, OpData::build("vector.from_elements").operands(&elems), &[rt]);
+        true
+    }
+
+    /// `ToElementsOfBroadcast`.
+    ToElementsOfBroadcast("vector.to_elements", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(bc) = b.def_named(b[op].operands[0], "vector.broadcast") else { return false };
+        let src = b[bc].operands[0];
+        let Some((ss, _)) = vshape(&b[src].ty) else { return false };
+        let Some((ds, _)) = vshape(&b.operand_ty(op, 0)) else { return false };
+        let et = elem(&b[src].ty).clone();
+        let n: i64 = ss.iter().product();
+        rw.set_before(op);
+        let o = rw.create(OpData::build("vector.to_elements").operands(&[src]), &vec![et; n as usize]);
+        let elems = rw.body[o].results.clone();
+        let (dst_st, src_st) = (strides(&ds), strides(&ss));
+        let count: i64 = ds.iter().product();
+        let mut repl = Vec::new();
+        for lin in 0..count {
+            let mut rest = lin;
+            let idx: Vec<i64> = dst_st.iter().map(|s| { let q = rest / s; rest %= s; q }).collect();
+            let si: Vec<i64> = (0..ss.len()).map(|k| if ss[k] == 1 { 0 } else { idx[ds.len() - ss.len() + k] }).collect();
+            repl.push(elems[linearize(&si, &src_st) as usize]);
+        }
+        rw.replace_op(op, &repl);
+        true
+    }
+
+    /// `rewriteFromElementsAsBroadcast`.
+    FromElementsAsBroadcast("vector.from_elements", 1) |rw, op| {
+        let b = &*rw.body;
+        let e = &b[op].operands;
+        if e.is_empty() || !e.iter().all(|v| *v == e[0]) {
+            return false;
+        }
+        let (s, rt) = (e[0], b.result_ty(op));
+        rw.replace_unary(op, "vector.broadcast", s, rt)
+    }
+
+    /// `FromElementsToShapeCast`.
+    FromElementsToShapeCast("vector.from_elements", 1) |rw, op| {
+        let b = &*rw.body;
+        let rt = b.result_ty(op);
+        let Some((rs, _)) = vshape(&rt) else { return false };
+        let num: i64 = rs.iter().product();
+        if num == 1 {
+            return false;
+        }
+        let mut source = None;
+        let mut combined = Vec::new();
+        let mut expected = Vec::new();
+        for (i, e) in b[op].operands.iter().enumerate() {
+            let Some(ex) = b.def_named(*e, "vector.extract") else { return false };
+            let src = b[ex].operands[0];
+            if i == 0 {
+                source = Some(src);
+            } else if Some(src) != source {
+                return false;
+            }
+            let pos = b.static_position(ex);
+            let (shape, _) = vshape(&b[src].ty).unwrap_or_default();
+            if i == 0 {
+                let mut suffix = 1;
+                let mut index = pos.len();
+                while index > 0 && pos[index - 1] == 0 && suffix < num {
+                    suffix *= shape[index - 1];
+                    index -= 1;
+                }
+                if suffix != num {
+                    return false;
+                }
+                expected = pos.clone();
+                combined = pos[..index].to_vec();
+            } else if expected != pos {
+                return false;
+            }
+            for d in (0..expected.len()).rev() {
+                expected[d] += 1;
+                if expected[d] < shape[d] {
+                    break;
+                }
+                expected[d] = 0;
+            }
+        }
+        let Some(source) = source else { return false };
+        rw.set_before(op);
+        let x = rw.vextract_or_fold(source, &combined);
+        rw.replace_unary(op, "vector.shape_cast", x, rt)
+    }
+
+    /// `BroadcastFolder`.
+    BroadcastFolder("vector.broadcast", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(inner) = b.def_named(b[op].operands[0], "vector.broadcast") else { return false };
+        let (s, rt) = (b[inner].operands[0], b.result_ty(op));
+        rw.replace_unary(op, "vector.broadcast", s, rt)
+    }
+
+    /// `ShuffleSplat`.
+    ShuffleSplat("vector.shuffle", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(s) = splat_source(b, b[op].operands[0]) else { return false };
+        if splat_source(b, b[op].operands[1]) != Some(s) {
+            return false;
+        }
+        let rt = b.result_ty(op);
+        rw.replace_unary(op, "vector.broadcast", s, rt)
+    }
+
+    /// `ShuffleInterleave`.
+    ShuffleInterleave("vector.shuffle", 1) |rw, op| {
+        let b = &*rw.body;
+        let rt = b.result_ty(op);
+        let Some((rs, rsc)) = vshape(&rt) else { return false };
+        if rsc.contains(&true) || rs.len() != 1 {
+            return false;
+        }
+        let (t1, t2) = (b.operand_ty(op, 0), b.operand_ty(op, 1));
+        let n1: i64 = vshape(&t1).map_or(1, |s| s.0.iter().product());
+        if t1 != t2 || n1 * 2 != rs[0] {
+            return false;
+        }
+        let mask = b.dense_array(op, "mask");
+        let half = rs[0] / 2;
+        if (0..half).any(|i| mask[2 * i as usize] != i || mask[2 * i as usize + 1] != half + i) {
+            return false;
+        }
+        let (a, c) = (b[op].operands[0], b[op].operands[1]);
+        rw.replace_with(op, OpData::build("vector.interleave").operands(&[a, c]), &[rt]);
+        true
+    }
+
+    /// `Canonicalize0DShuffleOp`.
+    Canonicalize0DShuffleOp("vector.shuffle", 1) |rw, op| {
+        let b = &*rw.body;
+        let t1 = b.operand_ty(op, 0);
+        let mask = b.dense_array(op, "mask");
+        if vrank(&t1) != Some(0) || mask.len() != 1 {
+            return false;
+        }
+        let rt = vector_type(&[1], &[false], elem(&t1).clone());
+        let src = if mask[0] == 0 { b[op].operands[0] } else { b[op].operands[1] };
+        rw.replace_unary(op, "vector.broadcast", src, rt)
+    }
+
+    /// `InsertToBroadcast`.
+    InsertToBroadcast("vector.insert", 1) |rw, op| {
+        let b = &*rw.body;
+        let vt = b.operand_ty(op, 0);
+        let Some((vs, _)) = vshape(&vt) else { return false };
+        let dt = b.operand_ty(op, 1);
+        let dn: i64 = vshape(&dt).map_or(1, |s| s.0.iter().product());
+        if dn != vs.iter().product::<i64>() {
+            return false;
+        }
+        let v = b[op].operands[0];
+        rw.replace_unary(op, "vector.broadcast", v, dt)
+    }
+
+    /// `InsertSplatToSplat`.
+    InsertSplatToSplat("vector.insert", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(s) = splat_source(b, b[op].operands[0]) else { return false };
+        if splat_source(b, b[op].operands[1]) != Some(s) {
+            return false;
+        }
+        let rt = b.result_ty(op);
+        rw.replace_unary(op, "vector.broadcast", s, rt)
+    }
+
+    /// `InsertChainFullyInitialized`.
+    InsertChainFullyInitialized("vector.insert", 1) |rw, op| {
+        let b = &*rw.body;
+        let dt = b.operand_ty(op, 1);
+        let Some((ds, dsc)) = vshape(&dt) else { return false };
+        if dsc.contains(&true) {
+            return false;
+        }
+        let r = b[op].results[0];
+        if b[r].uses.iter().any(|u| b[u.op].name == "vector.insert" && u.index == 1) {
+            return false;
+        }
+        let mut chain = Vec::new();
+        let mut current = Some(op);
+        while let Some(c) = current {
+            if b.has_dynamic_position(c) {
+                return false;
+            }
+            chain.push(c);
+            current = b.def_named(b[c].operands[1], "vector.insert");
+            if let Some(n) = current && b[b[n].results[0]].uses.len() != 1 {
+                return false;
+            }
+        }
+        let size: i64 = ds.iter().product();
+        let st = strides(&ds);
+        let mut init = vec![false; size as usize];
+        let mut count = 0;
+        let mut pending = Vec::new();
+        for c in chain {
+            let pos = b.static_position(c);
+            if pos.contains(&POISON) {
+                return false;
+            }
+            let mut full = vec![0; ds.len()];
+            full[..pos.len()].copy_from_slice(&pos);
+            let begin = linearize(&full, &st);
+            let v = b[c].operands[0];
+            let n: i64 = vshape(&b[v].ty).map_or(1, |s| s.0.iter().product());
+            for i in begin..begin + n {
+                if !init[i as usize] {
+                    init[i as usize] = true;
+                    count += 1;
+                }
+            }
+            pending.push((begin, n, v));
+            if count == size {
+                break;
+            }
+        }
+        if count != size {
+            return false;
+        }
+        let mut elements = vec![None; size as usize];
+        rw.set_before(op);
+        for (begin, n, v) in pending.into_iter().rev() {
+            let vt = rw.body[v].ty.clone();
+            if vrank(&vt).is_none() {
+                elements[begin as usize] = Some(v);
+                continue;
+            }
+            let o = rw.create(OpData::build("vector.to_elements").operands(&[v]), &vec![elem(&vt).clone(); n as usize]);
+            for (i, e) in rw.body[o].results.clone().into_iter().enumerate() {
+                elements[begin as usize + i] = Some(e);
+            }
+        }
+        let elements: Vec<ValueId> = elements.into_iter().map(|e| e.expect("fully initialized")).collect();
+        rw.replace_with(op, OpData::build("vector.from_elements").operands(&elements), &[dt]);
+        true
+    }
+
+    /// `FoldInsertStridedSliceSplat`.
+    FoldInsertStridedSliceSplat("vector.insert_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let dst = b[op].operands[1];
+        let Some(s) = splat_source(b, b[op].operands[0]) else { return false };
+        if splat_source(b, dst) != Some(s) {
+            return false;
+        }
+        rw.replace_op(op, &[dst]);
+        true
+    }
+
+    /// `FoldInsertStridedSliceOfExtract`.
+    FoldInsertStridedSliceOfExtract("vector.insert_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(es) = b.def_named(b[op].operands[0], "vector.extract_strided_slice") else { return false };
+        let dst = b[op].operands[1];
+        if b[es].operands[0] != dst || b[es].get("strides") != b[op].get("strides") || b[es].get("offsets") != b[op].get("offsets") {
+            return false;
+        }
+        rw.replace_op(op, &[dst]);
+        true
+    }
+
+    /// `InsertStridedSliceConstantFolder`.
+    InsertStridedSliceConstantFolder("vector.insert_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let (src, dst) = (b[op].operands[0], b[op].operands[1]);
+        let (Some(da), Some(sa)) = (b.constant_of(dst), b.constant_of(src)) else { return false };
+        let dt = b[dst].ty.clone();
+        let Some((ds, dsc)) = vshape(&dt) else { return false };
+        if dsc.contains(&true) {
+            return false;
+        }
+        let dn: i64 = ds.iter().product();
+        if dn > 256 && b[dst].uses.len() != 1 {
+            return false;
+        }
+        if attr::is_poison(&da) || attr::is_poison(&sa) || i64_array(b, op, "strides").iter().any(|s| *s != 1) {
+            return false;
+        }
+        let (Ok(dc), Ok(sc)) = (Const::try_from(&da), Const::try_from(&sa)) else { return false };
+        let Some((ss, _)) = vshape(&b[src].ty) else { return false };
+        let rank_diff = ds.len() - ss.len();
+        let offsets = i64_array(b, op, "offsets");
+        let dst_st = strides(&ds);
+        let mut values: Vec<Scalar> = (0..dn as usize).map(|i| dc.values[if dc.is_splat() { 0 } else { i }]).collect();
+        let sn: i64 = ss.iter().product();
+        let mut pos = offsets.clone();
+        let mut k = 0usize;
+        loop {
+            values[linearize(&pos, &dst_st) as usize] = sc.values[if sc.is_splat() { 0 } else { k }];
+            k += 1;
+            if k as i64 >= sn {
+                break;
+            }
+            let mut d = pos.len();
+            loop {
+                if d == rank_diff {
+                    break;
+                }
+                d -= 1;
+                pos[d] += 1;
+                if pos[d] < ss[d - rank_diff] + offsets[d] {
+                    break;
+                }
+                pos[d] = offsets[d];
+            }
+        }
+        let c: Attribute = Const { ty: dt.clone(), values, elements: true }.into();
+        rw.replace_with(op, OpData::build("arith.constant").with("value", c), &[dt]);
+        true
+    }
+
+    /// `StridedSliceCreateMaskFolder`.
+    StridedSliceCreateMaskFolder("vector.extract_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(cm) = b.def_named(b[op].operands[0], "vector.create_mask") else { return false };
+        if i64_array(b, op, "strides").iter().any(|s| *s != 1) {
+            return false;
+        }
+        let sizes = b[cm].operands.clone();
+        let offsets = i64_array(b, op, "offsets");
+        let n = offsets.len().min(i64_array(b, op, "sizes").len()).min(sizes.len());
+        let rt = b.result_ty(op);
+        rw.set_before(op);
+        let mut new = Vec::new();
+        for i in 0..n {
+            let ty = rw.body[sizes[i]].ty.clone();
+            let c = rw.create(OpData::build("arith.constant").with("value", Attribute::Int { lit: alloc::format!("{}", offsets[i]).into(), ty: Some(ty.clone()) }), &[ty.clone()]);
+            let cv = rw.body[c].results[0];
+            let s = rw.create(OpData::build("arith.subi").operands(&[sizes[i], cv]), &[ty]);
+            new.push(rw.body[s].results[0]);
+        }
+        new.extend(&sizes[n..]);
+        rw.replace_with(op, OpData::build("vector.create_mask").operands(&new), &[rt]);
+        true
+    }
+
+    /// `StridedSliceConstantMaskFolder`.
+    StridedSliceConstantMaskFolder("vector.extract_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(cm) = b.def_named(b[op].operands[0], "vector.constant_mask") else { return false };
+        if i64_array(b, op, "strides").iter().any(|s| *s != 1) {
+            return false;
+        }
+        let dims = b.dense_array(cm, "mask_dim_sizes");
+        let (offsets, sizes) = (i64_array(b, op, "offsets"), i64_array(b, op, "sizes"));
+        let mut new: Vec<i64> = dims.iter().zip(offsets.iter().zip(&sizes)).map(|(m, (o, s))| 0.max((o + s).min(*m) - o)).collect();
+        new.extend(&dims[new.len()..]);
+        if new.contains(&0) {
+            new = vec![0; dims.len()];
+        }
+        let rt = b.result_ty(op);
+        rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", dense_i64(&new)), &[rt]);
+        true
+    }
+
+    /// `StridedSliceBroadcast`.
+    StridedSliceBroadcast("vector.extract_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(bc) = b.def_named(b[op].operands[0], "vector.broadcast") else { return false };
+        let src = b[bc].operands[0];
+        let (ss, ssc) = vshape(&b[src].ty).unwrap_or_default();
+        let rt = b.result_ty(op);
+        let Some((ds, _)) = vshape(&rt) else { return false };
+        let diff = ds.len() - ss.len();
+        let needs = (0..ss.len()).any(|i| ss[i] != 1 && ss[i] != ds[i + diff]);
+        let mut source = src;
+        if needs {
+            let mut offsets: Vec<i64> = i64_array(b, op, "offsets").into_iter().skip(diff).collect();
+            let mut sizes: Vec<i64> = i64_array(b, op, "sizes").into_iter().skip(diff).collect();
+            let st: Vec<i64> = i64_array(b, op, "strides").into_iter().skip(diff).collect();
+            for i in 0..ss.len() {
+                if ss[i] == 1 {
+                    offsets[i] = 0;
+                    sizes[i] = 1;
+                }
+            }
+            let mut shape = ss.clone();
+            shape[..sizes.len()].copy_from_slice(&sizes);
+            let t = vector_type(&shape, &ssc, elem(&b[src].ty).clone());
+            rw.set_before(op);
+            let o = rw.create(OpData::build("vector.extract_strided_slice").operands(&[src]).with("offsets", array_i64(&offsets)).with("sizes", array_i64(&sizes)).with("strides", array_i64(&st)), &[t]);
+            source = rw.body[o].results[0];
+        }
+        rw.replace_unary(op, "vector.broadcast", source, rt)
+    }
+
+    /// `StridedSliceSplat`.
+    StridedSliceSplat("vector.extract_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(s) = splat_source(b, b[op].operands[0]) else { return false };
+        let rt = b.result_ty(op);
+        rw.replace_unary(op, "vector.broadcast", s, rt)
+    }
+
+    /// `ContiguousExtractStridedSliceToExtract`.
+    ContiguousExtractStridedSliceToExtract("vector.extract_strided_slice", 1) |rw, op| {
+        let b = &*rw.body;
+        if i64_array(b, op, "strides").iter().any(|s| *s != 1) {
+            return false;
+        }
+        let src = b[op].operands[0];
+        let Some((ss, ssc)) = vshape(&b[src].ty) else { return false };
+        if ssc.contains(&true) || ss.is_empty() {
+            return false;
+        }
+        let sizes = i64_array(b, op, "sizes");
+        let mut n = sizes.len();
+        while n > 0 && sizes[n - 1] == ss[n - 1] {
+            n -= 1;
+        }
+        if n == 0 || (n == ss.len() && sizes.len() == ss.len()) || sizes[..n].iter().any(|s| *s != 1) {
+            return false;
+        }
+        while n + 1 < sizes.len() && sizes[n] == 1 {
+            n += 1;
+        }
+        let offsets = i64_array(b, op, "offsets");
+        let rt = b.result_ty(op);
+        rw.set_before(op);
+        let x = rw.vextract(src, &offsets[..n]);
+        rw.replace_unary(op, "vector.shape_cast", x, rt)
+    }
+
+    /// `MaskedLoadFolder`.
+    MaskedLoadFolder("vector.maskedload", 1) |rw, op| {
+        let b = &*rw.body;
+        let n = b[op].operands.len();
+        match b.mask_format(b[op].operands[n - 2]) {
+            Some(true) => {
+                let operands = b[op].operands[..n - 2].to_vec();
+                let rt = b.result_ty(op);
+                rw.replace_with(op, OpData::build("vector.load").operands(&operands), &[rt]);
+            }
+            Some(false) => {
+                let p = b[op].operands[n - 1];
+                rw.replace_op(op, &[p]);
+            }
+            None => return false,
+        }
+        true
+    }
+
+    /// `MaskedStoreFolder`.
+    MaskedStoreFolder("vector.maskedstore", 1) |rw, op| {
+        let b = &*rw.body;
+        let n = b[op].operands.len();
+        match b.mask_format(b[op].operands[n - 2]) {
+            Some(true) => {
+                let mut operands = vec![b[op].operands[n - 1]];
+                operands.extend(&b[op].operands[..n - 2]);
+                rw.replace_with(op, OpData::build("vector.store").operands(&operands), &[]);
+            }
+            Some(false) => rw.erase_op(op),
+            None => return false,
+        }
+        true
+    }
+
+    /// `ExpandLoadFolder`.
+    ExpandLoadFolder("vector.expandload", 1) |rw, op| {
+        let b = &*rw.body;
+        let n = b[op].operands.len();
+        match b.mask_format(b[op].operands[n - 2]) {
+            Some(true) => {
+                let operands = b[op].operands[..n - 2].to_vec();
+                let rt = b.result_ty(op);
+                rw.replace_with(op, OpData::build("vector.load").operands(&operands), &[rt]);
+            }
+            Some(false) => {
+                let p = b[op].operands[n - 1];
+                rw.replace_op(op, &[p]);
+            }
+            None => return false,
+        }
+        true
+    }
+
+    /// `CompressStoreFolder`.
+    CompressStoreFolder("vector.compressstore", 1) |rw, op| {
+        let b = &*rw.body;
+        let n = b[op].operands.len();
+        match b.mask_format(b[op].operands[n - 2]) {
+            Some(true) => {
+                let mut operands = vec![b[op].operands[n - 1]];
+                operands.extend(&b[op].operands[..n - 2]);
+                rw.replace_with(op, OpData::build("vector.store").operands(&operands), &[]);
+            }
+            Some(false) => rw.erase_op(op),
+            None => return false,
+        }
+        true
+    }
+
+    /// `GatherFolder`: an all-false gather is its pass-through.
+    GatherFolder("vector.gather", 1) |rw, op| {
+        let b = &*rw.body;
+        let n = b[op].operands.len();
+        if b.mask_format(b[op].operands[n - 2]) != Some(false) {
+            return false;
+        }
+        let p = b[op].operands[n - 1];
+        rw.replace_op(op, &[p]);
+        true
+    }
+
+    /// `FoldContiguousGather`.
+    FoldContiguousGather("vector.gather", 1) |rw, op| {
+        let b = &*rw.body;
+        let base = b[op].operands[0];
+        if !matches!(&b[base].ty, Type::Shaped(s) if s.kind == ShapedKind::MemRef) {
+            return false;
+        }
+        let n = b[op].operands.len();
+        if !zero_based_seq(b, b[op].operands[n - 3]) {
+            return false;
+        }
+        let mut operands = b[op].operands[..n - 3].to_vec();
+        operands.extend(&b[op].operands[n - 2..]);
+        let rt = b.result_ty(op);
+        rw.replace_with(op, OpData::build("vector.maskedload").operands(&operands), &[rt]);
+        true
+    }
+
+    /// `ScatterFolder`.
+    ScatterFolder("vector.scatter", 1) |rw, op| {
+        let b = &*rw.body;
+        let base = b[op].operands[0];
+        let memref = matches!(&b[base].ty, Type::Shaped(s) if s.kind == ShapedKind::MemRef);
+        let tensor = matches!(&b[base].ty, Type::Shaped(s) if s.kind == ShapedKind::Tensor && s.shape.is_some());
+        if !memref && !tensor {
+            return false;
+        }
+        let n = b[op].operands.len();
+        if b.mask_format(b[op].operands[n - 2]) != Some(false) {
+            return false;
+        }
+        if memref {
+            rw.erase_op(op);
+        } else {
+            rw.replace_op(op, &[base]);
+        }
+        true
+    }
+
+    /// `FoldContiguousScatter`.
+    FoldContiguousScatter("vector.scatter", 1) |rw, op| {
+        let b = &*rw.body;
+        let base = b[op].operands[0];
+        if !matches!(&b[base].ty, Type::Shaped(s) if s.kind == ShapedKind::MemRef) {
+            return false;
+        }
+        let n = b[op].operands.len();
+        if !zero_based_seq(b, b[op].operands[n - 3]) {
+            return false;
+        }
+        let mut operands = b[op].operands[..n - 3].to_vec();
+        operands.extend(&b[op].operands[n - 2..]);
+        rw.replace_with(op, OpData::build("vector.maskedstore").operands(&operands), &[]);
+        true
+    }
+
+    /// `ShapeCastCreateMaskFolderTrailingOneDim`.
+    ShapeCastCreateMaskFolderTrailingOneDim("vector.shape_cast", 1) |rw, op| {
+        let b = &*rw.body;
+        let src = b[op].operands[0];
+        let def = b.def_op(src).filter(|d| matches!(&*b[*d].name, "vector.create_mask" | "vector.constant_mask"));
+        let Some(def) = def else { return false };
+        let rt = b.result_ty(op);
+        let Some((ss, ssc)) = vshape(&b[src].ty) else { return false };
+        let (mut ns, mut nsc) = (ss.clone(), ssc.clone());
+        while ns.last() == Some(&1) && nsc.last() == Some(&false) {
+            ns.pop();
+            nsc.pop();
+        }
+        if ns.is_empty() {
+            ns = vec![*ss.last().expect("rank > 0")];
+            nsc = vec![*ssc.last().expect("rank > 0")];
+        }
+        if vector_type(&ns, &nsc, elem(&rt).clone()) != rt {
+            return false;
+        }
+        let drop = ss.len() - vrank(&rt).unwrap_or(0);
+        if drop == 0 {
+            return false;
+        }
+        if b[def].name == "vector.create_mask" {
+            let ops = b[def].operands.clone();
+            if ops[ops.len() - drop..].iter().any(|o| b.def_named(*o, "arith.constant").is_none() || const_int(b, *o) != Some(1)) {
+                return false;
+            }
+            rw.replace_with(op, OpData::build("vector.create_mask").operands(&ops[..ops.len() - drop]), &[rt]);
+        } else {
+            let dims = b.dense_array(def, "mask_dim_sizes");
+            if dims[dims.len() - drop..].iter().any(|d| *d != 1) {
+                return false;
+            }
+            rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", dense_i64(&dims[..dims.len() - drop])), &[rt]);
+        }
+        true
+    }
+
+    /// `ShapeCastBroadcastFolder`.
+    ShapeCastBroadcastFolder("vector.shape_cast", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(bc) = b.def_named(b[op].operands[0], "vector.broadcast") else { return false };
+        let src = b[bc].operands[0];
+        let rt = b.result_ty(op);
+        if let Some((ss, _)) = vshape(&b[src].ty) {
+            let rn: i64 = vshape(&rt).map_or(1, |s| s.0.iter().product());
+            if ss.iter().product::<i64>() == rn {
+                return rw.replace_unary(op, "vector.shape_cast", src, rt);
+            }
+        }
+        if vrank(&b[src].ty).is_none() || broadcastable(&b[src].ty, &rt) {
+            return rw.replace_unary(op, "vector.broadcast", src, rt);
+        }
+        false
+    }
+
+    /// `FoldTransposeCreateMask`.
+    FoldTransposeCreateMask("vector.transpose", 1) |rw, op| {
+        let b = &*rw.body;
+        let src = b[op].operands[0];
+        let perm = b.dense_array(op, "permutation");
+        let rt = b.result_ty(op);
+        if let Some(cm) = b.def_named(src, "vector.create_mask") {
+            let ops: Vec<ValueId> = perm.iter().map(|p| b[cm].operands[*p as usize]).collect();
+            rw.replace_with(op, OpData::build("vector.create_mask").operands(&ops), &[rt]);
+            return true;
+        }
+        let Some(cm) = b.def_named(src, "vector.constant_mask") else { return false };
+        let dims = b.dense_array(cm, "mask_dim_sizes");
+        let new: Vec<i64> = perm.iter().map(|p| dims[*p as usize]).collect();
+        rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", dense_i64(&new)), &[rt]);
+        true
+    }
+
+    /// `FoldTransposeShapeCast`.
+    FoldTransposeShapeCast("vector.transpose", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(sc) = b.def_named(b[op].operands[0], "vector.shape_cast") else { return false };
+        if !b.order_preserving(op) {
+            return false;
+        }
+        let (s, rt) = (b[sc].operands[0], b.result_ty(op));
+        rw.replace_unary(op, "vector.shape_cast", s, rt)
+    }
+
+    /// `TransposeFolder`: two transposes compose.
+    TransposeFolder("vector.transpose", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(parent) = b.def_named(b[op].operands[0], "vector.transpose") else { return false };
+        let (p1, p2) = (b.dense_array(parent, "permutation"), b.dense_array(op, "permutation"));
+        let perm: Vec<i64> = p2.iter().map(|i| p1[*i as usize]).collect();
+        let (s, rt) = (b[parent].operands[0], b.result_ty(op));
+        rw.replace_with(op, OpData::build("vector.transpose").operands(&[s]).with("permutation", dense_i64(&perm)), &[rt]);
+        true
+    }
+
+    /// `FoldTransposeSplat`.
+    FoldTransposeSplat("vector.transpose", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(s) = splat_source(b, b[op].operands[0]) else { return false };
+        let rt = b.result_ty(op);
+        rw.replace_unary(op, "vector.broadcast", s, rt)
+    }
+
+    /// `FoldTransposeFromElements`.
+    FoldTransposeFromElements("vector.transpose", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(fe) = b.def_named(b[op].operands[0], "vector.from_elements") else { return false };
+        let (Some((ss, _)), rt) = (vshape(&b.result_ty(fe)), b.result_ty(op)) else { return false };
+        let Some((ds, _)) = vshape(&rt) else { return false };
+        let perm = b.dense_array(op, "permutation");
+        let mut inv = vec![0usize; perm.len()];
+        for (i, p) in perm.iter().enumerate() {
+            inv[*p as usize] = i;
+        }
+        let (sst, dst) = (strides(&ss), strides(&ds));
+        let old = b[fe].operands.clone();
+        let n: i64 = ds.iter().product();
+        let new: Vec<ValueId> = (0..n)
+            .map(|lin| {
+                let mut rest = lin;
+                let di: Vec<i64> = dst.iter().map(|s| { let q = rest / s; rest %= s; q }).collect();
+                let si: Vec<i64> = (0..ss.len()).map(|j| di[inv[j]]).collect();
+                old[linearize(&si, &sst) as usize]
+            })
+            .collect();
+        rw.replace_with(op, OpData::build("vector.from_elements").operands(&new), &[rt]);
+        true
+    }
+
+    /// `FoldTransposeBroadcast`.
+    FoldTransposeBroadcast("vector.transpose", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(bc) = b.def_named(b[op].operands[0], "vector.broadcast") else { return false };
+        let src = b[bc].operands[0];
+        let rt = b.result_ty(op);
+        if let Some((is, _)) = vshape(&b[src].ty) {
+            let perm = b.dense_array(op, "permutation");
+            let delta = vrank(&rt).unwrap_or(0) - is.len();
+            let mut low = 0usize;
+            for i in 0..is.len() {
+                let end = is[i] != 1 || (i != 0 && is[i - 1] != 1);
+                if end {
+                    let high = i + delta;
+                    if (low..high).any(|k| (perm[k] as usize) < low || perm[k] as usize >= high) {
+                        return false;
+                    }
+                    low = high;
+                }
+            }
+        }
+        rw.replace_unary(op, "vector.broadcast", src, rt)
+    }
+
+    /// `CreateMaskFolder`: constant bounds make a `vector.constant_mask`.
+    CreateMaskFolder("vector.create_mask", 1) |rw, op| {
+        let b = &*rw.body;
+        let rt = b.result_ty(op);
+        let (mut shape, mut scal) = vshape(&rt).unwrap_or_default();
+        if shape.is_empty() {
+            shape = vec![1];
+            scal = vec![false];
+        }
+        let mut dims = Vec::new();
+        for (i, v) in b[op].operands.iter().enumerate() {
+            if let Some(c) = const_int(b, *v) {
+                if scal[i] && c >= 0 {
+                    return false;
+                }
+                dims.push(c);
+            } else if let Some(m) = vscale_multiplier(b, *v) {
+                if m < shape[i] {
+                    return false;
+                }
+                dims.push(m);
+            } else {
+                return false;
+            }
+        }
+        for (d, s) in dims.iter_mut().zip(&shape) {
+            *d = (*d).clamp(0, *s);
+        }
+        if dims.contains(&0) {
+            dims = vec![0; dims.len()];
+        }
+        rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", dense_i64(&dims)), &[rt]);
+        true
+    }
+
+    /// `CanonializeEmptyMaskOp`: an empty mask with a pass-through is a select.
+    CanonicalizeEmptyMaskOp("vector.mask", 1) |rw, op| {
+        let b = &*rw.body;
+        let region = b[op].regions[0];
+        let Some(&block) = b[region].blocks.first() else { return false };
+        if b[block].ops.len() != 1 || b[op].operands.len() < 2 {
+            return false;
+        }
+        let y = b[block].ops[0];
+        let (m, p, v) = (b[op].operands[0], b[op].operands[1], b[y].operands[0]);
+        let types = b.types(&b[op].results.clone());
+        rw.replace_with(op, OpData::build("arith.select").operands(&[m, v, p]), &types);
+        true
+    }
+
+    /// `StepCompareFolder`.
+    StepCompareFolder("vector.step", 1) |rw, op| {
+        let b = &*rw.body;
+        let r = b[op].results[0];
+        let n: i64 = vshape(&b[r].ty).map_or(1, |s| s.0.iter().product());
+        for u in b[r].uses.iter().rev() {
+            if b[u.op].name != "arith.cmpi" || u.index != 0 {
+                continue;
+            }
+            let Some(c) = const_int(b, b[u.op].operands[1]) else { continue };
+            let Some(pred) = b[u.op].get("predicate").and_then(|a| if let Attribute::Int { lit, .. } = a { lit.parse::<i64>().ok() } else { None }) else { continue };
+            let splat = match pred {
+                6 | 9 if n <= c => Some(pred == 6),
+                7 | 8 if n - 1 <= c => Some(pred == 7),
+                0 | 1 if n <= c => Some(pred == 1),
+                _ => None,
+            };
+            let Some(v) = splat else { continue };
+            let cmp = u.op;
+            let ty = b[b[cmp].results[0]].ty.clone();
+            if vrank(&ty).is_none() {
+                continue;
+            }
+            rw.set_after(cmp);
+            let c: Attribute = Const::splat(Scalar::Int(ApInt::new(1, i128::from(v))), ty.clone()).into();
+            let o = rw.create(OpData::build("arith.constant").with("value", c), &[ty]);
+            let nv = rw.body[o].results[0];
+            rw.replace_op(cmp, &[nv]);
+            return true;
+        }
+        false
+    }
+}
+
+/// `isZeroBasedContiguousSeq`: a `vector.step`, or the constant `[0, 1, ...]`.
+fn zero_based_seq(b: &Body<'_>, v: ValueId) -> bool {
+    let Some((s, sc)) = vshape(&b[v].ty) else { return false };
+    if s.len() != 1 || sc[0] {
+        return false;
+    }
+    if b.def_named(v, "vector.step").is_some() {
+        return true;
+    }
+    let Some(c) = b.constant_of(v).and_then(|a| Const::try_from(&a).ok()).filter(|c| c.elements) else { return false };
+    (0..s[0] as usize).all(|i| c.values.get(if c.is_splat() { 0 } else { i }).and_then(|x| x.int()).map(|x| x.signed()) == Some(i as i128))
+}
+
+/// `getConstantVscaleMultiplier`.
+fn vscale_multiplier(b: &Body<'_>, v: ValueId) -> Option<i64> {
+    if b.def_named(v, "vector.vscale").is_some() {
+        return Some(1);
+    }
+    let m = b.def_named(v, "arith.muli")?;
+    let (l, r) = (b[m].operands[0], b[m].operands[1]);
+    if b.def_named(l, "vector.vscale").is_some() {
+        return const_int(b, r);
+    }
+    if b.def_named(r, "vector.vscale").is_some() {
+        return const_int(b, l);
+    }
+    None
+}
+
+/// The vector dialect's canonicalization patterns, op by op.
+pub fn patterns(set: &mut crate::PatternSet) {
+    set.add(ElideUnitDimsInMultiDimReduction);
+    set.add(ElideSingleElementReduction);
+    set.add(ExtractOpFromBroadcast);
+    set.add(ExtractOpFromCreateMask);
+    set.add(ExtractFromShapeCastToShapeCast);
+    set.add(ExtractFromFromElements);
+    set.add(ToElementsOfBroadcast);
+    set.add(FromElementsAsBroadcast);
+    set.add(FromElementsToShapeCast);
+    set.add(BroadcastFolder);
+    set.add(ShuffleSplat);
+    set.add(ShuffleInterleave);
+    set.add(Canonicalize0DShuffleOp);
+    set.add(InsertToBroadcast);
+    set.add(InsertSplatToSplat);
+    set.add(InsertChainFullyInitialized);
+    set.add(FoldInsertStridedSliceSplat);
+    set.add(FoldInsertStridedSliceOfExtract);
+    set.add(InsertStridedSliceConstantFolder);
+    set.add(StridedSliceCreateMaskFolder);
+    set.add(StridedSliceConstantMaskFolder);
+    set.add(StridedSliceBroadcast);
+    set.add(StridedSliceSplat);
+    set.add(ContiguousExtractStridedSliceToExtract);
+    set.add(MaskedLoadFolder);
+    set.add(MaskedStoreFolder);
+    set.add(GatherFolder);
+    set.add(FoldContiguousGather);
+    set.add(ScatterFolder);
+    set.add(FoldContiguousScatter);
+    set.add(ExpandLoadFolder);
+    set.add(CompressStoreFolder);
+    set.add(ShapeCastCreateMaskFolderTrailingOneDim);
+    set.add(ShapeCastBroadcastFolder);
+    set.add(FoldTransposeCreateMask);
+    set.add(FoldTransposeShapeCast);
+    set.add(TransposeFolder);
+    set.add(FoldTransposeSplat);
+    set.add(FoldTransposeFromElements);
+    set.add(FoldTransposeBroadcast);
+    set.add(CreateMaskFolder);
+    set.add(CanonicalizeEmptyMaskOp);
+    set.add(StepCompareFolder);
+}

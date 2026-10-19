@@ -181,5 +181,6 @@ pub fn patterns() -> PatternSet {
     arith::patterns(&mut set);
     cf::patterns(&mut set);
     scf::patterns(&mut set);
+    vector::patterns(&mut set);
     set
 }
