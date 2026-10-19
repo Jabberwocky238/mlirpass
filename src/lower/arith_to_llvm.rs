@@ -12,20 +12,20 @@ use crate::{ApInt, Const, ConversionPattern, ConversionPatterns, ConversionRewri
 
 /// How an op's attributes carry over (`AttrConvert*`).
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Attrs {
+pub(super) enum Attrs {
     PassThrough,
     FastMath,
     Overflow,
 }
 
 /// `VectorConvertToLLVMPattern<From, To, Attrs, FailOnUnsupportedFP>`.
-struct OneToOne {
-    from: &'static str,
-    to: &'static str,
-    attrs: Attrs,
-    fail_on_unsupported_fp: bool,
+pub(super) struct OneToOne {
+    pub from: &'static str,
+    pub to: &'static str,
+    pub attrs: Attrs,
+    pub fail_on_unsupported_fp: bool,
     /// `ConstrainedVectorConvertToLLVMPattern`: only without a rounding mode.
-    unconstrained: bool,
+    pub unconstrained: bool,
 }
 
 impl ConversionPattern for OneToOne {

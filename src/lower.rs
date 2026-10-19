@@ -2,6 +2,8 @@
 
 mod arith_to_llvm;
 mod cf_to_llvm;
+mod index_to_llvm;
+mod math_to_llvm;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -16,6 +18,8 @@ use crate::{Action, ConversionRewriter, ConversionTarget, LlvmType, OpData, OpId
 
 pub use arith_to_llvm::ArithToLlvm;
 pub use cf_to_llvm::{AssertLowering, CfToLlvm};
+pub use index_to_llvm::{IndexToLlvm, UbToLlvm};
+pub use math_to_llvm::MathToLlvm;
 
 /// Fast-math flags, by name, in LLVM's bit order.
 const LLVM_FASTMATH: [&str; 7] = ["nnan", "ninf", "nsz", "arcp", "contract", "afn", "reassoc"];
@@ -275,6 +279,80 @@ impl Pass for ConvertArithToLlvm {
     }
 }
 
+/// A `convert-X-to-llvm` pass: an `index-bitwidth` option, a pattern population and a target.
+macro_rules! to_llvm_pass {
+    ($($(#[$m:meta])* $ty:ident = $name:literal: $populate:path, |$t:ident| $target:block;)*) => {$(
+        $(#[$m])*
+        pub struct $ty {
+            options: LlvmOptions,
+        }
+
+        impl TryFrom<&Options<'_>> for $ty {
+            type Error = Error;
+            fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+                o.only($name, &["index-bitwidth"])?;
+                let bits: u32 = o.value("index-bitwidth", 0)?;
+                Ok(Self { options: LlvmOptions { index_bitwidth: if bits == 0 { 64 } else { bits }, ..LlvmOptions::default() } })
+            }
+        }
+
+        impl Pass for $ty {
+            fn name(&self) -> &str {
+                $name
+            }
+
+            fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+                let tc = LlvmConverter::build(self.options);
+                let mut patterns = ConversionPatterns::default();
+                let i = patterns.converter(&tc);
+                $populate(&mut patterns, i);
+                let mut $t = ConversionTarget::default();
+                $target
+                Converter::new(&$t, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+            }
+        }
+    )*};
+}
+
+to_llvm_pass! {
+    /// `convert-index-to-llvm`.
+    ConvertIndexToLlvm = "convert-index-to-llvm": IndexToLlvm::populate, |t| {
+        t.illegal_dialect("index").legal_dialect("llvm");
+    };
+    /// `convert-ub-to-llvm`.
+    ConvertUbToLlvm = "convert-ub-to-llvm": UbToLlvm::populate, |t| {
+        t.legal_dialect("llvm").op("builtin.unrealized_conversion_cast", Action::Legal);
+    };
+}
+
+/// `convert-math-to-llvm`.
+pub struct ConvertMathToLlvm {
+    approximate_log1p: bool,
+}
+
+impl TryFrom<&Options<'_>> for ConvertMathToLlvm {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-math-to-llvm", &["approximate-log1p"])?;
+        Ok(Self { approximate_log1p: o.flag("approximate-log1p", true)? })
+    }
+}
+
+impl Pass for ConvertMathToLlvm {
+    fn name(&self) -> &str {
+        "convert-math-to-llvm"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let tc = LlvmConverter::build(LlvmOptions::default());
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        MathToLlvm::populate(&mut patterns, i, self.approximate_log1p);
+        let target = llvm_target();
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}
+
 /// `convert-cf-to-llvm`.
 pub struct ConvertCfToLlvm {
     options: LlvmOptions,
@@ -329,7 +407,7 @@ impl TryFrom<&Options<'_>> for ConvertToLlvm {
 }
 
 /// The dialects that implement `ConvertToLLVMPatternInterface`, by namespace.
-const TO_LLVM: &[&str] = &["arith", "cf"];
+const TO_LLVM: &[&str] = &["arith", "cf", "index", "math", "ub"];
 
 impl Pass for ConvertToLlvm {
     fn name(&self) -> &str {
@@ -344,6 +422,9 @@ impl Pass for ConvertToLlvm {
         for d in dialects {
             match d {
                 "arith" => ArithToLlvm::populate(&mut patterns, i),
+                "index" => IndexToLlvm::populate(&mut patterns, i),
+                "math" => MathToLlvm::populate(&mut patterns, i, true),
+                "ub" => UbToLlvm::populate(&mut patterns, i),
                 "cf" => {
                     CfToLlvm::populate(&mut patterns, i);
                     patterns.add_with(i, AssertLowering(&self.counter));
