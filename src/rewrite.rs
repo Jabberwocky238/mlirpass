@@ -223,6 +223,36 @@ impl<'r, 'a> Rewriter<'r, 'a> {
         }
     }
 
+    /// Tells the listener `op` was inserted (it is already placed).
+    pub fn notify_inserted(&mut self, op: OpId) {
+        self.listener.inserted(self.body, op);
+    }
+
+    /// Splits `block` before `at`: the ops from `at` on move to a new block right after it.
+    pub fn split_block(&mut self, block: BlockId, at: OpId) -> BlockId {
+        let region = self.body[block].parent.expect("block not in a region");
+        let new = self.body.add_block(region, &[]);
+        let pos = self.body[region].blocks.iter().position(|b| *b == block).expect("block not in region");
+        self.body[region].blocks.pop();
+        self.body[region].blocks.insert(pos + 1, new);
+        let i = self.body.position(at);
+        let moved: Vec<OpId> = self.body[block].ops.split_off(i);
+        for o in &moved {
+            self.body[*o].parent = Some(new);
+        }
+        self.body[new].ops = moved;
+        new
+    }
+
+    /// `createBlock`: a new block with arguments of `types` at the end of `region`; the
+    /// insertion point moves to its end.
+    pub fn create_block(&mut self, region: RegionId, types: &[Type<'a>]) -> BlockId {
+        let args: Vec<_> = types.iter().map(|t| (t.clone(), None)).collect();
+        let b = self.body.add_block(region, &args);
+        self.set_end(b);
+        b
+    }
+
     /// Tells the listener `op` was modified, without changing it.
     pub fn touched(&mut self, op: OpId) {
         self.listener.modified(self.body, op);

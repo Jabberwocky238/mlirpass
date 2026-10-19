@@ -3,6 +3,7 @@
 
 mod arith;
 mod cf;
+mod scf;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -119,6 +120,7 @@ impl<'a> Body<'a> {
 pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold<'a> {
     match body[op].name.split_once('.').map(|(ns, _)| ns) {
         Some("arith") => arith::Folder { b: body, op, c: consts }.fold(),
+        Some("scf") => scf::fold(body, op),
         _ => Fold::Failed,
     }
 }
@@ -137,5 +139,6 @@ pub fn patterns() -> PatternSet {
     let mut set = PatternSet::default();
     arith::patterns(&mut set);
     cf::patterns(&mut set);
+    scf::patterns(&mut set);
     set
 }

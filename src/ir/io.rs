@@ -289,8 +289,10 @@ impl<'b, 'a> Export<'b, 'a> {
         self.next = after;
     }
 
+    /// The name of `v`; a value outside the IR (a dangling use, which is a bug) prints as
+    /// `%INVALIDn` so that it shows.
     fn value(&self, v: ValueId) -> Value<'a> {
-        self.names[&v].clone()
+        self.names.get(&v).cloned().unwrap_or_else(|| Value { name: Cow::Owned(format!("INVALID{}", v.0)), index: None })
     }
 
     fn op(&self, op: OpId) -> Operation<'a> {
