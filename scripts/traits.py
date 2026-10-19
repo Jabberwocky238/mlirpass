@@ -13,47 +13,51 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-# One entry `.td` per dialect (or several when the dialect has no umbrella file).
+# One entry `.td` per dialect (or several when the dialect has no umbrella file), below `mlir/`.
+# The test dialect is in: `mlir-opt` registers it, and upstream tests use its ops throughout.
 TDS = [
-    "IR/BuiltinOps.td",
-    "Dialect/Affine/IR/AffineOps.td",
-    "Dialect/Arith/IR/ArithOps.td",
-    "Dialect/Async/IR/AsyncOps.td",
-    "Dialect/Bufferization/IR/BufferizationOps.td",
-    "Dialect/Complex/IR/ComplexOps.td",
-    "Dialect/ControlFlow/IR/ControlFlowOps.td",
-    "Dialect/EmitC/IR/EmitC.td",
-    "Dialect/Func/IR/FuncOps.td",
-    "Dialect/GPU/IR/GPUOps.td",
-    "Dialect/Index/IR/IndexOps.td",
-    "Dialect/Linalg/IR/LinalgOps.td",
-    "Dialect/Linalg/IR/LinalgStructuredOps.td",
-    "Dialect/Linalg/IR/LinalgRelayoutOps.td",
-    "Dialect/LLVMIR/LLVMOps.td",
-    "Dialect/LLVMIR/LLVMIntrinsicOps.td",
-    "Dialect/Math/IR/MathOps.td",
-    "Dialect/MemRef/IR/MemRefOps.td",
-    "Dialect/MLProgram/IR/MLProgramOps.td",
-    "Dialect/PDL/IR/PDLOps.td",
-    "Dialect/PDLInterp/IR/PDLInterpOps.td",
-    "Dialect/Ptr/IR/PtrOps.td",
-    "Dialect/SCF/IR/SCFOps.td",
-    "Dialect/Shape/IR/ShapeOps.td",
-    "Dialect/SPIRV/IR/SPIRVOps.td",
-    "Dialect/Tensor/IR/TensorOps.td",
-    "Dialect/Tosa/IR/TosaOps.td",
-    "Dialect/Tosa/IR/TosaUtilOps.td",
-    "Dialect/Tosa/IR/TosaShapeOps.td",
-    "Dialect/UB/IR/UBOps.td",
-    "Dialect/Vector/IR/VectorOps.td",
+    "include/mlir/IR/BuiltinOps.td",
+    "include/mlir/Dialect/Affine/IR/AffineOps.td",
+    "include/mlir/Dialect/Arith/IR/ArithOps.td",
+    "include/mlir/Dialect/Async/IR/AsyncOps.td",
+    "include/mlir/Dialect/Bufferization/IR/BufferizationOps.td",
+    "include/mlir/Dialect/Complex/IR/ComplexOps.td",
+    "include/mlir/Dialect/ControlFlow/IR/ControlFlowOps.td",
+    "include/mlir/Dialect/EmitC/IR/EmitC.td",
+    "include/mlir/Dialect/Func/IR/FuncOps.td",
+    "include/mlir/Dialect/GPU/IR/GPUOps.td",
+    "include/mlir/Dialect/Index/IR/IndexOps.td",
+    "include/mlir/Dialect/Linalg/IR/LinalgOps.td",
+    "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
+    "include/mlir/Dialect/Linalg/IR/LinalgRelayoutOps.td",
+    "include/mlir/Dialect/LLVMIR/LLVMOps.td",
+    "include/mlir/Dialect/LLVMIR/LLVMIntrinsicOps.td",
+    "include/mlir/Dialect/Math/IR/MathOps.td",
+    "include/mlir/Dialect/MemRef/IR/MemRefOps.td",
+    "include/mlir/Dialect/MLProgram/IR/MLProgramOps.td",
+    "include/mlir/Dialect/PDL/IR/PDLOps.td",
+    "include/mlir/Dialect/PDLInterp/IR/PDLInterpOps.td",
+    "include/mlir/Dialect/Ptr/IR/PtrOps.td",
+    "include/mlir/Dialect/SCF/IR/SCFOps.td",
+    "include/mlir/Dialect/Shape/IR/ShapeOps.td",
+    "include/mlir/Dialect/SPIRV/IR/SPIRVOps.td",
+    "include/mlir/Dialect/Tensor/IR/TensorOps.td",
+    "include/mlir/Dialect/Tosa/IR/TosaOps.td",
+    "include/mlir/Dialect/Tosa/IR/TosaUtilOps.td",
+    "include/mlir/Dialect/Tosa/IR/TosaShapeOps.td",
+    "include/mlir/Dialect/UB/IR/UBOps.td",
+    "include/mlir/Dialect/Vector/IR/VectorOps.td",
+    "test/lib/Dialect/Test/TestOps.td",
+    "test/lib/Dialect/Test/TestOpsSyntax.td",
 ]
 
 EFFECTS = {"Read": "Read", "Write": "Write", "Allocate": "Allocate", "Free": "Free"}
 
 
-def dump(mlirformat: str, include: Path, extra: list, td: str):
-    dirs = [a for i in [include, *extra] for a in ("-I", str(i))]
-    out = subprocess.run([mlirformat, "tblgen", "--dump-json", str(include / td), *dirs], capture_output=True, text=True)
+def dump(mlirformat: str, mlir: Path, extra: list, td: str):
+    path = mlir / td
+    dirs = [a for i in [mlir / "include", path.parent, *extra] for a in ("-I", str(i))]
+    out = subprocess.run([mlirformat, "tblgen", "--dump-json", str(path), *dirs], capture_output=True, text=True)
     if out.returncode != 0:
         raise SystemExit(f"{td}: {out.stderr.strip()}")
     return json.loads(out.stdout)
@@ -125,20 +129,28 @@ class Records:
             self.traits(rec["traits"], traits, effects, flags)
             self.decorated(rec.get("arguments"), "Operand", effects, flags)
             self.decorated(rec.get("results"), "Result", effects, flags)
-            yield f"{dialect}.{rec['opName']}", traits, effects if flags["effects"] else None, self.inherent(rec.get("arguments"))
+            if flags["effects"]:
+                # ODS adds the interface itself for declared effects.
+                traits.add("MemoryEffectOpInterface")
+                eff = effects
+            elif "MemoryEffectOpInterface" in traits:
+                eff = "custom"
+            else:
+                eff = None
+            yield f"{dialect}.{rec['opName']}", traits, eff, self.inherent(rec.get("arguments"))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--llvm", required=True)
     ap.add_argument("--mlirformat", required=True)
-    ap.add_argument("-I", dest="extra", action="append", default=[], help="more include dirs: a build's tools/mlir/include holds Linalg's yamlgen.td")
+    ap.add_argument("-I", dest="extra", action="append", default=[], help="more include dirs: a build's tools/mlir/include holds Linalg's yamlgen.td, tools/mlir/test/lib/Dialect/Test the test dialect's")
     ap.add_argument("-o", default=str(Path(__file__).resolve().parent.parent / "src" / "traits.gen.rs"))
     opts = ap.parse_args()
-    include = Path(opts.llvm) / "mlir" / "include" / "mlir"
+    mlir = Path(opts.llvm) / "mlir"
 
     with ThreadPoolExecutor() as pool:
-        dumps = list(pool.map(lambda td: dump(opts.mlirformat, include.parent, opts.extra, f"mlir/{td}"), TDS))
+        dumps = list(pool.map(lambda td: dump(opts.mlirformat, mlir, opts.extra, td), TDS))
     ops = {}
     for d in dumps:
         for name, traits, effects, inherent in Records(d).ops():
@@ -162,6 +174,8 @@ def main():
         ts = ", ".join(f"Trait::{t}" for t in sorted(traits))
         if effects is None:
             eff = "Effects::Unknown"
+        elif effects == "custom":
+            eff = "Effects::Custom"
         else:
             def on(o):
                 return "EffectOn::Op" if o == "Op" else "EffectOn::" + o

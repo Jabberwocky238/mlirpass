@@ -35,6 +35,7 @@ macro_rules! registry {
 }
 
 registry! {
+    "cse" => Cse,
     "strip-debuginfo" => StripDebugInfo,
     "symbol-dce" => SymbolDce,
     "symbol-privatize" => SymbolPrivatize,

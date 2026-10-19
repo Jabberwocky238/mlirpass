@@ -58,6 +58,8 @@ pub enum Effects {
     /// Exactly these (empty: none at all). Nested ops add theirs when the op has
     /// [`Trait::HasRecursiveMemoryEffects`].
     Known(&'static [Effect]),
+    /// The op computes them in C++ (`getEffects`); see [`Body::effects_of`](crate::Body::effects_of).
+    Custom,
 }
 
 /// One op's row.

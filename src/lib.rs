@@ -10,6 +10,9 @@
 
 extern crate alloc;
 
+mod dominance;
+mod effects;
+mod equivalence;
 mod invocation;
 mod ir;
 mod pass;
@@ -17,6 +20,8 @@ mod symbol;
 mod traits;
 mod transforms;
 
+pub use dominance::*;
+pub use effects::*;
 pub use ir::*;
 pub use invocation::*;
 pub use pass::*;
