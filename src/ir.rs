@@ -128,7 +128,7 @@ impl<'a> OpData<'a> {
     /// Whether attribute `name` is inherent (declared by the op's ODS): it then lives in the
     /// `<{...}>` properties, else among the discardable `{...}` attributes.
     pub fn inherent(&self, name: &str) -> bool {
-        crate::OpInfo::of(&self.name).is_some_and(|i| i.inherent.contains(&name))
+        crate::OpInfo::of(&self.name).is_some_and(|i| i.inherent.contains(&name) || matches!(name, "operandSegmentSizes" | "resultSegmentSizes"))
     }
 
     fn dict(&self, inherent: bool) -> &[NamedAttr<'a>] {

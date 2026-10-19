@@ -35,6 +35,7 @@ macro_rules! registry {
 }
 
 registry! {
+    "canonicalize" => Canonicalize,
     "cse" => Cse,
     "strip-debuginfo" => StripDebugInfo,
     "symbol-dce" => SymbolDce,
