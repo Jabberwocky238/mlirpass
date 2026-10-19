@@ -6,6 +6,7 @@ mod func_to_llvm;
 mod index_to_llvm;
 mod math_to_llvm;
 mod memref_desc;
+mod memref_to_llvm;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -24,6 +25,7 @@ pub use func_to_llvm::FuncToLlvm;
 pub use index_to_llvm::{IndexToLlvm, UbToLlvm};
 pub use math_to_llvm::MathToLlvm;
 pub use memref_desc::DYNAMIC;
+pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
 
 /// Fast-math flags, by name, in LLVM's bit order.
 const LLVM_FASTMATH: [&str; 7] = ["nnan", "ninf", "nsz", "arcp", "contract", "afn", "reassoc"];
@@ -62,6 +64,27 @@ pub fn llvm_target<'c>() -> ConversionTarget<'c> {
     let mut t = ConversionTarget::default();
     t.legal_dialect("llvm").op("builtin.unrealized_conversion_cast", Action::Legal);
     t
+}
+
+/// A lowering that needs the pass options `O`.
+struct OptLowering<O> {
+    root: &'static str,
+    opts: O,
+    f: for<'r, 'a, 'p> fn(&mut ConversionRewriter<'r, 'a, 'p>, OpId, &[Vec<ValueId>], O) -> bool,
+}
+
+impl<O: Copy> crate::ConversionPattern for OptLowering<O> {
+    fn name(&self) -> &str {
+        self.root
+    }
+
+    fn root(&self) -> Option<&str> {
+        Some(self.root)
+    }
+
+    fn rewrite(&self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        (self.f)(cr, op, operands, self.opts)
+    }
 }
 
 /// `array<i64: ...>`.
@@ -419,6 +442,38 @@ impl Pass for ConvertFuncToLlvm {
     }
 }
 
+/// `finalize-memref-to-llvm`.
+pub struct FinalizeMemrefToLlvm {
+    options: MemrefOptions,
+}
+
+impl TryFrom<&Options<'_>> for FinalizeMemrefToLlvm {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("finalize-memref-to-llvm", &["use-aligned-alloc", "index-bitwidth", "use-generic-functions"])?;
+        let bits: u32 = o.value("index-bitwidth", 0)?;
+        let llvm = LlvmOptions { index_bitwidth: bits, ..LlvmOptions::default() };
+        Ok(Self { options: MemrefOptions { llvm, aligned_alloc: o.flag("use-aligned-alloc", false)?, generic: o.flag("use-generic-functions", false)? } })
+    }
+}
+
+impl Pass for FinalizeMemrefToLlvm {
+    fn name(&self) -> &str {
+        "finalize-memref-to-llvm"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let options = MemrefOptions { llvm: self.options.llvm.at(body, op), ..self.options };
+        let tc = LlvmConverter::build(options.llvm);
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        MemrefToLlvm::populate(&mut patterns, i, options);
+        let mut target = llvm_target();
+        target.legal_op("func.func");
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}
+
 /// `convert-to-llvm`: every dialect's `ConvertToLLVMPatternInterface` patterns (or those of
 /// `filter-dialects`), against a target where the llvm dialect is legal.
 pub struct ConvertToLlvm {
@@ -441,7 +496,7 @@ impl TryFrom<&Options<'_>> for ConvertToLlvm {
 }
 
 /// The dialects that implement `ConvertToLLVMPatternInterface`, by namespace.
-const TO_LLVM: &[&str] = &["arith", "cf", "func", "index", "math", "ub"];
+const TO_LLVM: &[&str] = &["arith", "cf", "func", "index", "math", "memref", "ub"];
 
 impl Pass for ConvertToLlvm {
     fn name(&self) -> &str {
@@ -460,6 +515,7 @@ impl Pass for ConvertToLlvm {
                 "math" => MathToLlvm::populate(&mut patterns, i, true),
                 "ub" => UbToLlvm::populate(&mut patterns, i),
                 "func" => FuncToLlvm::populate(&mut patterns, i, LlvmOptions::derived().at(body, op)),
+                "memref" => MemrefToLlvm::populate(&mut patterns, i, MemrefOptions { llvm: LlvmOptions::derived().at(body, op), aligned_alloc: false, generic: false }),
                 "cf" => {
                     CfToLlvm::populate(&mut patterns, i);
                     patterns.add_with(i, AssertLowering(&self.counter));

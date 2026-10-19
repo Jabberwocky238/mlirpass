@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, NamedAttr, Shaped, ShapedKind, Type};
 
-use super::Lowering;
+use super::{Lowering, OptLowering};
 use crate::canon::AttrExt;
 use crate::{ConversionPatterns, ConversionRewriter, LlvmConverter, LlvmOptions, LlvmType, OpData, OpId, SignatureConversion, Visibility, ValueId};
 
@@ -468,25 +468,27 @@ impl FuncToLlvm {
             let n: usize = groups.iter().map(Vec::len).sum();
             let r = cr.rw.body[call].results[0];
             let mut k = 0i64;
-            for (i, g) in groups.iter().enumerate() {
+            for g in &groups {
                 let mut group = Vec::new();
                 for _ in g {
                     group.push(if n == 1 { r } else { cr.extract(r, &[k]) });
                     k += 1;
                 }
+                results.push(group);
+            }
+            for (i, group) in results.iter_mut().enumerate() {
                 match Self::memref(&result_types[i]) {
                     Some(s) if bare && s.shape.is_some() => {
                         let Some(desc) = LlvmConverter::convert_memref(opts, s) else { return false };
-                        let Some(d) = cr.desc_from_static(opts, s, desc, group[0]) else { return false };
-                        group = vec![d];
+                        let Some(d) = cr.desc_from_static(opts, s, desc, group[0], group[0]) else { return false };
+                        *group = vec![d];
                     }
                     Some(s) if s.shape.is_none() => {
                         let Some(d) = Self::copy_unranked(cr, opts, s, group[0], false, op) else { return false };
-                        group = vec![d];
+                        *group = vec![d];
                     }
                     _ => {}
                 }
-                results.push(group);
             }
         }
         cr.replace(op, results);
@@ -549,35 +551,14 @@ impl FuncToLlvm {
 
     /// `populateFuncToLLVMConversionPatterns`.
     pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize, opts: LlvmOptions) {
-        patterns.add_with(tc, FuncPattern { root: "func.func", opts, f: Self::func });
-        patterns.add_with(tc, FuncPattern { root: "func.call_indirect", opts, f: |cr, op, o, opts| Self::call_impl(cr, op, o, opts, false, true) });
-        patterns.add_with(tc, FuncPattern { root: "func.call", opts, f: Self::call });
+        patterns.add_with(tc, OptLowering { root: "func.func", opts, f: Self::func });
+        patterns.add_with(tc, OptLowering { root: "func.call_indirect", opts, f: |cr, op, o, opts| Self::call_impl(cr, op, o, opts, false, true) });
+        patterns.add_with(tc, OptLowering { root: "func.call", opts, f: Self::call });
         patterns.add_with(tc, Lowering { root: "func.constant", benefit: 1, f: Self::constant });
-        patterns.add_with(tc, FuncPattern { root: "func.return", opts, f: Self::ret });
+        patterns.add_with(tc, OptLowering { root: "func.return", opts, f: Self::ret });
     }
 }
 
 fn ty_unranked(t: &Type<'_>) -> bool {
     matches!(t, Type::Shaped(s) if s.kind == ShapedKind::MemRef && s.shape.is_none())
-}
-
-/// A func pattern, which needs the lowering options.
-struct FuncPattern {
-    root: &'static str,
-    opts: LlvmOptions,
-    f: for<'r, 'a, 'p> fn(&mut ConversionRewriter<'r, 'a, 'p>, OpId, &[Vec<ValueId>], LlvmOptions) -> bool,
-}
-
-impl crate::ConversionPattern for FuncPattern {
-    fn name(&self) -> &str {
-        self.root
-    }
-
-    fn root(&self) -> Option<&str> {
-        Some(self.root)
-    }
-
-    fn rewrite(&self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
-        (self.f)(cr, op, operands, self.opts)
-    }
 }

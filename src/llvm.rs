@@ -313,7 +313,8 @@ impl LlvmOptions {
         let space = s.extras.iter().find(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map"));
         match space {
             None => Some(0),
-            Some(Attribute::Int { lit, .. }) => lit.parse().ok(),
+            // `getMemRefAddressSpace`: a signless or index integer.
+            Some(Attribute::Int { lit, ty: None | Some(Type::Index | Type::Integer { signedness: Signedness::Signless, .. }) }) => lit.parse().ok(),
             Some(_) => None,
         }
     }
@@ -450,7 +451,7 @@ impl LlvmConverter {
         if let [p] = inputs
             && matches!(LlvmType::try_from(&rw.body[*p].ty), Ok(LlvmType::Ptr(_)))
         {
-            return rw.desc_from_static(options, s, desc, *p);
+            return rw.desc_from_static(options, s, desc, *p, *p);
         }
         let ok = Self::scalar(&s.elem, options).is_some();
         if Some(input_types) != options.descriptor_fields(s, ok, true) {
@@ -481,6 +482,7 @@ impl LlvmConverter {
             Type::Float(k) => Self::float(*k),
             t if LlvmType::compatible(t) => Some(t.clone()),
             Type::Shaped(s) if s.kind == ShapedKind::Vector => Self::vector(s, options),
+            Type::Shaped(s) if s.kind == ShapedKind::MemRef => Self::convert_memref(options, s),
             _ => None,
         }
     }

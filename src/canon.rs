@@ -121,6 +121,7 @@ fn defaults<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
                 "llvm.mlir.global" => out.extend([("addr_space", int("0", 32)), ("visibility_", int("0", 64))]),
                 "llvm.call" => out.extend([("CConv", Attribute::dialect("llvm.cconv", "<ccc>")), ("TailCallKind", Attribute::dialect("llvm.tailcallkind", "<none>")), ("op_bundle_sizes", Attribute::DenseArray { ty: Type::int(32), values: Vec::new() })]),
                 "llvm.getelementptr" => out.push(("noWrapFlags", int("0", 32))),
+                "llvm.load" | "llvm.store" => out.push(("ordering", int("0", 64))),
                 _ => {}
             }
             out

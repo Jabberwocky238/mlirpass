@@ -80,8 +80,8 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     }
 
     /// `MemRefDescriptor::fromStaticShape`.
-    pub fn desc_from_static(&mut self, opts: LlvmOptions, s: &Shaped<'a>, desc_ty: Type<'a>, ptr: ValueId) -> Option<ValueId> {
-        self.rw.desc_from_static(opts, s, desc_ty, ptr)
+    pub fn desc_from_static(&mut self, opts: LlvmOptions, s: &Shaped<'a>, desc_ty: Type<'a>, ptr: ValueId, aligned: ValueId) -> Option<ValueId> {
+        self.rw.desc_from_static(opts, s, desc_ty, ptr, aligned)
     }
 }
 
@@ -122,13 +122,13 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.insert_at(d, fields[1], &[1])
     }
 
-    /// `MemRefDescriptor::fromStaticShape`: both pointers `ptr`, offset, sizes and strides constant.
-    pub fn desc_from_static(&mut self, opts: LlvmOptions, s: &Shaped<'a>, desc_ty: Type<'a>, ptr: ValueId) -> Option<ValueId> {
+    /// `MemRefDescriptor::fromStaticShape`: the pointers, then offset, sizes and strides constant.
+    pub fn desc_from_static(&mut self, opts: LlvmOptions, s: &Shaped<'a>, desc_ty: Type<'a>, ptr: ValueId, aligned: ValueId) -> Option<ValueId> {
         let (strides, offset) = opts.strides_and_offset(s)?;
         let idx = opts.index();
         let mut d = self.value(OpData::build("llvm.mlir.poison"), desc_ty);
         d = self.insert_at(d, ptr, &[0]);
-        d = self.insert_at(d, ptr, &[1]);
+        d = self.insert_at(d, aligned, &[1]);
         let o = self.index_const(&idx, offset);
         d = self.insert_at(d, o, &[2]);
         for (i, dim) in s.shape.as_ref()?.iter().enumerate() {

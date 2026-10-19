@@ -32,7 +32,8 @@ impl Body<'_> {
         })
     }
 
-    fn segments(&self, op: OpId, name: &str) -> Option<Vec<usize>> {
+    /// The sizes in dense array `name` of `op` (`operandSegmentSizes` and the like).
+    pub fn segments(&self, op: OpId, name: &str) -> Option<Vec<usize>> {
         match self[op].get(name)? {
             Attribute::DenseArray { values, .. } => Some(values.iter().map(|v| v.parse().unwrap_or(0)).collect()),
             _ => None,
