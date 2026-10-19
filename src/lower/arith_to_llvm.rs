@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, NamedAttr, Type};
 
-use super::{llvm_fastmath, llvm_overflow};
+use super::{Lowering, llvm_fastmath, llvm_overflow};
 use crate::canon::AttrExt;
 use crate::{ApInt, Const, ConversionPattern, ConversionPatterns, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
 
@@ -116,31 +116,6 @@ one_to_one! {
     "arith.trunci" => "llvm.trunc" Overflow;
     "arith.uitofp" => "llvm.uitofp" PassThrough fp;
     "arith.xori" => "llvm.xor" PassThrough;
-}
-
-/// A pattern written out: its root, and its body.
-struct Lowering {
-    root: &'static str,
-    benefit: u16,
-    f: for<'r, 'a, 'p> fn(&mut ConversionRewriter<'r, 'a, 'p>, OpId, &[Vec<ValueId>]) -> bool,
-}
-
-impl ConversionPattern for Lowering {
-    fn name(&self) -> &str {
-        self.root
-    }
-
-    fn root(&self) -> Option<&str> {
-        Some(self.root)
-    }
-
-    fn benefit(&self) -> u16 {
-        self.benefit
-    }
-
-    fn rewrite(&self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
-        (self.f)(cr, op, operands)
-    }
 }
 
 /// The arith ⇒ llvm patterns, in `populateArithToLLVMConversionPatterns` order.

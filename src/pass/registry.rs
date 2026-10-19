@@ -37,6 +37,7 @@ macro_rules! registry {
 
 registry! {
     "convert-arith-to-llvm" => ConvertArithToLlvm,
+    "convert-cf-to-llvm" => ConvertCfToLlvm,
     "convert-to-llvm" => ConvertToLlvm,
     "reconcile-unrealized-casts" => ReconcileUnrealizedCasts,
     "canonicalize" => Canonicalize,

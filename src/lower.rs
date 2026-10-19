@@ -1,6 +1,7 @@
 //! ⭐ Lowerings, as `mlir/lib/Conversion`: one file per source dialect and target.
 
 mod arith_to_llvm;
+mod cf_to_llvm;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -14,6 +15,7 @@ use crate::canon::AttrExt;
 use crate::{Action, ConversionRewriter, ConversionTarget, LlvmType, OpData, OpId, TypeConverter, ValueId};
 
 pub use arith_to_llvm::ArithToLlvm;
+pub use cf_to_llvm::{AssertLowering, CfToLlvm};
 
 /// Fast-math flags, by name, in LLVM's bit order.
 const LLVM_FASTMATH: [&str; 7] = ["nnan", "ninf", "nsz", "arcp", "contract", "afn", "reassoc"];
@@ -205,6 +207,34 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     }
 }
 
+/// A conversion pattern given as a root, a benefit and a function.
+pub struct Lowering {
+    pub root: &'static str,
+    pub benefit: u16,
+    pub f: LowerFn,
+}
+
+/// What a [`Lowering`] runs.
+pub type LowerFn = for<'r, 'a, 'p> fn(&mut ConversionRewriter<'r, 'a, 'p>, OpId, &[Vec<ValueId>]) -> bool;
+
+impl crate::ConversionPattern for Lowering {
+    fn name(&self) -> &str {
+        self.root
+    }
+
+    fn root(&self) -> Option<&str> {
+        Some(self.root)
+    }
+
+    fn benefit(&self) -> u16 {
+        self.benefit
+    }
+
+    fn rewrite(&self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        (self.f)(cr, op, operands)
+    }
+}
+
 /// A 1-d vector of `n` elements of `elem`.
 pub fn vector1<'a>(n: i64, elem: Type<'a>) -> Type<'a> {
     Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(vec![Dim::Static(n)]), elem: elem.into(), extras: Vec::new() })
@@ -245,11 +275,44 @@ impl Pass for ConvertArithToLlvm {
     }
 }
 
+/// `convert-cf-to-llvm`.
+pub struct ConvertCfToLlvm {
+    options: LlvmOptions,
+    counter: core::cell::Cell<u32>,
+}
+
+impl TryFrom<&Options<'_>> for ConvertCfToLlvm {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-cf-to-llvm", &["index-bitwidth"])?;
+        let bits: u32 = o.value("index-bitwidth", 0)?;
+        Ok(Self { options: LlvmOptions { index_bitwidth: if bits == 0 { 64 } else { bits }, ..LlvmOptions::default() }, counter: core::cell::Cell::new(0) })
+    }
+}
+
+impl Pass for ConvertCfToLlvm {
+    fn name(&self) -> &str {
+        "convert-cf-to-llvm"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let tc = LlvmConverter::build(self.options);
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        CfToLlvm::populate(&mut patterns, i);
+        patterns.add_with(i, AssertLowering(&self.counter));
+        let mut target = llvm_target();
+        target.unknown(Action::Dynamic(alloc::boxed::Box::new(|b: &Body<'_>, o: OpId| Some(!b[o].name.starts_with("cf.")))));
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}
+
 /// `convert-to-llvm`: every dialect's `ConvertToLLVMPatternInterface` patterns (or those of
 /// `filter-dialects`), against a target where the llvm dialect is legal.
 pub struct ConvertToLlvm {
     filter: Vec<String>,
     rollback: bool,
+    counter: core::cell::Cell<u32>,
 }
 
 impl TryFrom<&Options<'_>> for ConvertToLlvm {
@@ -261,12 +324,12 @@ impl TryFrom<&Options<'_>> for ConvertToLlvm {
         if let Some(d) = filter.iter().find(|d| !TO_LLVM.contains(&d.as_str())) {
             return Err(Error(format!("convert-to-llvm: the {d} lowering is not ported")));
         }
-        Ok(Self { filter, rollback: o.flag("allow-pattern-rollback", true)? })
+        Ok(Self { filter, rollback: o.flag("allow-pattern-rollback", true)?, counter: core::cell::Cell::new(0) })
     }
 }
 
 /// The dialects that implement `ConvertToLLVMPatternInterface`, by namespace.
-const TO_LLVM: &[&str] = &["arith"];
+const TO_LLVM: &[&str] = &["arith", "cf"];
 
 impl Pass for ConvertToLlvm {
     fn name(&self) -> &str {
@@ -281,6 +344,10 @@ impl Pass for ConvertToLlvm {
         for d in dialects {
             match d {
                 "arith" => ArithToLlvm::populate(&mut patterns, i),
+                "cf" => {
+                    CfToLlvm::populate(&mut patterns, i);
+                    patterns.add_with(i, AssertLowering(&self.counter));
+                }
                 d if TO_LLVM.contains(&d) => {}
                 d => return Err(Error(format!("dialect does not implement ConvertToLLVMPatternInterface: {d}"))),
             }
@@ -312,4 +379,120 @@ impl Pass for ReconcileUnrealizedCasts {
         body.reconcile_casts(&casts);
         Ok(())
     }
+}
+
+// ---- LLVM functions, globals and calls ----------------------------------------------------
+
+impl<'a> ConversionRewriter<'_, 'a, '_> {
+    /// The `builtin.module` around `op`.
+    pub fn module_of(&self, op: OpId) -> Option<OpId> {
+        let mut at = self.rw.body.parent_op(op);
+        while let Some(o) = at {
+            if self.rw.body[o].name == "builtin.module" {
+                return Some(o);
+            }
+            at = self.rw.body.parent_op(o);
+        }
+        None
+    }
+
+    /// `lookupOrCreateFn`: the `llvm.func` `name` of `module`, declared at its start if missing.
+    pub fn llvm_func(&mut self, module: OpId, name: &str, params: Vec<Type<'a>>, ret: Type<'a>, vararg: bool) -> Option<OpId> {
+        let fty: Type<'a> = LlvmType::Func { ret: ret.into(), params, vararg }.into();
+        if let Some(f) = self.rw.body.lookup(module, name).filter(|f| self.rw.body[*f].name == "llvm.func") {
+            return (self.rw.body[f].get("function_type") == Some(&Attribute::Type(fty))).then_some(f);
+        }
+        let saved = self.rw.ip;
+        let block = self.rw.body.top_block(module);
+        self.rw.set_start(block);
+        let loc = self.rw.body[module].loc.clone();
+        let data = OpData { loc, ..OpData::build("llvm.func").with("function_type", Attribute::Type(fty)).with("sym_name", Attribute::string(name)) };
+        let f = self.rw.create_with(data, &[], |b, f| {
+            b.add_region(f);
+        });
+        self.rw.ip = saved;
+        Some(f)
+    }
+
+    /// `llvm.call @callee(args)`.
+    pub fn llvm_call(&mut self, callee: &str, args: &[ValueId], results: &[Type<'a>]) -> OpId {
+        let data = OpData::build("llvm.call").operands(args).with("callee", Attribute::SymbolRef(vec![Cow::Owned(String::from(callee))])).segments(&[args.len(), 0]);
+        self.rw.create(data, results)
+    }
+
+    /// `ensureSymbolNameIsUnique` with the process-wide counter it keeps.
+    fn unique_symbol(&self, module: OpId, base: &str, counter: &core::cell::Cell<u32>) -> String {
+        let mut name = String::from(base);
+        while self.rw.body.lookup(module, &name).is_some() {
+            name = format!("{base}_{}", counter.get());
+            counter.set(counter.get() + 1);
+        }
+        name
+    }
+
+    /// `createPrintStrCall`: a private constant global holding `bytes` (NUL-terminated here),
+    /// and a call of `runtime` (`printString` by default) on its address.
+    pub fn print_str_call(&mut self, module: OpId, symbol: &str, bytes: &[u8], runtime: &str, counter: &core::cell::Cell<u32>) -> Option<()> {
+        let mut data: Vec<u8> = bytes.to_vec();
+        data.push(0);
+        let n = data.len();
+        let arr = LlvmType::array(n as u64, Type::int(8));
+        let tensor = Type::Shaped(Shaped { kind: ShapedKind::Tensor, shape: Some(vec![Dim::Static(n as i64)]), elem: Type::int(8).into(), extras: Vec::new() });
+        let value = crate::Const { ty: tensor, values: data.iter().map(|b| crate::Scalar::Int(crate::ApInt::new(8, *b as i8 as i128))).collect(), elements: true };
+        let name = self.unique_symbol(module, symbol, counter);
+        let saved = self.rw.ip;
+        let block = self.rw.body.top_block(module);
+        self.rw.set_start(block);
+        let loc = saved.and_then(|ip| ip.before).and_then(|o| self.rw.body[o].loc.clone());
+        let g = OpData { loc, ..OpData::build("llvm.mlir.global").flag("constant").with("global_type", Attribute::Type(arr.clone())).with("linkage", Attribute::dialect("llvm.linkage", "<private>")).with("sym_name", Attribute::string(&name)).with("value", value.into()) };
+        self.rw.create_with(g, &[], |b, g| {
+            b.add_region(g);
+        });
+        self.rw.ip = saved;
+        let addr = self.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![Cow::Owned(name)])), LlvmType::ptr());
+        let gep = self.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::DenseArray { ty: Type::int(32), values: vec![Cow::Borrowed("0")] }), LlvmType::ptr());
+        self.llvm_func(module, runtime, vec![LlvmType::ptr()], LlvmType::void(), false)?;
+        self.llvm_call(runtime, &[gep], &[]);
+        Some(())
+    }
+}
+
+impl Body<'_> {
+    /// The single block of a symbol table op like `builtin.module`.
+    pub fn top_block(&self, op: OpId) -> crate::BlockId {
+        self[self[op].regions[0]].blocks[0]
+    }
+}
+
+/// MLIR's string escapes undone: `\\`, `\"`, `\n`, `\t` and `\XX`.
+pub fn unescape(s: &str) -> Vec<u8> {
+    let b = s.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] != b'\\' || i + 1 >= b.len() {
+            out.push(b[i]);
+            i += 1;
+            continue;
+        }
+        match b[i + 1] {
+            b'n' => out.push(b'\n'),
+            b't' => out.push(b'\t'),
+            b'\\' | b'"' => out.push(b[i + 1]),
+            _ if i + 2 < b.len() => {
+                let hex = core::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok());
+                match hex {
+                    Some(v) => {
+                        out.push(v);
+                        i += 4;
+                        continue;
+                    }
+                    None => out.push(b[i + 1]),
+                }
+            }
+            c => out.push(c),
+        }
+        i += 2;
+    }
+    out
 }

@@ -249,12 +249,11 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         let pos = self.body[region].blocks.iter().position(|b| *b == block).expect("block not in region");
         self.body[region].blocks.pop();
         self.body[region].blocks.insert(pos + 1, new);
+        // Moved one by one, as `RewriterBase::splitBlock` does with a listener.
         let i = self.body.position(at);
-        let moved: Vec<OpId> = self.body[block].ops.split_off(i);
-        for o in &moved {
-            self.body[*o].parent = Some(new);
+        for o in self.body[block].ops[i..].to_vec() {
+            self.move_before(o, new, None);
         }
-        self.body[new].ops = moved;
         new
     }
 

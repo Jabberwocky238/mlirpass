@@ -115,6 +115,14 @@ fn defaults<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
             if inherent.contains(&"overflowFlags") {
                 out.push(("overflowFlags", Attribute::Int { lit: "0".into(), ty: Some(Type::int(32)) }));
             }
+            let int = |v: &'static str, w: u32| Attribute::Int { lit: v.into(), ty: Some(Type::int(w)) };
+            match n {
+                "llvm.func" => out.extend([("CConv", Attribute::dialect("llvm.cconv", "<ccc>")), ("linkage", Attribute::dialect("llvm.linkage", "<external>")), ("visibility_", int("0", 64))]),
+                "llvm.mlir.global" => out.extend([("addr_space", int("0", 32)), ("visibility_", int("0", 64))]),
+                "llvm.call" => out.extend([("CConv", Attribute::dialect("llvm.cconv", "<ccc>")), ("TailCallKind", Attribute::dialect("llvm.tailcallkind", "<none>")), ("op_bundle_sizes", Attribute::DenseArray { ty: Type::int(32), values: Vec::new() })]),
+                "llvm.getelementptr" => out.push(("noWrapFlags", int("0", 32))),
+                _ => {}
+            }
             out
         }
         _ => Vec::new(),
