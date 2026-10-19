@@ -782,6 +782,8 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         "affine.apply" => fold_apply(b, op),
         "affine.delinearize_index" => fold_delinearize(b, op),
         "affine.min" | "affine.max" => fold_min_max(b, op),
+        "affine.for" => fold_for(b, op),
+        "affine.if" => fold_if(b, op),
         "affine.linearize_index" => fold_linearize(b, op),
         _ => Fold::Failed,
     }
@@ -836,6 +838,173 @@ fn fold_min_max<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     };
     let v = if b[op].name == "affine.min" { results.iter().min() } else { results.iter().max() };
     Folded::Attr(index_attr(*v.expect("non-empty"))).into()
+}
+
+impl<'a> Body<'a> {
+    /// An `affine.for`'s (lower bound, upper bound, inits) operands.
+    fn for_operands(&self, f: OpId) -> (Vec<ValueId>, Vec<ValueId>, Vec<ValueId>) {
+        let s = self.segments(f, "operandSegmentSizes").unwrap_or_default();
+        let o = &self[f].operands;
+        (o[..s[0]].to_vec(), o[s[0]..s[0] + s[1]].to_vec(), o[s[0] + s[1]..].to_vec())
+    }
+
+    /// `setLowerBound` / `setUpperBound`.
+    fn set_for_bound(&mut self, f: OpId, lower: bool, ops: Vec<ValueId>, map: &AffineMap) {
+        let (mut lb, mut ub, inits) = self.for_operands(f);
+        if lower {
+            lb = ops;
+        } else {
+            ub = ops;
+        }
+        let segs = [lb.len(), ub.len(), inits.len()];
+        let mut all = lb;
+        all.extend(ub);
+        all.extend(inits);
+        self.set_operands(f, all);
+        self[f].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: segs.iter().map(|x| format!("{x}").into()).collect() });
+        self[f].set(if lower { "lowerBoundMap" } else { "upperBoundMap" }, map_attr(map));
+    }
+
+    fn for_constant_bounds(&self, f: OpId) -> Option<(i64, i64)> {
+        Some((self.for_constant_bound(f, true)?, self.for_constant_bound(f, false)?))
+    }
+
+    /// `getTrivialConstantTripCount`.
+    fn trivial_trip_count(&self, f: OpId) -> Option<u64> {
+        let step = self.for_step(f);
+        let (lb, ub) = self.for_constant_bounds(f)?;
+        if step <= 0 {
+            return None;
+        }
+        Some(if ub - lb <= 0 { 0 } else { ((ub - lb + step - 1) / step) as u64 })
+    }
+}
+
+/// `removeDuplicateExprs`: consecutive repeats go.
+fn dedup_consecutive(m: AffineMap) -> AffineMap {
+    let mut r: Vec<AffineExpr> = Vec::new();
+    for e in m.results {
+        if r.last() != Some(&e) {
+            r.push(e);
+        }
+    }
+    AffineMap { results: r, ..m }
+}
+
+/// `AffineForOp::fold`.
+fn fold_for<'a>(b: &mut Body<'a>, f: OpId) -> Fold<'a> {
+    let mut folded = false;
+    // `foldLoopBounds`.
+    for lower in [true, false] {
+        if b.for_constant_bound(f, lower).is_some() {
+            continue;
+        }
+        let (lb, ub, _) = b.for_operands(f);
+        let ops = if lower { lb } else { ub };
+        let consts: Vec<Option<i64>> = ops.iter().map(|v| b.const_index_attr(*v)).collect();
+        let Some(map) = b.affine_map(f, if lower { "lowerBoundMap" } else { "upperBoundMap" }) else { continue };
+        let Ok(Some(r)) = map.constant_fold(&consts) else { continue };
+        let v = if lower { r.iter().max() } else { r.iter().min() };
+        b.set_for_bound(f, lower, Vec::new(), &AffineMap::constant(*v.expect("a bound")));
+        folded = true;
+    }
+    // `canonicalizeLoopBounds`.
+    let (mut lbo, mut ubo, _) = b.for_operands(f);
+    if let (Some(mut lbm), Some(mut ubm)) = (b.affine_map(f, "lowerBoundMap"), b.affine_map(f, "upperBoundMap")) {
+        let (plb, pub_) = (lbm.clone(), ubm.clone());
+        b.compose_map(&mut lbm, &mut lbo);
+        b.canonicalize_map_or_set(&mut lbm, &mut lbo);
+        lbm = b.simplify_min_max_with(&lbm, &lbo, true);
+        ubm = b.simplify_min_max_with(&ubm, &ubo, false);
+        lbm = dedup_consecutive(lbm);
+        b.compose_map(&mut ubm, &mut ubo);
+        b.canonicalize_map_or_set(&mut ubm, &mut ubo);
+        ubm = dedup_consecutive(ubm);
+        if lbm != plb {
+            b.set_for_bound(f, true, lbo, &lbm);
+            folded = true;
+        }
+        if ubm != pub_ {
+            b.set_for_bound(f, false, ubo, &ubm);
+            folded = true;
+        }
+    }
+    let (_, _, inits) = b.for_operands(f);
+    let mut results: Option<Vec<ValueId>> = None;
+    if b.trivial_trip_count(f) == Some(0) && !b[f].results.is_empty() {
+        results = Some(inits.clone());
+    }
+    if let Some(r) = empty_loop_folder(b, f) {
+        results = Some(r);
+    }
+    match results {
+        Some(r) => Fold::Results(r.into_iter().map(Folded::Value).collect()),
+        None if folded => Fold::InPlace,
+        None => Fold::Failed,
+    }
+}
+
+/// `AffineForEmptyLoopFolder`.
+fn empty_loop_folder(b: &Body<'_>, f: OpId) -> Option<Vec<ValueId>> {
+    let body = b[b[f].regions[0]].blocks[0];
+    if b[body].ops.len() != 1 || b[f].results.is_empty() {
+        return None;
+    }
+    let (_, _, inits) = b.for_operands(f);
+    let trip = b.trivial_trip_count(f);
+    if trip == Some(0) {
+        return Some(inits);
+    }
+    let y = b[body].ops[0];
+    let iter_args = &b[body].args[1..];
+    let iv = b[body].args[0];
+    let (mut outside, mut unordered) = (false, false);
+    let mut repl = Vec::new();
+    for (i, v) in b[y].operands.iter().enumerate() {
+        if *v == iv {
+            return None;
+        }
+        match iter_args.iter().position(|a| a == v) {
+            None => {
+                outside = true;
+                repl.push(*v);
+            }
+            Some(pos) => {
+                if pos != i {
+                    unordered = true;
+                }
+                repl.push(inits[pos]);
+            }
+        }
+    }
+    if trip.is_none() && (outside || unordered) {
+        return None;
+    }
+    if trip.is_some_and(|t| t >= 2) && unordered {
+        return None;
+    }
+    Some(repl)
+}
+
+/// `AffineIfOp::fold`: compose and canonicalize the condition and its operands.
+fn fold_if<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
+    let Some(old) = b.integer_set(op, "condition") else { return Fold::Failed };
+    let old_ops = b[op].operands.clone();
+    let mut set = old.clone();
+    let mut ops = old_ops.clone();
+    // `composeSetAndOperands`.
+    if ops.iter().any(|v| b.def_named(*v, "affine.apply").is_some()) {
+        let mut map = AffineMap { dims: set.dims, syms: set.syms, results: set.constraints.iter().map(|c| c.0.clone()).collect() };
+        b.compose_map(&mut map, &mut ops);
+        set = IntegerSet { dims: map.dims, syms: map.syms, constraints: map.results.into_iter().zip(set.constraints.iter().map(|c| c.1)).collect() };
+    }
+    b.canonicalize_map_or_set(&mut set, &mut ops);
+    if set == old && ops == old_ops {
+        return Fold::Failed;
+    }
+    b.set_operands(op, ops);
+    b[op].set("condition", set_attr(&set));
+    Fold::InPlace
 }
 
 /// `canonicalizeMapExprAndTermOrder`: results sorted by their flattened forms.
@@ -1418,6 +1587,45 @@ super::rewrites! {
         true
     }
 
+    /// `SimplifyDeadElse`: an else holding only its terminator goes.
+    SimplifyDeadElse("affine.if", 1) |rw, op| {
+        let b = &*rw.body;
+        let er = b[op].regions[1];
+        let Some(&blk) = b[er].blocks.first() else { return false };
+        if b[blk].ops.len() != 1 || !b[op].results.is_empty() {
+            return false;
+        }
+        rw.erase_block(blk);
+        rw.touched(op);
+        true
+    }
+
+    /// `AlwaysTrueOrFalseIf`.
+    AlwaysTrueOrFalseIf("affine.if", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(set) = b.integer_set(op, "condition") else { return false };
+        let empty = set.constraints == [(AffineExpr::Const(1), true)];
+        let always = set.constraints == [(AffineExpr::Const(0), true)];
+        let has_else = b[b[op].regions[1]].blocks.first().is_some();
+        let block = if empty {
+            if b[op].results.is_empty() && !has_else {
+                rw.erase_op(op);
+                return true;
+            }
+            b[b[op].regions[1]].blocks[0]
+        } else if always {
+            b[b[op].regions[0]].blocks[0]
+        } else {
+            return false;
+        };
+        let term = *b[block].ops.last().expect("terminator");
+        let vals = b[term].operands.clone();
+        rw.inline_block_before(block, b[op].parent.expect("placed"), Some(op), &[]);
+        rw.replace_op(op, &vals);
+        rw.erase_op(term);
+        true
+    }
+
     /// `CanonicalizeSingleResultAffineMinMaxOp<AffineMinOp>`.
     SingleResultAffineMin("affine.min", 1) |rw, op| { single_result_min_max(rw, op) }
     /// `DeduplicateAffineMinMaxExpressions<AffineMinOp>`.
@@ -1486,6 +1694,8 @@ fn order_min_max(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
 /// The affine dialect's canonicalization patterns.
 pub fn patterns(set: &mut crate::PatternSet) {
     set.add(SimplifyAffineApply);
+    set.add(SimplifyDeadElse);
+    set.add(AlwaysTrueOrFalseIf);
     set.add(SingleResultAffineMin);
     set.add(DeduplicateAffineMin);
     set.add(MergeAffineMin);
