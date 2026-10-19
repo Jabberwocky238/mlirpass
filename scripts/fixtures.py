@@ -5,6 +5,7 @@ For every kept `// RUN: mlir-opt ...` line of a test file it writes, under tests
 
     <name>.mlir             the upstream input (once per file)
     <name>.<k>.args         the mlir-opt arguments, one per line (`%s` dropped)
+    <name>.<k>.in.mlir      the input as mlir-opt reads it: parsed and printed generic, no pass run
     <name>.<k>.out.mlir     what mlir-opt prints
     <name>.<k>.generic.mlir the same with --mlir-print-op-generic
 
@@ -68,9 +69,18 @@ def args_of(cmd: str):
     for a in args:
         if a.lstrip("-").startswith("test-") or "-test-" in a:
             return None, f"test-only pass {a}"
+        if a.lstrip("-").startswith(LOGS):
+            return None, f"prints logs, not IR: {a}"
         if "%" in a:
             return None, f"lit substitution {a}"
     return args, None
+
+
+# Flags whose output is a log or a dump instead of (only) the resulting IR.
+LOGS = ("log-actions", "mlir-print-ir", "mlir-timing", "dump-pass-pipeline", "debug", "mlir-pass-statistics")
+
+# Arguments that change how the input is read, not what is done to it.
+READING = ("-allow-unregistered-dialect", "--allow-unregistered-dialect", "-split-input-file", "--split-input-file")
 
 
 def mlir_opt(binary: str, args, input_path: Path, generic: bool):
@@ -112,10 +122,15 @@ def main():
             if generic.returncode != 0:
                 skipped.append(f"{name}.{k}\tmlir-opt failed (generic)")
                 continue
+            reading = mlir_opt(opts.mlir_opt, [a for a in args if a in READING], path, True)
+            if reading.returncode != 0:
+                skipped.append(f"{name}.{k}\tmlir-opt failed (reading the input)")
+                continue
             if not wrote_input:
                 (out / f"{name}.mlir").write_text(text)
                 wrote_input = True
             (out / f"{name}.{k}.args").write_text("".join(a + "\n" for a in args))
+            (out / f"{name}.{k}.in.mlir").write_text(reading.stdout)
             (out / f"{name}.{k}.out.mlir").write_text(custom.stdout)
             (out / f"{name}.{k}.generic.mlir").write_text(generic.stdout)
             kept += 1

@@ -10,4 +10,7 @@
 
 extern crate alloc;
 
+mod ir;
+
+pub use ir::*;
 pub use mlirformat;

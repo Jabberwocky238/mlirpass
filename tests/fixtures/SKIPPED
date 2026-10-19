@@ -24,18 +24,21 @@ Conversion__MemRefToLLVM__memref-to-llvm-with-transforms.0	test-only pass -test-
 Conversion__MemRefToLLVM__type-conversion.0	test-only pass -test-llvm-legalize-patterns
 Conversion__MemRefToLLVM__type-conversion.1	test-only pass -test-llvm-legalize-patterns=allow-pattern-rollback=0
 Conversion__ShapeToStandard__convert-shape-constraints.0	lit substitution <%s
-Conversion__VectorToLLVM__pass-option-serialization.0	mlir-opt failed: mlir-opt: Too many positional arguments specified!
-Conversion__VectorToLLVM__pass-option-serialization.1	mlir-opt failed: mlir-opt: Too many positional arguments specified!
+Conversion__TosaToLinalg__tosa-to-linalg-invalid.0	mlir-opt failed (reading the input)
+Conversion__TosaToLinalg__tosa-to-linalg-pipeline.0	mlir-opt failed (reading the input)
+Conversion__VectorToLLVM__pass-option-serialization.0	prints logs, not IR: --dump-pass-pipeline
+Conversion__VectorToLLVM__pass-option-serialization.1	prints logs, not IR: --dump-pass-pipeline
 Conversion__VectorToLLVM__vector-scalable-memcpy.0	pipes into mlir-opt
 Conversion__VectorToSPIRV__vector-reduction-to-spirv-dot-prod.0	test-only pass --test-vector-reduction-to-spirv-dot-prod
 Dialect__ArmSME__canonicalize.0	pipes into mlir-opt
 Transforms__compose-subview.0	test-only pass -test-compose-subview
-Transforms__composite-pass.0	test-only pass --test-composite-fixed-point-pass
+Transforms__composite-pass.0	prints logs, not IR: --log-actions-to=-
+Transforms__composite-pass.1	prints logs, not IR: --log-actions-to=-
 Transforms__constant-fold-debuginfo.0	test-only pass -test-single-fold
 Transforms__constant-fold.0	test-only pass -test-single-fold
 Transforms__control-flow-sink-test.0	test-only pass -test-control-flow-sink
 Transforms__decompose-call-graph-types.0	test-only pass -test-decompose-call-graph-types
-Transforms__inlining-dump-default-pipeline.0	mlir-opt failed: mlir-opt: Too many positional arguments specified!
+Transforms__inlining-dump-default-pipeline.0	prints logs, not IR: -dump-pass-pipeline
 Transforms__invalid-outer-loop-size.0	not mlir-opt: ['not']
 Transforms__invalid-parallel-loop-collapsing.0	not mlir-opt: ['not']
 Transforms__invalid-parallel-loop-collapsing.1	not mlir-opt: ['not']
