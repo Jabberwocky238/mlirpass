@@ -47,6 +47,7 @@ registry! {
     "convert-ub-to-llvm" => ConvertUbToLlvm,
     "convert-to-llvm" => ConvertToLlvm,
     "tosa-to-tensor" => TosaToTensorPass,
+    "tosa-to-arith" => TosaToArithPass,
     "convert-complex-to-standard" => ConvertComplexToStandard,
     "convert-arith-to-emitc" => ConvertArithToEmitc,
     "convert-to-emitc" => ConvertToEmitc,
