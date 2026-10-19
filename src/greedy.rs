@@ -233,7 +233,7 @@ impl<'a> Body<'a> {
             if config.top_down {
                 tracker.worklist.reverse();
             }
-            let mut again = self.erase_unreachable_blocks(&[region]);
+            let mut again = Rewriter::new(self, &mut tracker).erase_unreachable_blocks(&[region]);
             again |= self.process(&mut tracker, patterns, config);
             if config.region_simplify != RegionSimplify::Disabled {
                 again |= self.simplify_regions(&[region], config.region_simplify == RegionSimplify::Aggressive);

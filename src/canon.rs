@@ -2,6 +2,7 @@
 //! how it materializes a folded constant. One file per dialect.
 
 mod arith;
+mod cf;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -135,5 +136,6 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
 pub fn patterns() -> PatternSet {
     let mut set = PatternSet::default();
     arith::patterns(&mut set);
+    cf::patterns(&mut set);
     set
 }

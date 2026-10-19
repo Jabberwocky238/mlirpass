@@ -167,41 +167,9 @@ impl Body<'_> {
         }
     }
 
-    /// `eraseUnreachableBlocks`; whether any block went.
-    pub fn erase_unreachable_blocks(&mut self, regions: &[RegionId]) -> bool {
-        let mut erased = false;
-        let mut work: Vec<RegionId> = regions.to_vec();
-        while let Some(r) = work.pop() {
-            let Some(&entry) = self[r].blocks.first() else { continue };
-            if self[r].blocks.len() == 1 {
-                work.extend(self[entry].ops.iter().flat_map(|o| self[*o].regions.clone()));
-                continue;
-            }
-            let reachable: BTreeSet<BlockId> = self.post_order(entry).into_iter().collect();
-            for b in self[r].blocks.clone() {
-                if !reachable.contains(&b) {
-                    for o in self[b].ops.clone() {
-                        self.drop_result_uses(o);
-                    }
-                    for a in self[b].args.clone() {
-                        self.drop_value_uses(a);
-                    }
-                    for o in self[b].ops.clone().into_iter().rev() {
-                        self.erase(o);
-                    }
-                    self.remove_block(b);
-                    erased = true;
-                    continue;
-                }
-                work.extend(self[b].ops.iter().flat_map(|o| self[*o].regions.clone()));
-            }
-        }
-        erased
-    }
-
     /// ⭐ `simplifyRegions`; whether anything changed.
     pub fn simplify_regions(&mut self, regions: &[RegionId], merge_blocks: bool) -> bool {
-        let blocks = self.erase_unreachable_blocks(regions);
+        let blocks = crate::Rewriter::new(self, &mut crate::Quiet).erase_unreachable_blocks(regions);
         let dce = self.region_dce(regions);
         let (mut merged, mut dropped) = (false, false);
         if merge_blocks {
@@ -479,5 +447,36 @@ impl Body<'_> {
             }
         }
         changed
+    }
+}
+
+impl crate::Rewriter<'_, '_> {
+    /// `eraseUnreachableBlocks`; whether any block went.
+    pub fn erase_unreachable_blocks(&mut self, regions: &[RegionId]) -> bool {
+        let mut erased = false;
+        let mut work: Vec<RegionId> = regions.to_vec();
+        while let Some(r) = work.pop() {
+            let b = &*self.body;
+            let Some(&entry) = b[r].blocks.first() else { continue };
+            if b[r].blocks.len() == 1 {
+                work.extend(b[entry].ops.iter().flat_map(|o| b[*o].regions.clone()));
+                continue;
+            }
+            let reachable: BTreeSet<BlockId> = b.post_order(entry).into_iter().collect();
+            for blk in self.body[r].blocks.clone() {
+                if !reachable.contains(&blk) {
+                    // `dropAllDefinedValueUses`, then the block goes.
+                    for o in self.body[blk].ops.clone() {
+                        self.body.drop_result_uses(o);
+                    }
+                    self.erase_block(blk);
+                    erased = true;
+                    continue;
+                }
+                let b = &*self.body;
+                work.extend(b[blk].ops.iter().flat_map(|o| b[*o].regions.clone()));
+            }
+        }
+        erased
     }
 }
