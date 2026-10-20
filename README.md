@@ -9,7 +9,8 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-Skeleton. The layout below is the plan; each part lands with its fixtures counted.
+Alpha (`0.1.0-alpha.1`): 3685 of the 4670 fixture cases match `mlir-opt` 22.1.8 byte for byte
+(`cargo test --test passes -- --nocapture` counts them per group; SPIR-V is not started).
 
 | part | what it is | upstream |
 |---|---|---|

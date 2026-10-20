@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "mlirformat"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "mlirformat-macros",
  "serde",
@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "mlirformat-macros"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -22,7 +22,7 @@ dependencies = [
 
 [[package]]
 name = "mlirpass"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "mlirformat",
  "mlirpass-macros",
@@ -32,7 +32,7 @@ dependencies = [
 
 [[package]]
 name = "mlirpass-macros"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "proc-macro2",
  "quote",
