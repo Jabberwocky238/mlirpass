@@ -4,7 +4,6 @@
 //! this file: `llvm.rs` (`LLVMMemorySlot.cpp`), `memref.rs` (`MemRefMemorySlot.cpp`).
 
 mod llvm;
-mod memref;
 
 use mlirpass_macros::pass;
 use mlirformat::Error;

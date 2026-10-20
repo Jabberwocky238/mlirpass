@@ -1,11 +1,12 @@
 //! `memref`'s memory slots, as `MemRefMemorySlot.cpp`: `memref.alloca` allocates them,
 //! `memref.load` / `memref.store` access them, and a small static memref splits into its elements.
+//! Both [`Promotable`] (`mem2reg`) and [`Destructurable`] (`sroa`) of [`MemrefSlots`].
 
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
 
-use super::memslot::{Deletion, DestructurableMemorySlot, MemorySlot, Promotable};
+use super::memslot::{Deletion, Destructurable, DestructurableMemorySlot, MemorySlot, MemrefSlots, Promotable, Slots};
 use crate::{Body, Const, OpData, OpId, Rewriter, Use, ValueId};
 
 /// A ranked `MemRefType`, as `MemRefDestructurableTypeExternalModel` sees it.
@@ -116,9 +117,6 @@ impl<'a> Body<'a> {
     }
 }
 
-/// ⭐ `memref`'s memory slot interfaces.
-pub struct MemrefSlots;
-
 impl Promotable for MemrefSlots {
     fn dialect(&self) -> &str {
         "memref"
@@ -188,49 +186,70 @@ impl Promotable for MemrefSlots {
     }
 }
 
-impl MemrefSlots {
-    /// `AllocaOp::getDestructurableSlots`.
-    pub fn destructurable_slots<'a>(&self, b: &Body<'a>, op: OpId) -> Option<Vec<DestructurableMemorySlot<'a>>> {
+impl Destructurable for MemrefSlots {
+    fn dialect(&self) -> &str {
+        "memref"
+    }
+
+    /// `MemRefDestructurableTypeExternalModel::getSubelementIndexMap`.
+    fn subelements<'a>(&self, ty: &Type<'a>) -> Option<Vec<(Attribute<'a>, Type<'a>)>> {
+        MemRefType::try_from(ty).ok()?.subelements()
+    }
+
+    /// `MemRefDestructurableTypeExternalModel::getTypeAtIndex`.
+    fn type_at<'a>(&self, ty: &Type<'a>, index: &Attribute<'a>) -> Option<Type<'a>> {
+        MemRefType::try_from(ty).ok()?.type_at(index)
+    }
+
+    /// `AllocaOp::getDestructurableSlots`: the memref itself is the slot's type.
+    fn destructurable_slots<'a>(&self, cx: Slots<'_>, b: &Body<'a>, op: OpId) -> Option<Vec<DestructurableMemorySlot<'a>>> {
         (b[op].name == "memref.alloca").then_some(())?;
         let ptr = b[op].results[0];
         let ty = &b[ptr].ty;
-        let subelements = MemRefType::try_from(ty).ok().and_then(|t| t.subelements());
-        Some(subelements.map(|subelements| DestructurableMemorySlot { slot: MemorySlot { ptr, elem: ty.clone() }, subelements }).into_iter().collect())
+        Some(cx.subelements(ty).map(|subelements| DestructurableMemorySlot { slot: MemorySlot { ptr, elem: ty.clone() }, subelements }).into_iter().collect())
     }
 
-    /// `AllocaOp::destructure`: one `memref<T>` alloca per used index, after `op`, in `used`'s
-    /// order.
-    pub fn destructure<'a>(&self, rw: &mut Rewriter<'_, 'a>, op: OpId, used: &[Attribute<'a>]) -> Vec<(Attribute<'a>, MemorySlot<'a>)> {
-        let ty = rw.body[rw.body[op].results[0]].ty.clone();
-        let t = MemRefType::try_from(&ty).expect("a destructurable memref");
-        rw.set_after(op);
+    /// `AllocaOp::destructure`: one `memref<T>` alloca per used index, after `alloc`, in
+    /// `used`'s order.
+    fn destructure<'a>(&self, cx: Slots<'_>, rw: &mut Rewriter<'_, 'a>, alloc: OpId, slot: &DestructurableMemorySlot<'a>, used: &[Attribute<'a>], allocators: &mut Vec<OpId>) -> Vec<(Attribute<'a>, MemorySlot<'a>)> {
+        rw.set_after(alloc);
         used.iter()
             .map(|index| {
-                let elem = t.type_at(index).expect("a used index is valid");
+                let elem = cx.type_at(&slot.slot.elem, index).expect("a used index is valid");
                 let mut data = OpData::build("memref.alloca").segments(&[0, 0]);
-                data.loc = rw.body[op].loc.clone();
+                data.loc = rw.body[alloc].loc.clone();
                 let sub = rw.create(data, &[MemRefType::scalar(elem.clone())]);
+                allocators.push(sub);
                 (index.clone(), MemorySlot { ptr: rw.body[sub].results[0], elem })
             })
             .collect()
     }
 
-    /// `AllocaOp::handleDestructuringComplete`.
-    pub fn destructuring_complete(&self, rw: &mut Rewriter<'_, '_>, op: OpId) {
-        rw.erase_op(op);
+    fn handle_destructuring_complete<'a>(&self, rw: &mut Rewriter<'_, 'a>, alloc: OpId, _: &DestructurableMemorySlot<'a>) -> Option<OpId> {
+        rw.erase_op(alloc);
+        None
+    }
+
+    fn is_accessor(&self, b: &Body<'_>, op: OpId) -> bool {
+        b.memref_access(op).is_some()
     }
 
     /// `canRewire`: the access's index, when constant, in bounds and (for a store) a subelement
     /// of the slot that does not store the pointer itself.
-    pub fn can_rewire<'a>(&self, b: &Body<'a>, op: OpId, slot: &DestructurableMemorySlot<'a>) -> Option<Attribute<'a>> {
-        let a = b.memref_access(op)?;
-        (a.memref == slot.slot.ptr && a.stored != Some(slot.slot.ptr)).then_some(())?;
-        let index = b.memref_index(op)?;
-        (a.stored.is_none() || slot.subelements.iter().any(|(i, _)| *i == index)).then_some(index)
+    fn can_rewire<'a>(&self, _: Slots<'_>, b: &Body<'a>, op: OpId, slot: &DestructurableMemorySlot<'a>, used: &mut Vec<Attribute<'a>>, _: &mut Vec<MemorySlot<'a>>) -> bool {
+        let Some(a) = b.memref_access(op) else { return false };
+        if a.memref != slot.slot.ptr || a.stored == Some(slot.slot.ptr) {
+            return false;
+        }
+        let Some(index) = b.memref_index(op).filter(|i| a.stored.is_none() || slot.subelements.iter().any(|(s, _)| s == i)) else { return false };
+        if !used.contains(&index) {
+            used.push(index);
+        }
+        true
     }
 
     /// `rewire`: the access moves to the subslot of its index, with no indices left.
-    pub fn rewire<'a>(&self, rw: &mut Rewriter<'_, 'a>, op: OpId, subslots: &[(Attribute<'a>, MemorySlot<'a>)]) -> Deletion {
+    fn rewire<'a>(&self, _: Slots<'_>, rw: &mut Rewriter<'_, 'a>, op: OpId, _: &DestructurableMemorySlot<'a>, subslots: &[(Attribute<'a>, MemorySlot<'a>)]) -> Deletion {
         let index = rw.body.memref_index(op).expect("canRewire checked the index");
         let ptr = subslots.iter().find(|(i, _)| *i == index).expect("a used index").1.ptr;
         let keep = usize::from(rw.body[op].name == "memref.store");
