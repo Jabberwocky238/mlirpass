@@ -16,6 +16,7 @@ mod memref_desc;
 mod memref_to_emitc;
 mod memref_to_llvm;
 mod scf_to_emitc;
+mod shape_to_std;
 mod tosa_to_arith;
 mod tosa_to_linalg;
 mod tosa_to_linalg_named;
@@ -50,6 +51,7 @@ pub use memref_desc::DYNAMIC;
 pub use memref_to_emitc::MemrefToEmitc;
 pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
 pub use scf_to_emitc::ScfToEmitc;
+pub use shape_to_std::ShapeToStd;
 pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
 pub use tosa_to_arith::TosaToArith;
 pub use tosa_to_linalg::TosaToLinalg;
@@ -933,6 +935,31 @@ impl Pass for TosaToLinalgNamedPass {
         }
         target.unknown(Action::Legal);
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Full)
+    }
+}
+
+/// `convert-shape-to-std`.
+pub struct ConvertShapeToStd;
+
+impl TryFrom<&Options<'_>> for ConvertShapeToStd {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-shape-to-std", &[])?;
+        Ok(Self)
+    }
+}
+
+impl Pass for ConvertShapeToStd {
+    fn name(&self) -> &str {
+        "convert-shape-to-std"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let mut patterns = ConversionPatterns::default();
+        ShapeToStd::populate(&mut patterns);
+        let mut target = ConversionTarget::default();
+        target.legal_dialect("arith").legal_dialect("scf").legal_dialect("tensor").legal_op("shape.cstr_require").legal_op("func.func").legal_op("builtin.module");
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
 }
 

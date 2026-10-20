@@ -51,6 +51,7 @@ registry! {
     "tosa-to-linalg-named" on "func.func" => TosaToLinalgNamedPass,
     "tosa-to-linalg" on "func.func" => TosaToLinalgPass,
     "convert-complex-to-standard" => ConvertComplexToStandard,
+    "convert-shape-to-std" on "builtin.module" => ConvertShapeToStd,
     "convert-arith-to-emitc" => ConvertArithToEmitc,
     "convert-to-emitc" => ConvertToEmitc,
     "convert-memref-to-emitc" on "builtin.module" => ConvertMemrefToEmitc,
