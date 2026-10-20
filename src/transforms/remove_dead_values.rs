@@ -5,10 +5,11 @@ use alloc::collections::BTreeSet;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::pass;
 use mlirformat::{Attribute, Error, Type};
 
 use crate::dataflow::Solver;
-use crate::{Body, BlockId, OpData, OpId, Options, Pass, Trait, ValueId, Visibility};
+use crate::{Body, BlockId, OpData, OpId, Run, Trait, ValueId, Visibility};
 
 /// `RDVFinalCleanupList`.
 #[derive(Default)]
@@ -377,23 +378,13 @@ impl Cleanup {
     }
 }
 
+#[pass("remove-dead-values")]
 pub struct RemoveDeadValues {
+    #[opt("canonicalize", default = true)]
     canonicalize: bool,
 }
 
-impl TryFrom<&Options<'_>> for RemoveDeadValues {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("remove-dead-values", &["canonicalize"])?;
-        Ok(Self { canonicalize: o.flag("canonicalize", true)? })
-    }
-}
-
-impl Pass for RemoveDeadValues {
-    fn name(&self) -> &str {
-        "remove-dead-values"
-    }
-
+impl Run for RemoveDeadValues {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let mut s = Solver::new(body, op);
         s.run_liveness();

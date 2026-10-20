@@ -6,26 +6,16 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::pass;
 use mlirformat::{Attribute, Shaped, ShapedKind, Type};
 
 use crate::canon::{MemrefOfr as Ofr, map_attr};
-use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, GreedyConfig, LlvmOptions, OpData, OpId, Options, Pass, PatternSet, Rewriter, ValueId, DYNAMIC};
+use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, GreedyConfig, LlvmOptions, OpData, OpId, PatternSet, Rewriter, ValueId, DYNAMIC};
 
+#[pass("expand-strided-metadata")]
 pub struct ExpandStridedMetadata;
 
-impl TryFrom<&Options<'_>> for ExpandStridedMetadata {
-    type Error = mlirformat::Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Self::Error> {
-        o.only("expand-strided-metadata", &[])?;
-        Ok(Self)
-    }
-}
-
-impl Pass for ExpandStridedMetadata {
-    fn name(&self) -> &str {
-        "expand-strided-metadata"
-    }
-
+impl crate::Run for ExpandStridedMetadata {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), mlirformat::Error> {
         let mut set = PatternSet::default();
         set.add(SubviewFolder);

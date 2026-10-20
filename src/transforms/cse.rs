@@ -6,29 +6,15 @@
 
 use alloc::vec::Vec;
 
+use mlirpass_macros::pass;
 use mlirformat::Error;
 
-use crate::{Body, BlockId, DomTree, EffectKind, OpId, Options, Pass, RegionId, Trait};
+use crate::{Body, BlockId, DomTree, EffectKind, OpId, RegionId, Trait};
 
-pub struct Cse;
-
-impl TryFrom<&Options<'_>> for Cse {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("cse", &[])?;
-        Ok(Self)
-    }
-}
-
-impl Pass for Cse {
-    fn name(&self) -> &str {
-        "cse"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        body.cse(op);
-        Ok(())
-    }
+#[pass("cse")]
+pub fn cse<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    body.cse(op);
+    Ok(())
 }
 
 /// The scoped table of known ops: a lookup finds the latest equivalent one in scope.

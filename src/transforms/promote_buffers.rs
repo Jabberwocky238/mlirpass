@@ -4,21 +4,17 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
 
+use mlirpass_macros::pass;
 use mlirformat::{Error, FloatKind, ShapedKind, Type};
 
-use crate::{Body, EffectKind, OpData, OpId, Options, Pass, RegionId, Trait, ValueId, attr};
+use crate::{Body, EffectKind, OpData, OpId, Run, RegionId, Trait, ValueId, attr};
 
+#[pass("promote-buffers-to-stack", on = "func.func")]
 pub struct PromoteBuffersToStack {
+    #[opt("max-alloc-size-in-bytes", default = 1024)]
     max_bytes: u64,
+    #[opt("max-rank-of-allocated-memref", default = 1)]
     max_rank: usize,
-}
-
-impl TryFrom<&Options<'_>> for PromoteBuffersToStack {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("promote-buffers-to-stack", &["max-alloc-size-in-bytes", "max-rank-of-allocated-memref"])?;
-        Ok(Self { max_bytes: o.value("max-alloc-size-in-bytes", 1024u64)?, max_rank: o.value("max-rank-of-allocated-memref", 1usize)? })
-    }
 }
 
 /// `BufferViewFlowAnalysis`: which values may alias which.
@@ -161,11 +157,7 @@ impl Body<'_> {
     }
 }
 
-impl Pass for PromoteBuffersToStack {
-    fn name(&self) -> &str {
-        "promote-buffers-to-stack"
-    }
-
+impl Run for PromoteBuffersToStack {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let flow = ViewFlow::new(body, op);
         let mut allocs = Vec::new();

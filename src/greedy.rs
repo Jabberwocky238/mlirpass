@@ -21,6 +21,18 @@ pub enum RegionSimplify {
     Aggressive,
 }
 
+impl core::str::FromStr for RegionSimplify {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, ()> {
+        match s {
+            "disabled" => Ok(Self::Disabled),
+            "normal" => Ok(Self::Normal),
+            "aggressive" => Ok(Self::Aggressive),
+            _ => Err(()),
+        }
+    }
+}
+
 /// `GreedyRewriteConfig`.
 #[derive(Debug, Clone, Copy)]
 pub struct GreedyConfig {

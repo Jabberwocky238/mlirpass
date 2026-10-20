@@ -274,6 +274,11 @@ impl Default for LlvmOptions {
 }
 
 impl LlvmOptions {
+    /// The `index-bitwidth` pass option alone (0: from the data layout).
+    pub fn bitwidth(index_bitwidth: u32) -> Self {
+        Self { index_bitwidth, ..Self::default() }
+    }
+
     /// Index bitwidth 0: taken from the data layout (`kDeriveIndexBitwidthFromDataLayout`).
     pub fn derived() -> Self {
         Self { index_bitwidth: 0, ..Self::default() }

@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 
 use mlirformat::Error;
 
-use super::{Options, Pass};
+use super::{Options, Pass, PassDecl};
 use crate::lower::*;
 use crate::transforms::*;
 
@@ -23,55 +23,53 @@ impl PassInfo {
 }
 
 macro_rules! registry {
-    (@anchor) => { None };
-    (@anchor $on:literal) => { Some($on) };
-    ($($name:literal $(on $on:literal)? => $ty:ty,)*) => {
-        /// The registry, by `mlir-opt` argument.
+    ($($ty:ty,)*) => {
+        /// The registry: each pass's name and anchor come from its `#[pass]`.
         pub const PASSES: &[PassInfo] = &[$(PassInfo {
-            name: $name,
-            anchor: registry!(@anchor $($on)?),
+            name: <$ty as PassDecl>::NAME,
+            anchor: <$ty as PassDecl>::ANCHOR,
             make: |o| Ok(Box::new(<$ty>::try_from(o)?)),
         },)*];
     };
 }
 
 registry! {
-    "convert-arith-to-llvm" => ConvertArithToLlvm,
-    "convert-cf-to-llvm" => ConvertCfToLlvm,
-    "finalize-memref-to-llvm" => FinalizeMemrefToLlvm,
-    "convert-vector-to-llvm" => ConvertVectorToLlvm,
-    "convert-vector-to-scf" => ConvertVectorToScf,
-    "convert-func-to-llvm" on "builtin.module" => ConvertFuncToLlvm,
-    "convert-index-to-llvm" => ConvertIndexToLlvm,
-    "convert-math-to-llvm" => ConvertMathToLlvm,
-    "convert-ub-to-llvm" => ConvertUbToLlvm,
-    "convert-to-llvm" => ConvertToLlvm,
-    "tosa-to-tensor" => TosaToTensorPass,
-    "tosa-to-arith" => TosaToArithPass,
-    "tosa-to-linalg-named" on "func.func" => TosaToLinalgNamedPass,
-    "tosa-to-linalg" on "func.func" => TosaToLinalgPass,
-    "convert-complex-to-standard" => ConvertComplexToStandard,
-    "convert-shape-to-std" on "builtin.module" => ConvertShapeToStd,
-    "convert-scf-to-cf" => ConvertScfToCf,
-    "convert-complex-to-llvm" => ConvertComplexToLlvm,
-    "convert-arith-to-emitc" => ConvertArithToEmitc,
-    "convert-to-emitc" => ConvertToEmitc,
-    "convert-memref-to-emitc" on "builtin.module" => ConvertMemrefToEmitc,
-    "convert-scf-to-emitc" => ConvertScfToEmitc,
-    "convert-math-to-emitc" => ConvertMathToEmitc,
-    "convert-func-to-emitc" on "builtin.module" => ConvertFuncToEmitc,
-    "reconcile-unrealized-casts" => ReconcileUnrealizedCasts,
-    "set-llvm-module-datalayout" on "builtin.module" => SetLlvmModuleDataLayout,
-    "canonicalize" => Canonicalize,
-    "cse" => Cse,
-    "expand-strided-metadata" => ExpandStridedMetadata,
-    "lower-affine" => LowerAffine,
-    "loop-invariant-code-motion" => LoopInvariantCodeMotion,
-    "promote-buffers-to-stack" on "func.func" => PromoteBuffersToStack,
-    "llvm-request-c-wrappers" on "func.func" => RequestCWrappers,
-    "strip-debuginfo" => StripDebugInfo,
-    "symbol-dce" => SymbolDce,
-    "sccp" => Sccp,
-    "remove-dead-values" => RemoveDeadValues,
-    "symbol-privatize" => SymbolPrivatize,
+    ConvertArithToLlvm,
+    ConvertCfToLlvm,
+    FinalizeMemrefToLlvm,
+    ConvertVectorToLlvm,
+    ConvertVectorToScf,
+    ConvertFuncToLlvm,
+    ConvertIndexToLlvm,
+    ConvertMathToLlvm,
+    ConvertUbToLlvm,
+    ConvertToLlvm,
+    TosaToTensorPass,
+    TosaToArithPass,
+    TosaToLinalgNamedPass,
+    TosaToLinalgPass,
+    ConvertComplexToStandard,
+    ConvertShapeToStd,
+    ConvertScfToCf,
+    ConvertComplexToLlvm,
+    ConvertArithToEmitc,
+    ConvertToEmitc,
+    ConvertMemrefToEmitc,
+    ConvertScfToEmitc,
+    ConvertMathToEmitc,
+    ConvertFuncToEmitc,
+    ReconcileUnrealizedCasts,
+    SetLlvmModuleDataLayout,
+    Canonicalize,
+    Cse,
+    ExpandStridedMetadata,
+    LowerAffine,
+    LoopInvariantCodeMotion,
+    PromoteBuffersToStack,
+    RequestCWrappers,
+    StripDebugInfo,
+    SymbolDce,
+    Sccp,
+    RemoveDeadValues,
+    SymbolPrivatize,
 }

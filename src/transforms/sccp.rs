@@ -4,10 +4,11 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use mlirpass_macros::pass;
 use mlirformat::{Attribute, Error, Type};
 
 use crate::dataflow::{Cv, Solver};
-use crate::{Body, BlockId, OpId, Options, Pass, RegionId, ValueId};
+use crate::{Body, BlockId, OpId, RegionId, ValueId};
 
 /// The rewrite: constants replace what the analysis proved constant.
 struct Rewrite<'s, 'b, 'a> {
@@ -66,25 +67,10 @@ impl Rewrite<'_, '_, '_> {
     }
 }
 
-pub struct Sccp;
-
-impl TryFrom<&Options<'_>> for Sccp {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("sccp", &[])?;
-        Ok(Self)
-    }
-}
-
-impl Pass for Sccp {
-    fn name(&self) -> &str {
-        "sccp"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let mut s = Solver::new(body, op);
-        s.run();
-        Rewrite { s: &mut s, folder: Vec::new() }.run(op);
-        Ok(())
-    }
+#[pass("sccp")]
+pub fn sccp<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    let mut s = Solver::new(body, op);
+    s.run();
+    Rewrite { s: &mut s, folder: Vec::new() }.run(op);
+    Ok(())
 }

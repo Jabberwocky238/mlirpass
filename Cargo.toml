@@ -11,7 +11,11 @@ categories = ["compilers", "no-std"]
 # The mlir-opt fixtures stay in the repository.
 exclude = ["tests", ".github"]
 
+[workspace]
+members = ["macros"]
+
 [dependencies]
+mlirpass-macros = { path = "macros", version = "0.1.0" }
 mlirformat = { path = "../mlirformat.rs", version = "0.3.0", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }

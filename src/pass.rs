@@ -26,6 +26,68 @@ use crate::{Body, OpId};
 
 pub use registry::{PASSES, PassInfo};
 
+/// A pass's `mlir-opt` name and anchor op (`Passes.td`'s `Pass<"name", "op">`); `#[pass]`
+/// declares it.
+pub trait PassDecl {
+    const NAME: &'static str;
+    /// `None`: any op.
+    const ANCHOR: Option<&'static str>;
+}
+
+/// What a pass does; with its `PassDecl`, it is a [`Pass`].
+pub trait Run {
+    /// Runs on `op`; an error is the pass failing (`signalPassFailure`).
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error>;
+
+    /// The options as a textual pipeline prints them (`{a=1 b=true}`), empty when none differ.
+    fn options(&self) -> String {
+        String::new()
+    }
+}
+
+impl<T: PassDecl + Run> Pass for T {
+    fn name(&self) -> &str {
+        T::NAME
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        Run::run(self, body, op)
+    }
+
+    fn options(&self) -> String {
+        Run::options(self)
+    }
+}
+
+/// A value a `#[opt]` field reads from the pass options.
+pub trait OptionValue: Sized {
+    fn read(o: &Options<'_>, key: &str, default: Self) -> Result<Self, Error>;
+}
+
+impl OptionValue for bool {
+    fn read(o: &Options<'_>, key: &str, default: Self) -> Result<Self, Error> {
+        o.flag(key, default)
+    }
+}
+
+impl OptionValue for Vec<String> {
+    fn read(o: &Options<'_>, key: &str, default: Self) -> Result<Self, Error> {
+        Ok(o.get(key).map_or(default, |_| o.list(key).into_iter().map(String::from).collect()))
+    }
+}
+
+macro_rules! option_from_str {
+    ($($t:ty),*) => {$(
+        impl OptionValue for $t {
+            fn read(o: &Options<'_>, key: &str, default: Self) -> Result<Self, Error> {
+                o.value(key, default)
+            }
+        }
+    )*};
+}
+
+option_from_str!(String, u32, u64, i64, usize);
+
 /// ⭐ One pass. It runs on one op at a time (its anchor), and may change anything inside it.
 pub trait Pass {
     /// The `mlir-opt` argument, e.g. `"cse"`.

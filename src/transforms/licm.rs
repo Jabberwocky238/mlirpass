@@ -3,33 +3,19 @@
 use alloc::collections::VecDeque;
 use alloc::vec::Vec;
 
+use mlirpass_macros::pass;
 use mlirformat::Error;
 
-use crate::{Body, OpId, Options, Pass, RegionId, Trait, ValueId};
+use crate::{Body, OpId, RegionId, Trait, ValueId};
 
-pub struct LoopInvariantCodeMotion;
-
-impl TryFrom<&Options<'_>> for LoopInvariantCodeMotion {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("loop-invariant-code-motion", &[])?;
-        Ok(Self)
+#[pass("loop-invariant-code-motion")]
+pub fn loop_invariant_code_motion<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    // Innermost loops first, so hoisted ops can move on out of the enclosing loop.
+    let loops: Vec<OpId> = body.post_order_ops(op).into_iter().filter(|l| body.loop_regions(*l).is_some()).collect();
+    for l in loops {
+        body.move_loop_invariant_code(l);
     }
-}
-
-impl Pass for LoopInvariantCodeMotion {
-    fn name(&self) -> &str {
-        "loop-invariant-code-motion"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        // Innermost loops first, so hoisted ops can move on out of the enclosing loop.
-        let loops: Vec<OpId> = body.post_order_ops(op).into_iter().filter(|l| body.loop_regions(*l).is_some()).collect();
-        for l in loops {
-            body.move_loop_invariant_code(l);
-        }
-        Ok(())
-    }
+    Ok(())
 }
 
 impl<'a> Body<'a> {

@@ -1,28 +1,14 @@
 //! `strip-debuginfo`: every location becomes `unknown`.
 
+use mlirpass_macros::pass;
 use mlirformat::{Error, Str};
 
-use crate::{Body, OpId, Options, Pass};
+use crate::{Body, OpId};
 
-pub struct StripDebugInfo;
-
-impl TryFrom<&Options<'_>> for StripDebugInfo {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("strip-debuginfo", &[])?;
-        Ok(Self)
-    }
-}
-
-impl Pass for StripDebugInfo {
-    fn name(&self) -> &str {
-        "strip-debuginfo"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        body.set_locs(op, Some("unknown".into()));
-        Ok(())
-    }
+#[pass("strip-debuginfo", ty = StripDebugInfo)]
+pub fn strip_debuginfo<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    body.set_locs(op, Some("unknown".into()));
+    Ok(())
 }
 
 impl<'a> Body<'a> {

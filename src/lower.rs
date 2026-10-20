@@ -32,6 +32,7 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::pass;
 use mlirformat::{Attribute, Dim, NamedAttr, Shaped, ShapedKind, Type};
 
 use crate::canon::AttrExt;
@@ -310,29 +311,18 @@ pub fn vector1<'a>(n: i64, elem: Type<'a>) -> Type<'a> {
 
 use mlirformat::Error;
 
-use crate::{Body, ConversionConfig, ConversionPatterns, Converter, LlvmConverter, LlvmOptions, Mode, Options, Pass};
+use crate::{Body, ConversionConfig, ConversionPatterns, Converter, LlvmConverter, LlvmOptions, Mode, Run};
 
 /// `convert-arith-to-llvm`.
+#[pass("convert-arith-to-llvm")]
 pub struct ConvertArithToLlvm {
-    options: LlvmOptions,
+    #[opt("index-bitwidth")]
+    index_bitwidth: u32,
 }
 
-impl TryFrom<&Options<'_>> for ConvertArithToLlvm {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-arith-to-llvm", &["index-bitwidth"])?;
-        let bits: u32 = o.value("index-bitwidth", 0)?;
-        Ok(Self { options: LlvmOptions { index_bitwidth: bits, ..LlvmOptions::default() } })
-    }
-}
-
-impl Pass for ConvertArithToLlvm {
-    fn name(&self) -> &str {
-        "convert-arith-to-llvm"
-    }
-
+impl Run for ConvertArithToLlvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(self.options.at(body, op));
+        let tc = LlvmConverter::build(LlvmOptions::bitwidth(self.index_bitwidth).at(body, op));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         ArithToLlvm::populate(&mut patterns, i);
@@ -345,26 +335,15 @@ impl Pass for ConvertArithToLlvm {
 macro_rules! to_llvm_pass {
     ($($(#[$m:meta])* $ty:ident = $name:literal: $populate:path, |$t:ident| $target:block;)*) => {$(
         $(#[$m])*
+        #[pass($name)]
         pub struct $ty {
-            options: LlvmOptions,
+            #[opt("index-bitwidth")]
+            index_bitwidth: u32,
         }
 
-        impl TryFrom<&Options<'_>> for $ty {
-            type Error = Error;
-            fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-                o.only($name, &["index-bitwidth"])?;
-                let bits: u32 = o.value("index-bitwidth", 0)?;
-                Ok(Self { options: LlvmOptions { index_bitwidth: bits, ..LlvmOptions::default() } })
-            }
-        }
-
-        impl Pass for $ty {
-            fn name(&self) -> &str {
-                $name
-            }
-
+        impl Run for $ty {
             fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-                let tc = LlvmConverter::build(self.options.at(body, op));
+                let tc = LlvmConverter::build(LlvmOptions::bitwidth(self.index_bitwidth).at(body, op));
                 let mut patterns = ConversionPatterns::default();
                 let i = patterns.converter(&tc);
                 $populate(&mut patterns, i);
@@ -388,23 +367,13 @@ to_llvm_pass! {
 }
 
 /// `convert-math-to-llvm`.
+#[pass("convert-math-to-llvm")]
 pub struct ConvertMathToLlvm {
+    #[opt("approximate-log1p", default = true)]
     approximate_log1p: bool,
 }
 
-impl TryFrom<&Options<'_>> for ConvertMathToLlvm {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-math-to-llvm", &["approximate-log1p"])?;
-        Ok(Self { approximate_log1p: o.flag("approximate-log1p", true)? })
-    }
-}
-
-impl Pass for ConvertMathToLlvm {
-    fn name(&self) -> &str {
-        "convert-math-to-llvm"
-    }
-
+impl Run for ConvertMathToLlvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let tc = LlvmConverter::build(LlvmOptions::derived().at(body, op));
         let mut patterns = ConversionPatterns::default();
@@ -416,27 +385,16 @@ impl Pass for ConvertMathToLlvm {
 }
 
 /// `convert-cf-to-llvm`.
+#[pass("convert-cf-to-llvm")]
 pub struct ConvertCfToLlvm {
-    options: LlvmOptions,
+    #[opt("index-bitwidth")]
+    index_bitwidth: u32,
     counter: core::cell::Cell<u32>,
 }
 
-impl TryFrom<&Options<'_>> for ConvertCfToLlvm {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-cf-to-llvm", &["index-bitwidth"])?;
-        let bits: u32 = o.value("index-bitwidth", 0)?;
-        Ok(Self { options: LlvmOptions { index_bitwidth: bits, ..LlvmOptions::default() }, counter: core::cell::Cell::new(0) })
-    }
-}
-
-impl Pass for ConvertCfToLlvm {
-    fn name(&self) -> &str {
-        "convert-cf-to-llvm"
-    }
-
+impl Run for ConvertCfToLlvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(self.options.at(body, op));
+        let tc = LlvmConverter::build(LlvmOptions::bitwidth(self.index_bitwidth).at(body, op));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         CfToLlvm::populate(&mut patterns, i);
@@ -448,57 +406,40 @@ impl Pass for ConvertCfToLlvm {
 }
 
 /// `convert-func-to-llvm`.
+#[pass("convert-func-to-llvm", on = "builtin.module")]
 pub struct ConvertFuncToLlvm {
-    options: LlvmOptions,
+    #[opt("use-bare-ptr-memref-call-conv")]
+    bare_ptr: bool,
+    #[opt("index-bitwidth")]
+    index_bitwidth: u32,
 }
 
-impl TryFrom<&Options<'_>> for ConvertFuncToLlvm {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-func-to-llvm", &["use-bare-ptr-memref-call-conv", "index-bitwidth"])?;
-        let bits: u32 = o.value("index-bitwidth", 0)?;
-        let bare_ptr = o.flag("use-bare-ptr-memref-call-conv", false)?;
-        Ok(Self { options: LlvmOptions { index_bitwidth: bits, bare_ptr, ..LlvmOptions::default() } })
-    }
-}
-
-impl Pass for ConvertFuncToLlvm {
-    fn name(&self) -> &str {
-        "convert-func-to-llvm"
-    }
-
+impl Run for ConvertFuncToLlvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(self.options.at(body, op));
+        let options = LlvmOptions { index_bitwidth: self.index_bitwidth, bare_ptr: self.bare_ptr }.at(body, op);
+        let tc = LlvmConverter::build(options);
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
-        FuncToLlvm::populate(&mut patterns, i, self.options.at(body, op));
+        FuncToLlvm::populate(&mut patterns, i, options);
         let target = llvm_target();
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
 }
 
 /// `finalize-memref-to-llvm`.
+#[pass("finalize-memref-to-llvm")]
 pub struct FinalizeMemrefToLlvm {
-    options: MemrefOptions,
+    #[opt("use-aligned-alloc")]
+    aligned_alloc: bool,
+    #[opt("index-bitwidth")]
+    index_bitwidth: u32,
+    #[opt("use-generic-functions")]
+    generic: bool,
 }
 
-impl TryFrom<&Options<'_>> for FinalizeMemrefToLlvm {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("finalize-memref-to-llvm", &["use-aligned-alloc", "index-bitwidth", "use-generic-functions"])?;
-        let bits: u32 = o.value("index-bitwidth", 0)?;
-        let llvm = LlvmOptions { index_bitwidth: bits, ..LlvmOptions::default() };
-        Ok(Self { options: MemrefOptions { llvm, aligned_alloc: o.flag("use-aligned-alloc", false)?, generic: o.flag("use-generic-functions", false)? } })
-    }
-}
-
-impl Pass for FinalizeMemrefToLlvm {
-    fn name(&self) -> &str {
-        "finalize-memref-to-llvm"
-    }
-
+impl Run for FinalizeMemrefToLlvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let options = MemrefOptions { llvm: self.options.llvm.at(body, op), ..self.options };
+        let options = MemrefOptions { llvm: LlvmOptions::bitwidth(self.index_bitwidth).at(body, op), aligned_alloc: self.aligned_alloc, generic: self.generic };
         let tc = LlvmConverter::build(options.llvm);
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
@@ -511,33 +452,29 @@ impl Pass for FinalizeMemrefToLlvm {
 
 /// `convert-to-llvm`: every dialect's `ConvertToLLVMPatternInterface` patterns (or those of
 /// `filter-dialects`), against a target where the llvm dialect is legal.
+#[pass("convert-to-llvm", extra = ["dynamic"], check = Self::check)]
 pub struct ConvertToLlvm {
+    #[opt("filter-dialects")]
     filter: Vec<String>,
+    #[opt("allow-pattern-rollback", default = true)]
     rollback: bool,
     counter: core::cell::Cell<u32>,
 }
 
-impl TryFrom<&Options<'_>> for ConvertToLlvm {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-to-llvm", &["filter-dialects", "dynamic", "allow-pattern-rollback"])?;
-        let filter: Vec<String> = o.list("filter-dialects").into_iter().map(String::from).collect();
-        // A dialect whose lowering is not ported yet makes the pass unsupported, not wrong.
-        if let Some(d) = filter.iter().find(|d| !TO_LLVM.contains(&d.as_str())) {
-            return Err(Error(format!("convert-to-llvm: the {d} lowering is not ported")));
+impl ConvertToLlvm {
+    /// A dialect whose lowering is not ported yet makes the pass unsupported, not wrong.
+    fn check(&self) -> Result<(), Error> {
+        match self.filter.iter().find(|d| !TO_LLVM.contains(&d.as_str())) {
+            Some(d) => Err(Error(format!("convert-to-llvm: the {d} lowering is not ported"))),
+            None => Ok(()),
         }
-        Ok(Self { filter, rollback: o.flag("allow-pattern-rollback", true)?, counter: core::cell::Cell::new(0) })
     }
 }
 
 /// The dialects that implement `ConvertToLLVMPatternInterface`, by namespace.
 const TO_LLVM: &[&str] = &["arith", "cf", "complex", "func", "index", "math", "memref", "ub", "vector"];
 
-impl Pass for ConvertToLlvm {
-    fn name(&self) -> &str {
-        "convert-to-llvm"
-    }
-
+impl Run for ConvertToLlvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let tc = LlvmConverter::build(LlvmOptions::derived().at(body, op));
         let mut patterns = ConversionPatterns::default();
@@ -568,23 +505,13 @@ impl Pass for ConvertToLlvm {
 }
 
 /// `set-llvm-module-datalayout`.
+#[pass("set-llvm-module-datalayout")]
 pub struct SetLlvmModuleDataLayout {
+    #[opt("data-layout")]
     layout: String,
 }
 
-impl TryFrom<&Options<'_>> for SetLlvmModuleDataLayout {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("set-llvm-module-datalayout", &["data-layout"])?;
-        Ok(Self { layout: o.value("data-layout", String::new())? })
-    }
-}
-
-impl Pass for SetLlvmModuleDataLayout {
-    fn name(&self) -> &str {
-        "set-llvm-module-datalayout"
-    }
-
+impl Run for SetLlvmModuleDataLayout {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         body[op].set("llvm.data_layout", Attribute::string(&self.layout));
         Ok(())
@@ -592,39 +519,50 @@ impl Pass for SetLlvmModuleDataLayout {
 }
 
 /// `convert-vector-to-llvm`: the vector-to-vector lowerings greedily, then the conversion.
+#[pass("convert-vector-to-llvm", check = Self::check)]
 pub struct ConvertVectorToLlvm {
+    #[opt("reassociate-fp-reductions")]
     reassociate: bool,
+    #[opt("force-32bit-vector-indices", default = true)]
     force32: bool,
+    #[opt("use-vector-alignment")]
     vector_alignment: bool,
+    #[opt("vector-contract-lowering", default = "dot".into())]
+    contract_lowering: String,
+    #[opt("vector-transpose-lowering", default = "eltwise".into())]
+    transpose_lowering: String,
+    #[opt("enable-amx")]
+    amx: bool,
+    #[opt("enable-arm-neon")]
+    arm_neon: bool,
+    #[opt("enable-arm-sve")]
+    arm_sve: bool,
+    #[opt("enable-arm-i8mm")]
+    arm_i8mm: bool,
+    #[opt("enable-arm-bf16")]
+    arm_bf16: bool,
+    #[opt("enable-x86vector")]
+    x86vector: bool,
     counter: core::cell::Cell<u32>,
 }
 
-impl TryFrom<&Options<'_>> for ConvertVectorToLlvm {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        let flags = ["enable-amx", "enable-arm-neon", "enable-arm-sve", "enable-arm-i8mm", "enable-arm-bf16", "enable-x86vector"];
-        let mut known = alloc::vec!["reassociate-fp-reductions", "force-32bit-vector-indices", "use-vector-alignment", "vector-contract-lowering", "vector-transpose-lowering"];
-        known.extend(flags);
-        o.only("convert-vector-to-llvm", &known)?;
-        for f in flags {
-            if o.flag(f, false)? {
-                return Err(Error(format!("convert-vector-to-llvm: {f} is not ported")));
-            }
+impl ConvertVectorToLlvm {
+    /// What is not ported makes the pass unsupported, not wrong.
+    fn check(&self) -> Result<(), Error> {
+        let flags = [("enable-amx", self.amx), ("enable-arm-neon", self.arm_neon), ("enable-arm-sve", self.arm_sve), ("enable-arm-i8mm", self.arm_i8mm), ("enable-arm-bf16", self.arm_bf16), ("enable-x86vector", self.x86vector)];
+        if let Some((f, _)) = flags.iter().find(|f| f.1) {
+            return Err(Error(format!("convert-vector-to-llvm: {f} is not ported")));
         }
-        for (k, default) in [("vector-contract-lowering", "dot"), ("vector-transpose-lowering", "eltwise")] {
-            if o.get(k).is_some_and(|v| v != default) {
+        for (k, v, default) in [("vector-contract-lowering", &self.contract_lowering, "dot"), ("vector-transpose-lowering", &self.transpose_lowering, "eltwise")] {
+            if v != default {
                 return Err(Error(format!("convert-vector-to-llvm: {k} is not ported")));
             }
         }
-        Ok(Self { reassociate: o.flag("reassociate-fp-reductions", false)?, force32: o.flag("force-32bit-vector-indices", true)?, vector_alignment: o.flag("use-vector-alignment", false)?, counter: core::cell::Cell::new(0) })
+        Ok(())
     }
 }
 
-impl Pass for ConvertVectorToLlvm {
-    fn name(&self) -> &str {
-        "convert-vector-to-llvm"
-    }
-
+impl Run for ConvertVectorToLlvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let pre = vector_transforms::pre_patterns(self.force32);
         for r in body[op].regions.clone() {
@@ -644,110 +582,69 @@ impl Pass for ConvertVectorToLlvm {
 }
 
 /// `lower-affine`.
-pub struct LowerAffine;
-
-impl TryFrom<&Options<'_>> for LowerAffine {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("lower-affine", &[])?;
-        Ok(Self)
-    }
-}
-
-impl Pass for LowerAffine {
-    fn name(&self) -> &str {
-        "lower-affine"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let mut patterns = ConversionPatterns::default();
-        AffineToStd::populate(&mut patterns);
-        let mut target = ConversionTarget::default();
-        target.legal_dialect("arith").legal_dialect("memref").legal_dialect("scf").legal_dialect("vector");
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
+#[pass("lower-affine")]
+pub fn lower_affine<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    let mut patterns = ConversionPatterns::default();
+    AffineToStd::populate(&mut patterns);
+    let mut target = ConversionTarget::default();
+    target.legal_dialect("arith").legal_dialect("memref").legal_dialect("scf").legal_dialect("vector");
+    Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
 }
 
 /// `convert-arith-to-emitc`.
-pub struct ConvertArithToEmitc;
-
-impl TryFrom<&Options<'_>> for ConvertArithToEmitc {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-arith-to-emitc", &[])?;
-        Ok(Self)
-    }
-}
-
-impl Pass for ConvertArithToEmitc {
-    fn name(&self) -> &str {
-        "convert-arith-to-emitc"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let mut tc = Emitc::converter(false);
-        Emitc::size_t_conversions(&mut tc);
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        ArithToEmitc::populate(&mut patterns, i);
-        let mut target = ConversionTarget::default();
-        target.legal_dialect("emitc").illegal_dialect("arith");
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
+#[pass("convert-arith-to-emitc")]
+pub fn convert_arith_to_emitc<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    let mut tc = Emitc::converter(false);
+    Emitc::size_t_conversions(&mut tc);
+    let mut patterns = ConversionPatterns::default();
+    let i = patterns.converter(&tc);
+    ArithToEmitc::populate(&mut patterns, i);
+    let mut target = ConversionTarget::default();
+    target.legal_dialect("emitc").illegal_dialect("arith");
+    Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
 }
 
 /// `convert-func-to-emitc`.
-pub struct ConvertFuncToEmitc;
-
-impl TryFrom<&Options<'_>> for ConvertFuncToEmitc {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-func-to-emitc", &[])?;
-        Ok(Self)
-    }
-}
-
-impl Pass for ConvertFuncToEmitc {
-    fn name(&self) -> &str {
-        "convert-func-to-emitc"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = Emitc::converter(false);
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        FuncToEmitc::populate(&mut patterns, i);
-        let mut target = ConversionTarget::default();
-        target.legal_dialect("emitc").illegal_op("func.call").illegal_op("func.func").illegal_op("func.return");
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
+#[pass("convert-func-to-emitc", on = "builtin.module")]
+pub fn convert_func_to_emitc<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    let tc = Emitc::converter(false);
+    let mut patterns = ConversionPatterns::default();
+    let i = patterns.converter(&tc);
+    FuncToEmitc::populate(&mut patterns, i);
+    let mut target = ConversionTarget::default();
+    target.legal_dialect("emitc").illegal_op("func.call").illegal_op("func.func").illegal_op("func.return");
+    Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
 }
 
 /// `convert-math-to-emitc`.
+#[pass("convert-math-to-emitc")]
 pub struct ConvertMathToEmitc {
-    cpp11: bool,
+    #[opt("language-target", default = LanguageTarget::C99, from_str)]
+    target: LanguageTarget,
 }
 
-impl TryFrom<&Options<'_>> for ConvertMathToEmitc {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-math-to-emitc", &["language-target"])?;
-        let target: String = o.value("language-target", String::from("c99"))?;
-        match &*target {
-            "c99" | "cpp11" => Ok(Self { cpp11: target == "cpp11" }),
-            t => Err(Error(format!("convert-math-to-emitc: unknown language target {t}"))),
+/// `emitc::LanguageTarget`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LanguageTarget {
+    C99,
+    Cpp11,
+}
+
+impl core::str::FromStr for LanguageTarget {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, ()> {
+        match s {
+            "c99" => Ok(Self::C99),
+            "cpp11" => Ok(Self::Cpp11),
+            _ => Err(()),
         }
     }
 }
 
-impl Pass for ConvertMathToEmitc {
-    fn name(&self) -> &str {
-        "convert-math-to-emitc"
-    }
-
+impl Run for ConvertMathToEmitc {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let mut patterns = ConversionPatterns::default();
-        MathToEmitc::populate(&mut patterns, self.cpp11);
+        MathToEmitc::populate(&mut patterns, self.target == LanguageTarget::Cpp11);
         let mut target = ConversionTarget::default();
         target.legal_op("emitc.call_opaque");
         for r in MathToEmitc::roots() {
@@ -758,51 +655,26 @@ impl Pass for ConvertMathToEmitc {
 }
 
 /// `convert-scf-to-emitc`.
-pub struct ConvertScfToEmitc;
-
-impl TryFrom<&Options<'_>> for ConvertScfToEmitc {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-scf-to-emitc", &[])?;
-        Ok(Self)
-    }
-}
-
-impl Pass for ConvertScfToEmitc {
-    fn name(&self) -> &str {
-        "convert-scf-to-emitc"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let mut tc = Emitc::converter(true);
-        Emitc::size_t_conversions(&mut tc);
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        ScfToEmitc::populate(&mut patterns, i);
-        let mut target = ConversionTarget::default();
-        target.illegal_op("scf.for").illegal_op("scf.if").illegal_op("scf.index_switch").illegal_op("scf.while").unknown(Action::Legal);
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
+#[pass("convert-scf-to-emitc")]
+pub fn convert_scf_to_emitc<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    let mut tc = Emitc::converter(true);
+    Emitc::size_t_conversions(&mut tc);
+    let mut patterns = ConversionPatterns::default();
+    let i = patterns.converter(&tc);
+    ScfToEmitc::populate(&mut patterns, i);
+    let mut target = ConversionTarget::default();
+    target.illegal_op("scf.for").illegal_op("scf.if").illegal_op("scf.index_switch").illegal_op("scf.while").unknown(Action::Legal);
+    Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
 }
 
 /// `convert-memref-to-emitc`.
+#[pass("convert-memref-to-emitc", on = "builtin.module")]
 pub struct ConvertMemrefToEmitc {
+    #[opt("lower-to-cpp")]
     cpp: bool,
 }
 
-impl TryFrom<&Options<'_>> for ConvertMemrefToEmitc {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-memref-to-emitc", &["lower-to-cpp"])?;
-        Ok(Self { cpp: o.flag("lower-to-cpp", false)? })
-    }
-}
-
-impl Pass for ConvertMemrefToEmitc {
-    fn name(&self) -> &str {
-        "convert-memref-to-emitc"
-    }
-
+impl Run for ConvertMemrefToEmitc {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let mut tc = Emitc::converter(true);
         Emitc::memref_conversions(&mut tc, false);
@@ -824,28 +696,24 @@ const TO_EMITC_PORTED: &[&str] = &["arith", "func", "memref", "scf"];
 
 /// `convert-to-emitc`: every dialect's `ConvertToEmitCPatternInterface` patterns (or those of
 /// `filter-dialects`) with the types EmitC supports.
+#[pass("convert-to-emitc", check = Self::check)]
 pub struct ConvertToEmitc {
+    #[opt("filter-dialects")]
     filter: Vec<String>,
 }
 
-impl TryFrom<&Options<'_>> for ConvertToEmitc {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-to-emitc", &["filter-dialects"])?;
-        let filter: Vec<String> = o.list("filter-dialects").into_iter().map(String::from).collect();
-        let wanted: Vec<&str> = if filter.is_empty() { TO_EMITC.to_vec() } else { filter.iter().map(String::as_str).collect() };
-        if let Some(d) = wanted.iter().find(|d| TO_EMITC.contains(d) && !TO_EMITC_PORTED.contains(d)) {
-            return Err(Error(format!("convert-to-emitc: the {d} lowering is not ported")));
+impl ConvertToEmitc {
+    /// A dialect whose lowering is not ported yet makes the pass unsupported, not wrong.
+    fn check(&self) -> Result<(), Error> {
+        let wanted: Vec<&str> = if self.filter.is_empty() { TO_EMITC.to_vec() } else { self.filter.iter().map(String::as_str).collect() };
+        match wanted.iter().find(|d| TO_EMITC.contains(d) && !TO_EMITC_PORTED.contains(d)) {
+            Some(d) => Err(Error(format!("convert-to-emitc: the {d} lowering is not ported"))),
+            None => Ok(()),
         }
-        Ok(Self { filter })
     }
 }
 
-impl Pass for ConvertToEmitc {
-    fn name(&self) -> &str {
-        "convert-to-emitc"
-    }
-
+impl Run for ConvertToEmitc {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let dialects: Vec<&str> = if self.filter.is_empty() { TO_EMITC.to_vec() } else { self.filter.iter().map(String::as_str).collect() };
         if let Some(d) = dialects.iter().find(|d| !TO_EMITC.contains(d)) {
@@ -878,30 +746,36 @@ impl Pass for ConvertToEmitc {
 }
 
 /// `convert-complex-to-standard`.
+#[pass("convert-complex-to-standard")]
 pub struct ConvertComplexToStandard {
-    improved: bool,
+    #[opt("complex-range", default = ComplexRange::Improved, from_str)]
+    range: ComplexRange,
 }
 
-impl TryFrom<&Options<'_>> for ConvertComplexToStandard {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-complex-to-standard", &["complex-range"])?;
-        match o.get("complex-range").unwrap_or("improved") {
-            "improved" => Ok(Self { improved: true }),
-            "basic" | "none" => Ok(Self { improved: false }),
-            r => Err(Error(format!("convert-complex-to-standard: bad complex-range `{r}`"))),
+/// `complex::ComplexRangeFlags`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ComplexRange {
+    Improved,
+    Basic,
+    None,
+}
+
+impl core::str::FromStr for ComplexRange {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, ()> {
+        match s {
+            "improved" => Ok(Self::Improved),
+            "basic" => Ok(Self::Basic),
+            "none" => Ok(Self::None),
+            _ => Err(()),
         }
     }
 }
 
-impl Pass for ConvertComplexToStandard {
-    fn name(&self) -> &str {
-        "convert-complex-to-standard"
-    }
-
+impl Run for ConvertComplexToStandard {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let mut patterns = ConversionPatterns::default();
-        ComplexToStd::populate(&mut patterns, self.improved);
+        ComplexToStd::populate(&mut patterns, self.range == ComplexRange::Improved);
         let mut target = ConversionTarget::default();
         target.legal_dialect("arith").legal_dialect("math").legal_op("complex.create").legal_op("complex.im").legal_op("complex.re");
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
@@ -909,23 +783,13 @@ impl Pass for ConvertComplexToStandard {
 }
 
 /// `tosa-to-linalg-named`.
+#[pass("tosa-to-linalg-named", on = "func.func")]
 pub struct TosaToLinalgNamedPass {
+    #[opt("prefer-conv2d-kernel-layout-hwcf")]
     hwcf: bool,
 }
 
-impl TryFrom<&Options<'_>> for TosaToLinalgNamedPass {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("tosa-to-linalg-named", &["prefer-conv2d-kernel-layout-hwcf"])?;
-        Ok(Self { hwcf: o.flag("prefer-conv2d-kernel-layout-hwcf", false)? })
-    }
-}
-
-impl Pass for TosaToLinalgNamedPass {
-    fn name(&self) -> &str {
-        "tosa-to-linalg-named"
-    }
-
+impl Run for TosaToLinalgNamedPass {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let tc = TosaToTensor::converter();
         let mut patterns = ConversionPatterns::default();
@@ -942,32 +806,18 @@ impl Pass for TosaToLinalgNamedPass {
 }
 
 /// `convert-complex-to-llvm`.
+#[pass("convert-complex-to-llvm")]
 pub struct ConvertComplexToLlvm {
-    improved: bool,
+    #[opt("complex-range", default = ComplexRange::Basic, from_str)]
+    range: ComplexRange,
 }
 
-impl TryFrom<&Options<'_>> for ConvertComplexToLlvm {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-complex-to-llvm", &["complex-range"])?;
-        match o.get("complex-range").unwrap_or("basic") {
-            "improved" => Ok(Self { improved: true }),
-            "basic" | "none" => Ok(Self { improved: false }),
-            r => Err(Error(format!("convert-complex-to-llvm: bad complex-range `{r}`"))),
-        }
-    }
-}
-
-impl Pass for ConvertComplexToLlvm {
-    fn name(&self) -> &str {
-        "convert-complex-to-llvm"
-    }
-
+impl Run for ConvertComplexToLlvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let tc = LlvmConverter::build(LlvmOptions::derived().at(body, op));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
-        ComplexToLlvm::populate(&mut patterns, i, self.improved);
+        ComplexToLlvm::populate(&mut patterns, i, self.range == ComplexRange::Improved);
         let mut target = ConversionTarget::default();
         target.legal_dialect("llvm").illegal_dialect("complex");
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
@@ -975,108 +825,54 @@ impl Pass for ConvertComplexToLlvm {
 }
 
 /// `convert-scf-to-cf`.
-pub struct ConvertScfToCf;
-
-impl TryFrom<&Options<'_>> for ConvertScfToCf {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-scf-to-cf", &["allow-pattern-rollback"])?;
-        Ok(Self)
+#[pass("convert-scf-to-cf", extra = ["allow-pattern-rollback"])]
+pub fn convert_scf_to_cf<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    let mut patterns = ConversionPatterns::default();
+    ScfToCf::populate(&mut patterns);
+    let mut target = ConversionTarget::default();
+    for o in ["scf.forall", "scf.for", "scf.if", "scf.index_switch", "scf.parallel", "scf.while", "scf.execute_region"] {
+        target.illegal_op(o);
     }
-}
-
-impl Pass for ConvertScfToCf {
-    fn name(&self) -> &str {
-        "convert-scf-to-cf"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let mut patterns = ConversionPatterns::default();
-        ScfToCf::populate(&mut patterns);
-        let mut target = ConversionTarget::default();
-        for o in ["scf.forall", "scf.for", "scf.if", "scf.index_switch", "scf.parallel", "scf.while", "scf.execute_region"] {
-            target.illegal_op(o);
-        }
-        target.unknown(Action::Legal);
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
+    target.unknown(Action::Legal);
+    Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
 }
 
 /// `convert-shape-to-std`.
-pub struct ConvertShapeToStd;
-
-impl TryFrom<&Options<'_>> for ConvertShapeToStd {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-shape-to-std", &[])?;
-        Ok(Self)
-    }
-}
-
-impl Pass for ConvertShapeToStd {
-    fn name(&self) -> &str {
-        "convert-shape-to-std"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let mut patterns = ConversionPatterns::default();
-        ShapeToStd::populate(&mut patterns);
-        let mut target = ConversionTarget::default();
-        target.legal_dialect("arith").legal_dialect("scf").legal_dialect("tensor").legal_op("shape.cstr_require").legal_op("func.func").legal_op("builtin.module");
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
+#[pass("convert-shape-to-std", on = "builtin.module")]
+pub fn convert_shape_to_std<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    let mut patterns = ConversionPatterns::default();
+    ShapeToStd::populate(&mut patterns);
+    let mut target = ConversionTarget::default();
+    target.legal_dialect("arith").legal_dialect("scf").legal_dialect("tensor").legal_op("shape.cstr_require").legal_op("func.func").legal_op("builtin.module");
+    Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
 }
 
 /// `tosa-to-linalg`.
-pub struct TosaToLinalgPass;
-
-impl TryFrom<&Options<'_>> for TosaToLinalgPass {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("tosa-to-linalg", &[])?;
-        Ok(Self)
+#[pass("tosa-to-linalg", on = "func.func", ty = TosaToLinalgPass)]
+pub fn tosa_to_linalg<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    let tc = TosaToTensor::converter();
+    let mut patterns = ConversionPatterns::default();
+    let i = patterns.converter(&tc);
+    TosaToLinalg::populate(&mut patterns, i);
+    let mut target = ConversionTarget::default();
+    target.legal_dialect("linalg").legal_dialect("tensor").legal_dialect("scf").illegal_dialect("tosa");
+    for o in ["tosa.apply_scale", "tosa.if", "tosa.const", "tosa.const_shape", "tosa.while", "tosa.concat", "tosa.slice", "tosa.reshape", "tosa.pad"] {
+        target.legal_op(o);
     }
-}
-
-impl Pass for TosaToLinalgPass {
-    fn name(&self) -> &str {
-        "tosa-to-linalg"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = TosaToTensor::converter();
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        TosaToLinalg::populate(&mut patterns, i);
-        let mut target = ConversionTarget::default();
-        target.legal_dialect("linalg").legal_dialect("tensor").legal_dialect("scf").illegal_dialect("tosa");
-        for o in ["tosa.apply_scale", "tosa.if", "tosa.const", "tosa.const_shape", "tosa.while", "tosa.concat", "tosa.slice", "tosa.reshape", "tosa.pad"] {
-            target.legal_op(o);
-        }
-        target.unknown(Action::Legal);
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Full)
-    }
+    target.unknown(Action::Legal);
+    Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Full)
 }
 
 /// `tosa-to-arith`.
+#[pass("tosa-to-arith")]
 pub struct TosaToArithPass {
+    #[opt("include-apply-rescale")]
     rescale: bool,
+    #[opt("use-32-bit")]
     use_32: bool,
 }
 
-impl TryFrom<&Options<'_>> for TosaToArithPass {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("tosa-to-arith", &["include-apply-rescale", "use-32-bit"])?;
-        Ok(Self { rescale: o.flag("include-apply-rescale", false)?, use_32: o.flag("use-32-bit", false)? })
-    }
-}
-
-impl Pass for TosaToArithPass {
-    fn name(&self) -> &str {
-        "tosa-to-arith"
-    }
-
+impl Run for TosaToArithPass {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let mut patterns = ConversionPatterns::default();
         TosaToArith::populate(&mut patterns, self.rescale, self.use_32);
@@ -1090,53 +886,23 @@ impl Pass for TosaToArithPass {
 }
 
 /// `tosa-to-tensor`.
-pub struct TosaToTensorPass;
-
-impl TryFrom<&Options<'_>> for TosaToTensorPass {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("tosa-to-tensor", &[])?;
-        Ok(Self)
-    }
-}
-
-impl Pass for TosaToTensorPass {
-    fn name(&self) -> &str {
-        "tosa-to-tensor"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = TosaToTensor::converter();
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        TosaToTensor::populate(&mut patterns, i);
-        let mut target = ConversionTarget::default();
-        target.illegal_op("tosa.concat").illegal_op("tosa.reshape").illegal_op("tosa.slice").illegal_op("tosa.pad").legal_dialect("arith").legal_dialect("tensor");
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
+#[pass("tosa-to-tensor", ty = TosaToTensorPass)]
+pub fn tosa_to_tensor<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    let tc = TosaToTensor::converter();
+    let mut patterns = ConversionPatterns::default();
+    let i = patterns.converter(&tc);
+    TosaToTensor::populate(&mut patterns, i);
+    let mut target = ConversionTarget::default();
+    target.illegal_op("tosa.concat").illegal_op("tosa.reshape").illegal_op("tosa.slice").illegal_op("tosa.pad").legal_dialect("arith").legal_dialect("tensor");
+    Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
 }
 
 /// `reconcile-unrealized-casts`.
-pub struct ReconcileUnrealizedCasts;
-
-impl TryFrom<&Options<'_>> for ReconcileUnrealizedCasts {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("reconcile-unrealized-casts", &[])?;
-        Ok(Self)
-    }
-}
-
-impl Pass for ReconcileUnrealizedCasts {
-    fn name(&self) -> &str {
-        "reconcile-unrealized-casts"
-    }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let casts: Vec<OpId> = body.ops_in(op).into_iter().filter(|o| body[*o].name == "builtin.unrealized_conversion_cast").collect();
-        body.reconcile_casts(&casts);
-        Ok(())
-    }
+#[pass("reconcile-unrealized-casts")]
+pub fn reconcile_unrealized_casts<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    let casts: Vec<OpId> = body.ops_in(op).into_iter().filter(|o| body[*o].name == "builtin.unrealized_conversion_cast").collect();
+    body.reconcile_casts(&casts);
+    Ok(())
 }
 
 // ---- LLVM functions, globals and calls ----------------------------------------------------

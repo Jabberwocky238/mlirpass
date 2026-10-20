@@ -4,41 +4,27 @@ use alloc::collections::BTreeSet;
 use alloc::format;
 use alloc::vec::Vec;
 
+use mlirpass_macros::pass;
 use mlirformat::Error;
 
-use crate::{Body, OpId, Options, Pass, Trait, Visibility};
+use crate::{Body, OpId, Trait, Visibility};
 
-pub struct SymbolDce;
-
-impl TryFrom<&Options<'_>> for SymbolDce {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("symbol-dce", &[])?;
-        Ok(Self)
+#[pass("symbol-dce")]
+pub fn symbol_dce<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    if !body.is_symbol_table(op) {
+        return Err(Error(format!("'{}' op  was scheduled to run under SymbolDCE, but does not define a symbol table", body[op].name)));
     }
-}
-
-impl Pass for SymbolDce {
-    fn name(&self) -> &str {
-        "symbol-dce"
+    // A top-level table is hidden; one nested in the IR only when it is a private symbol.
+    let hidden = body.parent_op(op).is_none() || !body.has(op, Trait::SymbolOpInterface) || body.visibility(op) == Visibility::Private;
+    let mut live = BTreeSet::new();
+    body.liveness(op, hidden, &mut live)?;
+    let tables: Vec<_> = body.ops_in(op).into_iter().filter(|o| body.is_symbol_table(*o)).collect();
+    for table in tables {
+        let Some(region) = body[table].regions.first().copied() else { continue };
+        let dead: Vec<_> = body[region].blocks.iter().flat_map(|b| &body[*b].ops).copied().filter(|o| body.has(*o, Trait::SymbolOpInterface) && !live.contains(o)).collect();
+        dead.into_iter().for_each(|o| body.erase(o));
     }
-
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        if !body.is_symbol_table(op) {
-            return Err(Error(format!("'{}' op  was scheduled to run under SymbolDCE, but does not define a symbol table", body[op].name)));
-        }
-        // A top-level table is hidden; one nested in the IR only when it is a private symbol.
-        let hidden = body.parent_op(op).is_none() || !body.has(op, Trait::SymbolOpInterface) || body.visibility(op) == Visibility::Private;
-        let mut live = BTreeSet::new();
-        body.liveness(op, hidden, &mut live)?;
-        let tables: Vec<_> = body.ops_in(op).into_iter().filter(|o| body.is_symbol_table(*o)).collect();
-        for table in tables {
-            let Some(region) = body[table].regions.first().copied() else { continue };
-            let dead: Vec<_> = body[region].blocks.iter().flat_map(|b| &body[*b].ops).copied().filter(|o| body.has(*o, Trait::SymbolOpInterface) && !live.contains(o)).collect();
-            dead.into_iter().for_each(|o| body.erase(o));
-        }
-        Ok(())
-    }
+    Ok(())
 }
 
 impl Body<'_> {

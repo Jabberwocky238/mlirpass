@@ -4,11 +4,12 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::pass;
 use mlirformat::{Attribute, Dim, Error, ShapedKind, Shaped, Type};
 
 use super::vector_transforms::{Build, VectorBuild, dense_i64, elem, index_attr, vector_type, vshape};
 use crate::canon::{AttrExt, MemrefOfr as Ofr, map_attr};
-use crate::{AffineExpr, AffineMap, Body, DYNAMIC, GreedyConfig, LlvmOptions, OpData, OpId, Options, Pass, Pattern, PatternSet, Rewriter, Trait, ValueId};
+use crate::{AffineExpr, AffineMap, Body, DYNAMIC, GreedyConfig, LlvmOptions, OpData, OpId, Run, Pattern, PatternSet, Rewriter, Trait, ValueId};
 
 /// The label of transfers being lowered (`kPassLabel`).
 const LABEL: &str = "__vector_to_scf_lowering__";
@@ -1147,26 +1148,21 @@ fn transfer_1d(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
 }
 
 /// `convert-vector-to-scf`.
+#[pass("convert-vector-to-scf")]
 pub struct ConvertVectorToScf {
-    options: VectorToScfOptions,
+    #[opt("full-unroll")]
+    unroll: bool,
+    #[opt("target-rank", default = 1)]
+    target_rank: usize,
+    #[opt("lower-tensors")]
+    lower_tensors: bool,
+    #[opt("lower-scalable")]
+    lower_scalable: bool,
 }
 
-impl TryFrom<&Options<'_>> for ConvertVectorToScf {
-    type Error = Error;
-    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
-        o.only("convert-vector-to-scf", &["full-unroll", "target-rank", "lower-tensors", "lower-scalable"])?;
-        let options = VectorToScfOptions { unroll: o.flag("full-unroll", false)?, target_rank: o.value("target-rank", 1usize)?, lower_tensors: o.flag("lower-tensors", false)?, lower_scalable: o.flag("lower-scalable", false)? };
-        Ok(Self { options })
-    }
-}
-
-impl Pass for ConvertVectorToScf {
-    fn name(&self) -> &str {
-        "convert-vector-to-scf"
-    }
-
+impl Run for ConvertVectorToScf {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let o = self.options;
+        let o = VectorToScfOptions { unroll: self.unroll, target_rank: self.target_rank, lower_tensors: self.lower_tensors, lower_scalable: self.lower_scalable };
         let mut first = PatternSet::default();
         first.add(TransferReadPermutationLowering(o)).add(TransferWritePermutationLowering(o)).add(TransferOpReduceRank(o)).add(TransferWriteNonPermutationLowering(o));
         for r in body[op].regions.clone() {
