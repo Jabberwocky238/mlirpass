@@ -15,6 +15,7 @@ mod math_to_llvm;
 mod memref_desc;
 mod memref_to_emitc;
 mod memref_to_llvm;
+mod scf_to_cf;
 mod scf_to_emitc;
 mod shape_to_std;
 mod tosa_to_arith;
@@ -50,6 +51,7 @@ pub use math_to_llvm::MathToLlvm;
 pub use memref_desc::DYNAMIC;
 pub use memref_to_emitc::MemrefToEmitc;
 pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
+pub use scf_to_cf::ScfToCf;
 pub use scf_to_emitc::ScfToEmitc;
 pub use shape_to_std::ShapeToStd;
 pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
@@ -935,6 +937,34 @@ impl Pass for TosaToLinalgNamedPass {
         }
         target.unknown(Action::Legal);
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Full)
+    }
+}
+
+/// `convert-scf-to-cf`.
+pub struct ConvertScfToCf;
+
+impl TryFrom<&Options<'_>> for ConvertScfToCf {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-scf-to-cf", &["allow-pattern-rollback"])?;
+        Ok(Self)
+    }
+}
+
+impl Pass for ConvertScfToCf {
+    fn name(&self) -> &str {
+        "convert-scf-to-cf"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let mut patterns = ConversionPatterns::default();
+        ScfToCf::populate(&mut patterns);
+        let mut target = ConversionTarget::default();
+        for o in ["scf.forall", "scf.for", "scf.if", "scf.index_switch", "scf.parallel", "scf.while", "scf.execute_region"] {
+            target.illegal_op(o);
+        }
+        target.unknown(Action::Legal);
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
 }
 

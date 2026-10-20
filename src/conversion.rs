@@ -592,6 +592,11 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         n
     }
 
+    /// `Block::getTerminator`: the last op of `block` not already replaced.
+    pub fn terminator(&self, block: BlockId) -> Option<OpId> {
+        self.rw.body[block].ops.iter().rev().copied().find(|o| !self.state_ref().was_replaced(*o))
+    }
+
     /// `eraseOp`: replaced by nothing.
     pub fn erase(&mut self, op: OpId) {
         let n = self.rw.body[op].results.len();
