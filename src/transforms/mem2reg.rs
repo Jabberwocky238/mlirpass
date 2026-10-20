@@ -20,14 +20,14 @@ use alloc::vec::Vec;
 use mlirpass_macros::pass;
 use mlirformat::Error;
 
-use super::memslot::{Deletion, LlvmSlots, MemorySlot, Promotable};
+use super::memslot::{Deletion, LlvmSlots, MemorySlot, MemrefSlots, Promotable};
 use crate::{BlockId, Body, DomTree, OpId, Quiet, RegionId, Rewriter, Use, ValueId};
 
 
 /// `region-simplify` is accepted and, as in `Mem2Reg.cpp`, unused.
 #[pass("mem2reg", ty = Mem2Reg, extra = ["region-simplify"])]
 pub fn mem2reg<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-    let dialects: [&dyn Promotable; 1] = [&LlvmSlots];
+    let dialects: [&dyn Promotable; 2] = [&LlvmSlots, &MemrefSlots];
     let promotion = Promotion { dialects: &dialects };
     for r in body[op].regions.clone() {
         if body[r].blocks.is_empty() {
