@@ -90,14 +90,15 @@ blocks!(f;
 ```
 
 `#[pass("name", on = "op", extra = [..], check = path)]` gives the `mlir-opt` name, the anchor
-op, options accepted but unused, and a validation hook.
+op, options accepted but unused, and a validation hook. `#[patterns]` takes `converter` (a type
+converter index), `options = T` (methods also take the options), `extra = path` (non-method
+patterns) and `flag: T` parameters; `#[lowering]` takes the roots, `benefit`, `when`, `untyped`
+and `plain`.
 
 Nothing is global. Pipelines name passes through a `PassRegistry` (`Passes::upstream()` registers
 every pass: `Invocation::parse(&passes, args)`); a `Body` asks its context (`&dyn OpRegistry`,
 mlirformat's) what it knows of ops; `convert-to-llvm` / `convert-to-emitc` ask the
-`DialectInterfaces` they hold which dialects have an interface and what each adds. `#[patterns]` takes `converter` (a type converter index), `options = T`
-(methods also take the options), `extra = path` (non-method patterns) and `flag: T`
-parameters; `#[lowering]` takes the roots, `benefit`, `when`, `untyped` and `plain`.
+`DialectInterfaces` they hold which dialects have an interface and what each adds.
 
 ## Fixtures
 
