@@ -595,6 +595,97 @@ rewrites! {
 }
 
 impl Ofr {
+    /// `constifyIndexValues`: the static values of the type first, then constant values.
+    fn constify(b: &Body<'_>, list: &mut [Ofr], statics: &[i64]) {
+        for (o, s) in list.iter_mut().zip(statics) {
+            if *s != DYNAMIC {
+                *o = Ofr::C(*s);
+            } else if let Some(c) = b.ofr_int(*o) {
+                *o = Ofr::C(c);
+            }
+        }
+    }
+
+    /// A memref's static sizes, strides and offset (`DYNAMIC` where not).
+    fn statics(t: &Type<'_>) -> Option<(Vec<i64>, Vec<i64>, i64)> {
+        let Type::Shaped(s) = t else { return None };
+        let sizes = s.shape.as_ref()?.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect();
+        let (strides, offset) = LlvmOptions::default().strides_and_offset(s)?;
+        Some((sizes, strides, offset))
+    }
+}
+
+/// A `memref.reinterpret_cast`'s constified offset, sizes and strides
+/// (`getConstifiedMixed*`, from its result type).
+fn reinterpret_lists(b: &Body<'_>, op: OpId) -> Option<[Vec<Ofr>; 3]> {
+    let [mut o, mut s, mut t] = b.slice_lists(op);
+    let (sizes, strides, offset) = Ofr::statics(&b[b[op].results[0]].ty)?;
+    Ofr::constify(b, &mut o, &[offset]);
+    Ofr::constify(b, &mut s, &sizes);
+    Ofr::constify(b, &mut t, &strides);
+    Some([o, s, t])
+}
+
+rewrites! {
+    /// `ReinterpretCastOpExtractStridedMetadataFolder`: of what `extract_strided_metadata` took
+    /// apart, the source itself when nothing changes, else the cast reads that source.
+    ReinterpretCastOpExtractStridedMetadataFolder("memref.reinterpret_cast", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(meta) = b.def_named(b[op].operands[0], "memref.extract_strided_metadata") else { return false };
+        let src = b[meta].operands[0];
+        let rank = b[meta].results.len().saturating_sub(2) / 2;
+        let Some((sizes, strides, offset)) = Ofr::statics(&b[src].ty) else { return false };
+        let r = &b[meta].results;
+        let mut mo = alloc::vec![Ofr::V(r[1])];
+        let mut ms: Vec<Ofr> = r[2..2 + rank].iter().map(|v| Ofr::V(*v)).collect();
+        let mut mt: Vec<Ofr> = r[2 + rank..].iter().map(|v| Ofr::V(*v)).collect();
+        Ofr::constify(b, &mut mo, &[offset]);
+        Ofr::constify(b, &mut ms, &sizes);
+        Ofr::constify(b, &mut mt, &strides);
+        let Some([o, s, t]) = reinterpret_lists(b, op) else { return false };
+        if (mt, ms, mo) != (t, s, o) {
+            rw.modify(op, |b| b.set_operand(op, 0, src));
+            return true;
+        }
+        let rt = b[b[op].results[0]].ty.clone();
+        if b[src].ty == rt {
+            rw.replace_op(op, &[src]);
+        } else {
+            rw.replace_with(op, OpData::build("memref.cast").operands(&[src]), &[rt]);
+        }
+        true
+    }
+
+    /// `ReinterpretCastOpConstantFolder`: the constified lists, when they are more static; the
+    /// new cast's type `strided` by them, cast back.
+    ReinterpretCastOpConstantFolder("memref.reinterpret_cast", 1) |rw, op| {
+        let b = &*rw.body;
+        let before = b.slice_lists(op).iter().flatten().filter(|o| matches!(o, Ofr::C(_))).count();
+        let Some(lists) = reinterpret_lists(b, op) else { return false };
+        if lists.iter().flatten().filter(|o| matches!(o, Ofr::C(_))).count() == before {
+            return false;
+        }
+        let src = b[op].operands[0];
+        let Type::Shaped(st) = &b[src].ty else { return false };
+        let c = |o: &Ofr| if let Ofr::C(c) = o { *c } else { DYNAMIC };
+        let num = |n: i64| if n == DYNAMIC { alloc::string::String::from("?") } else { format!("{n}") };
+        let strides: Vec<_> = lists[2].iter().map(|o| num(c(o))).collect();
+        let offset = c(&lists[0][0]);
+        let body = if offset == 0 { format!("<[{}]>", strides.join(", ")) } else { format!("<[{}], offset: {}>", strides.join(", "), num(offset)) };
+        let mut extras = alloc::vec![Attribute::Builtin { name: "strided".into(), body: body.into(), ty: None }];
+        extras.extend(st.extras.iter().filter(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")).cloned());
+        let shape = lists[1].iter().map(|o| if let Ofr::C(n) = o { Dim::Static(*n) } else { Dim::Dynamic }).collect();
+        let ty = Type::Shaped(mlirformat::Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: st.elem.clone(), extras });
+        let rt = b[b[op].results[0]].ty.clone();
+        rw.set_before(op);
+        let new = rw.create(OpData::sliced("memref.reinterpret_cast", &[src], &lists), &[ty]);
+        let new = rw.body[new].results[0];
+        rw.replace_with(op, OpData::build("memref.cast").operands(&[new]), &[rt]);
+        true
+    }
+}
+
+impl Ofr {
     /// `computeRankReductionMask`: which of `sizes` the shape `reduced` drops (unit sizes, left
     /// to right).
     fn dropped(sizes: &[Ofr], reduced: &[i64]) -> Vec<bool> {
@@ -651,6 +742,7 @@ pub fn patterns(set: &mut crate::PatternSet) {
     set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeReassociative { name: "ComposeCollapseOfCollapse", dialect: "memref", root: "memref.collapse_shape", expand: false }));
     set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeCollapseOfExpand { name: "ComposeCollapseOfExpandOp", dialect: "memref" }));
     set.add(CollapseShapeOpMemRefCastFolder);
+    set.add(ReinterpretCastOpExtractStridedMetadataFolder).add(ReinterpretCastOpConstantFolder);
     set.add(FoldEmptyCopy).add(FoldSelfCopy).add(DimOfMemRefReshape);
     set.add(AllocaScopeInliner);
     set.add(SubViewConstantArguments).add(SubViewOpMemRefCastFolder).add(TrivialSubViewOpFolder);
