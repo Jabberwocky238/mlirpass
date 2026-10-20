@@ -30,15 +30,17 @@ pub struct Invocation {
     pub verify_diagnostics: bool,
     pub input: Option<String>,
     pub output: Option<String>,
+    /// Not `-mlir-disable-threading`: nested pipelines run on a [`ThreadPool`](crate::ThreadPool).
+    pub threading: bool,
 }
 
 /// Flags that change nothing this crate does.
-const IGNORED: &[&str] = &["allow-unregistered-dialect", "mlir-disable-threading", "verify-each", "mlir-print-local-scope", "mlir-print-value-users", "mlir-print-elementsattrs-with-hex-if-larger", "mlir-elide-elementsattrs-if-larger", "mlir-print-unique-ssa-ids", "mlir-very-unsafe-disable-verifier-on-parsing", "mlir-print-assume-verified", "mlir-print-skip-regions"];
+const IGNORED: &[&str] = &["allow-unregistered-dialect", "verify-each", "mlir-print-local-scope", "mlir-print-value-users", "mlir-print-elementsattrs-with-hex-if-larger", "mlir-elide-elementsattrs-if-larger", "mlir-print-unique-ssa-ids", "mlir-very-unsafe-disable-verifier-on-parsing", "mlir-print-assume-verified", "mlir-print-skip-regions"];
 
 impl Invocation {
     /// The `mlir-opt` arguments `args`, the passes named from `reg`.
     pub fn parse<S: AsRef<str>>(reg: &dyn crate::PassRegistry, args: &[S]) -> Result<Self, Error> {
-        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, verify_diagnostics: false, input: None, output: None };
+        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, verify_diagnostics: false, input: None, output: None, threading: true };
         let mut it = args.iter().map(AsRef::as_ref);
         while let Some(arg) = it.next() {
             let Some(flag) = arg.strip_prefix('-').filter(|f| !f.is_empty()) else {
@@ -53,6 +55,7 @@ impl Invocation {
                 "mlir-print-op-generic" => inv.generic = true,
                 "mlir-print-debuginfo" => inv.debuginfo = true,
                 "verify-diagnostics" => inv.verify_diagnostics = true,
+                "mlir-disable-threading" => inv.threading = false,
                 "pass-pipeline" | "p" => {
                     let text = value.or_else(|| it.next()).ok_or("`--pass-pipeline` needs a pipeline")?;
                     inv.pipeline = PassManager::parse(reg, text)?;
@@ -97,11 +100,20 @@ impl Invocation {
     pub fn run_chunk(&self, opt: &MlirOpt, chunk: &str) -> Result<String, Error> {
         let mut body = Body::parse(opt, chunk)?;
         let root = body.root;
-        match self.pipeline.run(&mut body, root) {
+        match self.pipeline.run_on(&mut body, root, &*self.executor()) {
             Ok(()) => Ok(self.print(opt, &mut body)),
             Err(_) if self.verify_diagnostics && chunk.contains("expected-error") => Ok(String::new()),
             Err(e) => Err(e),
         }
+    }
+
+    /// What runs nested pipelines: a thread pool unless threading is off (or there is no `std`).
+    pub fn executor(&self) -> alloc::boxed::Box<dyn crate::Executor> {
+        #[cfg(feature = "std")]
+        if self.threading {
+            return alloc::boxed::Box::new(crate::ThreadPool::default());
+        }
+        alloc::boxed::Box::new(crate::Serial)
     }
 
     /// The body as `mlir-opt` prints it under these flags.

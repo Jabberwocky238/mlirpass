@@ -2,7 +2,7 @@
 
 use alloc::vec;
 use alloc::vec::Vec;
-use core::cell::Cell;
+use core::sync::atomic::AtomicU32;
 
 use crate::patterns;
 use mlirformat::Attribute;
@@ -105,7 +105,7 @@ impl CfToLlvm {
 
     /// `AssertOpLowering` (aborting): the op's block splits; a new block prints the message
     /// with `puts` and calls `abort`.
-    pub fn assert(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], counter: &Cell<u32>) -> bool {
+    pub fn assert(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], counter: &AtomicU32) -> bool {
         let [arg] = operands[0][..] else { return false };
         let Some(module) = cr.module_of(op) else { return false };
         let loc = cr.rw.body[op].loc.clone();
@@ -137,7 +137,7 @@ impl CfToLlvm {
 }
 
 /// `AssertOpLowering`, with the counter `ensureSymbolNameIsUnique` keeps across chunks.
-pub struct AssertLowering<'c>(pub &'c Cell<u32>);
+pub struct AssertLowering<'c>(pub &'c AtomicU32);
 
 impl crate::ConversionPattern for AssertLowering<'_> {
     fn name(&self) -> &str {

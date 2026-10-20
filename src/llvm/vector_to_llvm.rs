@@ -4,7 +4,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::cell::Cell;
+use core::sync::atomic::AtomicU32;
 
 use crate::patterns;
 use mlirformat::{Attribute, Dim, FloatKind, Shaped, ShapedKind, Type};
@@ -24,7 +24,7 @@ pub struct VectorOptions<'c> {
     pub force_32bit_indices: bool,
     pub use_vector_alignment: bool,
     /// `ensureSymbolNameIsUnique`'s counter, for `vector.print` strings.
-    pub counter: &'c Cell<u32>,
+    pub counter: &'c AtomicU32,
 }
 
 #[patterns(converter, options = VectorOptions<'p>)]

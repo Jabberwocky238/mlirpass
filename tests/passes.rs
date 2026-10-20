@@ -9,7 +9,8 @@
 //! ```
 //!
 //! `--nocapture` prints the tally per test directory; `FILTER=<substring>` limits the runs and
-//! `SHOW=1` prints each failure's first differing line (`SHOW=full`: both sides whole). `FLOOR` only ever goes up.
+//! `SHOW=1` prints each failure's first differing line (`SHOW=full`: both sides whole), `SERIAL=1`
+//! runs nested pipelines without the thread pool. `FLOOR` only ever goes up.
 
 mod common;
 
@@ -81,6 +82,8 @@ fn passes() {
             }
         };
         inv.generic = true;
+        // `SERIAL=1`: nested pipelines one op after the other (else a thread pool, as mlir-opt).
+        inv.threading = std::env::var_os("SERIAL").is_none();
         let (ins, outs) = (inv.chunks(&input), inv.chunks(&expected));
         assert_eq!(ins.len(), outs.len(), "{}: chunk counts differ", run.stem);
         for (i, (chunk, want)) in ins.into_iter().zip(outs).enumerate() {

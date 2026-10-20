@@ -3,7 +3,7 @@
 //! one, and what each adds. Nothing is global: a pass holds the manager it asks.
 
 use alloc::vec::Vec;
-use core::cell::Cell;
+use core::sync::atomic::AtomicU32;
 
 use super::*;
 use crate::{ConversionPatterns, LlvmOptions, TypeConverter};
@@ -28,7 +28,7 @@ pub trait DialectInterfaces {
 pub struct LlvmEnv<'p> {
     pub llvm: LlvmOptions,
     /// Unique names for the globals the lowerings create.
-    pub counter: &'p Cell<u32>,
+    pub counter: &'p AtomicU32,
 }
 
 type ToLlvmFn = for<'p> fn(&mut ConversionPatterns<'p>, usize, &LlvmEnv<'p>);

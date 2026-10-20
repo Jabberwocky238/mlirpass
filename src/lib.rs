@@ -9,6 +9,8 @@
 #![no_std]
 
 extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
 
 mod branch;
 #[macro_use]
@@ -24,6 +26,7 @@ mod invocation;
 mod ir;
 mod llvm;
 mod lower;
+mod parallel;
 mod pass;
 mod region;
 mod region_branch;
@@ -41,6 +44,7 @@ pub use ir::*;
 pub use llvm::*;
 pub use lower::*;
 pub use invocation::*;
+pub use parallel::*;
 pub use pass::*;
 pub use region_branch::*;
 pub use rewrite::*;

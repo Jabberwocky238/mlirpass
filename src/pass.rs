@@ -45,7 +45,7 @@ pub trait Run {
     }
 }
 
-impl<T: PassDecl + Run> Pass for T {
+impl<T: PassDecl + Run + Send + Sync> Pass for T {
     fn name(&self) -> &str {
         T::NAME
     }
@@ -89,7 +89,7 @@ macro_rules! option_from_str {
 option_from_str!(String, u32, u64, i64, usize);
 
 /// ⭐ One pass. It runs on one op at a time (its anchor), and may change anything inside it.
-pub trait Pass {
+pub trait Pass: Send + Sync {
     /// The `mlir-opt` argument, e.g. `"cse"`.
     fn name(&self) -> &str;
 
@@ -247,8 +247,14 @@ impl PassManager {
         self.add(info, &Options::try_from(options)?)
     }
 
-    /// ⭐ Runs the pipeline on `op`.
+    /// ⭐ Runs the pipeline on `op`, nested pipelines one op after the other.
     pub fn run(&self, body: &mut Body<'_>, op: OpId) -> Result<(), Error> {
+        self.run_on(body, op, &crate::Serial)
+    }
+
+    /// ⭐ Runs the pipeline on `op`; a nested pipeline's ops, when they are all isolated from
+    /// above, each in a body of its own, as `exec`'s tasks (nested deeper: serially).
+    pub fn run_on(&self, body: &mut Body<'_>, op: OpId, exec: &dyn crate::Executor) -> Result<(), Error> {
         if let Some(anchor) = &self.anchor
             && body[op].name != **anchor
         {
@@ -261,12 +267,27 @@ impl PassManager {
                     body.verify_branches(op)?;
                 }
                 Entry::Adaptor(mgrs) => {
-                    for child in body.children(op) {
-                        let name = &body[child].name;
-                        let mgr = mgrs.iter().find(|m| m.anchor.as_deref() == Some(&**name)).or_else(|| mgrs.iter().find(|m| m.anchor.is_none()));
-                        if let Some(m) = mgr {
-                            m.run(body, child)?;
+                    let work: Vec<(OpId, &PassManager)> = body
+                        .children(op)
+                        .into_iter()
+                        .filter_map(|c| {
+                            let name = &body[c].name;
+                            mgrs.iter().find(|m| m.anchor.as_deref() == Some(&**name)).or_else(|| mgrs.iter().find(|m| m.anchor.is_none())).map(|m| (c, m))
+                        })
+                        .collect();
+                    if exec.width() < 2 || work.len() < 2 || !work.iter().all(|(c, _)| body.isolated(*c)) {
+                        for (c, m) in work {
+                            m.run_on(body, c, exec)?;
                         }
+                        continue;
+                    }
+                    let mut subs: Vec<_> = work.iter().map(|(c, _)| body.split_off(*c)).collect();
+                    let mut results: Vec<Result<(), Error>> = work.iter().map(|_| Ok(())).collect();
+                    let tasks = subs.iter_mut().zip(&work).zip(results.iter_mut()).map(|(((sub, at), (_, m)), r)| Box::new(move || *r = m.run_on(sub, *at, &crate::Serial)) as crate::Task<'_>).collect();
+                    exec.execute(tasks);
+                    results.into_iter().collect::<Result<(), Error>>()?;
+                    for ((c, _), (sub, at)) in work.iter().zip(&subs) {
+                        body.graft(*c, sub, *at);
                     }
                 }
             }

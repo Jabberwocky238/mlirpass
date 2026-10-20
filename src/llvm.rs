@@ -477,7 +477,7 @@ impl Run for ConvertMathToLlvm {
 pub struct ConvertCfToLlvm {
     #[opt("index-bitwidth")]
     index_bitwidth: u32,
-    counter: core::cell::Cell<u32>,
+    counter: core::sync::atomic::AtomicU32,
 }
 
 impl Run for ConvertCfToLlvm {
@@ -546,7 +546,7 @@ pub struct ConvertToLlvm {
     filter: Vec<String>,
     #[opt("allow-pattern-rollback", default = true)]
     rollback: bool,
-    counter: core::cell::Cell<u32>,
+    counter: core::sync::atomic::AtomicU32,
     /// The dialects' `ConvertToLLVMPatternInterface`s.
     interfaces: ToLlvmInterfaces,
 }
@@ -619,7 +619,7 @@ pub struct ConvertVectorToLlvm {
     arm_bf16: bool,
     #[opt("enable-x86vector")]
     x86vector: bool,
-    counter: core::cell::Cell<u32>,
+    counter: core::sync::atomic::AtomicU32,
 }
 
 impl ConvertVectorToLlvm {
@@ -716,18 +716,17 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     }
 
     /// `ensureSymbolNameIsUnique` with the process-wide counter it keeps.
-    fn unique_symbol(&self, module: OpId, base: &str, counter: &core::cell::Cell<u32>) -> String {
+    fn unique_symbol(&self, module: OpId, base: &str, counter: &core::sync::atomic::AtomicU32) -> String {
         let mut name = String::from(base);
         while self.rw.body.lookup(module, &name).is_some() {
-            name = format!("{base}_{}", counter.get());
-            counter.set(counter.get() + 1);
+            name = format!("{base}_{}", counter.fetch_add(1, core::sync::atomic::Ordering::Relaxed));
         }
         name
     }
 
     /// `createPrintStrCall`: a private constant global holding `bytes` (NUL-terminated here),
     /// and a call of `runtime` (`printString` by default) on its address.
-    pub fn print_str_call(&mut self, module: OpId, symbol: &str, bytes: &[u8], runtime: &str, counter: &core::cell::Cell<u32>) -> Option<()> {
+    pub fn print_str_call(&mut self, module: OpId, symbol: &str, bytes: &[u8], runtime: &str, counter: &core::sync::atomic::AtomicU32) -> Option<()> {
         let mut data: Vec<u8> = bytes.to_vec();
         data.push(0);
         let n = data.len();
