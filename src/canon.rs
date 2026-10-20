@@ -34,7 +34,6 @@ mod affine;
 mod arith;
 mod cf;
 mod linalg;
-mod llvm;
 mod memref;
 mod reshape;
 mod scf;
@@ -151,7 +150,7 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("scf") => scf::fold(body, op),
         Some("affine") => affine::fold(body, op),
         Some("memref") => memref::fold(body, op),
-        Some("llvm") => llvm::fold(body, op, consts),
+        Some("llvm") => crate::llvm_fold(body, op, consts),
         Some("vector") => vector::Folder { b: body, op, c: consts }.fold(),
         Some("shape") => shape::fold(body, op, consts),
         Some("tensor") => tensor::fold(body, op, consts),
@@ -167,7 +166,7 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
         "arith" => arith::materialize(value, ty),
         "affine" => affine::materialize(value, ty),
         "memref" => memref::materialize(value, ty),
-        "llvm" => llvm::materialize(value, ty),
+        "llvm" => crate::llvm_materialize(value, ty),
         "vector" => vector::materialize(value, ty),
         "shape" => shape::materialize(value, ty),
         "tensor" | "linalg" => arith::materialize(value, ty),

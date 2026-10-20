@@ -8,6 +8,7 @@ use alloc::collections::BTreeMap;
 use mlirformat::Error;
 
 use super::{Options, Pass, PassDecl};
+use crate::llvm::*;
 use crate::lower::*;
 use crate::transforms::*;
 

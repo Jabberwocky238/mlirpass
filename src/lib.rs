@@ -14,7 +14,6 @@ mod branch;
 #[macro_use]
 mod canon;
 mod conversion;
-mod data_layout;
 mod dataflow;
 mod dominance;
 mod effects;
@@ -34,7 +33,6 @@ mod traits;
 mod transforms;
 
 pub use conversion::*;
-pub use data_layout::DataLayout;
 pub use dominance::*;
 pub use effects::*;
 pub use fold::*;

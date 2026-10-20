@@ -89,7 +89,7 @@ impl<'a> Cx<'_, '_, 'a, '_> {
                 "math.sqrt" => "llvm.intr.sqrt",
                 n => n,
             };
-            return self.mk(OpData::build(name).operands(ops).with("fastmathFlags", super::llvm_fastmath(Some(&fmf.attr()))), ty);
+            return self.mk(OpData::build(name).operands(ops).with("fastmathFlags", crate::llvm_fastmath(Some(&fmf.attr()))), ty);
         }
         self.mk(OpData::build(name).operands(ops).with("fastmath", fmf.attr()), ty)
     }

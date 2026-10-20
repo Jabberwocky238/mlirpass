@@ -7,7 +7,7 @@ use core::cell::Cell;
 use mlirpass_macros::patterns;
 use mlirformat::Attribute;
 
-use super::unescape;
+use crate::unescape;
 use crate::{BlockId, ConversionRewriter, OpData, OpId, ValueId};
 use mlirformat::llvm_types::LlvmType;
 

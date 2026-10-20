@@ -8,7 +8,7 @@ use mlirpass_macros::{ops, patterns};
 use mlirformat::arith::CmpIPredicate;
 use mlirformat::{arith, Attribute, NamedAttr, Type};
 
-use super::llvm_fastmath;
+use crate::llvm_fastmath;
 use crate::{ApInt, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 use mlirformat::llvm_types::LlvmType;
 

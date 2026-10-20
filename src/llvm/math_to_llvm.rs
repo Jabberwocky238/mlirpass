@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Type};
 
-use super::llvm_fastmath;
+use crate::llvm_fastmath;
 use crate::{ApFloat, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 use mlirformat::llvm_types::LlvmType;
 

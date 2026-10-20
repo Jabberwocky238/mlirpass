@@ -275,7 +275,7 @@ impl VectorToLlvm {
     }
 
     fn fmf<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, reassoc: bool) -> Attribute<'a> {
-        let a = super::llvm_fastmath(cr.rw.body[op].get("fastmath"));
+        let a = crate::llvm_fastmath(cr.rw.body[op].get("fastmath"));
         if !reassoc {
             return a;
         }
@@ -407,7 +407,7 @@ impl VectorToLlvm {
         let v = cr.rw.body[red].operands[0];
         let acc = cr.rw.body[red].operands.get(1).copied();
         let mask = operands[0][0];
-        let fmf = super::llvm_fastmath(cr.rw.body[red].get("fastmath"));
+        let fmf = crate::llvm_fastmath(cr.rw.body[red].get("fastmath"));
         let int = matches!(elt, Type::Index | Type::Integer { .. });
         let vp = |cr: &mut Cr<'_, 'a, '_>, name: &str, neutral: &str| -> ValueId {
             let a = match acc {
@@ -725,7 +725,7 @@ impl VectorToLlvm {
             _ => String::from("newline"),
         };
         if let Some(Attribute::Str { lit, .. }) = cr.rw.body[op].get("stringLiteral").cloned() {
-            let bytes = super::unescape(&lit);
+            let bytes = crate::unescape(&lit);
             if cr.print_str_call(module, "vector_print_str", &bytes, "printString", o.counter).is_none() {
                 return false;
             }
