@@ -40,12 +40,21 @@ pub fn mem2reg<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     Ok(())
 }
 
-/// `MemorySlotPromotionInfo`.
+/// `MemorySlotPromotionInfo`, and the promoter's state once promotion starts.
+#[derive(Default)]
 struct Info {
     /// Blocks where two definitions of the slot meet.
     merge_points: BTreeSet<BlockId>,
     /// Each user that must drop uses, in the order they were found, with those uses.
     blocking: Vec<(OpId, Vec<Use>)>,
+    /// The slot pointer's region.
+    region: Option<RegionId>,
+    /// The slot's value before any store.
+    default: Option<ValueId>,
+    /// The slot's value just before each blocking memory op.
+    reaching: BTreeMap<OpId, ValueId>,
+    /// The value each storing op stores.
+    replaced: BTreeMap<OpId, ValueId>,
 }
 
 impl Info {
@@ -134,9 +143,9 @@ impl<'d> Promotion<'d> {
 
     /// `MemorySlotPromotionAnalyzer::computeInfo`.
     fn analyze<'a>(&self, b: &Body<'a>, slot: &MemorySlot<'a>) -> Option<Info> {
-        let mut info = Info { merge_points: BTreeSet::new(), blocking: Vec::new() };
-        self.blocking_uses(b, slot, &mut info)?;
         let region = b.value_region(slot.ptr)?;
+        let mut info = Info { region: Some(region), ..Info::default() };
+        self.blocking_uses(b, slot, &mut info)?;
         info.merge_points = self.merge_points(b, slot, region);
         // Every predecessor of a merge point must be able to forward a value.
         let usable = info.merge_points.iter().all(|m| b.predecessors(*m).iter().all(|(t, _)| b.is_branch(*t)));
@@ -235,19 +244,16 @@ impl<'d> Promotion<'d> {
     // ---- mutation ---------------------------------------------------------------------------
 
     /// `MemorySlotPromoter::promoteSlot`; the new allocator, if any.
-    fn promote<'a>(&self, body: &mut Body<'a>, alloc: OpId, slot: &MemorySlot<'a>, info: Info) -> Option<OpId> {
+    fn promote<'a>(&self, body: &mut Body<'a>, alloc: OpId, slot: &MemorySlot<'a>, mut info: Info) -> Option<OpId> {
         let d = self.at(body, alloc).expect("an allocator's dialect");
         let mut quiet = Quiet;
         let mut rw = Rewriter::new(body, &mut quiet);
         // `getOrCreateDefaultValue`, at the start of the slot pointer's block.
-        let block = rw.body.value_block(slot.ptr).expect("a placed slot");
-        rw.set_start(block);
+        rw.set_start(rw.body.value_block(slot.ptr).expect("a placed slot"));
         let default = d.default_value(&mut rw, alloc, slot);
-        let region = rw.body[block].parent.expect("a block in a region");
-        let mut reaching: BTreeMap<OpId, ValueId> = BTreeMap::new();
-        let mut replaced: BTreeMap<OpId, ValueId> = BTreeMap::new();
-        self.reaching_defs(&mut rw, d, alloc, slot, &info, region, default, &mut reaching, &mut replaced);
-        self.remove_blocking_uses(&mut rw, slot, &info, region, default, &reaching, &replaced);
+        info.default = Some(default);
+        self.reaching_defs(&mut rw, d, alloc, slot, &mut info);
+        self.remove_blocking_uses(&mut rw, slot, &info);
         // Branches of dead predecessors forward the default.
         for m in &info.merge_points {
             let n = rw.body[*m].args.len();
@@ -261,11 +267,11 @@ impl<'d> Promotion<'d> {
     }
 
     /// `computeReachingDefInRegion`: down the dominator tree, depth first.
-    #[allow(clippy::too_many_arguments)]
-    fn reaching_defs<'a>(&self, rw: &mut Rewriter<'_, 'a>, d: &dyn Promotable, alloc: OpId, slot: &MemorySlot<'a>, info: &Info, region: RegionId, default: ValueId, reaching: &mut BTreeMap<OpId, ValueId>, replaced: &mut BTreeMap<OpId, ValueId>) {
+    fn reaching_defs<'a>(&self, rw: &mut Rewriter<'_, 'a>, d: &dyn Promotable, alloc: OpId, slot: &MemorySlot<'a>, info: &mut Info) {
+        let (region, default) = (info.region.expect("analysed"), info.default.expect("created"));
         let entry = rw.body[region].blocks[0];
         if rw.body[region].blocks.len() == 1 {
-            self.reaching_in_block(rw, slot, info, entry, default, reaching, replaced);
+            self.reaching_in_block(rw, slot, info, entry, default);
             return;
         }
         let tree = rw.body.dom_tree(region);
@@ -278,7 +284,7 @@ impl<'d> Promotion<'d> {
                 d.handle_block_argument(rw, alloc, slot, arg);
                 def = arg;
             }
-            def = self.reaching_in_block(rw, slot, info, block, def, reaching, replaced);
+            def = self.reaching_in_block(rw, slot, info, block, def);
             if let Some(&t) = rw.body[block].ops.last()
                 && rw.body.is_branch(t)
             {
@@ -293,26 +299,24 @@ impl<'d> Promotion<'d> {
     }
 
     /// `computeReachingDefInBlock`: the definition reaching the end of `block`.
-    #[allow(clippy::too_many_arguments)]
-    fn reaching_in_block<'a>(&self, rw: &mut Rewriter<'_, 'a>, slot: &MemorySlot<'a>, info: &Info, block: BlockId, mut def: ValueId, reaching: &mut BTreeMap<OpId, ValueId>, replaced: &mut BTreeMap<OpId, ValueId>) -> ValueId {
+    fn reaching_in_block<'a>(&self, rw: &mut Rewriter<'_, 'a>, slot: &MemorySlot<'a>, info: &mut Info, block: BlockId, mut def: ValueId) -> ValueId {
         for op in rw.body[block].ops.clone() {
             let Some(d) = self.at(rw.body, op).filter(|d| d.is_mem_op(rw.body, op)) else { continue };
             if info.blocking.iter().any(|(o, _)| *o == op) {
-                reaching.entry(op).or_insert(def);
+                info.reaching.entry(op).or_insert(def);
             }
             if d.stores_to(rw.body, op, slot) {
                 rw.set_after(op);
                 def = d.stored(rw, op, slot, def);
-                replaced.insert(op, def);
+                info.replaced.insert(op, def);
             }
         }
         def
     }
 
     /// `removeBlockingUses`: users in reverse dominance order, then the scheduled erasures.
-    #[allow(clippy::too_many_arguments)]
-    fn remove_blocking_uses<'a>(&self, rw: &mut Rewriter<'_, 'a>, slot: &MemorySlot<'a>, info: &Info, region: RegionId, default: ValueId, reaching: &BTreeMap<OpId, ValueId>, replaced: &BTreeMap<OpId, ValueId>) {
-        let order = rw.body.blocks_by_dominance(region);
+    fn remove_blocking_uses<'a>(&self, rw: &mut Rewriter<'_, 'a>, slot: &MemorySlot<'a>, info: &Info) {
+        let order = rw.body.blocks_by_dominance(info.region.expect("analysed"));
         let mut users: Vec<OpId> = info.blocking.iter().map(|(o, _)| *o).collect();
         users.sort_by_key(|o| {
             let block = rw.body[*o].parent.expect("a placed user");
@@ -327,12 +331,12 @@ impl<'d> Promotion<'d> {
             uses.sort_by_key(|u| u.index);
             rw.set_after(op);
             if d.is_mem_op(rw.body, op) {
-                let def = reaching.get(&op).copied().unwrap_or(default);
+                let def = info.reaching.get(&op).copied().or(info.default).expect("created");
                 if d.remove_blocking_uses(rw, op, Some(slot), &uses, Some(def)) == Deletion::Delete {
                     erase.push(op);
                 }
                 if d.stores_to(rw.body, op, slot)
-                    && let Some(v) = replaced.get(&op)
+                    && let Some(v) = info.replaced.get(&op)
                 {
                     replaced_list.push((op, *v));
                 }
