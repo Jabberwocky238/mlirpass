@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
 
-use crate::canon::{AttrExt, rewrites};
+use crate::canon::AttrExt;
 use crate::{ApInt, Body, Const, ConversionRewriter, LlvmOptions, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId, DYNAMIC};
 
 /// What a lowering needs of its rewriter: the greedy one and the conversion one both do.
@@ -62,7 +62,7 @@ impl<'a> Build<'a> for ConversionRewriter<'_, 'a, '_> {
     }
 }
 
-pub(super) fn vshape(t: &Type<'_>) -> Option<(Vec<i64>, Vec<bool>)> {
+pub fn vshape(t: &Type<'_>) -> Option<(Vec<i64>, Vec<bool>)> {
     match t {
         Type::Shaped(s) if s.kind == ShapedKind::Vector => {
             let dims = s.shape.as_ref()?;
@@ -72,7 +72,7 @@ pub(super) fn vshape(t: &Type<'_>) -> Option<(Vec<i64>, Vec<bool>)> {
     }
 }
 
-pub(super) fn elem<'x, 'a>(t: &'x Type<'a>) -> &'x Type<'a> {
+pub fn elem<'x, 'a>(t: &'x Type<'a>) -> &'x Type<'a> {
     crate::attr::element_type(t)
 }
 
@@ -80,11 +80,11 @@ pub fn vector_type<'a>(shape: &[i64], scalable: &[bool], e: Type<'a>) -> Type<'a
     Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(shape.iter().zip(scalable.iter().chain(core::iter::repeat(&false))).map(|(n, s)| if *s { Dim::Scalable(*n) } else { Dim::Static(*n) }).collect()), elem: e.into(), extras: Vec::new() })
 }
 
-pub(super) fn dense_i64<'a>(v: &[i64]) -> Attribute<'a> {
+pub fn dense_i64<'a>(v: &[i64]) -> Attribute<'a> {
     Attribute::DenseArray { ty: Type::int(64), values: v.iter().map(|x| format!("{x}").into()).collect() }
 }
 
-pub(super) fn index_attr<'a>(v: i64) -> Attribute<'a> {
+pub fn index_attr<'a>(v: i64) -> Attribute<'a> {
     Attribute::Int { lit: format!("{v}").into(), ty: Some(Type::Index) }
 }
 
@@ -97,7 +97,7 @@ fn zeros<'a>(ty: &Type<'a>) -> Attribute<'a> {
 }
 
 /// Vector-op builders shared by the lowerings.
-pub(super) trait VectorBuild<'a>: Build<'a> {
+pub trait VectorBuild<'a>: Build<'a> {
     fn vextract_(&mut self, v: ValueId, pos: &[i64]) -> ValueId {
         let ty = self.body()[v].ty.clone();
         let (shape, scal) = vshape(&ty).expect("a vector");
@@ -126,12 +126,12 @@ pub(super) trait VectorBuild<'a>: Build<'a> {
 impl<'a, B: Build<'a> + ?Sized> VectorBuild<'a> for B {}
 
 impl<'a> Body<'a> {
-    pub(super) fn xfer_segments(&self, op: OpId) -> Vec<usize> {
+    pub fn xfer_segments(&self, op: OpId) -> Vec<usize> {
         self.segments(op, "operandSegmentSizes").unwrap_or_default()
     }
 
     /// (base, indices, padding / vector, mask) of a transfer.
-    pub(super) fn xfer_parts(&self, op: OpId) -> (ValueId, Vec<ValueId>, ValueId, Option<ValueId>) {
+    pub fn xfer_parts(&self, op: OpId) -> (ValueId, Vec<ValueId>, ValueId, Option<ValueId>) {
         let s = self.xfer_segments(op);
         let o = &self[op].operands;
         if self[op].name == "vector.transfer_read" {
@@ -143,23 +143,23 @@ impl<'a> Body<'a> {
         }
     }
 
-    pub(super) fn xfer_vector_type(&self, op: OpId) -> Type<'a> {
+    pub fn xfer_vector_type(&self, op: OpId) -> Type<'a> {
         if self[op].name == "vector.transfer_read" { self[self[op].results[0]].ty.clone() } else { self[self[op].operands[0]].ty.clone() }
     }
 
-    pub(super) fn xfer_out_of_bounds(&self, op: OpId) -> bool {
+    pub fn xfer_out_of_bounds(&self, op: OpId) -> bool {
         match self[op].get("in_bounds") {
             Some(Attribute::Array(a)) => a.iter().any(|x| !matches!(x, Attribute::Bool(true))),
             _ => vshape(&self.xfer_vector_type(op)).is_some_and(|s| !s.0.is_empty()),
         }
     }
 
-    pub(super) fn in_mask(&self, op: OpId) -> bool {
+    pub fn in_mask(&self, op: OpId) -> bool {
         self.parent_op(op).is_some_and(|p| self[p].name == "vector.mask")
     }
 
     /// The permutation map's results: dims, or `None` for broadcast (constant 0).
-    pub(super) fn xfer_perm(&self, op: OpId) -> Option<(u32, Vec<Option<u32>>)> {
+    pub fn xfer_perm(&self, op: OpId) -> Option<(u32, Vec<Option<u32>>)> {
         let m = self.affine_map(op, "permutation_map")?;
         let r = m.results.iter().map(|e| match e {
             crate::AffineExpr::Dim(d) => Some(Some(*d)),

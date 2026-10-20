@@ -13,8 +13,10 @@ extern crate alloc;
 mod affine;
 mod attr;
 mod branch;
+#[macro_use]
 mod canon;
 mod conversion;
+mod dataflow;
 mod dominance;
 mod effects;
 mod equivalence;

@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Shaped, ShapedKind, Type};
 
-use crate::canon::{MemrefOfr as Ofr, map_attr, rewrites};
+use crate::canon::{MemrefOfr as Ofr, map_attr};
 use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, GreedyConfig, LlvmOptions, OpData, OpId, Options, Pass, PatternSet, Rewriter, ValueId, DYNAMIC};
 
 pub struct ExpandStridedMetadata;
@@ -81,7 +81,7 @@ struct Metadata {
 
 impl<'a> Rewriter<'_, 'a> {
     /// `makeComposedFoldedAffineApply`.
-    pub(crate) fn composed_folded_apply(&mut self, map: AffineMap, operands: &[Ofr]) -> Ofr {
+    pub fn composed_folded_apply(&mut self, map: AffineMap, operands: &[Ofr]) -> Ofr {
         // `foldAttributesIntoMap`.
         let mut values = Vec::new();
         let (mut nd, mut ns) = (0, 0);
@@ -132,7 +132,7 @@ impl<'a> Rewriter<'_, 'a> {
     }
 
     /// `makeComposedAffineApply`: the composed `affine.apply`, not folded.
-    pub(crate) fn composed_apply(&mut self, map: AffineMap, operands: &[Ofr]) -> ValueId {
+    pub fn composed_apply(&mut self, map: AffineMap, operands: &[Ofr]) -> ValueId {
         let mut values = Vec::new();
         let (mut nd, mut ns) = (0, 0);
         let mut fold = |o: &Ofr, sym: bool| match o {
@@ -161,7 +161,7 @@ impl<'a> Rewriter<'_, 'a> {
     }
 
     /// `getValueOrCreateConstantIndexOp`.
-    pub(crate) fn value_of(&mut self, o: Ofr) -> ValueId {
+    pub fn value_of(&mut self, o: Ofr) -> ValueId {
         match o {
             Ofr::V(v) => v,
             Ofr::C(c) => {

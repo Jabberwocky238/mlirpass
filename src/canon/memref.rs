@@ -298,3 +298,45 @@ fn fold_extract_strided_metadata<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     }
     in_place(changed)
 }
+
+rewrites! {
+    /// `AllocaScopeInliner`: a scope that allocates nothing (or that ends its parent scope)
+    /// goes, its body inlined.
+    AllocaScopeInliner("memref.alloca_scope", 1) |rw, op| {
+        let b = &*rw.body;
+        // `isOpItselfPotentialAutomaticAllocation`, pre-order, not entering nested scopes.
+        let children = |o: OpId| -> Vec<OpId> { b[o].regions.iter().flat_map(|r| &b[*r].blocks).flat_map(|k| b[*k].ops.iter().copied()).collect() };
+        let mut work: Vec<OpId> = children(op);
+        let mut potential = false;
+        while let Some(o) = work.pop() {
+            if !b.has(o, crate::Trait::MemoryEffectOpInterface) || b[o].name == "memref.alloca" {
+                potential = true;
+                break;
+            }
+            if !b.has(o, crate::Trait::AutomaticAllocationScope) {
+                work.extend(children(o));
+            }
+        }
+        if potential {
+            let Some(parent) = b.parent_op(op) else { return false };
+            let block = b[op].parent.expect("placed");
+            let ops = &b[block].ops;
+            let last = ops.len() >= 2 && ops[ops.len() - 2] == op;
+            if !b.has(parent, crate::Trait::AutomaticAllocationScope) || !last {
+                return false;
+            }
+        }
+        let block = b[b[op].regions[0]].blocks[0];
+        let term = *b[block].ops.last().expect("terminator");
+        let results = b[term].operands.clone();
+        let parent = b[op].parent.expect("placed");
+        rw.inline_block_before(block, parent, Some(op), &[]);
+        rw.replace_op(op, &results);
+        rw.erase_op(term);
+        true
+    }
+}
+
+pub fn patterns(set: &mut crate::PatternSet) {
+    set.add(AllocaScopeInliner);
+}

@@ -7,7 +7,6 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Type};
 
-use super::rewrites;
 use crate::{ApInt, Body, BlockId, Const, OpData, OpId, PatternSet, Rewriter, ValueId};
 
 impl<'a> OpData<'a> {

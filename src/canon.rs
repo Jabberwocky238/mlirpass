@@ -1,26 +1,6 @@
 //! ⭐ What each dialect contributes to canonicalization: op folds, canonicalization patterns, and
 //! how it materializes a folded constant. One file per dialect.
 
-mod affine;
-mod arith;
-mod cf;
-mod llvm;
-mod memref;
-mod reshape;
-mod scf;
-mod shape;
-mod tensor;
-mod vector;
-
-use alloc::borrow::Cow;
-use alloc::format;
-use alloc::string::String;
-use alloc::vec::Vec;
-
-use mlirformat::{Attribute, Extended, NamedAttr, Type};
-
-use crate::{Body, Fold, OpData, OpId, PatternSet, ValueId};
-
 /// Declares rewrite patterns: one unit struct each, rooted at an op name, with a benefit (DRR
 /// patterns: the number of ops they match) and a body that matches and rewrites.
 macro_rules! rewrites {
@@ -46,7 +26,27 @@ macro_rules! rewrites {
         }
     )*};
 }
-pub(crate) use rewrites;
+
+mod affine;
+mod arith;
+mod cf;
+mod llvm;
+mod memref;
+mod reshape;
+mod scf;
+mod shape;
+mod tensor;
+mod vector;
+
+use alloc::borrow::Cow;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+
+use mlirformat::{Attribute, Extended, NamedAttr, Type};
+
+use crate::{Body, Fold, OpData, OpId, PatternSet, ValueId};
+
 pub use affine::map_attr;
 pub use memref::Ofr as MemrefOfr;
 pub use reshape::Reshape;
@@ -216,6 +216,7 @@ pub fn patterns() -> PatternSet {
     affine::patterns(&mut set);
     arith::patterns(&mut set);
     cf::patterns(&mut set);
+    memref::patterns(&mut set);
     scf::patterns(&mut set);
     shape::patterns(&mut set);
     tensor::patterns(&mut set);

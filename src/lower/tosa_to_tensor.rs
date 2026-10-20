@@ -55,7 +55,7 @@ impl TosaToTensor {
     }
 
     /// The values of the `tosa.const_shape` defining `v`.
-    pub(super) fn const_shape(cr: &Cr<'_, '_, '_>, v: ValueId) -> Option<Vec<i64>> {
+    pub fn const_shape(cr: &Cr<'_, '_, '_>, v: ValueId) -> Option<Vec<i64>> {
         let b = &*cr.rw.body;
         let d = b.def_named(v, "tosa.const_shape")?;
         let c = Const::try_from(b[d].get("values")?).ok()?;
@@ -193,7 +193,7 @@ impl TosaToTensor {
 
     /// `tensor.expand_shape` built from the source and reassociation alone (output shape
     /// inferred by `inferExpandShapeOutputShape`), then folded.
-    pub(super) fn expand<'a>(cr: &mut Cr<'_, 'a, '_>, ty: Type<'a>, src: ValueId, r: &[Vec<i64>], fold: bool) -> ValueId {
+    pub fn expand<'a>(cr: &mut Cr<'_, 'a, '_>, ty: Type<'a>, src: ValueId, r: &[Vec<i64>], fold: bool) -> ValueId {
         let input = Self::mixed_sizes(cr, src);
         let out = Self::dims(&ty).unwrap_or_default();
         let mut shape: Option<Vec<Ofr>> = None;

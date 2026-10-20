@@ -7,7 +7,7 @@ use core::cmp::Ordering;
 
 use mlirformat::{Attribute, FloatKind, Type};
 
-use super::{AttrExt, rewrites};
+use super::AttrExt;
 use crate::{ApFloat, ApInt, Body, Const, Fold, Folded, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId, attr};
 
 /// `CmpIPredicate`, by case value.

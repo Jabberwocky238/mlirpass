@@ -449,7 +449,7 @@ impl TosaToLinalgNamed {
     }
 
     /// `checkHasDynamicBatchDims`.
-    pub(super) fn dynamic_batch(cr: &mut Cr<'_, '_, '_>, params: &[ValueId]) -> Option<Vec<ValueId>> {
+    pub fn dynamic_batch(cr: &mut Cr<'_, '_, '_>, params: &[ValueId]) -> Option<Vec<ValueId>> {
         let dynamic: Vec<Vec<i64>> = params.iter().map(|p| dims_of(&Self::ty(cr, *p))).filter(|d| d.contains(&DYNAMIC)).collect();
         if dynamic.is_empty() {
             return Some(Vec::new());

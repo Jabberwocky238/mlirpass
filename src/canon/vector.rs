@@ -1398,7 +1398,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
     }
 
     /// `makeArithReduction`: `v1 kind acc`, selected against `acc` by `mask`.
-    pub(crate) fn arith_reduction(&mut self, kind: &str, v1: ValueId, acc: ValueId, fastmath: Option<Attribute<'a>>, mask: Option<ValueId>) -> ValueId {
+    pub fn arith_reduction(&mut self, kind: &str, v1: ValueId, acc: ValueId, fastmath: Option<Attribute<'a>>, mask: Option<ValueId>) -> ValueId {
         let ty = self.body[v1].ty.clone();
         let float = matches!(elem(&ty), Type::Float(_));
         let name = match (kind, float) {
@@ -1436,7 +1436,7 @@ fn masking_op(b: &Body<'_>, op: OpId) -> Option<OpId> {
     (b[p].name == "vector.mask").then_some(p)
 }
 
-super::rewrites! {
+rewrites! {
     /// `ElideUnitDimsInMultiDimReduction`.
     ElideUnitDimsInMultiDimReduction("vector.multi_reduction", 1) |rw, op| {
         let b = &*rw.body;

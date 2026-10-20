@@ -6,7 +6,6 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
 
-use super::rewrites;
 use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId, attr};
 
 const DYNAMIC: i64 = i64::MIN;

@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
 
 use super::reshape::{ComposeCollapseOfExpand, ComposeExpandOfCollapse, ComposeReassociative, Reassoc, Reshape};
-use super::{MemrefOfr as Ofr, rewrites};
+use super::MemrefOfr as Ofr;
 use crate::{AffineExpr, AffineMap, Body, Const, DYNAMIC, Fold, Folded, Mapping, OpData, OpId, PatternSet, Rewriter, Trait, ValueId, attr};
 
 /// The tensor types' helpers.

@@ -28,7 +28,7 @@ pub type Operand = (OpId, usize);
 impl<'a> Body<'a> {
     /// Whether `op` implements the interface, as far as this crate describes it.
     pub fn is_region_branch(&self, op: OpId) -> bool {
-        matches!(&*self[op].name, "affine.for" | "scf.for" | "scf.if" | "scf.while" | "scf.execute_region" | "scf.index_switch" | "test.region_if")
+        matches!(&*self[op].name, "affine.for" | "scf.for" | "scf.if" | "scf.while" | "scf.execute_region" | "scf.index_switch" | "test.region_if" | "memref.alloca_scope")
     }
 
     /// `getTrivialConstantTripCount` of an `affine.for`.
@@ -76,7 +76,7 @@ impl<'a> Body<'a> {
                 Point::Terminator(t) if self[t].parent.and_then(|b| self[b].parent) == Some(self[op].regions[2]) => vec![(Succ::Parent, results)],
                 Point::Terminator(_) => vec![(Succ::Region(2), self.region_args(op, 2, 0))],
             },
-            "scf.execute_region" | "scf.index_switch" => match point {
+            "scf.execute_region" | "scf.index_switch" | "memref.alloca_scope" => match point {
                 Point::Parent => (0..self[op].regions.len()).map(|r| (Succ::Region(r), Vec::new())).collect(),
                 Point::Terminator(_) => vec![(Succ::Parent, results)],
             },
@@ -110,7 +110,7 @@ impl<'a> Body<'a> {
         for r in &self[op].regions {
             for b in &self[*r].blocks {
                 if let Some(&t) = self[*b].ops.last()
-                    && matches!(&*self[t].name, "scf.yield" | "scf.condition" | "test.region_if_yield" | "affine.yield")
+                    && matches!(&*self[t].name, "scf.yield" | "scf.condition" | "test.region_if_yield" | "affine.yield" | "memref.alloca_scope.return")
                 {
                     out.push(Point::Terminator(t));
                 }

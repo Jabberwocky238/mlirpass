@@ -40,7 +40,7 @@ impl Body<'_> {
         }
     }
 
-    fn set_segments(&mut self, op: OpId, name: &str, sizes: &[usize]) {
+    pub fn set_segments(&mut self, op: OpId, name: &str, sizes: &[usize]) {
         let Some(Attribute::DenseArray { ty, .. }) = self[op].get(name).cloned() else { return };
         let values = sizes.iter().map(|s| Cow::Owned(format!("{s}"))).collect();
         self[op].set(name, Attribute::DenseArray { ty, values });

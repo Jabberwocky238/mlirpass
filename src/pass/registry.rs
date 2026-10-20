@@ -70,5 +70,6 @@ registry! {
     "strip-debuginfo" => StripDebugInfo,
     "symbol-dce" => SymbolDce,
     "sccp" => Sccp,
+    "remove-dead-values" => RemoveDeadValues,
     "symbol-privatize" => SymbolPrivatize,
 }

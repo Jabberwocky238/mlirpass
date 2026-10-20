@@ -218,6 +218,26 @@ impl<'a> Body<'a> {
         }
     }
 
+    /// `applyOpPatternsGreedily(ops, patterns)`: one pass over a worklist seeded with `ops`,
+    /// scoped to their closest common region.
+    pub fn apply_op_patterns_greedily(&mut self, ops: &[OpId], patterns: &PatternSet) {
+        let regions = |op: OpId| {
+            let mut out = Vec::new();
+            let mut at = op;
+            while let Some(r) = self[at].parent.and_then(|b| self[b].parent) {
+                out.push(r);
+                at = self[r].parent;
+            }
+            out
+        };
+        let Some(first) = ops.first() else { return };
+        let all: Vec<Vec<RegionId>> = ops.iter().map(|o| regions(*o)).collect();
+        let Some(scope) = regions(*first).into_iter().find(|r| all.iter().all(|c| c.contains(r))) else { return };
+        let mut tracker = Tracker { worklist: Worklist::default(), scope };
+        ops.iter().for_each(|o| tracker.worklist.push(*o));
+        self.process(&mut tracker, patterns, &GreedyConfig::default());
+    }
+
     /// ⭐ `applyPatternsGreedily(region, patterns, config)`; whether it converged.
     pub fn apply_greedily(&mut self, region: RegionId, patterns: &PatternSet, config: &GreedyConfig) -> bool {
         let mut tracker = Tracker { worklist: Worklist::default(), scope: region };

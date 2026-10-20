@@ -609,7 +609,7 @@ impl<'a> Body<'a> {
 
     // ---- bounds ------------------------------------------------------------------------
 
-    pub(crate) fn for_constant_bound(&self, f: OpId, lower: bool) -> Option<i64> {
+    pub fn for_constant_bound(&self, f: OpId, lower: bool) -> Option<i64> {
         self.affine_map(f, if lower { "lowerBoundMap" } else { "upperBoundMap" })?.single_constant().filter(|_| {
             let m = self.affine_map(f, if lower { "lowerBoundMap" } else { "upperBoundMap" }).expect("map");
             m.dims == 0 && m.syms == 0
@@ -1459,7 +1459,7 @@ fn simplify_affine_op(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     true
 }
 
-super::rewrites! {
+rewrites! {
     /// `CancelDelinearizeOfLinearizeDisjointExactTail`.
     CancelDelinearizeOfLinearizeDisjointExactTail("affine.delinearize_index", 1) |rw, op| {
         let b = &*rw.body;

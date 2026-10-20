@@ -12,14 +12,14 @@ use crate::{ApInt, Const, ConversionPattern, ConversionPatterns, ConversionRewri
 
 /// How an op's attributes carry over (`AttrConvert*`).
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Attrs {
+pub enum Attrs {
     PassThrough,
     FastMath,
     Overflow,
 }
 
 /// `VectorConvertToLLVMPattern<From, To, Attrs, FailOnUnsupportedFP>`.
-pub(super) struct OneToOne {
+pub struct OneToOne {
     pub from: &'static str,
     pub to: &'static str,
     pub attrs: Attrs,
