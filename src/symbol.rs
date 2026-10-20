@@ -134,10 +134,3 @@ impl<'a> Body<'a> {
         Some(out)
     }
 }
-
-impl OpInfo {
-    /// Whether `op`'s dialect is registered in `mlir-opt` (its ops may still be unregistered).
-    pub fn knows_dialect(op: &str) -> bool {
-        op.split_once('.').is_some_and(|(ns, _)| crate::DIALECTS.contains(&ns))
-    }
-}
