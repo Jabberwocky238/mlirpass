@@ -106,18 +106,18 @@ impl<'a> Cr<'_, 'a, '_> {
 
     /// `tensor::getMixedSizes` (dynamic sizes by a folded `tensor.dim`).
     pub fn mixed_sizes(&mut self, v: ValueId) -> Vec<Ofr> {
-        let dims = dims_of(&self.rw.body[v].ty);
-        dims.iter()
-            .enumerate()
-            .map(|(i, d)| {
-                if *d != DYNAMIC {
-                    return Ofr::C(*d);
-                }
-                let k = self.cidx(i as i64);
-                let r = self.rw.create_or_fold(OpData::build("tensor.dim").operands(&[v, k]), &[Type::Index])[0];
-                self.rw.body.ofr_int(Ofr::V(r)).map_or(Ofr::V(r), Ofr::C)
-            })
-            .collect()
+        (0..dims_of(&self.rw.body[v].ty).len()).map(|i| self.mixed_size(v, i)).collect()
+    }
+
+    /// `tensor::getMixedSize`.
+    pub fn mixed_size(&mut self, v: ValueId, i: usize) -> Ofr {
+        let d = dims_of(&self.rw.body[v].ty)[i];
+        if d != DYNAMIC {
+            return Ofr::C(d);
+        }
+        let k = self.cidx(i as i64);
+        let r = self.rw.create_or_fold(OpData::build("tensor.dim").operands(&[v, k]), &[Type::Index])[0];
+        self.rw.body.ofr_int(Ofr::V(r)).map_or(Ofr::V(r), Ofr::C)
     }
 
     /// A structured op with a region whose block takes each operand's element type, filled by

@@ -55,7 +55,7 @@ impl TosaToTensor {
     }
 
     /// The values of the `tosa.const_shape` defining `v`.
-    fn const_shape(cr: &Cr<'_, '_, '_>, v: ValueId) -> Option<Vec<i64>> {
+    pub(super) fn const_shape(cr: &Cr<'_, '_, '_>, v: ValueId) -> Option<Vec<i64>> {
         let b = &*cr.rw.body;
         let d = b.def_named(v, "tosa.const_shape")?;
         let c = Const::try_from(b[d].get("values")?).ok()?;
@@ -193,7 +193,7 @@ impl TosaToTensor {
 
     /// `tensor.expand_shape` built from the source and reassociation alone (output shape
     /// inferred by `inferExpandShapeOutputShape`), then folded.
-    fn expand<'a>(cr: &mut Cr<'_, 'a, '_>, ty: Type<'a>, src: ValueId, r: &[Vec<i64>]) -> ValueId {
+    pub(super) fn expand<'a>(cr: &mut Cr<'_, 'a, '_>, ty: Type<'a>, src: ValueId, r: &[Vec<i64>], fold: bool) -> ValueId {
         let input = Self::mixed_sizes(cr, src);
         let out = Self::dims(&ty).unwrap_or_default();
         let mut shape: Option<Vec<Ofr>> = None;
@@ -244,7 +244,7 @@ impl TosaToTensor {
             }
         }
         let data = OpData::build("tensor.expand_shape").operands(&ops).with("reassociation", crate::canon::Reshape::attr(&r.to_vec())).with("static_output_shape", dense_i64(&statics));
-        Self::fold1(cr, data, ty)
+        if fold { Self::fold1(cr, data, ty) } else { cr.build(data, ty) }
     }
 
     fn reshape(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
@@ -264,7 +264,7 @@ impl TosaToTensor {
         let cr_re = Self::reassociation(&cr.rw.body[cast].ty.clone(), &co);
         let collapsed = Self::fold1(cr, OpData::build("tensor.collapse_shape").operands(&[cast]).with("reassociation", crate::canon::Reshape::attr(&cr_re)), co.clone());
         let ex_re = Self::reassociation(&ex, &cr.rw.body[collapsed].ty.clone());
-        let expanded = Self::expand(cr, ex, collapsed, &ex_re);
+        let expanded = Self::expand(cr, ex, collapsed, &ex_re, true);
         let res = Self::fold1(cr, OpData::build("tensor.cast").operands(&[expanded]), rt);
         cr.replace_values(op, &[res]);
         true

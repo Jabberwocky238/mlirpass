@@ -17,6 +17,7 @@ mod memref_to_emitc;
 mod memref_to_llvm;
 mod scf_to_emitc;
 mod tosa_to_arith;
+mod tosa_to_linalg;
 mod tosa_to_linalg_named;
 mod tosa_to_tensor;
 mod vector_to_llvm;
@@ -51,6 +52,7 @@ pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
 pub use scf_to_emitc::ScfToEmitc;
 pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
 pub use tosa_to_arith::TosaToArith;
+pub use tosa_to_linalg::TosaToLinalg;
 pub use tosa_to_linalg_named::TosaToLinalgNamed;
 pub use tosa_to_tensor::TosaToTensor;
 pub use vector_to_scf::{ConvertVectorToScf, VectorToScfOptions};
@@ -928,6 +930,37 @@ impl Pass for TosaToLinalgNamedPass {
         target.legal_dialect("linalg").legal_dialect("tosa").legal_dialect("tensor").legal_dialect("scf");
         for o in ["tosa.conv2d", "tosa.conv3d", "tosa.depthwise_conv2d", "tosa.max_pool2d", "tosa.avg_pool2d", "tosa.matmul", "tosa.transpose"] {
             target.illegal_op(o);
+        }
+        target.unknown(Action::Legal);
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Full)
+    }
+}
+
+/// `tosa-to-linalg`.
+pub struct TosaToLinalgPass;
+
+impl TryFrom<&Options<'_>> for TosaToLinalgPass {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("tosa-to-linalg", &[])?;
+        Ok(Self)
+    }
+}
+
+impl Pass for TosaToLinalgPass {
+    fn name(&self) -> &str {
+        "tosa-to-linalg"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let tc = TosaToTensor::converter();
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        TosaToLinalg::populate(&mut patterns, i);
+        let mut target = ConversionTarget::default();
+        target.legal_dialect("linalg").legal_dialect("tensor").legal_dialect("scf").illegal_dialect("tosa");
+        for o in ["tosa.apply_scale", "tosa.if", "tosa.const", "tosa.const_shape", "tosa.while", "tosa.concat", "tosa.slice", "tosa.reshape", "tosa.pad"] {
+            target.legal_op(o);
         }
         target.unknown(Action::Legal);
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Full)

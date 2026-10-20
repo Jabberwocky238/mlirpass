@@ -49,6 +49,7 @@ registry! {
     "tosa-to-tensor" => TosaToTensorPass,
     "tosa-to-arith" => TosaToArithPass,
     "tosa-to-linalg-named" on "func.func" => TosaToLinalgNamedPass,
+    "tosa-to-linalg" on "func.func" => TosaToLinalgPass,
     "convert-complex-to-standard" => ConvertComplexToStandard,
     "convert-arith-to-emitc" => ConvertArithToEmitc,
     "convert-to-emitc" => ConvertToEmitc,
