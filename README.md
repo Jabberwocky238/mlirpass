@@ -9,7 +9,7 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-Alpha (`0.1.0-alpha.1`): 3698 of the 4670 fixture cases match `mlir-opt` 22.1.8 byte for byte
+Alpha (`0.1.0-alpha.1`): 3871 of the 4831 fixture cases match `mlir-opt` 22.1.8 byte for byte
 (`cargo test --test passes -- --nocapture` counts them per group; SPIR-V is not started).
 
 | part | what it is | upstream |
@@ -19,7 +19,7 @@ Alpha (`0.1.0-alpha.1`): 3698 of the 4670 fixture cases match `mlir-opt` 22.1.8 
 | `rewrite` | patterns, rewriter, greedy driver, folding | `PatternMatch`, `GreedyPatternRewriteDriver` |
 | `conversion` | conversion target, type converter, dialect conversion | `DialectConversion` |
 | `lower` | dialect → `llvm`, → `spirv`, → `emitc`, and between dialects | `mlir/lib/Conversion` |
-| `transforms` | `canonicalize`, `cse`, `sccp`, `inline`, `symbol-dce`, ... | `mlir/lib/Transforms` |
+| `transforms` | `canonicalize`, `cse`, `sccp`, `inline`, `symbol-dce`, `mem2reg`, `sroa`, ... | `mlir/lib/Transforms` |
 
 Dialects: every dialect mlirformat describes.
 
@@ -104,7 +104,7 @@ holding the loaded dialects) what it knows of ops; `convert-to-llvm` / `convert-
 ## Fixtures
 
 `tests/fixtures/` holds `mlir-opt` 22.1.8's own output for llvm-project's `mlir/test/Conversion`,
-`mlir/test/Transforms` and the dialects' `canonicalize*.mlir`, one `RUN:` line each, so the tests
+`mlir/test/Transforms` and the dialects' `canonicalize*.mlir`, `mem2reg*.mlir` and `sroa*.mlir`, one `RUN:` line each, so the tests
 need no LLVM. Regenerate with a vanilla 22.1.8 build:
 
 ```sh
