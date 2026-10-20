@@ -5,11 +5,11 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Shaped, ShapedKind, Type};
 
-use super::{Lowering, OptLowering};
 use crate::canon::AttrExt;
-use crate::{ConversionPatterns, ConversionRewriter, LlvmConverter, LlvmOptions, LlvmType, OpData, OpId, SignatureConversion, Visibility, ValueId};
+use crate::{ConversionRewriter, LlvmConverter, LlvmOptions, LlvmType, OpData, OpId, SignatureConversion, Visibility, ValueId};
 
 /// The func ⇒ llvm patterns.
 pub struct FuncToLlvm;
@@ -20,6 +20,7 @@ struct Signature<'a> {
     conversion: SignatureConversion<'a>,
 }
 
+#[patterns(converter, options = LlvmOptions)]
 impl FuncToLlvm {
     fn memref<'t, 'a>(t: &'t Type<'a>) -> Option<&'t Shaped<'a>> {
         match t {
@@ -114,6 +115,7 @@ impl FuncToLlvm {
         d
     }
 
+    #[lowering("func.func")]
     fn func(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], opts: LlvmOptions) -> bool {
         let Some(fty) = Self::function_type(cr, op) else { return false };
         let b = &*cr.rw.body;
@@ -401,6 +403,7 @@ impl FuncToLlvm {
         Some(cr.insert_value(p, memory, &[1]))
     }
 
+    #[lowering("func.constant", plain)]
     fn constant(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(tc) = cr.type_converter() else { return false };
         let Some(ty) = tc.convert(&cr.rw.body[cr.rw.body[op].results[0]].ty.clone()).filter(LlvmType::compatible) else { return false };
@@ -495,6 +498,7 @@ impl FuncToLlvm {
         true
     }
 
+    #[lowering("func.call")]
     fn call(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], opts: LlvmOptions) -> bool {
         let callee = match cr.rw.body[op].get("callee") {
             Some(Attribute::SymbolRef(p)) => p.last().map(|s| String::from(&**s)),
@@ -505,6 +509,7 @@ impl FuncToLlvm {
         Self::call_impl(cr, op, operands, opts, bare, false)
     }
 
+    #[lowering("func.return")]
     fn ret<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], opts: LlvmOptions) -> bool {
         let func = {
             let mut at = cr.rw.body.parent_op(op);
@@ -550,13 +555,12 @@ impl FuncToLlvm {
     }
 
     /// `populateFuncToLLVMConversionPatterns`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize, opts: LlvmOptions) {
-        patterns.add_with(tc, OptLowering { root: "func.func", opts, f: Self::func });
-        patterns.add_with(tc, OptLowering { root: "func.call_indirect", opts, f: |cr, op, o, opts| Self::call_impl(cr, op, o, opts, false, true) });
-        patterns.add_with(tc, OptLowering { root: "func.call", opts, f: Self::call });
-        patterns.add_with(tc, Lowering { root: "func.constant", benefit: 1, f: Self::constant });
-        patterns.add_with(tc, OptLowering { root: "func.return", opts, f: Self::ret });
+    /// `CallIndirectOpLowering`.
+    #[lowering("func.call_indirect")]
+    fn call_indirect(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], opts: LlvmOptions) -> bool {
+        Self::call_impl(cr, op, o, opts, false, true)
     }
+
 }
 
 fn ty_unranked(t: &Type<'_>) -> bool {

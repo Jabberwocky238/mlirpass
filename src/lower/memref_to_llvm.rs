@@ -6,11 +6,11 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
 
-use super::OptLowering;
 use crate::canon::AttrExt;
-use crate::{BlockId, ConversionPatterns, ConversionRewriter, LlvmConverter, LlvmOptions, LlvmType, OpData, OpId, ValueId, Visibility, DYNAMIC};
+use crate::{BlockId, ConversionRewriter, LlvmConverter, LlvmOptions, LlvmType, OpData, OpId, ValueId, Visibility, DYNAMIC};
 
 /// The memref ⇒ llvm patterns.
 pub struct MemrefToLlvm;
@@ -39,6 +39,7 @@ pub enum Gep {
 
 pub type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
+#[patterns(converter, options = MemrefOptions)]
 impl MemrefToLlvm {
     pub fn memref<'t, 'a>(t: &'t Type<'a>) -> Option<&'t Shaped<'a>> {
         match t {
@@ -357,6 +358,7 @@ impl MemrefToLlvm {
         })
     }
 
+    #[lowering("memref.alloc")]
     fn alloc<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let Some(s) = Self::result_memref(cr, op) else { return false };
@@ -421,6 +423,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.alloca")]
     fn alloca_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let Some(s) = Self::result_memref(cr, op) else { return false };
@@ -449,6 +452,7 @@ impl MemrefToLlvm {
         b
     }
 
+    #[lowering("memref.alloca_scope")]
     fn alloca_scope<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], _: MemrefOptions) -> bool {
         let loc = cr.rw.body[op].loc.clone();
         let current = cr.rw.body[op].parent.expect("placed");
@@ -479,6 +483,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.assume_alignment")]
     fn assume_alignment<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let Some(s) = Self::operand_memref(cr, op, 0) else { return false };
@@ -498,6 +503,7 @@ impl MemrefToLlvm {
         cr.rw.create(OpData::build("llvm.intr.assume").operands(operands).with("op_bundle_sizes", sizes).with("op_bundle_tags", tags), &[]);
     }
 
+    #[lowering("memref.distinct_objects")]
     fn distinct_objects<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let flat: Vec<ValueId> = operands.iter().flatten().copied().collect();
         if flat.len() > 1 {
@@ -518,6 +524,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.dealloc")]
     fn dealloc<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let name = if o.generic { "_mlir_memref_to_llvm_free" } else { "free" };
         if Self::runtime(cr, op, name, vec![LlvmType::ptr()], LlvmType::void()).is_none() {
@@ -537,6 +544,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.dim")]
     fn dim<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let Some(s) = Self::operand_memref(cr, op, 0) else { return false };
@@ -581,6 +589,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.generic_atomic_rmw")]
     fn generic_atomic_rmw<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let loc = cr.rw.body[op].loc.clone();
@@ -642,6 +651,7 @@ impl MemrefToLlvm {
         Some(t)
     }
 
+    #[lowering("memref.global")]
     fn global<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let Some(Attribute::Type(Type::Shaped(s))) = cr.rw.body[op].get("type").cloned() else { return false };
@@ -684,6 +694,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.get_global")]
     fn get_global<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let Some(s) = Self::result_memref(cr, op) else { return false };
@@ -706,6 +717,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.load")]
     fn load_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let Some(s) = Self::operand_memref(cr, op, 0) else { return false };
         let indices: Vec<ValueId> = operands[1..].iter().flatten().copied().collect();
@@ -716,6 +728,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.store")]
     fn store_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let Some(s) = Self::operand_memref(cr, op, 1) else { return false };
         let indices: Vec<ValueId> = operands[2..].iter().flatten().copied().collect();
@@ -736,6 +749,7 @@ impl MemrefToLlvm {
         d
     }
 
+    #[lowering("memref.prefetch")]
     fn prefetch<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let Some(s) = Self::operand_memref(cr, op, 0) else { return false };
         let indices: Vec<ValueId> = operands[1..].iter().flatten().copied().collect();
@@ -749,6 +763,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.rank")]
     fn rank_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let Some(s) = Self::operand_memref(cr, op, 0) else { return false };
         let v = match s.shape {
@@ -759,6 +774,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.cast")]
     fn cast_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let (Some(src), Some(dst)) = (Self::operand_memref(cr, op, 0), Self::result_memref(cr, op)) else { return false };
@@ -810,6 +826,7 @@ impl MemrefToLlvm {
         cur < 0
     }
 
+    #[lowering("memref.copy")]
     fn copy<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let (Some(src), Some(dst)) = (Self::operand_memref(cr, op, 0), Self::operand_memref(cr, op, 1)) else { return false };
@@ -867,6 +884,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.memory_space_cast")]
     fn memory_space_cast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let (Some(src), Some(dst)) = (Self::operand_memref(cr, op, 0), Self::result_memref(cr, op)) else { return false };
@@ -936,6 +954,7 @@ impl MemrefToLlvm {
         }
     }
 
+    #[lowering("memref.reinterpret_cast")]
     fn reinterpret_cast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let (Some(src), Some(dst)) = (Self::operand_memref(cr, op, 0), Self::result_memref(cr, op)) else { return false };
@@ -965,6 +984,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.reshape")]
     fn reshape<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let (Some(src), Some(shape), Some(dst)) = (Self::operand_memref(cr, op, 0), Self::operand_memref(cr, op, 1), Self::result_memref(cr, op)) else { return false };
@@ -1089,6 +1109,7 @@ impl MemrefToLlvm {
         b
     }
 
+    #[lowering("memref.transpose")]
     fn transpose<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let Some(src) = Self::operand_memref(cr, op, 0) else { return false };
@@ -1118,6 +1139,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.view")]
     fn view<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let (Some(src), Some(dst)) = (Self::operand_memref(cr, op, 0), Self::result_memref(cr, op)) else { return false };
@@ -1183,6 +1205,7 @@ impl MemrefToLlvm {
         })
     }
 
+    #[lowering("memref.atomic_rmw")]
     fn atomic_rmw<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let Some(kind) = cr.rw.body[op].get("kind").and_then(Self::int).and_then(Self::atomic_bin_op) else { return false };
         let Some(s) = Self::operand_memref(cr, op, 1) else { return false };
@@ -1197,6 +1220,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.extract_aligned_pointer_as_index")]
     fn extract_aligned_pointer<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let Some(s) = Self::operand_memref(cr, op, 0) else { return false };
         let desc = operands[0][0];
@@ -1212,6 +1236,7 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.extract_strided_metadata")]
     fn extract_strided_metadata<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let desc = operands[0][0];
@@ -1238,44 +1263,9 @@ impl MemrefToLlvm {
         true
     }
 
+    #[lowering("memref.collapse_shape", "memref.expand_shape", "memref.subview")]
     fn fail<'a>(_: &mut Cr<'_, 'a, '_>, _: OpId, _: &[Vec<ValueId>], _: MemrefOptions) -> bool {
         false
     }
 
-    /// `populateFinalizeMemRefToLLVMConversionPatterns`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize, opts: MemrefOptions) {
-        type F = for<'r, 'a, 'p> fn(&mut ConversionRewriter<'r, 'a, 'p>, OpId, &[Vec<ValueId>], MemrefOptions) -> bool;
-        let table: [(&'static str, F); 26] = [
-            ("memref.alloca", Self::alloca_op),
-            ("memref.alloca_scope", Self::alloca_scope),
-            ("memref.assume_alignment", Self::assume_alignment),
-            ("memref.atomic_rmw", Self::atomic_rmw),
-            ("memref.extract_aligned_pointer_as_index", Self::extract_aligned_pointer),
-            ("memref.dim", Self::dim),
-            ("memref.distinct_objects", Self::distinct_objects),
-            ("memref.extract_strided_metadata", Self::extract_strided_metadata),
-            ("memref.generic_atomic_rmw", Self::generic_atomic_rmw),
-            ("memref.get_global", Self::get_global),
-            ("memref.load", Self::load_op),
-            ("memref.cast", Self::cast_op),
-            ("memref.reinterpret_cast", Self::reinterpret_cast),
-            ("memref.reshape", Self::reshape),
-            ("memref.memory_space_cast", Self::memory_space_cast),
-            ("memref.prefetch", Self::prefetch),
-            ("memref.rank", Self::rank_op),
-            ("memref.collapse_shape", Self::fail),
-            ("memref.expand_shape", Self::fail),
-            ("memref.store", Self::store_op),
-            ("memref.subview", Self::fail),
-            ("memref.transpose", Self::transpose),
-            ("memref.view", Self::view),
-            ("memref.global", Self::global),
-            ("memref.copy", Self::copy),
-            ("memref.alloc", Self::alloc),
-        ];
-        for (root, f) in table {
-            patterns.add_with(tc, OptLowering { root, opts, f });
-        }
-        patterns.add_with(tc, OptLowering { root: "memref.dealloc", opts, f: Self::dealloc });
-    }
 }

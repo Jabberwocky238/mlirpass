@@ -4,17 +4,18 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Type};
 
-use super::Lowering;
 use crate::canon::AttrExt;
-use crate::{BlockId, ConversionPatterns, ConversionRewriter, OpData, OpId, ValueId};
+use crate::{BlockId, ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
 /// The scf ⇒ cf patterns.
 pub struct ScfToCf;
 
+#[patterns]
 impl ScfToCf {
     fn br(cr: &mut Cr<'_, '_, '_>, dest: BlockId, args: &[ValueId]) -> OpId {
         cr.rw.create(OpData::build("cf.br").operands(args).successors(&[dest]), &[])
@@ -43,6 +44,7 @@ impl ScfToCf {
         (block, cr.rw.split_block(block, op))
     }
 
+    #[lowering("scf.for")]
     fn for_op(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (init, end) = Self::split(cr, op);
         let region = cr.rw.body[op].regions[0];
@@ -84,6 +86,7 @@ impl ScfToCf {
         cr.erase(term);
     }
 
+    #[lowering("scf.if")]
     fn if_op(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (cond_block, rest) = Self::split(cr, op);
         let types: Vec<Type> = cr.rw.body[op].results.iter().map(|r| cr.rw.body[*r].ty.clone()).collect();
@@ -118,6 +121,7 @@ impl ScfToCf {
         true
     }
 
+    #[lowering("scf.execute_region")]
     fn execute_region(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (cond_block, rest) = Self::split(cr, op);
         let region = cr.rw.body[op].regions[0];
@@ -139,6 +143,7 @@ impl ScfToCf {
         true
     }
 
+    #[lowering("scf.while")]
     fn while_op(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let saved = cr.rw.ip;
         let (current, cont) = Self::split(cr, op);
@@ -168,6 +173,7 @@ impl ScfToCf {
         true
     }
 
+    #[lowering("scf.while", benefit = 2)]
     fn do_while(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let after_r = cr.rw.body[op].regions[1];
         let after = cr.rw.body[after_r].blocks[0];
@@ -195,6 +201,7 @@ impl ScfToCf {
         true
     }
 
+    #[lowering("scf.index_switch")]
     fn index_switch(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (cond_block, cont) = Self::split(cr, op);
         let results: Vec<ValueId> = cr.rw.body[op].results.clone().iter().map(|r| {
@@ -252,6 +259,7 @@ impl ScfToCf {
     }
 
     /// `ParallelLowering`: nested `scf.for`s, the reductions inlined into the innermost.
+    #[lowering("scf.parallel")]
     fn parallel(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let body = cr.rw.body.top_block(op);
         let Some(reduce) = cr.terminator(body) else { return false };
@@ -304,6 +312,7 @@ impl ScfToCf {
     }
 
     /// `ForallLowering` (`forallToParallelLoop`).
+    #[lowering("scf.forall")]
     fn forall(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let seg = cr.rw.body.segments(op, "operandSegmentSizes").unwrap_or_default();
         if seg.get(3).copied().unwrap_or(0) != 0 {
@@ -341,11 +350,4 @@ impl ScfToCf {
         true
     }
 
-    pub fn populate(patterns: &mut ConversionPatterns<'_>) {
-        let table: [(&'static str, super::LowerFn); 7] = [("scf.forall", Self::forall), ("scf.parallel", Self::parallel), ("scf.for", Self::for_op), ("scf.if", Self::if_op), ("scf.while", Self::while_op), ("scf.execute_region", Self::execute_region), ("scf.index_switch", Self::index_switch)];
-        for (root, f) in table {
-            patterns.add(Lowering { root, benefit: 1, f });
-        }
-        patterns.add(Lowering { root: "scf.while", benefit: 2, f: Self::do_while });
-    }
 }

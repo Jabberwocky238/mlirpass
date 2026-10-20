@@ -2,19 +2,21 @@
 
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, FunctionType, Type};
 
-use super::Lowering;
 use crate::canon::AttrExt;
-use crate::{ConversionPatterns, ConversionRewriter, OpData, OpId, SignatureConversion, ValueId, Visibility};
+use crate::{ConversionRewriter, OpData, OpId, SignatureConversion, ValueId, Visibility};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
 /// The func ⇒ emitc patterns.
 pub struct FuncToEmitc;
 
+#[patterns(converter)]
 impl FuncToEmitc {
     /// `CallOpConversion`.
+    #[lowering("func.call")]
     fn call(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let results = cr.rw.body[op].results.clone();
@@ -31,6 +33,7 @@ impl FuncToEmitc {
     }
 
     /// `FuncOpConversion`.
+    #[lowering("func.func")]
     fn func(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(Attribute::Type(Type::Function(fty))) = cr.rw.body[op].get("function_type").cloned() else { return false };
         if fty.results.len() > 1 {
@@ -79,6 +82,7 @@ impl FuncToEmitc {
     }
 
     /// `ReturnOpConversion`.
+    #[lowering("func.return")]
     fn ret(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         if ops.len() > 1 {
@@ -88,11 +92,4 @@ impl FuncToEmitc {
         true
     }
 
-    /// `populateFuncToEmitCPatterns`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize) {
-        let table: [(&'static str, super::LowerFn); 3] = [("func.call", Self::call), ("func.func", Self::func), ("func.return", Self::ret)];
-        for (root, f) in table {
-            patterns.add_with(tc, Lowering { root, benefit: 1, f });
-        }
-    }
 }

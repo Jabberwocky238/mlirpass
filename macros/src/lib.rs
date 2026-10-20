@@ -9,7 +9,9 @@
 //!   CamelCase, or `ty = Name`) whose `Run` is that body.
 //! - `#[patterns(converter, flag: bool, ..)]` on an `impl` block: each method marked
 //!   `#[lowering("root", .., benefit = n, when = expr, untyped)]` goes into a generated
-//!   `populate(patterns, [tc,] flags..)`, in declaration order.
+//!   `populate(patterns, [tc,] [opts,] flags..)`, in declaration order. `options = Type`: the
+//!   methods also take `opts` (`OptLowering`; `plain` opts one out); `extra = path` is called
+//!   last with the same arguments, for patterns that are not methods.
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as Tokens};
@@ -189,19 +191,28 @@ fn pass_fn(args: &PassArgs, f: ItemFn) -> Tokens {
     }
 }
 
-/// `#[patterns(..)]`'s arguments: `converter`, then `flag: Type` populate parameters.
+/// `#[patterns(..)]`'s arguments: `converter`, `options = Type`, `extra = path`, and
+/// `flag: Type` populate parameters.
 struct PatternsArgs {
     converter: bool,
+    options: Option<Type>,
+    extra: Option<Expr>,
     params: Vec<(Ident, Type)>,
 }
 
 impl Parse for PatternsArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut args = PatternsArgs { converter: false, params: Vec::new() };
+        let mut args = PatternsArgs { converter: false, options: None, extra: None, params: Vec::new() };
         while !input.is_empty() {
             let id: Ident = input.parse()?;
             if input.parse::<Option<Token![:]>>()?.is_some() {
                 args.params.push((id, input.parse()?));
+            } else if input.parse::<Option<Token![=]>>()?.is_some() {
+                match id.to_string().as_str() {
+                    "options" => args.options = Some(input.parse()?),
+                    "extra" => args.extra = Some(input.parse()?),
+                    o => return Err(syn::Error::new(id.span(), format!("unknown #[patterns] argument `{o}`"))),
+                }
             } else if id == "converter" {
                 args.converter = true;
             } else {
@@ -221,11 +232,12 @@ struct LoweringArgs {
     benefit: Option<LitInt>,
     when: Option<Expr>,
     untyped: bool,
+    plain: bool,
 }
 
 impl Parse for LoweringArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut args = LoweringArgs { roots: Vec::new(), benefit: None, when: None, untyped: false };
+        let mut args = LoweringArgs { roots: Vec::new(), benefit: None, when: None, untyped: false, plain: false };
         while !input.is_empty() {
             if input.peek(LitStr) {
                 args.roots.push(input.parse()?);
@@ -241,6 +253,7 @@ impl Parse for LoweringArgs {
                         args.when = Some(input.parse()?);
                     }
                     "untyped" => args.untyped = true,
+                    "plain" => args.plain = true,
                     o => return Err(syn::Error::new(k.span(), format!("unknown #[lowering] argument `{o}`"))),
                 }
             }
@@ -274,23 +287,37 @@ pub fn patterns(attr: TokenStream, item: TokenStream) -> TokenStream {
         let add = if args.converter && !l.untyped { quote!(patterns.add_with(tc, l)) } else { quote!(patterns.add(l)) };
         let when = l.when.map_or_else(|| quote!(true), |w| quote!(#w));
         for root in &l.roots {
+            let make = if args.options.is_some() && !l.plain {
+                quote!(crate::lower::OptLowering { root: #root, opts, f: Self::#f })
+            } else {
+                quote!(crate::lower::Lowering { root: #root, benefit: #benefit, f: Self::#f })
+            };
             adds.push(quote! {
                 if #when {
-                    let l = crate::Lowering { root: #root, benefit: #benefit, f: Self::#f };
+                    let l = #make;
                     #add;
                 }
             });
         }
     }
     let tc = args.converter.then(|| quote!(tc: usize,));
+    let opts = args.options.as_ref().map(|t| quote!(opts: #t,));
     let names: Vec<&Ident> = args.params.iter().map(|p| &p.0).collect();
-    let params = args.params.iter().map(|(n, t)| quote!(#n: #t));
+    let params: Vec<Tokens> = args.params.iter().map(|(n, t)| quote!(#n: #t)).collect();
+    let extra = args.extra.as_ref().map(|e| {
+        let tcv = args.converter.then(|| quote!(tc,));
+        let ov = args.options.as_ref().map(|_| quote!(opts,));
+        quote!(#e(patterns, #tcv #ov #(#names),*);)
+    });
+    let unused = [args.converter.then(|| quote!(let _ = tc;)), args.options.as_ref().map(|_| quote!(let _ = &opts;))];
     let populate = format_ident!("populate");
     imp.items.push(syn::parse_quote! {
         /// The patterns declared by `#[lowering]` above, in order.
-        pub fn #populate(patterns: &mut crate::ConversionPatterns<'_>, #tc #(#params),*) {
+        pub fn #populate<'p>(patterns: &mut crate::ConversionPatterns<'p>, #tc #opts #(#params),*) {
+            #(#unused)*
             #(let _ = &#names;)*
             #(#adds)*
+            #extra
         }
     });
     quote!(#imp).into()

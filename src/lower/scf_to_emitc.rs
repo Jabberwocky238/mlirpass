@@ -3,12 +3,12 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Type};
 
-use super::Lowering;
 use super::emitc::Emitc;
 use crate::canon::AttrExt;
-use crate::{ConversionPatterns, ConversionRewriter, OpData, OpId, RegionId, ValueId};
+use crate::{ConversionRewriter, OpData, OpId, RegionId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -18,6 +18,7 @@ type Vars<'a> = Vec<(ValueId, Type<'a>)>;
 /// The scf ⇒ emitc patterns.
 pub struct ScfToEmitc;
 
+#[patterns(converter)]
 impl ScfToEmitc {
     /// An uninitialized `emitc.variable` of `ty`.
     fn variable<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>) -> ValueId {
@@ -86,6 +87,7 @@ impl ScfToEmitc {
     }
 
     /// `ForLowering`.
+    #[lowering("scf.for")]
     fn for_op(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         if cr.rw.body[op].get("unsignedCmp").is_some() {
             return false;
@@ -121,6 +123,7 @@ impl ScfToEmitc {
     }
 
     /// `IfLowering`.
+    #[lowering("scf.if")]
     fn if_op(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(vars) = Self::result_vars(cr, op) else { return false };
@@ -142,6 +145,7 @@ impl ScfToEmitc {
     }
 
     /// `IndexSwitchOpLowering`: the cases, then the default.
+    #[lowering("scf.index_switch")]
     fn switch(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(vars) = Self::result_vars(cr, op) else { return false };
@@ -165,6 +169,7 @@ impl ScfToEmitc {
     }
 
     /// `WhileLowering`: an `emitc.do` whose condition reads a variable.
+    #[lowering("scf.while")]
     fn while_op(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(results) = Self::result_vars(cr, op) else { return false };
         // `createVariablesForLoopCarriedValues`.
@@ -248,11 +253,4 @@ impl ScfToEmitc {
         true
     }
 
-    /// `populateSCFToEmitCConversionPatterns`; the converter needs `size_t_conversions`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize) {
-        let table: [(&'static str, super::LowerFn); 4] = [("scf.for", Self::for_op), ("scf.if", Self::if_op), ("scf.index_switch", Self::switch), ("scf.while", Self::while_op)];
-        for (root, f) in table {
-            patterns.add_with(tc, Lowering { root, benefit: 1, f });
-        }
-    }
 }

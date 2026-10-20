@@ -5,13 +5,13 @@ use alloc::collections::BTreeMap;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, FloatKind, Signedness, Type};
 
-use super::Lowering;
 use super::linalg_build::{Named, dims_of, int_attr};
 use super::tosa_to_tensor::TosaToTensor;
 use crate::canon::{AttrExt, MemrefOfr as Ofr};
-use crate::{AffineExpr, AffineMap, ApFloat, Const, ConversionPatterns, ConversionRewriter, DYNAMIC, OpData, OpId, Scalar, ValueId};
+use crate::{AffineExpr, AffineMap, ApFloat, Const, ConversionRewriter, DYNAMIC, OpData, OpId, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -57,6 +57,7 @@ const UNO: i64 = 14;
 /// The tosa ⇒ linalg patterns.
 pub struct TosaToLinalg;
 
+#[patterns(converter)]
 impl TosaToLinalg {
     fn ty<'a>(cr: &Cr<'_, 'a, '_>, v: ValueId) -> Type<'a> {
         cr.rw.body[v].ty.clone()
@@ -506,6 +507,7 @@ impl TosaToLinalg {
     }
 
     /// `elementwiseMatchAndRewriteHelper`.
+    #[lowering("tosa.add", "tosa.sub", "tosa.mul", "tosa.intdiv", "tosa.negate", "tosa.pow", "tosa.reciprocal", "tosa.rsqrt", "tosa.log", "tosa.exp", "tosa.abs", "tosa.sin", "tosa.cos", "tosa.tanh", "tosa.erf", "tosa.bitwise_and", "tosa.bitwise_or", "tosa.bitwise_not", "tosa.bitwise_xor", "tosa.logical_and", "tosa.logical_not", "tosa.logical_or", "tosa.logical_xor", "tosa.cast", "tosa.logical_left_shift", "tosa.logical_right_shift", "tosa.arithmetic_right_shift", "tosa.clz", "tosa.select", "tosa.greater", "tosa.greater_equal", "tosa.equal", "tosa.maximum", "tosa.minimum", "tosa.ceil", "tosa.floor", "tosa.clamp", "tosa.sigmoid")]
     fn pointwise(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let ranked = |v: &ValueId| crate::attr::shape_of(&b[*v].ty).is_some();
@@ -615,6 +617,7 @@ impl TosaToLinalg {
     }
 
     /// `reduceMatchAndRewriteHelper`.
+    #[lowering("tosa.reduce_all", "tosa.reduce_any", "tosa.reduce_min", "tosa.reduce_max", "tosa.reduce_sum", "tosa.reduce_product", untyped)]
     fn reduce(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let name = b[op].name.clone();
@@ -735,6 +738,7 @@ impl TosaToLinalg {
     }
 
     /// `ReverseConverter`.
+    #[lowering("tosa.reverse", untyped)]
     fn reverse(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
         let rt = Self::ty(cr, cr.rw.body[op].results[0]);
@@ -770,6 +774,7 @@ impl TosaToLinalg {
     }
 
     /// `TileConverter`.
+    #[lowering("tosa.tile", untyped)]
     fn tile(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (input, mv) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
         let Some(multiples) = TosaToTensor::const_shape(cr, mv) else { return false };
@@ -797,6 +802,7 @@ impl TosaToLinalg {
     }
 
     /// `ArgMaxConverter`.
+    #[lowering("tosa.argmax", untyped)]
     fn argmax(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
         let it = Self::ty(cr, input);
@@ -848,6 +854,7 @@ impl TosaToLinalg {
     }
 
     /// `GatherConverter`.
+    #[lowering("tosa.gather")]
     fn gather(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (values, indices) = (o[0][0], o[1][0]);
         let rt = Self::ty(cr, cr.rw.body[op].results[0]);
@@ -875,6 +882,7 @@ impl TosaToLinalg {
     }
 
     /// `TableConverter`.
+    #[lowering("tosa.table", untyped)]
     fn table(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (input, table) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
         let it = Self::ty(cr, input);
@@ -924,6 +932,7 @@ impl TosaToLinalg {
     }
 
     /// `RescaleConverter`.
+    #[lowering("tosa.rescale", untyped)]
     fn rescale(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let mode = match b[op].get("rounding_mode") {
@@ -1099,6 +1108,7 @@ impl TosaToLinalg {
     }
 
     /// `RFFT2dConverter` and `FFT2dConverter`.
+    #[lowering("tosa.rfft2d", "tosa.fft2d", untyped)]
     fn fft(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let ranked = |v: &ValueId| crate::attr::shape_of(&b[*v].ty).is_some();
@@ -1194,6 +1204,7 @@ impl TosaToLinalg {
     }
 
     /// `ResizeUnaryConverter`.
+    #[lowering("tosa.resize", benefit = 200, untyped)]
     fn resize_unary(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
         let (it, rt) = (Self::ty(cr, input), Self::ty(cr, cr.rw.body[op].results[0]));
@@ -1235,6 +1246,7 @@ impl TosaToLinalg {
     }
 
     /// `MaterializeResizeBroadcast`.
+    #[lowering("tosa.resize", benefit = 300, untyped)]
     fn resize_broadcast(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
         let (it, rt) = (Self::ty(cr, input), Self::ty(cr, cr.rw.body[op].results[0]));
@@ -1283,6 +1295,7 @@ impl TosaToLinalg {
     }
 
     /// `GenericResizeConverter`.
+    #[lowering("tosa.resize", benefit = 100, untyped)]
     fn resize<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let ops = cr.rw.body[op].operands.clone();
         let input = ops[0];
@@ -1408,28 +1421,12 @@ impl TosaToLinalg {
         true
     }
 
-    /// `populateTosaToLinalgConversionPatterns`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize) {
-        const POINTWISE: [&str; 38] = [
-            "tosa.add", "tosa.sub", "tosa.mul", "tosa.intdiv", "tosa.negate", "tosa.pow", "tosa.reciprocal", "tosa.rsqrt", "tosa.log", "tosa.exp", "tosa.abs", "tosa.sin", "tosa.cos", "tosa.tanh", "tosa.erf", "tosa.bitwise_and", "tosa.bitwise_or", "tosa.bitwise_not", "tosa.bitwise_xor", "tosa.logical_and", "tosa.logical_not", "tosa.logical_or", "tosa.logical_xor", "tosa.cast", "tosa.logical_left_shift", "tosa.logical_right_shift", "tosa.arithmetic_right_shift", "tosa.clz", "tosa.select", "tosa.greater", "tosa.greater_equal", "tosa.equal", "tosa.maximum", "tosa.minimum", "tosa.ceil", "tosa.floor", "tosa.clamp", "tosa.sigmoid",
-        ];
-        for root in POINTWISE {
-            patterns.add_with(tc, Lowering { root, benefit: 1, f: Self::pointwise });
-        }
-        for root in ["tosa.reduce_all", "tosa.reduce_any", "tosa.reduce_min", "tosa.reduce_max", "tosa.reduce_sum", "tosa.reduce_product"] {
-            patterns.add(Lowering { root, benefit: 1, f: Self::reduce });
-        }
-        for (root, f) in [("tosa.argmax", Self::argmax as super::LowerFn), ("tosa.rescale", Self::rescale), ("tosa.reverse", Self::reverse), ("tosa.rfft2d", Self::fft), ("tosa.fft2d", Self::fft), ("tosa.table", Self::table), ("tosa.tile", Self::tile)] {
-            patterns.add(Lowering { root, benefit: 1, f });
-        }
-        for (benefit, f) in [(100, Self::resize as super::LowerFn), (200, Self::resize_unary), (300, Self::resize_broadcast)] {
-            patterns.add(Lowering { root: "tosa.resize", benefit, f });
-        }
-        patterns.add_with(tc, Lowering { root: "tosa.gather", benefit: 1, f: Self::gather });
-        patterns.add(Lowering { root: "tosa.identity", benefit: 1, f: |cr, op, _| {
-            let ops = cr.rw.body[op].operands.clone();
-            cr.replace_values(op, &ops);
-            true
-        } });
+    /// `IdentityNConverter`.
+    #[lowering("tosa.identity", untyped)]
+    fn identity(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let ops = cr.rw.body[op].operands.clone();
+        cr.replace_values(op, &ops);
+        true
     }
+
 }

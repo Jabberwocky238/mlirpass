@@ -6,12 +6,12 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Dim, FloatKind, Shaped, ShapedKind, Type};
 
-use super::OptLowering;
 use super::memref_to_llvm::{Cr, Gep, MemrefToLlvm as M};
 use crate::canon::AttrExt;
-use crate::{ConversionPatterns, LlvmOptions, LlvmType, OpData, OpId, ValueId, DYNAMIC};
+use crate::{LlvmOptions, LlvmType, OpData, OpId, ValueId, DYNAMIC};
 
 /// The vector ⇒ llvm patterns.
 pub struct VectorToLlvm;
@@ -27,6 +27,7 @@ pub struct VectorOptions<'c> {
     pub counter: &'c Cell<u32>,
 }
 
+#[patterns(converter, options = VectorOptions<'p>)]
 impl VectorToLlvm {
     fn vector<'t, 'a>(t: &'t Type<'a>) -> Option<&'t Shaped<'a>> {
         match t {
@@ -139,6 +140,7 @@ impl VectorToLlvm {
         Attribute::Int { lit: format!("{v}").into(), ty: Some(Type::int(32)) }
     }
 
+    #[lowering("vector.bitcast")]
     fn bitcast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let rt = Self::result_type(cr, op);
         if Self::vector(&rt).is_none_or(|s| Self::vrank(s) > 1) {
@@ -150,6 +152,7 @@ impl VectorToLlvm {
     }
 
     /// `vector.load` / `maskedload` / `store` / `maskedstore`.
+    #[lowering("vector.load", "vector.maskedload", "vector.store", "vector.maskedstore")]
     fn load_store<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let name = String::from(&*cr.rw.body[op].name);
         // Operands: `store` (value, base, indices...); the others (base, indices..., [mask,
@@ -209,6 +212,7 @@ impl VectorToLlvm {
     }
 
     /// `vector.gather` / `vector.scatter`.
+    #[lowering("vector.gather", "vector.scatter")]
     fn gather_scatter<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let scatter = cr.rw.body[op].name == "vector.scatter";
         let Some(m) = M::operand_memref(cr, op, 0) else { return false };
@@ -239,6 +243,7 @@ impl VectorToLlvm {
 
     /// `vector.expandload` / `vector.compressstore`: (base, indices..., mask, pass_thru |
     /// value); an alignment other than 1 goes on the pointer's argument attributes.
+    #[lowering("vector.expandload", "vector.compressstore")]
     fn expand_compress<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let compress = cr.rw.body[op].name == "vector.compressstore";
         let Some(m) = M::operand_memref(cr, op, 0) else { return false };
@@ -319,6 +324,7 @@ impl VectorToLlvm {
         cr.llvm_constant(value, ty.clone())
     }
 
+    #[lowering("vector.reduction")]
     fn reduction<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let Some(kind) = Self::kind(cr, op) else { return false };
         let elt = Self::result_type(cr, op);
@@ -390,6 +396,7 @@ impl VectorToLlvm {
     }
 
     /// `MaskedReductionOpConversion`: a `vector.mask` around a `vector.reduction`.
+    #[lowering("vector.mask")]
     fn masked_reduction<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let region = cr.rw.body[op].regions[0];
         let Some(&block) = cr.rw.body[region].blocks.first() else { return false };
@@ -477,6 +484,7 @@ impl VectorToLlvm {
         Attribute::DenseArray { ty: Type::int(32), values: v.iter().map(|x| format!("{x}").into()).collect() }
     }
 
+    #[lowering("vector.shuffle")]
     fn shuffle<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let (t1, t2, rt) = (Self::operand_type(cr, op, 0), Self::operand_type(cr, op, 1), Self::result_type(cr, op));
         let Some(lt) = Self::convert(cr, &rt) else { return false };
@@ -519,6 +527,7 @@ impl VectorToLlvm {
         }
     }
 
+    #[lowering("vector.extract")]
     fn extract<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let rt = Self::result_type(cr, op);
         if Self::convert(cr, &rt).is_none() {
@@ -553,6 +562,7 @@ impl VectorToLlvm {
         true
     }
 
+    #[lowering("vector.insert")]
     fn insert<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let dt = Self::operand_type(cr, op, 1);
         let Some(lt) = Self::convert(cr, &dt) else { return false };
@@ -585,6 +595,7 @@ impl VectorToLlvm {
         true
     }
 
+    #[lowering("vector.fma")]
     fn fma<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let rt = Self::result_type(cr, op);
         if Self::vector(&rt).is_none_or(|s| Self::vrank(s) > 1) {
@@ -596,6 +607,7 @@ impl VectorToLlvm {
         true
     }
 
+    #[lowering("vector.scalable.insert")]
     fn scalable_insert<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let Some(pos) = cr.rw.body[op].get("pos").and_then(M::int) else { return false };
         let ty = cr.rw.body[operands[1][0]].ty.clone();
@@ -603,6 +615,7 @@ impl VectorToLlvm {
         true
     }
 
+    #[lowering("vector.scalable.extract")]
     fn scalable_extract<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let Some(pos) = cr.rw.body[op].get("pos").and_then(M::int) else { return false };
         let rt = Self::result_type(cr, op);
@@ -629,6 +642,7 @@ impl VectorToLlvm {
         Some(strides)
     }
 
+    #[lowering("vector.type_cast")]
     fn type_cast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let (Some(src), Some(dst)) = (M::operand_memref(cr, op, 0), M::result_memref(cr, op)) else { return false };
         if M::dims(&src).contains(&DYNAMIC) || M::dims(&dst).contains(&DYNAMIC) || src.shape.is_none() || dst.shape.is_none() {
@@ -664,6 +678,7 @@ impl VectorToLlvm {
         true
     }
 
+    #[lowering("vector.create_mask", untyped)]
     fn create_mask<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let rt = Self::result_type(cr, op);
         let Some(s) = Self::vector(&rt).cloned() else { return false };
@@ -697,6 +712,7 @@ impl VectorToLlvm {
         Some(())
     }
 
+    #[lowering("vector.print")]
     fn print<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let Some(module) = cr.module_of(op) else { return false };
         if let Some(src) = operands.first().map(|v| v[0]) {
@@ -772,6 +788,7 @@ impl VectorToLlvm {
     }
 
     /// `VectorBroadcastScalarToLowRankLowering` and `...ToNdLowering`.
+    #[lowering("vector.broadcast")]
     fn broadcast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let st = Self::operand_type(cr, op, 0);
         if Self::vector(&st).is_some() {
@@ -826,6 +843,7 @@ impl VectorToLlvm {
         true
     }
 
+    #[lowering("vector.interleave")]
     fn interleave<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let rt = Self::result_type(cr, op);
         let Some(rs) = Self::vector(&rt).cloned() else { return false };
@@ -844,6 +862,7 @@ impl VectorToLlvm {
         true
     }
 
+    #[lowering("vector.deinterleave")]
     fn deinterleave<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let rt = Self::result_type(cr, op);
         let st = Self::operand_type(cr, op, 0);
@@ -871,6 +890,7 @@ impl VectorToLlvm {
         true
     }
 
+    #[lowering("vector.from_elements")]
     fn from_elements<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let rt = Self::result_type(cr, op);
         if Self::vector(&rt).is_none_or(|s| Self::vrank(s) > 1) {
@@ -886,6 +906,7 @@ impl VectorToLlvm {
         true
     }
 
+    #[lowering("vector.to_elements")]
     fn to_elements<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let src = operands[0][0];
         let mut results = Vec::new();
@@ -903,6 +924,7 @@ impl VectorToLlvm {
         true
     }
 
+    #[lowering("vector.step")]
     fn step<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let rt = Self::result_type(cr, op);
         if Self::vector(&rt).is_none_or(|s| !Self::scalable(s)) {
@@ -913,46 +935,10 @@ impl VectorToLlvm {
         true
     }
 
+    #[lowering("vector.vscale")]
     fn vscale<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         cr.replace_new(op, OpData::build("llvm.intr.vscale"), &[o.llvm.index()]);
         true
     }
 
-    /// `populateVectorToLLVMConversionPatterns`.
-    pub fn populate<'p>(patterns: &mut ConversionPatterns<'p>, tc: usize, o: VectorOptions<'p>) {
-        type F<'p> = for<'r, 'a, 'q> fn(&mut Cr<'r, 'a, 'q>, OpId, &[Vec<ValueId>], VectorOptions<'p>) -> bool;
-        let table: [(&'static str, F<'p>); 26] = [
-            ("vector.reduction", Self::reduction),
-            ("vector.load", Self::load_store),
-            ("vector.maskedload", Self::load_store),
-            ("vector.store", Self::load_store),
-            ("vector.maskedstore", Self::load_store),
-            ("vector.gather", Self::gather_scatter),
-            ("vector.scatter", Self::gather_scatter),
-            ("vector.bitcast", Self::bitcast),
-            ("vector.shuffle", Self::shuffle),
-            ("vector.extract", Self::extract),
-            ("vector.fma", Self::fma),
-            ("vector.insert", Self::insert),
-            ("vector.print", Self::print),
-            ("vector.type_cast", Self::type_cast),
-            ("vector.vscale", Self::vscale),
-            ("vector.expandload", Self::expand_compress),
-            ("vector.compressstore", Self::expand_compress),
-            ("vector.broadcast", Self::broadcast),
-            ("vector.scalable.insert", Self::scalable_insert),
-            ("vector.scalable.extract", Self::scalable_extract),
-            ("vector.mask", Self::masked_reduction),
-            ("vector.interleave", Self::interleave),
-            ("vector.deinterleave", Self::deinterleave),
-            ("vector.from_elements", Self::from_elements),
-            ("vector.to_elements", Self::to_elements),
-            ("vector.step", Self::step),
-        ];
-        for (root, f) in table {
-            patterns.add_with(tc, OptLowering { root, opts: o, f });
-        }
-        // `VectorCreateMaskOpConversion` has no type converter: its operand stays an index.
-        patterns.add(OptLowering { root: "vector.create_mask", opts: o, f: Self::create_mask });
-    }
 }

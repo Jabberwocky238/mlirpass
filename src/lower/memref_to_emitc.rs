@@ -3,18 +3,19 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, ShapedKind, Type};
 
-use super::Lowering;
 use super::emitc::Emitc;
 use crate::canon::AttrExt;
-use crate::{Body, Const, ConversionPatterns, ConversionRewriter, OpData, OpId, ValueId, Visibility};
+use crate::{Body, Const, ConversionRewriter, OpData, OpId, ValueId, Visibility};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
 /// The memref ⇒ emitc patterns.
 pub struct MemrefToEmitc;
 
+#[patterns(converter)]
 impl MemrefToEmitc {
     /// The memref type of `v`, if legal for EmitC.
     fn legal<'a>(cr: &Cr<'_, 'a, '_>, v: ValueId) -> Option<mlirformat::Shaped<'a>> {
@@ -75,6 +76,7 @@ impl MemrefToEmitc {
         Some(cr.emitc("emitc.subscript", &ops, lv))
     }
 
+    #[lowering("memref.alloca")]
     fn alloca(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let r = cr.rw.body[op].results[0];
         if !Self::static_shape(cr, r) || Self::alignment(cr, op).unwrap_or(1) > 1 {
@@ -85,6 +87,7 @@ impl MemrefToEmitc {
         true
     }
 
+    #[lowering("memref.alloc")]
     fn alloc(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(s) = Self::legal(cr, cr.rw.body[op].results[0]) else { return false };
         let elem = (*s.elem).clone();
@@ -102,6 +105,7 @@ impl MemrefToEmitc {
         true
     }
 
+    #[lowering("memref.copy")]
     fn copy(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let (src, dst) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
@@ -114,6 +118,7 @@ impl MemrefToEmitc {
         true
     }
 
+    #[lowering("memref.global")]
     fn global(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(Attribute::Type(ty)) = cr.rw.body[op].get("type").cloned() else { return false };
         let Type::Shaped(s) = &ty else { return false };
@@ -142,6 +147,7 @@ impl MemrefToEmitc {
         true
     }
 
+    #[lowering("memref.get_global")]
     fn get_global(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let ty = cr.ty(cr.rw.body[op].results[0]);
         let Some(res) = Self::convert_memref(cr, &ty) else { return false };
@@ -156,6 +162,7 @@ impl MemrefToEmitc {
         true
     }
 
+    #[lowering("memref.load")]
     fn load(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(ty) = cr.converted_result(op) else { return false };
@@ -164,27 +171,12 @@ impl MemrefToEmitc {
         true
     }
 
+    #[lowering("memref.store")]
     fn store(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(sub) = Self::subscript(cr, ops[1], &ops[2..]) else { return false };
         cr.replace_new(op, OpData::build("emitc.assign").operands(&[sub, ops[0]]), &[]);
         true
-    }
-
-    /// `populateMemRefToEmitCConversionPatterns`; the converter needs `memref_conversions`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize) {
-        let table: [(&'static str, super::LowerFn); 7] = [
-            ("memref.alloca", Self::alloca),
-            ("memref.alloc", Self::alloc),
-            ("memref.copy", Self::copy),
-            ("memref.global", Self::global),
-            ("memref.get_global", Self::get_global),
-            ("memref.load", Self::load),
-            ("memref.store", Self::store),
-        ];
-        for (root, f) in table {
-            patterns.add_with(tc, Lowering { root, benefit: 1, f });
-        }
     }
 
     /// The pass's epilogue: the standard headers the calls need, at the start of `module`.

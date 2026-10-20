@@ -22,6 +22,44 @@ Skeleton. The layout below is the plan; each part lands with its fixtures counte
 
 Dialects: every dialect mlirformat describes.
 
+## Declaring passes and lowerings
+
+Passes and pattern sets are declared with the proc macros of `mlirpass-macros` (`macros/`),
+not written out by hand:
+
+```rust
+/// A pass with options: its fields are the `Passes.td` options.
+#[pass("convert-complex-to-llvm")]
+pub struct ConvertComplexToLlvm {
+    #[opt("complex-range", default = ComplexRange::Basic, from_str)]
+    range: ComplexRange,
+}
+
+impl Run for ConvertComplexToLlvm {
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> { /* ... */ }
+}
+
+/// A pass without options: the fn is its `run`, the struct `Sccp` is generated.
+#[pass("sccp")]
+pub fn sccp<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> { /* ... */ }
+
+/// Lowerings: each `#[lowering]` method goes into the generated `populate`.
+#[patterns(converter, improved: bool)]
+impl ComplexToLlvm {
+    #[lowering("complex.add", "complex.sub")]
+    fn arith(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool { /* ... */ }
+
+    #[lowering("complex.div", when = improved)]
+    fn div_improved(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool { /* ... */ }
+}
+```
+
+`#[pass("name", on = "op", extra = [..], check = path)]` gives the `mlir-opt` name, the anchor
+op, options accepted but unused, and a validation hook; the registry (`src/pass/registry.rs`)
+lists the types only. `#[patterns]` takes `converter` (a type converter index), `options = T`
+(methods also take the options), `extra = path` (non-method patterns) and `flag: T`
+parameters; `#[lowering]` takes the roots, `benefit`, `when`, `untyped` and `plain`.
+
 ## Fixtures
 
 `tests/fixtures/` holds `mlir-opt` 22.1.8's own output for llvm-project's `mlir/test/Conversion`,

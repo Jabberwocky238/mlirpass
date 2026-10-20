@@ -4,9 +4,10 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Type};
 
-use super::{Lowering, llvm_fastmath, llvm_overflow};
+use super::{llvm_fastmath, llvm_overflow};
 use crate::canon::AttrExt;
 use crate::{ApInt, Const, ConversionPattern, ConversionPatterns, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
 
@@ -121,8 +122,10 @@ one_to_one! {
 /// The arith ⇒ llvm patterns, in `populateArithToLLVMConversionPatterns` order.
 pub struct ArithToLlvm;
 
+#[patterns(converter, extra = Self::one_to_one)]
 impl ArithToLlvm {
     /// `IdentityBitcastLowering`: a bitcast between types that convert alike.
+    #[lowering("arith.bitcast", benefit = 10)]
     fn identity_bitcast(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some([src]) = ConversionRewriter::one_to_one(operands).as_deref().map(|s| <[ValueId; 1]>::try_from(s).ok()).flatten() else { return false };
         let res = cr.type_converter().and_then(|tc| tc.convert(&cr.rw.body[cr.rw.body[op].results[0]].ty));
@@ -133,6 +136,7 @@ impl ArithToLlvm {
         true
     }
 
+    #[lowering("arith.constant")]
     fn constant(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(operands) = ConversionRewriter::one_to_one(operands) else { return false };
         let attrs = cr.all_attrs(op);
@@ -164,14 +168,17 @@ impl ArithToLlvm {
         cr.unroll_vectors(op, &[src], |cr, ty, p| cr.build(OpData::build(name).operands(p), ty))
     }
 
+    #[lowering("arith.index_cast")]
     fn index_cast_si(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::index_cast(cr, op, operands, "llvm.sext")
     }
 
+    #[lowering("arith.index_castui")]
     fn index_cast_ui(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::index_cast(cr, op, operands, "llvm.zext")
     }
 
+    #[lowering("arith.addui_extended")]
     fn addui_extended(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = ConversionRewriter::one_to_one(operands) else { return false };
         let ty = cr.rw.body[ops[0]].ty.clone();
@@ -215,10 +222,12 @@ impl ArithToLlvm {
         true
     }
 
+    #[lowering("arith.mulsi_extended")]
     fn mulsi_extended(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::mul_extended(cr, op, operands, true)
     }
 
+    #[lowering("arith.mului_extended")]
     fn mului_extended(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::mul_extended(cr, op, operands, false)
     }
@@ -253,10 +262,12 @@ impl ArithToLlvm {
         cr.unroll_vectors(op, &ops, |cr, ty, p| cr.build(data(p), ty))
     }
 
+    #[lowering("arith.cmpi")]
     fn cmpi(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::cmp(cr, op, operands, false)
     }
 
+    #[lowering("arith.cmpf")]
     fn cmpf(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::cmp(cr, op, operands, true)
     }
@@ -283,6 +294,7 @@ impl ArithToLlvm {
     }
 
     /// `CeilDivUIOpConverter`.
+    #[lowering("arith.ceildivui", untyped)]
     fn ceildivui(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (a, b) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
         let ty = cr.rw.body[a].ty.clone();
@@ -297,6 +309,7 @@ impl ArithToLlvm {
     }
 
     /// `CeilDivSIOpConverter`.
+    #[lowering("arith.ceildivsi", untyped)]
     fn ceildivsi(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (a, b) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
@@ -315,6 +328,7 @@ impl ArithToLlvm {
     }
 
     /// `FloorDivSIOpConverter`.
+    #[lowering("arith.floordivsi", untyped)]
     fn floordivsi(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (a, b) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
@@ -332,32 +346,16 @@ impl ArithToLlvm {
         true
     }
 
-    /// `populateCeilFloorDivExpandOpsPatterns` then `populateArithToLLVMConversionPatterns`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize) {
-        for (root, f) in [("arith.ceildivsi", Self::ceildivsi as for<'r, 'a, 'p> fn(&mut ConversionRewriter<'r, 'a, 'p>, OpId, &[Vec<ValueId>]) -> bool), ("arith.ceildivui", Self::ceildivui), ("arith.floordivsi", Self::floordivsi)] {
-            patterns.add(Lowering { root, benefit: 1, f });
-        }
-        patterns.add_with(tc, Lowering { root: "arith.bitcast", benefit: 10, f: Self::identity_bitcast });
-        let special: [(&str, for<'r, 'a, 'p> fn(&mut ConversionRewriter<'r, 'a, 'p>, OpId, &[Vec<ValueId>]) -> bool); 9] = [
-            ("arith.addui_extended", Self::addui_extended),
-            ("arith.constant", Self::constant),
-            ("arith.cmpf", Self::cmpf),
-            ("arith.cmpi", Self::cmpi),
-            ("arith.index_cast", Self::index_cast_si),
-            ("arith.index_castui", Self::index_cast_ui),
-            ("arith.mulsi_extended", Self::mulsi_extended),
-            ("arith.mului_extended", Self::mului_extended),
-            ("arith.truncf", Self::truncf),
-        ];
+    /// The ops lowered one to one, from `ONE_TO_ONE`.
+    fn one_to_one(patterns: &mut ConversionPatterns<'_>, tc: usize) {
         for (from, to, attrs, fp) in ONE_TO_ONE {
             patterns.add_with(tc, OneToOne { from, to, attrs: *attrs, fail_on_unsupported_fp: *fp, unconstrained: false });
         }
-        for (root, f) in special {
-            patterns.add_with(tc, Lowering { root, benefit: 1, f });
-        }
     }
 
+
     /// `TruncFOpLowering` without a rounding mode, `ConstrainedTruncFOpLowering` with one.
+    #[lowering("arith.truncf")]
     fn truncf(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(mode) = cr.rw.body[op].get("roundingmode").cloned() else {
             return OneToOne { from: "arith.truncf", to: "llvm.fptrunc", attrs: Attrs::PassThrough, fail_on_unsupported_fp: true, unconstrained: true }.rewrite(cr, op, operands);

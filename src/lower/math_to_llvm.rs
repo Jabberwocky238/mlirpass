@@ -3,10 +3,11 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Type};
 
 use super::arith_to_llvm::{Attrs, OneToOne};
-use super::{Lowering, llvm_fastmath};
+use super::llvm_fastmath;
 use crate::{ApFloat, Const, ConversionPatterns, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
 
 /// `ConvertFMFMathToLLVMPattern` pairs (and `ctpop`, which passes its attributes through).
@@ -42,6 +43,7 @@ const FASTMATH: &[(&str, &str)] = &[
 /// The math ⇒ llvm patterns.
 pub struct MathToLlvm;
 
+#[patterns(converter, approximate_log1p: bool, extra = Self::one_to_one)]
 impl MathToLlvm {
     /// The op's attributes with `fastmath` as `fastmathFlags` (`AttrConvertFastMathToLLVM`).
     fn fmf_attrs(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Vec<NamedAttr<'static>> {
@@ -87,18 +89,22 @@ impl MathToLlvm {
         cr.unroll_vectors(op, &[x], |cr, ty, p| cr.build(data(p), ty))
     }
 
+    #[lowering("math.ctlz")]
     fn ctlz(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::int_with_flag(cr, op, operands, "llvm.intr.ctlz", "is_zero_poison")
     }
 
+    #[lowering("math.cttz")]
     fn cttz(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::int_with_flag(cr, op, operands, "llvm.intr.cttz", "is_zero_poison")
     }
 
+    #[lowering("math.absi")]
     fn absi(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::int_with_flag(cr, op, operands, "llvm.intr.abs", "is_int_min_poison")
     }
 
+    #[lowering("math.sincos")]
     fn sincos(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         if Self::unsupported(cr, op) {
             return false;
@@ -166,14 +172,17 @@ impl MathToLlvm {
         cr.unroll_vectors(op, &[x], |cr, ty, p| make(cr, ty, p[0]).expect("float vector"))
     }
 
+    #[lowering("math.expm1")]
     fn expm1(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::two_step(cr, op, operands, 0)
     }
 
+    #[lowering("math.log1p", when = approximate_log1p)]
     fn log1p(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::two_step(cr, op, operands, 1)
     }
 
+    #[lowering("math.rsqrt")]
     fn rsqrt(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::two_step(cr, op, operands, 2)
     }
@@ -191,35 +200,22 @@ impl MathToLlvm {
         true
     }
 
+    #[lowering("math.isnan")]
     fn isnan(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::fpclass(cr, op, operands, 3)
     }
 
+    #[lowering("math.isfinite")]
     fn isfinite(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::fpclass(cr, op, operands, 504)
     }
 
-    /// `populateMathToLLVMConversionPatterns`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize, approximate_log1p: bool) {
-        if approximate_log1p {
-            patterns.add_with(tc, Lowering { root: "math.log1p", benefit: 1, f: Self::log1p });
-        }
-        let special: [(&'static str, super::LowerFn); 8] = [
-            ("math.isnan", Self::isnan),
-            ("math.isfinite", Self::isfinite),
-            ("math.absi", Self::absi),
-            ("math.ctlz", Self::ctlz),
-            ("math.cttz", Self::cttz),
-            ("math.expm1", Self::expm1),
-            ("math.rsqrt", Self::rsqrt),
-            ("math.sincos", Self::sincos),
-        ];
-        for (root, f) in special {
-            patterns.add_with(tc, Lowering { root, benefit: 1, f });
-        }
+    /// The ops lowered one to one: `ctpop`, and `FASTMATH`.
+    fn one_to_one(patterns: &mut ConversionPatterns<'_>, tc: usize, _: bool) {
         patterns.add_with(tc, OneToOne { from: "math.ctpop", to: "llvm.intr.ctpop", attrs: Attrs::PassThrough, fail_on_unsupported_fp: true, unconstrained: false });
         for (from, to) in FASTMATH {
             patterns.add_with(tc, OneToOne { from, to, attrs: Attrs::FastMath, fail_on_unsupported_fp: true, unconstrained: false });
         }
     }
+
 }

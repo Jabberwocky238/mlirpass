@@ -4,9 +4,9 @@ use alloc::borrow::Cow;
 use alloc::format;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Type};
 
-use super::Lowering;
 use crate::canon::AttrExt;
 use crate::{ConversionPatterns, ConversionRewriter, OpData, OpId, ValueId};
 
@@ -53,6 +53,7 @@ impl crate::ConversionPattern for OneToOne {
     }
 }
 
+#[patterns(converter, extra = Self::one_to_one)]
 impl IndexToLlvm {
     /// `LLVM::ConstantOp::create(type, int)`.
     fn int<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, ty: &Type<'a>, v: i64) -> ValueId {
@@ -73,6 +74,7 @@ impl IndexToLlvm {
         cr.build(OpData::build("llvm.select").operands(&[c, t, f]), ty)
     }
 
+    #[lowering("index.ceildivs")]
     fn ceildivs(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some([n, m]) = ConversionRewriter::one_to_one(operands).and_then(|v| <[ValueId; 2]>::try_from(v).ok()) else { return false };
         let ty = cr.rw.body[n].ty.clone();
@@ -96,6 +98,7 @@ impl IndexToLlvm {
         true
     }
 
+    #[lowering("index.ceildivu")]
     fn ceildivu(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some([n, m]) = ConversionRewriter::one_to_one(operands).and_then(|v| <[ValueId; 2]>::try_from(v).ok()) else { return false };
         let ty = cr.rw.body[n].ty.clone();
@@ -110,6 +113,7 @@ impl IndexToLlvm {
         true
     }
 
+    #[lowering("index.floordivs")]
     fn floordivs(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some([n, m]) = ConversionRewriter::one_to_one(operands).and_then(|v| <[ValueId; 2]>::try_from(v).ok()) else { return false };
         let ty = cr.rw.body[n].ty.clone();
@@ -145,15 +149,18 @@ impl IndexToLlvm {
         true
     }
 
+    #[lowering("index.casts")]
     fn casts(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::cast(cr, op, operands, "llvm.sext")
     }
 
+    #[lowering("index.castu")]
     fn castu(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::cast(cr, op, operands, "llvm.zext")
     }
 
     /// `index.cmp`: the predicates share their case values with `llvm.icmp`.
+    #[lowering("index.cmp")]
     fn cmp(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some([l, r]) = ConversionRewriter::one_to_one(operands).and_then(|v| <[ValueId; 2]>::try_from(v).ok()) else { return false };
         // `IndexCmpPredicate` cases are printed as their names; their order is eq, ne, slt,
@@ -171,6 +178,7 @@ impl IndexToLlvm {
         true
     }
 
+    #[lowering("index.sizeof")]
     fn sizeof(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(tc) = cr.type_converter() else { return false };
         let Some(ty) = tc.convert(&Type::Index) else { return false };
@@ -181,6 +189,7 @@ impl IndexToLlvm {
         true
     }
 
+    #[lowering("index.constant")]
     fn constant(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(tc) = cr.type_converter() else { return false };
         let Some(ty) = tc.convert(&Type::Index) else { return false };
@@ -191,31 +200,22 @@ impl IndexToLlvm {
         true
     }
 
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize) {
+    /// The ops lowered one to one, from `ONE_TO_ONE`.
+    fn one_to_one(patterns: &mut ConversionPatterns<'_>, tc: usize) {
         for (from, to) in ONE_TO_ONE {
             patterns.add_with(tc, OneToOne(from, to));
         }
-        let special: [(&'static str, super::LowerFn); 8] = [
-            ("index.ceildivs", Self::ceildivs),
-            ("index.ceildivu", Self::ceildivu),
-            ("index.floordivs", Self::floordivs),
-            ("index.casts", Self::casts),
-            ("index.castu", Self::castu),
-            ("index.cmp", Self::cmp),
-            ("index.sizeof", Self::sizeof),
-            ("index.constant", Self::constant),
-        ];
-        for (root, f) in special {
-            patterns.add_with(tc, Lowering { root, benefit: 1, f });
-        }
         patterns.add_with(tc, OneToOne("index.bool.constant", "llvm.mlir.constant"));
     }
+
 }
 
 /// The ub ⇒ llvm patterns.
 pub struct UbToLlvm;
 
+#[patterns(converter)]
 impl UbToLlvm {
+    #[lowering("ub.poison")]
     fn poison(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         if !cr.rw.body[op].get("value").is_some_and(crate::is_poison) {
             return false;
@@ -226,13 +226,10 @@ impl UbToLlvm {
         true
     }
 
+    #[lowering("ub.unreachable")]
     fn unreachable(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         cr.replace_new(op, OpData::build("llvm.unreachable"), &[]);
         true
     }
 
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize) {
-        patterns.add_with(tc, Lowering { root: "ub.poison", benefit: 1, f: Self::poison });
-        patterns.add_with(tc, Lowering { root: "ub.unreachable", benefit: 1, f: Self::unreachable });
-    }
 }

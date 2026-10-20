@@ -4,19 +4,20 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Type};
 
-use super::Lowering;
 use super::linalg_build::{dims_of, tensor_type};
 use super::vector_transforms::index_attr;
 use crate::canon::AttrExt;
-use crate::{ConversionPatterns, ConversionRewriter, DYNAMIC, OpData, OpId, ValueId};
+use crate::{ConversionRewriter, DYNAMIC, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
 /// The shape ⇒ standard patterns.
 pub struct ShapeToStd;
 
+#[patterns]
 impl ShapeToStd {
     fn make1<'a>(cr: &mut Cr<'_, 'a, '_>, data: OpData<'a>, ty: Type<'a>) -> ValueId {
         cr.build(data, ty)
@@ -136,11 +137,13 @@ impl ShapeToStd {
         dim
     }
 
+    #[lowering("shape.any")]
     fn any(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         cr.replace_values(op, &[o[0][0]]);
         true
     }
 
+    #[lowering("shape.add", "shape.mul")]
     fn binary(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let rt = Self::result_ty(cr, op);
         if Self::is(&rt, "shape.size") {
@@ -151,6 +154,7 @@ impl ShapeToStd {
         true
     }
 
+    #[lowering("shape.broadcast")]
     fn broadcast(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let rt = Self::result_ty(cr, op);
         if Self::is(&rt, "shape.shape") {
@@ -171,6 +175,7 @@ impl ShapeToStd {
         true
     }
 
+    #[lowering("shape.const_shape")]
     fn const_shape(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let rt = Self::result_ty(cr, op);
         if Self::is(&rt, "shape.shape") {
@@ -185,12 +190,14 @@ impl ShapeToStd {
         true
     }
 
+    #[lowering("shape.const_size")]
     fn const_size(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(v) = cr.rw.body[op].get("value").and_then(|a| crate::Const::try_from(a).ok()).and_then(|c| c.at(0).int()) else { return false };
         cr.replace_new(op, OpData::build("arith.constant").with("value", index_attr(v.signed() as i64)), &[Type::Index]);
         true
     }
 
+    #[lowering("shape.is_broadcastable")]
     fn is_broadcastable(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         if cr.rw.body[op].operands.iter().any(|v| Self::is(&cr.rw.body[*v].ty, "shape.shape")) {
             return false;
@@ -223,6 +230,7 @@ impl ShapeToStd {
         true
     }
 
+    #[lowering("shape.dim")]
     fn dim_op(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (v, i) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
         let rt = Self::result_ty(cr, op);
@@ -236,6 +244,7 @@ impl ShapeToStd {
         true
     }
 
+    #[lowering("shape.get_extent")]
     fn get_extent(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         if Self::is(&Self::result_ty(cr, op), "shape.size") {
             return false;
@@ -252,6 +261,7 @@ impl ShapeToStd {
         true
     }
 
+    #[lowering("shape.rank")]
     fn rank(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         if Self::is(&Self::result_ty(cr, op), "shape.size") {
             return false;
@@ -261,6 +271,7 @@ impl ShapeToStd {
         true
     }
 
+    #[lowering("shape.reduce")]
     fn reduce(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         if Self::is(&b[b[op].operands[0]].ty, "shape.shape") {
@@ -292,6 +303,7 @@ impl ShapeToStd {
         true
     }
 
+    #[lowering("shape.shape_eq")]
     fn shape_eq(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         if cr.rw.body[op].operands.iter().any(|v| Self::is(&cr.rw.body[*v].ty, "shape.shape")) {
             return false;
@@ -334,6 +346,7 @@ impl ShapeToStd {
         true
     }
 
+    #[lowering("shape.shape_of")]
     fn shape_of(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let rt = Self::result_ty(cr, op);
         if Self::is(&rt, "shape.shape") {
@@ -368,6 +381,7 @@ impl ShapeToStd {
         true
     }
 
+    #[lowering("shape.split_at")]
     fn split_at(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let vals = [b[op].operands[0], b[op].results[0], b[op].results[1]];
@@ -397,6 +411,7 @@ impl ShapeToStd {
         true
     }
 
+    #[lowering("shape.to_extent_tensor")]
     fn to_extent_tensor(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let t = Self::ty(cr, o[0][0]);
         if crate::attr::shape_of(&t).is_none() || !matches!(&t, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Tensor) {
@@ -408,6 +423,7 @@ impl ShapeToStd {
     }
 
     /// The DRR `CstrBroadcastableToRequire` / `CstrEqToRequire`.
+    #[lowering("shape.cstr_broadcastable", "shape.cstr_eq")]
     fn cstr(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let shapes = b[op].operands.clone();
@@ -418,29 +434,4 @@ impl ShapeToStd {
         true
     }
 
-    /// `populateShapeToStandardConversionPatterns`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>) {
-        let table: [(&'static str, super::LowerFn); 17] = [
-            ("shape.cstr_broadcastable", Self::cstr),
-            ("shape.cstr_eq", Self::cstr),
-            ("shape.any", Self::any),
-            ("shape.add", Self::binary),
-            ("shape.mul", Self::binary),
-            ("shape.broadcast", Self::broadcast),
-            ("shape.const_shape", Self::const_shape),
-            ("shape.const_size", Self::const_size),
-            ("shape.dim", Self::dim_op),
-            ("shape.is_broadcastable", Self::is_broadcastable),
-            ("shape.get_extent", Self::get_extent),
-            ("shape.rank", Self::rank),
-            ("shape.reduce", Self::reduce),
-            ("shape.shape_eq", Self::shape_eq),
-            ("shape.shape_of", Self::shape_of),
-            ("shape.split_at", Self::split_at),
-            ("shape.to_extent_tensor", Self::to_extent_tensor),
-        ];
-        for (root, f) in table {
-            patterns.add(Lowering { root, benefit: 1, f });
-        }
-    }
 }

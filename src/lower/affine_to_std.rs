@@ -5,11 +5,11 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Type};
 
-use super::Lowering;
 use crate::canon::AttrExt;
-use crate::{AffineBin, AffineExpr, AffineMap, ConversionPatterns, ConversionRewriter, OpData, OpId, ValueId};
+use crate::{AffineBin, AffineExpr, AffineMap, ConversionRewriter, OpData, OpId, ValueId};
 
 /// The affine ⇒ arith / scf / memref / vector patterns.
 pub struct AffineToStd;
@@ -23,6 +23,7 @@ fn index_attr<'a>(v: i64) -> Attribute<'a> {
 const NSW: &str = "<nsw>";
 const NSW_NUW: &str = "<nsw, nuw>";
 
+#[patterns]
 impl AffineToStd {
     fn constant(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
         cr.build(OpData::build("arith.constant").with("value", index_attr(v)), Type::Index)
@@ -116,6 +117,7 @@ impl AffineToStd {
         cr.rw.body.affine_map(op, name)
     }
 
+    #[lowering("affine.apply")]
     fn apply(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(map) = Self::map_of(cr, op, "map") else { return false };
         let ops = cr.rw.body[op].operands.clone();
@@ -124,10 +126,12 @@ impl AffineToStd {
         true
     }
 
+    #[lowering("affine.min")]
     fn min(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         Self::min_or_max(cr, op, false)
     }
 
+    #[lowering("affine.max")]
     fn max(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         Self::min_or_max(cr, op, true)
     }
@@ -141,6 +145,7 @@ impl AffineToStd {
     }
 
     /// `affine.load` / `affine.store` / `affine.prefetch` / `affine.vector_load` / `affine.vector_store`.
+    #[lowering("affine.load", "affine.prefetch", "affine.store", "affine.vector_load", "affine.vector_store")]
     fn access(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let name = alloc::string::String::from(&*cr.rw.body[op].name);
         let start = if name.contains("store") { 2 } else { 1 };
@@ -165,6 +170,7 @@ impl AffineToStd {
         true
     }
 
+    #[lowering("affine.yield")]
     fn yield_op(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         if cr.rw.body.parent_op(op).is_some_and(|p| cr.rw.body[p].name == "scf.parallel") {
             return false;
@@ -174,6 +180,7 @@ impl AffineToStd {
         true
     }
 
+    #[lowering("affine.for")]
     fn for_op(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
@@ -198,6 +205,7 @@ impl AffineToStd {
         true
     }
 
+    #[lowering("affine.if")]
     fn if_op(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(set) = cr.rw.body.integer_set(op, "condition") else { return false };
         let zero = Self::constant(cr, 0);
@@ -265,6 +273,7 @@ impl AffineToStd {
         out
     }
 
+    #[lowering("affine.delinearize_index")]
     fn delinearize(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let idx = b[op].operands[0];
@@ -321,6 +330,7 @@ impl AffineToStd {
         n
     }
 
+    #[lowering("affine.linearize_index")]
     fn linearize(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
@@ -352,25 +362,4 @@ impl AffineToStd {
         true
     }
 
-    /// `populateAffineToStdConversionPatterns`, `...ToVector...` and `...ExpandIndexOps...`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>) {
-        let table: [(&'static str, super::LowerFn); 13] = [
-            ("affine.apply", Self::apply),
-            ("affine.load", Self::access),
-            ("affine.min", Self::min),
-            ("affine.max", Self::max),
-            ("affine.prefetch", Self::access),
-            ("affine.store", Self::access),
-            ("affine.for", Self::for_op),
-            ("affine.if", Self::if_op),
-            ("affine.yield", Self::yield_op),
-            ("affine.vector_load", Self::access),
-            ("affine.vector_store", Self::access),
-            ("affine.delinearize_index", Self::delinearize),
-            ("affine.linearize_index", Self::linearize),
-        ];
-        for (root, f) in table {
-            patterns.add(Lowering { root, benefit: 1, f });
-        }
-    }
 }

@@ -4,14 +4,16 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
+use mlirpass_macros::patterns;
 use mlirformat::Attribute;
 
-use super::{Lowering, unescape};
-use crate::{BlockId, ConversionPatterns, ConversionRewriter, LlvmType, OpData, OpId, ValueId};
+use super::unescape;
+use crate::{BlockId, ConversionRewriter, LlvmType, OpData, OpId, ValueId};
 
 /// The cf ⇒ llvm patterns.
 pub struct CfToLlvm;
 
+#[patterns(converter)]
 impl CfToLlvm {
     /// `getConvertedBlock`: `block` with argument types `expected`, converting its signature
     /// when needed.
@@ -32,6 +34,7 @@ impl CfToLlvm {
         operands.iter().flatten().copied().collect()
     }
 
+    #[lowering("cf.br")]
     fn br(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let flat = Self::flatten(operands);
         let types = cr.rw.body.types(&flat);
@@ -46,6 +49,7 @@ impl CfToLlvm {
         true
     }
 
+    #[lowering("cf.cond_br")]
     fn cond_br(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let (tr, fr) = (b.successor_operands(op, 0).expect("cond_br"), b.successor_operands(op, 1).expect("cond_br"));
@@ -67,6 +71,7 @@ impl CfToLlvm {
         true
     }
 
+    #[lowering("cf.switch")]
     fn switch(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = ConversionRewriter::one_to_one(operands) else { return false };
         let b = &*cr.rw.body;
@@ -128,12 +133,6 @@ impl CfToLlvm {
         true
     }
 
-    /// `populateControlFlowToLLVMConversionPatterns` (and the assert pattern, added by `assert`).
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize) {
-        patterns.add_with(tc, Lowering { root: "cf.br", benefit: 1, f: Self::br });
-        patterns.add_with(tc, Lowering { root: "cf.cond_br", benefit: 1, f: Self::cond_br });
-        patterns.add_with(tc, Lowering { root: "cf.switch", benefit: 1, f: Self::switch });
-    }
 }
 
 /// `AssertOpLowering`, with the counter `ensureSymbolNameIsUnique` keeps across chunks.

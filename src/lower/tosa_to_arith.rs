@@ -4,11 +4,11 @@ use alloc::borrow::Cow;
 use alloc::format;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Shaped, Type};
 
-use super::Lowering;
 use crate::canon::AttrExt;
-use crate::{ApInt, Const, ConversionPatterns, ConversionRewriter, OpData, OpId, Scalar, ValueId};
+use crate::{ApInt, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -61,7 +61,9 @@ impl<'a> Sc<'_, '_, 'a, '_> {
 /// The tosa ⇒ arith patterns.
 pub struct TosaToArith;
 
+#[patterns(rescale: bool, use_32: bool)]
 impl TosaToArith {
+    #[lowering("tosa.const")]
     fn constant(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(v) = cr.rw.body[op].get("values").cloned() else { return false };
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
@@ -80,6 +82,7 @@ impl TosaToArith {
     }
 
     /// `ApplyScaleGenericOpConverter`.
+    #[lowering("tosa.apply_scale", benefit = 100, when = rescale)]
     fn generic(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(double) = Self::double_round(cr, op) else { return false };
         let b = &*cr.rw.body;
@@ -115,6 +118,7 @@ impl TosaToArith {
     }
 
     /// `ApplyScale32BitOpConverter`.
+    #[lowering("tosa.apply_scale", benefit = 200, when = rescale && use_32)]
     fn bits32(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(double) = Self::double_round(cr, op) else { return false };
         let b = &*cr.rw.body;
@@ -176,13 +180,4 @@ impl TosaToArith {
         true
     }
 
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, rescale: bool, use_32: bool) {
-        patterns.add(Lowering { root: "tosa.const", benefit: 1, f: Self::constant });
-        if rescale {
-            patterns.add(Lowering { root: "tosa.apply_scale", benefit: 100, f: Self::generic });
-            if use_32 {
-                patterns.add(Lowering { root: "tosa.apply_scale", benefit: 200, f: Self::bits32 });
-            }
-        }
-    }
 }

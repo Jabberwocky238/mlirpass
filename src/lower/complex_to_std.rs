@@ -3,11 +3,11 @@
 
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, FloatKind, Type};
 
-use super::Lowering;
 use crate::canon::AttrExt;
-use crate::{ApFloat, Const, ConversionPatterns, ConversionRewriter, OpData, OpId, Scalar, ValueId};
+use crate::{ApFloat, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 
 /// `arith::FastMathFlags`, as bits in their enum order.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -433,6 +433,7 @@ type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 /// The complex ⇒ standard patterns.
 pub struct ComplexToStd;
 
+#[patterns(improved: bool)]
 impl ComplexToStd {
     fn operand_ty<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Type<'a> {
         cr.rw.body[cr.rw.body[op].operands[0]].ty.clone()
@@ -447,6 +448,7 @@ impl ComplexToStd {
         true
     }
 
+    #[lowering("complex.abs")]
     fn abs(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -455,6 +457,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.angle")]
     fn angle(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -463,6 +466,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.atan2")]
     fn atan2(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::result_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -484,6 +488,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.add", "complex.sub")]
     fn binary(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let name = if cr.rw.body[op].name == "complex.add" { "arith.addf" } else { "arith.subf" };
@@ -496,6 +501,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.eq", "complex.neq")]
     fn compare(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let ty = Self::operand_ty(cr, op);
         let eq = cr.rw.body[op].name == "complex.eq";
@@ -508,6 +514,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.conj")]
     fn conj(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let ty = Self::operand_ty(cr, op);
         let mut b = Cx::new(cr, ty);
@@ -518,6 +525,7 @@ impl ComplexToStd {
     }
 
     /// `TrigonometricOpConversion`: `cos` or `sin`.
+    #[lowering("complex.cos", "complex.sin")]
     fn trig(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let cos_op = cr.rw.body[op].name == "complex.cos";
@@ -544,6 +552,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.exp")]
     fn exp(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -571,6 +580,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.expm1")]
     fn expm1(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::result_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -605,6 +615,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.log")]
     fn log(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -617,6 +628,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.log1p")]
     fn log1p(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -645,6 +657,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.mul")]
     fn mul(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -659,6 +672,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.neg")]
     fn neg(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let ty = Self::operand_ty(cr, op);
         let mut b = Cx::new(cr, ty);
@@ -669,6 +683,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.sign")]
     fn sign(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -686,6 +701,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.sqrt")]
     fn sqrt(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::result_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -728,6 +744,7 @@ impl ComplexToStd {
     }
 
     /// `TanTanhOpConversion`.
+    #[lowering("complex.tan", "complex.tanh")]
     fn tan_tanh(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let tan = cr.rw.body[op].name == "complex.tan";
@@ -781,6 +798,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.powi")]
     fn powi(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::result_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -792,6 +810,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.pow")]
     fn pow(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -800,6 +819,7 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.rsqrt")]
     fn rsqrt(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
         let mut b = Cx::new(cr, ty);
@@ -848,51 +868,22 @@ impl ComplexToStd {
         Self::done(cr, op, v)
     }
 
+    #[lowering("complex.div", when = improved)]
     fn div_improved(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         Self::div(cr, op, o, true)
     }
 
+    #[lowering("complex.div", when = !improved)]
     fn div_basic(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         Self::div(cr, op, o, false)
     }
 
-    /// `populateComplexToStandardConversionPatterns`; `improved`: `complex-range=improved`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, improved: bool) {
-        let table: [(&'static str, super::LowerFn); 24] = [
-            ("complex.abs", Self::abs),
-            ("complex.angle", Self::angle),
-            ("complex.atan2", Self::atan2),
-            ("complex.add", Self::binary),
-            ("complex.sub", Self::binary),
-            ("complex.eq", Self::compare),
-            ("complex.neq", Self::compare),
-            ("complex.conj", Self::conj),
-            ("complex.cos", Self::trig),
-            ("complex.exp", Self::exp),
-            ("complex.expm1", Self::expm1),
-            ("complex.log1p", Self::log1p),
-            ("complex.log", Self::log),
-            ("complex.mul", Self::mul),
-            ("complex.neg", Self::neg),
-            ("complex.sign", Self::sign),
-            ("complex.sin", Self::trig),
-            ("complex.sqrt", Self::sqrt),
-            ("complex.tan", Self::tan_tanh),
-            ("complex.tanh", Self::tan_tanh),
-            ("complex.powi", Self::powi),
-            ("complex.pow", Self::pow),
-            ("complex.rsqrt", Self::rsqrt),
-            ("complex.div", if improved { Self::div_improved } else { Self::div_basic }),
-        ];
-        for (root, f) in table {
-            patterns.add(Lowering { root, benefit: 1, f });
-        }
-    }
 }
 
 /// `complex` ⇒ `llvm`, as `ComplexToLLVM.cpp`.
 pub struct ComplexToLlvm;
 
+#[patterns(converter, improved: bool)]
 impl ComplexToLlvm {
     /// The element type, the struct type, and a builder.
     fn begin<'c, 'r, 'a, 'p>(cr: &'c mut Cr<'r, 'a, 'p>, op: OpId) -> Option<(Cx<'c, 'r, 'a, 'p>, Type<'a>)> {
@@ -912,6 +903,7 @@ impl ComplexToLlvm {
         (lr, li, rr, ri)
     }
 
+    #[lowering("complex.abs")]
     fn abs(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let fmf = Fmf::of(cr, op);
         let ct = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
@@ -927,6 +919,7 @@ impl ComplexToLlvm {
         true
     }
 
+    #[lowering("complex.constant")]
     fn constant(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let ct = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
         let Some(st) = cr.type_converter().and_then(|tc| tc.convert(&ct)) else { return false };
@@ -938,6 +931,7 @@ impl ComplexToLlvm {
         true
     }
 
+    #[lowering("complex.create")]
     fn create(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let Some((mut b, st)) = Self::begin(cr, op) else { return false };
         let v = b.pack(st, o[0][0], o[1][0]);
@@ -945,6 +939,7 @@ impl ComplexToLlvm {
         true
     }
 
+    #[lowering("complex.im", "complex.re")]
     fn part(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let ct = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
         let i = i64::from(cr.rw.body[op].name == "complex.im");
@@ -954,6 +949,7 @@ impl ComplexToLlvm {
         true
     }
 
+    #[lowering("complex.add", "complex.mul", "complex.sub")]
     fn arith(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let fmf = Fmf::of(cr, op);
         let name = cr.rw.body[op].name.clone();
@@ -989,29 +985,14 @@ impl ComplexToLlvm {
         true
     }
 
+    #[lowering("complex.div", when = improved)]
     fn div_improved(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         Self::div(cr, op, o, true)
     }
 
+    #[lowering("complex.div", when = !improved)]
     fn div_basic(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         Self::div(cr, op, o, false)
     }
 
-    /// `populateComplexToLLVMConversionPatterns`; `improved`: `complex-range=improved`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize, improved: bool) {
-        let table: [(&'static str, super::LowerFn); 9] = [
-            ("complex.abs", Self::abs),
-            ("complex.add", Self::arith),
-            ("complex.constant", Self::constant),
-            ("complex.create", Self::create),
-            ("complex.im", Self::part),
-            ("complex.mul", Self::arith),
-            ("complex.re", Self::part),
-            ("complex.sub", Self::arith),
-            ("complex.div", if improved { Self::div_improved } else { Self::div_basic }),
-        ];
-        for (root, f) in table {
-            patterns.add_with(tc, Lowering { root, benefit: 1, f });
-        }
-    }
 }

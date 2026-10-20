@@ -3,18 +3,19 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Signedness, Type};
 
-use super::Lowering;
 use super::vector_transforms::{dense_i64, index_attr};
 use crate::canon::MemrefOfr as Ofr;
-use crate::{Const, ConversionPatterns, ConversionRewriter, DYNAMIC, OpData, OpId, Rewriter, TypeConverter, ValueId};
+use crate::{Const, ConversionRewriter, DYNAMIC, OpData, OpId, Rewriter, TypeConverter, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
 /// The tosa ⇒ tensor patterns and their helpers.
 pub struct TosaToTensor;
 
+#[patterns(converter)]
 impl TosaToTensor {
     /// `populateTosaTypeConversion`: unsigned integers become signless, in tensors too.
     pub fn converter<'c>() -> TypeConverter<'c> {
@@ -247,6 +248,7 @@ impl TosaToTensor {
         if fold { Self::fold1(cr, data, ty) } else { cr.build(data, ty) }
     }
 
+    #[lowering("tosa.reshape")]
     fn reshape(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let r = cr.rw.body[op].results[0];
         let Some(rt) = cr.type_converter().and_then(|tc| tc.convert(&cr.rw.body[r].ty)) else { return false };
@@ -270,6 +272,7 @@ impl TosaToTensor {
         true
     }
 
+    #[lowering("tosa.slice")]
     fn slice(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let input = o[0][0];
         let b = &*cr.rw.body;
@@ -305,6 +308,7 @@ impl TosaToTensor {
         true
     }
 
+    #[lowering("tosa.pad")]
     fn pad(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let (input, padding, pad_const) = (b[op].operands[0], b[op].operands[1], b[op].operands[2]);
@@ -336,6 +340,7 @@ impl TosaToTensor {
         true
     }
 
+    #[lowering("tosa.concat")]
     fn concat(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let rt = b[b[op].results[0]].ty.clone();
@@ -404,11 +409,4 @@ impl TosaToTensor {
         data.operands(&ops).segments(&segs)
     }
 
-    /// `populateTosaToTensorConversionPatterns`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize) {
-        let table: [(&'static str, super::LowerFn); 4] = [("tosa.concat", Self::concat), ("tosa.pad", Self::pad), ("tosa.reshape", Self::reshape), ("tosa.slice", Self::slice)];
-        for (root, f) in table {
-            patterns.add_with(tc, Lowering { root, benefit: 1, f });
-        }
-    }
 }

@@ -4,19 +4,20 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirpass_macros::patterns;
 use mlirformat::{Attribute, FloatKind, Type};
 
-use super::Lowering;
 use super::linalg_build::{Named, dims_of, i64_elements, int_attr, tensor_type};
 use super::vector_transforms::dense_i64;
 use crate::canon::{AttrExt, MemrefOfr as Ofr};
-use crate::{AffineExpr, AffineMap, ApFloat, Const, ConversionPatterns, ConversionRewriter, DYNAMIC, Mapping, OpData, OpId, Scalar, ValueId};
+use crate::{AffineExpr, AffineMap, ApFloat, Const, ConversionRewriter, DYNAMIC, Mapping, OpData, OpId, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
 /// The tosa ⇒ linalg named-op patterns.
 pub struct TosaToLinalgNamed;
 
+#[patterns(converter, hwcf: bool)]
 impl TosaToLinalgNamed {
     fn ints(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> Vec<i64> {
         cr.rw.body.dense_i64(op, name)
@@ -206,19 +207,23 @@ impl TosaToLinalgNamed {
         true
     }
 
+    #[lowering("tosa.conv2d", when = !hwcf, untyped)]
     fn conv2d_fhwc(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         Self::conv(cr, op, ("linalg.conv_2d_nhwc_fhwc", "linalg.conv_2d_nhwc_fhwc_q"))
     }
 
+    #[lowering("tosa.conv2d", when = hwcf, untyped)]
     fn conv2d_hwcf(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         Self::conv(cr, op, ("linalg.conv_2d_nhwc_hwcf", "linalg.conv_2d_nhwc_hwcf_q"))
     }
 
+    #[lowering("tosa.conv3d", untyped)]
     fn conv3d(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         Self::conv(cr, op, ("linalg.conv_3d_ndhwc_dhwcf", "linalg.conv_3d_ndhwc_dhwcf_q"))
     }
 
     /// `DepthwiseConvConverter`.
+    #[lowering("tosa.depthwise_conv2d", untyped)]
     fn depthwise(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let (mut input, weight, bias) = (b[op].operands[0], b[op].operands[1], b[op].operands[2]);
@@ -298,6 +303,7 @@ impl TosaToLinalgNamed {
     }
 
     /// `MatMulConverter`.
+    #[lowering("tosa.matmul", untyped)]
     fn matmul(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let (a0, a1, azv, bzv) = (b[op].operands[0], b[op].operands[1], b[op].operands[2], b[op].operands[3]);
@@ -370,6 +376,7 @@ impl TosaToLinalgNamed {
     }
 
     /// `MaxPool2dConverter`.
+    #[lowering("tosa.max_pool2d")]
     fn max_pool(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let input = o[0][0];
         let it = Self::ty(cr, input);
@@ -461,6 +468,7 @@ impl TosaToLinalgNamed {
     }
 
     /// `AvgPool2dConverter`.
+    #[lowering("tosa.avg_pool2d", untyped)]
     fn avg_pool(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let (input, izv, ozv, out) = (b[op].operands[0], b[op].operands[1], b[op].operands[2], b[op].results[0]);
@@ -570,6 +578,7 @@ impl TosaToLinalgNamed {
     }
 
     /// `TransposeConverter`.
+    #[lowering("tosa.transpose", untyped)]
     fn transpose(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
         let perms: Vec<i64> = match cr.rw.body[op].get("perms") {
@@ -587,15 +596,6 @@ impl TosaToLinalgNamed {
         true
     }
 
-    /// `populateTosaToLinalgNamedConversionPatterns`.
-    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize, hwcf: bool) {
-        let conv2d: super::LowerFn = if hwcf { Self::conv2d_hwcf } else { Self::conv2d_fhwc };
-        let table: [(&'static str, super::LowerFn); 6] = [("tosa.conv2d", conv2d), ("tosa.conv3d", Self::conv3d), ("tosa.depthwise_conv2d", Self::depthwise), ("tosa.matmul", Self::matmul), ("tosa.avg_pool2d", Self::avg_pool), ("tosa.transpose", Self::transpose)];
-        for (root, f) in table {
-            patterns.add(Lowering { root, benefit: 1, f });
-        }
-        patterns.add_with(tc, Lowering { root: "tosa.max_pool2d", benefit: 1, f: Self::max_pool });
-    }
 }
 
 /// An integer attribute re-typed.
