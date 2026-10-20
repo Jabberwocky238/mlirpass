@@ -118,6 +118,57 @@ pub trait Promotable {
 }
 
 impl Body<'_> {
+    /// The uses of `v` in MLIR's use-list order: most recent first.
+    pub fn use_list(&self, v: ValueId) -> Vec<Use> {
+        self[v].uses.iter().rev().copied().collect()
+    }
+
+    /// `topologicalSort`: `ops` in a dominance respecting pre-order walk of the IR, from the
+    /// outermost op holding the first of them.
+    pub fn topological_sort(&self, ops: &[OpId]) -> Vec<OpId> {
+        if ops.len() <= 1 {
+            return ops.to_vec();
+        }
+        let mut top = ops[0];
+        while let Some(p) = self.parent_op(top) {
+            top = p;
+        }
+        let mut out = Vec::new();
+        let mut stack = alloc::vec![top];
+        while let Some(op) = stack.pop() {
+            if ops.contains(&op) {
+                out.push(op);
+            }
+            for r in self[op].regions.iter().rev() {
+                for blk in self.blocks_by_dominance(*r).into_iter().rev() {
+                    stack.extend(self[blk].ops.iter().rev());
+                }
+            }
+        }
+        out
+    }
+
+    /// `getVolatile_` / `getIsVolatile`.
+    pub fn is_volatile(&self, op: OpId) -> bool {
+        match self[op].get("volatile_").or_else(|| self[op].get("isVolatile")) {
+            Some(Attribute::Bool(v)) => *v,
+            Some(Attribute::Int { lit, .. }) => lit != "0" && lit != "false",
+            Some(_) => true,
+            None => false,
+        }
+    }
+
+    /// `getStaticMemIntrLen`: the `len` attribute, or the length operand, if a constant of at
+    /// most 64 bits.
+    pub fn mem_intr_len(&self, op: OpId) -> Option<u64> {
+        let len = match self[op].get("len") {
+            Some(a) => a.clone(),
+            None => self.constant_of(*self[op].operands.get(2)?)?,
+        };
+        let i = crate::Const::try_from(&len).ok().filter(|c| !c.elements)?.as_int()?;
+        (i.width <= 64).then(|| i.unsigned() as u64)
+    }
+
     /// `getForwardSlice(v)`: the ops transitively using `v`, topologically sorted.
     pub fn forward_slice(&self, v: ValueId) -> Vec<OpId> {
         let mut post = Vec::new();
