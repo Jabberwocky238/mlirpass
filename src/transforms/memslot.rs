@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! Promotable      PromotableAllocationOpInterface, PromotableMemOpInterface, PromotableOpInterface
-//! (sroa.rs)       DestructurableAllocationOpInterface, SafeMemorySlotAccessOpInterface,
+//! Destructurable  DestructurableAllocationOpInterface, SafeMemorySlotAccessOpInterface,
 //!                 DestructurableAccessorOpInterface, DestructurableTypeInterface
 //! ```
 //!
@@ -18,7 +18,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Type};
 
-use crate::{Body, OpId, Rewriter, Use, ValueId};
+use crate::{Body, DataLayout, OpId, Rewriter, Use, ValueId};
 
 /// `MemorySlot`: a pointer to memory holding one value of type `elem`.
 #[derive(Debug, Clone, PartialEq)]
@@ -123,3 +123,105 @@ impl Body<'_> {
         dialects.iter().copied().find(|d| d.dialect() == ns)
     }
 }
+
+/// What the destructuring interfaces are asked with: every dialect's (an op of one dialect may
+/// ask about a type of another) and the data layout.
+#[derive(Clone, Copy)]
+pub struct Slots<'s> {
+    pub dialects: &'s [&'s dyn Destructurable],
+    pub layout: &'s DataLayout,
+}
+
+impl Slots<'_> {
+    /// `DestructurableTypeInterface::getSubelementIndexMap` of `ty`, whichever dialect owns it.
+    pub fn subelements<'a>(&self, ty: &Type<'a>) -> Option<Vec<(Attribute<'a>, Type<'a>)>> {
+        self.dialects.iter().find_map(|d| d.subelements(ty))
+    }
+
+    /// `DestructurableTypeInterface::getTypeAtIndex` of `ty`.
+    pub fn type_at<'a>(&self, ty: &Type<'a>, index: &Attribute<'a>) -> Option<Type<'a>> {
+        self.dialects.iter().find_map(|d| d.type_at(ty, index))
+    }
+}
+
+/// ⭐ The destructuring interfaces of one dialect's ops and types.
+///
+/// `used` is `usedIndices`: a set, kept in insertion order. `subslots` is the map
+/// `destructure` returned.
+#[allow(unused_variables)]
+pub trait Destructurable {
+    /// The namespace whose ops and types this answers for (`llvm`, `memref`).
+    fn dialect(&self) -> &str;
+
+    // ---- DestructurableTypeInterface ----------------------------------------------------
+
+    /// `getSubelementIndexMap`, in index order; `None`: not destructurable, or not this
+    /// dialect's type.
+    fn subelements<'a>(&self, ty: &Type<'a>) -> Option<Vec<(Attribute<'a>, Type<'a>)>> {
+        None
+    }
+
+    /// `getTypeAtIndex`; `None` for a null type.
+    fn type_at<'a>(&self, ty: &Type<'a>, index: &Attribute<'a>) -> Option<Type<'a>> {
+        None
+    }
+
+    // ---- DestructurableAllocationOpInterface --------------------------------------------
+
+    /// `getDestructurableSlots`; `None`: `op` is no destructurable allocation.
+    fn destructurable_slots<'a>(&self, cx: Slots<'_>, b: &Body<'a>, op: OpId) -> Option<Vec<DestructurableMemorySlot<'a>>> {
+        None
+    }
+
+    /// `destructure`: one subslot per `used` index. `rw` is at the start of the block defining
+    /// the slot pointer; new allocators go to `allocators`.
+    fn destructure<'a>(&self, cx: Slots<'_>, rw: &mut Rewriter<'_, 'a>, alloc: OpId, slot: &DestructurableMemorySlot<'a>, used: &[Attribute<'a>], allocators: &mut Vec<OpId>) -> Vec<(Attribute<'a>, MemorySlot<'a>)> {
+        unreachable!("{}: not a destructurable allocation", self.dialect())
+    }
+
+    /// `handleDestructuringComplete`; the new allocator, if it made one.
+    fn handle_destructuring_complete<'a>(&self, rw: &mut Rewriter<'_, 'a>, alloc: OpId, slot: &DestructurableMemorySlot<'a>) -> Option<OpId> {
+        None
+    }
+
+    // ---- SafeMemorySlotAccessOpInterface ------------------------------------------------
+
+    /// `ensureOnlySafeAccesses`; `None`: `op` does not implement it. Slots whose accesses must
+    /// be safe too go to `must_be_safe`.
+    fn ensure_only_safe_accesses<'a>(&self, cx: Slots<'_>, b: &Body<'a>, op: OpId, slot: &MemorySlot<'a>, must_be_safe: &mut Vec<MemorySlot<'a>>) -> Option<bool> {
+        None
+    }
+
+    // ---- DestructurableAccessorOpInterface ----------------------------------------------
+
+    /// Whether `op` implements `DestructurableAccessorOpInterface`.
+    fn is_accessor(&self, b: &Body<'_>, op: OpId) -> bool {
+        false
+    }
+
+    /// `canRewire`: the indices `op` accesses go to `used`.
+    fn can_rewire<'a>(&self, cx: Slots<'_>, b: &Body<'a>, op: OpId, slot: &DestructurableMemorySlot<'a>, used: &mut Vec<Attribute<'a>>, must_be_safe: &mut Vec<MemorySlot<'a>>) -> bool {
+        false
+    }
+
+    /// `rewire`; `rw` is right after `op`.
+    fn rewire<'a>(&self, cx: Slots<'_>, rw: &mut Rewriter<'_, 'a>, op: OpId, slot: &DestructurableMemorySlot<'a>, subslots: &[(Attribute<'a>, MemorySlot<'a>)]) -> Deletion {
+        Deletion::Keep
+    }
+}
+
+impl Body<'_> {
+    /// The implementation in `dialects` answering for `op`, by its namespace.
+    pub fn destructurable<'d>(&self, dialects: &[&'d dyn Destructurable], op: OpId) -> Option<&'d dyn Destructurable> {
+        let ns = self[op].name.split_once('.').map(|(ns, _)| ns)?;
+        dialects.iter().copied().find(|d| d.dialect() == ns)
+    }
+}
+
+/// `llvm`'s memory slot interfaces: [`Promotable`] in `mem2reg/llvm.rs`, [`Destructurable`]
+/// in `sroa/llvm.rs` (`LLVMMemorySlot.cpp`).
+pub struct LlvmSlots;
+
+/// `memref`'s memory slot interfaces: [`Promotable`] in `mem2reg/memref.rs`, [`Destructurable`]
+/// in `sroa/memref.rs` (`MemRefMemorySlot.cpp`).
+pub struct MemrefSlots;
