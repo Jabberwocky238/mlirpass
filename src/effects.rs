@@ -115,7 +115,7 @@ impl Body<'_> {
 
     /// Whether `op` is registered: known to the op table.
     pub fn registered(&self, op: OpId) -> bool {
-        crate::OpInfo::of(&self[op].name).is_some()
+        self.ctx.0.op_info(&self[op].name).is_some()
     }
 
     /// `mightHaveTrait`: an unregistered op might have any.

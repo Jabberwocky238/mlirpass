@@ -16,7 +16,7 @@ mod io;
 use alloc::vec::Vec;
 use core::ops::{Index, IndexMut};
 
-use mlirformat::{Attribute, NamedAttr, Str, Type};
+use mlirformat::{Attribute, NamedAttr, OpRegistry, Str, Type};
 
 /// Index newtypes into the arena, each with `Index` / `IndexMut` on [`Body`].
 macro_rules! ids {
@@ -67,6 +67,9 @@ pub struct OpData<'a> {
     pub loc: Option<Str<'a>>,
     /// `None` while detached (just created, or the root).
     pub parent: Option<BlockId>,
+    /// Built by [`OpData::build`]: the defaults that depend on what the context knows of the
+    /// op are added when it is created in a [`Body`].
+    pub defaults: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -105,9 +108,28 @@ pub struct ValueData<'a> {
     pub loc: Option<Str<'a>>,
 }
 
+/// The context a [`Body`] lives in: what it knows of ops (`MLIRContext`).
+#[derive(Clone, Copy)]
+pub struct Ctx<'a>(pub &'a dyn OpRegistry);
+
+impl core::fmt::Debug for Ctx<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("Ctx")
+    }
+}
+
+/// Bodies compare by their IR, not their context.
+impl PartialEq for Ctx<'_> {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
 /// ⭐ The arena. Erased entities stay in it (ids are never reused), detached from everything.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Body<'a> {
+    /// What the context knows of ops (traits, effects, inherent attributes, dialects).
+    pub ctx: Ctx<'a>,
     ops: Vec<OpData<'a>>,
     blocks: Vec<BlockData>,
     regions: Vec<RegionData>,
@@ -122,13 +144,7 @@ pub struct Body<'a> {
 impl<'a> OpData<'a> {
     /// A detached op with nothing but its name.
     pub fn named(name: impl Into<Str<'a>>) -> Self {
-        Self { name: name.into(), operands: Vec::new(), results: Vec::new(), successors: Vec::new(), properties: None, regions: Vec::new(), attributes: Vec::new(), loc: None, parent: None }
-    }
-
-    /// Whether attribute `name` is inherent (declared by the op's ODS): it then lives in the
-    /// `<{...}>` properties, else among the discardable `{...}` attributes.
-    pub fn inherent(&self, name: &str) -> bool {
-        crate::OpInfo::of(&self.name).is_some_and(|i| i.inherent.contains(&name) || matches!(name, "operandSegmentSizes" | "resultSegmentSizes"))
+        Self { name: name.into(), operands: Vec::new(), results: Vec::new(), successors: Vec::new(), properties: None, regions: Vec::new(), attributes: Vec::new(), loc: None, parent: None, defaults: false }
     }
 
     fn dict(&self, inherent: bool) -> &[NamedAttr<'a>] {
@@ -153,16 +169,17 @@ impl<'a> OpData<'a> {
     /// Attribute `name`, inherent or discardable.
     pub fn get(&self, name: &str) -> Option<&Attribute<'a>> {
         let find = |d: &[NamedAttr<'a>]| d.iter().position(|a| a.name == name);
-        let d = self.dict(self.inherent(name));
-        // An op outside the table keeps whatever the text said: look in both.
-        let d = if find(d).is_some() { d } else { self.dict(!self.inherent(name)) };
+        let d = if find(self.dict(true)).is_some() { self.dict(true) } else { self.dict(false) };
         let a = &d[find(d)?];
         Some(a.value.as_ref().unwrap_or(&Attribute::Unit))
     }
 
     /// Sets attribute `name`, keeping the dictionary sorted as MLIR's `DictionaryAttr` does.
+    ///
+    /// An attribute already there stays where it is; a new one joins the discardable ones until
+    /// the op's [`Body`] places it by what its context knows ([`Body::place`]).
     pub fn set(&mut self, name: &str, value: Attribute<'a>) {
-        let inherent = self.inherent(name);
+        let inherent = self.dict(true).iter().any(|a| a.name == name);
         let d = self.dict_mut(inherent);
         // A unit attribute is written bare: `{name}`.
         let value = (value != Attribute::Unit).then_some(value);
@@ -199,8 +216,8 @@ impl<'a> OpData<'a> {
 
 impl<'a> Body<'a> {
     /// An empty `builtin.module` with one empty block.
-    pub fn new() -> Self {
-        let mut body = Self { ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items: Vec::new() };
+    pub fn new(ctx: &'a dyn OpRegistry) -> Self {
+        let mut body = Self { ctx: Ctx(ctx), ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items: Vec::new() };
         body.root = body.create(OpData::named("builtin.module"), &[]);
         let region = body.add_region(body.root);
         body.add_block(region, &[]);
@@ -210,7 +227,16 @@ impl<'a> Body<'a> {
     // ---- creation ----------------------------------------------------------------------
 
     /// Adds a detached op with results of `types`; its operands' uses are recorded.
-    pub fn create(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
+    pub fn create(&mut self, mut data: OpData<'a>, types: &[Type<'a>]) -> OpId {
+        if data.defaults {
+            for (k, v) in crate::canon::context_defaults(self.ctx.0, &data.name) {
+                if data.get(k).is_none() {
+                    data.set(k, v);
+                }
+            }
+            data.defaults = false;
+        }
+        self.place(&mut data);
         let id = OpId(self.ops.len() as u32);
         for (index, v) in data.operands.iter().enumerate() {
             self[*v].uses.push(Use { op: id, index: index as u32 });
@@ -219,6 +245,37 @@ impl<'a> Body<'a> {
         let results = types.iter().enumerate().map(|(i, ty)| self.value(ty.clone(), Def::Result(id, i as u32), None)).collect();
         self[id].results = results;
         id
+    }
+
+    /// Whether attribute `name` of an op `op_name` is inherent (declared by its ODS, so in the
+    /// `<{...}>` properties); `None` when the context does not know the op.
+    pub fn inherent(&self, op_name: &str, name: &str) -> Option<bool> {
+        let info = self.ctx.0.op_info(op_name)?;
+        Some(info.inherent.contains(&name) || matches!(name, "operandSegmentSizes" | "resultSegmentSizes"))
+    }
+
+    /// Puts each attribute of `data` among its properties or its discardable attributes, as
+    /// the context says; an op the context does not know keeps what it has.
+    pub fn place(&self, data: &mut OpData<'a>) {
+        if self.ctx.0.op_info(&data.name).is_none() {
+            return;
+        }
+        let mut all: Vec<NamedAttr<'a>> = match data.properties.take() {
+            Some(Attribute::Dict(d)) => d,
+            _ => Vec::new(),
+        };
+        all.append(&mut data.attributes);
+        all.sort_by(|a, b| a.name.cmp(&b.name));
+        let (props, attrs): (Vec<_>, Vec<_>) = all.into_iter().partition(|a| self.inherent(&data.name, &a.name) == Some(true));
+        data.properties = (!props.is_empty()).then_some(Attribute::Dict(props));
+        data.attributes = attrs;
+    }
+
+    /// The discardable attributes of `op` (the `{...}` dictionary).
+    pub fn discardable(&self, op: OpId) -> Vec<NamedAttr<'a>> {
+        let mut d = self[op].clone();
+        self.place(&mut d);
+        d.attributes
     }
 
     fn value(&mut self, ty: Type<'a>, def: Def, loc: Option<Str<'a>>) -> ValueId {
@@ -413,11 +470,5 @@ impl<'a> Body<'a> {
         let mut out = Vec::new();
         self.walk(op, &mut |o| out.push(o));
         out
-    }
-}
-
-impl Default for Body<'_> {
-    fn default() -> Self {
-        Self::new()
     }
 }

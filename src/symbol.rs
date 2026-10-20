@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Str};
 
-use crate::{Body, OpId, OpInfo, Trait};
+use crate::{Body, OpId, Trait};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Visibility {
@@ -53,7 +53,7 @@ impl<'a> Body<'a> {
 
     /// An op that may be a symbol table nobody can tell about: one region, dialect unknown.
     pub fn maybe_unknown_symbol_table(&self, op: OpId) -> bool {
-        self[op].regions.len() == 1 && !OpInfo::knows_dialect(&self[op].name)
+        self[op].regions.len() == 1 && !self.ctx.0.knows_dialect_of(&self[op].name)
     }
 
     /// The symbol named `name` directly in symbol table `table`.

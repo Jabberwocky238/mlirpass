@@ -102,7 +102,7 @@ impl FuncToLlvm {
 
     /// `filterFuncAttributes`: the discardable attributes but linkage, varargs and readnone.
     fn func_attrs<'a>(cr: &ConversionRewriter<'_, 'a, '_>, op: OpId) -> Vec<NamedAttr<'a>> {
-        cr.rw.body[op].attributes.iter().filter(|a| !matches!(&*a.name, "llvm.linkage" | "func.varargs" | "llvm.readnone")).cloned().collect()
+        cr.rw.body.discardable(op).into_iter().filter(|a| !matches!(&*a.name, "llvm.linkage" | "func.varargs" | "llvm.readnone")).collect()
     }
 
     /// `LLVMFuncOp::build`: name, type, linkage, cconv and the extra attributes.

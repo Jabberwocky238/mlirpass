@@ -56,7 +56,7 @@ impl CfToLlvm {
         let (t, f) = (Self::flatten(&operands[tr]), Self::flatten(&operands[fr]));
         let [cond] = operands[0][..] else { return false };
         let weights = b[op].get("branch_weights").cloned();
-        let discardable = b[op].attributes.clone();
+        let discardable = b.discardable(op);
         let (tt, ft) = (cr.rw.body.types(&t), cr.rw.body.types(&f));
         // Each successor read after the previous conversion: they may be the same block.
         let td = cr.rw.body[op].successors[0];

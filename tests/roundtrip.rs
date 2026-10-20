@@ -12,7 +12,7 @@ use mlirpass::mlirformat::{Item, MlirOpt, Module};
 fn trip(opt: &MlirOpt, src: &str) -> Result<(String, bool), String> {
     let m = opt.parse(src).map_err(|e| format!("mlirformat: {e}"))?;
     let aliased = m.items.iter().any(|i| matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. }));
-    let body = Body::try_from(&m).map_err(|e| format!("import: {e}"))?;
+    let body = Body::import(opt, &m).map_err(|e| format!("import: {e}"))?;
     Ok((opt.show(&Module::from(&body)).to_string(), aliased))
 }
 

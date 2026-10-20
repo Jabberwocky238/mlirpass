@@ -213,12 +213,10 @@ impl<'m, 'a> Import<'m, 'a> {
     }
 }
 
-impl<'m, 'a> TryFrom<&'m Module<'a>> for Body<'a> {
-    type Error = Error;
-
-    /// The module's one `builtin.module` becomes the root; loose top-level ops are wrapped in one,
-    /// as `mlir-opt` does.
-    fn try_from(m: &'m Module<'a>) -> Result<Self, Error> {
+impl<'a> Body<'a> {
+    /// The body of module `m` in context `ctx`: its one `builtin.module` becomes the root;
+    /// loose top-level ops are wrapped in one, as `mlir-opt` does.
+    pub fn import<'m>(ctx: &'a dyn mlirformat::OpRegistry, m: &'m Module<'a>) -> Result<Self, Error> {
         let mut aliases = Aliases::default();
         let mut items = Vec::new();
         for item in &m.items {
@@ -244,7 +242,7 @@ impl<'m, 'a> TryFrom<&'m Module<'a>> for Body<'a> {
             items.push(item.clone());
         }
         let ops: Vec<&'m Operation<'a>> = m.items.iter().filter_map(|i| if let Item::Op(op) = i { Some(op) } else { None }).collect();
-        let empty = Body { ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items };
+        let empty = Body { ctx: crate::Ctx(ctx), ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items };
         let mut im = Import { body: empty, aliases, scopes: alloc::vec![Scope::default()] };
         match ops.as_slice() {
             [module] if module.name == "builtin.module" => {
@@ -330,7 +328,9 @@ impl<'b, 'a> Export<'b, 'a> {
     }
 
     fn op(&self, op: OpId) -> Operation<'a> {
-        let d = &self.body[op];
+        let mut placed = self.body[op].clone();
+        self.body.place(&mut placed);
+        let d = &placed;
         let results = match d.results.as_slice() {
             [] => Vec::new(),
             [r, rest @ ..] => alloc::vec![ResultDef { name: self.names[r].name.clone(), count: (!rest.is_empty()).then_some(d.results.len() as u32) }],
@@ -385,8 +385,8 @@ impl<'a> Body<'a> {
     }
 
     /// Text → body, with `opt`'s dialects for custom forms.
-    pub fn parse(opt: &mlirformat::MlirOpt, src: &'a str) -> Result<Self, Error> {
+    pub fn parse(opt: &'a mlirformat::MlirOpt, src: &'a str) -> Result<Self, Error> {
         let m = opt.parse(src).map_err(|e| Error(format!("{e}")))?;
-        Body::try_from(&m)
+        Body::import(opt, &m)
     }
 }

@@ -84,6 +84,7 @@ impl<'a> OpData<'a> {
         for (k, v) in defaults(name) {
             d.set(k, v);
         }
+        d.defaults = true;
         d
     }
 
@@ -103,10 +104,32 @@ impl<'a> OpData<'a> {
         self
     }
 
+    /// Adds attributes `a` (each as [`OpData::set`] does).
     pub fn attrs(mut self, a: Vec<NamedAttr<'a>>) -> Self {
-        self.attributes = a;
+        for n in a {
+            self.set(&n.name, n.value.unwrap_or(Attribute::Unit));
+        }
         self
     }
+}
+
+/// The default-valued properties of op `name` that depend on what `ctx` knows of it: the
+/// fast-math flags of `complex`, `math` and `llvm` ops, and `llvm`'s overflow flags.
+pub fn context_defaults<'a>(ctx: &dyn mlirformat::OpRegistry, name: &str) -> Vec<(&'static str, Attribute<'a>)> {
+    let inherent = ctx.op_info(name).map_or(&[][..], |i| i.inherent);
+    let mut out = Vec::new();
+    if (name.starts_with("complex.") || name.starts_with("math.")) && inherent.contains(&"fastmath") {
+        out.push(("fastmath", Attribute::dialect("arith.fastmath", "<none>")));
+    }
+    if name.starts_with("llvm.") {
+        if inherent.contains(&"fastmathFlags") {
+            out.push(("fastmathFlags", Attribute::dialect("llvm.fastmath", "<none>")));
+        }
+        if inherent.contains(&"overflowFlags") {
+            out.push(("overflowFlags", Attribute::Int { lit: "0".into(), ty: Some(Type::int(32)) }));
+        }
+    }
+    out
 }
 
 /// The default-valued properties of op `name`.
@@ -115,19 +138,10 @@ fn defaults<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
         "arith.addi" | "arith.subi" | "arith.muli" | "arith.shli" | "arith.trunci" => alloc::vec![("overflowFlags", Attribute::dialect("arith.overflow", "<none>"))],
         "arith.addf" | "arith.subf" | "arith.mulf" | "arith.divf" | "arith.remf" | "arith.negf" | "arith.maximumf" | "arith.maxnumf" | "arith.minimumf" | "arith.minnumf" | "arith.cmpf" => alloc::vec![("fastmath", Attribute::dialect("arith.fastmath", "<none>"))],
         "ub.poison" => alloc::vec![("value", Attribute::dialect("ub.poison", ""))],
-        // `complex` and `math` ops: the fast-math flags default to none.
-        n if (n.starts_with("complex.") || n.starts_with("math.")) && crate::OpInfo::of(n).is_some_and(|i| i.inherent.contains(&"fastmath")) => alloc::vec![("fastmath", Attribute::dialect("arith.fastmath", "<none>"))],
         "vector.load" | "vector.store" | "memref.load" | "memref.store" => alloc::vec![("nontemporal", Attribute::Bool(false))],
         // LLVM ops: the fast-math and overflow flags default to none.
         n if n.starts_with("llvm.") => {
-            let inherent = crate::OpInfo::of(n).map_or(&[][..], |i| i.inherent);
             let mut out = Vec::new();
-            if inherent.contains(&"fastmathFlags") {
-                out.push(("fastmathFlags", Attribute::dialect("llvm.fastmath", "<none>")));
-            }
-            if inherent.contains(&"overflowFlags") {
-                out.push(("overflowFlags", Attribute::Int { lit: "0".into(), ty: Some(Type::int(32)) }));
-            }
             let int = |v: &'static str, w: u32| Attribute::Int { lit: v.into(), ty: Some(Type::int(w)) };
             match n {
                 "llvm.func" => out.extend([("CConv", Attribute::dialect("llvm.cconv", "<ccc>")), ("linkage", Attribute::dialect("llvm.linkage", "<external>")), ("visibility_", int("0", 64))]),
