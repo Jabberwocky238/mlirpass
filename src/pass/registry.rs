@@ -71,6 +71,7 @@ registry! {
     SymbolDce,
     Sccp,
     BufferResultsToOutParams,
+    ConvertMathToFuncs,
     RemoveDeadValues,
     SymbolPrivatize,
 }
