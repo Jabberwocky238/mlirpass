@@ -6,7 +6,7 @@ mod common;
 use std::collections::BTreeSet;
 
 use common::Fixtures;
-use mlirpass::LlvmType;
+use mlirpass::mlirformat::llvm_types::LlvmType;
 use mlirpass::mlirformat::{MlirOpt, Parser, Type};
 
 #[test]
