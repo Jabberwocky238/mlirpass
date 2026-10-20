@@ -612,6 +612,52 @@ rewrites! {
     }
 }
 
+rewrites! {
+    /// `ExpandShapeOpMemRefCastFolder`, for a cast from an identity layout: constant output sizes
+    /// made static, the expansion of the cast's source (cast back when its type changes).
+    ExpandShapeOpMemRefCastFolder("memref.expand_shape", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(cast) = b.def_named(b[op].operands[0], "memref.cast") else { return false };
+        let (from, cur) = (b[cast].operands[0], b[op].operands[0]);
+        if !crate::canon::memref_cast_foldable(&b[from].ty, &b[cur].ty) {
+            return false;
+        }
+        let Type::Shaped(st) = &b[from].ty else { return false };
+        if !crate::MemrefToLlvm::identity_layout(st) {
+            return false;
+        }
+        let mut shape = b.mixed_output_shape(op);
+        for o in shape.iter_mut() {
+            if let Some(c) = b.ofr_int(*o) {
+                *o = Ofr::C(c);
+            }
+        }
+        let r = b.reassociation(op);
+        let src_dims = st.shape.clone().unwrap_or_default();
+        let mut at = 0;
+        for (g, d) in r.iter().zip(&src_dims) {
+            let dynamic = shape[at..at + g.len()].iter().any(|o| matches!(o, Ofr::V(_)));
+            if dynamic != matches!(d, Dim::Dynamic) {
+                return false;
+            }
+            at += g.len();
+        }
+        let dims = shape.iter().map(|o| if let Ofr::C(n) = o { Dim::Static(*n) } else { Dim::Dynamic }).collect();
+        let ty = Type::Shaped(mlirformat::Shaped { shape: Some(dims), ..st.clone() });
+        let rt = b[b[op].results[0]].ty.clone();
+        if ty == rt {
+            rw.modify(op, |b| b.set_operand(op, 0, from));
+        } else {
+            let data = crate::Rewriter::expand_data("memref", from, &r, &shape);
+            rw.set_before(op);
+            let new = rw.create(data, &[ty]);
+            let new = rw.body[new].results[0];
+            rw.replace_with(op, OpData::build("memref.cast").operands(&[new]), &[rt]);
+        }
+        true
+    }
+}
+
 impl Ofr {
     /// `constifyIndexValues`: the static values of the type first, then constant values.
     fn constify(b: &Body<'_>, list: &mut [Ofr], statics: &[i64]) {
@@ -757,6 +803,7 @@ pub fn patterns(set: &mut crate::PatternSet) {
     set.add(SimplifyAllocConst).add(SimplifyDeadAlloc).add(SimplifyAllocaConst).add(SimplifyDeadAlloca);
     set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeReassociative { name: "ComposeExpandOfExpand", dialect: "memref", root: "memref.expand_shape", expand: true }));
     set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeExpandOfCollapse { name: "ComposeExpandOfCollapseOp", dialect: "memref" }));
+    set.add(ExpandShapeOpMemRefCastFolder);
     set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeReassociative { name: "ComposeCollapseOfCollapse", dialect: "memref", root: "memref.collapse_shape", expand: false }));
     set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeCollapseOfExpand { name: "ComposeCollapseOfExpandOp", dialect: "memref" }));
     set.add(CollapseShapeOpMemRefCastFolder);

@@ -20,7 +20,7 @@ use mlirpass::mlirformat::MlirOpt;
 use mlirpass::{Body, Invocation, Passes};
 
 /// Chunks matching exactly; raise it whenever a change makes more match.
-const FLOOR: usize = 3623;
+const FLOOR: usize = 3628;
 
 #[derive(Default, Clone, Copy)]
 struct Tally {

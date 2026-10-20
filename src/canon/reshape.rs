@@ -253,7 +253,7 @@ impl<'a> Rewriter<'_, 'a> {
     }
 
     /// An `expand_shape` of `dialect` to `shape`.
-    fn expand_data(dialect: &str, src: ValueId, r: &Reassoc, shape: &[Ofr]) -> OpData<'a> {
+    pub fn expand_data(dialect: &str, src: ValueId, r: &Reassoc, shape: &[Ofr]) -> OpData<'a> {
         let mut ops = vec![src];
         let mut statics = Vec::new();
         for s in shape {
