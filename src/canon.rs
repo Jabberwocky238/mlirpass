@@ -3,8 +3,11 @@
 
 /// Declares rewrite patterns: one unit struct each, rooted at an op name, with a benefit (DRR
 /// patterns: the number of ops they match) and a body that matches and rewrites.
+/// A root of `_` matches any op (`OpInterfaceRewritePattern`s).
 macro_rules! rewrites {
-    ($($(#[$m:meta])* $name:ident($root:literal, $benefit:literal) |$rw:ident, $op:ident| $body:block)*) => {$(
+    (@root _) => { None };
+    (@root $root:literal) => { Some($root) };
+    ($($(#[$m:meta])* $name:ident($root:tt, $benefit:literal) |$rw:ident, $op:ident| $body:block)*) => {$(
         $(#[$m])*
         pub struct $name;
 
@@ -14,7 +17,7 @@ macro_rules! rewrites {
             }
 
             fn root(&self) -> Option<&str> {
-                Some($root)
+                rewrites!(@root $root)
             }
 
             fn benefit(&self) -> u16 {
@@ -30,6 +33,7 @@ macro_rules! rewrites {
 mod affine;
 mod arith;
 mod cf;
+mod linalg;
 mod llvm;
 mod memref;
 mod reshape;
@@ -153,6 +157,7 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("shape") => shape::fold(body, op, consts),
         Some("tensor") => tensor::fold(body, op, consts),
         Some("tosa") => tosa::fold(body, op, consts),
+        Some("linalg") => linalg::fold(body, op, consts),
         _ => Fold::Failed,
     }
 }
@@ -166,7 +171,7 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
         "llvm" => llvm::materialize(value, ty),
         "vector" => vector::materialize(value, ty),
         "shape" => shape::materialize(value, ty),
-        "tensor" => arith::materialize(value, ty),
+        "tensor" | "linalg" => arith::materialize(value, ty),
         "tosa" => tosa::materialize(value, ty),
         "ub" => crate::is_poison(value).then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,
@@ -192,6 +197,7 @@ pub fn patterns() -> PatternSet {
     affine::patterns(&mut set);
     arith::patterns(&mut set);
     cf::patterns(&mut set);
+    linalg::patterns(&mut set);
     memref::patterns(&mut set);
     scf::patterns(&mut set);
     shape::patterns(&mut set);
