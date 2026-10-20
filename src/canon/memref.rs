@@ -543,6 +543,10 @@ impl Ofr {
 
 pub fn patterns(set: &mut crate::PatternSet) {
     set.add(SimplifyAllocConst).add(SimplifyDeadAlloc).add(SimplifyAllocaConst).add(SimplifyDeadAlloca);
+    set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeReassociative { name: "ComposeExpandOfExpand", dialect: "memref", root: "memref.expand_shape", expand: true }));
+    set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeExpandOfCollapse { name: "ComposeExpandOfCollapseOp", dialect: "memref" }));
+    set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeReassociative { name: "ComposeCollapseOfCollapse", dialect: "memref", root: "memref.collapse_shape", expand: false }));
+    set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeCollapseOfExpand { name: "ComposeCollapseOfExpandOp", dialect: "memref" }));
     set.add(AllocaScopeInliner);
     set.add(SubViewConstantArguments).add(SubViewOpMemRefCastFolder).add(TrivialSubViewOpFolder);
 }
