@@ -37,7 +37,6 @@ use alloc::vec::Vec;
 use mlirpass_macros::pass;
 use mlirformat::{Attribute, Dim, NamedAttr, Shaped, ShapedKind, Type};
 
-use crate::canon::AttrExt;
 use crate::{Action, ConversionRewriter, ConversionTarget, OpData, OpId, TypeConverter, ValueId};
 use mlirformat::llvm_types::LlvmType;
 
@@ -564,7 +563,7 @@ pub struct SetLlvmModuleDataLayout {
 
 impl Run for SetLlvmModuleDataLayout {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        body[op].set("llvm.data_layout", Attribute::string(&self.layout));
+        body[op].set("llvm.data_layout", Attribute::str(&self.layout));
         Ok(())
     }
 }
@@ -958,7 +957,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         let block = self.rw.body.top_block(module);
         self.rw.set_start(block);
         let loc = self.rw.body[module].loc.clone();
-        let data = OpData { loc, ..OpData::build("llvm.func").with("function_type", Attribute::Type(fty)).with("sym_name", Attribute::string(name)) };
+        let data = OpData { loc, ..OpData::build("llvm.func").with("function_type", Attribute::Type(fty)).with("sym_name", Attribute::str(name)) };
         let f = self.rw.create_with(data, &[], |b, f| {
             b.add_region(f);
         });
@@ -996,7 +995,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         let block = self.rw.body.top_block(module);
         self.rw.set_start(block);
         let loc = saved.and_then(|ip| ip.before).and_then(|o| self.rw.body[o].loc.clone());
-        let g = OpData { loc, ..OpData::build("llvm.mlir.global").flag("constant").with("global_type", Attribute::Type(arr.clone())).with("linkage", Attribute::dialect("llvm.linkage", "<private>")).with("sym_name", Attribute::string(&name)).with("value", value.into()) };
+        let g = OpData { loc, ..OpData::build("llvm.mlir.global").flag("constant").with("global_type", Attribute::Type(arr.clone())).with("linkage", Attribute::dialect("llvm.linkage", "<private>")).with("sym_name", Attribute::str(&name)).with("value", value.into()) };
         self.rw.create_with(g, &[], |b, g| {
             b.add_region(g);
         });

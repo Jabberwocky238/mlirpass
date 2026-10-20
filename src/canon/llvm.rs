@@ -5,7 +5,6 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Type};
 
-use super::AttrExt;
 use crate::{Body, Const, Fold, Folded, OpData, OpId, Scalar};
 use mlirformat::llvm_types::LlvmType;
 

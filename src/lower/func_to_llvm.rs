@@ -8,7 +8,6 @@ use alloc::vec::Vec;
 use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Shaped, ShapedKind, Type};
 
-use crate::canon::AttrExt;
 use crate::{ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, SignatureConversion, Visibility, ValueId};
 use mlirformat::llvm_types::LlvmType;
 
@@ -108,7 +107,7 @@ impl FuncToLlvm {
 
     /// `LLVMFuncOp::build`: name, type, linkage, cconv and the extra attributes.
     fn llvm_func_data<'a>(name: &str, ty: Type<'a>, linkage: &str, attrs: Vec<NamedAttr<'a>>, loc: Option<mlirformat::Str<'a>>) -> OpData<'a> {
-        let mut d = OpData::build("llvm.func").with("sym_name", Attribute::string(name)).with("function_type", Attribute::Type(ty)).with("linkage", Attribute::dialect("llvm.linkage", &format!("<{linkage}>")));
+        let mut d = OpData::build("llvm.func").with("sym_name", Attribute::str(name)).with("function_type", Attribute::Type(ty)).with("linkage", Attribute::dialect("llvm.linkage", &format!("<{linkage}>")));
         for a in attrs {
             d.set(&a.name, a.value.unwrap_or(Attribute::Unit));
         }
@@ -142,7 +141,7 @@ impl FuncToLlvm {
         let res_attrs = cr.rw.body[op].get("res_attrs").cloned();
         let mut data = Self::llvm_func_data(&name, sig.llvm.clone(), &linkage, attrs, loc.clone());
         if visibility != Visibility::Public {
-            data.set("sym_visibility", Attribute::string(if visibility == Visibility::Private { "private" } else { "nested" }));
+            data.set("sym_visibility", Attribute::str(if visibility == Visibility::Private { "private" } else { "nested" }));
         }
         if readnone {
             data.set("memory_effects", Attribute::dialect("llvm.memory_effects", "<other = none, argMem = none, inaccessibleMem = none, errnoMem = none, targetMem0 = none, targetMem1 = none>"));
@@ -244,7 +243,7 @@ impl FuncToLlvm {
         }
         match cr.rw.body.visibility(orig) {
             Visibility::Public => {}
-            v => data.set("sym_visibility", Attribute::string(if v == Visibility::Private { "private" } else { "nested" })),
+            v => data.set("sym_visibility", Attribute::str(if v == Visibility::Private { "private" } else { "nested" })),
         }
         cr.rw.create_with(data, &[], |b, f| {
             b.add_region(f);

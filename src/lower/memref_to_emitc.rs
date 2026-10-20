@@ -8,7 +8,6 @@ use mlirformat::{Attribute, ShapedKind, Type};
 use mlirformat::emitc_types::EmitcType;
 
 use super::emitc::Emitc;
-use crate::canon::AttrExt;
 use crate::{Body, Const, ConversionRewriter, OpData, OpId, ValueId, Visibility};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
@@ -50,7 +49,7 @@ impl MemrefToEmitc {
 
     /// `sizeof(elem) * count`, as `calculateMemrefTotalSizeBytes`.
     fn total_size<'a>(cr: &mut Cr<'_, 'a, '_>, elem: &Type<'a>, count: i64) -> ValueId {
-        let data = OpData::build("emitc.call_opaque").with("callee", Attribute::string("sizeof")).with("args", Attribute::Array(vec![Attribute::Type(elem.clone())]));
+        let data = OpData::build("emitc.call_opaque").with("callee", Attribute::str("sizeof")).with("args", Attribute::Array(vec![Attribute::Type(elem.clone())]));
         let size = cr.build(data, EmitcType::size_t());
         let n = cr.emitc_constant(Emitc::int(count, Type::Index), Type::Index);
         cr.emitc("emitc.mul", &[size, n], EmitcType::size_t())
@@ -100,7 +99,7 @@ impl MemrefToEmitc {
             }
             None => ("malloc", vec![total]),
         };
-        let call = cr.build(OpData::build("emitc.call_opaque").operands(&args).with("callee", Attribute::string(callee)), EmitcType::void_ptr());
+        let call = cr.build(OpData::build("emitc.call_opaque").operands(&args).with("callee", Attribute::str(callee)), EmitcType::void_ptr());
         let cast = cr.emitc("emitc.cast", &[call], EmitcType::ptr(&elem));
         cr.replace_values(op, &[cast]);
         true
@@ -114,7 +113,7 @@ impl MemrefToEmitc {
         let Some(src_ptr) = Self::first_element(cr, ops[0]) else { return false };
         let Some(dst_ptr) = Self::first_element(cr, ops[1]) else { return false };
         let size = Self::total_size(cr, &s.elem, super::MemrefToLlvm::dims(&s).iter().product());
-        cr.rw.create(OpData::build("emitc.call_opaque").operands(&[dst_ptr, src_ptr, size]).with("callee", Attribute::string("memcpy")), &[]);
+        cr.rw.create(OpData::build("emitc.call_opaque").operands(&[dst_ptr, src_ptr, size]).with("callee", Attribute::str("memcpy")), &[]);
         cr.erase(op);
         true
     }
@@ -203,7 +202,7 @@ impl MemrefToEmitc {
                 continue;
             }
             let loc = body[module].loc.clone();
-            let data = OpData { loc, ..OpData::build("emitc.include").with("include", Attribute::string(header)).flag("is_standard_include") };
+            let data = OpData { loc, ..OpData::build("emitc.include").with("include", Attribute::str(header)).flag("is_standard_include") };
             let inc = body.create(data, &[]);
             match first {
                 Some(f) => body.insert_before(inc, f),

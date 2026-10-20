@@ -10,7 +10,6 @@ use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Dim, FloatKind, Shaped, ShapedKind, Type};
 
 use super::memref_to_llvm::{Cr, Gep, MemrefToLlvm as M};
-use crate::canon::AttrExt;
 use crate::{LlvmOptions, OpData, OpId, ValueId, DYNAMIC};
 use mlirformat::llvm_types::LlvmType;
 
@@ -707,7 +706,7 @@ impl VectorToLlvm {
     }
 
     fn call_void<'a>(cr: &mut Cr<'_, 'a, '_>, module: OpId, name: &str, args: &[ValueId], params: Vec<Type<'_>>) -> Option<()> {
-        let params: Vec<Type> = params.into_iter().map(|t| crate::Owned::owned(&t)).collect();
+        let params: Vec<Type> = params.into_iter().map(|t| Type::owned(&t)).collect();
         cr.llvm_func(module, name, params, LlvmType::void(), false)?;
         cr.llvm_call(name, args, &[]);
         Some(())
@@ -751,7 +750,7 @@ impl VectorToLlvm {
 
     /// `emitScalarPrint`.
     fn print_scalar<'a>(cr: &mut Cr<'_, 'a, '_>, module: OpId, pt: &Type<'_>, value: ValueId) -> Option<()> {
-        Self::convert(cr, &crate::Owned::owned(pt))?;
+        Self::convert(cr, &Type::owned(pt))?;
         let i64t = Type::int(64);
         let (name, conv): (&str, Option<(&str, Type)>) = match pt {
             Type::Float(FloatKind::F32) => ("printF32", None),

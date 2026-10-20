@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
 use super::vector_transforms::{dense_i64, index_attr};
-use crate::canon::{AttrExt, MemrefOfr as Ofr, map_attr};
+use crate::canon::{MemrefOfr as Ofr, map_attr};
 use crate::{AffineMap, ConversionRewriter, DYNAMIC, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;

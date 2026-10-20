@@ -7,7 +7,6 @@ use mlirformat::{Attribute, ShapedKind, Type};
 use mlirformat::emitc_types::EmitcType;
 
 use super::emitc::Emitc;
-use crate::canon::AttrExt;
 use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
@@ -215,7 +214,7 @@ impl ArithToEmitc {
         let rhs = cr.emitc_cast(ops[1], rt.clone());
         let width = if EmitcType::pointer_wide(&ty) {
             let eight = cr.emitc_constant(Emitc::int(8, Type::Index), rt.clone());
-            let size = cr.build(OpData::build("emitc.call_opaque").operands(&[eight]).with("callee", Attribute::string("sizeof")), rt.clone());
+            let size = cr.build(OpData::build("emitc.call_opaque").operands(&[eight]).with("callee", Attribute::str("sizeof")), rt.clone());
             cr.emitc("emitc.mul", &[eight, size], rt)
         } else {
             cr.emitc_constant(Emitc::int(i64::from(Emitc::width(&ty)), rt.clone()), rt)

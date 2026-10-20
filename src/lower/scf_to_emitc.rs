@@ -7,7 +7,6 @@ use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Type};
 use mlirformat::emitc_types::EmitcType;
 
-use crate::canon::AttrExt;
 use crate::{ConversionRewriter, OpData, OpId, RegionId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;

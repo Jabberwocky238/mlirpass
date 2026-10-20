@@ -11,7 +11,6 @@ use mlirpass_macros::{blocks, pass, patterns};
 
 use super::linalg_build::{dims_of, int_attr};
 use super::vector_transforms::dense_i64;
-use crate::canon::AttrExt;
 use crate::{ApFloat, BlockId, Body, Const, ConversionConfig, ConversionPatterns, ConversionRewriter, ConversionTarget, Converter, Mode, OpData, OpId, RegionId, Run, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
@@ -143,10 +142,10 @@ impl MathToFuncs {
     fn function<'b, 'a>(b: &'b mut Body<'a>, module: OpId, name: &str, ty: FunctionType<'a>) -> Fb<'b, 'a> {
         let inputs = ty.inputs.clone();
         let data = OpData::build("func.func")
-            .with("sym_name", Attribute::string(name))
+            .with("sym_name", Attribute::str(name))
             .with("function_type", Attribute::Type(Type::Function(ty)))
             .with("llvm.linkage", Attribute::dialect("llvm.linkage", "<linkonce_odr>"))
-            .with("sym_visibility", Attribute::string("private"));
+            .with("sym_visibility", Attribute::str("private"));
         let f = b.create(data, &[]);
         let top = b[b[module].regions[0]].blocks[0];
         b.insert(f, top, None);

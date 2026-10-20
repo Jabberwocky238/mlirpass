@@ -9,7 +9,6 @@ use mlirformat::{arith, Attribute, Type};
 
 use super::linalg_build::{dims_of, tensor_type};
 use super::vector_transforms::index_attr;
-use crate::canon::AttrExt;
 use crate::{ConversionRewriter, DYNAMIC, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;

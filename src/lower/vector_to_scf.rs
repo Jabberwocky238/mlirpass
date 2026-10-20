@@ -8,7 +8,7 @@ use mlirpass_macros::pass;
 use mlirformat::{Attribute, Dim, Error, ShapedKind, Shaped, Type};
 
 use super::vector_transforms::{Build, VectorBuild, dense_i64, elem, index_attr, vector_type, vshape};
-use crate::canon::{AttrExt, MemrefOfr as Ofr, map_attr};
+use crate::canon::{MemrefOfr as Ofr, map_attr};
 use crate::{AffineExpr, AffineMap, Body, DYNAMIC, GreedyConfig, LlvmOptions, OpData, OpId, Run, Pattern, PatternSet, Rewriter, Trait, ValueId};
 
 /// The label of transfers being lowered (`kPassLabel`).

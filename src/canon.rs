@@ -38,43 +38,16 @@ mod shape;
 mod tensor;
 mod vector;
 
-use alloc::borrow::Cow;
-use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Extended, NamedAttr, Type};
+use mlirformat::{Attribute, NamedAttr, Type};
 
 use crate::{Body, Fold, OpData, OpId, PatternSet, ValueId};
 
 pub use affine::map_attr;
 pub use memref::Ofr as MemrefOfr;
 pub use reshape::Reshape;
-
-/// Constructors for the attributes ops carry.
-pub trait AttrExt<'a>: Sized {
-    /// `#name<body>`: an enum or other dialect attribute.
-    fn dialect(name: &str, body: &str) -> Self;
-    /// `v : i64`, how ODS stores an integer enum.
-    fn i64(v: i64) -> Self;
-    /// A string attribute.
-    fn string(s: &str) -> Self;
-}
-
-impl<'a> AttrExt<'a> for Attribute<'a> {
-    fn dialect(name: &str, body: &str) -> Self {
-        let body = (!body.is_empty()).then(|| Cow::Owned(String::from(body)));
-        Attribute::Extended { ext: Extended { name: Cow::Owned(name.into()), body, params: Vec::new() }, ty: None }
-    }
-
-    fn i64(v: i64) -> Self {
-        Attribute::Int { lit: Cow::Owned(format!("{v}")), ty: Some(Type::int(64)) }
-    }
-
-    fn string(s: &str) -> Self {
-        Attribute::Str { lit: Cow::Owned(s.into()), ty: None }
-    }
-}
 
 impl<'a> OpData<'a> {
     /// A detached op named `name` as its ODS builder makes it: its default-valued properties

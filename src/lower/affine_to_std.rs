@@ -8,7 +8,6 @@ use alloc::vec::Vec;
 use mlirpass_macros::patterns;
 use mlirformat::{arith, Attribute, Type};
 
-use crate::canon::AttrExt;
 use crate::{AffineBin, AffineExpr, AffineMap, ConversionRewriter, OpData, OpId, ValueId};
 
 /// The affine ⇒ arith / scf / memref / vector patterns.

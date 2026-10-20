@@ -9,7 +9,6 @@ use alloc::vec::Vec;
 use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
 
-use crate::canon::AttrExt;
 use crate::{BlockId, ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, ValueId, Visibility, DYNAMIC};
 use mlirformat::llvm_types::LlvmType;
 
@@ -499,7 +498,7 @@ impl MemrefToLlvm {
     }
 
     fn assume<'a>(cr: &mut Cr<'_, 'a, '_>, operands: &[ValueId], tag: &str) {
-        let tags = Attribute::Array(vec![Attribute::string(tag)]);
+        let tags = Attribute::Array(vec![Attribute::str(tag)]);
         let sizes = Attribute::DenseArray { ty: Type::int(32), values: vec!["2".into()] };
         cr.rw.create(OpData::build("llvm.intr.assume").operands(operands).with("op_bundle_sizes", sizes).with("op_bundle_tags", tags), &[]);
     }

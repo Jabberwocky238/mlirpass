@@ -9,7 +9,6 @@ use mlirformat::arith::CmpIPredicate;
 use mlirformat::{arith, Attribute, Shaped, Type};
 
 use super::FromOp;
-use crate::canon::AttrExt;
 use crate::{ApInt, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;

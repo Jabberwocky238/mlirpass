@@ -5,7 +5,6 @@ use alloc::vec::Vec;
 use mlirpass_macros::patterns;
 use mlirformat::{Attribute, FunctionType, Type};
 
-use crate::canon::AttrExt;
 use crate::{ConversionRewriter, OpData, OpId, SignatureConversion, ValueId, Visibility};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
@@ -63,7 +62,7 @@ impl FuncToEmitc {
         let declaration = cr.rw.body[region].blocks.is_empty();
         let private = cr.rw.body.visibility(op) == Visibility::Private;
         if declaration || private {
-            data.set("specifiers", Attribute::Array(alloc::vec![Attribute::string(if declaration { "extern" } else { "static" })]));
+            data.set("specifiers", Attribute::Array(alloc::vec![Attribute::str(if declaration { "extern" } else { "static" })]));
         }
         cr.rw.set_before(op);
         let new = cr.rw.create_with(data, &[], |b, f| {

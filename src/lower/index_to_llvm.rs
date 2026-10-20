@@ -7,7 +7,6 @@ use alloc::vec::Vec;
 use mlirpass_macros::{ops, patterns};
 use mlirformat::{Attribute, Type};
 
-use crate::canon::AttrExt;
 use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
 /// `LLVM::ICmpPredicate`s.

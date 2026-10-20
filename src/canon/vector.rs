@@ -5,7 +5,6 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
-use super::AttrExt;
 use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, Scalar, ValueId, attr};
 
 /// `kPoisonIndex` of extract / insert positions and shuffle masks.

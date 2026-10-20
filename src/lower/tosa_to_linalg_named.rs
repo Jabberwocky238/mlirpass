@@ -9,7 +9,7 @@ use mlirformat::{Attribute, FloatKind, Type, tosa};
 
 use super::linalg_build::{Named, dims_of, i64_elements, int_attr, tensor_type};
 use super::vector_transforms::dense_i64;
-use crate::canon::{AttrExt, MemrefOfr as Ofr};
+use crate::canon::MemrefOfr as Ofr;
 use crate::{AffineExpr, AffineMap, ApFloat, Const, ConversionRewriter, DYNAMIC, Mapping, OpData, OpId, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;

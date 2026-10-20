@@ -5,7 +5,6 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, FloatKind, Type};
 
-use crate::canon::AttrExt;
 use mlirpass_macros::patterns;
 
 use crate::{ConversionRewriter, OpData, OpId, ValueId};
@@ -41,7 +40,7 @@ impl MathToEmitc {
         };
         let ops = b[op].operands.clone();
         let types = b.types(&b[op].results.clone());
-        cr.replace_new(op, OpData::build("emitc.call_opaque").operands(&ops).with("callee", Attribute::string(&callee)), &types);
+        cr.replace_new(op, OpData::build("emitc.call_opaque").operands(&ops).with("callee", Attribute::str(&callee)), &types);
         true
     }
 }

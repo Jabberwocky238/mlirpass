@@ -8,7 +8,6 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
-use crate::canon::AttrExt;
 use crate::{ApInt, Body, Const, ConversionRewriter, LlvmOptions, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId, DYNAMIC};
 
 /// What a lowering needs of its rewriter: the greedy one and the conversion one both do.
@@ -651,7 +650,7 @@ rewrites! {
         let dims = b.dense_i64(op, "mask_dim_sizes");
         let bool_const = |values: Vec<bool>, ty: &Type<'_>| -> Attribute<'static> {
             let vals: Vec<Scalar> = values.into_iter().map(|v| Scalar::Int(ApInt::new(1, i128::from(v)))).collect();
-            Const { ty: crate::Owned::owned(ty), values: vals, elements: true }.into()
+            Const { ty: Type::owned(ty), values: vals, elements: true }.into()
         };
         if shape.is_empty() {
             let c = bool_const(vec![dims[0] == 1], &dt);

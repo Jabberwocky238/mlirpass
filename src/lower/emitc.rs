@@ -7,7 +7,6 @@ use alloc::vec;
 use mlirformat::{Attribute, Shaped, ShapedKind, Signedness, Type};
 use mlirformat::emitc_types::EmitcType;
 
-use crate::canon::AttrExt;
 use crate::{ConversionRewriter, OpData, OpId, Rewriter, TypeConverter, ValueId};
 
 /// The EmitC conversions and the type helpers they need.

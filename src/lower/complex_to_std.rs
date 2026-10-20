@@ -8,7 +8,6 @@ use mlirformat::arith::CmpFPredicate as P;
 use mlirformat::{Attribute, FloatKind, Type};
 
 use super::FromOp;
-use crate::canon::AttrExt;
 use crate::{ApFloat, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 
 /// `arith::FastMathFlags`, as bits in their enum order.

@@ -7,7 +7,6 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Type};
 
-use super::AttrExt;
 use crate::{AffineExpr, AffineMap, Body, Const, Def, Fold, Folded, IntegerSet, OpData, OpId, RegionId, Trait, ValueId};
 
 /// `AffineDialect::materializeConstant`.

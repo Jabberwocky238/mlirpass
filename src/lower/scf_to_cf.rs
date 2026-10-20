@@ -7,7 +7,6 @@ use alloc::vec::Vec;
 use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Type};
 
-use crate::canon::AttrExt;
 use crate::{BlockId, ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;

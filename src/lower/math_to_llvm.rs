@@ -44,7 +44,7 @@ pub struct MathToLlvm;
 impl MathToLlvm {
     /// The op's attributes with `fastmath` as `fastmathFlags` (`AttrConvertFastMathToLLVM`).
     fn fmf_attrs(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Vec<NamedAttr<'static>> {
-        let mut attrs: Vec<NamedAttr<'static>> = cr.all_attrs(op).iter().map(|a| NamedAttr { name: alloc::borrow::Cow::Owned(alloc::string::String::from(&*a.name)), value: a.value.as_ref().map(crate::Owned::owned) }).collect();
+        let mut attrs: Vec<NamedAttr<'static>> = cr.all_attrs(op).iter().map(|a| NamedAttr { name: alloc::borrow::Cow::Owned(alloc::string::String::from(&*a.name)), value: a.value.as_ref().map(Attribute::owned) }).collect();
         if let Some(i) = attrs.iter().position(|a| a.name == "fastmath") {
             let a = attrs.remove(i);
             attrs.push(NamedAttr { name: "fastmathFlags".into(), value: Some(llvm_fastmath(a.value.as_ref())) });
@@ -138,7 +138,7 @@ impl MathToLlvm {
         let attrs = Self::fmf_attrs(cr, op);
         let res_ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
         let make = move |cr: &mut ConversionRewriter<'_, '_, '_>, ty: Type<'_>, x: ValueId| -> Option<ValueId> {
-            let ty = crate::Owned::owned(&ty);
+            let ty = Type::owned(&ty);
             let one = Self::one(cr, &ty)?;
             Some(match kind {
                 // expm1: exp(x) - 1
