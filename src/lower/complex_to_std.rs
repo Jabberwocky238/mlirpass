@@ -3,9 +3,10 @@
 
 use alloc::vec::Vec;
 
-use mlirpass_macros::patterns;
+use mlirpass_macros::{ops, patterns};
 use mlirformat::{Attribute, FloatKind, Type};
 
+use super::FromOp;
 use crate::canon::AttrExt;
 use crate::{ApFloat, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 
@@ -367,6 +368,84 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         (self.select(both, rs1, r5), self.select(both, is1, i5))
     }
 
+    fn neg(&mut self, x: ValueId, f: Fmf) -> ValueId {
+        self.f("arith.negf", &[x], f)
+    }
+
+    fn xor(&mut self, a: ValueId, b: ValueId) -> ValueId {
+        self.bit(if self.llvm { "llvm.xor" } else { "arith.xori" }, a, b)
+    }
+
+    /// `TrigonometricOpConversion`: `cos` or `sin` of `x`.
+    #[ops(self, fmf = fmf)]
+    fn trig(&mut self, x: ValueId, fmf: Fmf, cos_op: bool) -> ValueId {
+        let (re, im) = (self.re(x), self.im(x));
+        let half = 0.5;
+        let e = self.m("exp", im, fmf);
+        let se = half * e;
+        let re_e = half / e;
+        let sin = self.m("sin", re, fmf);
+        let cos = self.m("cos", re, fmf);
+        let (r, i) = if cos_op {
+            let r = (re_e + se) * cos;
+            let i = (re_e - se) * sin;
+            (r, i)
+        } else {
+            let r = (se + re_e) * sin;
+            let i = (se - re_e) * cos;
+            (r, i)
+        };
+        self.create(r, i)
+    }
+
+    /// `TanTanhOpConversion`: `tan` (through `tanh` of `i x`) or `tanh` of `x`.
+    #[ops(self, fmf = fmf)]
+    fn tan_tanh(&mut self, x: ValueId, fmf: Fmf, tan: bool) -> ValueId {
+        let (mut re, mut im) = (self.re(x), self.im(x));
+        let neg_one = -1.0;
+        if tan {
+            core::mem::swap(&mut re, &mut im);
+            re = re * neg_one;
+        }
+        let inf = self.inf(false);
+        let four = 4.0;
+        let two_re = re + re;
+        let neg_two_re = neg_one * two_re;
+        let e1 = self.m("expm1", two_re, fmf);
+        let e2 = self.m("expm1", neg_two_re, fmf);
+        let rnum = e1 - e2;
+        let ci = self.m("cos", im, fmf);
+        let two_cos = ci * ci * four;
+        let si = self.m("sin", im, fmf);
+        let inum = four * (ci * si);
+        let esum = e1 + e2;
+        let denom = esum + two_cos;
+        let is_inf = self.cmp(P::Oeq, esum, inf, fmf);
+        let limit = self.f("math.copysign", &[neg_one, re], fmf);
+        let t = rnum / denom;
+        let mut r = self.select(is_inf, limit, t);
+        let mut i = inum / denom;
+        if !fmf.finite() {
+            let ar = self.m("absf", re, fmf);
+            let zero = 0.0;
+            let nan = self.nan();
+            let ari = self.cmp(P::Oeq, ar, inf, fmf);
+            let iz = self.cmp(P::Oeq, im, zero, fmf);
+            let t = self.mk(OpData::build("arith.constant").with("value", Attribute::Bool(true)), Type::int(1));
+            let arni = ari ^ t;
+            let inn = self.cmp(P::Uno, inum, inum, fmf);
+            let rnan = inn & arni;
+            let izero = iz | (ari & inn);
+            r = self.select(rnan, nan, r);
+            i = self.select(izero, zero, i);
+        }
+        if tan {
+            core::mem::swap(&mut r, &mut i);
+            i = i * neg_one;
+        }
+        self.create(r, i)
+    }
+
     /// `powOpConversionImpl`.
     fn pow(&mut self, lhs: ValueId, c: ValueId, d: ValueId, fmf: Fmf) -> ValueId {
         let a = self.re(lhs);
@@ -433,44 +512,28 @@ type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 /// The complex ⇒ standard patterns.
 pub struct ComplexToStd;
 
-#[patterns(improved: bool)]
+#[patterns(improved: bool, builder = Self::cx)]
 impl ComplexToStd {
-    fn operand_ty<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Type<'a> {
-        cr.rw.body[cr.rw.body[op].operands[0]].ty.clone()
-    }
-
-    fn result_ty<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Type<'a> {
-        cr.rw.body[cr.rw.body[op].results[0]].ty.clone()
-    }
-
-    fn done(cr: &mut Cr<'_, '_, '_>, op: OpId, v: ValueId) -> bool {
-        cr.replace_values(op, &[v]);
-        true
+    /// The builder over the complex type of the first operand.
+    fn cx<'c, 'r, 'a, 'p>(cr: &'c mut Cr<'r, 'a, 'p>, op: OpId) -> Cx<'c, 'r, 'a, 'p> {
+        let ty = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
+        Cx::new(cr, ty)
     }
 
     #[lowering("complex.abs")]
-    fn abs(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let (re, im) = (b.re(o[0][0]), b.im(o[0][0]));
-        let v = b.abs(re, im, fmf, AbsFn::Abs);
-        Self::done(cr, op, v)
+    fn abs(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
+        let (re, im) = (b.re(x), b.im(x));
+        b.abs(re, im, fmf, AbsFn::Abs)
     }
 
     #[lowering("complex.angle")]
-    fn angle(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let (re, im) = (b.re(o[0][0]), b.im(o[0][0]));
-        let v = b.f("math.atan2", &[im, re], fmf);
-        Self::done(cr, op, v)
+    fn angle(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
+        let (re, im) = (b.re(x), b.im(x));
+        b.f("math.atan2", &[im, re], fmf)
     }
 
     #[lowering("complex.atan2")]
-    fn atan2(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::result_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let (lhs, rhs) = (o[0][0], o[1][0]);
+    fn atan2(b: &mut Cx<'_, '_, '_, '_>, lhs: ValueId, rhs: ValueId, fmf: Fmf) -> ValueId {
         let r2 = b.c("complex.mul", &[rhs, rhs], fmf);
         let l2 = b.c("complex.mul", &[lhs, lhs], fmf);
         let s = b.c("complex.add", &[r2, l2], fmf);
@@ -484,238 +547,193 @@ impl ComplexToStd {
         let l = b.c("complex.log", &[d], fmf);
         let neg_one = b.cst(-1.0);
         let ni = b.create(zero, neg_one);
-        let v = b.c("complex.mul", &[ni, l], fmf);
-        Self::done(cr, op, v)
+        b.c("complex.mul", &[ni, l], fmf)
     }
 
-    #[lowering("complex.add", "complex.sub")]
-    fn binary(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let name = if cr.rw.body[op].name == "complex.add" { "arith.addf" } else { "arith.subf" };
-        let mut b = Cx::new(cr, ty);
-        let (lr, rr) = (b.re(o[0][0]), b.re(o[1][0]));
-        let r = b.f(name, &[lr, rr], fmf);
-        let (li, ri) = (b.im(o[0][0]), b.im(o[1][0]));
-        let i = b.f(name, &[li, ri], fmf);
-        let v = b.create(r, i);
-        Self::done(cr, op, v)
+    #[lowering("complex.add")]
+    #[ops(b, fmf = fmf)]
+    fn add(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId, fmf: Fmf) -> ValueId {
+        let re = b.re(l) + b.re(r);
+        let im = b.im(l) + b.im(r);
+        b.create(re, im)
     }
 
-    #[lowering("complex.eq", "complex.neq")]
-    fn compare(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let ty = Self::operand_ty(cr, op);
-        let eq = cr.rw.body[op].name == "complex.eq";
-        let mut b = Cx::new(cr, ty);
-        let (lr, li, rr, ri) = (b.re(o[0][0]), b.im(o[0][0]), b.re(o[1][0]), b.im(o[1][0]));
-        let p = if eq { P::Oeq } else { P::Une };
-        let rc = b.cmp(p, lr, rr, Fmf::NONE);
-        let ic = b.cmp(p, li, ri, Fmf::NONE);
-        let v = if eq { b.and(rc, ic) } else { b.or(rc, ic) };
-        Self::done(cr, op, v)
+    #[lowering("complex.sub")]
+    #[ops(b, fmf = fmf)]
+    fn sub(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId, fmf: Fmf) -> ValueId {
+        let re = b.re(l) - b.re(r);
+        let im = b.im(l) - b.im(r);
+        b.create(re, im)
+    }
+
+    #[lowering("complex.eq")]
+    #[ops(b)]
+    fn eq(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId) -> ValueId {
+        let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
+        b.cmp(P::Oeq, lr, rr, Fmf::NONE) & b.cmp(P::Oeq, li, ri, Fmf::NONE)
+    }
+
+    #[lowering("complex.neq")]
+    #[ops(b)]
+    fn neq(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId) -> ValueId {
+        let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
+        b.cmp(P::Une, lr, rr, Fmf::NONE) | b.cmp(P::Une, li, ri, Fmf::NONE)
     }
 
     #[lowering("complex.conj")]
-    fn conj(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let ty = Self::operand_ty(cr, op);
-        let mut b = Cx::new(cr, ty);
-        let (re, im) = (b.re(o[0][0]), b.im(o[0][0]));
-        let ni = b.f("arith.negf", &[im], Fmf::NONE);
-        let v = b.create(re, ni);
-        Self::done(cr, op, v)
+    #[ops(b, fmf = Fmf::NONE)]
+    fn conj(b: &mut Cx<'_, '_, '_, '_>, x: ValueId) -> ValueId {
+        let (re, im) = (b.re(x), b.im(x));
+        let ni = -im;
+        b.create(re, ni)
     }
 
-    /// `TrigonometricOpConversion`: `cos` or `sin`.
-    #[lowering("complex.cos", "complex.sin")]
-    fn trig(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let cos_op = cr.rw.body[op].name == "complex.cos";
-        let mut b = Cx::new(cr, ty);
-        let (re, im) = (b.re(o[0][0]), b.im(o[0][0]));
-        let half = b.cst(0.5);
-        let e = b.m("exp", im, fmf);
-        let se = b.mul(half, e, fmf);
-        let re_e = b.div(half, e, fmf);
-        let sin = b.m("sin", re, fmf);
-        let cos = b.m("cos", re, fmf);
-        let (r, i) = if cos_op {
-            let s = b.add(re_e, se, fmf);
-            let r = b.mul(s, cos, fmf);
-            let d = b.sub(re_e, se, fmf);
-            (r, b.mul(d, sin, fmf))
-        } else {
-            let s = b.add(se, re_e, fmf);
-            let r = b.mul(s, sin, fmf);
-            let d = b.sub(se, re_e, fmf);
-            (r, b.mul(d, cos, fmf))
-        };
-        let v = b.create(r, i);
-        Self::done(cr, op, v)
+    /// `TrigonometricOpConversion`.
+    #[lowering("complex.cos")]
+    fn cos(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
+        b.trig(x, fmf, true)
+    }
+
+    /// `TrigonometricOpConversion`.
+    #[lowering("complex.sin")]
+    fn sin(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
+        b.trig(x, fmf, false)
     }
 
     #[lowering("complex.exp")]
-    fn exp(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let (x, y) = (b.re(o[0][0]), b.im(o[0][0]));
-        let zero = b.cst(0.0);
-        let half = b.cst(0.5);
+    #[ops(b, fmf = fmf)]
+    fn exp(b: &mut Cx<'_, '_, '_, '_>, z: ValueId, fmf: Fmf) -> ValueId {
+        let (x, y) = (b.re(z), b.im(z));
+        let zero = 0.0;
+        let half = 0.5;
         let inf = b.inf(false);
         let exp = b.m("exp", x, fmf);
-        let xh = b.mul(x, half, fmf);
-        let eh = b.m("exp", xh, fmf);
+        let eh = b.m("exp", x * half, fmf);
         let cos = b.m("cos", y, fmf);
         let sin = b.m("sin", y, fmf);
         let ei = b.cmp(P::Oeq, exp, inf, fmf);
         let yz = b.cmp(P::Oeq, y, zero, Fmf::NONE);
-        let rn = b.mul(exp, cos, fmf);
-        let t = b.mul(eh, cos, fmf);
-        let ro = b.mul(t, eh, fmf);
+        let rn = exp * cos;
+        let ro = eh * cos * eh;
         let r = b.select(ei, ro, rn);
-        let in_ = b.mul(exp, sin, fmf);
-        let t = b.mul(eh, sin, fmf);
-        let io = b.mul(t, eh, fmf);
+        let in_ = exp * sin;
+        let io = eh * sin * eh;
         let inz = b.select(ei, io, in_);
         let i = b.select(yz, zero, inz);
-        let v = b.create(r, i);
-        Self::done(cr, op, v)
+        b.create(r, i)
     }
 
     #[lowering("complex.expm1")]
-    fn expm1(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::result_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let (re, im) = (b.re(o[0][0]), b.im(o[0][0]));
-        let zero = b.cst(0.0);
-        let one = b.cst(1.0);
+    #[ops(b, fmf = fmf)]
+    fn expm1(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
+        let (re, im) = (b.re(x), b.im(x));
+        let zero = 0.0;
+        let one = 1.0;
         let em1 = b.m("expm1", re, fmf);
-        let er = b.add(em1, one, fmf);
+        let er = em1 + one;
         let si = b.m("sin", im, fmf);
         // `emitCosm1`.
-        let neg_half = b.cst(-0.5);
-        let neg_one = b.cst(-1.0);
+        let neg_half = -0.5;
+        let neg_one = -1.0;
         const K: [f64; 7] = [4.7377507964246204691685E-14, -1.1470284843425359765671E-11, 2.0876754287081521758361E-9, -2.7557319214999787979814E-7, 2.4801587301570552304991E-5, -1.3888888888888872993737E-3, 4.1666666666666666609054E-2];
         let cos = b.m("cos", im, fmf);
-        let large = b.add(cos, neg_one, fmf);
-        let p2 = b.mul(im, im, fmf);
-        let p4 = b.mul(p2, p2, fmf);
+        let large = cos + neg_one;
+        let p2 = im * im;
+        let p4 = p2 * p2;
         let poly = b.poly(p2, &K, fmf);
-        let a = b.mul(p4, poly, fmf);
-        let c = b.mul(neg_half, p2, fmf);
-        let small = b.add(a, c, Fmf::NONE);
-        let pi4 = b.cst(0.61685);
+        let a = p4 * poly;
+        let c = neg_half * p2;
+        let small = fm(Fmf::NONE, a + c);
+        let pi4 = 0.61685;
         let cond = b.cmp(P::Oge, p2, pi4, fmf);
         let cm1 = b.select(cond, large, small);
-        let ci = b.add(cm1, one, fmf);
-        let t = b.mul(em1, ci, fmf);
-        let r = b.add(t, cm1, fmf);
+        let ci = cm1 + one;
+        let r = em1 * ci + cm1;
         let iz = b.cmp(P::Oeq, im, zero, fmf);
-        let t = b.mul(er, si, fmf);
+        let t = er * si;
         let i = b.select(iz, zero, t);
-        let v = b.create(r, i);
-        Self::done(cr, op, v)
+        b.create(r, i)
     }
 
     #[lowering("complex.log")]
-    fn log(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
+    fn log(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
         let et = b.et.clone();
-        let abs = b.mk(OpData::build("complex.abs").operands(&[o[0][0]]).with("fastmath", fmf.attr()), et);
+        let abs = b.mk(OpData::build("complex.abs").operands(&[x]).with("fastmath", fmf.attr()), et);
         let r = b.m("log", abs, fmf);
-        let (re, im) = (b.re(o[0][0]), b.im(o[0][0]));
+        let (re, im) = (b.re(x), b.im(x));
         let i = b.f("math.atan2", &[im, re], fmf);
-        let v = b.create(r, i);
-        Self::done(cr, op, v)
+        b.create(r, i)
     }
 
     #[lowering("complex.log1p")]
-    fn log1p(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let (re, im) = (b.re(o[0][0]), b.im(o[0][0]));
-        let half = b.cst(0.5);
-        let one = b.cst(1.0);
-        let rp1 = b.add(re, one, fmf);
+    #[ops(b, fmf = fmf)]
+    fn log1p(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
+        let (re, im) = (b.re(x), b.im(x));
+        let half = 0.5;
+        let one = 1.0;
+        let rp1 = re + one;
         let arp1 = b.m("absf", rp1, fmf);
         let ai = b.m("absf", im, fmf);
         let max = b.f("arith.maximumf", &[arp1, ai], fmf);
         let min = b.f("arith.minimumf", &[arp1, ai], fmf);
         let use_re = b.cmp(P::Ogt, rp1, ai, fmf);
-        let mm1 = b.sub(max, one, fmf);
+        let mm1 = max - one;
         let m = b.select(use_re, re, mm1);
         let f2 = fmf.without_nan_inf();
-        let ratio = b.div(min, max, f2);
+        let ratio = fm(f2, min / max);
         let lm = b.m("log1p", m, fmf);
-        let t = b.mul(ratio, ratio, f2);
-        let ls = b.m("log1p", t, f2);
-        let t = b.mul(half, ls, f2);
-        let r = b.add(t, lm, f2);
+        let ls = b.m("log1p", fm(f2, ratio * ratio), f2);
+        let r = fm(f2, half * ls + lm);
         let nan = b.cmp(P::Uno, r, r, f2);
         let rr = b.select(nan, min, r);
         let i = b.f("math.atan2", &[im, rp1], fmf);
-        let v = b.create(rr, i);
-        Self::done(cr, op, v)
+        b.create(rr, i)
     }
 
     #[lowering("complex.mul")]
-    fn mul(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let (lr, li, rr, ri) = (b.re(o[0][0]), b.im(o[0][0]), b.re(o[1][0]), b.im(o[1][0]));
-        let a = b.mul(lr, rr, fmf);
-        let c = b.mul(li, ri, fmf);
-        let r = b.sub(a, c, fmf);
-        let a = b.mul(li, rr, fmf);
-        let c = b.mul(lr, ri, fmf);
-        let i = b.add(a, c, fmf);
-        let v = b.create(r, i);
-        Self::done(cr, op, v)
+    #[ops(b, fmf = fmf)]
+    fn mul(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId, fmf: Fmf) -> ValueId {
+        let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
+        let re = lr * rr - li * ri;
+        let im = li * rr + lr * ri;
+        b.create(re, im)
     }
 
     #[lowering("complex.neg")]
-    fn neg(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let ty = Self::operand_ty(cr, op);
-        let mut b = Cx::new(cr, ty);
-        let (re, im) = (b.re(o[0][0]), b.im(o[0][0]));
-        let nr = b.f("arith.negf", &[re], Fmf::NONE);
-        let ni = b.f("arith.negf", &[im], Fmf::NONE);
-        let v = b.create(nr, ni);
-        Self::done(cr, op, v)
+    #[ops(b, fmf = Fmf::NONE)]
+    fn neg(b: &mut Cx<'_, '_, '_, '_>, x: ValueId) -> ValueId {
+        let (re, im) = (b.re(x), b.im(x));
+        let (nr, ni) = (-re, -im);
+        b.create(nr, ni)
     }
 
     #[lowering("complex.sign")]
-    fn sign(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let (re, im) = (b.re(o[0][0]), b.im(o[0][0]));
-        let zero = b.cst(0.0);
-        let rz = b.cmp(P::Oeq, re, zero, Fmf::NONE);
-        let iz = b.cmp(P::Oeq, im, zero, Fmf::NONE);
-        let z = b.and(rz, iz);
+    #[ops(b, fmf = fmf)]
+    fn sign(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
+        let (re, im) = (b.re(x), b.im(x));
+        let zero = 0.0;
+        let z = b.cmp(P::Oeq, re, zero, Fmf::NONE) & b.cmp(P::Oeq, im, zero, Fmf::NONE);
         let et = b.et.clone();
-        let abs = b.mk(OpData::build("complex.abs").operands(&[o[0][0]]).with("fastmath", fmf.attr()), et);
-        let rs = b.div(re, abs, fmf);
-        let is = b.div(im, abs, fmf);
+        let abs = b.mk(OpData::build("complex.abs").operands(&[x]).with("fastmath", fmf.attr()), et);
+        let (rs, is) = (re / abs, im / abs);
         let s = b.create(rs, is);
-        let v = b.select(z, o[0][0], s);
-        Self::done(cr, op, v)
+        b.select(z, x, s)
     }
 
     #[lowering("complex.sqrt")]
-    fn sqrt(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::result_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let zero = b.cst(0.0);
-        let half = b.cst(0.5);
-        let (re, im) = (b.re(o[0][0]), b.im(o[0][0]));
+    #[ops(b, fmf = fmf)]
+    fn sqrt(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
+        let zero = 0.0;
+        let half = 0.5;
+        let (re, im) = (b.re(x), b.im(x));
         let abs = b.abs(re, im, fmf, AbsFn::Sqrt);
         let arg = b.f("math.atan2", &[im, re], fmf);
-        let sa = b.mul(arg, half, fmf);
+        let sa = arg * half;
         let cos = b.m("cos", sa, fmf);
         let sin = b.m("sin", sa, fmf);
         let sz = b.cmp(P::Oeq, sin, zero, fmf);
-        let mut r = b.mul(abs, cos, fmf);
-        let t = b.mul(abs, sin, fmf);
+        let mut r = abs * cos;
+        let t = abs * sin;
         let mut i = b.select(sz, zero, t);
         if !fmf.finite() {
             let inf = b.inf(false);
@@ -726,158 +744,102 @@ impl ComplexToStd {
             let ain = b.cmp(P::One, ai, inf, fmf);
             let ri = b.cmp(P::Oeq, re, inf, fmf);
             let rni = b.cmp(P::Oeq, re, ninf, fmf);
-            let t = b.and(rni, ain);
-            r = b.select(t, zero, r);
-            let t = b.or(aii, ri);
-            r = b.select(t, inf, r);
+            r = b.select(rni & ain, zero, r);
+            r = b.select(aii | ri, inf, r);
             let isi = b.f("math.copysign", &[inf, im], fmf);
             let t = b.cmp(P::Uno, abs, abs, Fmf::NONE);
             i = b.select(t, nan, i);
-            let t = b.or(aii, rni);
-            i = b.select(t, isi, i);
+            i = b.select(aii | rni, isi, i);
         }
         let z = b.cmp(P::Oeq, abs, zero, fmf);
         r = b.select(z, zero, r);
         i = b.select(z, zero, i);
-        let v = b.create(r, i);
-        Self::done(cr, op, v)
+        b.create(r, i)
     }
 
     /// `TanTanhOpConversion`.
-    #[lowering("complex.tan", "complex.tanh")]
-    fn tan_tanh(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let tan = cr.rw.body[op].name == "complex.tan";
-        let mut b = Cx::new(cr, ty);
-        let (mut re, mut im) = (b.re(o[0][0]), b.im(o[0][0]));
-        let neg_one = b.cst(-1.0);
-        if tan {
-            core::mem::swap(&mut re, &mut im);
-            re = b.mul(re, neg_one, fmf);
-        }
-        let inf = b.inf(false);
-        let four = b.cst(4.0);
-        let two_re = b.add(re, re, fmf);
-        let neg_two_re = b.mul(neg_one, two_re, fmf);
-        let e1 = b.m("expm1", two_re, fmf);
-        let e2 = b.m("expm1", neg_two_re, fmf);
-        let rnum = b.sub(e1, e2, fmf);
-        let ci = b.m("cos", im, fmf);
-        let ci2 = b.mul(ci, ci, fmf);
-        let two_cos = b.mul(ci2, four, fmf);
-        let si = b.m("sin", im, fmf);
-        let t = b.mul(ci, si, fmf);
-        let inum = b.mul(four, t, fmf);
-        let esum = b.add(e1, e2, fmf);
-        let denom = b.add(esum, two_cos, fmf);
-        let is_inf = b.cmp(P::Oeq, esum, inf, fmf);
-        let limit = b.f("math.copysign", &[neg_one, re], fmf);
-        let t = b.div(rnum, denom, fmf);
-        let mut r = b.select(is_inf, limit, t);
-        let mut i = b.div(inum, denom, fmf);
-        if !fmf.finite() {
-            let ar = b.m("absf", re, fmf);
-            let zero = b.cst(0.0);
-            let nan = b.nan();
-            let ari = b.cmp(P::Oeq, ar, inf, fmf);
-            let iz = b.cmp(P::Oeq, im, zero, fmf);
-            let t = b.mk(OpData::build("arith.constant").with("value", Attribute::Bool(true)), Type::int(1));
-            let arni = b.bit("arith.xori", ari, t);
-            let inn = b.cmp(P::Uno, inum, inum, fmf);
-            let rnan = b.and(inn, arni);
-            let t = b.and(ari, inn);
-            let izero = b.or(iz, t);
-            r = b.select(rnan, nan, r);
-            i = b.select(izero, zero, i);
-        }
-        if tan {
-            core::mem::swap(&mut r, &mut i);
-            i = b.mul(i, neg_one, fmf);
-        }
-        let v = b.create(r, i);
-        Self::done(cr, op, v)
+    #[lowering("complex.tan")]
+    fn tan(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
+        b.tan_tanh(x, fmf, true)
+    }
+
+    /// `TanTanhOpConversion`.
+    #[lowering("complex.tanh")]
+    fn tanh(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
+        b.tan_tanh(x, fmf, false)
     }
 
     #[lowering("complex.powi")]
-    fn powi(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::result_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
+    fn powi(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, e: ValueId, fmf: Fmf) -> ValueId {
         let et = b.et.clone();
-        let fe = b.mk(OpData::build("arith.sitofp").operands(&[o[1][0]]), et);
+        let fe = b.mk(OpData::build("arith.sitofp").operands(&[e]), et);
         let zero = b.cst(0.0);
         let ce = b.create(fe, zero);
-        let v = b.c("complex.pow", &[o[0][0], ce], fmf);
-        Self::done(cr, op, v)
+        b.c("complex.pow", &[x, ce], fmf)
     }
 
     #[lowering("complex.pow")]
-    fn pow(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let (c, d) = (b.re(o[1][0]), b.im(o[1][0]));
-        let v = b.pow(o[0][0], c, d, fmf);
-        Self::done(cr, op, v)
+    fn pow(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, y: ValueId, fmf: Fmf) -> ValueId {
+        let (c, d) = (b.re(y), b.im(y));
+        b.pow(x, c, d, fmf)
     }
 
     #[lowering("complex.rsqrt")]
-    fn rsqrt(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let zero = b.cst(0.0);
+    #[ops(b, fmf = fmf)]
+    fn rsqrt(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
+        let zero = 0.0;
         let inf = b.inf(false);
-        let neg_half = b.cst(-0.5);
+        let neg_half = -0.5;
         let nan = b.nan();
-        let (re, im) = (b.re(o[0][0]), b.im(o[0][0]));
+        let (re, im) = (b.re(x), b.im(x));
         let abs = b.abs(re, im, fmf, AbsFn::Rsqrt);
         let arg = b.f("math.atan2", &[im, re], fmf);
-        let ra = b.mul(arg, neg_half, fmf);
+        let ra = arg * neg_half;
         let cos = b.m("cos", ra, fmf);
         let sin = b.m("sin", ra, fmf);
-        let mut r = b.mul(abs, cos, fmf);
-        let mut i = b.mul(abs, sin, fmf);
+        let mut r = abs * cos;
+        let mut i = abs * sin;
         if !fmf.finite() {
-            let neg_one = b.cst(-1.0);
+            let neg_one = -1.0;
             let rsz = b.f("math.copysign", &[zero, re], fmf);
             let isz = b.f("math.copysign", &[zero, im], fmf);
-            let nisz = b.mul(neg_one, isz, fmf);
+            let nisz = neg_one * isz;
             let ar = b.m("absf", re, fmf);
             let ai = b.m("absf", im, fmf);
             let aii = b.cmp(P::Oeq, ai, inf, fmf);
             let rn = b.cmp(P::Uno, re, re, fmf);
             let ri = b.cmp(P::Oeq, ar, inf, fmf);
-            let t = b.and(aii, rn);
-            let z = b.or(t, ri);
+            let z = aii & rn | ri;
             r = b.select(z, rsz, r);
             i = b.select(z, nisz, i);
         }
-        let rz = b.cmp(P::Oeq, re, zero, fmf);
-        let iz = b.cmp(P::Oeq, im, zero, fmf);
-        let z = b.and(rz, iz);
+        let z = b.cmp(P::Oeq, re, zero, fmf) & b.cmp(P::Oeq, im, zero, fmf);
         r = b.select(z, inf, r);
         i = b.select(z, nan, i);
-        let v = b.create(r, i);
-        Self::done(cr, op, v)
+        b.create(r, i)
     }
 
-    fn div(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], improved: bool) -> bool {
-        let (fmf, ty) = (Fmf::of(cr, op), Self::operand_ty(cr, op));
-        let mut b = Cx::new(cr, ty);
-        let (lr, li, rr, ri) = (b.re(o[0][0]), b.im(o[0][0]), b.re(o[1][0]), b.im(o[1][0]));
-        let (r, i) = if improved { b.div_range_reduction(lr, li, rr, ri, fmf) } else { b.div_algebraic(lr, li, rr, ri, fmf) };
-        let v = b.create(r, i);
-        Self::done(cr, op, v)
-    }
-
+    /// `DivOpConversion` with `complex-range=improved`.
     #[lowering("complex.div", when = improved)]
-    fn div_improved(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        Self::div(cr, op, o, true)
+    fn div_improved(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId, fmf: Fmf) -> ValueId {
+        let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
+        let (re, im) = b.div_range_reduction(lr, li, rr, ri, fmf);
+        b.create(re, im)
     }
 
+    /// `DivOpConversion` with `complex-range=basic` or `none`.
     #[lowering("complex.div", when = !improved)]
-    fn div_basic(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        Self::div(cr, op, o, false)
+    fn div_basic(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId, fmf: Fmf) -> ValueId {
+        let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
+        let (re, im) = b.div_algebraic(lr, li, rr, ri, fmf);
+        b.create(re, im)
     }
+}
 
+impl FromOp for Fmf {
+    fn from_op(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Self {
+        Fmf::of(cr, op)
+    }
 }
 
 /// `complex` ⇒ `llvm`, as `ComplexToLLVM.cpp`.

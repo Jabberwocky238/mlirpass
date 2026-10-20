@@ -104,6 +104,36 @@ pub fn llvm_target<'c>() -> ConversionTarget<'c> {
     t
 }
 
+/// Something a typed `#[lowering]` reads off the op it lowers (its fast-math flags, ..).
+trait FromOp {
+    fn from_op(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Self;
+}
+
+/// What a typed `#[lowering]` returns: the op's replacement, or failure.
+trait Replacement {
+    fn replace(self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId) -> bool;
+}
+
+impl Replacement for ValueId {
+    fn replace(self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId) -> bool {
+        cr.replace_values(op, &[self]);
+        true
+    }
+}
+
+impl Replacement for Option<ValueId> {
+    fn replace(self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId) -> bool {
+        self.is_some_and(|v| v.replace(cr, op))
+    }
+}
+
+impl Replacement for Vec<ValueId> {
+    fn replace(self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId) -> bool {
+        cr.replace_values(op, &self);
+        true
+    }
+}
+
 /// A lowering that needs the pass options `O`.
 struct OptLowering<O> {
     root: &'static str,
