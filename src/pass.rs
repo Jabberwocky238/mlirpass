@@ -24,7 +24,7 @@ use mlirformat::Error;
 
 use crate::{Body, OpId};
 
-pub use registry::{PASSES, PassInfo};
+pub use registry::{PassInfo, PassRegistry, Passes};
 
 /// A pass's `mlir-opt` name and anchor op (`Passes.td`'s `Pass<"name", "op">`); `#[pass]`
 /// declares it.
@@ -241,9 +241,9 @@ impl PassManager {
         Ok(self)
     }
 
-    /// Adds pass `name` from the registry.
-    pub fn add_named(&mut self, name: &str, options: &str) -> Result<&mut Self, Error> {
-        let info = PassInfo::find(name).ok_or_else(|| Error(format!("unknown pass `{name}`")))?;
+    /// Adds pass `name` from registry `reg`.
+    pub fn add_named(&mut self, reg: &dyn PassRegistry, name: &str, options: &str) -> Result<&mut Self, Error> {
+        let info = reg.pass(name).ok_or_else(|| Error(format!("unknown pass `{name}`")))?;
         self.add(info, &Options::try_from(options)?)
     }
 
@@ -275,7 +275,7 @@ impl PassManager {
     }
 
     /// Parses the elements of a textual pipeline into this manager: `a, b{x=1}, func.func(c)`.
-    fn elements<'s>(&mut self, mut s: &'s str) -> Result<&'s str, Error> {
+    fn elements<'s>(&mut self, reg: &dyn PassRegistry, mut s: &'s str) -> Result<&'s str, Error> {
         loop {
             s = s.trim_start();
             let end = s.find(|c: char| matches!(c, '{' | '(' | ',' | ')') || c.is_whitespace()).unwrap_or(s.len());
@@ -292,11 +292,11 @@ impl PassManager {
             }
             if let Some(after) = s.strip_prefix('(') {
                 let mut pm = PassManager::on(name);
-                s = pm.elements(after)?.trim_start();
+                s = pm.elements(reg, after)?.trim_start();
                 s = s.strip_prefix(')').ok_or_else(|| Error(format!("`{name}(` without its `)`")))?;
                 self.nest(pm);
             } else {
-                self.add_named(name, options)?;
+                self.add_named(reg, name, options)?;
             }
             s = s.trim_start();
             match s.strip_prefix(',') {
@@ -328,15 +328,13 @@ impl PassManager {
     }
 }
 
-impl TryFrom<&str> for PassManager {
-    type Error = Error;
-
-    /// `--pass-pipeline` text: `anchor(elements)`.
-    fn try_from(s: &str) -> Result<Self, Error> {
+impl PassManager {
+    /// `--pass-pipeline` text: `anchor(elements)`, the passes named from `reg`.
+    pub fn parse(reg: &dyn PassRegistry, s: &str) -> Result<Self, Error> {
         let s = s.trim();
         let open = s.find('(').ok_or_else(|| Error(format!("pipeline `{s}` names no anchor, e.g. `builtin.module(...)`")))?;
         let mut pm = PassManager::on(s[..open].trim());
-        let rest = pm.elements(&s[open + 1..])?;
+        let rest = pm.elements(reg, &s[open + 1..])?;
         match rest.trim_start().strip_prefix(')') {
             Some(tail) if tail.trim().is_empty() => Ok(pm),
             _ => Err(Error(format!("unexpected `{rest}` at the end of the pipeline"))),

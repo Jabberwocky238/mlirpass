@@ -35,10 +35,9 @@ pub struct Invocation {
 /// Flags that change nothing this crate does.
 const IGNORED: &[&str] = &["allow-unregistered-dialect", "mlir-disable-threading", "verify-each", "mlir-print-local-scope", "mlir-print-value-users", "mlir-print-elementsattrs-with-hex-if-larger", "mlir-elide-elementsattrs-if-larger", "mlir-print-unique-ssa-ids", "mlir-very-unsafe-disable-verifier-on-parsing", "mlir-print-assume-verified", "mlir-print-skip-regions"];
 
-impl<S: AsRef<str>> TryFrom<&[S]> for Invocation {
-    type Error = Error;
-
-    fn try_from(args: &[S]) -> Result<Self, Error> {
+impl Invocation {
+    /// The `mlir-opt` arguments `args`, the passes named from `reg`.
+    pub fn parse<S: AsRef<str>>(reg: &dyn crate::PassRegistry, args: &[S]) -> Result<Self, Error> {
         let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, verify_diagnostics: false, input: None, output: None };
         let mut it = args.iter().map(AsRef::as_ref);
         while let Some(arg) = it.next() {
@@ -56,11 +55,11 @@ impl<S: AsRef<str>> TryFrom<&[S]> for Invocation {
                 "verify-diagnostics" => inv.verify_diagnostics = true,
                 "pass-pipeline" | "p" => {
                     let text = value.or_else(|| it.next()).ok_or("`--pass-pipeline` needs a pipeline")?;
-                    inv.pipeline = PassManager::try_from(text)?;
+                    inv.pipeline = PassManager::parse(reg, text)?;
                 }
                 n if IGNORED.contains(&n) => {}
                 n => {
-                    inv.pipeline.add_named(n, value.unwrap_or(""))?;
+                    inv.pipeline.add_named(reg, n, value.unwrap_or(""))?;
                 }
             }
         }

@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 
 use common::Fixtures;
 use mlirpass::mlirformat::{MlirOpt, OpInfos};
-use mlirpass::{Body, Invocation};
+use mlirpass::{Body, Invocation, Passes};
 
 /// Chunks matching exactly; raise it whenever a change makes more match.
 const FLOOR: usize = 3568;
@@ -59,6 +59,7 @@ fn passes() {
     // The fixtures are generic: no dialect syntax, but every upstream op's ODS facts.
     let mut opt = MlirOpt::new();
     *opt.infos_mut() = OpInfos::upstream();
+    let passes = Passes::upstream();
     let filter = std::env::var("FILTER").ok();
     let show = std::env::var_os("SHOW").is_some();
     let full = std::env::var("SHOW").is_ok_and(|s| s == "full");
@@ -71,10 +72,10 @@ fn passes() {
         let input = Fixtures::read(&run.stem, "in");
         let expected = Fixtures::read(&run.stem, "generic");
         let t = groups.entry(group(&run.stem)).or_default();
-        let mut inv = match Invocation::try_from(run.args.as_slice()) {
+        let mut inv = match Invocation::parse(&passes, run.args.as_slice()) {
             Ok(inv) => inv,
             Err(e) => {
-                let n = Invocation { split: Some("// -----".into()), ..Invocation::try_from(&[] as &[&str]).unwrap() }.chunks(&input).len();
+                let n = Invocation { split: Some("// -----".into()), ..Invocation::parse(&passes, &[] as &[&str]).unwrap() }.chunks(&input).len();
                 t.unsupported += n;
                 *unsupported.entry(e.0).or_default() += n;
                 continue;

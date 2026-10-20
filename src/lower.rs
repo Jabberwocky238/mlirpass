@@ -9,6 +9,7 @@ mod emitc;
 mod func_to_emitc;
 mod func_to_llvm;
 mod index_to_llvm;
+mod interfaces;
 mod linalg_build;
 mod math_to_emitc;
 mod math_to_funcs;
@@ -47,6 +48,7 @@ pub use complex_to_std::{ComplexToLlvm, ComplexToStd};
 pub use emitc::Emitc;
 pub use func_to_emitc::FuncToEmitc;
 pub use func_to_llvm::FuncToLlvm;
+pub use interfaces::{DialectInterfaces, LlvmEnv, ToEmitcInterfaces, ToLlvmInterfaces};
 pub use index_to_llvm::{IndexToLlvm, UbToLlvm};
 pub use math_to_emitc::MathToEmitc;
 pub use math_to_funcs::{ConvertMathToFuncs, MathToFuncs};
@@ -513,44 +515,32 @@ pub struct ConvertToLlvm {
     #[opt("allow-pattern-rollback", default = true)]
     rollback: bool,
     counter: core::cell::Cell<u32>,
+    /// The dialects' `ConvertToLLVMPatternInterface`s.
+    interfaces: ToLlvmInterfaces,
 }
 
 impl ConvertToLlvm {
     /// A dialect whose lowering is not ported yet makes the pass unsupported, not wrong.
     fn check(&self) -> Result<(), Error> {
-        match self.filter.iter().find(|d| !TO_LLVM.contains(&d.as_str())) {
+        match self.filter.iter().find(|d| !self.interfaces.knows(d)) {
             Some(d) => Err(Error(format!("convert-to-llvm: the {d} lowering is not ported"))),
             None => Ok(()),
         }
     }
 }
 
-/// The dialects that implement `ConvertToLLVMPatternInterface`, by namespace.
-const TO_LLVM: &[&str] = &["arith", "cf", "complex", "func", "index", "math", "memref", "ub", "vector"];
-
 impl Run for ConvertToLlvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let tc = LlvmConverter::build(LlvmOptions::derived().at(body, op));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
-        let dialects: Vec<&str> = if self.filter.is_empty() { TO_LLVM.to_vec() } else { self.filter.iter().map(String::as_str).collect() };
+        let dialects: Vec<&str> = if self.filter.is_empty() { self.interfaces.dialects() } else { self.filter.iter().map(String::as_str).collect() };
+        let env = LlvmEnv { llvm: LlvmOptions::derived().at(body, op), counter: &self.counter };
         for d in dialects {
-            match d {
-                "arith" => ArithToLlvm::populate(&mut patterns, i),
-                "index" => IndexToLlvm::populate(&mut patterns, i),
-                "math" => MathToLlvm::populate(&mut patterns, i, true),
-                "ub" => UbToLlvm::populate(&mut patterns, i),
-                "complex" => ComplexToLlvm::populate(&mut patterns, i, false),
-                "func" => FuncToLlvm::populate(&mut patterns, i, LlvmOptions::derived().at(body, op)),
-                "vector" => VectorToLlvm::populate(&mut patterns, i, VectorOptions { llvm: LlvmOptions::derived().at(body, op), reassociate_fp_reductions: false, force_32bit_indices: true, use_vector_alignment: false, counter: &self.counter }),
-                "memref" => MemrefToLlvm::populate(&mut patterns, i, MemrefOptions { llvm: LlvmOptions::derived().at(body, op), aligned_alloc: false, generic: false }),
-                "cf" => {
-                    CfToLlvm::populate(&mut patterns, i);
-                    patterns.add_with(i, AssertLowering(&self.counter));
-                }
-                d if TO_LLVM.contains(&d) => {}
-                d => return Err(Error(format!("dialect does not implement ConvertToLLVMPatternInterface: {d}"))),
+            if !self.interfaces.knows(d) {
+                return Err(Error(format!("dialect does not implement ConvertToLLVMPatternInterface: {d}")));
             }
+            self.interfaces.populate(d, &mut patterns, i, &env);
         }
         let mut target = ConversionTarget::default();
         target.legal_dialect("llvm");
@@ -744,54 +734,31 @@ impl Run for ConvertMemrefToEmitc {
 }
 
 /// The dialects that implement `ConvertToEmitCPatternInterface`, by namespace.
-const TO_EMITC: &[&str] = &["arith", "func", "memref", "scf"];
-/// Those ported so far.
-const TO_EMITC_PORTED: &[&str] = &["arith", "func", "memref", "scf"];
-
 /// `convert-to-emitc`: every dialect's `ConvertToEmitCPatternInterface` patterns (or those of
 /// `filter-dialects`) with the types EmitC supports.
-#[pass("convert-to-emitc", check = Self::check)]
+#[pass("convert-to-emitc")]
 pub struct ConvertToEmitc {
     #[opt("filter-dialects")]
     filter: Vec<String>,
-}
-
-impl ConvertToEmitc {
-    /// A dialect whose lowering is not ported yet makes the pass unsupported, not wrong.
-    fn check(&self) -> Result<(), Error> {
-        let wanted: Vec<&str> = if self.filter.is_empty() { TO_EMITC.to_vec() } else { self.filter.iter().map(String::as_str).collect() };
-        match wanted.iter().find(|d| TO_EMITC.contains(d) && !TO_EMITC_PORTED.contains(d)) {
-            Some(d) => Err(Error(format!("convert-to-emitc: the {d} lowering is not ported"))),
-            None => Ok(()),
-        }
-    }
+    /// The dialects' `ConvertToEmitCPatternInterface`s.
+    interfaces: ToEmitcInterfaces,
 }
 
 impl Run for ConvertToEmitc {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let dialects: Vec<&str> = if self.filter.is_empty() { TO_EMITC.to_vec() } else { self.filter.iter().map(String::as_str).collect() };
-        if let Some(d) = dialects.iter().find(|d| !TO_EMITC.contains(d)) {
+        let dialects: Vec<&str> = if self.filter.is_empty() { self.interfaces.dialects() } else { self.filter.iter().map(String::as_str).collect() };
+        if let Some(d) = dialects.iter().find(|d| !self.interfaces.knows(d)) {
             return Err(Error(format!("dialect does not implement ConvertToEmitCPatternInterface: {d}")));
         }
         let mut tc = Emitc::converter(true);
-        let size_t = dialects.iter().any(|d| matches!(*d, "arith" | "scf"));
+        let size_t = dialects.iter().any(|d| self.interfaces.uses_size_t(d));
         for d in &dialects {
-            match *d {
-                "arith" | "scf" => Emitc::size_t_conversions(&mut tc),
-                "memref" => Emitc::memref_conversions(&mut tc, size_t),
-                _ => {}
-            }
+            self.interfaces.types(d, &mut tc, size_t);
         }
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         for d in dialects {
-            match d {
-                "arith" => ArithToEmitc::populate(&mut patterns, i),
-                "func" => FuncToEmitc::populate(&mut patterns, i),
-                "scf" => ScfToEmitc::populate(&mut patterns, i),
-                "memref" => MemrefToEmitc::populate(&mut patterns, i),
-                _ => {}
-            }
+            self.interfaces.populate(d, &mut patterns, i, &());
         }
         let mut target = ConversionTarget::default();
         target.legal_dialect("emitc");

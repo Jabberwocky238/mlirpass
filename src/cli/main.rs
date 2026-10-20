@@ -7,7 +7,7 @@
 use std::io::Read;
 use std::process::ExitCode;
 
-use mlirpass::Invocation;
+use mlirpass::{Invocation, Passes};
 use mlirpass::mlirformat::MlirOpt;
 
 fn main() -> ExitCode {
@@ -22,7 +22,9 @@ fn main() -> ExitCode {
 }
 
 fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    let inv = Invocation::try_from(args)?;
+    // The managers this run works with: every pass, and every upstream dialect and op.
+    let (passes, opt) = (Passes::upstream(), MlirOpt::upstream());
+    let inv = Invocation::parse(&passes, args)?;
     let src = match inv.input.as_deref() {
         None | Some("-") => {
             let mut s = String::new();
@@ -31,7 +33,7 @@ fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(path) => std::fs::read_to_string(path)?,
     };
-    let out = inv.run(&MlirOpt::upstream(), &src)?;
+    let out = inv.run(&opt, &src)?;
     match inv.output.as_deref() {
         None | Some("-") => print!("{out}"),
         Some(path) => std::fs::write(path, out)?,
