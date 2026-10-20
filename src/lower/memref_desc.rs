@@ -6,8 +6,6 @@
 //! unranked  { rank, ptr to a ranked descriptor }
 //! ```
 
-use alloc::borrow::Cow;
-use alloc::format;
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, Shaped, Type};
@@ -15,7 +13,6 @@ use mlirformat::{Attribute, Dim, Shaped, Type};
 use crate::{ConversionRewriter, LlvmOptions, Listener, OpData, Rewriter, ValueId};
 
 /// `ShapedType::kDynamic`.
-pub const DYNAMIC: i64 = i64::MIN;
 
 impl LlvmOptions {
     /// `getStridesAndOffset`: from a `strided<...>` layout, or row-major for the identity.
@@ -34,7 +31,7 @@ impl LlvmOptions {
             for (i, d) in shape.iter().enumerate().rev() {
                 strides[i] = running;
                 running = match (running, d) {
-                    (DYNAMIC, _) | (_, Dim::Dynamic) => DYNAMIC,
+                    (Dim::DYNAMIC, _) | (_, Dim::Dynamic) => Dim::DYNAMIC,
                     (r, Dim::Static(n) | Dim::Scalable(n)) => r * n,
                 };
             }
@@ -43,7 +40,7 @@ impl LlvmOptions {
         // `<[s0, s1], offset: o>`
         let inner = body.trim().strip_prefix('<')?.strip_suffix('>')?;
         let (list, rest) = inner.split_once(']')?;
-        let num = |t: &str| if t.trim() == "?" { Some(DYNAMIC) } else { t.trim().parse().ok() };
+        let num = |t: &str| if t.trim() == "?" { Some(Dim::DYNAMIC) } else { t.trim().parse().ok() };
         let strides = list.trim_start_matches('[').split(',').filter(|t| !t.trim().is_empty()).map(num).collect::<Option<Vec<_>>>()?;
         let offset = match rest.split_once("offset:") {
             Some((_, o)) => num(o)?,
@@ -93,12 +90,12 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
 
     fn insert_at(&mut self, agg: ValueId, v: ValueId, pos: &[i64]) -> ValueId {
         let ty = self.body[agg].ty.clone();
-        let p = Attribute::DenseArray { ty: Type::int(64), values: pos.iter().map(|x| Cow::Owned(format!("{x}"))).collect() };
+        let p = Attribute::dense_i64(&pos);
         self.value(OpData::build("llvm.insertvalue").operands(&[agg, v]).with("position", p), ty)
     }
 
     pub fn index_const(&mut self, ty: &Type<'a>, v: i64) -> ValueId {
-        let value = Attribute::Int { lit: Cow::Owned(format!("{v}")), ty: Some(Type::Index) };
+        let value = Attribute::index(v);
         self.value(OpData::build("llvm.mlir.constant").with("value", value), ty.clone())
     }
 
@@ -174,7 +171,7 @@ impl From<Coef> for i64 {
     fn from(c: Coef) -> i64 {
         match c {
             Coef::K(k) => k,
-            Coef::Dyn => DYNAMIC,
+            Coef::Dyn => Dim::DYNAMIC,
         }
     }
 }

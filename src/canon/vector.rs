@@ -3,14 +3,13 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
 use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, Scalar, ValueId};
 
 /// `kPoisonIndex` of extract / insert positions and shuffle masks.
 const POISON: i64 = -1;
 /// `ShapedType::kDynamic`.
-const DYNAMIC: i64 = i64::MIN;
 
 /// `VectorDialect::materializeConstant`.
 pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
@@ -22,7 +21,7 @@ fn vshape(t: &Type<'_>) -> Option<(Vec<i64>, Vec<bool>)> {
     match t {
         Type::Shaped(s) if s.kind == ShapedKind::Vector => {
             let dims = s.shape.as_ref()?;
-            Some((dims.iter().map(|d| if let Dim::Static(n) | Dim::Scalable(n) = d { *n } else { DYNAMIC }).collect(), dims.iter().map(|d| matches!(d, Dim::Scalable(_))).collect()))
+            Some((dims.iter().map(|d| if let Dim::Static(n) | Dim::Scalable(n) = d { *n } else { Dim::DYNAMIC }).collect(), dims.iter().map(|d| matches!(d, Dim::Scalable(_))).collect()))
         }
         _ => None,
     }
@@ -65,17 +64,14 @@ pub fn broadcastable(src: &Type<'_>, dst: &Type<'_>) -> bool {
 
 impl<'a> Body<'a> {
     fn dense_array(&self, op: OpId, name: &str) -> Vec<i64> {
-        match self[op].get(name) {
-            Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
-            _ => Vec::new(),
-        }
+        self[op].get(name).and_then(Attribute::dense_values).unwrap_or_default()
     }
 
     fn set_dense_array(&mut self, op: OpId, name: &str, v: &[i64]) {
-        self[op].set(name, Attribute::DenseArray { ty: Type::int(64), values: v.iter().map(|x| alloc::format!("{x}").into()).collect() });
+        self[op].set(name, Attribute::dense_i64(&v));
     }
 
-    /// `vector.extract` / `vector.insert` positions: static, dynamic ones as `DYNAMIC`.
+    /// `vector.extract` / `vector.insert` positions: static, dynamic ones as `Dim::DYNAMIC`.
     fn static_position(&self, op: OpId) -> Vec<i64> {
         self.dense_array(op, "static_position")
     }
@@ -92,13 +88,13 @@ impl<'a> Body<'a> {
     /// `getMixedPosition`: constants as `Ok`, dynamic values as `Err`.
     fn mixed_position(&self, op: OpId) -> Vec<Result<i64, ValueId>> {
         let mut dynamic = self[op].operands[self.fixed_operands(op)..].iter();
-        self.static_position(op).into_iter().map(|p| if p == DYNAMIC { Err(*dynamic.next().expect("dynamic position")) } else { Ok(p) }).collect()
+        self.static_position(op).into_iter().map(|p| if p == Dim::DYNAMIC { Err(*dynamic.next().expect("dynamic position")) } else { Ok(p) }).collect()
     }
 
     fn set_mixed_position(&mut self, op: OpId, pos: &[Result<i64, ValueId>]) {
         let mut operands: Vec<ValueId> = self[op].operands[..self.fixed_operands(op)].to_vec();
         operands.extend(pos.iter().filter_map(|p| p.err()));
-        let statics: Vec<i64> = pos.iter().map(|p| p.unwrap_or(DYNAMIC)).collect();
+        let statics: Vec<i64> = pos.iter().map(|p| p.unwrap_or(Dim::DYNAMIC)).collect();
         self.set_operands(op, operands);
         self.set_dense_array(op, "static_position", &statics);
     }
@@ -1053,7 +1049,7 @@ impl<'a> Folder<'_, 'a> {
             let minor = |p: &Option<Perm>| p.as_ref().is_some_and(Perm::minor_identity);
             let zero = |vs: Vec<ValueId>| vs.iter().all(|v| const_int(b, *v) == Some(0));
             let rshape = vshape(&b.result_ty(read)).map(|s| s.0);
-            let tshape = b[base].ty.shape().map(|d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { DYNAMIC }).collect::<Vec<_>>());
+            let tshape = b[base].ty.shape().map(|d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { Dim::DYNAMIC }).collect::<Vec<_>>());
             if b.transfer_rank(op) != 0
                 && b.transfer_rank(read) != 0
                 && minor(&rp)
@@ -1172,11 +1168,6 @@ impl<'a> Body<'a> {
     }
 }
 
-/// The vector type of `shape` over `elem`.
-pub fn vector_type<'a>(shape: &[i64], scalable: &[bool], elem: Type<'a>) -> Type<'a> {
-    Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(shape.iter().zip(scalable.iter().chain(core::iter::repeat(&false))).map(|(n, s)| if *s { Dim::Scalable(*n) } else { Dim::Static(*n) }).collect()), elem: elem.into(), extras: Vec::new() })
-}
-
 /// `tensor::preservesStaticInformation(dst, src)`.
 fn tensor_cast_foldable(src: &Type<'_>, dst: &Type<'_>) -> bool {
     let (Type::Shaped(s), Type::Shaped(d)) = (src, dst) else { return false };
@@ -1259,7 +1250,7 @@ impl<'a> Body<'a> {
         }
         let Some(perm) = self.perm(op) else { return false };
         let shaped = if self[op].name == "vector.transfer_read" { self.operand_ty(op, 0) } else { self.operand_ty(op, 1) };
-        let sshape: Vec<i64> = shaped.shape().map_or(Vec::new(), |d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { DYNAMIC }).collect());
+        let sshape: Vec<i64> = shaped.shape().map_or(Vec::new(), |d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { Dim::DYNAMIC }).collect());
         let vt = if self[op].name == "vector.transfer_read" { self.result_ty(op) } else { self.operand_ty(op, 0) };
         let (vs, _) = vshape(&vt).unwrap_or_default();
         let indices = self.transfer_indices(op);
@@ -1274,7 +1265,7 @@ impl<'a> Body<'a> {
             }
             let mut ib = false;
             if let Some(Some(d)) = perm.results.get(i) {
-                ib = sshape.get(*d).is_some_and(|s| *s != DYNAMIC) && const_int(self, indices[*d]).is_some_and(|c| c + vs[i] <= sshape[*d]);
+                ib = sshape.get(*d).is_some_and(|s| *s != Dim::DYNAMIC) && const_int(self, indices[*d]).is_some_and(|c| c + vs[i] <= sshape[*d]);
                 non_bcast.push(i);
             }
             new.push(ib);
@@ -1306,7 +1297,7 @@ impl<'a> Body<'a> {
         self.set_operands(op, ops);
         let mut s = self.transfer_segments(op);
         *s.last_mut().expect("segments") = 0;
-        self[op].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: s.iter().map(|x| alloc::format!("{x}").into()).collect() });
+        self[op].set("operandSegmentSizes", Attribute::dense_i32(&s));
         true
     }
 
@@ -1363,10 +1354,6 @@ fn array_i64<'a>(v: &[i64]) -> Attribute<'a> {
     Attribute::Array(v.iter().map(|x| Attribute::Int { lit: alloc::format!("{x}").into(), ty: None }).collect())
 }
 
-fn dense_i64<'a>(v: &[i64]) -> Attribute<'a> {
-    Attribute::DenseArray { ty: Type::int(64), values: v.iter().map(|x| alloc::format!("{x}").into()).collect() }
-}
-
 fn i64_array(b: &Body<'_>, op: OpId, name: &str) -> Vec<i64> {
     match b[op].get(name) {
         Some(Attribute::Array(a)) => a.iter().filter_map(|x| if let Attribute::Int { lit, .. } = x { lit.parse().ok() } else { None }).collect(),
@@ -1379,16 +1366,16 @@ impl<'a> crate::Rewriter<'_, 'a> {
     fn vextract(&mut self, src: ValueId, pos: &[i64]) -> ValueId {
         let ty = self.body[src].ty.clone();
         let (shape, scal) = vshape(&ty).expect("a vector");
-        let rt = if pos.len() == shape.len() { elem(&ty).clone() } else { vector_type(&shape[pos.len()..], &scal[pos.len()..], elem(&ty).clone()) };
-        let o = self.create(OpData::build("vector.extract").operands(&[src]).with("static_position", dense_i64(pos)), &[rt]);
+        let rt = if pos.len() == shape.len() { elem(&ty).clone() } else { Type::vector(&shape[pos.len()..], &scal[pos.len()..], elem(&ty).clone()) };
+        let o = self.create(OpData::build("vector.extract").operands(&[src]).with("static_position", Attribute::dense_i64(pos)), &[rt]);
         self.body[o].results[0]
     }
 
     fn vextract_or_fold(&mut self, src: ValueId, pos: &[i64]) -> ValueId {
         let ty = self.body[src].ty.clone();
         let (shape, scal) = vshape(&ty).expect("a vector");
-        let rt = if pos.len() == shape.len() { elem(&ty).clone() } else { vector_type(&shape[pos.len()..], &scal[pos.len()..], elem(&ty).clone()) };
-        self.create_or_fold(OpData::build("vector.extract").operands(&[src]).with("static_position", dense_i64(pos)), &[rt])[0]
+        let rt = if pos.len() == shape.len() { elem(&ty).clone() } else { Type::vector(&shape[pos.len()..], &scal[pos.len()..], elem(&ty).clone()) };
+        self.create_or_fold(OpData::build("vector.extract").operands(&[src]).with("static_position", Attribute::dense_i64(pos)), &[rt])[0]
     }
 
     fn replace_unary(&mut self, op: OpId, name: &str, src: ValueId, ty: Type<'a>) -> bool {
@@ -1453,7 +1440,7 @@ rewrites! {
         rw.set_before(root);
         let (cast, mask) = if let Some((ds, dsc)) = vshape(&dt) {
             let mask = mask.map(|m| {
-                let mt = vector_type(&ds, &dsc, Type::int(1));
+                let mt = Type::vector(&ds, &dsc, Type::int(1));
                 let o = rw.create(OpData::build("vector.shape_cast").operands(&[m]), &[mt]);
                 rw.body[o].results[0]
             });
@@ -1535,7 +1522,7 @@ rewrites! {
                 i += 1;
                 continue;
             };
-            if pos[i] != DYNAMIC {
+            if pos[i] != Dim::DYNAMIC {
                 all_false |= pos[i] >= bound;
             } else if bound < mshape[i] {
                 unknown = true;
@@ -1725,7 +1712,7 @@ rewrites! {
         if vrank(&t1) != Some(0) || mask.len() != 1 {
             return false;
         }
-        let rt = vector_type(&[1], &[false], elem(&t1).clone());
+        let rt = Type::vector(&[1], &[false], elem(&t1).clone());
         let src = if mask[0] == 0 { b[op].operands[0] } else { b[op].operands[1] };
         rw.replace_unary(op, "vector.broadcast", src, rt)
     }
@@ -1940,7 +1927,7 @@ rewrites! {
             new = vec![0; dims.len()];
         }
         let rt = b.result_ty(op);
-        rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", dense_i64(&new)), &[rt]);
+        rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", Attribute::dense_i64(&new)), &[rt]);
         true
     }
 
@@ -1967,7 +1954,7 @@ rewrites! {
             }
             let mut shape = ss.clone();
             shape[..sizes.len()].copy_from_slice(&sizes);
-            let t = vector_type(&shape, &ssc, elem(&b[src].ty).clone());
+            let t = Type::vector(&shape, &ssc, elem(&b[src].ty).clone());
             rw.set_before(op);
             let o = rw.create(OpData::build("vector.extract_strided_slice").operands(&[src]).with("offsets", array_i64(&offsets)).with("sizes", array_i64(&sizes)).with("strides", array_i64(&st)), &[t]);
             source = rw.body[o].results[0];
@@ -2167,7 +2154,7 @@ rewrites! {
             ns = vec![*ss.last().expect("rank > 0")];
             nsc = vec![*ssc.last().expect("rank > 0")];
         }
-        if vector_type(&ns, &nsc, elem(&rt).clone()) != rt {
+        if Type::vector(&ns, &nsc, elem(&rt).clone()) != rt {
             return false;
         }
         let drop = ss.len() - vrank(&rt).unwrap_or(0);
@@ -2185,7 +2172,7 @@ rewrites! {
             if dims[dims.len() - drop..].iter().any(|d| *d != 1) {
                 return false;
             }
-            rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", dense_i64(&dims[..dims.len() - drop])), &[rt]);
+            rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", Attribute::dense_i64(&dims[..dims.len() - drop])), &[rt]);
         }
         true
     }
@@ -2222,7 +2209,7 @@ rewrites! {
         let Some(cm) = b.def_named(src, "vector.constant_mask") else { return false };
         let dims = b.dense_array(cm, "mask_dim_sizes");
         let new: Vec<i64> = perm.iter().map(|p| dims[*p as usize]).collect();
-        rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", dense_i64(&new)), &[rt]);
+        rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", Attribute::dense_i64(&new)), &[rt]);
         true
     }
 
@@ -2244,7 +2231,7 @@ rewrites! {
         let (p1, p2) = (b.dense_array(parent, "permutation"), b.dense_array(op, "permutation"));
         let perm: Vec<i64> = p2.iter().map(|i| p1[*i as usize]).collect();
         let (s, rt) = (b[parent].operands[0], b.result_ty(op));
-        rw.replace_with(op, OpData::build("vector.transpose").operands(&[s]).with("permutation", dense_i64(&perm)), &[rt]);
+        rw.replace_with(op, OpData::build("vector.transpose").operands(&[s]).with("permutation", Attribute::dense_i64(&perm)), &[rt]);
         true
     }
 
@@ -2372,7 +2359,7 @@ rewrites! {
         if dims.contains(&0) {
             dims = vec![0; dims.len()];
         }
-        rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", dense_i64(&dims)), &[rt]);
+        rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", Attribute::dense_i64(&dims)), &[rt]);
         true
     }
 

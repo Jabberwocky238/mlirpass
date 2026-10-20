@@ -906,10 +906,6 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     }
 }
 
-fn index_attr<'a>(v: i64) -> Attribute<'a> {
-    Attribute::Int { lit: format!("{v}").into(), ty: Some(Type::Index) }
-}
-
 fn fold_apply<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let Some(map) = b.affine_map(op, "map") else { return Fold::Failed };
     let Some(e) = map.results.first() else { return Fold::Failed };
@@ -921,7 +917,7 @@ fn fold_apply<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let consts: Vec<Option<i64>> = b[op].operands.iter().map(|v| b.const_index(*v)).collect();
     match map.constant_fold(&consts) {
         Err(()) => Folded::Attr(Attribute::dialect("ub.poison", "")).into(),
-        Ok(Some(r)) => Folded::Attr(index_attr(r[0])).into(),
+        Ok(Some(r)) => Folded::Attr(Attribute::index(r[0])).into(),
         Ok(None) => Fold::Failed,
     }
 }
@@ -954,7 +950,7 @@ fn fold_min_max<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         return Fold::InPlace;
     };
     let v = if b[op].name == "affine.min" { results.iter().min() } else { results.iter().max() };
-    Folded::Attr(index_attr(*v.expect("non-empty"))).into()
+    Folded::Attr(Attribute::index(*v.expect("non-empty"))).into()
 }
 
 impl<'a> Body<'a> {
@@ -978,7 +974,7 @@ impl<'a> Body<'a> {
         all.extend(ub);
         all.extend(inits);
         self.set_operands(f, all);
-        self[f].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: segs.iter().map(|x| format!("{x}").into()).collect() });
+        self[f].set("operandSegmentSizes", Attribute::dense_i32(&segs));
         self[f].set(if lower { "lowerBoundMap" } else { "upperBoundMap" }, map_attr(map));
     }
 
@@ -1272,7 +1268,7 @@ impl<'a> Body<'a> {
         if !delin {
             self[op].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec![format!("{n}").into(), format!("{}", keep.len()).into()] });
         }
-        self[op].set("static_basis", Attribute::DenseArray { ty: Type::int(64), values: statics.iter().map(|x| format!("{x}").into()).collect() });
+        self[op].set("static_basis", Attribute::dense_i64(&statics));
         true
     }
 }
@@ -1352,7 +1348,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
         let ty = self.body[index].ty.clone();
         let mut ops = vec![index];
         ops.extend(dynamic);
-        let d = OpData::build("affine.delinearize_index").operands(&ops).with("static_basis", Attribute::DenseArray { ty: Type::int(64), values: statics.iter().map(|x| format!("{x}").into()).collect() });
+        let d = OpData::build("affine.delinearize_index").operands(&ops).with("static_basis", Attribute::dense_i64(&statics));
         let o = self.create(d, &vec![ty; n]);
         self.body[o].results.clone()
     }
@@ -1378,7 +1374,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
             .operands(&ops)
             .with("disjoint", if disjoint { Attribute::Unit } else { Attribute::Bool(false) })
             .with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec![format!("{}", multi.len()).into(), format!("{}", dynamic.len()).into()] })
-            .with("static_basis", Attribute::DenseArray { ty: Type::int(64), values: statics.iter().map(|x| format!("{x}").into()).collect() })
+            .with("static_basis", Attribute::dense_i64(&statics))
     }
 
     fn linearize(&mut self, multi: &[ValueId], basis: &[Ofr], disjoint: bool) -> ValueId {
@@ -1388,7 +1384,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
     }
 
     fn index_constant(&mut self, v: i64) -> ValueId {
-        let o = self.emit(&arith::Constant::new(index_attr(v), Type::Index));
+        let o = self.emit(&arith::Constant::new(Attribute::index(v), Type::Index));
         self.body[o].results[0]
     }
 
@@ -1701,7 +1697,7 @@ rewrites! {
             return false;
         }
         if idx.is_empty() {
-            rw.replace_by(op, &arith::Constant::new(index_attr(0), Type::Index));
+            rw.replace_by(op, &arith::Constant::new(Attribute::index(0), Type::Index));
             return true;
         }
         let data = rw.linearize_data(&idx, &basis, disjoint);

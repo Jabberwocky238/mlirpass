@@ -1,7 +1,5 @@
 //! `tensor`: folds and canonicalization patterns, as `TensorOps.cpp`.
 
-use alloc::borrow::Cow;
-use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -9,7 +7,7 @@ use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
 use super::reshape::{ComposeCollapseOfExpand, ComposeExpandOfCollapse, ComposeReassociative, Reassoc, Reshape};
 use super::MemrefOfr as Ofr;
-use crate::{AffineExpr, AffineMap, Body, Const, DYNAMIC, Fold, Folded, Mapping, OpData, OpId, PatternSet, Rewriter, Trait, ValueId};
+use crate::{AffineExpr, AffineMap, Body, Const, Fold, Folded, Mapping, OpData, OpId, PatternSet, Rewriter, Trait, ValueId};
 
 /// The tensor types' helpers.
 struct Tn;
@@ -23,13 +21,9 @@ impl Tn {
         }
     }
 
-    fn dims(t: &Type<'_>) -> Option<Vec<i64>> {
-        t.shape().map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
-    }
-
     /// `RankedTensorType::get(dims, elem, encoding)`.
     fn tensor<'a>(dims: &[i64], elem: Type<'a>, extras: Vec<Attribute<'a>>) -> Type<'a> {
-        let shape = dims.iter().map(|d| if *d == DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
+        let shape = dims.iter().map(|d| if *d == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
         Type::Shaped(Shaped { kind: ShapedKind::Tensor, shape: Some(shape), elem: elem.into(), extras })
     }
 
@@ -39,7 +33,7 @@ impl Tn {
     }
 
     fn static_shape(t: &Type<'_>) -> bool {
-        Self::dims(t).is_some_and(|d| !d.contains(&DYNAMIC))
+        t.dims().is_some_and(|d| !d.contains(&Dim::DYNAMIC))
     }
 
     /// `preservesStaticInformation`.
@@ -48,14 +42,14 @@ impl Tn {
         if s.elem != d.elem || s.extras != d.extras {
             return false;
         }
-        let (Some(a), Some(b)) = (Self::dims(src), Self::dims(dst)) else { return false };
-        a.len() == b.len() && !a.iter().zip(&b).any(|(x, y)| *x != DYNAMIC && *y == DYNAMIC)
+        let (Some(a), Some(b)) = (src.dims(), dst.dims()) else { return false };
+        a.len() == b.len() && !a.iter().zip(&b).any(|(x, y)| *x != Dim::DYNAMIC && *y == Dim::DYNAMIC)
     }
 
     /// `joinShapes`.
     fn join<'a>(one: &Type<'a>, two: &Type<'a>) -> Option<Type<'a>> {
-        let (Some(a), Some(b)) = (Self::dims(one), Self::dims(two)) else {
-            return Some(if Self::dims(one).is_none() { two.clone() } else { one.clone() });
+        let (Some(a), Some(b)) = (one.dims(), two.dims()) else {
+            return Some(if one.dims().is_none() { two.clone() } else { one.clone() });
         };
         if a.len() != b.len() {
             return None;
@@ -63,8 +57,8 @@ impl Tn {
         let mut join = Vec::new();
         for (x, y) in a.iter().zip(&b) {
             join.push(match (*x, *y) {
-                (DYNAMIC, y) => y,
-                (x, DYNAMIC) => x,
+                (Dim::DYNAMIC, y) => y,
+                (x, Dim::DYNAMIC) => x,
                 (x, y) if x == y => x,
                 _ => return None,
             });
@@ -77,7 +71,7 @@ impl Tn {
         let mut unused = Vec::new();
         let mut j = 0;
         for (i, o) in orig.iter().enumerate() {
-            if match_dynamic && j < reduced.len() && *o != 1 && (reduced[j] == DYNAMIC || *o == DYNAMIC) {
+            if match_dynamic && j < reduced.len() && *o != 1 && (reduced[j] == Dim::DYNAMIC || *o == Dim::DYNAMIC) {
                 j += 1;
                 continue;
             }
@@ -95,20 +89,20 @@ impl Tn {
 
     /// `isRankReducedType(original, candidate) == Success`.
     fn rank_reduced(orig: &Type<'_>, cand: &Type<'_>) -> bool {
-        let (Some(o), Some(c)) = (Self::dims(orig), Self::dims(cand)) else { return false };
+        let (Some(o), Some(c)) = (orig.dims(), cand.dims()) else { return false };
         o.len() >= c.len() && Self::rank_reduction_mask(&o, &c, false).is_some() && orig.element_type() == cand.element_type()
     }
 
     /// `ExtractSliceOp::inferResultType`.
     fn slice_type<'a>(src: &Shaped<'a>, sizes: &[Ofr]) -> Type<'a> {
-        let dims: Vec<i64> = sizes.iter().map(|s| if let Ofr::C(c) = s { *c } else { DYNAMIC }).collect();
+        let dims: Vec<i64> = sizes.iter().map(|s| if let Ofr::C(c) = s { *c } else { Dim::DYNAMIC }).collect();
         Self::with_dims(src, &dims)
     }
 
     /// `inferCanonicalRankReducedResultType`.
     fn rank_reduced_slice_type<'a>(rank: usize, src: &Shaped<'a>, sizes: &[Ofr]) -> Type<'a> {
         let inferred = Self::slice_type(src, sizes);
-        let shape = Self::dims(&inferred).unwrap_or_default();
+        let shape = inferred.dims().unwrap_or_default();
         if shape.len() <= rank {
             return inferred;
         }
@@ -126,16 +120,16 @@ impl Tn {
 
     /// `verifyInBoundsSlice`.
     fn in_bounds(shape: &[i64], offsets: &[Ofr], sizes: &[Ofr], strides: &[Ofr]) -> bool {
-        let st = |o: &Ofr| if let Ofr::C(c) = o { *c } else { DYNAMIC };
+        let st = |o: &Ofr| if let Ofr::C(c) = o { *c } else { Dim::DYNAMIC };
         for (i, s) in shape.iter().enumerate() {
             let (Some(o), Some(z), Some(t)) = (offsets.get(i).map(st), sizes.get(i).map(st), strides.get(i).map(st)) else { continue };
-            if *s == DYNAMIC || o == DYNAMIC {
+            if *s == Dim::DYNAMIC || o == Dim::DYNAMIC {
                 continue;
             }
             if o >= *s {
                 return false;
             }
-            if z == DYNAMIC || t == DYNAMIC {
+            if z == Dim::DYNAMIC || t == Dim::DYNAMIC {
                 continue;
             }
             if o + (z - 1) * t >= *s {
@@ -147,35 +141,31 @@ impl Tn {
 
     /// `PadOp::inferResultType`.
     fn pad_type<'a>(src: &Shaped<'a>, low: &[i64], high: &[i64], result: &[i64]) -> Option<Type<'a>> {
-        let dims = Self::dims(&Type::Shaped(src.clone()))?;
+        let dims = (Type::Shaped(src.clone())).dims()?;
         if low.len() != dims.len() || high.len() != dims.len() || (!result.is_empty() && result.len() != dims.len()) {
             return None;
         }
         let shape: Vec<i64> = (0..dims.len())
-            .map(|i| if dims[i] == DYNAMIC || low[i] == DYNAMIC || high[i] == DYNAMIC { if result.is_empty() { DYNAMIC } else { result[i] } } else { dims[i] + low[i] + high[i] })
+            .map(|i| if dims[i] == Dim::DYNAMIC || low[i] == Dim::DYNAMIC || high[i] == Dim::DYNAMIC { if result.is_empty() { Dim::DYNAMIC } else { result[i] } } else { dims[i] + low[i] + high[i] })
             .collect();
         Some(Self::tensor(&shape, (*src.elem).clone(), Vec::new()))
     }
 
     /// `CollapseShapeOp::inferCollapsedType`.
     fn collapsed_type<'a>(src: &Shaped<'a>, r: &Reassoc) -> Type<'a> {
-        let dims = Self::dims(&Type::Shaped(src.clone())).unwrap_or_default();
+        let dims = (Type::Shaped(src.clone())).dims().unwrap_or_default();
         let mut at = 0;
         let mut shape = Vec::new();
         for g in r {
             let band = &dims[at..at + g.len()];
-            shape.push(if band.contains(&DYNAMIC) { DYNAMIC } else { band.iter().product() });
+            shape.push(if band.contains(&Dim::DYNAMIC) { Dim::DYNAMIC } else { band.iter().product() });
             at += g.len();
         }
         Self::tensor(&shape, (*src.elem).clone(), Vec::new())
     }
 
     fn index<'a>(v: i64) -> Attribute<'a> {
-        Attribute::Int { lit: Cow::Owned(format!("{v}")), ty: Some(Type::Index) }
-    }
-
-    fn dense_array<'a>(v: &[i64]) -> Attribute<'a> {
-        Attribute::DenseArray { ty: Type::int(64), values: v.iter().map(|x| Cow::Owned(format!("{x}"))).collect() }
+        Attribute::index(v)
     }
 
     /// Mixed values as static values and the dynamic ones.
@@ -186,7 +176,7 @@ impl Tn {
             match o {
                 Ofr::C(c) => st.push(*c),
                 Ofr::V(v) => {
-                    st.push(DYNAMIC);
+                    st.push(Dim::DYNAMIC);
                     dy.push(*v);
                 }
             }
@@ -203,7 +193,7 @@ impl Tn {
             let (st, dy) = Self::split(l);
             segs.push(dy.len());
             ops.extend(dy);
-            data.set(n, Self::dense_array(&st));
+            data.set(n, Attribute::dense_i64(&st));
         }
         data.operands(&ops).segments(&segs)
     }
@@ -264,7 +254,7 @@ impl<'a> Body<'a> {
         for (k, name) in ["static_offsets", "static_sizes", "static_strides"].iter().enumerate() {
             let n = segs.get(lead + k).copied().unwrap_or(0);
             let mut d = self[op].operands[at..at + n].iter();
-            out[k] = self.dense_i64(op, name).into_iter().map(|s| if s == DYNAMIC { Ofr::V(*d.next().expect("dynamic")) } else { Ofr::C(s) }).collect();
+            out[k] = self.dense_i64(op, name).into_iter().map(|s| if s == Dim::DYNAMIC { Ofr::V(*d.next().expect("dynamic")) } else { Ofr::C(s) }).collect();
             at += n;
         }
         out
@@ -278,7 +268,7 @@ impl<'a> Body<'a> {
         for (k, name) in ["static_low", "static_high"].iter().enumerate() {
             let n = segs.get(k + 1).copied().unwrap_or(0);
             let mut d = self[op].operands[at..at + n].iter();
-            out[k] = self.dense_i64(op, name).into_iter().map(|s| if s == DYNAMIC { Ofr::V(*d.next().expect("dynamic")) } else { Ofr::C(s) }).collect();
+            out[k] = self.dense_i64(op, name).into_iter().map(|s| if s == Dim::DYNAMIC { Ofr::V(*d.next().expect("dynamic")) } else { Ofr::C(s) }).collect();
             at += n;
         }
         out
@@ -308,11 +298,11 @@ impl<'a> Body<'a> {
     /// `foldDynamicToStaticDimSizes`.
     fn static_dims(&self, ty: &Type<'a>, dynamic: &[ValueId]) -> (Type<'a>, Vec<ValueId>) {
         let Some(s) = Tn::ranked(ty) else { return (ty.clone(), dynamic.to_vec()) };
-        let mut dims = Tn::dims(ty).unwrap_or_default();
+        let mut dims = ty.dims().unwrap_or_default();
         let mut kept = Vec::new();
         let mut it = dynamic.iter();
         for d in dims.iter_mut() {
-            if *d != DYNAMIC {
+            if *d != Dim::DYNAMIC {
                 continue;
             }
             let v = *it.next().expect("one per dynamic dim");
@@ -380,19 +370,19 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
         "tensor.concat" if ops.len() == 1 && b[ops[0]].ty == rt => Folded::Value(ops[0]).into(),
         "tensor.dim" => {
             let Some(i) = c[1].as_ref().and_then(|a| Const::try_from(a).ok()).filter(|c| !c.elements).and_then(|c| c.as_int()).map(|i| i.signed() as i64) else { return Fold::Failed };
-            let Some(dims) = Tn::ranked(&b[ops[0]].ty).and_then(|_| Tn::dims(&b[ops[0]].ty)) else { return Fold::Failed };
+            let Some(dims) = Tn::ranked(&b[ops[0]].ty).and_then(|_| (b[ops[0]].ty).dims()) else { return Fold::Failed };
             if i < 0 || i as usize >= dims.len() {
                 return Fold::Failed;
             }
-            if dims[i as usize] != DYNAMIC {
+            if dims[i as usize] != Dim::DYNAMIC {
                 return Folded::Attr(Tn::index(dims[i as usize])).into();
             }
             if let Some(g) = b.def_named(ops[0], "tensor.generate") {
-                let k = dims[..i as usize].iter().filter(|d| **d == DYNAMIC).count();
+                let k = dims[..i as usize].iter().filter(|d| **d == Dim::DYNAMIC).count();
                 return Folded::Value(b[g].operands[k]).into();
             }
             if let Some(s) = b.def_named(ops[0], "tensor.extract_slice") {
-                let src_rank = Tn::dims(&b[b[s].operands[0]].ty).map_or(0, |d| d.len());
+                let src_rank = (b[b[s].operands[0]].ty).dims().map_or(0, |d| d.len());
                 if src_rank == dims.len()
                     && let Ofr::V(v) = b.slice_lists(s)[1][i as usize]
                 {
@@ -418,7 +408,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
                 idx.push(i.signed() as i64);
             }
             if let Some(fe) = b.def_named(ops[0], "tensor.from_elements") {
-                let dims = Tn::dims(&b[b[fe].results[0]].ty).unwrap_or_default();
+                let dims = (b[b[fe].results[0]].ty).dims().unwrap_or_default();
                 let (mut flat, mut stride) = (0i64, 1i64);
                 for i in (0..dims.len()).rev() {
                     flat += idx[i] * stride;
@@ -430,7 +420,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
                 return Folded::Value(b[fe].operands[flat as usize]).into();
             }
             if let Some(k) = c[0].as_ref().and_then(|a| Const::try_from(a).ok()).filter(|k| k.elements) {
-                let dims = Tn::dims(&k.ty).unwrap_or_default();
+                let dims = k.ty.dims().unwrap_or_default();
                 if idx.len() == dims.len() && idx.iter().zip(&dims).all(|(i, d)| *i >= 0 && i < d) {
                     let flat = idx.iter().zip(&dims).fold(0i64, |acc, (i, d)| acc * d + i);
                     return Folded::Attr(Const::scalar(k.at(flat as usize), k.ty.element_type().clone()).into()).into();
@@ -475,7 +465,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
             if Tn::ranked(&b[src].ty).is_none() || b[src].ty != rt {
                 return Fold::Failed;
             }
-            let dims = Tn::dims(&rt).unwrap_or_default();
+            let dims = rt.dims().unwrap_or_default();
             if dims.len() <= 1 {
                 return Folded::Value(src).into();
             }
@@ -509,7 +499,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
                 return Folded::Attr(a).into();
             }
             let src = ops[0];
-            if b[src].ty == rt && b.identity_slice(op, &Tn::dims(&rt).unwrap_or_default()) {
+            if b[src].ty == rt && b.identity_slice(op, &rt.dims().unwrap_or_default()) {
                 return Folded::Value(src).into();
             }
             if let Some(ins) = b.def_named(src, "tensor.insert_slice")
@@ -522,7 +512,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
         }
         "tensor.insert_slice" => {
             let (src, dst) = (ops[0], ops[1]);
-            if Tn::static_shape(&b[src].ty) && Tn::static_shape(&rt) && b[src].ty == rt && b.identity_slice(op, &Tn::dims(&rt).unwrap_or_default()) {
+            if Tn::static_shape(&b[src].ty) && Tn::static_shape(&rt) && b[src].ty == rt && b.identity_slice(op, &rt.dims().unwrap_or_default()) {
                 return Folded::Value(src).into();
             }
             if let Some(prev) = b.def_named(dst, "tensor.insert_slice")
@@ -631,14 +621,14 @@ fn constant_slice_arguments(rw: &mut Rewriter<'_, '_>, op: OpId, insert: bool) -
     }
     let base = b[op].operands[usize::from(insert)];
     let Some(bt) = Tn::ranked(&b[base].ty).cloned() else { return false };
-    if !Tn::in_bounds(&Tn::dims(&b[base].ty).unwrap_or_default(), &o, &s, &t) {
+    if !Tn::in_bounds(&b[base].ty.dims().unwrap_or_default(), &o, &s, &t) {
         return false;
     }
     let name = b[op].name.clone();
     let lists = [o, s, t];
     if insert {
         let src = b[op].operands[0];
-        let rank = Tn::dims(&b[src].ty).map_or(0, |d| d.len());
+        let rank = b[src].ty.dims().map_or(0, |d| d.len());
         let ty = Tn::rank_reduced_slice_type(rank, &bt, &lists[1]);
         let result_types = b.types(&b[op].results);
         let mut to_insert = src;
@@ -652,7 +642,7 @@ fn constant_slice_arguments(rw: &mut Rewriter<'_, '_>, op: OpId, insert: bool) -
         rw.replace_with(op, Tn::slice_op(&name, &[to_insert, dst], &lists), &result_types);
     } else {
         let rt = b[b[op].results[0]].ty.clone();
-        let rank = Tn::dims(&rt).map_or(0, |d| d.len());
+        let rank = rt.dims().map_or(0, |d| d.len());
         let ty = Tn::rank_reduced_slice_type(rank, &bt, &lists[1]);
         rw.set_before(op);
         let mut v = rw.single(Tn::slice_op(&name, &[base], &lists), ty.clone());
@@ -677,13 +667,13 @@ fn insert_slice_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     }
     let (src, dst) = (sc.unwrap_or(src0), dc.unwrap_or(dst0));
     let (Some(st), Some(dt)) = (Tn::ranked(&b[src].ty).cloned(), Tn::ranked(&b[dst].ty).cloned()) else { return false };
-    let sdims = Tn::dims(&b[src].ty).unwrap_or_default();
+    let sdims = b[src].ty.dims().unwrap_or_default();
     let mut static_sizes = b.dense_i64(op, "static_sizes");
     let Some(mask) = Tn::rank_reduction_mask(&static_sizes, &sdims, true) else { return false };
     let [o, mut s, t] = b.slice_lists(op);
     let mut j = 0;
     for (idx, size) in static_sizes.iter_mut().enumerate() {
-        if !mask.contains(&idx) && sdims.get(j).is_some_and(|d| *d != DYNAMIC) {
+        if !mask.contains(&idx) && sdims.get(j).is_some_and(|d| *d != Dim::DYNAMIC) {
             s[idx] = Ofr::C(sdims[j]);
             *size = sdims[j];
             j += 1;
@@ -693,7 +683,7 @@ fn insert_slice_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     if !Tn::rank_reduced(&expected, &Type::Shaped(st)) {
         return false;
     }
-    if !Tn::in_bounds(&Tn::dims(&b[dst].ty).unwrap_or_default(), &o, &s, &t) {
+    if !Tn::in_bounds(&b[dst].ty.dims().unwrap_or_default(), &o, &s, &t) {
         return false;
     }
     let parallel = b[op].name == "tensor.parallel_insert_slice";
@@ -720,7 +710,7 @@ fn insert_slice_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
 fn insert_slice_source_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let (src, dst) = (b[op].operands[0], b[op].operands[1]);
-    let (Some(st), Some(sd), Some(dd)) = (Tn::ranked(&b[src].ty).cloned(), Tn::dims(&b[src].ty), Tn::dims(&b[dst].ty)) else { return false };
+    let (Some(st), Some(sd), Some(dd)) = (Tn::ranked(&b[src].ty).cloned(), b[src].ty.dims(), b[dst].ty.dims()) else { return false };
     if sd.len() != dd.len() {
         return false;
     }
@@ -735,7 +725,7 @@ fn insert_slice_source_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         }
     }
     let new_ty = Tn::with_dims(&st, &shape);
-    let compatible = sd.iter().zip(&shape).all(|(a, c)| *a == DYNAMIC || *c == DYNAMIC || a == c);
+    let compatible = sd.iter().zip(&shape).all(|(a, c)| *a == Dim::DYNAMIC || *c == Dim::DYNAMIC || a == c);
     if b[src].ty == new_ty || !Tn::preserves(&b[src].ty, &new_ty) || !compatible {
         return false;
     }
@@ -777,13 +767,13 @@ rewrites! {
     TensorCastExtractSlice("tensor.cast", 1) |rw, op| {
         let b = &*rw.body;
         let rt = b[b[op].results[0]].ty.clone();
-        let Some(rdims) = Tn::ranked(&rt).and_then(|_| Tn::dims(&rt)) else { return false };
+        let Some(rdims) = Tn::ranked(&rt).and_then(|_| rt.dims()) else { return false };
         let Some(ext) = b.def_named(b[op].operands[0], "tensor.extract_slice") else { return false };
-        if !b.cast_into_producer(op) || Some(&rdims) == Tn::dims(&b[b[op].operands[0]].ty).as_ref() {
+        if !b.cast_into_producer(op) || Some(&rdims) == (b[b[op].operands[0]].ty).dims().as_ref() {
             return false;
         }
         let [o, mut s, t] = b.slice_lists(ext);
-        let mask = Tn::rank_reduction_mask(&b.dense_i64(ext, "static_sizes"), &Tn::dims(&b[b[ext].results[0]].ty).unwrap_or_default(), false);
+        let mask = Tn::rank_reduction_mask(&b.dense_i64(ext, "static_sizes"), &(b[b[ext].results[0]].ty).dims().unwrap_or_default(), false);
         let mut j = 0;
         for (i, size) in s.iter_mut().enumerate() {
             if mask.as_ref().is_some_and(|m| m.contains(&i)) {
@@ -791,7 +781,7 @@ rewrites! {
             }
             let d = rdims[j];
             j += 1;
-            if d != DYNAMIC {
+            if d != Dim::DYNAMIC {
                 *size = Ofr::C(d);
             }
         }
@@ -848,10 +838,10 @@ rewrites! {
         let b = &*rw.body;
         let dim = concat_dim(b, op);
         let Some(inferred) = concat_type(b, op, dim) else { return false };
-        let mut shape = Tn::dims(&inferred).unwrap_or_default();
+        let mut shape = inferred.dims().unwrap_or_default();
         let mut casts = Vec::new();
         for (i, v) in b[op].operands.iter().enumerate() {
-            let Some(d) = Tn::dims(&b[*v].ty) else { return false };
+            let Some(d) = b[*v].ty.dims() else { return false };
             shape[dim] = d[dim];
             let t = Tn::tensor(&shape, inferred.element_type().clone(), Vec::new());
             if !Tn::preserves(&t, &b[*v].ty) {
@@ -928,23 +918,23 @@ rewrites! {
         }
         let Some(e) = b.def_named(b[op].operands[0], "tensor.empty") else { return false };
         let rt = b[b[op].results[0]].ty.clone();
-        let (Some(rs), Some(ed)) = (Tn::dims(&rt), Tn::dims(&b[b[e].results[0]].ty)) else { return false };
+        let (Some(rs), Some(ed)) = (rt.dims(), (b[b[e].results[0]].ty).dims()) else { return false };
         let mut dynamic = b[e].operands.iter();
         let mut dims = Vec::new();
         let mut kept = Vec::new();
         for (n, cur) in rs.iter().zip(&ed) {
-            if *cur != DYNAMIC {
-                if *n == DYNAMIC || n != cur {
+            if *cur != Dim::DYNAMIC {
+                if *n == Dim::DYNAMIC || n != cur {
                     return false;
                 }
                 dims.push(*cur);
                 continue;
             }
             let v = *dynamic.next().expect("dynamic size");
-            if *n != DYNAMIC {
+            if *n != Dim::DYNAMIC {
                 dims.push(*n);
             } else {
-                dims.push(DYNAMIC);
+                dims.push(Dim::DYNAMIC);
                 kept.push(v);
             }
         }
@@ -958,11 +948,11 @@ rewrites! {
         let b = &*rw.body;
         let Some(i) = b.const_index(b[op].operands[1]) else { return false };
         let Some(e) = b.def_named(b[op].operands[0], "tensor.empty") else { return false };
-        let dims = Tn::dims(&b[b[e].results[0]].ty).unwrap_or_default();
-        if i < 0 || i as usize >= dims.len() || dims[i as usize] != DYNAMIC {
+        let dims = (b[b[e].results[0]].ty).dims().unwrap_or_default();
+        if i < 0 || i as usize >= dims.len() || dims[i as usize] != Dim::DYNAMIC {
             return false;
         }
-        let k = dims[..i as usize].iter().filter(|d| **d == DYNAMIC).count();
+        let k = dims[..i as usize].iter().filter(|d| **d == Dim::DYNAMIC).count();
         let v = b[e].operands[k];
         rw.replace_op(op, &[v]);
         true
@@ -986,19 +976,19 @@ rewrites! {
     ConvertToStaticExpandShape("tensor.expand_shape", 1) |rw, op| {
         let b = &*rw.body;
         let Some(cast) = b.foldable_cast(b[op].operands[0]) else { return false };
-        let cast_src = Tn::dims(&b[b[cast].operands[0]].ty).unwrap_or_default();
+        let cast_src = (b[b[cast].operands[0]].ty).dims().unwrap_or_default();
         let r = b.reassociation(op);
         let rt = b[b[op].results[0]].ty.clone();
-        let mut out = Tn::dims(&rt).unwrap_or_default();
+        let mut out = rt.dims().unwrap_or_default();
         let mut dynamic = Vec::new();
         let mut it = b[op].operands[1..].iter();
         for (in_dim, g) in r.iter().enumerate() {
             for od in g {
-                if out[*od as usize] != DYNAMIC {
+                if out[*od as usize] != Dim::DYNAMIC {
                     continue;
                 }
                 let v = *it.next().expect("dynamic output size");
-                if cast_src[in_dim] == DYNAMIC {
+                if cast_src[in_dim] == Dim::DYNAMIC {
                     dynamic.push(v);
                     continue;
                 }
@@ -1013,19 +1003,19 @@ rewrites! {
         }
         let src_ty = b[b[op].operands[0]].ty.clone();
         let elem = src_ty.element_type().clone();
-        let mut input = vec![1i64; Tn::dims(&src_ty).map_or(0, |d| d.len())];
+        let mut input = vec![1i64; src_ty.dims().map_or(0, |d| d.len())];
         for (i, d) in input.iter_mut().enumerate() {
             for od in &r[i] {
                 let o = out[*od as usize];
-                if o == DYNAMIC {
-                    *d = DYNAMIC;
+                if o == Dim::DYNAMIC {
+                    *d = Dim::DYNAMIC;
                     break;
                 }
                 *d *= o;
             }
         }
         let mut dyn_it = dynamic.into_iter();
-        let shape: Vec<Ofr> = out.iter().map(|d| if *d == DYNAMIC { Ofr::V(dyn_it.next().expect("dynamic")) } else { Ofr::C(*d) }).collect();
+        let shape: Vec<Ofr> = out.iter().map(|d| if *d == Dim::DYNAMIC { Ofr::V(dyn_it.next().expect("dynamic")) } else { Ofr::C(*d) }).collect();
         let src = b[op].operands[0];
         rw.set_before(op);
         let cin = rw.tensor_cast(src, Tn::tensor(&input, elem.clone(), Vec::new()));
@@ -1078,7 +1068,7 @@ rewrites! {
         let Some(cast) = b.foldable_cast(b[op].operands[0]) else { return false };
         let src = b[cast].operands[0];
         let lists = b.slice_lists(op);
-        if !Tn::in_bounds(&Tn::dims(&b[src].ty).unwrap_or_default(), &lists[0], &lists[1], &lists[2]) {
+        if !Tn::in_bounds(&b[src].ty.dims().unwrap_or_default(), &lists[0], &lists[1], &lists[2]) {
             return false;
         }
         let ty = b[b[op].results[0]].ty.clone();
@@ -1176,7 +1166,7 @@ rewrites! {
         let cs = b[cast].operands[0];
         let rt = b[b[op].results[0]].ty.clone();
         let Some(st) = Tn::ranked(&b[cs].ty).cloned() else { return false };
-        let Some(new_ty) = Tn::pad_type(&st, &b.dense_i64(op, "static_low"), &b.dense_i64(op, "static_high"), &Tn::dims(&rt).unwrap_or_default()) else { return false };
+        let Some(new_ty) = Tn::pad_type(&st, &b.dense_i64(op, "static_low"), &b.dense_i64(op, "static_high"), &rt.dims().unwrap_or_default()) else { return false };
         if new_ty == rt {
             rw.modify(op, |b| b.set_operand(op, 0, cs));
             return true;
@@ -1219,8 +1209,8 @@ rewrites! {
         let Some(inner) = b.def_named(b[op].operands[0], "tensor.extract_slice") else { return false };
         let Some(outer_pad) = b.def_named(b[inner].operands[0], "tensor.pad").filter(|p| b[*p].get("nofold").is_none()) else { return false };
         let Some(outer) = b.def_named(b[outer_pad].operands[0], "tensor.extract_slice") else { return false };
-        let rank = Tn::dims(&b[b[op].operands[0]].ty).map_or(0, |d| d.len());
-        if Tn::dims(&b[b[outer].operands[0]].ty).map_or(0, |d| d.len()) != rank {
+        let rank = (b[b[op].operands[0]].ty).dims().map_or(0, |d| d.len());
+        if (b[b[outer].operands[0]].ty).dims().map_or(0, |d| d.len()) != rank {
             return false;
         }
         let (il, ol) = (b.slice_lists(inner), b.slice_lists(outer));
@@ -1253,7 +1243,7 @@ rewrites! {
             }
             return false;
         }
-        let isrc = Tn::dims(&b[b[inner].operands[0]].ty).unwrap_or_default();
+        let isrc = (b[b[inner].operands[0]].ty).dims().unwrap_or_default();
         let mut sizes = il[1].clone();
         for i in 0..rank {
             if !odims[i] {
@@ -1283,9 +1273,9 @@ rewrites! {
     FoldStaticPadding("tensor.pad", 1) |rw, op| {
         let b = &*rw.body;
         let input = b[op].operands[0];
-        let (Some(st), Some(idims)) = (Tn::ranked(&b[input].ty).cloned(), Tn::dims(&b[input].ty)) else { return false };
+        let (Some(st), Some(idims)) = (Tn::ranked(&b[input].ty).cloned(), b[input].ty.dims()) else { return false };
         let rt = b[b[op].results[0]].ty.clone();
-        let Some(odims) = Tn::ranked(&rt).and_then(|_| Tn::dims(&rt)) else { return false };
+        let Some(odims) = Tn::ranked(&rt).and_then(|_| rt.dims()) else { return false };
         let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
         let (nl, nh) = (segs.get(1).copied().unwrap_or(0), segs.get(2).copied().unwrap_or(0));
         let lows = b[op].operands[1..1 + nl].to_vec();
@@ -1297,7 +1287,7 @@ rewrites! {
                 match b.constant_of(*v).and_then(|a| Const::try_from(&a).ok()).filter(|c| !c.elements).and_then(|c| c.as_int()) {
                     Some(i) => c.push(i.signed() as i64),
                     None => {
-                        c.push(DYNAMIC);
+                        c.push(Dim::DYNAMIC);
                         keep.push(*v);
                     }
                 }
@@ -1311,23 +1301,23 @@ rewrites! {
         }
         let (mut li, mut hi) = (cl.into_iter(), ch.into_iter());
         for i in 0..idims.len() {
-            if low[i] == DYNAMIC {
+            if low[i] == Dim::DYNAMIC {
                 low[i] = li.next().expect("dynamic low");
             }
-            if high[i] == DYNAMIC {
+            if high[i] == Dim::DYNAMIC {
                 high[i] = hi.next().expect("dynamic high");
             }
         }
         let new_out: Vec<i64> = (0..idims.len())
-            .map(|i| if odims[i] == DYNAMIC { if low[i] == DYNAMIC || high[i] == DYNAMIC || idims[i] == DYNAMIC { DYNAMIC } else { idims[i] + low[i] + high[i] } } else { odims[i] })
+            .map(|i| if odims[i] == Dim::DYNAMIC { if low[i] == Dim::DYNAMIC || high[i] == Dim::DYNAMIC || idims[i] == Dim::DYNAMIC { Dim::DYNAMIC } else { idims[i] + low[i] + high[i] } } else { odims[i] })
             .collect();
-        if new_out == odims || new_out.iter().all(|x| *x == DYNAMIC) {
+        if new_out == odims || new_out.iter().all(|x| *x == Dim::DYNAMIC) {
             return false;
         }
         let new_ty = Tn::tensor(&new_out, (*st.elem).clone(), Vec::new());
         let (mut lv, mut hv) = (new_lows.into_iter(), new_highs.into_iter());
-        let lo: Vec<Ofr> = low.iter().map(|x| if *x == DYNAMIC { Ofr::V(lv.next().expect("value")) } else { Ofr::C(*x) }).collect();
-        let ho: Vec<Ofr> = high.iter().map(|x| if *x == DYNAMIC { Ofr::V(hv.next().expect("value")) } else { Ofr::C(*x) }).collect();
+        let lo: Vec<Ofr> = low.iter().map(|x| if *x == Dim::DYNAMIC { Ofr::V(lv.next().expect("value")) } else { Ofr::C(*x) }).collect();
+        let ho: Vec<Ofr> = high.iter().map(|x| if *x == Dim::DYNAMIC { Ofr::V(hv.next().expect("value")) } else { Ofr::C(*x) }).collect();
         let data = rw.pad_data(op, input, &lo, &ho);
         rw.set_before(op);
         let new = rw.new_pad(data, new_ty, op, false);
@@ -1441,16 +1431,16 @@ fn concat_dim(b: &Body<'_>, op: OpId) -> usize {
 
 /// `ConcatOp::inferResultType`.
 fn concat_type<'a>(b: &Body<'a>, op: OpId, dim: usize) -> Option<Type<'a>> {
-    let types: Vec<Vec<i64>> = b[op].operands.iter().map(|v| Tn::dims(&b[*v].ty)).collect::<Option<_>>()?;
+    let types: Vec<Vec<i64>> = b[op].operands.iter().map(|v| b[*v].ty.dims()).collect::<Option<_>>()?;
     let rank = types.first()?.len();
-    let mut sizes = vec![DYNAMIC; rank];
+    let mut sizes = vec![Dim::DYNAMIC; rank];
     for (i, s) in sizes.iter_mut().enumerate() {
         if i == dim {
-            *s = types.iter().try_fold(0i64, |acc, t| (t[i] != DYNAMIC).then(|| acc + t[i])).unwrap_or(DYNAMIC);
+            *s = types.iter().try_fold(0i64, |acc, t| (t[i] != Dim::DYNAMIC).then(|| acc + t[i])).unwrap_or(Dim::DYNAMIC);
             continue;
         }
         for t in &types {
-            if *s == DYNAMIC {
+            if *s == Dim::DYNAMIC {
                 *s = t[i];
             }
         }
@@ -1463,7 +1453,7 @@ fn expand_data<'a>(src: ValueId, r: &Reassoc, shape: &[Ofr]) -> OpData<'a> {
     let (st, dy) = Tn::split(shape);
     let mut ops = vec![src];
     ops.extend(dy);
-    OpData::build("tensor.expand_shape").operands(&ops).with("reassociation", Reshape::attr(r)).with("static_output_shape", Tn::dense_array(&st))
+    OpData::build("tensor.expand_shape").operands(&ops).with("reassociation", Reshape::attr(r)).with("static_output_shape", Attribute::dense_i64(&st))
 }
 
 /// `FoldReshapeWithConstant`.

@@ -10,7 +10,7 @@ use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Dim, FloatKind, Shaped, ShapedKind, Type};
 
 use super::memref_to_llvm::{Cr, Gep, MemrefToLlvm as M};
-use crate::{LlvmOptions, OpData, OpId, ValueId, DYNAMIC};
+use crate::{LlvmOptions, OpData, OpId, ValueId};
 use mlirformat::llvm_types::LlvmType;
 
 /// The vector ⇒ llvm patterns.
@@ -47,7 +47,7 @@ impl VectorToLlvm {
     fn dim(d: &Dim) -> i64 {
         match d {
             Dim::Static(n) | Dim::Scalable(n) => *n,
-            Dim::Dynamic => DYNAMIC,
+            Dim::Dynamic => Dim::DYNAMIC,
         }
     }
 
@@ -136,10 +136,6 @@ impl VectorToLlvm {
         opts.address_space(s).is_some() && opts.strides_and_offset(s).is_some_and(|(st, _)| st.last().is_none_or(|l| *l == 1))
     }
 
-    fn i32_attr<'a>(v: i64) -> Attribute<'a> {
-        Attribute::Int { lit: format!("{v}").into(), ty: Some(Type::int(32)) }
-    }
-
     #[lowering("vector.bitcast")]
     fn bitcast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let rt = Self::result_type(cr, op);
@@ -192,11 +188,11 @@ impl VectorToLlvm {
                 cr.replace_new(op, mem(OpData::build("llvm.store").operands(&[operands[0][0], ptr])), &[]);
             }
             "vector.maskedload" => {
-                let d = OpData::build("llvm.intr.masked.load").operands(&[ptr, rest[0], rest[1]]).with("alignment", Self::i32_attr(align));
+                let d = OpData::build("llvm.intr.masked.load").operands(&[ptr, rest[0], rest[1]]).with("alignment", Attribute::integer(i128::from(align), Type::int(32)));
                 cr.replace_new(op, d, &[lt]);
             }
             _ => {
-                let d = OpData::build("llvm.intr.masked.store").operands(&[rest[1], ptr, rest[0]]).with("alignment", Self::i32_attr(align));
+                let d = OpData::build("llvm.intr.masked.store").operands(&[rest[1], ptr, rest[0]]).with("alignment", Attribute::integer(i128::from(align), Type::int(32)));
                 cr.replace_new(op, d, &[]);
             }
         }
@@ -231,11 +227,11 @@ impl VectorToLlvm {
         let rest: Vec<ValueId> = operands[1 + rank..].iter().flatten().copied().collect();
         let Some(ptrs) = Self::indexed_ptrs(cr, o, &m, &vs, ptr, rest[0]) else { return false };
         if scatter {
-            let d = OpData::build("llvm.intr.masked.scatter").operands(&[rest[2], ptrs, rest[1]]).with("alignment", Self::i32_attr(align));
+            let d = OpData::build("llvm.intr.masked.scatter").operands(&[rest[2], ptrs, rest[1]]).with("alignment", Attribute::integer(i128::from(align), Type::int(32)));
             cr.replace_new(op, d, &[]);
         } else {
             let Some(lt) = Self::convert(cr, &vt) else { return false };
-            let d = OpData::build("llvm.intr.masked.gather").operands(&[ptrs, rest[1], rest[2]]).with("alignment", Self::i32_attr(align));
+            let d = OpData::build("llvm.intr.masked.gather").operands(&[ptrs, rest[1], rest[2]]).with("alignment", Attribute::integer(i128::from(align), Type::int(32)));
             cr.replace_new(op, d, &[lt]);
         }
         true
@@ -481,7 +477,7 @@ impl VectorToLlvm {
     }
 
     fn i32_array<'a>(v: &[i64]) -> Attribute<'a> {
-        Attribute::DenseArray { ty: Type::int(32), values: v.iter().map(|x| format!("{x}").into()).collect() }
+        Attribute::dense_i32(&v)
     }
 
     #[lowering("vector.shuffle")]
@@ -516,7 +512,7 @@ impl VectorToLlvm {
     /// The `static_position` of an extract / insert, with dynamic entries from `dynamic`.
     fn positions<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, dynamic: &[ValueId]) -> Vec<Result<i64, ValueId>> {
         let mut d = dynamic.iter();
-        Self::mask_list(cr, op, "static_position").into_iter().map(|p| if p == DYNAMIC { Err(*d.next().expect("dynamic position")) } else { Ok(p) }).collect()
+        Self::mask_list(cr, op, "static_position").into_iter().map(|p| if p == Dim::DYNAMIC { Err(*d.next().expect("dynamic position")) } else { Ok(p) }).collect()
     }
 
     /// `getAsLLVMValue`: a constant position becomes an `i64` constant.
@@ -633,9 +629,9 @@ impl VectorToLlvm {
         if M::identity_layout(s) {
             return Some(strides);
         }
-        let sizes = M::dims(s);
+        let sizes = s.dims().unwrap_or_default();
         for i in 0..strides.len().saturating_sub(1) {
-            if sizes[i + 1] == DYNAMIC || strides[i] == DYNAMIC || strides[i + 1] == DYNAMIC || strides[i] != strides[i + 1] * sizes[i + 1] {
+            if sizes[i + 1] == Dim::DYNAMIC || strides[i] == Dim::DYNAMIC || strides[i + 1] == Dim::DYNAMIC || strides[i] != strides[i + 1] * sizes[i + 1] {
                 return None;
             }
         }
@@ -645,7 +641,7 @@ impl VectorToLlvm {
     #[lowering("vector.type_cast")]
     fn type_cast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let (Some(src), Some(dst)) = (M::operand_memref(cr, op, 0), M::result_memref(cr, op)) else { return false };
-        if M::dims(&src).contains(&DYNAMIC) || M::dims(&dst).contains(&DYNAMIC) || src.shape.is_none() || dst.shape.is_none() {
+        if src.dims().unwrap_or_default().contains(&Dim::DYNAMIC) || dst.dims().unwrap_or_default().contains(&Dim::DYNAMIC) || src.shape.is_none() || dst.shape.is_none() {
             return false;
         }
         let desc = operands[0][0];
@@ -657,7 +653,7 @@ impl VectorToLlvm {
             return false;
         }
         let Some(ts) = Self::contiguous_strides(o.llvm, &dst) else { return false };
-        if ts.contains(&DYNAMIC) {
+        if ts.contains(&Dim::DYNAMIC) {
             return false;
         }
         let i64t = Type::int(64);
@@ -668,7 +664,7 @@ impl VectorToLlvm {
         d = cr.insert_value(d, p, &[1]);
         let z = Self::i_const(cr, 0, Type::Index, i64t.clone());
         d = cr.insert_value(d, z, &[2]);
-        for (i, size) in M::dims(&dst).into_iter().enumerate() {
+        for (i, size) in dst.dims().unwrap_or_default().into_iter().enumerate() {
             let s = Self::i_const(cr, size, Type::Index, i64t.clone());
             d = cr.insert_value(d, s, &[3, i as i64]);
             let st = Self::i_const(cr, ts[i], Type::Index, i64t.clone());

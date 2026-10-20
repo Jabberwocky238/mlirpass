@@ -15,7 +15,7 @@ pub struct Emitc;
 impl Emitc {
     /// `isMemRefTypeLegalForEmitC`: static, identity layout, ranked and not empty.
     pub fn memref_legal(s: &Shaped<'_>) -> bool {
-        let dims = super::MemrefToLlvm::dims(s);
+        let dims = s.dims().unwrap_or_default();
         s.kind == ShapedKind::MemRef && s.shape.is_some() && !dims.is_empty() && dims.iter().all(|d| *d > 0) && super::MemrefToLlvm::identity_layout(s)
     }
 
@@ -29,7 +29,7 @@ impl Emitc {
                     e if EmitcType::supported(e) => e.clone(),
                     _ => return None,
                 };
-                Some(Some(vec![EmitcType::array(&super::MemrefToLlvm::dims(s), &elem)]))
+                Some(Some(vec![EmitcType::array(&s.dims().unwrap_or_default(), &elem)]))
             }
             _ => None,
         });

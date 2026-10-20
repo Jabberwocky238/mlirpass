@@ -6,7 +6,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
-use mlirformat::{Attribute, NamedAttr, Shaped, ShapedKind, Type};
+use mlirformat::{Attribute, Dim, NamedAttr, Shaped, ShapedKind, Type};
 
 use crate::{ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, SignatureConversion, Visibility, ValueId};
 use mlirformat::llvm_types::LlvmType;
@@ -54,7 +54,7 @@ impl FuncToLlvm {
             return None;
         }
         let (strides, offset) = opts.strides_and_offset(s)?;
-        if strides.contains(&crate::DYNAMIC) || offset == crate::DYNAMIC {
+        if strides.contains(&Dim::DYNAMIC) || offset == Dim::DYNAMIC {
             return None;
         }
         Some(LlvmType::Ptr(opts.address_space(s)?).into())
@@ -529,7 +529,7 @@ impl FuncToLlvm {
                     Some(d) => updated.push(d),
                     None => return false,
                 },
-                Some(s) if bare && opts.strides_and_offset(s).is_some_and(|(st, o)| !st.contains(&crate::DYNAMIC) && o != crate::DYNAMIC) && s.shape.as_ref().is_some_and(|sh| sh.iter().all(|d| matches!(d, mlirformat::Dim::Static(_)))) => updated.push(cr.extract(adapted[0], &[0])),
+                Some(s) if bare && opts.strides_and_offset(s).is_some_and(|(st, o)| !st.contains(&Dim::DYNAMIC) && o != Dim::DYNAMIC) && s.shape.as_ref().is_some_and(|sh| sh.iter().all(|d| matches!(d, mlirformat::Dim::Static(_)))) => updated.push(cr.extract(adapted[0], &[0])),
                 _ => updated.extend(adapted.iter().copied()),
             }
         }

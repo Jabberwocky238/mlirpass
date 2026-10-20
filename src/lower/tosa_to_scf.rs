@@ -4,11 +4,10 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{arith, scf, tensor, Dim, Error, Shaped, Type};
+use mlirformat::{Attribute, Dim, Error, Shaped, Type, arith, scf, tensor};
 use mlirpass_macros::{pass, patterns};
 
-use super::vector_transforms::{dense_i64, index_attr};
-use crate::{Action, Body, ConversionConfig, ConversionPatterns, ConversionRewriter as Cr, ConversionTarget, Converter, Listener, Mode, OpData, OpId, RegionId, Rewriter, TypedOp, ValueId, DYNAMIC};
+use crate::{Action, Body, ConversionConfig, ConversionPatterns, ConversionRewriter as Cr, ConversionTarget, Converter, Listener, Mode, OpData, OpId, RegionId, Rewriter, TypedOp, ValueId};
 
 /// The tosa ⇒ scf patterns.
 pub struct TosaToScf;
@@ -67,7 +66,7 @@ impl TosaToScf {
         let [n, w, c] = [0, 1, 2].map(|d| Self::tensor_dim(rw, input, d));
         let (zero, one) = (Self::cidx(rw, 0), Self::cidx(rw, 1));
         let in_ty = rw.body[input].ty.clone();
-        let dyn3 = dense_i64(&[DYNAMIC; 3]);
+        let dyn3 = Attribute::dense_i64(&[Dim::DYNAMIC; 3]);
         let lp = rw.build_for(zero, n, one, &[values_in], &mut |rw, i, acc| {
             let inner = rw.build_for(zero, w, one, acc, &mut |rw, j, acc| {
                 let index = Self::extract(rw, indices, &[i, j]);
@@ -98,7 +97,7 @@ impl TosaToScf {
     }
 
     fn cidx<'a, L: Listener<'a> + ?Sized>(rw: &mut Rewriter<'_, 'a, L>, v: i64) -> ValueId {
-        Self::result(rw, &arith::Constant::new(index_attr(v), Type::Index))
+        Self::result(rw, &arith::Constant::new(Attribute::index(v), Type::Index))
     }
 
     /// `createOrFold<tensor::DimOp>`: the index constant stays, the dim may fold away.

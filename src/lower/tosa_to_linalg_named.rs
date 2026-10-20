@@ -5,12 +5,11 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
-use mlirformat::{Attribute, FloatKind, Type, tosa};
+use mlirformat::{Attribute, Dim, FloatKind, Type, tosa};
 
-use super::linalg_build::{Named, dims_of, i64_elements, int_attr, tensor_type};
-use super::vector_transforms::dense_i64;
+use super::linalg_build::{Named, i64_elements};
 use crate::canon::MemrefOfr as Ofr;
-use crate::{AffineExpr, AffineMap, ApFloat, Const, ConversionRewriter, DYNAMIC, Mapping, OpData, OpId, Scalar, ValueId};
+use crate::{AffineExpr, AffineMap, ApFloat, Const, ConversionRewriter, Mapping, OpData, OpId, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -49,7 +48,7 @@ impl TosaToLinalgNamed {
     fn zero<'a>(t: &Type<'a>) -> Attribute<'a> {
         match t {
             Type::Float(k) => Const::scalar(Scalar::Float(ApFloat::from_f64(*k, 0.0).expect("a float")), t.clone()).into(),
-            _ => int_attr(0, t),
+            _ => Attribute::integer(0, t.clone()),
         }
     }
 
@@ -59,18 +58,18 @@ impl TosaToLinalgNamed {
             return input;
         }
         let it = Self::ty(cr, input);
-        let shape = dims_of(&it);
-        let padded: Vec<i64> = shape.iter().enumerate().map(|(i, d)| if *d == DYNAMIC { *d } else { d + pad[2 * i] + pad[2 * i + 1] }).collect();
+        let shape = it.dims().unwrap_or_default();
+        let padded: Vec<i64> = shape.iter().enumerate().map(|(i, d)| if *d == Dim::DYNAMIC { *d } else { d + pad[2 * i] + pad[2 * i + 1] }).collect();
         let low: Vec<i64> = (0..shape.len()).map(|i| pad[2 * i]).collect();
         let high: Vec<i64> = (0..shape.len()).map(|i| pad[2 * i + 1]).collect();
         let et = Self::elem(&it);
         let pv = cr.constant(value, et.clone());
-        cr.pad_static(input, &low, &high, pv, tensor_type(&padded, et))
+        cr.pad_static(input, &low, &high, pv, Type::tensor(&padded, et))
     }
 
     /// `getBroadcastingMap`.
     fn broadcasting_map(cr: &Cr<'_, '_, '_>, source: ValueId, result: ValueId) -> AffineMap {
-        let (rr, sd) = (dims_of(&Self::ty(cr, result)).len() as u32, dims_of(&Self::ty(cr, source)));
+        let (rr, sd) = ((Self::ty(cr, result)).dims().unwrap_or_default().len() as u32, (Self::ty(cr, source)).dims().unwrap_or_default());
         let results = if sd.len() == 1 && sd[0] == 1 { vec![AffineExpr::Const(0)] } else { (0..sd.len() as u32).map(|d| AffineExpr::Dim(d + rr - sd.len() as u32)).collect() };
         AffineMap { dims: rr, syms: 0, results }
     }
@@ -78,7 +77,7 @@ impl TosaToLinalgNamed {
     /// `linalgBroadcastAndMaybeExt`.
     fn broadcast_ext(cr: &mut Cr<'_, '_, '_>, source: ValueId, result: ValueId) -> ValueId {
         let rt = Self::ty(cr, result);
-        let rank = dims_of(&rt).len();
+        let rank = rt.dims().unwrap_or_default().len();
         let maps = [Self::broadcasting_map(cr, source, result), AffineMap::identity(rank as u32)];
         let float = matches!(Self::elem(&rt), Type::Float(_));
         let g = cr.generic(core::slice::from_ref(&rt), &[source], &[result], &maps, &vec![true; rank], &mut |cr, a| {
@@ -91,7 +90,7 @@ impl TosaToLinalgNamed {
 
     /// `getConvOrPoolOutputDim`.
     fn output_dim(cr: &mut Cr<'_, '_, '_>, input: ValueId, before: i64, after: i64, kernel: ValueId, stride: i64, dilation: i64) -> ValueId {
-        let one = cr.constant(int_attr(1, &Type::Index), Type::Index);
+        let one = cr.constant(Attribute::integer(1, (Type::Index).clone()), Type::Index);
         let pb = cr.cidx(before);
         let a = cr.bin("arith.addi", input, pb);
         let pa = cr.cidx(after);
@@ -111,15 +110,15 @@ impl TosaToLinalgNamed {
         let mut dims: Vec<Option<ValueId>> = vec![None; rdims.len()];
         for i in 0..in_dims.len() {
             let (id, kd) = (in_dims[i] as usize, k_dims[i]);
-            if rdims[id] == DYNAMIC {
+            if rdims[id] == Dim::DYNAMIC {
                 let init = cr.tdim(input, id as i64);
                 let kern = cr.tdim(weight, kd);
                 dims[id] = Some(Self::output_dim(cr, init, pad[2 * i], pad[2 * i + 1], kern, stride[i], dil[i]));
             }
         }
-        let rank = dims_of(&Self::ty(cr, input)).len();
+        let rank = (Self::ty(cr, input)).dims().unwrap_or_default().len();
         for i in 0..rank {
-            if rdims[i] == DYNAMIC && dims[i].is_none() {
+            if rdims[i] == Dim::DYNAMIC && dims[i].is_none() {
                 dims[i] = Some(cr.tdim(input, i as i64));
             }
         }
@@ -129,11 +128,11 @@ impl TosaToLinalgNamed {
     /// `tosa.transpose` moving the leading dim of the weight last.
     fn transpose_weight<'a>(cr: &mut Cr<'_, 'a, '_>, weight: ValueId, rank: usize) -> ValueId {
         let wt = Self::ty(cr, weight);
-        let shape = dims_of(&wt);
+        let shape = wt.dims().unwrap_or_default();
         let perm: Vec<i64> = (1..rank as i64).chain([0]).collect();
         let ns: Vec<i64> = perm.iter().map(|p| shape[*p as usize]).collect();
-        let perms = Attribute::DenseArray { ty: Type::int(32), values: perm.iter().map(|p| alloc::format!("{p}").into()).collect() };
-        cr.emit(&tosa::TransposeOp::new(weight.into(), perms, wt.clone(), tensor_type(&ns, Self::elem(&wt))))
+        let perms = Attribute::dense_i32(&perm);
+        cr.emit(&tosa::TransposeOp::new(weight.into(), perms, wt.clone(), Type::tensor(&ns, Self::elem(&wt))))
     }
 
     fn acc_type<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Option<Type<'a>> {
@@ -153,14 +152,14 @@ impl TosaToLinalgNamed {
         let ie = Self::elem(&it);
         let (pad_a, stride, dil) = (Self::ints(cr, op, "pad"), Self::ints(cr, op, "stride"), Self::ints(cr, op, "dilation"));
         let Some(acc) = Self::acc_type(cr, op) else { return false };
-        let rdims = dims_of(&rt);
-        let acc_ty = tensor_type(&rdims, acc.clone());
+        let rdims = rt.dims().unwrap_or_default();
+        let acc_ty = Type::tensor(&rdims, acc.clone());
         let (Some(izp), Some(wzp)) = (Self::zero_point(cr, izv), Self::zero_point(cr, wzv)) else { return false };
         if !Self::zp_ok(cr, izv, izp) || !Self::zp_ok(cr, wzv, wzp) {
             return false;
         }
         let has_zp = izp != 0 || wzp != 0;
-        let static_ = |t: &Type<'_>| !dims_of(t).contains(&DYNAMIC);
+        let static_ = |t: &Type<'_>| !t.dims().unwrap_or_default().contains(&Dim::DYNAMIC);
         if !static_(&Self::ty(cr, weight)) || !static_(&Self::ty(cr, bias)) {
             return false;
         }
@@ -176,13 +175,13 @@ impl TosaToLinalgNamed {
             if izp < lo || izp > hi {
                 return false;
             }
-            zero_attr = int_attr(i128::from(izp), &ie);
+            zero_attr = Attribute::integer(i128::from(izp), ie.clone());
         }
         let mut pad = vec![0, 0];
         pad.extend(&pad_a);
         pad.extend([0, 0]);
         input = Self::apply_pad(cr, input, &pad, zero_attr);
-        let rank = dims_of(&it).len();
+        let rank = it.dims().unwrap_or_default().len();
         let (op_name, q_name) = names;
         if (rank == 4 && op_name == "linalg.conv_2d_nhwc_hwcf") || rank == 5 {
             weight = Self::transpose_weight(cr, weight, rank);
@@ -191,8 +190,8 @@ impl TosaToLinalgNamed {
         let empty = cr.empty(&rdims, acc.clone(), &dyn_dims);
         let bb = Self::broadcast_ext(cr, bias, empty);
         let conv = if has_zp {
-            let i = cr.constant(int_attr(i128::from(izp), &Type::int(32)), Type::int(32));
-            let k = cr.constant(int_attr(i128::from(wzp), &Type::int(32)), Type::int(32));
+            let i = cr.constant(Attribute::integer(i128::from(izp), (Type::int(32)).clone()), Type::int(32));
+            let k = cr.constant(Attribute::integer(i128::from(wzp), (Type::int(32)).clone()), Type::int(32));
             let c = Self::yaml_named(cr, q_name, Named::MulAddZp, &[input, weight, i, k], &[bb], &rt, props(&stride, &dil), &stride, &dil);
             cr.rw.body[c].results[0]
         } else {
@@ -230,12 +229,12 @@ impl TosaToLinalgNamed {
         let (izv, wzv) = (b[op].operands[3], b[op].operands[4]);
         let it = Self::ty(cr, input);
         let rt = Self::ty(cr, cr.rw.body[op].results[0]);
-        let rdims = dims_of(&rt);
+        let rdims = rt.dims().unwrap_or_default();
         let rank = rdims.len();
         let (ie, re) = (Self::elem(&it), Self::elem(&rt));
         let (pad_a, stride, dil) = (Self::ints(cr, op, "pad"), Self::ints(cr, op, "stride"), Self::ints(cr, op, "dilation"));
         let Some(acc) = Self::acc_type(cr, op) else { return false };
-        let static_ = |t: &Type<'_>| !dims_of(t).contains(&DYNAMIC);
+        let static_ = |t: &Type<'_>| !t.dims().unwrap_or_default().contains(&Dim::DYNAMIC);
         if !static_(&Self::ty(cr, weight)) || !static_(&Self::ty(cr, bias)) {
             return false;
         }
@@ -245,21 +244,21 @@ impl TosaToLinalgNamed {
             return false;
         }
         let null = izp == 0 && wzp == 0;
-        let ws = dims_of(&Self::ty(cr, weight));
+        let ws = (Self::ty(cr, weight)).dims().unwrap_or_default();
         let mut zero_attr = Self::zero(&ie);
         if !null {
             let w = ie.bit_width().unwrap_or(8);
             if izp < -(1i64 << (w - 1)) || izp > (1i64 << (w - 1)) - 1 {
                 return false;
             }
-            zero_attr = int_attr(i128::from(izp), &ie);
+            zero_attr = Attribute::integer(i128::from(izp), ie.clone());
         }
         let mut pad = vec![0, 0];
         pad.extend(&pad_a);
         pad.extend([0, 0]);
         input = Self::apply_pad(cr, input, &pad, zero_attr);
         let conv_dims = [rdims[0], rdims[1], rdims[2], ws[2], ws[3]];
-        let conv_ty = tensor_type(&conv_dims, acc.clone());
+        let conv_ty = Type::tensor(&conv_dims, acc.clone());
         let empty = cr.empty(&conv_dims, acc.clone(), &dyn_dims);
         let zero = cr.constant(Self::zero(&acc), acc.clone());
         let fill = cr.named("linalg.fill", Named::Fill, &[zero], &[empty], &[conv_ty.clone()], Vec::new());
@@ -273,14 +272,14 @@ impl TosaToLinalgNamed {
             let c = Self::yaml_named(cr, "linalg.depthwise_conv_2d_nhwc_hwcm", Named::MulAdd, &[input, weight], &[zt], &conv_ty, props, &stride, &dil);
             let mut v = cr.rw.body[c].results[0];
             if acc != re {
-                v = cr.emit(&tosa::CastOp::new(v.into(), Self::ty(cr, v), tensor_type(&conv_dims, re.clone())));
+                v = cr.emit(&tosa::CastOp::new(v.into(), Self::ty(cr, v), Type::tensor(&conv_dims, re.clone())));
             }
             let r = cr.collapse(v, &reassoc, rt.clone());
             let g = cr.generic(core::slice::from_ref(&rt), &[bias, r], &[bias_empty], &maps, &vec![true; rank], &mut |cr, a| vec![cr.bin(if float { "arith.addf" } else { "arith.addi" }, a[0], a[1])]);
             cr.rw.body[g].results[0]
         } else {
-            let i = cr.constant(int_attr(i128::from(izp), &Type::int(32)), Type::int(32));
-            let k = cr.constant(int_attr(i128::from(wzp), &Type::int(32)), Type::int(32));
+            let i = cr.constant(Attribute::integer(i128::from(izp), (Type::int(32)).clone()), Type::int(32));
+            let k = cr.constant(Attribute::integer(i128::from(wzp), (Type::int(32)).clone()), Type::int(32));
             let c = Self::yaml_named(cr, "linalg.depthwise_conv_2d_nhwc_hwcm_q", Named::MulAddZp, &[input, weight, i, k], &[zt], &conv_ty, props, &stride, &dil);
             let v = cr.rw.body[c].results[0];
             let r = cr.collapse(v, &reassoc, rt.clone());
@@ -308,10 +307,10 @@ impl TosaToLinalgNamed {
         let b = &*cr.rw.body;
         let (a0, a1, azv, bzv) = (b[op].operands[0], b[op].operands[1], b[op].operands[2], b[op].operands[3]);
         let ot = Self::ty(cr, cr.rw.body[op].results[0]);
-        let od = dims_of(&ot);
+        let od = ot.dims().unwrap_or_default();
         let mut dyn_dims = Vec::new();
         for (i, (src, d)) in [(a0, 0), (a0, 1), (a1, 2)].iter().enumerate() {
-            if od[i] == DYNAMIC {
+            if od[i] == Dim::DYNAMIC {
                 dyn_dims.push(cr.tdim(*src, *d));
             }
         }
@@ -328,8 +327,8 @@ impl TosaToLinalgNamed {
         let r = if az == 0 && bz == 0 {
             cr.named("linalg.batch_matmul", Named::MulAdd, &[a, bb], &[zt], core::slice::from_ref(&ot), vec![("indexing_maps", Self::batch_matmul_maps())])
         } else {
-            let ac = cr.constant(int_attr(i128::from(az), &Type::int(32)), Type::int(32));
-            let bc = cr.constant(int_attr(i128::from(bz), &Type::int(32)), Type::int(32));
+            let ac = cr.constant(Attribute::integer(i128::from(az), (Type::int(32)).clone()), Type::int(32));
+            let bc = cr.constant(Attribute::integer(i128::from(bz), (Type::int(32)).clone()), Type::int(32));
             Self::yaml_named(cr, "linalg.quantized_batch_matmul", Named::MulAddZp, &[a, bb, ac, bc], &[zt], &ot, Vec::new(), &[], &[])
         };
         let v = cr.rw.body[r].results[0];
@@ -386,13 +385,13 @@ impl TosaToLinalgNamed {
         let re = Self::elem(&it);
         let (kernel, pad_a, stride) = (Self::ints(cr, op, "kernel"), Self::ints(cr, op, "pad"), Self::ints(cr, op, "stride"));
         // `computeDynamicOutputSizes`.
-        let rd = dims_of(&ot);
+        let rd = ot.dims().unwrap_or_default();
         let mut dyn_dims = Vec::new();
-        if rd[0] == DYNAMIC {
+        if rd[0] == Dim::DYNAMIC {
             dyn_dims.push(cr.tdim(input, 0));
         }
         for dim in [1usize, 2] {
-            if rd[dim] != DYNAMIC {
+            if rd[dim] != Dim::DYNAMIC {
                 continue;
             }
             let i = dim - 1;
@@ -400,13 +399,13 @@ impl TosaToLinalgNamed {
             let khw = cr.cidx(kernel[i]);
             dyn_dims.push(Self::output_dim(cr, ihw, pad_a[2 * i], pad_a[2 * i + 1], khw, stride[i], 1));
         }
-        if rd[3] == DYNAMIC {
+        if rd[3] == Dim::DYNAMIC {
             dyn_dims.push(cr.tdim(input, 3));
         }
         let initial: Attribute = match &re {
             Type::Float(k @ (FloatKind::F32 | FloatKind::BF16 | FloatKind::F16)) => Const::scalar(Scalar::Float(ApFloat::largest(*k, true)), re.clone()).into(),
-            Type::Integer { width, .. } if unsigned => int_attr(0, &Type::int(*width)).with_ty(&re),
-            Type::Integer { width, .. } => int_attr(-(1i128 << (width - 1)), &re),
+            Type::Integer { width, .. } if unsigned => Attribute::integer(0, (Type::int(*width)).clone()).with_ty(&re),
+            Type::Integer { width, .. } => Attribute::integer(-(1i128 << (width - 1)), re.clone()),
             _ => return false,
         };
         let mut pad = vec![0, 0];
@@ -414,7 +413,7 @@ impl TosaToLinalgNamed {
         pad.extend([0, 0]);
         let padded = Self::apply_pad(cr, input, &pad, initial.clone());
         let iv = cr.constant(initial, re.clone());
-        let empty = cr.empty(&dims_of(&rt), Self::elem(&rt), &dyn_dims);
+        let empty = cr.empty(&rt.dims().unwrap_or_default(), Self::elem(&rt), &dyn_dims);
         let fill = cr.named("linalg.fill", Named::Fill, &[iv], &[empty], core::slice::from_ref(&rt), Vec::new());
         let filled = cr.rw.body[fill].results[0];
         let window = cr.empty(&kernel, re.clone(), &[]);
@@ -457,11 +456,11 @@ impl TosaToLinalgNamed {
 
     /// `checkHasDynamicBatchDims`.
     pub fn dynamic_batch(cr: &mut Cr<'_, '_, '_>, params: &[ValueId]) -> Option<Vec<ValueId>> {
-        let dynamic: Vec<Vec<i64>> = params.iter().map(|p| dims_of(&Self::ty(cr, *p))).filter(|d| d.contains(&DYNAMIC)).collect();
+        let dynamic: Vec<Vec<i64>> = params.iter().map(|p| (Self::ty(cr, *p)).dims().unwrap_or_default()).filter(|d| d.contains(&Dim::DYNAMIC)).collect();
         if dynamic.is_empty() {
             return Some(Vec::new());
         }
-        if dynamic.iter().any(|d| d[1..].contains(&DYNAMIC)) {
+        if dynamic.iter().any(|d| d[1..].contains(&Dim::DYNAMIC)) {
             return None;
         }
         Some(vec![cr.tdim(params[0], 0)])
@@ -477,7 +476,7 @@ impl TosaToLinalgNamed {
         let rt = Self::ty(cr, out);
         let re = Self::elem(&rt);
         let Some(acc) = Self::acc_type(cr, op) else { return false };
-        let acc_ty = tensor_type(&dims_of(&rt), acc.clone());
+        let acc_ty = Type::tensor(&rt.dims().unwrap_or_default(), acc.clone());
         let Some(dyn_dims) = Self::dynamic_batch(cr, &[input, out]) else { return false };
         let (Some(izp), Some(ozp)) = (Self::zero_point(cr, izv), Self::zero_point(cr, ozv)) else { return false };
         let (pad_a, kernel, stride) = (Self::ints(cr, op, "pad"), Self::ints(cr, op, "kernel"), Self::ints(cr, op, "stride"));
@@ -486,7 +485,7 @@ impl TosaToLinalgNamed {
         pad.extend([0, 0]);
         let padded = Self::apply_pad(cr, input, &pad, Self::zero(&ie));
         let iv = cr.constant(Self::zero(&acc), acc.clone());
-        let empty = cr.empty(&dims_of(&acc_ty), acc.clone(), &dyn_dims);
+        let empty = cr.empty(&acc_ty.dims().unwrap_or_default(), acc.clone(), &dyn_dims);
         let fill = cr.named("linalg.fill", Named::Fill, &[iv], &[empty], core::slice::from_ref(&acc_ty), Vec::new());
         let filled = cr.rw.body[fill].results[0];
         let window = cr.empty(&kernel, acc.clone(), &[]);
@@ -497,8 +496,8 @@ impl TosaToLinalgNamed {
         let one = cr.cidx(1);
         let ih = cr.bin("arith.subi", ih, one);
         let iw = cr.bin("arith.subi", iw, one);
-        let gempty = cr.empty(&dims_of(&rt), re.clone(), &dyn_dims);
-        let rank = dims_of(&rt).len() as u32;
+        let gempty = cr.empty(&rt.dims().unwrap_or_default(), re.clone(), &dyn_dims);
+        let rank = rt.dims().unwrap_or_default().len() as u32;
         let id = AffineMap::identity(rank);
         let g = cr.generic(core::slice::from_ref(&rt), &[pool], &[gempty], &[id.clone(), id], &vec![true; rank as usize], &mut |cr, a| {
             let zero = cr.cidx(0);
@@ -536,36 +535,36 @@ impl TosaToLinalgNamed {
                 return vec![pv];
             }
             if izp != 0 {
-                let z = cr.constant(int_attr(i128::from(izp), &acc), acc.clone());
+                let z = cr.constant(Attribute::integer(i128::from(izp), acc.clone()), acc.clone());
                 let off = cr.op1("arith.muli", &[count, z], acc.clone());
                 pv = cr.op1("arith.subi", &[pv, off], acc.clone());
             }
             let i32t = Type::int(32);
-            let one32 = cr.constant(int_attr(1, &i32t), i32t.clone());
-            let t32 = cr.constant(int_attr(32, &i32t), i32t.clone());
+            let one32 = cr.constant(Attribute::integer(1, i32t.clone()), i32t.clone());
+            let t32 = cr.constant(Attribute::integer(32, i32t.clone()), i32t.clone());
             let csub = cr.bin("arith.subi", count, one32);
             let lz = cr.op1("math.ctlz", &[csub], i32t.clone());
             let k = cr.bin("arith.subi", t32, lz);
             let k64 = cr.op1("arith.extui", &[k], Type::int(64));
-            let tsp = cr.constant(int_attr((1 << 30) + 1, &Type::int(64)), Type::int(64));
+            let tsp = cr.constant(Attribute::integer((1 << 30) + 1, (Type::int(64)).clone()), Type::int(64));
             let num = cr.bin("arith.shli", tsp, k64);
             let c64 = cr.op1("arith.extui", &[count], Type::int(64));
             let mult = cr.bin("arith.divui", num, c64);
             let mult = cr.op1("arith.trunci", &[mult], i32t.clone());
             let k8 = cr.op1("arith.trunci", &[k], Type::int(8));
-            let t8 = cr.constant(int_attr(30, &Type::int(8)), Type::int(8));
+            let t8 = cr.constant(Attribute::integer(30, (Type::int(8)).clone()), Type::int(8));
             let shift = cr.bin("arith.addi", k8, t8);
             let rounding = Attribute::dialect("tosa.rounding_mode", "<SINGLE_ROUND>");
             let tys = cr.rw.body.types(&[pv, mult, shift]);
             let mut scaled = cr.emit(&tosa::ApplyScaleOp::new(pv.into(), mult.into(), shift.into(), rounding, tys[0].clone(), tys[1].clone(), tys[2].clone(), i32t.clone()));
             if ozp != 0 {
                 let st = Self::ty(cr, scaled);
-                let z = cr.constant(int_attr(i128::from(ozp), &st), st);
+                let z = cr.constant(Attribute::integer(i128::from(ozp), st.clone()), st);
                 scaled = cr.bin("arith.addi", scaled, z);
             }
             let w = re.bit_width().unwrap_or(32);
-            let mn = cr.constant(int_attr(-(1i128 << (w - 1)), &acc), acc.clone());
-            let mx = cr.constant(int_attr((1i128 << (w - 1)) - 1, &acc), acc.clone());
+            let mn = cr.constant(Attribute::integer(-(1i128 << (w - 1)), acc.clone()), acc.clone());
+            let mx = cr.constant(Attribute::integer((1i128 << (w - 1)) - 1, acc.clone()), acc.clone());
             let lo = cr.bin("arith.maxsi", mn, scaled);
             let mut c = cr.bin("arith.minsi", mx, lo);
             if re != Self::ty(cr, c) {
@@ -591,7 +590,7 @@ impl TosaToLinalgNamed {
         let e = Self::elem(&Self::ty(cr, input));
         let init = cr.empty_mixed(&permuted, e);
         let it = Self::ty(cr, init);
-        let t = cr.named("linalg.transpose", Named::Copy, &[input], &[init], &[it], vec![("permutation", dense_i64(&perms))]);
+        let t = cr.named("linalg.transpose", Named::Copy, &[input], &[init], &[it], vec![("permutation", Attribute::dense_i64(&perms))]);
         let v = cr.rw.body[t].results[0];
         cr.replace_values(op, &[v]);
         true

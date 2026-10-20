@@ -1,6 +1,5 @@
 //! `llvm`: folds, as `LLVMDialect.cpp`.
 
-use alloc::format;
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Type};
@@ -22,14 +21,11 @@ pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a
 }
 
 fn positions(b: &Body<'_>, op: OpId) -> Vec<i64> {
-    match b[op].get("position") {
-        Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
-        _ => Vec::new(),
-    }
+    b[op].get("position").and_then(Attribute::dense_values).unwrap_or_default()
 }
 
 fn set_positions(b: &mut Body<'_>, op: OpId, p: &[i64]) {
-    b[op].set("position", Attribute::DenseArray { ty: Type::int(64), values: p.iter().map(|x| format!("{x}").into()).collect() });
+    b[op].set("position", Attribute::dense_i64(&p));
 }
 
 /// The fold of an `llvm` op.
@@ -211,6 +207,6 @@ fn gep<'a>(b: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold
     let mut ops = alloc::vec![base];
     ops.extend(new_dyn);
     b.set_operands(op, ops);
-    b[op].set("rawConstantIndices", Attribute::DenseArray { ty: Type::int(32), values: new_raw.iter().map(|x| format!("{x}").into()).collect() });
+    b[op].set("rawConstantIndices", Attribute::dense_i32(&new_raw));
     Fold::InPlace
 }

@@ -4,7 +4,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
-use mlirformat::{Attribute, ShapedKind, Type};
+use mlirformat::{Attribute, Dim, ShapedKind, Type};
 use mlirformat::emitc_types::EmitcType;
 
 use super::emitc::Emitc;
@@ -27,7 +27,7 @@ impl MemrefToEmitc {
 
     /// Whether the type of `v` has a static shape.
     fn static_shape(cr: &Cr<'_, '_, '_>, v: ValueId) -> bool {
-        matches!(cr.ty(v), Type::Shaped(s) if s.shape.is_some() && !super::MemrefToLlvm::dims(&s).contains(&super::DYNAMIC))
+        matches!(cr.ty(v), Type::Shaped(s) if s.shape.is_some() && !s.dims().unwrap_or_default().contains(&Dim::DYNAMIC))
     }
 
     /// The `alignment` attribute.
@@ -91,7 +91,7 @@ impl MemrefToEmitc {
     fn alloc(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(s) = Self::legal(cr, cr.rw.body[op].results[0]) else { return false };
         let elem = (*s.elem).clone();
-        let total = Self::total_size(cr, &elem, super::MemrefToLlvm::dims(&s).iter().product());
+        let total = Self::total_size(cr, &elem, s.dims().unwrap_or_default().iter().product());
         let (callee, args) = match Self::alignment(cr, op) {
             Some(a) => {
                 let align = cr.emitc_constant(Emitc::int(a, Type::Index), EmitcType::size_t());
@@ -112,7 +112,7 @@ impl MemrefToEmitc {
         let (Some(s), Some(_)) = (Self::legal(cr, src), Self::legal(cr, dst)) else { return false };
         let Some(src_ptr) = Self::first_element(cr, ops[0]) else { return false };
         let Some(dst_ptr) = Self::first_element(cr, ops[1]) else { return false };
-        let size = Self::total_size(cr, &s.elem, super::MemrefToLlvm::dims(&s).iter().product());
+        let size = Self::total_size(cr, &s.elem, s.dims().unwrap_or_default().iter().product());
         cr.rw.create(OpData::build("emitc.call_opaque").operands(&[dst_ptr, src_ptr, size]).with("callee", Attribute::str("memcpy")), &[]);
         cr.erase(op);
         true
@@ -122,7 +122,7 @@ impl MemrefToEmitc {
     fn global(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(Attribute::Type(ty)) = cr.rw.body[op].get("type").cloned() else { return false };
         let Type::Shaped(s) = &ty else { return false };
-        if s.shape.is_none() || super::MemrefToLlvm::dims(s).contains(&super::DYNAMIC) || Self::alignment(cr, op).unwrap_or(1) > 1 {
+        if s.shape.is_none() || s.dims().unwrap_or_default().contains(&Dim::DYNAMIC) || Self::alignment(cr, op).unwrap_or(1) > 1 {
             return false;
         }
         let Some(res) = Self::convert_memref(cr, &ty) else { return false };

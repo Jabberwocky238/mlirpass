@@ -4,10 +4,9 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{arith, memref, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type, arith, memref};
 use mlirpass_macros::{pass, patterns};
 
-use super::vector_transforms::index_attr;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionRewriter as Cr, ConversionTarget, Converter, Listener, Mode, OpData, OpId, Rewriter, ValueId};
 use mlirformat::Error;
 
@@ -75,7 +74,7 @@ impl BufferizationToMemref {
     }
 
     fn cidx<'a, L: Listener<'a> + ?Sized>(rw: &mut Rewriter<'_, 'a, L>, v: i64) -> ValueId {
-        Self::result(rw, &arith::Constant::new(index_attr(v), Type::Index))
+        Self::result(rw, &arith::Constant::new(Attribute::index(v), Type::Index))
     }
 
     /// Operand group `k` of `op` (`operandSegmentSizes`).

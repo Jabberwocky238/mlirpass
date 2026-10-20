@@ -5,7 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
-use mlirformat::{Attribute, NamedAttr, Type};
+use mlirformat::{Attribute, Dim, NamedAttr, Type};
 
 use crate::{BlockId, ConversionRewriter, OpData, OpId, ValueId};
 
@@ -321,7 +321,7 @@ impl ScfToCf {
         let mut dynamic = ops.into_iter();
         let mut mixed = |cr: &mut Cr<'_, '_, '_>, name: &str| -> Vec<ValueId> {
             let st = cr.rw.body.dense_i64(op, name);
-            st.iter().map(|c| if *c == crate::DYNAMIC { dynamic.next().expect("a dynamic bound") } else { cr.cidx(*c) }).collect()
+            st.iter().map(|c| if *c == Dim::DYNAMIC { dynamic.next().expect("a dynamic bound") } else { cr.cidx(*c) }).collect()
         };
         let lbs = mixed(cr, "staticLowerBound");
         let ubs = mixed(cr, "staticUpperBound");

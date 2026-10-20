@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
-use crate::{Body, Const, Def, Fold, Folded, LlvmOptions, OpData, OpId, ValueId, DYNAMIC};
+use crate::{Body, Const, Def, Fold, Folded, LlvmOptions, OpData, OpId, ValueId};
 
 /// `MemRefDialect::materializeConstant`.
 pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
@@ -17,10 +17,6 @@ pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a
 pub enum Ofr {
     C(i64),
     V(ValueId),
-}
-
-fn index_attr<'a>(v: i64) -> Attribute<'a> {
-    Attribute::Int { lit: format!("{v}").into(), ty: Some(Type::Index) }
 }
 
 impl<'a> Body<'a> {
@@ -43,16 +39,13 @@ impl<'a> Body<'a> {
         folded
     }
 
-    /// A shaped type's dims, `DYNAMIC` for `?`.
+    /// A shaped type's dims, `Dim::DYNAMIC` for `?`.
     pub fn dims_of(&self, v: ValueId) -> Option<Vec<i64>> {
-        Some(self[v].ty.shape()?.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
+        self[v].ty.dims()
     }
 
     pub fn dense_i64(&self, op: OpId, name: &str) -> Vec<i64> {
-        match self[op].get(name) {
-            Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
-            _ => Vec::new(),
-        }
+        self[op].get(name).and_then(Attribute::dense_values).unwrap_or_default()
     }
 
     /// The mixed `offsets`, `sizes` and `strides` of a subview / reinterpret_cast: operand
@@ -65,7 +58,7 @@ impl<'a> Body<'a> {
         for (k, name) in names.iter().enumerate() {
             let n = segs.get(k + 1).copied().unwrap_or(0);
             let mut d = self[op].operands[at..at + n].iter();
-            out[k] = self.dense_i64(op, name).into_iter().map(|s| if s == DYNAMIC { Ofr::V(*d.next().expect("dynamic")) } else { Ofr::C(s) }).collect();
+            out[k] = self.dense_i64(op, name).into_iter().map(|s| if s == Dim::DYNAMIC { Ofr::V(*d.next().expect("dynamic")) } else { Ofr::C(s) }).collect();
             at += n;
         }
         out
@@ -84,7 +77,7 @@ impl<'a> Body<'a> {
     /// `getDroppedDims` of a subview, as `computeRankReductionMask` over its sizes.
     pub fn subview_dropped_dims(&self, op: OpId) -> Vec<bool> {
         let Some(res) = self.dims_of(self[op].results[0]) else { return Vec::new() };
-        let orig: Vec<i64> = self.mixed_osz(op)[1].iter().map(|s| self.ofr_int(*s).unwrap_or(DYNAMIC)).collect();
+        let orig: Vec<i64> = self.mixed_osz(op)[1].iter().map(|s| self.ofr_int(*s).unwrap_or(Dim::DYNAMIC)).collect();
         let mut dropped = alloc::vec![false; orig.len()];
         let mut j = 0;
         for (i, o) in orig.iter().enumerate() {
@@ -133,7 +126,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         }
         "memref.dim" => fold_dim(b, op),
         "memref.rank" => match b[b[op].operands[0]].ty.shape() {
-            Some(s) => Folded::Attr(index_attr(s.len() as i64)).into(),
+            Some(s) => Folded::Attr(Attribute::index(s.len() as i64)).into(),
             None => Fold::Failed,
         },
         "memref.memory_space_cast" => match b.def_named(b[op].operands[0], "memref.memory_space_cast") {
@@ -150,7 +143,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         "memref.subview" => fold_subview(b, op),
         "memref.view" => {
             let (src, res) = (b[op].operands[0], b[op].results[0]);
-            let static_shape = b.dims_of(res).is_some_and(|d| !d.contains(&DYNAMIC));
+            let static_shape = b.dims_of(res).is_some_and(|d| !d.contains(&Dim::DYNAMIC));
             if b[src].ty == b[res].ty && static_shape && b.ofr_int(Ofr::V(b[op].operands[1])) == Some(0) {
                 return Folded::Value(src).into();
             }
@@ -191,10 +184,10 @@ fn fold_dim<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         return Fold::Failed;
     }
     let i = index as usize;
-    if dims[i] != DYNAMIC {
-        return Folded::Attr(index_attr(dims[i])).into();
+    if dims[i] != Dim::DYNAMIC {
+        return Folded::Attr(Attribute::index(dims[i])).into();
     }
-    let dyn_index = dims[..i].iter().filter(|d| **d == DYNAMIC).count();
+    let dyn_index = dims[..i].iter().filter(|d| **d == Dim::DYNAMIC).count();
     if let Def::Result(d, _) = b[src].def {
         match &*b[d].name {
             "memref.alloc" | "memref.alloca" => return Folded::Value(b[d].operands[dyn_index]).into(),
@@ -240,7 +233,7 @@ fn fold_reinterpret_cast<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         return Fold::InPlace;
     }
     let res = b[op].results[0];
-    let static_shape = b.dims_of(res).is_some_and(|d| !d.contains(&DYNAMIC));
+    let static_shape = b.dims_of(res).is_some_and(|d| !d.contains(&Dim::DYNAMIC));
     if static_shape && b[src].ty == b[res].ty && b.dense_i64(op, "static_offsets").first() == Some(&0) {
         return Folded::Value(src).into();
     }
@@ -250,10 +243,10 @@ fn fold_reinterpret_cast<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
 fn fold_subview<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let (src, res) = (b[op].operands[0], b[op].results[0]);
     let static_layout = |t: &Type<'_>| match t {
-        Type::Shaped(s) => LlvmOptions::default().strides_and_offset(s).is_some_and(|(st, o)| !st.contains(&DYNAMIC) && o != DYNAMIC) || !s.extras.iter().any(|a| matches!(a, Attribute::Builtin { name, .. } if name == "strided")),
+        Type::Shaped(s) => LlvmOptions::default().strides_and_offset(s).is_some_and(|(st, o)| !st.contains(&Dim::DYNAMIC) && o != Dim::DYNAMIC) || !s.extras.iter().any(|a| matches!(a, Attribute::Builtin { name, .. } if name == "strided")),
         _ => false,
     };
-    let static_shape = b.dims_of(res).is_some_and(|d| !d.contains(&DYNAMIC));
+    let static_shape = b.dims_of(res).is_some_and(|d| !d.contains(&Dim::DYNAMIC));
     if b[src].ty == b[res].ty && static_shape && static_layout(&b[res].ty) {
         return Folded::Value(src).into();
     }
@@ -280,7 +273,7 @@ fn fold_extract_strided_metadata<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let results = b[op].results.clone();
     let mut known: Vec<(ValueId, i64)> = Vec::new();
     let mut constify = |v: ValueId, st: i64| {
-        if st != DYNAMIC {
+        if st != Dim::DYNAMIC {
             known.push((v, st));
         } else if let Some(c) = b.ofr_int(Ofr::V(v)) {
             known.push((v, c));
@@ -299,7 +292,7 @@ fn fold_extract_strided_metadata<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         if b[v].uses.is_empty() {
             continue;
         }
-        let k = b.emit(&arith::Constant::new(index_attr(c), Type::Index));
+        let k = b.emit(&arith::Constant::new(Attribute::index(c), Type::Index));
         b.insert_before(k, op);
         let kv = b[k].results[0];
         for u in b[v].uses.clone().into_iter().rev() {
@@ -368,7 +361,7 @@ rewrites! {
         }
         let src = b[op].operands[0];
         let (Type::Shaped(st), rt) = (b[src].ty.clone(), b[b[op].results[0]].ty.clone()) else { return false };
-        let dims = |t: &Type<'_>| t.shape().map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect::<Vec<_>>()).unwrap_or_default();
+        let dims = |t: &Type<'_>| t.shape().map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { Dim::DYNAMIC }).collect::<Vec<_>>()).unwrap_or_default();
         if !Ofr::in_bounds(&dims(&b[src].ty), &o, &s, &t) {
             return false;
         }
@@ -419,7 +412,7 @@ rewrites! {
         let Type::Shaped(st) = b[from].ty.clone() else { return false };
         let rt = b[b[op].results[0]].ty.clone();
         let [o, s, t] = b.slice_lists(op);
-        let dims = rt.shape().map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect::<Vec<_>>()).unwrap_or_default();
+        let dims = rt.shape().map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { Dim::DYNAMIC }).collect::<Vec<_>>()).unwrap_or_default();
         let Some(ty) = Ofr::subview_type(&st, &o, &s, &t, &Ofr::dropped(&s, &dims)) else { return false };
         let mut data = OpData { operands: b[op].operands.clone(), ..OpData::named(b[op].name.clone()) };
         data.properties = b[op].properties.clone();
@@ -662,7 +655,7 @@ impl Ofr {
     /// `constifyIndexValues`: the static values of the type first, then constant values.
     fn constify(b: &Body<'_>, list: &mut [Ofr], statics: &[i64]) {
         for (o, s) in list.iter_mut().zip(statics) {
-            if *s != DYNAMIC {
+            if *s != Dim::DYNAMIC {
                 *o = Ofr::C(*s);
             } else if let Some(c) = b.ofr_int(*o) {
                 *o = Ofr::C(c);
@@ -670,10 +663,10 @@ impl Ofr {
         }
     }
 
-    /// A memref's static sizes, strides and offset (`DYNAMIC` where not).
+    /// A memref's static sizes, strides and offset (`Dim::DYNAMIC` where not).
     fn statics(t: &Type<'_>) -> Option<(Vec<i64>, Vec<i64>, i64)> {
         let Type::Shaped(s) = t else { return None };
-        let sizes = s.shape.as_ref()?.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect();
+        let sizes = s.shape.as_ref()?.iter().map(|d| if let Dim::Static(n) = d { *n } else { Dim::DYNAMIC }).collect();
         let (strides, offset) = LlvmOptions::default().strides_and_offset(s)?;
         Some((sizes, strides, offset))
     }
@@ -731,8 +724,8 @@ rewrites! {
         }
         let src = b[op].operands[0];
         let Type::Shaped(st) = &b[src].ty else { return false };
-        let c = |o: &Ofr| if let Ofr::C(c) = o { *c } else { DYNAMIC };
-        let num = |n: i64| if n == DYNAMIC { alloc::string::String::from("?") } else { format!("{n}") };
+        let c = |o: &Ofr| if let Ofr::C(c) = o { *c } else { Dim::DYNAMIC };
+        let num = |n: i64| if n == Dim::DYNAMIC { alloc::string::String::from("?") } else { format!("{n}") };
         let strides: Vec<_> = lists[2].iter().map(|o| num(c(o))).collect();
         let offset = c(&lists[0][0]);
         let body = if offset == 0 { format!("<[{}]>", strides.join(", ")) } else { format!("<[{}], offset: {}>", strides.join(", "), num(offset)) };
@@ -755,7 +748,7 @@ impl Ofr {
     fn dropped(sizes: &[Ofr], reduced: &[i64]) -> Vec<bool> {
         let mut j = 0;
         sizes.iter().map(|s| {
-            let n = if let Ofr::C(c) = s { *c } else { DYNAMIC };
+            let n = if let Ofr::C(c) = s { *c } else { Dim::DYNAMIC };
             if reduced.get(j) == Some(&n) {
                 j += 1;
                 false
@@ -771,14 +764,14 @@ impl Ofr {
     /// (`SubViewReturnTypeCanonicalizer`): a `strided` layout from the source's.
     fn subview_type<'a>(src: &mlirformat::Shaped<'a>, offsets: &[Ofr], sizes: &[Ofr], strides: &[Ofr], dropped: &[bool]) -> Option<Type<'a>> {
         let (src_strides, src_offset) = LlvmOptions::default().strides_and_offset(src)?;
-        let c = |o: &Ofr| if let Ofr::C(c) = o { *c } else { DYNAMIC };
+        let c = |o: &Ofr| if let Ofr::C(c) = o { *c } else { Dim::DYNAMIC };
         // `hasValidSizesOffsets`, `hasValidStrides`.
         if offsets.iter().chain(sizes).any(|o| matches!(o, Ofr::C(n) if *n < 0)) || strides.iter().any(|o| matches!(o, Ofr::C(0))) {
             return None;
         }
         let mut offset = src_offset;
         for (o, s) in offsets.iter().map(c).zip(&src_strides) {
-            offset = if offset == DYNAMIC || o == DYNAMIC || *s == DYNAMIC { DYNAMIC } else { offset + o * s };
+            offset = if offset == Dim::DYNAMIC || o == Dim::DYNAMIC || *s == Dim::DYNAMIC { Dim::DYNAMIC } else { offset + o * s };
         }
         let mut shape = Vec::new();
         let mut out_strides = Vec::new();
@@ -786,10 +779,10 @@ impl Ofr {
             if dropped.get(i) == Some(&true) {
                 continue;
             }
-            shape.push(if z == DYNAMIC { Dim::Dynamic } else { Dim::Static(z) });
-            out_strides.push(if t == DYNAMIC || *s == DYNAMIC { DYNAMIC } else { t * s });
+            shape.push(if z == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(z) });
+            out_strides.push(if t == Dim::DYNAMIC || *s == Dim::DYNAMIC { Dim::DYNAMIC } else { t * s });
         }
-        let num = |n: i64| if n == DYNAMIC { alloc::string::String::from("?") } else { format!("{n}") };
+        let num = |n: i64| if n == Dim::DYNAMIC { alloc::string::String::from("?") } else { format!("{n}") };
         let list: Vec<_> = out_strides.iter().map(|n| num(*n)).collect();
         let body = if offset == 0 { format!("<[{}]>", list.join(", ")) } else { format!("<[{}], offset: {}>", list.join(", "), num(offset)) };
         let layout = Attribute::Builtin { name: "strided".into(), body: body.into(), ty: None };

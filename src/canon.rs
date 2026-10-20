@@ -110,8 +110,8 @@ pub fn memref_cast_foldable(src: &Type<'_>, dst: &Type<'_>) -> bool {
     }
     let opts = crate::LlvmOptions::default();
     let (Some((sst, so)), Some((dst_, doff))) = (opts.strides_and_offset(s), opts.strides_and_offset(d)) else { return false };
-    let more_static = |a: i64, b: i64| a == crate::DYNAMIC && b != crate::DYNAMIC;
-    let dim = |x: &mlirformat::Dim| if let mlirformat::Dim::Static(n) = x { *n } else { crate::DYNAMIC };
+    let more_static = |a: i64, b: i64| a == mlirformat::Dim::DYNAMIC && b != mlirformat::Dim::DYNAMIC;
+    let dim = |x: &mlirformat::Dim| if let mlirformat::Dim::Static(n) = x { *n } else { mlirformat::Dim::DYNAMIC };
     !(ss.iter().zip(ds).any(|(a, b)| more_static(dim(a), dim(b))) || more_static(so, doff) || sst.iter().zip(&dst_).any(|(a, b)| more_static(*a, *b)))
 }
 
@@ -127,8 +127,8 @@ pub fn memref_cast_compatible(a: &Type<'_>, b: &Type<'_>) -> bool {
     if ss.len() != ds.len() {
         return false;
     }
-    let ok = |x: i64, y: i64| x == crate::DYNAMIC || y == crate::DYNAMIC || x == y;
-    let dim = |x: &mlirformat::Dim| if let mlirformat::Dim::Static(n) = x { *n } else { crate::DYNAMIC };
+    let ok = |x: i64, y: i64| x == mlirformat::Dim::DYNAMIC || y == mlirformat::Dim::DYNAMIC || x == y;
+    let dim = |x: &mlirformat::Dim| if let mlirformat::Dim::Static(n) = x { *n } else { mlirformat::Dim::DYNAMIC };
     let opts = crate::LlvmOptions::default();
     let (Some((sst, so)), Some((dst_, doff))) = (opts.strides_and_offset(s), opts.strides_and_offset(d)) else { return false };
     ok(so, doff) && sst.iter().zip(&dst_).all(|(x, y)| ok(*x, *y)) && ss.iter().zip(ds).all(|(x, y)| ok(dim(x), dim(y)))

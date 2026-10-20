@@ -6,9 +6,9 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
-use crate::{ApInt, Body, Const, ConversionRewriter, LlvmOptions, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId, DYNAMIC};
+use crate::{ApInt, Body, Const, ConversionRewriter, LlvmOptions, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId};
 
 /// What a lowering needs of its rewriter: the greedy one and the conversion one both do.
 pub trait Build<'a> {
@@ -65,7 +65,7 @@ pub fn vshape(t: &Type<'_>) -> Option<(Vec<i64>, Vec<bool>)> {
     match t {
         Type::Shaped(s) if s.kind == ShapedKind::Vector => {
             let dims = s.shape.as_ref()?;
-            Some((dims.iter().map(|d| if let Dim::Static(n) | Dim::Scalable(n) = d { *n } else { DYNAMIC }).collect(), dims.iter().map(|d| matches!(d, Dim::Scalable(_))).collect()))
+            Some((dims.iter().map(|d| if let Dim::Static(n) | Dim::Scalable(n) = d { *n } else { Dim::DYNAMIC }).collect(), dims.iter().map(|d| matches!(d, Dim::Scalable(_))).collect()))
         }
         _ => None,
     }
@@ -73,18 +73,6 @@ pub fn vshape(t: &Type<'_>) -> Option<(Vec<i64>, Vec<bool>)> {
 
 pub fn elem<'x, 'a>(t: &'x Type<'a>) -> &'x Type<'a> {
     t.element_type()
-}
-
-pub fn vector_type<'a>(shape: &[i64], scalable: &[bool], e: Type<'a>) -> Type<'a> {
-    Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(shape.iter().zip(scalable.iter().chain(core::iter::repeat(&false))).map(|(n, s)| if *s { Dim::Scalable(*n) } else { Dim::Static(*n) }).collect()), elem: e.into(), extras: Vec::new() })
-}
-
-pub fn dense_i64<'a>(v: &[i64]) -> Attribute<'a> {
-    Attribute::DenseArray { ty: Type::int(64), values: v.iter().map(|x| format!("{x}").into()).collect() }
-}
-
-pub fn index_attr<'a>(v: i64) -> Attribute<'a> {
-    Attribute::Int { lit: format!("{v}").into(), ty: Some(Type::Index) }
 }
 
 pub fn zeros<'a>(ty: &Type<'a>) -> Attribute<'a> {
@@ -100,13 +88,13 @@ pub trait VectorBuild<'a>: Build<'a> {
     fn vextract_(&mut self, v: ValueId, pos: &[i64]) -> ValueId {
         let ty = self.body()[v].ty.clone();
         let (shape, scal) = vshape(&ty).expect("a vector");
-        let rt = if pos.len() == shape.len() { elem(&ty).clone() } else { vector_type(&shape[pos.len()..], &scal[pos.len()..], elem(&ty).clone()) };
-        self.make1(OpData::build("vector.extract").operands(&[v]).with("static_position", dense_i64(pos)), rt)
+        let rt = if pos.len() == shape.len() { elem(&ty).clone() } else { Type::vector(&shape[pos.len()..], &scal[pos.len()..], elem(&ty).clone()) };
+        self.make1(OpData::build("vector.extract").operands(&[v]).with("static_position", Attribute::dense_i64(pos)), rt)
     }
 
     fn vinsert(&mut self, v: ValueId, dest: ValueId, pos: &[i64]) -> ValueId {
         let ty = self.body()[dest].ty.clone();
-        self.make1(OpData::build("vector.insert").operands(&[v, dest]).with("static_position", dense_i64(pos)), ty)
+        self.make1(OpData::build("vector.insert").operands(&[v, dest]).with("static_position", Attribute::dense_i64(pos)), ty)
     }
 
     fn broadcast(&mut self, ty: Type<'a>, v: ValueId) -> ValueId {
@@ -202,7 +190,7 @@ pub fn transfer_read_to_load<'a, B: Build<'a> + ?Sized>(rw: &mut B, op: OpId, ma
     for i in &bcast {
         ushape[*i] = 1;
     }
-    let ut = vector_type(&ushape, &scal, elem(&vt).clone());
+    let ut = Type::vector(&ushape, &scal, elem(&vt).clone());
     let me = &*mt.elem;
     if matches!(me, Type::Shaped(s) if s.kind == ShapedKind::Vector) {
         if *me != ut {
@@ -294,7 +282,7 @@ pub fn transfer_write_to_store<'a, B: Build<'a> + ?Sized>(rw: &mut B, op: OpId, 
 fn vector_comparison<'a>(rw: &mut Rewriter<'_, 'a>, dim: i64, bound: ValueId, off: Option<ValueId>, force32: bool) -> ValueId {
     let it = Type::int(if force32 { 32 } else { 64 });
     let shape: Vec<i64> = if dim == 0 { Vec::new() } else { vec![dim] };
-    let vt = vector_type(&shape, &[], it.clone());
+    let vt = Type::vector(&shape, &[], it.clone());
     let w = if force32 { 32 } else { 64 };
     let values: Vec<Scalar> = (0..dim.max(1)).map(|i| Scalar::Int(ApInt::new(w, i128::from(i)))).collect();
     let attr: Attribute = Const { ty: vt.clone(), values, elements: true }.into();
@@ -306,7 +294,7 @@ fn vector_comparison<'a>(rw: &mut Rewriter<'_, 'a>, dim: i64, bound: ValueId, of
     }
     let bnd = cast_index_like(rw, &it, bound);
     let bounds = rw.broadcast(vt.clone(), bnd);
-    let mt = vector_type(&shape, &[], Type::int(1));
+    let mt = Type::vector(&shape, &[], Type::int(1));
     rw.make1(OpData::build("arith.cmpi").operands(&[indices, bounds]).with("predicate", Attribute::i64(2)), mt)
 }
 
@@ -374,7 +362,7 @@ fn unroll_op<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, mut make: impl FnMut(&mut 
     }
     rw.set_before(op);
     let mut r = rw.poison(rt.clone());
-    let sub = vector_type(&shape[1..], &scal[1..], elem(&rt).clone());
+    let sub = Type::vector(&shape[1..], &scal[1..], elem(&rt).clone());
     for i in 0..shape[0] {
         let v = make(rw, sub.clone(), i);
         r = rw.vinsert(v, r, &[i]);
@@ -430,7 +418,7 @@ rewrites! {
             rw.replace_with(op, OpData::build("vector.broadcast").operands(&[e]), &[dt]);
             return true;
         }
-        let low = vector_type(&ds[1..], &dsc[1..], elem(&dt).clone());
+        let low = Type::vector(&ds[1..], &dsc[1..], elem(&dt).clone());
         if sr < dr {
             let bc = rw.broadcast(low, src);
             let mut r = rw.poison(dt);
@@ -472,7 +460,7 @@ rewrites! {
         let Some((shape, scal)) = vshape(&rt) else { return false };
         let Some(positions) = unroll_positions(&shape, &scal) else { return false };
         let k = positions[0].len();
-        let bt = vector_type(&shape[k..], &scal[k..], elem(&rt).clone());
+        let bt = Type::vector(&shape[k..], &scal[k..], elem(&rt).clone());
         let src = b[op].operands[0];
         rw.set_before(op);
         let mut r = rw.poison(rt);
@@ -493,7 +481,7 @@ rewrites! {
         let Some(positions) = unroll_positions(&shape, &scal) else { return false };
         let (l, r0) = (b[op].operands[0], b[op].operands[1]);
         let k = positions[0].len();
-        let it = vector_type(&shape[k..], &scal[k..], elem(&rt).clone());
+        let it = Type::vector(&shape[k..], &scal[k..], elem(&rt).clone());
         rw.set_before(op);
         let mut res = rw.constant(zeros(&rt), rt);
         for pos in positions {
@@ -513,7 +501,7 @@ rewrites! {
         let Some(positions) = unroll_positions(&shape, &scal) else { return false };
         let src = b[op].operands[0];
         let k = positions[0].len();
-        let dt = vector_type(&shape[k..], &scal[k..], elem(&rt).clone());
+        let dt = Type::vector(&shape[k..], &scal[k..], elem(&rt).clone());
         rw.set_before(op);
         let empty = rw.constant(zeros(&rt), rt);
         let (mut even, mut odd) = (empty, empty);
@@ -627,13 +615,13 @@ rewrites! {
             return false;
         }
         let ops = b[op].operands.clone();
-        let low = vector_type(&shape[1..], &scal[1..], Type::int(1));
+        let low = Type::vector(&shape[1..], &scal[1..], Type::int(1));
         rw.set_before(op);
         let t = rw.make1(OpData::build("vector.create_mask").operands(&ops[1..]), low.clone());
         let f = rw.constant(zeros(&low), low.clone());
         let mut r = rw.constant(zeros(&dt), dt.clone());
         for d in 0..shape[0] {
-            let bnd = rw.constant(index_attr(d), Type::Index);
+            let bnd = rw.constant(Attribute::index(d), Type::Index);
             let c = rw.make1(OpData::build("arith.cmpi").operands(&[bnd, ops[0]]).with("predicate", Attribute::i64(2)), Type::int(1));
             let s = rw.make1(OpData::build("arith.select").operands(&[c, t, f]), low.clone());
             r = rw.vinsert(s, r, &[d]);
@@ -666,9 +654,9 @@ rewrites! {
         if scal[0] {
             return false;
         }
-        let low = vector_type(&shape[1..], &scal[1..], Type::int(1));
+        let low = Type::vector(&shape[1..], &scal[1..], Type::int(1));
         rw.set_before(op);
-        let tv = rw.make1(OpData::build("vector.constant_mask").with("mask_dim_sizes", dense_i64(&dims[1..])), low);
+        let tv = rw.make1(OpData::build("vector.constant_mask").with("mask_dim_sizes", Attribute::dense_i64(&dims[1..])), low);
         let mut r = rw.constant(zeros(&dt), dt);
         for d in 0..t {
             r = rw.vinsert(tv, r, &[d]);
@@ -771,7 +759,7 @@ rewrites! {
         let xt = rw.body[x].ty.clone();
         let inner = rw.make1(OpData::build("vector.insert_strided_slice").operands(&[src, x]).with("offsets", arr(&offsets[diff..])).with("strides", arr(&strides)), xt);
         let dt = rw.body[dst].ty.clone();
-        rw.replace_with(op, OpData::build("vector.insert").operands(&[inner, dst]).with("static_position", dense_i64(lead)), &[dt]);
+        rw.replace_with(op, OpData::build("vector.insert").operands(&[inner, dst]).with("static_position", Attribute::dense_i64(lead)), &[dt]);
         true
     }
 
@@ -802,7 +790,7 @@ rewrites! {
             for (i, s) in sizes[1..].iter().enumerate() {
                 shape[i] = *s;
             }
-            let t = vector_type(&shape, &osc, elem(&rw.body[one].ty).clone());
+            let t = Type::vector(&shape, &osc, elem(&rw.body[one].ty).clone());
             let x = rw.make1(OpData::build("vector.extract_strided_slice").operands(&[one]).with("offsets", arr(&offs[1..])).with("sizes", arr(&sizes[1..])).with("strides", arr(&strides[1..])), t);
             res = rw.vinsert(x, res, &[idx]);
             off += stride;
@@ -838,11 +826,11 @@ rewrites! {
             for i in 0..ns {
                 mask[i as usize] = i;
             }
-            let t = vector_type(&[nd], &[false], elem(&st).clone());
-            let scaled = rw.make1(OpData::build("vector.shuffle").operands(&[src, src]).with("mask", dense_i64(&mask)), t);
+            let t = Type::vector(&[nd], &[false], elem(&st).clone());
+            let scaled = rw.make1(OpData::build("vector.shuffle").operands(&[src, src]).with("mask", Attribute::dense_i64(&mask)), t);
             let e = offset + size * stride;
             let mask: Vec<i64> = (0..nd).map(|i| if i < offset || i >= e || (i - offset) % stride != 0 { nd + i } else { (i - offset) / stride }).collect();
-            rw.replace_with(op, OpData::build("vector.shuffle").operands(&[scaled, dst]).with("mask", dense_i64(&mask)), &[dt]);
+            rw.replace_with(op, OpData::build("vector.shuffle").operands(&[scaled, dst]).with("mask", Attribute::dense_i64(&mask)), &[dt]);
             return true;
         }
         let mut res = dst;
@@ -882,7 +870,7 @@ rewrites! {
             mask.push(off);
             off += strides[0];
         }
-        rw.replace_with(op, OpData::build("vector.shuffle").operands(&[src, src]).with("mask", dense_i64(&mask)), &[dt]);
+        rw.replace_with(op, OpData::build("vector.shuffle").operands(&[src, src]).with("mask", Attribute::dense_i64(&mask)), &[dt]);
         true
     }
 
@@ -901,7 +889,7 @@ rewrites! {
             return false;
         }
         let cond = b[op].operands[0];
-        let bt = vector_type(&[1], &[false], Type::int(1));
+        let bt = Type::vector(&[1], &[false], Type::int(1));
         rw.replace_with(op, OpData::build("vector.broadcast").operands(&[cond]), &[bt]);
         true
     }
@@ -957,11 +945,11 @@ impl crate::Pattern for MaterializeTransferMask {
         let off = indices[last];
         rw.set_before(op);
         // `createOrFoldDimOp`.
-        let idx = rw.constant(index_attr(last as i64), Type::Index);
+        let idx = rw.constant(Attribute::index(last as i64), Type::Index);
         let tensor = matches!(&rw.body[base].ty, Type::Shaped(s) if s.kind == ShapedKind::Tensor);
         let dim = rw.create_or_fold(OpData::build(if tensor { "tensor.dim" } else { "memref.dim" }).operands(&[base, idx]), &[Type::Index])[0];
         let bound = rw.make1(OpData::build("arith.subi").operands(&[dim, off]), Type::Index);
-        let mt = vector_type(&shape, &scal, Type::int(1));
+        let mt = Type::vector(&shape, &scal, Type::int(1));
         let mut m = rw.make1(OpData::build("vector.create_mask").operands(&[bound]), mt.clone());
         if let Some(old) = mask {
             m = rw.make1(OpData::build("arith.andi").operands(&[m, old]), mt);
@@ -977,7 +965,7 @@ impl crate::Pattern for MaterializeTransferMask {
                 segs[3] = 1;
             }
             b.set_operands(op, ops);
-            b[op].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: segs.iter().map(|x| format!("{x}").into()).collect() });
+            b[op].set("operandSegmentSizes", Attribute::dense_i32(&segs));
             b[op].set("in_bounds", Attribute::Array(vec![Attribute::Bool(true)]));
         });
         true

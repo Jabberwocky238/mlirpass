@@ -2,15 +2,14 @@
 //! metadata of allocations become `memref.extract_strided_metadata` + affine arithmetic +
 //! `memref.reinterpret_cast`.
 
-use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::pass;
-use mlirformat::{arith, Attribute, Shaped, ShapedKind, Type};
+use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type, arith};
 
 use crate::canon::{MemrefOfr as Ofr, map_attr};
-use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, GreedyConfig, LlvmOptions, OpData, OpId, PatternSet, Rewriter, ValueId, DYNAMIC};
+use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, GreedyConfig, LlvmOptions, OpData, OpId, PatternSet, Rewriter, ValueId};
 
 #[pass("expand-strided-metadata")]
 pub struct ExpandStridedMetadata;
@@ -37,10 +36,6 @@ impl crate::Run for ExpandStridedMetadata {
         }
         Ok(())
     }
-}
-
-fn index_attr<'a>(v: i64) -> Attribute<'a> {
-    Attribute::Int { lit: format!("{v}").into(), ty: Some(Type::Index) }
 }
 
 fn memref<'t, 'a>(t: &'t Type<'a>) -> Option<&'t Shaped<'a>> {
@@ -155,7 +150,7 @@ impl<'a> Rewriter<'_, 'a> {
         match o {
             Ofr::V(v) => v,
             Ofr::C(c) => {
-                let k = self.emit(&arith::Constant::new(index_attr(c), Type::Index));
+                let k = self.emit(&arith::Constant::new(Attribute::index(c), Type::Index));
                 self.body[k].results[0]
             }
         }
@@ -184,7 +179,7 @@ impl<'a> Rewriter<'_, 'a> {
                 match o {
                     Ofr::C(c) => st.push(*c),
                     Ofr::V(v) => {
-                        st.push(DYNAMIC);
+                        st.push(Dim::DYNAMIC);
                         operands.push(*v);
                         n += 1;
                     }
@@ -193,10 +188,10 @@ impl<'a> Rewriter<'_, 'a> {
             segs.push(n);
             statics.push(st);
         }
-        let arr = |v: &[i64]| Attribute::DenseArray { ty: Type::int(64), values: v.iter().map(|x| format!("{x}").into()).collect() };
+        let arr = |v: &[i64]| Attribute::dense_i64(&v);
         OpData::build("memref.reinterpret_cast")
             .operands(&operands)
-            .with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: segs.iter().map(|x| format!("{x}").into()).collect() })
+            .with("operandSegmentSizes", Attribute::dense_i32(&segs))
             .with("static_offsets", arr(&statics[0]))
             .with("static_sizes", arr(&statics[1]))
             .with("static_strides", arr(&statics[2]))
@@ -215,10 +210,10 @@ impl<'a> Rewriter<'_, 'a> {
         let er = self.body[ex].results.clone();
         let mut strides = Vec::new();
         let mut values = vec![Ofr::C(0); 2 * rank + 1];
-        values[0] = if src_offset == DYNAMIC { self.ofr_of(er[1]) } else { Ofr::C(src_offset) };
+        values[0] = if src_offset == Dim::DYNAMIC { self.ofr_of(er[1]) } else { Ofr::C(src_offset) };
         let mut expr = AffineExpr::Sym(0);
         for i in 0..rank {
-            let orig = if src_strides[i] == DYNAMIC { self.ofr_of(er[2 + rank + i]) } else { Ofr::C(src_strides[i]) };
+            let orig = if src_strides[i] == Dim::DYNAMIC { self.ofr_of(er[2 + rank + i]) } else { Ofr::C(src_strides[i]) };
             strides.push(self.apply_expr(AffineExpr::Sym(0).mul(AffineExpr::Sym(1)), &[sub_strides[i], orig]));
             let (o, s) = (1 + 2 * i, 2 + 2 * i);
             expr = expr.add(AffineExpr::Sym(o as u32).mul(AffineExpr::Sym(s as u32)));
@@ -259,7 +254,7 @@ impl<'a> Rewriter<'_, 'a> {
         let groups = reassociation(b, r);
         let ex = self.extract_metadata(src);
         let er = self.body[ex].results.clone();
-        let off = if offset == DYNAMIC { self.ofr_of(er[1]) } else { Ofr::C(offset) };
+        let off = if offset == Dim::DYNAMIC { self.ofr_of(er[1]) } else { Ofr::C(offset) };
         if src_rank == 0 {
             return Some(Metadata { base: er[0], offset: off, sizes: vec![Ofr::C(1); res_rank], strides: vec![Ofr::C(1); res_rank] });
         }
@@ -275,7 +270,7 @@ impl<'a> Rewriter<'_, 'a> {
                 let mut product = 1i64;
                 let mut dyn_idx = None;
                 for (i, d) in group.iter().enumerate() {
-                    if res_dims[*d] == DYNAMIC {
+                    if res_dims[*d] == Dim::DYNAMIC {
                         dyn_idx = Some(i);
                         continue;
                     }
@@ -291,13 +286,13 @@ impl<'a> Rewriter<'_, 'a> {
                 let mut dyn_idx = None;
                 for i in (0..group.len()).rev() {
                     ex_strides[i] = current;
-                    if res_dims[group[i]] == DYNAMIC {
+                    if res_dims[group[i]] == Dim::DYNAMIC {
                         dyn_idx = Some(i);
                         continue;
                     }
                     current *= res_dims[group[i]];
                 }
-                let orig_stride = if strides[g] == DYNAMIC { orig_strides[g] } else { Ofr::C(strides[g]) };
+                let orig_stride = if strides[g] == Dim::DYNAMIC { orig_strides[g] } else { Ofr::C(strides[g]) };
                 let mut out = vec![Ofr::C(0); group.len()];
                 let mut done = 0;
                 if let Some(di) = dyn_idx {
@@ -316,14 +311,14 @@ impl<'a> Rewriter<'_, 'a> {
                 fst.extend(out);
             } else {
                 // `getCollapsedSize`.
-                if res_dims[g] != DYNAMIC {
+                if res_dims[g] != Dim::DYNAMIC {
                     fs.push(Ofr::C(res_dims[g]));
                 } else {
                     let mut e = AffineExpr::Const(1);
                     let mut inputs = Vec::new();
                     for (k, d) in group.iter().enumerate() {
                         e = e.mul(AffineExpr::Sym(k as u32));
-                        inputs.push(if src_dims[*d] == DYNAMIC { orig_sizes[*d] } else { Ofr::C(src_dims[*d]) });
+                        inputs.push(if src_dims[*d] == Dim::DYNAMIC { orig_sizes[*d] } else { Ofr::C(src_dims[*d]) });
                     }
                     fs.push(self.apply_expr(e, &inputs));
                 }
@@ -333,14 +328,14 @@ impl<'a> Rewriter<'_, 'a> {
                     if src_dims[*d] == 1 {
                         continue;
                     }
-                    last = Some(if strides[*d] == DYNAMIC { orig_strides[*d] } else { Ofr::C(strides[*d]) });
+                    last = Some(if strides[*d] == Dim::DYNAMIC { orig_strides[*d] } else { Ofr::C(strides[*d]) });
                 }
                 let stride = match last {
                     Some(l) => l,
                     None => {
                         let (cs, _) = LlvmOptions::default().strides_and_offset(&rt)?;
-                        if cs[g] == DYNAMIC {
-                            let d = group.iter().find(|d| strides[**d] == DYNAMIC)?;
+                        if cs[g] == Dim::DYNAMIC {
+                            let d = group.iter().find(|d| strides[**d] == Dim::DYNAMIC)?;
                             orig_strides[*d]
                         } else {
                             Ofr::C(cs[g])
@@ -394,7 +389,7 @@ fn alloc_folder(rw: &mut Rewriter<'_, '_>, op: OpId, alloc: &str) -> bool {
     let rank = dims.len();
     let dynamic = b[a].operands.clone();
     let mut d = dynamic.iter();
-    let sizes: Vec<Ofr> = dims.iter().map(|s| if *s == DYNAMIC { Ofr::V(*d.next().expect("size")) } else { Ofr::C(*s) }).collect();
+    let sizes: Vec<Ofr> = dims.iter().map(|s| if *s == Dim::DYNAMIC { Ofr::V(*d.next().expect("size")) } else { Ofr::C(*s) }).collect();
     let mut strides = vec![Ofr::C(1); rank];
     let mut expr = AffineExpr::Const(1);
     rw.set_before(op);
@@ -506,7 +501,7 @@ rewrites! {
         };
         let mut results = vec![base];
         for v in core::iter::once(0).chain(dims).chain(strides) {
-            let k = rw.emit(&arith::Constant::new(index_attr(v), Type::Index));
+            let k = rw.emit(&arith::Constant::new(Attribute::index(v), Type::Index));
             results.push(rw.body[k].results[0]);
         }
         rw.replace_op(op, &results);

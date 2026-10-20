@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
 use super::MemrefOfr as Ofr;
-use crate::{Body, Const, DYNAMIC, Fold, Folded, OpData, OpId, Pattern, Rewriter, ValueId};
+use crate::{Body, Const, Fold, Folded, OpData, OpId, Pattern, Rewriter, ValueId};
 
 /// `ReassociationIndices` of each result (collapse) or source (expand) dimension.
 pub type Reassoc = Vec<Vec<i64>>;
@@ -76,7 +76,7 @@ impl Reshape {
         let mut it = Range { l: start, r: start };
         let mut res = None;
         while it.within(n) {
-            if src[it.r as usize] == DYNAMIC {
+            if src[it.r as usize] == Dim::DYNAMIC {
                 res = Some(it);
                 break;
             }
@@ -97,7 +97,7 @@ impl Reshape {
         let mut prod: i64 = 1;
         while it.within(n) {
             let s = src[it.r as usize];
-            if s == DYNAMIC {
+            if s == Dim::DYNAMIC {
                 prod = 1;
                 it = Range { l: it.r + 1, r: it.r + 1 };
                 continue;
@@ -132,10 +132,10 @@ impl Reshape {
         let mut s = 0i64;
         for (t, ts) in tgt.iter().enumerate() {
             let greedy = t == tgt.len() - 1;
-            let r = if *ts == DYNAMIC { Self::range_for_dynamic(src, s, greedy) } else { Self::range_for_size(src, s, *ts, greedy) };
+            let r = if *ts == Dim::DYNAMIC { Self::range_for_dynamic(src, s, greedy) } else { Self::range_for_size(src, s, *ts, greedy) };
             let r = r.filter(|r| r.l >= 0 && r.l <= r.r && r.within(n))?;
             if r.l > s {
-                if prev != Some(DYNAMIC) {
+                if prev != Some(Dim::DYNAMIC) {
                     return None;
                 }
                 out.last_mut()?.r = r.l - 1;
@@ -166,7 +166,7 @@ impl Reshape {
             return None;
         }
         if tgt.is_empty() {
-            return src.iter().all(|s| *s == 1 || *s == DYNAMIC).then(Vec::new);
+            return src.iter().all(|s| *s == 1 || *s == Dim::DYNAMIC).then(Vec::new);
         }
         let fwd = Self::ranges(src, tgt)?;
         let rev = Self::ranges_reversed(src, tgt)?;
@@ -188,10 +188,6 @@ impl Reshape {
         matches!(t, Type::Shaped(s) if s.kind == ShapedKind::MemRef && !crate::MemrefToLlvm::identity_layout(s))
     }
 
-    fn dims(t: &Type<'_>) -> Vec<i64> {
-        t.shape().map_or_else(Vec::new, |d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
-    }
-
     fn rank(t: &Type<'_>) -> usize {
         t.shape().map_or(0, <[Dim]>::len)
     }
@@ -210,7 +206,7 @@ impl<'a> Body<'a> {
     /// `getMixedOutputShape` of an `expand_shape`.
     pub fn mixed_output_shape(&self, op: OpId) -> Vec<Ofr> {
         let mut dynamic = self[op].operands[1..].iter();
-        self.dense_i64(op, "static_output_shape").into_iter().map(|s| if s == DYNAMIC { Ofr::V(*dynamic.next().expect("dynamic")) } else { Ofr::C(s) }).collect()
+        self.dense_i64(op, "static_output_shape").into_iter().map(|s| if s == Dim::DYNAMIC { Ofr::V(*dynamic.next().expect("dynamic")) } else { Ofr::C(s) }).collect()
     }
 
     /// `foldReshapeOp<ReshapeOp, InverseReshapeOp>`.
@@ -227,8 +223,8 @@ impl<'a> Body<'a> {
         if self[psrc].ty != self[res].ty {
             return Fold::Failed;
         }
-        let shape = Reshape::dims(&self[psrc].ty);
-        let dynamic = |s: &[i64]| s.iter().filter(|x| **x == DYNAMIC).count();
+        let shape = self[psrc].ty.dims().unwrap_or_default();
+        let dynamic = |s: &[i64]| s.iter().filter(|x| **x == Dim::DYNAMIC).count();
         if dynamic(&shape) < 2 {
             return Folded::Value(psrc).into();
         }
@@ -261,7 +257,7 @@ impl<'a> Rewriter<'_, 'a> {
                 Ofr::C(c) => statics.push(*c),
                 Ofr::V(v) => {
                     ops.push(*v);
-                    statics.push(DYNAMIC);
+                    statics.push(Dim::DYNAMIC);
                 }
             }
         }
@@ -383,7 +379,7 @@ impl Pattern for ComposeCollapseOfExpand {
                     acc = rw.index_mul(acc, val(v));
                 }
                 if statics != 1 {
-                    let k = rw.emit(&arith::Constant::new(Attribute::Int { lit: Cow::Owned(format!("{statics}")), ty: Some(Type::Index) }, Type::Index));
+                    let k = rw.emit(&arith::Constant::new(Attribute::index(statics), Type::Index));
                     let k = rw.body[k].results[0];
                     acc = rw.index_mul(acc, k);
                 }
@@ -409,7 +405,7 @@ impl ComposeExpandOfCollapse {
         if src_r.is_empty() {
             return Reshape::for_collapse(src, res);
         }
-        let dynamic = |s: &[i64]| s.iter().filter(|x| **x == DYNAMIC).count();
+        let dynamic = |s: &[i64]| s.iter().filter(|x| **x == Dim::DYNAMIC).count();
         let mut out = Vec::new();
         for (si, ri) in src_r.iter().zip(res_r) {
             let (sf, rf) = (si[0] as usize, ri[0] as usize);
@@ -457,7 +453,7 @@ impl Pattern for ComposeExpandOfCollapse {
             return false;
         }
         let (src_r, res_r) = (b.reassociation(c), b.reassociation(op));
-        let (ss, rs) = (Reshape::dims(&st), Reshape::dims(&rt));
+        let (ss, rs) = (st.dims().unwrap_or_default(), rt.dims().unwrap_or_default());
         if sr > rr {
             let Some(composed) = Self::find(&src_r, &res_r, &ss, &rs) else { return false };
             rw.replace_with(op, Rewriter::collapse_data(self.dialect, src, &composed), &[rt]);

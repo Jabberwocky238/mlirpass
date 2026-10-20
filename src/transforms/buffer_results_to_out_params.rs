@@ -6,10 +6,10 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Error, FunctionType, NamedAttr, Shaped, Type};
+use mlirformat::{Attribute, Dim, Error, FunctionType, NamedAttr, Shaped, Type};
 use mlirpass_macros::pass;
 
-use crate::{Body, Def, LlvmOptions, OpData, OpId, Run, ValueId, Visibility, DYNAMIC};
+use crate::{Body, Def, LlvmOptions, OpData, OpId, Run, ValueId, Visibility};
 
 #[pass("buffer-results-to-out-params", on = "builtin.module")]
 pub struct BufferResultsToOutParams {
@@ -36,7 +36,7 @@ impl Memref {
 
     /// `hasFullyDynamicLayoutMap`.
     fn fully_dynamic(s: &Shaped<'_>) -> bool {
-        LlvmOptions::default().strides_and_offset(s).is_some_and(|(st, off)| st.iter().all(|x| *x == DYNAMIC) && off == DYNAMIC)
+        LlvmOptions::default().strides_and_offset(s).is_some_and(|(st, off)| st.iter().all(|x| *x == Dim::DYNAMIC) && off == Dim::DYNAMIC)
     }
 
     fn static_shape(s: &Shaped<'_>) -> bool {

@@ -532,7 +532,7 @@ impl<'a> Tf<'_, '_, 'a> {
         if !pool && data.get("local_bound").is_none() {
             data.set("local_bound", Attribute::Bool(false));
         }
-        data.set("pad", Attribute::DenseArray { ty: Type::int(64), values: folded.iter().map(|v| alloc::format!("{v}").into()).collect() });
+        data.set("pad", Attribute::dense_i64(&folded));
         let ty = b[b[op].results[0]].ty.clone();
         rw.replace_with(op, data, &[ty]);
         true

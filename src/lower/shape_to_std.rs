@@ -5,11 +5,9 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
-use mlirformat::{arith, Attribute, Type};
+use mlirformat::{Attribute, Dim, Type, arith};
 
-use super::linalg_build::{dims_of, tensor_type};
-use super::vector_transforms::index_attr;
-use crate::{ConversionRewriter, DYNAMIC, OpData, OpId, ValueId};
+use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -79,7 +77,7 @@ impl ShapeToStd {
     }
 
     fn cidx(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
-        Self::make1(cr, OpData::build("arith.constant").with("value", index_attr(v)), Type::Index)
+        Self::make1(cr, OpData::build("arith.constant").with("value", Attribute::index(v)), Type::Index)
     }
 
     fn cmpi(cr: &mut Cr<'_, '_, '_>, pred: i64, a: ValueId, b: ValueId) -> ValueId {
@@ -104,7 +102,7 @@ impl ShapeToStd {
     }
 
     fn extent_tensor<'a>() -> Type<'a> {
-        tensor_type(&[DYNAMIC], Type::Index)
+        Type::tensor(&[Dim::DYNAMIC], Type::Index)
     }
 
     /// The ranks of `shapes`, and their differences to the greatest one.
@@ -183,7 +181,7 @@ impl ShapeToStd {
         let Some(c) = cr.rw.body[op].get("shape").and_then(|a| crate::Const::try_from(a).ok()) else { return false };
         let n = c.ty.element_count().unwrap_or(0);
         let ext: Vec<ValueId> = (0..n).map(|i| Self::cidx(cr, c.at(i).int().map_or(0, |x| x.unsigned() as i64))).collect();
-        let t = tensor_type(&[n as i64], Type::Index);
+        let t = Type::tensor(&[n as i64], Type::Index);
         let fe = Self::make1(cr, OpData::build("tensor.from_elements").operands(&ext), t.clone());
         cr.replace_new(op, OpData::build("tensor.cast").operands(&[fe]), &[t]);
         true
@@ -192,7 +190,7 @@ impl ShapeToStd {
     #[lowering("shape.const_size")]
     fn const_size(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(v) = cr.rw.body[op].get("value").and_then(|a| crate::Const::try_from(a).ok()).and_then(|c| c.at(0).int()) else { return false };
-        cr.replace_by(op, &arith::Constant::new(index_attr(v.signed() as i64), Type::Index));
+        cr.replace_by(op, &arith::Constant::new(Attribute::index(v.signed() as i64), Type::Index));
         true
     }
 
@@ -234,7 +232,7 @@ impl ShapeToStd {
         let (v, i) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
         let rt = Self::result_ty(cr, op);
         let st = match &cr.rw.body[v].ty {
-            t if t.shape().is_some() => tensor_type(&[dims_of(t).len() as i64], Type::Index),
+            t if t.shape().is_some() => Type::tensor(&[t.dims().unwrap_or_default().len() as i64], Type::Index),
             Type::Shaped(_) => Self::extent_tensor(),
             _ => Type::Extended(mlirformat::Extended { name: "shape.shape".into(), body: None, params: Vec::new() }),
         };
@@ -353,12 +351,12 @@ impl ShapeToStd {
         }
         let t = o[0][0];
         let tt = Self::ty(cr, t);
-        if let Some(dims) = tt.shape().filter(|_| matches!(&tt, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Tensor)).map(|_| dims_of(&tt)) {
+        if let Some(dims) = tt.shape().filter(|_| matches!(&tt, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Tensor)).map(|_| tt.dims().unwrap_or_default()) {
             let ext: Vec<ValueId> = dims
                 .iter()
                 .enumerate()
                 .map(|(i, d)| {
-                    if *d == DYNAMIC {
+                    if *d == Dim::DYNAMIC {
                         let k = Self::cidx(cr, i as i64);
                         Self::dim(cr, t, k)
                     } else {
@@ -366,7 +364,7 @@ impl ShapeToStd {
                     }
                 })
                 .collect();
-            let fe = Self::make1(cr, OpData::build("tensor.from_elements").operands(&ext), tensor_type(&[dims.len() as i64], Type::Index));
+            let fe = Self::make1(cr, OpData::build("tensor.from_elements").operands(&ext), Type::tensor(&[dims.len() as i64], Type::Index));
             cr.replace_new(op, OpData::build("tensor.cast").operands(&[fe]), &[rt]);
             return true;
         }
@@ -398,9 +396,9 @@ impl ShapeToStd {
             let data = OpData::build("tensor.extract_slice")
                 .operands(&[operand, off, size, one])
                 .segments(&[1, 1, 1, 1])
-                .with("static_offsets", super::vector_transforms::dense_i64(&[DYNAMIC]))
-                .with("static_sizes", super::vector_transforms::dense_i64(&[DYNAMIC]))
-                .with("static_strides", super::vector_transforms::dense_i64(&[DYNAMIC]));
+                .with("static_offsets", Attribute::dense_i64(&[Dim::DYNAMIC]))
+                .with("static_sizes", Attribute::dense_i64(&[Dim::DYNAMIC]))
+                .with("static_strides", Attribute::dense_i64(&[Dim::DYNAMIC]));
             Self::make1(cr, data, Self::extent_tensor())
         };
         let head = slice(cr, zero, idx);

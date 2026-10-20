@@ -7,9 +7,9 @@ use alloc::vec::Vec;
 use mlirpass_macros::pass;
 use mlirformat::{Attribute, Dim, Error, ShapedKind, Shaped, Type};
 
-use super::vector_transforms::{Build, VectorBuild, dense_i64, elem, index_attr, vector_type, vshape};
+use super::vector_transforms::{Build, VectorBuild, elem, vshape};
 use crate::canon::{MemrefOfr as Ofr, map_attr};
-use crate::{AffineExpr, AffineMap, Body, DYNAMIC, GreedyConfig, LlvmOptions, OpData, OpId, Run, Pattern, PatternSet, Rewriter, Trait, ValueId};
+use crate::{AffineExpr, AffineMap, Body, GreedyConfig, LlvmOptions, OpData, OpId, Run, Pattern, PatternSet, Rewriter, Trait, ValueId};
 
 /// The label of transfers being lowered (`kPassLabel`).
 const LABEL: &str = "__vector_to_scf_lowering__";
@@ -151,7 +151,7 @@ fn bools<'a>(v: &[bool]) -> Attribute<'a> {
 
 impl<'a> Rw<'_, 'a> {
     fn cidx(&mut self, v: i64) -> ValueId {
-        self.make1(OpData::build("arith.constant").with("value", index_attr(v)), Type::Index)
+        self.make1(OpData::build("arith.constant").with("value", Attribute::index(v)), Type::Index)
     }
 
     /// `makeComposedAffineApply(d0 + d1, {a, b})`.
@@ -206,19 +206,19 @@ impl<'a> Rw<'_, 'a> {
     fn extract_dyn(&mut self, v: ValueId, i: ValueId) -> ValueId {
         let ty = self.body[v].ty.clone();
         let (s, sc) = vshape(&ty).expect("a vector");
-        let rt = if s.len() == 1 { elem(&ty).clone() } else { vector_type(&s[1..], &sc[1..], elem(&ty).clone()) };
-        self.make1(OpData::build("vector.extract").operands(&[v, i]).with("static_position", dense_i64(&[DYNAMIC])), rt)
+        let rt = if s.len() == 1 { elem(&ty).clone() } else { Type::vector(&s[1..], &sc[1..], elem(&ty).clone()) };
+        self.make1(OpData::build("vector.extract").operands(&[v, i]).with("static_position", Attribute::dense_i64(&[Dim::DYNAMIC])), rt)
     }
 
     /// `vector.extract` / `vector.insert` positions as mixed values.
     fn mixed_extract(&mut self, v: ValueId, pos: &[Ofr]) -> ValueId {
         let ty = self.body[v].ty.clone();
         let (s, sc) = vshape(&ty).expect("a vector");
-        let rt = if s.len() == pos.len() { elem(&ty).clone() } else { vector_type(&s[pos.len()..], &sc[pos.len()..], elem(&ty).clone()) };
+        let rt = if s.len() == pos.len() { elem(&ty).clone() } else { Type::vector(&s[pos.len()..], &sc[pos.len()..], elem(&ty).clone()) };
         let (st, dy) = split(pos);
         let mut ops = vec![v];
         ops.extend(dy);
-        self.make1(OpData::build("vector.extract").operands(&ops).with("static_position", dense_i64(&st)), rt)
+        self.make1(OpData::build("vector.extract").operands(&ops).with("static_position", Attribute::dense_i64(&st)), rt)
     }
 
     fn mixed_insert(&mut self, v: ValueId, dest: ValueId, pos: &[Ofr]) -> ValueId {
@@ -226,7 +226,7 @@ impl<'a> Rw<'_, 'a> {
         let (st, dy) = split(pos);
         let mut ops = vec![v, dest];
         ops.extend(dy);
-        self.make1(OpData::build("vector.insert").operands(&ops).with("static_position", dense_i64(&st)), ty)
+        self.make1(OpData::build("vector.insert").operands(&ops).with("static_position", Attribute::dense_i64(&st)), ty)
     }
 
     /// `vector.print` of `v` (or of nothing), with a punctuation.
@@ -315,7 +315,7 @@ fn split(pos: &[Ofr]) -> (Vec<i64>, Vec<ValueId>) {
         match p {
             Ofr::C(c) => st.push(*c),
             Ofr::V(v) => {
-                st.push(DYNAMIC);
+                st.push(Dim::DYNAMIC);
                 dy.push(*v);
             }
         }
@@ -326,7 +326,7 @@ fn split(pos: &[Ofr]) -> (Vec<i64>, Vec<ValueId>) {
 /// The mixed position of a `vector.extract` / `vector.insert` (`lead` operands before it).
 fn mixed_position(b: &Body<'_>, op: OpId, lead: usize) -> Vec<Ofr> {
     let mut dy = b[op].operands[lead..].iter();
-    b.dense_i64(op, "static_position").into_iter().map(|s| if s == DYNAMIC { Ofr::V(*dy.next().expect("dynamic")) } else { Ofr::C(s) }).collect()
+    b.dense_i64(op, "static_position").into_iter().map(|s| if s == Dim::DYNAMIC { Ofr::V(*dy.next().expect("dynamic")) } else { Ofr::C(s) }).collect()
 }
 
 /// `unpackOneDim`: `memref<...xvector<NxV>>` ⇒ `memref<...xNxvector<V>>`.
@@ -338,14 +338,14 @@ fn unpack_one_dim<'a>(t: &Type<'a>) -> Option<Type<'a>> {
     }
     let mut shape = m.shape.clone()?;
     shape.push(Dim::Static(vs[0]));
-    let inner = vector_type(&vs[1..], &sc[1..], elem(&m.elem).clone());
+    let inner = Type::vector(&vs[1..], &sc[1..], elem(&m.elem).clone());
     Some(Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: inner.into(), extras: Vec::new() }))
 }
 
 /// A vector type with its leading dim dropped (`VectorType::Builder::dropDim(0)`).
 fn drop_dim0<'a>(t: &Type<'a>) -> Type<'a> {
     let (s, sc) = vshape(t).expect("a vector");
-    vector_type(&s[1..], &sc[1..], elem(t).clone())
+    Type::vector(&s[1..], &sc[1..], elem(t).clone())
 }
 
 macro_rules! patterns {
@@ -466,7 +466,7 @@ fn transfer_op_conversion<'a>(rw: &mut Rw<'_, 'a>, op: OpId, o: VectorToScfOptio
                     if let Some(l) = segs.last_mut() {
                         *l = 1;
                     }
-                    b[new].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: segs.iter().map(|s| alloc::format!("{s}").into()).collect() });
+                    b[new].set("operandSegmentSizes", Attribute::dense_i32(&segs));
                 });
             }
             (!state.is_empty()).then(|| rw.body[new].results[0])
@@ -525,7 +525,7 @@ fn maybe_assign_mask(rw: &mut Rw<'_, '_>, x: &Xfer<'_>, new: OpId, i: i64) {
         if let Some(l) = segs.last_mut() {
             *l = 1;
         }
-        b[new].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: segs.iter().map(|s| alloc::format!("{s}").into()).collect() });
+        b[new].set("operandSegmentSizes", Attribute::dense_i32(&segs));
     });
 }
 
@@ -673,7 +673,7 @@ patterns! {
                     let e = rw.mixed_extract(vec, &pos);
                     let xv = if rank1 {
                         let t = rw.body[e].ty.clone();
-                        rw.broadcast(vector_type(&[], &[], t), e)
+                        rw.broadcast(Type::vector(&[], &[], t), e)
                     } else {
                         e
                     };
@@ -731,12 +731,12 @@ patterns! {
             nsc[*p] = sc[i];
             nib[*p] = x.in_bounds.get(i).copied().unwrap_or(false);
         }
-        let nt = vector_type(&ns, &nsc, elem(&x.vt).clone());
+        let nt = Type::vector(&ns, &nsc, elem(&x.vt).clone());
         rw.set_before(op);
         let n = rw.xfer_read(nt, x.base, &x.indices, &new_map, x.value, x.mask, &nib);
         let v = rw.body[n].results[0];
         let perm64: Vec<i64> = perm.iter().map(|p| *p as i64).collect();
-        let t = rw.make1(OpData::build("vector.transpose").operands(&[v]).with("permutation", dense_i64(&perm64)), x.vt.clone());
+        let t = rw.make1(OpData::build("vector.transpose").operands(&[v]).with("permutation", Attribute::dense_i64(&perm64)), x.vt.clone());
         rw.replace_op(op, &[t]);
         true
     }
@@ -760,11 +760,11 @@ patterns! {
         let (shape, sc) = vshape(&x.vt).expect("a vector");
         let tshape: Vec<i64> = indices.iter().map(|i| shape[*i as usize]).collect();
         let tsc: Vec<bool> = indices.iter().map(|i| sc[*i as usize]).collect();
-        let tt = vector_type(&tshape, &tsc, elem(&x.vt).clone());
+        let tt = Type::vector(&tshape, &tsc, elem(&x.vt).clone());
         let n = x.map.results.len() as u32;
         let new_map = AffineMap { dims: x.map.dims, syms: 0, results: (x.map.dims - n..x.map.dims).map(AffineExpr::Dim).collect() };
         rw.set_before(op);
-        let t = rw.make1(OpData::build("vector.transpose").operands(&[x.value]).with("permutation", dense_i64(&indices)), tt);
+        let t = rw.make1(OpData::build("vector.transpose").operands(&[x.value]).with("permutation", Attribute::dense_i64(&indices)), tt);
         let ty = x.tensor.then(|| rw.body[x.base].ty.clone());
         let w = rw.xfer_write(ty, t, x.base, &x.indices, &new_map, x.mask, &nib);
         if x.tensor {
@@ -792,7 +792,7 @@ patterns! {
             return false;
         }
         let (shape, sc) = vshape(&x.vt).expect("a vector");
-        let nt = vector_type(&shape[shape.len() - keep..], &sc[sc.len() - keep..], elem(&x.vt).clone());
+        let nt = Type::vector(&shape[shape.len() - keep..], &sc[sc.len() - keep..], elem(&x.vt).clone());
         let nib = x.in_bounds[x.in_bounds.len().saturating_sub(keep)..].to_vec();
         rw.set_before(op);
         let n = rw.xfer_read(nt, x.base, &x.indices, &new_map, x.value, x.mask, &nib);
@@ -831,7 +831,7 @@ patterns! {
         let mut nsc = vec![false; k];
         nsc.extend(&sc);
         rw.set_before(op);
-        let nv = rw.broadcast(vector_type(&ns, &nsc, elem(&x.vt).clone()), x.value);
+        let nv = rw.broadcast(Type::vector(&ns, &nsc, elem(&x.vt).clone()), x.value);
         let mut nm = None;
         if let Some(m) = x.mask {
             let mt = rw.body[m].ty.clone();
@@ -840,12 +840,12 @@ patterns! {
             s2.extend(&ms);
             let mut c2 = vec![false; k];
             c2.extend(&msc);
-            let bm = rw.broadcast(vector_type(&s2, &c2, elem(&mt).clone()), m);
+            let bm = rw.broadcast(Type::vector(&s2, &c2, elem(&mt).clone()), m);
             let r = s2.len();
             let perm: Vec<i64> = (k..r).chain(0..k).map(|i| i as i64).collect();
             let ts: Vec<i64> = perm.iter().map(|p| s2[*p as usize]).collect();
             let tc: Vec<bool> = perm.iter().map(|p| c2[*p as usize]).collect();
-            nm = Some(rw.make1(OpData::build("vector.transpose").operands(&[bm]).with("permutation", dense_i64(&perm)), vector_type(&ts, &tc, elem(&mt).clone())));
+            nm = Some(rw.make1(OpData::build("vector.transpose").operands(&[bm]).with("permutation", Attribute::dense_i64(&perm)), Type::vector(&ts, &tc, elem(&mt).clone())));
         }
         exprs.extend(x.map.results.iter().cloned());
         let new_map = AffineMap { dims: x.map.dims, syms: 0, results: exprs };
@@ -881,7 +881,7 @@ fn decompose_print(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
     if let Type::Integer { signedness, width } = elem(&vt).clone() {
         let legal = (width.max(8) - 1).next_power_of_two().max(8);
         let legal = if legal == width.max(8) - 1 { legal * 2 } else { legal };
-        let with = |w: u32, sg: mlirformat::Signedness| vector_type(&shape0, &scal, Type::Integer { signedness: sg, width: w });
+        let with = |w: u32, sg: mlirformat::Signedness| Type::vector(&shape0, &scal, Type::Integer { signedness: sg, width: w });
         let (ss, st, tt) = (with(width, mlirformat::Signedness::Signless), with(legal, mlirformat::Signedness::Signless), with(legal, signedness));
         value = rw.make1(OpData::build("vector.bitcast").operands(&[value]), ss);
         if rw.body[value].ty != st {
@@ -893,7 +893,7 @@ fn decompose_print(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
     }
     let shape = if shape0.is_empty() { vec![1] } else { shape0.clone() };
     if shape0.len() != 1 {
-        let flat = vector_type(&[shape.iter().product()], &[], elem(&vt).clone());
+        let flat = Type::vector(&[shape.iter().product()], &[], elem(&vt).clone());
         value = rw.make1(OpData::build("vector.shape_cast").operands(&[value]), flat);
     }
     let mut first_close = None;
@@ -994,14 +994,14 @@ fn scalable_transpose_write(rw: &mut Rw<'_, '_>, op: OpId, o: VectorToScfOptions
         Some(Ofr::C(c)) => rw.cidx(*c),
     };
     let step = rw.cidx(1);
-    let slice_ty = vector_type(&shape[1..], &sc[1..], elem(&x.vt).clone());
+    let slice_ty = Type::vector(&shape[1..], &sc[1..], elem(&x.vt).clone());
     let mut slice_mask = None;
     if !mask_dims.is_empty() {
         let vals: Vec<ValueId> = mask_dims[1..].iter().map(|d| match d {
             Ofr::V(v) => *v,
             Ofr::C(c) => rw.cidx(*c),
         }).collect();
-        slice_mask = Some(rw.make1(OpData::build("vector.create_mask").operands(&vals), vector_type(&shape[1..], &sc[1..], Type::int(1))));
+        slice_mask = Some(rw.make1(OpData::build("vector.create_mask").operands(&vals), Type::vector(&shape[1..], &sc[1..], Type::int(1))));
     }
     let inits: Vec<ValueId> = if x.tensor { vec![x.base] } else { Vec::new() };
     let in_bounds_rest = x.in_bounds.get(1..).unwrap_or(&[]).to_vec();
