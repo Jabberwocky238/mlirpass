@@ -94,7 +94,7 @@ impl BufferizationToMemref {
         let lp = rw.build_for(zero, rank, one, &[one], &mut |rw, i, acc| {
             let dim = Self::result(rw, &memref::DimOp::new(input.into(), i.into(), in_ty.clone(), Type::Index, Type::Index));
             rw.emit(&memref::StoreOp::new(dim.into(), shape.into(), vec![i.into()], None, None, Type::Index, shape_ty.clone(), Type::Index));
-            vec![Self::result(rw, &arith::MulI::new(acc[0].into(), dim.into(), mlirformat::Attribute::dialect("arith.overflow", "<none>"), Type::Index))]
+            vec![Self::result(rw, &arith::MulI::new(acc[0].into(), dim.into(), None, Type::Index))]
         });
         let size = rw.body[lp].results[0];
         let flat = Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(vec![Dim::Dynamic]), elem: s.elem.clone(), extras: Vec::new() });

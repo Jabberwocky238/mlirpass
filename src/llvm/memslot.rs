@@ -164,7 +164,7 @@ impl<'a> Rewriter<'_, 'a> {
             int = self.slot_fold(&llvm::LShrOp::new(v.into(), by.into(), false, vt));
         }
         let it = self.ty(int);
-        let trunc = self.slot_emit(&llvm::TruncOp::new(int.into(), Ty::int_attr(0, &Type::int(32)), it, Ty::int(dst)));
+        let trunc = self.slot_emit(&llvm::TruncOp::new(int.into(), None, it, Ty::int(dst)));
         self.int_to(trunc, target)
     }
 
@@ -182,7 +182,7 @@ impl<'a> Rewriter<'_, 'a> {
         let diff = slot_bits - value_bits;
         let mask = if dl.big_endian() {
             let by = self.slot_emit(&llvm::ConstantOp::new(Ty::int_attr(u128::from(diff), &dt), dt.clone()));
-            value = self.slot_fold(&llvm::ShlOp::new(value.into(), by.into(), Ty::int_attr(0, &Type::int(32)), dt.clone()));
+            value = self.slot_fold(&llvm::ShlOp::new(value.into(), by.into(), None, dt.clone()));
             (1u128 << diff) - 1
         } else {
             !((1u128 << value_bits) - 1)
@@ -217,7 +217,7 @@ impl<'a> Rewriter<'_, 'a> {
             let mut covered = 8;
             while covered < width {
                 let by = self.slot_emit(&llvm::ConstantOp::new(Ty::int_attr(u128::from(covered), &int), int.clone()));
-                let shifted = self.slot_emit(&llvm::ShlOp::new(cur.into(), by.into(), Ty::int_attr(0, &Type::int(32)), int.clone()));
+                let shifted = self.slot_emit(&llvm::ShlOp::new(cur.into(), by.into(), None, int.clone()));
                 cur = self.slot_emit(&llvm::OrOp::new(cur.into(), shifted.into(), false, int.clone()));
                 covered *= 2;
             }
@@ -305,7 +305,7 @@ impl Promotable for LlvmSlots {
             Some(Role::Memcpy) => {
                 let src = rw.body[op].operands[1];
                 let st = rw.ty(src);
-                rw.slot_emit(&llvm::LoadOp::new(src.into(), None, false, false, false, false, llvm::AtomicOrdering::NotAtomic, None, None, None, None, None, None, st, slot.elem.clone()))
+                rw.slot_emit(&llvm::LoadOp::new(src.into(), None, false, false, false, false, None, None, None, None, None, None, None, st, slot.elem.clone()))
             }
             _ => unreachable!("not a storing op"),
         }
@@ -351,7 +351,7 @@ impl Promotable for LlvmSlots {
                 if self.loads_from(rw.body, op, slot) {
                     let (def, dst) = (reaching.expect("a reaching definition"), rw.body[op].operands[0]);
                     let (vt, dt) = (rw.ty(def), rw.ty(dst));
-                    rw.emit(&llvm::StoreOp::new(def.into(), dst.into(), None, false, false, false, llvm::AtomicOrdering::NotAtomic, None, None, None, None, None, vt, dt));
+                    rw.emit(&llvm::StoreOp::new(def.into(), dst.into(), None, false, false, false, None, None, None, None, None, None, vt, dt));
                 }
                 Deletion::Delete
             }
@@ -606,7 +606,7 @@ impl<'r, 'a> Rewriter<'r, 'a> {
         let ptr = LlvmType::ptr();
         for i in 0..slot.subelements.len() as u64 {
             let Some(sub) = Subslot::from(i).find(subslots) else { continue };
-            let gep = GEPOp::new(Value::from(other), Vec::new(), Attribute::dense_i32(&[0, i]), Attribute::Type(slot.slot.elem.clone()), Attribute::integer(0, Type::int(32)), ptr.clone(), Vec::new(), ptr.clone());
+            let gep = GEPOp::new(Value::from(other), Vec::new(), Attribute::dense_i32(&[0, i]), Attribute::Type(slot.slot.elem.clone()), None, ptr.clone(), Vec::new(), ptr.clone());
             let gep = self.emit(&gep);
             let in_other = self.body[gep].results[0];
             let (d, s) = if is_dst { (sub.ptr, in_other) } else { (in_other, sub.ptr) };
@@ -764,7 +764,7 @@ impl Destructurable for LlvmSlots {
                 let new = Subslot::from(access.index).find(subslots).expect("subslot").ptr;
                 let res = rw.body[op].results[0];
                 let flags = rw.body[op].get("noWrapFlags").cloned().unwrap_or(Attribute::integer(0, Type::int(32)));
-                let gep = GEPOp::new(Value::from(new), Vec::new(), Attribute::dense_i32(&[access.offset]), Attribute::Type(Type::int(8)), flags, rw.body[new].ty.clone(), Vec::new(), rw.body[res].ty.clone());
+                let gep = GEPOp::new(Value::from(new), Vec::new(), Attribute::dense_i32(&[access.offset]), Attribute::Type(Type::int(8)), Some(flags), rw.body[new].ty.clone(), Vec::new(), rw.body[res].ty.clone());
                 let (data, types) = OpData::of(&gep).expect("a gep has no regions");
                 let to = rw.create_or_fold(data, &types)[0];
                 rw.replace_all_uses(res, to);
