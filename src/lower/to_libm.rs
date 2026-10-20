@@ -4,7 +4,7 @@
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Error, FloatKind, FunctionType, Type};
-use mlirpass_macros::{pass, patterns};
+use crate::{pass, patterns};
 
 use super::vector_transforms::{vshape, zeros, VectorBuild};
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionRewriter as Cr, ConversionTarget, Converter, Lowering, Mode, OpData, OpId, ValueId};

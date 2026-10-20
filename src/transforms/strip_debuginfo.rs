@@ -1,6 +1,6 @@
 //! `strip-debuginfo`: every location becomes `unknown`.
 
-use mlirpass_macros::pass;
+use crate::pass;
 use mlirformat::{Error, Str};
 
 use crate::{Body, OpId};

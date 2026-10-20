@@ -7,7 +7,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, Error, FunctionType, NamedAttr, Shaped, Type};
-use mlirpass_macros::pass;
+use crate::pass;
 
 use crate::{Body, Def, LlvmOptions, OpData, OpId, Run, ValueId, Visibility};
 

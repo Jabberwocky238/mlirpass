@@ -26,7 +26,8 @@ Dialects: every dialect mlirformat describes.
 ## Declaring passes and lowerings
 
 Passes and pattern sets are declared with the proc macros of `mlirpass-macros` (`macros/`),
-not written out by hand:
+re-exported by mlirpass (`use mlirpass::{pass, patterns, ops, blocks};`, inside the crate
+`use crate::pass;`), not written out by hand:
 
 ```rust
 /// A pass with options: its fields are the `Passes.td` options.

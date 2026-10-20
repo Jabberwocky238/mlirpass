@@ -4,7 +4,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::patterns;
+use crate::patterns;
 use mlirformat::{Attribute, Dim, NamedAttr, Type};
 
 use crate::{BlockId, ConversionRewriter, OpData, OpId, ValueId};

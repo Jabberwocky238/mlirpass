@@ -29,7 +29,7 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::pass;
+use crate::pass;
 use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, Dim, Error, FloatKind, NamedAttr, Shaped, ShapedKind, Signedness, Type};
 

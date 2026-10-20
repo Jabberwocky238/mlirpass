@@ -4,7 +4,7 @@ use alloc::borrow::Cow;
 use alloc::format;
 use alloc::vec::Vec;
 
-use mlirpass_macros::{ops, patterns};
+use crate::{ops, patterns};
 use mlirformat::{Attribute, Type};
 
 use crate::{ConversionRewriter, OpData, OpId, ValueId};

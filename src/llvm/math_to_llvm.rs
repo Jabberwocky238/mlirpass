@@ -3,7 +3,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::patterns;
+use crate::patterns;
 use mlirformat::{Attribute, NamedAttr, Type};
 
 use crate::llvm_fastmath;

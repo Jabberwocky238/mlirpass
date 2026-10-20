@@ -3,7 +3,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use mlirpass_macros::pass;
+use crate::pass;
 use mlirformat::Error;
 
 use crate::{Body, GreedyConfig, OpId, Run, RegionSimplify};

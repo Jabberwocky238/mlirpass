@@ -3,7 +3,7 @@
 
 use alloc::vec::Vec;
 
-use mlirpass_macros::{ops, patterns};
+use crate::{ops, patterns};
 use mlirformat::arith::CmpFPredicate as P;
 use mlirformat::{Attribute, FloatKind, Type};
 

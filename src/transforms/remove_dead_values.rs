@@ -5,7 +5,7 @@ use alloc::collections::BTreeSet;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::pass;
+use crate::pass;
 use mlirformat::{Attribute, Error, Type};
 
 use crate::dataflow::Solver;

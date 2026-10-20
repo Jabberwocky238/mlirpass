@@ -4,7 +4,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use mlirpass_macros::pass;
+use crate::pass;
 use mlirformat::{Attribute, Error, Type};
 
 use crate::dataflow::{Cv, Solver};

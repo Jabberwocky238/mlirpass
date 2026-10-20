@@ -29,7 +29,7 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::pass;
+use crate::pass;
 use mlirformat::{Attribute, Dim, NamedAttr, Shaped, ShapedKind, Type};
 
 use crate::{ArithToLlvm, AssertLowering, CfToLlvm, FuncToLlvm, IndexToLlvm, MathToLlvm, MemrefOptions, MemrefToLlvm, UbToLlvm, VectorOptions, VectorToLlvm};

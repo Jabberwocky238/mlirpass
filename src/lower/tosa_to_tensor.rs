@@ -3,7 +3,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::patterns;
+use crate::patterns;
 use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Signedness, Type};
 
 use crate::canon::MemrefOfr as Ofr;

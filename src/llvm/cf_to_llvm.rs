@@ -4,7 +4,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
-use mlirpass_macros::patterns;
+use crate::patterns;
 use mlirformat::Attribute;
 
 use crate::unescape;

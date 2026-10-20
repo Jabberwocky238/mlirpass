@@ -47,5 +47,7 @@ pub use rewrite::*;
 pub use symbol::*;
 pub use transforms::*;
 pub use traits::*;
+/// The proc macros (`mlirpass-macros`): `#[pass]`, `#[patterns]`, `#[ops]`, `blocks!`.
+pub use mlirpass_macros::{blocks, ops, pass, patterns};
 pub use mlirformat;
 pub use mlirformat::{AffineBin, AffineExpr, AffineMap, ApFloat, ApInt, Const, IntegerSet, Scalar};

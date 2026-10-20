@@ -4,7 +4,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::patterns;
+use crate::patterns;
 use mlirformat::{Attribute, Dim, FloatKind, Type, tosa};
 
 use super::linalg_build::{Named, i64_elements};

@@ -5,7 +5,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::pass;
+use crate::pass;
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type, arith};
 
 use crate::canon::MemrefOfr as Ofr;

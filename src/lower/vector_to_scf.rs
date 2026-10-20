@@ -4,7 +4,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::pass;
+use crate::pass;
 use mlirformat::{Attribute, Dim, Error, ShapedKind, Shaped, Type};
 
 use super::vector_transforms::{Build, VectorBuild, elem, vshape};

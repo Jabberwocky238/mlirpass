@@ -4,7 +4,7 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
 
-use mlirpass_macros::pass;
+use crate::pass;
 use mlirformat::{Error, FloatKind, ShapedKind, Type};
 
 use crate::{Body, EffectKind, OpData, OpId, Run, RegionId, Trait, ValueId};

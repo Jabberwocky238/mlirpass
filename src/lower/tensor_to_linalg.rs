@@ -4,7 +4,7 @@
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, Error, Type};
-use mlirpass_macros::{pass, patterns};
+use crate::{pass, patterns};
 
 use super::linalg_build::Named;
 use crate::canon::MemrefOfr as Ofr;

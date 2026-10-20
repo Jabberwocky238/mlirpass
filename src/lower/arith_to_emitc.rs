@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use mlirpass_macros::patterns;
+use crate::patterns;
 use mlirformat::{Attribute, ShapedKind, Type};
 use mlirformat::emitc_types::EmitcType;
 

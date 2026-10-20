@@ -5,7 +5,7 @@ use alloc::collections::BTreeMap;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::patterns;
+use crate::patterns;
 use mlirformat::{Attribute, Dim, FloatKind, Signedness, Type};
 
 use super::linalg_build::Named;

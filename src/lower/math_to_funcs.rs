@@ -7,7 +7,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Error, FunctionType, Type};
-use mlirpass_macros::{blocks, pass, patterns};
+use crate::{blocks, pass, patterns};
 
 use crate::{ApFloat, BlockId, Body, Const, ConversionConfig, ConversionPatterns, ConversionRewriter, ConversionTarget, Converter, Mode, OpData, OpId, RegionId, Run, Scalar, ValueId};
 

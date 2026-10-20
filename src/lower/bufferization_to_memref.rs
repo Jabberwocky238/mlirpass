@@ -5,7 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type, arith, memref};
-use mlirpass_macros::{pass, patterns};
+use crate::{pass, patterns};
 
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionRewriter as Cr, ConversionTarget, Converter, Listener, Mode, OpData, OpId, Rewriter, ValueId};
 use mlirformat::Error;

@@ -6,7 +6,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
-use mlirpass_macros::patterns;
+use crate::patterns;
 use mlirformat::{Attribute, Dim, FloatKind, Shaped, ShapedKind, Type};
 
 use super::memref_to_llvm::{Cr, Gep, MemrefToLlvm as M};

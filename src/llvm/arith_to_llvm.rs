@@ -4,7 +4,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::{ops, patterns};
+use crate::{ops, patterns};
 use mlirformat::arith::CmpIPredicate;
 use mlirformat::{arith, Attribute, NamedAttr, Type};
 

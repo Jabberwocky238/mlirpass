@@ -1,6 +1,6 @@
 //! `llvm-request-c-wrappers`: every function asks for its C wrapper.
 
-use mlirpass_macros::pass;
+use crate::pass;
 use mlirformat::{Attribute, Error};
 
 use crate::{Body, OpId};
