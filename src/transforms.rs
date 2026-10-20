@@ -1,5 +1,6 @@
 //! Dialect-independent passes, as `mlir/lib/Transforms`.
 
+mod buffer_results_to_out_params;
 mod canonicalize;
 mod cse;
 mod expand_strided_metadata;
@@ -12,6 +13,7 @@ mod strip_debuginfo;
 mod symbol_dce;
 mod symbol_privatize;
 
+pub use buffer_results_to_out_params::BufferResultsToOutParams;
 pub use canonicalize::Canonicalize;
 pub use cse::Cse;
 pub use expand_strided_metadata::ExpandStridedMetadata;

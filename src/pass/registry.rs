@@ -70,6 +70,7 @@ registry! {
     StripDebugInfo,
     SymbolDce,
     Sccp,
+    BufferResultsToOutParams,
     RemoveDeadValues,
     SymbolPrivatize,
 }

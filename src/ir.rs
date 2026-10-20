@@ -385,6 +385,18 @@ impl<'a> Body<'a> {
     }
 
     /// `f` on `op` and every op nested in it, parents first (preorder).
+    /// `Operation::walk` in post-order: nested ops before their parent.
+    pub fn walk_post(&self, op: OpId, f: &mut impl FnMut(OpId)) {
+        for r in &self[op].regions {
+            for b in &self[*r].blocks {
+                for o in &self[*b].ops {
+                    self.walk_post(*o, f);
+                }
+            }
+        }
+        f(op);
+    }
+
     pub fn walk(&self, op: OpId, f: &mut impl FnMut(OpId)) {
         f(op);
         for r in &self[op].regions {
