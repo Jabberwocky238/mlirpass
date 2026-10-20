@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
-use crate::canon::{MemrefOfr as Ofr, map_attr};
+use crate::canon::MemrefOfr as Ofr;
 use crate::{AffineMap, ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
@@ -136,7 +136,7 @@ impl<'a> Cr<'_, 'a, '_> {
 
     /// `linalg.generic` with all-parallel or given iterators.
     pub fn generic(&mut self, results: &[Type<'a>], inputs: &[ValueId], outputs: &[ValueId], maps: &[AffineMap], iters: &[bool], body: &mut dyn FnMut(&mut Self, &[ValueId]) -> Vec<ValueId>) -> OpId {
-        let props = vec![("indexing_maps", Attribute::Array(maps.iter().map(map_attr).collect())), ("iterator_types", iterators(iters))];
+        let props = vec![("indexing_maps", Attribute::Array(maps.iter().map(Attribute::from).collect())), ("iterator_types", iterators(iters))];
         self.structured("linalg.generic", inputs, outputs, results, props, body)
     }
 

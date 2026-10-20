@@ -10,7 +10,6 @@
 
 extern crate alloc;
 
-mod affine;
 mod branch;
 #[macro_use]
 mod canon;
@@ -33,7 +32,6 @@ mod symbol;
 mod traits;
 mod transforms;
 
-pub use affine::{AffineExpr, AffineMap, Bin as AffineBin, IntegerSet};
 pub use conversion::*;
 pub use dominance::*;
 pub use effects::*;
@@ -50,4 +48,4 @@ pub use symbol::*;
 pub use transforms::*;
 pub use traits::*;
 pub use mlirformat;
-pub use mlirformat::{ApFloat, ApInt, Const, Scalar};
+pub use mlirformat::{AffineBin, AffineExpr, AffineMap, ApFloat, ApInt, Const, IntegerSet, Scalar};

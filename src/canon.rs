@@ -46,7 +46,6 @@ use mlirformat::{Attribute, NamedAttr, Type};
 
 use crate::{Body, Fold, OpData, OpId, PatternSet, ValueId};
 
-pub use affine::map_attr;
 pub use memref::Ofr as MemrefOfr;
 pub use reshape::Reshape;
 

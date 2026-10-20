@@ -167,7 +167,7 @@ fn fold_transpose<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let composed = perm.compose(&other);
     let input = b[inner].operands[0];
     b.set_operand(op, 0, input);
-    b[op].set("permutation", super::affine::map_attr(&composed));
+    b[op].set("permutation", Attribute::from(&composed));
     Fold::InPlace
 }
 

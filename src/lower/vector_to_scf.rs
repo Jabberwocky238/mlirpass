@@ -8,7 +8,7 @@ use mlirpass_macros::pass;
 use mlirformat::{Attribute, Dim, Error, ShapedKind, Shaped, Type};
 
 use super::vector_transforms::{Build, VectorBuild, elem, vshape};
-use crate::canon::{MemrefOfr as Ofr, map_attr};
+use crate::canon::MemrefOfr as Ofr;
 use crate::{AffineExpr, AffineMap, Body, GreedyConfig, LlvmOptions, OpData, OpId, Run, Pattern, PatternSet, Rewriter, Trait, ValueId};
 
 /// The label of transfers being lowered (`kPassLabel`).
@@ -166,7 +166,7 @@ impl<'a> Rw<'_, 'a> {
         ops.extend(indices);
         ops.push(padding);
         ops.extend(mask);
-        let data = OpData::build("vector.transfer_read").operands(&ops).segments(&[1, indices.len(), 1, usize::from(mask.is_some())]).with("permutation_map", map_attr(map)).with("in_bounds", bools(in_bounds));
+        let data = OpData::build("vector.transfer_read").operands(&ops).segments(&[1, indices.len(), 1, usize::from(mask.is_some())]).with("permutation_map", Attribute::from(map)).with("in_bounds", bools(in_bounds));
         self.make(data, &[vt])
     }
 
@@ -175,7 +175,7 @@ impl<'a> Rw<'_, 'a> {
         let mut ops = vec![vec, base];
         ops.extend(indices);
         ops.extend(mask);
-        let data = OpData::build("vector.transfer_write").operands(&ops).segments(&[1, 1, indices.len(), usize::from(mask.is_some())]).with("permutation_map", map_attr(map)).with("in_bounds", bools(in_bounds));
+        let data = OpData::build("vector.transfer_write").operands(&ops).segments(&[1, 1, indices.len(), usize::from(mask.is_some())]).with("permutation_map", Attribute::from(map)).with("in_bounds", bools(in_bounds));
         let types: Vec<Type<'a>> = ty.into_iter().collect();
         self.make(data, &types)
     }

@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use mlirpass_macros::pass;
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type, arith};
 
-use crate::canon::{MemrefOfr as Ofr, map_attr};
+use crate::canon::MemrefOfr as Ofr;
 use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, GreedyConfig, LlvmOptions, OpData, OpId, PatternSet, Rewriter, ValueId};
 
 #[pass("expand-strided-metadata")]
@@ -94,7 +94,7 @@ impl<'a> Rewriter<'_, 'a> {
             .collect();
         let mut map = map.replace(&dims, &syms, nd, ns);
         self.body.compose_map(&mut map, &mut values);
-        let op = self.body.create(OpData::build("affine.apply").operands(&values).with("map", map_attr(&map)), &[Type::Index]);
+        let op = self.body.create(OpData::build("affine.apply").operands(&values).with("map", Attribute::from(&map)), &[Type::Index]);
         let ip = self.ip.expect("insertion point");
         match ip.before {
             Some(b) => self.body.insert_before(op, b),
@@ -137,7 +137,7 @@ impl<'a> Rewriter<'_, 'a> {
         let syms: Vec<AffineExpr> = operands[map.dims as usize..].iter().map(|o| fold(o, true)).collect();
         let mut map = map.replace(&dims, &syms, nd, ns);
         self.body.compose_map(&mut map, &mut values);
-        let op = self.create(OpData::build("affine.apply").operands(&values).with("map", map_attr(&map)), &[Type::Index]);
+        let op = self.create(OpData::build("affine.apply").operands(&values).with("map", Attribute::from(&map)), &[Type::Index]);
         self.body[op].results[0]
     }
 

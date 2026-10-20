@@ -297,7 +297,7 @@ impl TosaToLinalgNamed {
 
     /// The default `indexing_maps` of `linalg.batch_matmul`.
     fn batch_matmul_maps<'a>() -> Attribute<'a> {
-        let m = |r: [u32; 3]| crate::canon::map_attr(&AffineMap { dims: 4, syms: 0, results: r.iter().map(|d| AffineExpr::Dim(*d)).collect() });
+        let m = |r: [u32; 3]| Attribute::from(&AffineMap { dims: 4, syms: 0, results: r.iter().map(|d| AffineExpr::Dim(*d)).collect() });
         Attribute::Array(vec![m([0, 1, 3]), m([0, 3, 2]), m([0, 1, 2])])
     }
 
@@ -357,7 +357,7 @@ impl TosaToLinalgNamed {
             maps.insert(2, unit.clone());
             maps.insert(3, unit);
         }
-        Some(Attribute::Array(maps.iter().map(crate::canon::map_attr).collect()))
+        Some(Attribute::Array(maps.iter().map(Attribute::from).collect()))
     }
 
     /// A named op with its OpDSL body, memoized maps attached as verification leaves them.
@@ -431,7 +431,7 @@ impl TosaToLinalgNamed {
             return true;
         }
         let maps: Vec<AffineMap> = match &cr.rw.body[p].attributes.last().and_then(|a| a.value.clone()) {
-            Some(Attribute::Array(ms)) => ms.iter().filter_map(|m| if let Attribute::Builtin { body, .. } = m { AffineMap::parse(body) } else { None }).collect(),
+            Some(Attribute::Array(ms)) => ms.iter().filter_map(|m| AffineMap::try_from(m).ok()).collect(),
             _ => Vec::new(),
         };
         let region = cr.rw.body[p].regions[0];
