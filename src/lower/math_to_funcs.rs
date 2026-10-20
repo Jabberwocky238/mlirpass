@@ -7,7 +7,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Error, FunctionType, Type};
-use mlirpass_macros::{pass, patterns};
+use mlirpass_macros::{blocks, pass, patterns};
 
 use super::linalg_build::{dims_of, int_attr};
 use super::vector_transforms::dense_i64;
@@ -15,6 +15,11 @@ use crate::canon::AttrExt;
 use crate::{ApFloat, BlockId, Body, Const, ConversionConfig, ConversionPatterns, ConversionRewriter, ConversionTarget, Converter, Mode, OpData, OpId, RegionId, Run, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
+
+/// `arith::CmpIPredicate`s.
+const EQ: i64 = 0;
+const NE: i64 = 1;
+const SLE: i64 = 3;
 
 /// An `ImplicitLocOpBuilder` inside one generated function: ops go to the end of `at`.
 struct Fb<'b, 'a> {
@@ -38,6 +43,43 @@ impl<'a> Fb<'_, 'a> {
     fn bin(&mut self, name: &str, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.b[a].ty.clone();
         self.v(name, &[a, b], ty)
+    }
+
+    /// An arith op, its float or integer form by the operands' type.
+    fn arith(&mut self, float: &str, int: &str, a: ValueId, b: ValueId) -> ValueId {
+        let name = if matches!(self.b[a].ty, Type::Float(_)) { float } else { int };
+        self.bin(name, a, b)
+    }
+
+    fn sub(&mut self, a: ValueId, b: ValueId) -> ValueId {
+        self.arith("arith.subf", "arith.subi", a, b)
+    }
+
+    fn mul(&mut self, a: ValueId, b: ValueId) -> ValueId {
+        self.arith("arith.mulf", "arith.muli", a, b)
+    }
+
+    fn div(&mut self, a: ValueId, b: ValueId) -> ValueId {
+        self.arith("arith.divf", "arith.divsi", a, b)
+    }
+
+    fn and(&mut self, a: ValueId, b: ValueId) -> ValueId {
+        self.bin("arith.andi", a, b)
+    }
+
+    /// `>>`: the logical shift.
+    fn shr(&mut self, a: ValueId, b: ValueId) -> ValueId {
+        self.bin("arith.shrui", a, b)
+    }
+
+    fn select(&mut self, c: ValueId, a: ValueId, b: ValueId) -> ValueId {
+        let ty = self.b[a].ty.clone();
+        self.v("arith.select", &[c, a, b], ty)
+    }
+
+    fn constant(&mut self, value: Attribute<'a>, ty: &Type<'a>) -> ValueId {
+        let o = self.op(OpData::build("arith.constant").with("value", value), &[ty.clone()]);
+        self.b[o].results[0]
     }
 
     fn int(&mut self, v: i128, ty: &Type<'a>) -> ValueId {
@@ -114,140 +156,136 @@ impl MathToFuncs {
         Fb { b, region, at }
     }
 
-    /// `createElementIPowIFunc`.
+    /// `createElementIPowIFunc`: the blocks in their order (C++ creates them out of it).
     fn ipowi<'a>(b: &mut Body<'a>, module: OpId, t: Type<'a>) {
         let mut f = Self::function(b, module, &format!("__mlir_math_ipowi_{t}"), FunctionType { inputs: vec![t.clone(), t.clone()], results: vec![t.clone()] });
-        let entry = f.at;
-        let (barg, parg) = (f.arg(entry, 0), f.arg(entry, 1));
-        let zero = f.int(0, &t);
-        let one = f.int(1, &t);
-        let m1 = f.int(-1, &t);
-        let p0 = f.cmpi(0, parg, zero);
-        let then = f.block(&[]);
-        f.ret(&[one]);
-        let fall = f.block(&[]);
-        f.at_end(entry, |f| f.cond_br(p0, then, &[], fall, &[]));
-        f.at = fall;
-        let pneg = f.cmpi(3, parg, zero);
-        let bzero_b = f.block(&[]);
-        let bz = f.cmpi(0, barg, zero);
-        let then = f.block(&[]);
-        let d = f.bin("arith.divsi", one, zero);
-        f.ret(&[d]);
-        let fall = f.block(&[]);
-        f.at_end(bzero_b, |f| f.cond_br(bz, then, &[], fall, &[]));
-        f.at = fall;
-        let bone = f.cmpi(0, barg, one);
-        let then = f.block(&[]);
-        f.ret(&[one]);
-        let fall2 = f.block(&[]);
-        f.at_end(fall, |f| f.cond_br(bone, then, &[], fall2, &[]));
-        f.at = fall2;
-        let bm1 = f.cmpi(0, barg, m1);
-        let podd_b = f.block(&[]);
-        let a = f.bin("arith.andi", parg, one);
-        let podd = f.cmpi(1, a, zero);
-        let then = f.block(&[]);
-        f.ret(&[m1]);
-        let fall3 = f.block(&[]);
-        f.at_end(podd_b, |f| f.cond_br(podd, then, &[], fall3, &[]));
-        f.at = fall3;
-        f.ret(&[one]);
-        let fall4 = f.block(&[]);
-        f.at_end(fall2, |f| f.cond_br(bm1, podd_b, &[], fall4, &[]));
-        f.at = fall4;
-        f.ret(&[zero]);
-        let header = f.block(&[t.clone(), t.clone(), t.clone()]);
-        f.at_end(Self::block_of(f.b, pneg), |f| f.cond_br(pneg, bzero_b, &[], header, &[one, barg, parg]));
-        let (res, base, pow) = (f.arg(header, 0), f.arg(header, 1), f.arg(header, 2));
-        f.at = header;
-        let a = f.bin("arith.andi", pow, one);
-        let odd = f.cmpi(1, a, zero);
-        let then = f.block(&[]);
-        let nres = f.bin("arith.muli", res, base);
-        let fall = f.block(&[t.clone()]);
-        f.at_end(then, |f| f.br(fall, &[nres]));
-        f.at_end(header, |f| f.cond_br(odd, then, &[], fall, &[res]));
-        let nres = f.arg(fall, 0);
-        f.at = fall;
-        let npow = f.bin("arith.shrui", pow, one);
-        let nz = f.cmpi(0, npow, zero);
-        let then = f.block(&[]);
-        f.ret(&[nres]);
-        let fall2 = f.block(&[]);
-        f.at_end(fall, |f| f.cond_br(nz, then, &[], fall2, &[]));
-        f.at = fall2;
-        let nbase = f.bin("arith.muli", base, base);
-        f.br(header, &[nres, nbase, npow]);
+        blocks!(f;
+            entry(base: t.clone(), power: t.clone()) {
+                let zero = f.int(0, &t);
+                let one = f.int(1, &t);
+                let minus_one = f.int(-1, &t);
+                let p_is_zero = f.cmpi(EQ, power, zero);
+                f.cond_br(p_is_zero, ret_one, &[], p_non_zero, &[]);
+            }
+            ret_one {
+                f.ret(&[one]);
+            }
+            p_non_zero {
+                let p_is_neg = f.cmpi(SLE, power, zero);
+                f.cond_br(p_is_neg, negative, &[], header, &[one, base, power]);
+            }
+            negative {
+                let b_is_zero = f.cmpi(EQ, base, zero);
+                f.cond_br(b_is_zero, div_by_zero, &[], b_non_zero, &[]);
+            }
+            div_by_zero {
+                f.ret(&[one / zero]);
+            }
+            b_non_zero {
+                let b_is_one = f.cmpi(EQ, base, one);
+                f.cond_br(b_is_one, ret_one2, &[], b_not_one, &[]);
+            }
+            ret_one2 {
+                f.ret(&[one]);
+            }
+            b_not_one {
+                let b_is_minus_one = f.cmpi(EQ, base, minus_one);
+                f.cond_br(b_is_minus_one, minus_one_base, &[], ret_zero, &[]);
+            }
+            minus_one_base {
+                let p_is_odd = f.cmpi(NE, power & one, zero);
+                f.cond_br(p_is_odd, ret_minus_one, &[], ret_one3, &[]);
+            }
+            ret_minus_one {
+                f.ret(&[minus_one]);
+            }
+            ret_one3 {
+                f.ret(&[one]);
+            }
+            ret_zero {
+                f.ret(&[zero]);
+            }
+            header(result: t.clone(), base_tmp: t.clone(), power_tmp: t.clone()) {
+                let odd = f.cmpi(NE, power_tmp & one, zero);
+                f.cond_br(odd, times_base, &[], next, &[result]);
+            }
+            times_base {
+                f.br(next, &[result * base_tmp]);
+            }
+            next(new_result: t.clone()) {
+                let new_power = power_tmp >> one;
+                let done = f.cmpi(EQ, new_power, zero);
+                f.cond_br(done, ret_result, &[], latch, &[]);
+            }
+            ret_result {
+                f.ret(&[new_result]);
+            }
+            latch {
+                f.br(header, &[new_result, base_tmp * base_tmp, new_power]);
+            }
+        );
     }
 
-    fn block_of(b: &Body<'_>, v: ValueId) -> BlockId {
-        b.def_op(v).and_then(|o| b[o].parent).expect("placed")
-    }
-
-    /// `createElementFPowIFunc`.
+    /// `createElementFPowIFunc`: the blocks in their order.
     fn fpowi<'a>(b: &mut Body<'a>, module: OpId, ft: FunctionType<'a>) {
         let (bt, pt) = (ft.inputs[0].clone(), ft.inputs[1].clone());
-        let mut f = Self::function(b, module, &format!("__mlir_math_fpowi_{bt}_{pt}"), ft);
-        let entry = f.at;
-        let (barg, parg) = (f.arg(entry, 0), f.arg(entry, 1));
         let Type::Float(k) = bt else { return };
-        let one_attr: Attribute = Const::scalar(Scalar::Float(ApFloat::from_f64(k, 1.0).expect("a float")), bt.clone()).into();
-        let o = f.op(OpData::build("arith.constant").with("value", one_attr), &[bt.clone()]);
-        let one_b = f.b[o].results[0];
         let w = Self::width(&pt);
-        let zero_p = f.int(0, &pt);
-        let one_p = f.int(1, &pt);
-        let min_p = f.int(-(1i128 << (w - 1)), &pt);
-        let max_p = f.int((1i128 << (w - 1)) - 1, &pt);
-        let p0 = f.cmpi(0, parg, zero_p);
-        let then = f.block(&[]);
-        f.ret(&[one_b]);
-        let fall = f.block(&[]);
-        f.at_end(entry, |f| f.cond_br(p0, then, &[], fall, &[]));
-        f.at = fall;
-        let pneg = f.cmpi(3, parg, zero_p);
-        let pmin = f.cmpi(0, parg, min_p);
-        let negp = f.bin("arith.subi", zero_p, parg);
-        let pinit = f.v("arith.select", &[pneg, negp, parg], pt.clone());
-        let pinit = f.v("arith.select", &[pmin, max_p, pinit], pt.clone());
-        let header = f.block(&[bt.clone(), bt.clone(), pt.clone()]);
-        f.at_end(fall, |f| f.br(header, &[one_b, barg, pinit]));
-        let (res, base, pow) = (f.arg(header, 0), f.arg(header, 1), f.arg(header, 2));
-        f.at = header;
-        let a = f.bin("arith.andi", pow, one_p);
-        let odd = f.cmpi(1, a, zero_p);
-        let then = f.block(&[]);
-        let nres = f.bin("arith.mulf", res, base);
-        let fall = f.block(&[bt.clone()]);
-        f.at_end(then, |f| f.br(fall, &[nres]));
-        f.at_end(header, |f| f.cond_br(odd, then, &[], fall, &[res]));
-        let nres = f.arg(fall, 0);
-        f.at = fall;
-        let npow = f.bin("arith.shrui", pow, one_p);
-        let nz = f.cmpi(0, npow, zero_p);
-        let body = f.block(&[]);
-        let nbase = f.bin("arith.mulf", base, base);
-        f.br(header, &[nres, nbase, npow]);
-        let exit = f.block(&[bt.clone()]);
-        f.at_end(fall, |f| f.cond_br(nz, exit, &[nres], body, &[]));
-        let r = f.arg(exit, 0);
-        let then = f.block(&[]);
-        let fall2 = f.block(&[bt.clone()]);
-        f.at_end(exit, |f| f.cond_br(pmin, then, &[], fall2, &[r]));
-        f.at = then;
-        let m = f.bin("arith.mulf", r, barg);
-        f.br(fall2, &[m]);
-        let r = f.arg(fall2, 0);
-        let then = f.block(&[]);
-        let ret = f.block(&[bt.clone()]);
-        f.at_end(fall2, |f| f.cond_br(pneg, then, &[], ret, &[r]));
-        f.at = then;
-        let d = f.bin("arith.divf", one_b, r);
-        f.br(ret, &[d]);
-        f.at = ret;
-        let a = f.arg(ret, 0);
-        f.ret(&[a]);
+        let (min, max) = (-(1i128 << (w - 1)), (1i128 << (w - 1)) - 1);
+        let one: Attribute = Const::scalar(Scalar::Float(ApFloat::from_f64(k, 1.0).expect("a float")), bt.clone()).into();
+        let mut f = Self::function(b, module, &format!("__mlir_math_fpowi_{bt}_{pt}"), ft);
+        blocks!(f;
+            entry(base: bt.clone(), power: pt.clone()) {
+                let one_b = f.constant(one, &bt);
+                let zero_p = f.int(0, &pt);
+                let one_p = f.int(1, &pt);
+                let min_p = f.int(min, &pt);
+                let max_p = f.int(max, &pt);
+                let p_is_zero = f.cmpi(EQ, power, zero_p);
+                f.cond_br(p_is_zero, ret_one, &[], p_non_zero, &[]);
+            }
+            ret_one {
+                f.ret(&[one_b]);
+            }
+            p_non_zero {
+                let p_is_neg = f.cmpi(SLE, power, zero_p);
+                let p_is_min = f.cmpi(EQ, power, min_p);
+                let neg_p = zero_p - power;
+                let p_init = f.select(p_is_neg, neg_p, power);
+                let p_init = f.select(p_is_min, max_p, p_init);
+                f.br(header, &[one_b, base, p_init]);
+            }
+            header(result: bt.clone(), base_tmp: bt.clone(), power_tmp: pt.clone()) {
+                let odd = f.cmpi(NE, power_tmp & one_p, zero_p);
+                f.cond_br(odd, times_base, &[], next, &[result]);
+            }
+            times_base {
+                f.br(next, &[result * base_tmp]);
+            }
+            next(new_result: bt.clone()) {
+                let new_power = power_tmp >> one_p;
+                let done = f.cmpi(EQ, new_power, zero_p);
+                f.cond_br(done, exit, &[new_result], latch, &[]);
+            }
+            latch {
+                f.br(header, &[new_result, base_tmp * base_tmp, new_power]);
+            }
+            exit(r: bt.clone()) {
+                f.cond_br(p_is_min, times_once_more, &[], adjusted, &[r]);
+            }
+            times_once_more {
+                f.br(adjusted, &[r * base]);
+            }
+            adjusted(r2: bt.clone()) {
+                f.cond_br(p_is_neg, reciprocal, &[], ret, &[r2]);
+            }
+            reciprocal {
+                f.br(ret, &[one_b / r2]);
+            }
+            ret(rv: bt.clone()) {
+                f.ret(&[rv]);
+            }
+        );
     }
 
     /// `createCtlzFunc`.

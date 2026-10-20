@@ -584,6 +584,8 @@ impl OpsRewrite {
                     BinOp::BitAnd(_) => ("and", false),
                     BinOp::BitOr(_) => ("or", false),
                     BinOp::BitXor(_) => ("xor", false),
+                    BinOp::Shl(_) => ("shl", false),
+                    BinOp::Shr(_) => ("shr", false),
                     _ => {
                         let mut bin = bin;
                         *bin.left = self.expr(*bin.left, pre);
@@ -595,6 +597,7 @@ impl OpsRewrite {
                 let r = self.operand(*bin.right, pre);
                 self.call(method, vec![l, r], fmf, pre)
             }
+            Expr::Unary(u) if matches!(u.op, UnOp::Neg(_)) && matches!(&*u.expr, Expr::Lit(l) if matches!(l.lit, syn::Lit::Int(_))) => Expr::Unary(u),
             Expr::Unary(u) if matches!(u.op, UnOp::Neg(_)) => {
                 if let Expr::Lit(l) = &*u.expr
                     && matches!(l.lit, syn::Lit::Float(_))
@@ -733,4 +736,76 @@ pub fn ops(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut rw = OpsRewrite { b: args.b, fmf: args.fmf, next: 0 };
     rw.block(&mut f.block);
     quote!(#f).into()
+}
+
+/// One block of `blocks!`: its name, its arguments, its statements.
+struct BlockDecl {
+    name: Ident,
+    args: Vec<(Ident, Expr)>,
+    body: syn::Block,
+}
+
+/// `blocks!(b; entry(..) {..} next(x: ty, ..) {..} ..)`.
+struct Blocks {
+    b: Expr,
+    blocks: Vec<BlockDecl>,
+}
+
+impl Parse for Blocks {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let b: Expr = input.parse()?;
+        input.parse::<Token![;]>()?;
+        let mut blocks = Vec::new();
+        while !input.is_empty() {
+            let name: Ident = input.parse()?;
+            let mut args = Vec::new();
+            if input.peek(syn::token::Paren) {
+                let content;
+                syn::parenthesized!(content in input);
+                while !content.is_empty() {
+                    let a: Ident = content.parse()?;
+                    content.parse::<Token![:]>()?;
+                    args.push((a, content.parse()?));
+                    if content.parse::<Option<Token![,]>>()?.is_none() {
+                        break;
+                    }
+                }
+            }
+            blocks.push(BlockDecl { name, args, body: input.parse()? });
+        }
+        Ok(Blocks { b, blocks })
+    }
+}
+
+/// `blocks!(b; ..)`: a region's blocks in their final order. The first is the block `b` is
+/// in (its arguments bound by name); the others are created after it, in order, with
+/// arguments of the given types. Then each is filled in turn: `b.at` set to it, its
+/// statements run with `#[ops]` arithmetic, so a block sees the names, arguments and values
+/// of those before it. `b` needs `at`, `block(&[types])` and `arg(block, i)`.
+#[proc_macro]
+pub fn blocks(input: TokenStream) -> TokenStream {
+    let Blocks { b, blocks } = parse_macro_input!(input as Blocks);
+    let mut make = Vec::new();
+    let mut fill = Vec::new();
+    let mut rw = OpsRewrite { b: b.clone(), fmf: None, next: 0 };
+    for (i, d) in blocks.into_iter().enumerate() {
+        let name = &d.name;
+        if i == 0 {
+            make.push(quote!(let #name = #b.at;));
+        } else {
+            let tys = d.args.iter().map(|(_, t)| t);
+            make.push(quote!(let #name = #b.block(&[#(#tys),*]);));
+        }
+        for (k, (a, _)) in d.args.iter().enumerate() {
+            make.push(quote!(let #a = #b.arg(#name, #k);));
+        }
+        let mut body = d.body;
+        rw.block(&mut body);
+        let stmts = &body.stmts;
+        fill.push(quote! {
+            #b.at = #name;
+            #(#stmts)*
+        });
+    }
+    quote!({ #(#make)* #(#fill)* }).into()
 }

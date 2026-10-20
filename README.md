@@ -63,6 +63,32 @@ Rows that differ only in their target are generated whole with `#[map]` on the s
 impl ArithToLlvm { /* the special cases, as #[lowering] methods */ }
 ```
 
+Arithmetic is written as arithmetic: `#[ops(b, fmf = f)]` turns `+ - * / & | ^ << >>`, unary
+`-` and float literals into ops built through `b`, in C++'s creation order; with
+`#[patterns(builder = ctor)]` a `#[lowering]` is declared by its signature (operands, attributes
+read off the op, the replacement as the return value):
+
+```rust
+#[lowering("complex.mul")]
+#[ops(b, fmf = fmf)]
+fn mul(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId, fmf: Fmf) -> ValueId {
+    let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
+    let re = lr * rr - li * ri;
+    let im = li * rr + lr * ri;
+    b.create(re, im)
+}
+```
+
+Control flow is written as its blocks, in their final order, with `blocks!`:
+
+```rust
+blocks!(f;
+    entry(base: t.clone(), power: t.clone()) { f.cond_br(f.cmpi(EQ, power, zero), done, &[], body, &[]); }
+    body { f.br(done, &[base * base]); }
+    done(r: t.clone()) { f.ret(&[r]); }
+);
+```
+
 `#[pass("name", on = "op", extra = [..], check = path)]` gives the `mlir-opt` name, the anchor
 op, options accepted but unused, and a validation hook; the registry (`src/pass/registry.rs`)
 lists the types only. `#[patterns]` takes `converter` (a type converter index), `options = T`
