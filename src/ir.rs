@@ -16,7 +16,7 @@ mod io;
 use alloc::vec::Vec;
 use core::ops::{Index, IndexMut};
 
-use mlirformat::{Attribute, Error, NamedAttr, OpRegistry, Operation, Str, Type, Value};
+use mlirformat::{Attribute, Error, MlirOpt, NamedAttr, Operation, Str, Type, Value};
 
 /// Index newtypes into the arena, each with `Index` / `IndexMut` on [`Body`].
 macro_rules! ids {
@@ -110,7 +110,7 @@ pub struct ValueData<'a> {
 
 /// The context a [`Body`] lives in: what it knows of ops (`MLIRContext`).
 #[derive(Clone, Copy)]
-pub struct Ctx<'a>(pub &'a dyn OpRegistry);
+pub struct Ctx<'a>(pub &'a MlirOpt);
 
 impl core::fmt::Debug for Ctx<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -260,7 +260,7 @@ impl<'a> OpData<'a> {
 
 impl<'a> Body<'a> {
     /// An empty `builtin.module` with one empty block.
-    pub fn new(ctx: &'a dyn OpRegistry) -> Self {
+    pub fn new(ctx: &'a MlirOpt) -> Self {
         let mut body = Self { ctx: Ctx(ctx), ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items: Vec::new() };
         body.root = body.create(OpData::named("builtin.module"), &[]);
         let region = body.add_region(body.root);

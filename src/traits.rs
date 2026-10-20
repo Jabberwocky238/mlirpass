@@ -3,7 +3,7 @@
 
 use crate::{Body, OpId};
 
-pub use mlirformat::{Effect, EffectKind, EffectOn, Effects, OpInfo, OpRegistry, Trait};
+pub use mlirformat::{Effect, EffectKind, EffectOn, Effects, OpInfo, Trait};
 
 impl Body<'_> {
     /// Whether `op` has trait (or interface) `t`.

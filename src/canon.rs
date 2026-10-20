@@ -92,7 +92,7 @@ impl<'a> OpData<'a> {
 }
 
 /// What the C++ builders of op `name` set besides its declared defaults (those come from the
-/// context, [`OpRegistry::defaults`](mlirformat::OpRegistry::defaults)).
+/// context, [`MlirOpt::defaults`](mlirformat::MlirOpt::defaults)).
 fn builder_sets<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
     match name {
         "vector.load" | "vector.store" | "memref.load" | "memref.store" => alloc::vec![("nontemporal", Attribute::Bool(false))],

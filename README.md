@@ -97,8 +97,8 @@ patterns) and `flag: T` parameters; `#[lowering]` takes the roots, `benefit`, `w
 and `plain`.
 
 Nothing is global. Pipelines name passes through a `PassRegistry` (`Passes::upstream()` registers
-every pass: `Invocation::parse(&passes, args)`); a `Body` asks its context (`&dyn OpRegistry`,
-mlirformat's) what it knows of ops; `convert-to-llvm` / `convert-to-emitc` ask the
+every pass: `Invocation::parse(&passes, args)`); a `Body` asks its context (mlirformat's `MlirOpt`,
+holding the loaded dialects) what it knows of ops; `convert-to-llvm` / `convert-to-emitc` ask the
 `DialectInterfaces` they hold which dialects have an interface and what each adds.
 
 ## Fixtures

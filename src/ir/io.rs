@@ -216,7 +216,7 @@ impl<'m, 'a> Import<'m, 'a> {
 impl<'a> Body<'a> {
     /// The body of module `m` in context `ctx`: its one `builtin.module` becomes the root;
     /// loose top-level ops are wrapped in one, as `mlir-opt` does.
-    pub fn import<'m>(ctx: &'a dyn mlirformat::OpRegistry, m: &'m Module<'a>) -> Result<Self, Error> {
+    pub fn import<'m>(ctx: &'a mlirformat::MlirOpt, m: &'m Module<'a>) -> Result<Self, Error> {
         let mut aliases = Aliases::default();
         let mut items = Vec::new();
         for item in &m.items {
