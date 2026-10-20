@@ -196,6 +196,7 @@ pub fn patterns() -> PatternSet {
     scf::patterns(&mut set);
     shape::patterns(&mut set);
     tensor::patterns(&mut set);
+    tosa::patterns(&mut set);
     vector::patterns(&mut set);
     set
 }

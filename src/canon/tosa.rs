@@ -481,3 +481,183 @@ pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a
     let name = if matches!(ty, Type::Extended(e) if e.name == "tosa.shape") { "tosa.const_shape" } else { "tosa.const" };
     Some(OpData::build(name).with("values", k.into()))
 }
+
+/// A `min_val` / `max_val` scalar.
+fn scalar_attr(a: Option<&Attribute<'_>>) -> Option<Scalar> {
+    Const::try_from(a?).ok().filter(|k| !k.elements)?.splat_value()
+}
+
+/// The dims of a shaped value's type (dynamic as `None`).
+fn dims_of(b: &Body<'_>, v: ValueId) -> Option<Vec<Option<i64>>> {
+    Tf::dims(&b[v].ty)
+}
+
+/// The `perms` of a `tosa.transpose`.
+fn perms(b: &Body<'_>, op: OpId) -> Vec<i64> {
+    match b[op].get("perms") {
+        Some(Attribute::DenseArray { values, .. }) => values.iter().filter_map(|v| v.parse().ok()).collect(),
+        _ => Vec::new(),
+    }
+}
+
+rewrites! {
+    /// `ClampIsNoOp`: a clamp to the whole range of its type.
+    ClampIsNoOp("tosa.clamp", 1) |rw, op| {
+        let b = &*rw.body;
+        let input = b[op].operands[0];
+        let elem = attr::element_type(&b[input].ty).clone();
+        let (Some(lo), Some(hi)) = (scalar_attr(b[op].get("min_val")), scalar_attr(b[op].get("max_val"))) else { return false };
+        let noop = match (&elem, lo, hi) {
+            (Type::Float(_), Scalar::Float(l), Scalar::Float(h)) => l.is_inf() && l.is_negative() && h.is_inf() && !h.is_negative(),
+            (Type::Integer { width, signedness }, Scalar::Int(l), Scalar::Int(h)) if *signedness == Signedness::Unsigned || *width == 1 => {
+                l.unsigned() == 0 && h.unsigned() >= ApInt::all_ones(*width).unsigned()
+            }
+            (Type::Integer { width, .. }, Scalar::Int(l), Scalar::Int(h)) => l.signed() <= ApInt::signed_min(*width).signed() && h.signed() >= ApInt::signed_max(*width).signed(),
+            _ => false,
+        };
+        if !noop {
+            return false;
+        }
+        rw.replace_op(op, &[input]);
+        true
+    }
+
+    /// `ClampClampOptimization`: two clamps whose ranges meet, as one.
+    ClampClampOptimization("tosa.clamp", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(inner) = b.def_named(b[op].operands[0], "tosa.clamp") else { return false };
+        let mode = |o: OpId| match b[o].get("nan_mode") {
+            Some(Attribute::Extended { ext, .. }) => ext.body.as_deref().unwrap_or("<PROPAGATE>").contains("IGNORE"),
+            _ => false,
+        };
+        let (outer_ignore, inner_ignore) = (mode(op), mode(inner));
+        if outer_ignore && !inner_ignore {
+            return false;
+        }
+        let get = |o: OpId, n: &str| scalar_attr(b[o].get(n));
+        let (Some(l1), Some(h1), Some(l2), Some(h2)) = (get(op, "min_val"), get(op, "max_val"), get(inner, "min_val"), get(inner, "max_val")) else { return false };
+        let src = b[inner].operands[0];
+        let elem = attr::element_type(&b[src].ty).clone();
+        let (lo, hi) = match (l1, h1, l2, h2) {
+            (Scalar::Float(a), Scalar::Float(b_), Scalar::Float(c), Scalar::Float(d)) => {
+                let lt = |x: ApFloat, y: ApFloat| x.compare(y) == Some(core::cmp::Ordering::Less);
+                if !(lt(a, d) && lt(c, b_)) {
+                    return false;
+                }
+                (Scalar::Float(if lt(a, c) { c } else { a }), Scalar::Float(if lt(b_, d) { b_ } else { d }))
+            }
+            (Scalar::Int(a), Scalar::Int(b_), Scalar::Int(c), Scalar::Int(d)) => {
+                let unsigned = matches!(elem, Type::Integer { signedness: Signedness::Unsigned, .. });
+                let key = |x: ApInt| if unsigned { x.unsigned() as i128 } else { x.signed() };
+                if !(key(a) < key(d) && key(c) < key(b_)) {
+                    return false;
+                }
+                (Scalar::Int(if key(a) < key(c) { c } else { a }), Scalar::Int(if key(b_) < key(d) { b_ } else { d }))
+            }
+            _ => return false,
+        };
+        let ignore = outer_ignore != inner_ignore || outer_ignore;
+        let ty = b[b[op].results[0]].ty.clone();
+        let data = OpData::build("tosa.clamp")
+            .operands(&[src])
+            .with("min_val", Const::scalar(lo, elem.clone()).into())
+            .with("max_val", Const::scalar(hi, elem).into())
+            .with("nan_mode", Attribute::dialect("tosa.nan_mode", if ignore { "<IGNORE>" } else { "<PROPAGATE>" }));
+        rw.replace_with(op, data, &[ty]);
+        true
+    }
+
+    /// `MaxPool2dIsNoOp`: 1x1 in and out.
+    MaxPool2dIsNoOp("tosa.max_pool2d", 1) |rw, op| {
+        let b = &*rw.body;
+        let input = b[op].operands[0];
+        let (Some(i), Some(o)) = (dims_of(b, input), dims_of(b, b[op].results[0])) else { return false };
+        let unit = |d: &[Option<i64>]| d.iter().all(Option::is_some) && d.get(1) == Some(&Some(1)) && d.get(2) == Some(&Some(1));
+        if !unit(&i) || !unit(&o) {
+            return false;
+        }
+        rw.replace_op(op, &[input]);
+        true
+    }
+
+    /// `ConcatOptimization`: one input, cast to the result type when it differs.
+    ConcatOptimization("tosa.concat", 1) |rw, op| {
+        let b = &*rw.body;
+        let &[input] = &b[op].operands[..] else { return false };
+        let ty = b[b[op].results[0]].ty.clone();
+        if b[input].ty != ty {
+            rw.replace_with(op, OpData::build("tensor.cast").operands(&[input]), &[ty]);
+        } else {
+            rw.replace_op(op, &[input]);
+        }
+        true
+    }
+
+    /// `SelectOp::canonicalize`: a select on `logical_not(p)` swaps its branches.
+    SelectOfLogicalNot("tosa.select", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(not) = b.def_named(b[op].operands[0], "tosa.logical_not") else { return false };
+        let ops = alloc::vec![b[not].operands[0], b[op].operands[2], b[op].operands[1]];
+        rw.modify(op, |b| b.set_operands(op, ops));
+        true
+    }
+
+    /// `ConsolidateTransposeOptimization`: a transpose of a transpose, as one.
+    ConsolidateTransposeOptimization("tosa.transpose", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(inner) = b.def_named(b[op].operands[0], "tosa.transpose") else { return false };
+        let (outer, inner_p) = (perms(b, op), perms(b, inner));
+        if outer.len() != inner_p.len() || outer.is_empty() {
+            return false;
+        }
+        let composed: Vec<i64> = outer.iter().map(|p| inner_p[*p as usize]).collect();
+        let ty = b[b[op].results[0]].ty.clone();
+        let src = b[inner].operands[0];
+        let values = composed.iter().map(|p| alloc::format!("{p}").into()).collect();
+        let data = OpData::build("tosa.transpose").operands(&[src]).with("perms", Attribute::DenseArray { ty: Type::int(32), values });
+        rw.replace_with(op, data, &[ty]);
+        true
+    }
+
+    /// `TransposeIsReshape`: a transpose that only moves unit dims is a reshape.
+    TransposeIsReshape("tosa.transpose", 1) |rw, op| {
+        let b = &*rw.body;
+        let input = b[op].operands[0];
+        if b.def_named(input, "tosa.transpose").is_some() || b[b[op].results[0]].uses.iter().any(|u| b[u.op].name == "tosa.transpose") {
+            return false;
+        }
+        let Some(dims) = dims_of(b, input) else { return false };
+        if dims.iter().filter(|d| d.is_none()).count() > 1 {
+            return false;
+        }
+        let p = perms(b, op);
+        let moved: Vec<i64> = p.iter().copied().filter(|i| dims[*i as usize] != Some(1)).collect();
+        if moved.windows(2).any(|w| w[0] > w[1]) {
+            return false;
+        }
+        let shape: Vec<i64> = p.iter().map(|i| dims[*i as usize].unwrap_or(i64::MIN)).collect();
+        let ty = b[b[op].results[0]].ty.clone();
+        rw.set_before(op);
+        let s = const_shape(rw, &shape);
+        rw.replace_with(op, OpData::build("tosa.reshape").operands(&[input, s]), &[ty]);
+        true
+    }
+}
+
+/// `getTosaConstShape`: a `tosa.const_shape` of `shape` (dynamic as -1).
+fn const_shape<'a>(rw: &mut crate::Rewriter<'_, 'a>, shape: &[i64]) -> ValueId {
+    let values = shape.iter().map(|d| Scalar::Int(ApInt::new(64, i128::from(if *d == i64::MIN { -1 } else { *d })))).collect();
+    let n = shape.len() as i64;
+    let tensor = Type::Shaped(mlirformat::Shaped { kind: mlirformat::ShapedKind::Tensor, shape: Some(alloc::vec![Dim::Static(n)]), elem: Type::Index.into(), extras: Vec::new() });
+    let ty = Type::Extended(mlirformat::Extended { name: "tosa.shape".into(), body: Some(alloc::format!("<{n}>").into()), params: Vec::new() });
+    let o = rw.create(OpData::build("tosa.const_shape").with("values", Const { ty: tensor, values, elements: true }.into()), &[ty]);
+    rw.body[o].results[0]
+}
+
+pub fn patterns(set: &mut crate::PatternSet) {
+    set.add(ClampIsNoOp).add(ClampClampOptimization);
+    set.add(ConcatOptimization);
+    set.add(MaxPool2dIsNoOp);
+    set.add(SelectOfLogicalNot);
+    set.add(ConsolidateTransposeOptimization).add(TransposeIsReshape);
+}
