@@ -366,28 +366,6 @@ impl Body<'_> {
         self.value_block(v).and_then(|b| self[b].parent)
     }
 
-    /// `getForwardSlice(v)`: the ops transitively using `v`, topologically sorted.
-    fn forward_slice(&self, v: ValueId) -> Vec<OpId> {
-        let mut post = Vec::new();
-        let mut seen = BTreeSet::new();
-        let mut stack: Vec<(OpId, bool)> = self[v].uses.iter().rev().map(|u| (u.op, false)).collect();
-        stack.reverse();
-        while let Some((op, done)) = stack.pop() {
-            if done {
-                post.push(op);
-                continue;
-            }
-            if !seen.insert(op) {
-                continue;
-            }
-            stack.push((op, true));
-            let users: Vec<OpId> = self[op].results.iter().flat_map(|r| self[*r].uses.iter().rev().map(|u| u.op)).collect();
-            stack.extend(users.into_iter().rev().filter(|u| !seen.contains(u)).map(|u| (u, false)));
-        }
-        post.reverse();
-        post
-    }
-
     /// Dominance frontiers of `region`'s reachable blocks (Cooper, Harvey & Kennedy).
     fn dominance_frontiers(&self, region: RegionId, tree: &DomTree) -> BTreeMap<BlockId, BTreeSet<BlockId>> {
         let mut df: BTreeMap<BlockId, BTreeSet<BlockId>> = BTreeMap::new();
@@ -408,20 +386,6 @@ impl Body<'_> {
         df
     }
 
-    /// `getBlocksSortedByDominance`: reverse post-order from each block not yet reached.
-    fn blocks_by_dominance(&self, region: RegionId) -> Vec<BlockId> {
-        let mut out: Vec<BlockId> = Vec::new();
-        for b in self[region].blocks.clone() {
-            if out.contains(&b) {
-                continue;
-            }
-            let mut rpo = self.post_order(b);
-            rpo.retain(|x| !out.contains(x));
-            rpo.reverse();
-            out.extend(rpo);
-        }
-        out
-    }
 }
 
 // ---- the `llvm` dialect's promotion interfaces (`LLVMMemorySlot.cpp`) ---------------------

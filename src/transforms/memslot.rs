@@ -14,11 +14,12 @@
 //! is: after the op for use removal and `getStored`, at the start of the block for block
 //! arguments and default values.
 
+use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Type};
 
-use crate::{Body, DataLayout, OpId, Rewriter, Use, ValueId};
+use crate::{BlockId, Body, DataLayout, OpId, RegionId, Rewriter, Use, ValueId};
 
 /// `MemorySlot`: a pointer to memory holding one value of type `elem`.
 #[derive(Debug, Clone, PartialEq)]
@@ -117,6 +118,43 @@ pub trait Promotable {
 }
 
 impl Body<'_> {
+    /// `getForwardSlice(v)`: the ops transitively using `v`, topologically sorted.
+    pub fn forward_slice(&self, v: ValueId) -> Vec<OpId> {
+        let mut post = Vec::new();
+        let mut seen = BTreeSet::new();
+        let mut stack: Vec<(OpId, bool)> = self[v].uses.iter().rev().map(|u| (u.op, false)).collect();
+        stack.reverse();
+        while let Some((op, done)) = stack.pop() {
+            if done {
+                post.push(op);
+                continue;
+            }
+            if !seen.insert(op) {
+                continue;
+            }
+            stack.push((op, true));
+            let users: Vec<OpId> = self[op].results.iter().flat_map(|r| self[*r].uses.iter().rev().map(|u| u.op)).collect();
+            stack.extend(users.into_iter().rev().filter(|u| !seen.contains(u)).map(|u| (u, false)));
+        }
+        post.reverse();
+        post
+    }
+
+    /// `getBlocksSortedByDominance`: reverse post-order from each block not yet reached.
+    pub fn blocks_by_dominance(&self, region: RegionId) -> Vec<BlockId> {
+        let mut out: Vec<BlockId> = Vec::new();
+        for b in self[region].blocks.clone() {
+            if out.contains(&b) {
+                continue;
+            }
+            let mut rpo = self.post_order(b);
+            rpo.retain(|x| !out.contains(x));
+            rpo.reverse();
+            out.extend(rpo);
+        }
+        out
+    }
+
     /// The implementation in `dialects` answering for `op`, by its namespace.
     pub fn promotable<'d>(&self, dialects: &[&'d dyn Promotable], op: OpId) -> Option<&'d dyn Promotable> {
         let ns = self[op].name.split_once('.').map(|(ns, _)| ns)?;
