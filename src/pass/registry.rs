@@ -76,6 +76,7 @@ impl Passes {
         p.register::<ConvertScfToEmitc>();
         p.register::<ConvertMathToEmitc>();
         p.register::<ConvertBufferizationToMemref>();
+        p.register::<TosaToScfPass>();
         p.register::<ConvertFuncToEmitc>();
         p.register::<ReconcileUnrealizedCasts>();
         p.register::<SetLlvmModuleDataLayout>();
