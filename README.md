@@ -18,8 +18,9 @@ Alpha (`0.1.0-alpha.1`): 3928 of the 4831 fixture cases match `mlir-opt` 22.1.8 
 | `pass` | pass manager, `--pass-pipeline` syntax, registry | `mlir/Pass` |
 | `rewrite` | patterns, rewriter, greedy driver, folding | `PatternMatch`, `GreedyPatternRewriteDriver` |
 | `conversion` | conversion target, type converter, dialect conversion | `DialectConversion` |
-| `lower` | dialect → `llvm`, → `spirv`, → `emitc`, and between dialects | `mlir/lib/Conversion` |
-| `transforms` | `canonicalize`, `cse`, `sccp`, `inline`, `symbol-dce`, `mem2reg`, `sroa`, ... | `mlir/lib/Transforms` |
+| `llvm` | everything llvm: the type converter, dialect → `llvm`, the llvm folds, `DataLayout`, the llvm memory-slot interfaces | `mlir/lib/Conversion/*ToLLVM`, `Dialect/LLVMIR` |
+| `lower` | dialect → `emitc`, and between dialects (no llvm) | `mlir/lib/Conversion` |
+| `transforms` | `canonicalize`, `cse`, `sccp`, `inline`, `symbol-dce`, `mem2reg`, `sroa`, ... (dialect-independent) | `mlir/lib/Transforms` |
 
 Dialects: every dialect mlirformat describes.
 
