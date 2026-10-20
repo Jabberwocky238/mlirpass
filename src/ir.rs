@@ -16,7 +16,7 @@ mod io;
 use alloc::vec::Vec;
 use core::ops::{Index, IndexMut};
 
-use mlirformat::{Attribute, NamedAttr, OpRegistry, Str, Type};
+use mlirformat::{Attribute, Error, NamedAttr, OpRegistry, Operation, Str, Type, Value};
 
 /// Index newtypes into the arena, each with `Index` / `IndexMut` on [`Body`].
 macro_rules! ids {
@@ -139,6 +139,34 @@ pub struct Body<'a> {
     /// Module items that are not IR: `{-# ... #-}` bodies, and the aliases the input defined
     /// (already inlined everywhere; kept so that a `loc(#loc3)` still has its definition).
     pub items: Vec<mlirformat::Item<'a>>,
+}
+
+/// A value as an operand of one of mlirformat's typed ops: named by its id.
+impl From<ValueId> for Value<'_> {
+    fn from(v: ValueId) -> Self {
+        Value { name: Str::Owned(alloc::format!("{}", v.0)), index: None }
+    }
+}
+
+impl<'a> OpData<'a> {
+    /// ⭐ mlirformat's typed op `op` (operands are [`ValueId`]s turned [`Value`]s), detached,
+    /// with its default-valued properties as [`OpData::build`] gives them; and its result types.
+    pub fn of<O>(op: &O) -> Result<(Self, Vec<Type<'a>>), Error>
+    where
+        for<'o> Operation<'static>: TryFrom<&'o O, Error = Error>,
+    {
+        let g = Operation::try_from(op)?;
+        if !g.regions.is_empty() || !g.successors.is_empty() {
+            return Err(alloc::format!("`{}`: regions and successors are built in the body", g.name).into());
+        }
+        let mut data = OpData::build(&g.name);
+        data.operands = g.operands.iter().map(|v| v.name.parse().map(ValueId).map_err(|_| Error::from(alloc::format!("`{}`: operand `%{}` is not a ValueId", g.name, v.name)))).collect::<Result<_, _>>()?;
+        if let Some(Attribute::Dict(props)) = g.properties {
+            props.into_iter().for_each(|a| data.set(&a.name, a.value.unwrap_or(Attribute::Unit)));
+        }
+        g.attributes.into_iter().for_each(|a| data.set(&a.name, a.value.unwrap_or(Attribute::Unit)));
+        Ok((data, g.ty.results))
+    }
 }
 
 impl<'a> OpData<'a> {

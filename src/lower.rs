@@ -169,6 +169,16 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         self.rw.body[o].results[0]
     }
 
+    /// Builds mlirformat's typed op `op` at the insertion point; its first result.
+    pub fn emit<O>(&mut self, op: &O) -> ValueId
+    where
+        for<'o> mlirformat::Operation<'static>: TryFrom<&'o O, Error = mlirformat::Error>,
+    {
+        let (data, types) = OpData::of(op).unwrap_or_else(|e| panic!("{e}"));
+        let o = self.rw.create(data, &types);
+        self.rw.body[o].results[0]
+    }
+
     /// `llvm.extractvalue` of `agg` at `pos`.
     pub fn extract(&mut self, agg: ValueId, pos: &[i64]) -> ValueId {
         let mut ty = self.rw.body[agg].ty.clone();

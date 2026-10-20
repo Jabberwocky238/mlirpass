@@ -5,7 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
-use mlirformat::{Attribute, FloatKind, Type};
+use mlirformat::{Attribute, FloatKind, Type, tosa};
 
 use super::linalg_build::{Named, dims_of, i64_elements, int_attr, tensor_type};
 use super::vector_transforms::dense_i64;
@@ -133,7 +133,7 @@ impl TosaToLinalgNamed {
         let perm: Vec<i64> = (1..rank as i64).chain([0]).collect();
         let ns: Vec<i64> = perm.iter().map(|p| shape[*p as usize]).collect();
         let perms = Attribute::DenseArray { ty: Type::int(32), values: perm.iter().map(|p| alloc::format!("{p}").into()).collect() };
-        cr.build(OpData::build("tosa.transpose").operands(&[weight]).with("perms", perms), tensor_type(&ns, Self::elem(&wt)))
+        cr.emit(&tosa::TransposeOp::new(weight.into(), perms, wt.clone(), tensor_type(&ns, Self::elem(&wt))))
     }
 
     fn acc_type<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Option<Type<'a>> {
@@ -199,7 +199,7 @@ impl TosaToLinalgNamed {
             let c = Self::yaml_named(cr, op_name, Named::MulAdd, &[input, weight], &[bb], &acc_ty, props(&stride, &dil), &stride, &dil);
             let mut v = cr.rw.body[c].results[0];
             if rt != acc_ty {
-                v = cr.op1("tosa.cast", &[v], rt);
+                v = cr.emit(&tosa::CastOp::new(v.into(), Self::ty(cr, v), rt));
             }
             v
         };
@@ -273,7 +273,7 @@ impl TosaToLinalgNamed {
             let c = Self::yaml_named(cr, "linalg.depthwise_conv_2d_nhwc_hwcm", Named::MulAdd, &[input, weight], &[zt], &conv_ty, props, &stride, &dil);
             let mut v = cr.rw.body[c].results[0];
             if acc != re {
-                v = cr.op1("tosa.cast", &[v], tensor_type(&conv_dims, re.clone()));
+                v = cr.emit(&tosa::CastOp::new(v.into(), Self::ty(cr, v), tensor_type(&conv_dims, re.clone())));
             }
             let r = cr.collapse(v, &reassoc, rt.clone());
             let g = cr.generic(core::slice::from_ref(&rt), &[bias, r], &[bias_empty], &maps, &vec![true; rank], &mut |cr, a| vec![cr.bin(if float { "arith.addf" } else { "arith.addi" }, a[0], a[1])]);
@@ -556,7 +556,8 @@ impl TosaToLinalgNamed {
             let t8 = cr.constant(int_attr(30, &Type::int(8)), Type::int(8));
             let shift = cr.bin("arith.addi", k8, t8);
             let rounding = Attribute::dialect("tosa.rounding_mode", "<SINGLE_ROUND>");
-            let mut scaled = cr.build(OpData::build("tosa.apply_scale").operands(&[pv, mult, shift]).with("rounding_mode", rounding), i32t.clone());
+            let tys = cr.rw.body.types(&[pv, mult, shift]);
+            let mut scaled = cr.emit(&tosa::ApplyScaleOp::new(pv.into(), mult.into(), shift.into(), rounding, tys[0].clone(), tys[1].clone(), tys[2].clone(), i32t.clone()));
             if ozp != 0 {
                 let st = Self::ty(cr, scaled);
                 let z = cr.constant(int_attr(i128::from(ozp), &st), st);
