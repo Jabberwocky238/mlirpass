@@ -271,7 +271,7 @@ impl<'a> Body<'a> {
     }
 
     /// The `low` and `high` pads of a `tensor.pad`.
-    fn pad_lists(&self, op: OpId) -> [Vec<Ofr>; 2] {
+    pub fn pad_lists(&self, op: OpId) -> [Vec<Ofr>; 2] {
         let segs = self.segments(op, "operandSegmentSizes").unwrap_or_default();
         let mut at = 1;
         let mut out: [Vec<Ofr>; 2] = Default::default();
@@ -296,12 +296,12 @@ impl<'a> Body<'a> {
     }
 
     /// `canFoldIntoProducerOp`.
-    fn cast_into_producer(&self, cast: OpId) -> bool {
+    pub fn cast_into_producer(&self, cast: OpId) -> bool {
         Tn::preserves(&self[self[cast].operands[0]].ty, &self[self[cast].results[0]].ty)
     }
 
     /// The `tensor.cast` defining `v`, if it can fold into its consumer.
-    fn foldable_cast(&self, v: ValueId) -> Option<OpId> {
+    pub fn foldable_cast(&self, v: ValueId) -> Option<OpId> {
         self.def_named(v, "tensor.cast").filter(|c| self.cast_into_consumer(*c))
     }
 
@@ -325,7 +325,7 @@ impl<'a> Body<'a> {
     }
 
     /// `getDpsInitOperand` operands of a destination-style op.
-    fn dps_inits(&self, op: OpId) -> Option<core::ops::Range<usize>> {
+    pub fn dps_inits(&self, op: OpId) -> Option<core::ops::Range<usize>> {
         let n = self[op].operands.len();
         match &*self[op].name {
             "tensor.insert_slice" | "tensor.insert" | "bufferization.materialize_in_destination" => Some(1..2),
@@ -345,7 +345,7 @@ impl<'a> Body<'a> {
     }
 
     /// `PadOp::getConstantPaddingValue`.
-    fn constant_padding(&self, pad: OpId) -> Option<ValueId> {
+    pub fn constant_padding(&self, pad: OpId) -> Option<ValueId> {
         let region = self[pad].regions[0];
         let block = *self[region].blocks.first()?;
         let y = *self[block].ops.last()?;
@@ -568,7 +568,7 @@ impl<'a> Rewriter<'_, 'a> {
         self.body[o].results[0]
     }
 
-    fn tensor_cast(&mut self, v: ValueId, ty: Type<'a>) -> ValueId {
+    pub fn tensor_cast(&mut self, v: ValueId, ty: Type<'a>) -> ValueId {
         self.single(OpData::build("tensor.cast").operands(&[v]), ty)
     }
 
@@ -847,7 +847,7 @@ rewrites! {
     InferConcatOperandTypes("tensor.concat", 1) |rw, op| {
         let b = &*rw.body;
         let dim = concat_dim(b, op);
-        let Some(inferred) = concat_type(b, op, dim) else { return false };
+        let Some(inferred) = b.concat_type(&b[op].operands, dim) else { return false };
         let mut shape = Tn::dims(&inferred).unwrap_or_default();
         let mut casts = Vec::new();
         for (i, v) in b[op].operands.iter().enumerate() {
@@ -873,7 +873,7 @@ rewrites! {
     InferConcatResultType("tensor.concat", 1) |rw, op| {
         let b = &*rw.body;
         let dim = concat_dim(b, op);
-        let Some(inferred) = concat_type(b, op, dim) else { return false };
+        let Some(inferred) = b.concat_type(&b[op].operands, dim) else { return false };
         let rt = b[b[op].results[0]].ty.clone();
         if Tn::preserves(&inferred, &rt) {
             return false;
@@ -1439,23 +1439,25 @@ fn concat_dim(b: &Body<'_>, op: OpId) -> usize {
     }
 }
 
-/// `ConcatOp::inferResultType`.
-fn concat_type<'a>(b: &Body<'a>, op: OpId, dim: usize) -> Option<Type<'a>> {
-    let types: Vec<Vec<i64>> = b[op].operands.iter().map(|v| Tn::dims(&b[*v].ty)).collect::<Option<_>>()?;
-    let rank = types.first()?.len();
-    let mut sizes = vec![DYNAMIC; rank];
-    for (i, s) in sizes.iter_mut().enumerate() {
-        if i == dim {
-            *s = types.iter().try_fold(0i64, |acc, t| (t[i] != DYNAMIC).then(|| acc + t[i])).unwrap_or(DYNAMIC);
-            continue;
-        }
-        for t in &types {
-            if *s == DYNAMIC {
-                *s = t[i];
+impl<'a> Body<'a> {
+    /// `ConcatOp::inferResultType` of `inputs` along `dim`.
+    pub fn concat_type(&self, inputs: &[ValueId], dim: usize) -> Option<Type<'a>> {
+        let types: Vec<Vec<i64>> = inputs.iter().map(|v| Tn::dims(&self[*v].ty)).collect::<Option<_>>()?;
+        let rank = types.first()?.len();
+        let mut sizes = vec![DYNAMIC; rank];
+        for (i, s) in sizes.iter_mut().enumerate() {
+            if i == dim {
+                *s = types.iter().try_fold(0i64, |acc, t| (t[i] != DYNAMIC).then(|| acc + t[i])).unwrap_or(DYNAMIC);
+                continue;
+            }
+            for t in &types {
+                if *s == DYNAMIC {
+                    *s = t[i];
+                }
             }
         }
+        Some(Tn::tensor(&sizes, attr::element_type(&self[inputs[0]].ty).clone(), Vec::new()))
     }
-    Some(Tn::tensor(&sizes, attr::element_type(&b[b[op].operands[0]].ty).clone(), Vec::new()))
 }
 
 /// A `tensor.expand_shape` to `shape`.
