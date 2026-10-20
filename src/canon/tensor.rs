@@ -228,6 +228,19 @@ impl Tn {
     }
 }
 
+impl Ofr {
+    /// `foldDynamicIndexList`: constant values made static (unless negative / zero when
+    /// `non_negative` / `non_zero`); whether any was.
+    pub fn fold_list(b: &Body<'_>, list: &mut [Ofr], non_negative: bool, non_zero: bool) -> bool {
+        Tn::fold_list(b, list, non_negative, non_zero)
+    }
+
+    /// `verifyInBoundsSlice`.
+    pub fn in_bounds(shape: &[i64], offsets: &[Ofr], sizes: &[Ofr], strides: &[Ofr]) -> bool {
+        Tn::in_bounds(shape, offsets, sizes, strides)
+    }
+}
+
 impl<'a> OpData<'a> {
     /// A `tensor` slice op (`extract_slice`, `insert_slice`) with leading operands `lead` and
     /// mixed offsets, sizes and strides.
@@ -243,7 +256,7 @@ impl<'a> Body<'a> {
     }
 
     /// The offsets, sizes and strides of a slice op, after its leading operands.
-    fn slice_lists(&self, op: OpId) -> [Vec<Ofr>; 3] {
+    pub fn slice_lists(&self, op: OpId) -> [Vec<Ofr>; 3] {
         let segs = self.segments(op, "operandSegmentSizes").unwrap_or_default();
         let lead = segs.len().saturating_sub(3);
         let mut at: usize = segs[..lead].iter().sum();

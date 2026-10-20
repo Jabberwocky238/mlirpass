@@ -337,6 +337,134 @@ rewrites! {
     }
 }
 
+rewrites! {
+    /// `OpWithOffsetSizesAndStridesConstantArgumentFolder<SubViewOp>`: constant offsets, sizes
+    /// and strides made static; the new subview's type inferred, cast back to the old one.
+    SubViewConstantArguments("memref.subview", 1) |rw, op| {
+        let b = &*rw.body;
+        let [mut o, mut s, mut t] = b.slice_lists(op);
+        let sizes = s.clone();
+        let changed = [Ofr::fold_list(b, &mut o, true, false), Ofr::fold_list(b, &mut s, true, false), Ofr::fold_list(b, &mut t, false, false)];
+        if !changed.contains(&true) {
+            return false;
+        }
+        let src = b[op].operands[0];
+        let (Type::Shaped(st), rt) = (b[src].ty.clone(), b[b[op].results[0]].ty.clone()) else { return false };
+        let dims = |t: &Type<'_>| crate::attr::shape_of(t).map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect::<Vec<_>>()).unwrap_or_default();
+        if !Ofr::in_bounds(&dims(&b[src].ty), &o, &s, &t) {
+            return false;
+        }
+        let Some(ty) = Ofr::subview_type(&st, &o, &s, &t, &Ofr::dropped(&sizes, &dims(&rt))) else { return false };
+        let lists = [o, s, t];
+        rw.set_before(op);
+        let new = rw.create(OpData::sliced("memref.subview", &[src], &lists), &[ty]);
+        let new = rw.body[new].results[0];
+        rw.replace_with(op, OpData::build("memref.cast").operands(&[new]), &[rt]);
+        true
+    }
+
+    /// `TrivialSubViewOpFolder`: no offset, unit strides, the whole source ⇒ the source (cast
+    /// when the types differ).
+    TrivialSubViewOpFolder("memref.subview", 1) |rw, op| {
+        let b = &*rw.body;
+        let src = b[op].operands[0];
+        let (st, rt) = (b[src].ty.clone(), b[b[op].results[0]].ty.clone());
+        let (Some(shape), Some(rshape)) = (crate::attr::shape_of(&st), crate::attr::shape_of(&rt)) else { return false };
+        let [o, s, t] = b.slice_lists(op);
+        let trivial = shape.len() == rshape.len()
+            && o.iter().all(|x| matches!(x, Ofr::C(0)))
+            && t.iter().all(|x| matches!(x, Ofr::C(1)))
+            && s.iter().zip(shape).all(|(x, d)| matches!((x, d), (Ofr::C(n), Dim::Static(m)) if n == m));
+        if !trivial {
+            return false;
+        }
+        if st == rt {
+            rw.replace_op(op, &[src]);
+        } else {
+            rw.replace_with(op, OpData::build("memref.cast").operands(&[src]), &[rt]);
+        }
+        true
+    }
+
+    /// `SubViewOpMemRefCastFolder`: a subview of a foldable cast takes the cast's source; its
+    /// result is cast back.
+    SubViewOpMemRefCastFolder("memref.subview", 1) |rw, op| {
+        let b = &*rw.body;
+        if b[op].operands.iter().any(|v| b.const_index(*v).is_some()) {
+            return false;
+        }
+        let Some(cast) = b.def_named(b[op].operands[0], "memref.cast") else { return false };
+        let (from, cur) = (b[cast].operands[0], b[op].operands[0]);
+        if !crate::canon::memref_cast_foldable(&b[from].ty, &b[cur].ty) {
+            return false;
+        }
+        let Type::Shaped(st) = b[from].ty.clone() else { return false };
+        let rt = b[b[op].results[0]].ty.clone();
+        let [o, s, t] = b.slice_lists(op);
+        let dims = crate::attr::shape_of(&rt).map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect::<Vec<_>>()).unwrap_or_default();
+        let Some(ty) = Ofr::subview_type(&st, &o, &s, &t, &Ofr::dropped(&s, &dims)) else { return false };
+        let mut data = OpData { operands: b[op].operands.clone(), ..OpData::named(b[op].name.clone()) };
+        data.properties = b[op].properties.clone();
+        data.operands[0] = from;
+        rw.set_before(op);
+        let new = rw.create(data, &[ty]);
+        let new = rw.body[new].results[0];
+        rw.replace_with(op, OpData::build("memref.cast").operands(&[new]), &[rt]);
+        true
+    }
+}
+
+impl Ofr {
+    /// `computeRankReductionMask`: which of `sizes` the shape `reduced` drops (unit sizes, left
+    /// to right).
+    fn dropped(sizes: &[Ofr], reduced: &[i64]) -> Vec<bool> {
+        let mut j = 0;
+        sizes.iter().map(|s| {
+            let n = if let Ofr::C(c) = s { *c } else { DYNAMIC };
+            if reduced.get(j) == Some(&n) {
+                j += 1;
+                false
+            } else {
+                n == 1
+            }
+        }).collect()
+    }
+}
+
+impl Ofr {
+    /// `SubViewOp::inferResultType` of memref `src`, then the `dropped` dims taken out
+    /// (`SubViewReturnTypeCanonicalizer`): a `strided` layout from the source's.
+    fn subview_type<'a>(src: &mlirformat::Shaped<'a>, offsets: &[Ofr], sizes: &[Ofr], strides: &[Ofr], dropped: &[bool]) -> Option<Type<'a>> {
+        let (src_strides, src_offset) = LlvmOptions::default().strides_and_offset(src)?;
+        let c = |o: &Ofr| if let Ofr::C(c) = o { *c } else { DYNAMIC };
+        // `hasValidSizesOffsets`, `hasValidStrides`.
+        if offsets.iter().chain(sizes).any(|o| matches!(o, Ofr::C(n) if *n < 0)) || strides.iter().any(|o| matches!(o, Ofr::C(0))) {
+            return None;
+        }
+        let mut offset = src_offset;
+        for (o, s) in offsets.iter().map(c).zip(&src_strides) {
+            offset = if offset == DYNAMIC || o == DYNAMIC || *s == DYNAMIC { DYNAMIC } else { offset + o * s };
+        }
+        let mut shape = Vec::new();
+        let mut out_strides = Vec::new();
+        for (i, (z, (t, s))) in sizes.iter().map(c).zip(strides.iter().map(c).zip(&src_strides)).enumerate() {
+            if dropped.get(i) == Some(&true) {
+                continue;
+            }
+            shape.push(if z == DYNAMIC { Dim::Dynamic } else { Dim::Static(z) });
+            out_strides.push(if t == DYNAMIC || *s == DYNAMIC { DYNAMIC } else { t * s });
+        }
+        let num = |n: i64| if n == DYNAMIC { alloc::string::String::from("?") } else { format!("{n}") };
+        let list: Vec<_> = out_strides.iter().map(|n| num(*n)).collect();
+        let body = if offset == 0 { format!("<[{}]>", list.join(", ")) } else { format!("<[{}], offset: {}>", list.join(", "), num(offset)) };
+        let layout = Attribute::Builtin { name: "strided".into(), body: body.into(), ty: None };
+        let mut extras = alloc::vec![layout];
+        extras.extend(src.extras.iter().filter(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")).cloned());
+        Some(Type::Shaped(mlirformat::Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: src.elem.clone(), extras }))
+    }
+}
+
 pub fn patterns(set: &mut crate::PatternSet) {
     set.add(AllocaScopeInliner);
+    set.add(SubViewConstantArguments).add(SubViewOpMemRefCastFolder).add(TrivialSubViewOpFolder);
 }
