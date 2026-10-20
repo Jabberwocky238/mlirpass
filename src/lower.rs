@@ -38,7 +38,8 @@ use mlirpass_macros::pass;
 use mlirformat::{Attribute, Dim, NamedAttr, Shaped, ShapedKind, Type};
 
 use crate::canon::AttrExt;
-use crate::{Action, ConversionRewriter, ConversionTarget, LlvmType, OpData, OpId, TypeConverter, ValueId};
+use crate::{Action, ConversionRewriter, ConversionTarget, OpData, OpId, TypeConverter, ValueId};
+use mlirformat::llvm_types::LlvmType;
 
 pub use affine_to_std::AffineToStd;
 pub use arith_to_emitc::ArithToEmitc;

@@ -1,77 +1,19 @@
-//! What the `*-to-emitc` lowerings share: the EmitC types (`EmitC.cpp`), the type converters
-//! (`TypeConversions.cpp`) and builders for the ops they create.
+//! What the `*-to-emitc` lowerings share: the type converters (`TypeConversions.cpp`) and
+//! builders for the ops they create; the EmitC types are mlirformat's [`EmitcType`].
 
 use alloc::borrow::Cow;
 use alloc::vec;
-use alloc::vec::Vec;
 
-use core::fmt::Display;
-
-use mlirformat::{Attribute, Dim, Extended, FloatKind, Shaped, ShapedKind, Signedness, Type};
+use mlirformat::{Attribute, Shaped, ShapedKind, Signedness, Type};
+use mlirformat::emitc_types::EmitcType;
 
 use crate::canon::AttrExt;
 use crate::{ConversionRewriter, OpData, OpId, Rewriter, TypeConverter, ValueId};
 
-/// The EmitC type predicates and constructors.
+/// The EmitC conversions and the type helpers they need.
 pub struct Emitc;
 
 impl Emitc {
-    fn named<'a>(name: &'static str) -> Type<'a> {
-        Type::Extended(Extended { name: Cow::Borrowed(name), body: None, params: Vec::new() })
-    }
-
-    pub fn size_t<'a>() -> Type<'a> {
-        Self::named("emitc.size_t")
-    }
-
-    pub fn ptrdiff_t<'a>() -> Type<'a> {
-        Self::named("emitc.ptrdiff_t")
-    }
-
-    /// `!emitc.<name><body>`.
-    fn wrapped<'a>(name: &'static str, body: alloc::string::String) -> Type<'a> {
-        Type::Extended(Extended { name: Cow::Borrowed(name), body: Some(Cow::Owned(body)), params: Vec::new() })
-    }
-
-    /// `!emitc.lvalue<ty>`.
-    pub fn lvalue<'a>(ty: impl Display) -> Type<'a> {
-        Self::wrapped("emitc.lvalue", alloc::format!("<{ty}>"))
-    }
-
-    /// `!emitc.ptr<ty>`.
-    pub fn ptr<'a>(ty: impl Display) -> Type<'a> {
-        Self::wrapped("emitc.ptr", alloc::format!("<{ty}>"))
-    }
-
-    /// `!emitc.ptr<!emitc.opaque<"void">>`.
-    pub fn void_ptr<'a>() -> Type<'a> {
-        Self::ptr("!emitc.opaque<\"void\">")
-    }
-
-    /// `!emitc.array<dims x elem>`.
-    pub fn array<'a>(dims: &[i64], elem: &Type<'_>) -> Type<'a> {
-        let mut body = alloc::string::String::from("<");
-        for d in dims {
-            body.push_str(&alloc::format!("{d}x"));
-        }
-        Self::wrapped("emitc.array", alloc::format!("{body}{elem}>"))
-    }
-
-    /// The rank and the element (as text) of an `!emitc.array`.
-    pub fn array_parts<'x>(t: &'x Type<'_>) -> Option<(usize, &'x str)> {
-        let Type::Extended(e) = t else { return None };
-        if e.name != "emitc.array" {
-            return None;
-        }
-        let mut rest = e.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?;
-        let mut rank = 0;
-        while let Some((_, tail)) = rest.split_once('x').filter(|(d, _)| !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit())) {
-            rank += 1;
-            rest = tail;
-        }
-        Some((rank, rest))
-    }
-
     /// `isMemRefTypeLegalForEmitC`: static, identity layout, ranked and not empty.
     pub fn memref_legal(s: &Shaped<'_>) -> bool {
         let dims = super::MemrefToLlvm::dims(s);
@@ -84,11 +26,11 @@ impl Emitc {
         tc.conversion(move |t| match t {
             Type::Shaped(s) if s.kind == ShapedKind::MemRef && Self::memref_legal(s) => {
                 let elem = match &*s.elem {
-                    Type::Index if size_t => Self::size_t(),
-                    e if Self::supported(e) => e.clone(),
+                    Type::Index if size_t => EmitcType::size_t(),
+                    e if EmitcType::supported(e) => e.clone(),
                     _ => return None,
                 };
-                Some(Some(vec![Self::array(&super::MemrefToLlvm::dims(s), &elem)]))
+                Some(Some(vec![EmitcType::array(&super::MemrefToLlvm::dims(s), &elem)]))
             }
             _ => None,
         });
@@ -97,49 +39,6 @@ impl Emitc {
             [ty] => Self::cast(rw, ty, inputs).map(|v| vec![v]),
             _ => None,
         });
-    }
-
-    /// The `emitc.` type `t` names, if any.
-    fn kind<'x>(t: &'x Type<'_>) -> Option<&'x str> {
-        match t {
-            Type::Extended(e) => e.name.strip_prefix("emitc."),
-            _ => None,
-        }
-    }
-
-    /// `isPointerWideType`: `size_t`, `ssize_t` or `ptrdiff_t`.
-    pub fn pointer_wide(t: &Type<'_>) -> bool {
-        matches!(Self::kind(t), Some("size_t" | "ssize_t" | "ptrdiff_t"))
-    }
-
-    /// An integer or a pointer-wide type.
-    pub fn integral(t: &Type<'_>) -> bool {
-        matches!(t, Type::Integer { .. }) || Self::pointer_wide(t)
-    }
-
-    /// `isSupportedIntegerType`.
-    pub fn supported_int(t: &Type<'_>) -> bool {
-        matches!(t, Type::Integer { width: 1 | 8 | 16 | 32 | 64, .. })
-    }
-
-    /// `isSupportedFloatType`.
-    pub fn supported_float(t: &Type<'_>) -> bool {
-        matches!(t, Type::Float(FloatKind::F16 | FloatKind::BF16 | FloatKind::F32 | FloatKind::F64))
-    }
-
-    /// `isSupportedEmitCType`.
-    pub fn supported(t: &Type<'_>) -> bool {
-        match t {
-            Type::Index => true,
-            Type::Integer { .. } => Self::supported_int(t),
-            Type::Float(_) => Self::supported_float(t),
-            Type::Shaped(s) if s.kind == ShapedKind::Tensor => {
-                let fixed = s.shape.as_ref().is_some_and(|d| d.iter().all(|d| matches!(d, Dim::Static(_))));
-                fixed && Self::kind(&s.elem) != Some("array") && Self::supported(&s.elem)
-            }
-            Type::Tuple(ts) => ts.iter().all(|t| Self::kind(t) != Some("array") && Self::supported(t)),
-            t => matches!(Self::kind(t), Some("opaque" | "ptr" | "array" | "size_t" | "ssize_t" | "ptrdiff_t")),
-        }
     }
 
     /// `x` 1-bit: `Type::isInteger(1)`.
@@ -153,8 +52,8 @@ impl Emitc {
             Type::Integer { signedness, width } if (*signedness == Signedness::Unsigned) != unsigned => {
                 Type::Integer { signedness: if unsigned { Signedness::Unsigned } else { Signedness::Signed }, width: *width }
             }
-            t if Self::pointer_wide(t) && (Self::kind(t) == Some("size_t")) != unsigned => {
-                if unsigned { Self::size_t() } else { Self::ptrdiff_t() }
+            t if EmitcType::pointer_wide(t) && (EmitcType::kind(t) == Some("size_t")) != unsigned => {
+                if unsigned { EmitcType::size_t() } else { EmitcType::ptrdiff_t() }
             }
             t => t.clone(),
         }
@@ -190,7 +89,7 @@ impl Emitc {
     pub fn converter<'c>(supported_only: bool) -> TypeConverter<'c> {
         let mut tc = TypeConverter::default();
         if supported_only {
-            tc.conversion(|t| Some(Self::supported(t).then(|| vec![t.clone()])));
+            tc.conversion(|t| Some(EmitcType::supported(t).then(|| vec![t.clone()])));
         } else {
             tc.conversion(|t| Some(Some(vec![t.clone()])));
         }
@@ -199,7 +98,7 @@ impl Emitc {
 
     /// `populateEmitCSizeTTypeConversions`: `index` is `!emitc.size_t`.
     pub fn size_t_conversions(tc: &mut TypeConverter<'_>) {
-        tc.conversion(|t| matches!(t, Type::Index).then(|| Some(vec![Self::size_t()])));
+        tc.conversion(|t| matches!(t, Type::Index).then(|| Some(vec![EmitcType::size_t()])));
         tc.source(|rw, ty, inputs| Self::cast(rw, ty, inputs));
         tc.target(|rw, tys, inputs, _| match tys {
             [ty] => Self::cast(rw, ty, inputs).map(|v| vec![v]),

@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
 use mlirformat::{Attribute, ShapedKind, Type};
+use mlirformat::emitc_types::EmitcType;
 
 use super::emitc::Emitc;
 use crate::canon::AttrExt;
@@ -50,27 +51,27 @@ impl MemrefToEmitc {
     /// `sizeof(elem) * count`, as `calculateMemrefTotalSizeBytes`.
     fn total_size<'a>(cr: &mut Cr<'_, 'a, '_>, elem: &Type<'a>, count: i64) -> ValueId {
         let data = OpData::build("emitc.call_opaque").with("callee", Attribute::string("sizeof")).with("args", Attribute::Array(vec![Attribute::Type(elem.clone())]));
-        let size = cr.build(data, Emitc::size_t());
+        let size = cr.build(data, EmitcType::size_t());
         let n = cr.emitc_constant(Emitc::int(count, Type::Index), Type::Index);
-        cr.emitc("emitc.mul", &[size, n], Emitc::size_t())
+        cr.emitc("emitc.mul", &[size, n], EmitcType::size_t())
     }
 
     /// `createPointerFromEmitcArray`: the address of the first element.
     fn first_element(cr: &mut Cr<'_, '_, '_>, array: ValueId) -> Option<ValueId> {
         let ty = cr.ty(array);
-        let (rank, elem) = Emitc::array_parts(&ty)?;
+        let (rank, elem) = EmitcType::array_parts(&ty)?;
         let zero = cr.emitc_constant(Emitc::int(0, Type::Index), Type::Index);
         let mut ops = vec![array];
         ops.extend(core::iter::repeat_n(zero, rank));
-        let sub = cr.emitc("emitc.subscript", &ops, Emitc::lvalue(elem));
-        Some(cr.emitc("emitc.address_of", &[sub], Emitc::ptr(elem)))
+        let sub = cr.emitc("emitc.subscript", &ops, EmitcType::lvalue(elem));
+        Some(cr.emitc("emitc.address_of", &[sub], EmitcType::ptr(elem)))
     }
 
     /// `emitc.subscript` of an array operand, as the loads and stores index it.
     fn subscript(cr: &mut Cr<'_, '_, '_>, array: ValueId, indices: &[ValueId]) -> Option<ValueId> {
         let ty = cr.ty(array);
-        let (_, elem) = Emitc::array_parts(&ty)?;
-        let lv = Emitc::lvalue(elem);
+        let (_, elem) = EmitcType::array_parts(&ty)?;
+        let lv = EmitcType::lvalue(elem);
         let mut ops = vec![array];
         ops.extend(indices);
         Some(cr.emitc("emitc.subscript", &ops, lv))
@@ -94,13 +95,13 @@ impl MemrefToEmitc {
         let total = Self::total_size(cr, &elem, super::MemrefToLlvm::dims(&s).iter().product());
         let (callee, args) = match Self::alignment(cr, op) {
             Some(a) => {
-                let align = cr.emitc_constant(Emitc::int(a, Type::Index), Emitc::size_t());
+                let align = cr.emitc_constant(Emitc::int(a, Type::Index), EmitcType::size_t());
                 ("aligned_alloc", vec![align, total])
             }
             None => ("malloc", vec![total]),
         };
-        let call = cr.build(OpData::build("emitc.call_opaque").operands(&args).with("callee", Attribute::string(callee)), Emitc::void_ptr());
-        let cast = cr.emitc("emitc.cast", &[call], Emitc::ptr(&elem));
+        let call = cr.build(OpData::build("emitc.call_opaque").operands(&args).with("callee", Attribute::string(callee)), EmitcType::void_ptr());
+        let cast = cr.emitc("emitc.cast", &[call], EmitcType::ptr(&elem));
         cr.replace_values(op, &[cast]);
         true
     }
@@ -154,8 +155,8 @@ impl MemrefToEmitc {
         let name = cr.rw.body[op].get("name").cloned().unwrap_or(Attribute::Unit);
         let data = OpData::build("emitc.get_global").with("name", name);
         if matches!(&ty, Type::Shaped(s) if s.kind == ShapedKind::MemRef && s.shape.as_ref().is_some_and(Vec::is_empty)) {
-            let lv = cr.build(data, Emitc::lvalue(&res));
-            cr.replace_new(op, OpData::build("emitc.address_of").operands(&[lv]), &[Emitc::ptr(&res)]);
+            let lv = cr.build(data, EmitcType::lvalue(&res));
+            cr.replace_new(op, OpData::build("emitc.address_of").operands(&[lv]), &[EmitcType::ptr(&res)]);
         } else {
             cr.replace_new(op, data, &[res]);
         }

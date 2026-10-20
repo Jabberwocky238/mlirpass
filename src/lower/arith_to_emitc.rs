@@ -4,6 +4,7 @@ use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
 use mlirformat::{Attribute, ShapedKind, Type};
+use mlirformat::emitc_types::EmitcType;
 
 use super::emitc::Emitc;
 use crate::canon::AttrExt;
@@ -79,7 +80,7 @@ impl ArithToEmitc {
     /// `IntegerOpConversion`.
     fn integer(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
-        let Some(ty) = cr.converted_result(op).filter(Emitc::integral) else { return false };
+        let Some(ty) = cr.converted_result(op).filter(EmitcType::integral) else { return false };
         if Emitc::i1(&ty) {
             return false;
         }
@@ -107,7 +108,7 @@ impl ArithToEmitc {
     fn cmpi(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ty = cr.ty(ops[0]);
-        if !Emitc::integral(&ty) {
+        if !EmitcType::integral(&ty) {
             return false;
         }
         let pred = Self::predicate(cr, op);
@@ -123,7 +124,7 @@ impl ArithToEmitc {
     fn negf(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ty = cr.ty(ops[0]);
-        if matches!(&ty, Type::Shaped(s) if s.kind != ShapedKind::MemRef) || !Emitc::supported_float(&ty) {
+        if matches!(&ty, Type::Shaped(s) if s.kind != ShapedKind::MemRef) || !EmitcType::supported_float(&ty) {
             return false;
         }
         cr.replace_new(op, OpData::build(to).operands(&ops), &[ty]);
@@ -145,7 +146,7 @@ impl ArithToEmitc {
     fn itof(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ot = cr.ty(ops[0]);
-        let Some(dst) = cr.converted_result(op).filter(|t| Emitc::supported_int(&ot) && Emitc::supported_float(t)) else { return false };
+        let Some(dst) = cr.converted_result(op).filter(|t| EmitcType::supported_int(&ot) && EmitcType::supported_float(t)) else { return false };
         let mut v = ops[0];
         if cr.rw.body[op].name == "arith.uitofp" {
             let u = Emitc::unsigned(Emitc::width(&ot));
@@ -160,10 +161,10 @@ impl ArithToEmitc {
     /// `FtoICastOpConversion`.
     fn ftoi(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
-        if !Emitc::supported_float(&cr.ty(ops[0])) {
+        if !EmitcType::supported_float(&cr.ty(ops[0])) {
             return false;
         }
-        let Some(dst) = cr.converted_result(op).filter(|t| Emitc::supported_int(t) && !Emitc::i1(t)) else { return false };
+        let Some(dst) = cr.converted_result(op).filter(|t| EmitcType::supported_int(t) && !Emitc::i1(t)) else { return false };
         let unsigned = cr.rw.body[op].name == "arith.fptoui";
         let actual = if unsigned { Emitc::unsigned(Emitc::width(&dst)) } else { dst.clone() };
         let mut v = cr.emitc(to, &ops, actual);
@@ -177,10 +178,10 @@ impl ArithToEmitc {
     /// `FpCastOpConversion`.
     fn fp_cast(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
-        if !Emitc::supported_float(&cr.ty(ops[0])) || cr.rw.body[op].get("roundingmode").is_some() {
+        if !EmitcType::supported_float(&cr.ty(ops[0])) || cr.rw.body[op].get("roundingmode").is_some() {
             return false;
         }
-        let Some(dst) = cr.converted_result(op).filter(Emitc::supported_float) else { return false };
+        let Some(dst) = cr.converted_result(op).filter(EmitcType::supported_float) else { return false };
         cr.replace_new(op, OpData::build(to).operands(&ops), &[dst]);
         true
     }
@@ -204,7 +205,7 @@ impl ArithToEmitc {
     /// `ShiftOpConversion`: the shift, or zero when the amount is the width or more.
     fn shift<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str, unsigned: bool) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
-        let Some(ty) = cr.converted_result(op).filter(Emitc::integral) else { return false };
+        let Some(ty) = cr.converted_result(op).filter(EmitcType::integral) else { return false };
         if Emitc::i1(&ty) {
             return false;
         }
@@ -212,7 +213,7 @@ impl ArithToEmitc {
         let lhs = cr.emitc_cast(ops[0], arith.clone());
         let rt = Emitc::signedness(&cr.ty(ops[1]), true);
         let rhs = cr.emitc_cast(ops[1], rt.clone());
-        let width = if Emitc::pointer_wide(&ty) {
+        let width = if EmitcType::pointer_wide(&ty) {
             let eight = cr.emitc_constant(Emitc::int(8, Type::Index), rt.clone());
             let size = cr.build(OpData::build("emitc.call_opaque").operands(&[eight]).with("callee", Attribute::string("sizeof")), rt.clone());
             cr.emitc("emitc.mul", &[eight, size], rt)
@@ -285,15 +286,15 @@ impl ArithToEmitc {
     /// `CastConversion`.
     fn cast(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str, unsigned: bool) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
-        let Some(ret) = cr.converted_result(op).filter(Emitc::integral) else { return false };
+        let Some(ret) = cr.converted_result(op).filter(EmitcType::integral) else { return false };
         let [input] = ops[..] else { return false };
         let input = &input;
         let ot = cr.ty(*input);
-        if !Emitc::integral(&ot) || (Emitc::i1(&ot) && !unsigned) {
+        if !EmitcType::integral(&ot) || (Emitc::i1(&ot) && !unsigned) {
             return false;
         }
         if Emitc::i1(&ret) {
-            let attr_ty = if Emitc::pointer_wide(&ot) { Type::Index } else { ot.clone() };
+            let attr_ty = if EmitcType::pointer_wide(&ot) { Type::Index } else { ot.clone() };
             let one = cr.emitc_constant(Emitc::int(1, attr_ty), ot.clone());
             let and = cr.emitc("emitc.bitwise_and", &[*input, one], ot);
             cr.replace_new(op, OpData::build(to).operands(&[and]), &[ret]);

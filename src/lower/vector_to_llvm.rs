@@ -11,7 +11,8 @@ use mlirformat::{Attribute, Dim, FloatKind, Shaped, ShapedKind, Type};
 
 use super::memref_to_llvm::{Cr, Gep, MemrefToLlvm as M};
 use crate::canon::AttrExt;
-use crate::{LlvmOptions, LlvmType, OpData, OpId, ValueId, DYNAMIC};
+use crate::{LlvmOptions, OpData, OpId, ValueId, DYNAMIC};
+use mlirformat::llvm_types::LlvmType;
 
 /// The vector ⇒ llvm patterns.
 pub struct VectorToLlvm;

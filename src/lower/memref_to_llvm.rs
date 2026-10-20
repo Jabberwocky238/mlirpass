@@ -10,7 +10,8 @@ use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
 
 use crate::canon::AttrExt;
-use crate::{BlockId, ConversionRewriter, LlvmConverter, LlvmOptions, LlvmType, OpData, OpId, ValueId, Visibility, DYNAMIC};
+use crate::{BlockId, ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, ValueId, Visibility, DYNAMIC};
+use mlirformat::llvm_types::LlvmType;
 
 /// The memref ⇒ llvm patterns.
 pub struct MemrefToLlvm;

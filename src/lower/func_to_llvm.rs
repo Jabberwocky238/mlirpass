@@ -9,7 +9,8 @@ use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Shaped, ShapedKind, Type};
 
 use crate::canon::AttrExt;
-use crate::{ConversionRewriter, LlvmConverter, LlvmOptions, LlvmType, OpData, OpId, SignatureConversion, Visibility, ValueId};
+use crate::{ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, SignatureConversion, Visibility, ValueId};
+use mlirformat::llvm_types::LlvmType;
 
 /// The func ⇒ llvm patterns.
 pub struct FuncToLlvm;

@@ -5,8 +5,8 @@ use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Type};
+use mlirformat::emitc_types::EmitcType;
 
-use super::emitc::Emitc;
 use crate::canon::AttrExt;
 use crate::{ConversionRewriter, OpData, OpId, RegionId, ValueId};
 
@@ -23,7 +23,7 @@ impl ScfToEmitc {
     /// An uninitialized `emitc.variable` of `ty`.
     fn variable<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>) -> ValueId {
         let data = OpData::build("emitc.variable").with("value", Attribute::dialect("emitc.opaque", "<\"\">"));
-        cr.build(data, Emitc::lvalue(ty))
+        cr.build(data, EmitcType::lvalue(ty))
     }
 
     /// `createVariablesForResults`: one variable per result, before `op`.
@@ -237,7 +237,7 @@ impl ScfToEmitc {
         cr.erase(cond_op);
         let cond_block = cr.rw.body.add_block(cond_region, &[]);
         cr.rw.set_start(cond_block);
-        let lv = Emitc::lvalue(&i1);
+        let lv = EmitcType::lvalue(&i1);
         let expr = cr.rw.create_with(OpData::build("emitc.expression").operands(&[cond_var]), core::slice::from_ref(&i1), |b, e| {
             let r = b.add_region(e);
             b.add_block(r, &[(lv, None)]);

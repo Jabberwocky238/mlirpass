@@ -10,7 +10,8 @@ use mlirformat::{arith, Attribute, NamedAttr, Type};
 
 use super::llvm_fastmath;
 use crate::canon::AttrExt;
-use crate::{ApInt, Const, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
+use crate::{ApInt, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId, attr};
+use mlirformat::llvm_types::LlvmType;
 
 /// Builds the arith expansions of `ceildiv` / `floordiv` over values of type `ty`.
 struct Ar<'c, 'r, 'a, 'p> {

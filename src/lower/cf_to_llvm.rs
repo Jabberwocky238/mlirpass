@@ -8,7 +8,8 @@ use mlirpass_macros::patterns;
 use mlirformat::Attribute;
 
 use super::unescape;
-use crate::{BlockId, ConversionRewriter, LlvmType, OpData, OpId, ValueId};
+use crate::{BlockId, ConversionRewriter, OpData, OpId, ValueId};
+use mlirformat::llvm_types::LlvmType;
 
 /// The cf ⇒ llvm patterns.
 pub struct CfToLlvm;

@@ -7,7 +7,8 @@ use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Type};
 
 use super::llvm_fastmath;
-use crate::{ApFloat, Const, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
+use crate::{ApFloat, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId, attr};
+use mlirformat::llvm_types::LlvmType;
 
 /// The math ⇒ llvm patterns.
 pub struct MathToLlvm;
