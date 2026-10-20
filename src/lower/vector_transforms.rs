@@ -87,7 +87,7 @@ pub fn index_attr<'a>(v: i64) -> Attribute<'a> {
     Attribute::Int { lit: format!("{v}").into(), ty: Some(Type::Index) }
 }
 
-fn zeros<'a>(ty: &Type<'a>) -> Attribute<'a> {
+pub fn zeros<'a>(ty: &Type<'a>) -> Attribute<'a> {
     let z = match elem(ty) {
         Type::Float(k) => Scalar::Float(crate::ApFloat::from_f64(*k, 0.0).expect("zero")),
         t => Scalar::Int(ApInt::new(crate::bit_width(t).unwrap_or(64), 0)),
