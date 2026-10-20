@@ -609,7 +609,7 @@ impl<'a> Body<'a> {
 
     // ---- bounds ------------------------------------------------------------------------
 
-    fn for_constant_bound(&self, f: OpId, lower: bool) -> Option<i64> {
+    pub(crate) fn for_constant_bound(&self, f: OpId, lower: bool) -> Option<i64> {
         self.affine_map(f, if lower { "lowerBoundMap" } else { "upperBoundMap" })?.single_constant().filter(|_| {
             let m = self.affine_map(f, if lower { "lowerBoundMap" } else { "upperBoundMap" }).expect("map");
             m.dims == 0 && m.syms == 0

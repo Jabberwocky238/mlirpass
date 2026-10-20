@@ -113,6 +113,13 @@ impl<'a> Body<'a> {
         Some(())
     }
 
+    /// `SymbolTable::getSymbolUses(region)` over the regions of `op`.
+    pub fn region_symbol_uses(&self, op: OpId) -> Option<Vec<SymbolUse<'a>>> {
+        let mut out = Vec::new();
+        self.region_refs(op, &mut out)?;
+        Some(out)
+    }
+
     /// ⭐ `SymbolTable::getSymbolUses(op)`: the references on `op` and nested in it, not entering
     /// nested symbol tables; `None` when an op might be an unknown symbol table.
     pub fn symbol_uses(&self, op: OpId) -> Option<Vec<SymbolUse<'a>>> {

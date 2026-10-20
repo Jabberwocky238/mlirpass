@@ -28,7 +28,14 @@ pub type Operand = (OpId, usize);
 impl<'a> Body<'a> {
     /// Whether `op` implements the interface, as far as this crate describes it.
     pub fn is_region_branch(&self, op: OpId) -> bool {
-        matches!(&*self[op].name, "scf.for" | "scf.if" | "scf.while" | "scf.execute_region" | "scf.index_switch" | "test.region_if")
+        matches!(&*self[op].name, "affine.for" | "scf.for" | "scf.if" | "scf.while" | "scf.execute_region" | "scf.index_switch" | "test.region_if")
+    }
+
+    /// `getTrivialConstantTripCount` of an `affine.for`.
+    fn affine_trip_count(&self, op: OpId) -> Option<i64> {
+        let step = self.for_step(op);
+        let (lb, ub) = (self.for_constant_bound(op, true)?, self.for_constant_bound(op, false)?);
+        (step > 0).then(|| if ub - lb <= 0 { 0 } else { (ub - lb + step - 1) / step })
     }
 
     /// The entry block's arguments of region `r` of `op`, from `skip` on.
@@ -42,6 +49,15 @@ impl<'a> Body<'a> {
         let results = self[op].results.clone();
         match &*self[op].name {
             "scf.for" => vec![(Succ::Region(0), self.region_args(op, 0, 1)), (Succ::Parent, results)],
+            "affine.for" => {
+                let body = (Succ::Region(0), self.region_args(op, 0, 1));
+                match (self.affine_trip_count(op), point) {
+                    (Some(1), Point::Terminator(_)) | (Some(0), Point::Parent) => vec![(Succ::Parent, results)],
+                    (Some(0), Point::Terminator(_)) => Vec::new(),
+                    (Some(_), Point::Parent) => vec![body],
+                    _ => vec![body, (Succ::Parent, results)],
+                }
+            }
             "scf.if" => match point {
                 Point::Parent => {
                     let else_empty = self[self[op].regions[1]].blocks.is_empty();
@@ -73,6 +89,11 @@ impl<'a> Body<'a> {
         match point {
             Point::Parent => match &*self[op].name {
                 "scf.for" => (3..self[op].operands.len()).map(|i| (op, i)).collect(),
+                "affine.for" => {
+                    let seg = self.segments(op, "operandSegmentSizes").unwrap_or_default();
+                    let start = seg.iter().take(2).sum();
+                    (start..self[op].operands.len()).map(|i| (op, i)).collect()
+                }
                 "scf.while" | "test.region_if" => (0..self[op].operands.len()).map(|i| (op, i)).collect(),
                 _ => Vec::new(),
             },
@@ -89,7 +110,7 @@ impl<'a> Body<'a> {
         for r in &self[op].regions {
             for b in &self[*r].blocks {
                 if let Some(&t) = self[*b].ops.last()
-                    && matches!(&*self[t].name, "scf.yield" | "scf.condition" | "test.region_if_yield")
+                    && matches!(&*self[t].name, "scf.yield" | "scf.condition" | "test.region_if_yield" | "affine.yield")
                 {
                     out.push(Point::Terminator(t));
                 }

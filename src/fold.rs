@@ -90,6 +90,15 @@ impl<'a> Body<'a> {
             return Fold::Failed;
         }
         let consts = self.operand_constants(op);
+        self.fold_with(op, &consts)
+    }
+
+    /// `Operation::fold(operands)`: folding with the given operand constants.
+    pub fn fold_with(&mut self, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold<'a> {
+        if !self.registered(op) {
+            return Fold::Failed;
+        }
+        let consts = consts.to_vec();
         let own = crate::canon::fold(self, op, &consts);
         let to_self = matches!(&own, Fold::Results(r) if self[op].results.len() == 1 && r.first() == Some(&Folded::Value(self[op].results[0])));
         match own {

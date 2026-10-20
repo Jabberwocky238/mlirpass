@@ -69,5 +69,6 @@ registry! {
     "llvm-request-c-wrappers" on "func.func" => RequestCWrappers,
     "strip-debuginfo" => StripDebugInfo,
     "symbol-dce" => SymbolDce,
+    "sccp" => Sccp,
     "symbol-privatize" => SymbolPrivatize,
 }
