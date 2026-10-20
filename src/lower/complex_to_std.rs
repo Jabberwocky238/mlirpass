@@ -4,6 +4,7 @@
 use alloc::vec::Vec;
 
 use mlirpass_macros::{ops, patterns};
+use mlirformat::arith::CmpFPredicate as P;
 use mlirformat::{Attribute, FloatKind, Type};
 
 use super::FromOp;
@@ -51,20 +52,6 @@ impl Fmf {
         };
         Attribute::dialect("arith.fastmath", &body)
     }
-}
-
-/// `arith::CmpFPredicate`.
-#[derive(Clone, Copy)]
-enum P {
-    Oeq = 1,
-    Ogt = 2,
-    Oge = 3,
-    Olt = 4,
-    Ole = 5,
-    One = 6,
-    Ord = 7,
-    Une = 13,
-    Uno = 14,
 }
 
 /// An `ImplicitLocOpBuilder` over complex values of element type `et`.
@@ -249,7 +236,7 @@ impl<'a> Cx<'_, '_, 'a, '_> {
             let s = self.m("sqrt", sq1, f2);
             max * s
         };
-        let nan = self.cmp(P::Uno, result, result, f2);
+        let nan = self.cmp(P::uno, result, result, f2);
         self.select(nan, min, result)
     }
 
@@ -286,23 +273,23 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         let i2 = (li - lr * ratio2) / denom2;
         let zero = 0.0;
         let rra = self.m("absf", rr, f);
-        let rrz = self.cmp(P::Oeq, rra, zero, n);
+        let rrz = self.cmp(P::oeq, rra, zero, n);
         let ria = self.m("absf", ri, f);
-        let riz = self.cmp(P::Oeq, ria, zero, n);
-        let lrn = self.cmp(P::Ord, lr, zero, n);
-        let lin = self.cmp(P::Ord, li, zero, n);
+        let riz = self.cmp(P::oeq, ria, zero, n);
+        let lrn = self.cmp(P::ord, lr, zero, n);
+        let lin = self.cmp(P::ord, li, zero, n);
         let is_inf = (lrn | lin) & (rrz & riz);
         let inf = self.inf(false);
         let infs = self.f("math.copysign", &[inf, rr], n);
         let infr = infs * lr;
         let infi = infs * li;
-        let rrf = self.cmp(P::One, rra, inf, n);
-        let rif = self.cmp(P::One, ria, inf, n);
+        let rrf = self.cmp(P::one, rra, inf, n);
+        let rif = self.cmp(P::one, ria, inf, n);
         let rf = rrf & rif;
         let lra = self.m("absf", lr, f);
-        let lri = self.cmp(P::Oeq, lra, inf, n);
+        let lri = self.cmp(P::oeq, lra, inf, n);
         let lia = self.m("absf", li, f);
-        let lii = self.cmp(P::Oeq, lia, inf, n);
+        let lii = self.cmp(P::oeq, lia, inf, n);
         let inf_fin = (lri | lii) & rf;
         let one = 1.0;
         let s = self.select(lri, one, zero);
@@ -312,11 +299,11 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         let r3 = inf * (lris * rr + liis * ri);
         let a = lris * ri;
         let i3 = inf * (liis * rr - a);
-        let lrf = self.cmp(P::One, lra, inf, n);
-        let lif = self.cmp(P::One, lia, inf, n);
+        let lrf = self.cmp(P::one, lra, inf, n);
+        let lif = self.cmp(P::one, lia, inf, n);
         let lf = lrf & lif;
-        let rri = self.cmp(P::Oeq, rra, inf, n);
-        let rii = self.cmp(P::Oeq, ria, inf, n);
+        let rri = self.cmp(P::oeq, rra, inf, n);
+        let rii = self.cmp(P::oeq, ria, inf, n);
         let fin_inf = lf & (rri | rii);
         let s = self.select(rri, one, zero);
         let rris = self.f("math.copysign", &[s, rr], n);
@@ -324,7 +311,7 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         let riis = self.f("math.copysign", &[s, ri], n);
         let r4 = zero * (lr * rris + li * riis);
         let i4 = zero * (li * rris - lr * riis);
-        let smaller = self.cmp(P::Olt, rra, ria, n);
+        let smaller = self.cmp(P::olt, rra, ria, n);
         let r5 = self.select(smaller, r1, r2);
         let i5 = self.select(smaller, i1, i2);
         let rs3 = self.select(fin_inf, r4, r5);
@@ -333,8 +320,8 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         let is2 = self.select(inf_fin, i3, is3);
         let rs1 = self.select(is_inf, infr, rs2);
         let is1 = self.select(is_inf, infi, is2);
-        let rn = self.cmp(P::Uno, r5, zero, n);
-        let inn = self.cmp(P::Uno, i5, zero, n);
+        let rn = self.cmp(P::uno, r5, zero, n);
+        let inn = self.cmp(P::uno, i5, zero, n);
         let both = rn & inn;
         (self.select(both, rs1, r5), self.select(both, is1, i5))
     }
@@ -391,7 +378,7 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         let inum = four * (ci * si);
         let esum = e1 + e2;
         let denom = esum + two_cos;
-        let is_inf = self.cmp(P::Oeq, esum, inf, fmf);
+        let is_inf = self.cmp(P::oeq, esum, inf, fmf);
         let limit = self.f("math.copysign", &[neg_one, re], fmf);
         let t = rnum / denom;
         let mut r = self.select(is_inf, limit, t);
@@ -400,11 +387,11 @@ impl<'a> Cx<'_, '_, 'a, '_> {
             let ar = self.m("absf", re, fmf);
             let zero = 0.0;
             let nan = self.nan();
-            let ari = self.cmp(P::Oeq, ar, inf, fmf);
-            let iz = self.cmp(P::Oeq, im, zero, fmf);
+            let ari = self.cmp(P::oeq, ar, inf, fmf);
+            let iz = self.cmp(P::oeq, im, zero, fmf);
             let t = self.mk(OpData::build("arith.constant").with("value", Attribute::Bool(true)), Type::int(1));
             let arni = ari ^ t;
-            let inn = self.cmp(P::Uno, inum, inum, fmf);
+            let inn = self.cmp(P::uno, inum, inum, fmf);
             let rnan = inn & arni;
             let izero = iz | (ari & inn);
             r = self.select(rnan, nan, r);
@@ -441,11 +428,11 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         let c_one = self.create(one, zero);
         let c_zero = self.create(zero, zero);
         let c_inf = self.create(inf, zero);
-        let abs0 = self.cmp(P::Oeq, abs, zero, fmf);
-        let d0 = self.cmp(P::Oeq, d, zero, fmf);
-        let c0 = self.cmp(P::Oeq, c, zero, fmf);
-        let b0 = self.cmp(P::Oeq, b, zero, fmf);
-        let zle = self.cmp(P::Ole, zero, c, fmf);
+        let abs0 = self.cmp(P::oeq, abs, zero, fmf);
+        let d0 = self.cmp(P::oeq, d, zero, fmf);
+        let c0 = self.cmp(P::oeq, c, zero, fmf);
+        let b0 = self.cmp(P::oeq, b, zero, fmf);
+        let zle = self.cmp(P::ole, zero, c, fmf);
         let ccos = self.mul(coeff, cq, fmf);
         let csin = self.mul(coeff, sq, fmf);
         let one_or_zero = self.select(c0, c_one, c_zero);
@@ -455,16 +442,16 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         let cut0 = self.select(t, one_or_zero, cs);
         let rhs0 = self.and(c0, d0);
         let cut1 = self.select(rhs0, c_one, cut0);
-        let t = self.cmp(P::Oeq, a, one, fmf);
+        let t = self.cmp(P::oeq, a, one, fmf);
         let lhs1 = self.and(t, b0);
         let cut2 = self.select(lhs1, c_one, cut1);
-        let t = self.cmp(P::Oeq, a, inf, fmf);
+        let t = self.cmp(P::oeq, a, inf, fmf);
         let lhs_inf = self.and(t, b0);
-        let t = self.cmp(P::Ogt, c, zero, fmf);
+        let t = self.cmp(P::ogt, c, zero, fmf);
         let gt0 = self.and(d0, t);
         let t = self.and(lhs_inf, gt0);
         let cut3 = self.select(t, c_inf, cut2);
-        let t = self.cmp(P::Olt, c, zero, fmf);
+        let t = self.cmp(P::olt, c, zero, fmf);
         let lt0 = self.and(d0, t);
         let t = self.and(lhs_inf, lt0);
         self.select(t, c_zero, cut3)
@@ -541,14 +528,14 @@ impl ComplexToStd {
     #[ops(b)]
     fn eq(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId) -> ValueId {
         let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
-        b.cmp(P::Oeq, lr, rr, Fmf::NONE) & b.cmp(P::Oeq, li, ri, Fmf::NONE)
+        b.cmp(P::oeq, lr, rr, Fmf::NONE) & b.cmp(P::oeq, li, ri, Fmf::NONE)
     }
 
     #[lowering("complex.neq")]
     #[ops(b)]
     fn neq(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId) -> ValueId {
         let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
-        b.cmp(P::Une, lr, rr, Fmf::NONE) | b.cmp(P::Une, li, ri, Fmf::NONE)
+        b.cmp(P::une, lr, rr, Fmf::NONE) | b.cmp(P::une, li, ri, Fmf::NONE)
     }
 
     #[lowering("complex.conj")]
@@ -582,8 +569,8 @@ impl ComplexToStd {
         let eh = b.m("exp", x * half, fmf);
         let cos = b.m("cos", y, fmf);
         let sin = b.m("sin", y, fmf);
-        let ei = b.cmp(P::Oeq, exp, inf, fmf);
-        let yz = b.cmp(P::Oeq, y, zero, Fmf::NONE);
+        let ei = b.cmp(P::oeq, exp, inf, fmf);
+        let yz = b.cmp(P::oeq, y, zero, Fmf::NONE);
         let rn = exp * cos;
         let ro = eh * cos * eh;
         let r = b.select(ei, ro, rn);
@@ -616,11 +603,11 @@ impl ComplexToStd {
         let c = neg_half * p2;
         let small = fm(Fmf::NONE, a + c);
         let pi4 = 0.61685;
-        let cond = b.cmp(P::Oge, p2, pi4, fmf);
+        let cond = b.cmp(P::oge, p2, pi4, fmf);
         let cm1 = b.select(cond, large, small);
         let ci = cm1 + one;
         let r = em1 * ci + cm1;
-        let iz = b.cmp(P::Oeq, im, zero, fmf);
+        let iz = b.cmp(P::oeq, im, zero, fmf);
         let t = er * si;
         let i = b.select(iz, zero, t);
         b.create(r, i)
@@ -647,7 +634,7 @@ impl ComplexToStd {
         let ai = b.m("absf", im, fmf);
         let max = b.f("arith.maximumf", &[arp1, ai], fmf);
         let min = b.f("arith.minimumf", &[arp1, ai], fmf);
-        let use_re = b.cmp(P::Ogt, rp1, ai, fmf);
+        let use_re = b.cmp(P::ogt, rp1, ai, fmf);
         let mm1 = max - one;
         let m = b.select(use_re, re, mm1);
         let f2 = fmf.without_nan_inf();
@@ -655,7 +642,7 @@ impl ComplexToStd {
         let lm = b.m("log1p", m, fmf);
         let ls = b.m("log1p", fm(f2, ratio * ratio), f2);
         let r = fm(f2, half * ls + lm);
-        let nan = b.cmp(P::Uno, r, r, f2);
+        let nan = b.cmp(P::uno, r, r, f2);
         let rr = b.select(nan, min, r);
         let i = b.f("math.atan2", &[im, rp1], fmf);
         b.create(rr, i)
@@ -683,7 +670,7 @@ impl ComplexToStd {
     fn sign(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
         let (re, im) = (b.re(x), b.im(x));
         let zero = 0.0;
-        let z = b.cmp(P::Oeq, re, zero, Fmf::NONE) & b.cmp(P::Oeq, im, zero, Fmf::NONE);
+        let z = b.cmp(P::oeq, re, zero, Fmf::NONE) & b.cmp(P::oeq, im, zero, Fmf::NONE);
         let et = b.et.clone();
         let abs = b.mk(OpData::build("complex.abs").operands(&[x]).with("fastmath", fmf.attr()), et);
         let (rs, is) = (re / abs, im / abs);
@@ -702,7 +689,7 @@ impl ComplexToStd {
         let sa = arg * half;
         let cos = b.m("cos", sa, fmf);
         let sin = b.m("sin", sa, fmf);
-        let sz = b.cmp(P::Oeq, sin, zero, fmf);
+        let sz = b.cmp(P::oeq, sin, zero, fmf);
         let mut r = abs * cos;
         let t = abs * sin;
         let mut i = b.select(sz, zero, t);
@@ -711,18 +698,18 @@ impl ComplexToStd {
             let ninf = b.inf(true);
             let nan = b.nan();
             let ai = b.m("absf", im, fmf);
-            let aii = b.cmp(P::Oeq, ai, inf, fmf);
-            let ain = b.cmp(P::One, ai, inf, fmf);
-            let ri = b.cmp(P::Oeq, re, inf, fmf);
-            let rni = b.cmp(P::Oeq, re, ninf, fmf);
+            let aii = b.cmp(P::oeq, ai, inf, fmf);
+            let ain = b.cmp(P::one, ai, inf, fmf);
+            let ri = b.cmp(P::oeq, re, inf, fmf);
+            let rni = b.cmp(P::oeq, re, ninf, fmf);
             r = b.select(rni & ain, zero, r);
             r = b.select(aii | ri, inf, r);
             let isi = b.f("math.copysign", &[inf, im], fmf);
-            let t = b.cmp(P::Uno, abs, abs, Fmf::NONE);
+            let t = b.cmp(P::uno, abs, abs, Fmf::NONE);
             i = b.select(t, nan, i);
             i = b.select(aii | rni, isi, i);
         }
-        let z = b.cmp(P::Oeq, abs, zero, fmf);
+        let z = b.cmp(P::oeq, abs, zero, fmf);
         r = b.select(z, zero, r);
         i = b.select(z, zero, i);
         b.create(r, i)
@@ -777,14 +764,14 @@ impl ComplexToStd {
             let nisz = neg_one * isz;
             let ar = b.m("absf", re, fmf);
             let ai = b.m("absf", im, fmf);
-            let aii = b.cmp(P::Oeq, ai, inf, fmf);
-            let rn = b.cmp(P::Uno, re, re, fmf);
-            let ri = b.cmp(P::Oeq, ar, inf, fmf);
+            let aii = b.cmp(P::oeq, ai, inf, fmf);
+            let rn = b.cmp(P::uno, re, re, fmf);
+            let ri = b.cmp(P::oeq, ar, inf, fmf);
             let z = aii & rn | ri;
             r = b.select(z, rsz, r);
             i = b.select(z, nisz, i);
         }
-        let z = b.cmp(P::Oeq, re, zero, fmf) & b.cmp(P::Oeq, im, zero, fmf);
+        let z = b.cmp(P::oeq, re, zero, fmf) & b.cmp(P::oeq, im, zero, fmf);
         r = b.select(z, inf, r);
         i = b.select(z, nan, i);
         b.create(r, i)

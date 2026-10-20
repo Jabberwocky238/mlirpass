@@ -5,16 +5,12 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::{ops, patterns};
+use mlirformat::arith::CmpIPredicate;
 use mlirformat::{Attribute, NamedAttr, Type};
 
 use super::llvm_fastmath;
 use crate::canon::AttrExt;
 use crate::{ApInt, Const, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
-
-/// `arith::CmpIPredicate`s.
-const EQ: i64 = 0;
-const NE: i64 = 1;
-const SLT: i64 = 2;
 
 /// Builds the arith expansions of `ceildiv` / `floordiv` over values of type `ty`.
 struct Ar<'c, 'r, 'a, 'p> {
@@ -277,7 +273,7 @@ impl ArithToLlvm {
     #[ops(b)]
     fn ceildivui(b: &mut Ar<'_, '_, '_, '_>, x: ValueId, y: ValueId) -> ValueId {
         let zero = b.int(0);
-        let is_zero = b.cmp(EQ, x, zero);
+        let is_zero = b.cmp(CmpIPredicate::eq as i64, x, zero);
         let one = b.int(1);
         let q = b.divui(x - one, y);
         b.select(is_zero, zero, q + one)
@@ -290,8 +286,8 @@ impl ArithToLlvm {
         let zero = b.int(0);
         let one = b.int(1);
         let q = x / y;
-        let inexact = b.cmp(NE, x, q * y);
-        let same_sign = b.cmp(EQ, b.cmp(SLT, x, zero), b.cmp(SLT, y, zero));
+        let inexact = b.cmp(CmpIPredicate::ne as i64, x, q * y);
+        let same_sign = b.cmp(CmpIPredicate::eq as i64, b.cmp(CmpIPredicate::slt as i64, x, zero), b.cmp(CmpIPredicate::slt as i64, y, zero));
         let cond = inexact & same_sign;
         b.select(cond, q + one, q)
     }
@@ -301,9 +297,9 @@ impl ArithToLlvm {
     #[ops(b)]
     fn floordivsi(b: &mut Ar<'_, '_, '_, '_>, x: ValueId, y: ValueId) -> ValueId {
         let q = x / y;
-        let inexact = b.cmp(NE, x, q * y);
+        let inexact = b.cmp(CmpIPredicate::ne as i64, x, q * y);
         let zero = b.int(0);
-        let opposite = b.cmp(NE, b.cmp(SLT, x, zero), b.cmp(SLT, y, zero));
+        let opposite = b.cmp(CmpIPredicate::ne as i64, b.cmp(CmpIPredicate::slt as i64, x, zero), b.cmp(CmpIPredicate::slt as i64, y, zero));
         let cond = inexact & opposite;
         let minus_one = b.int(-1);
         b.select(cond, q + minus_one, q)

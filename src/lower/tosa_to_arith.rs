@@ -5,6 +5,7 @@ use alloc::format;
 use alloc::vec::Vec;
 
 use mlirpass_macros::{ops, patterns};
+use mlirformat::arith::CmpIPredicate;
 use mlirformat::{Attribute, Shaped, Type};
 
 use super::FromOp;
@@ -12,11 +13,6 @@ use crate::canon::AttrExt;
 use crate::{ApInt, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
-
-/// `arith::CmpIPredicate`s.
-const SGT: i64 = 4;
-const SGE: i64 = 5;
-const UGT: i64 = 8;
 
 /// `apply_scale` builders over a result (container) type.
 struct Sc<'c, 'r, 'a, 'p> {
@@ -151,9 +147,9 @@ impl TosaToArith {
         if double {
             let up = s.cst(&i64t, HALF_ROUND);
             let down = s.cst(&i64t, MINUS_HALF_ROUND);
-            let pos = s.cmp(SGE, value, zero);
+            let pos = s.cmp(CmpIPredicate::sge as i64, value, zero);
             let val = s.select(pos, up, down) + mul;
-            let valid = s.cmp(SGT, shift32, thirty_one);
+            let valid = s.cmp(CmpIPredicate::sgt as i64, shift32, thirty_one);
             mul = s.select(valid, val, mul);
         }
         Some(s.op("arith.trunci", &[mul >> shift64], &i32t))
@@ -178,15 +174,15 @@ impl TosaToArith {
         let vt = s.ty(value);
         let ext = s.cr.rw.create(OpData::build("arith.mulsi_extended").operands(&[value, mult]), &[vt.clone(), vt]);
         let (mut low, mut high) = (s.cr.rw.body[ext].results[0], s.cr.rw.body[ext].results[1]);
-        let over = s.cmp(SGE, shift32, thirty_two);
-        let round_high = s.cmp(SGT, shift32, thirty_two);
+        let over = s.cmp(CmpIPredicate::sge as i64, shift32, thirty_two);
+        let round_high = s.cmp(CmpIPredicate::sgt as i64, shift32, thirty_two);
         let shl = thirty_two - shift32;
         let shr = shift32 - thirty_two;
         let shl = s.select(over, zero, shl);
         let shr = s.select(over, shr, zero);
         if double {
             let neg_one = s.cst(&i32t, -1);
-            let pos = s.cmp(SGE, value, zero);
+            let pos = s.cmp(CmpIPredicate::sge as i64, value, zero);
             let dir = s.select(pos, one, neg_one);
             let dir = s.select(over, dir, zero);
             let carry = (s.shrui(low, thirty) + dir) >> two;
@@ -196,7 +192,7 @@ impl TosaToArith {
         let bit = one << (shift32 - one);
         let bit = s.select(round_high, zero, bit);
         let new_low = low + bit;
-        let wrapped = s.cmp(UGT, low, new_low);
+        let wrapped = s.cmp(CmpIPredicate::ugt as i64, low, new_low);
         low = new_low;
         high = high + s.op("arith.extui", &[wrapped], &i32t);
         let bit = one << (shr - one);
