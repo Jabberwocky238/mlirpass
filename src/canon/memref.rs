@@ -491,6 +491,109 @@ rewrites! {
     SimplifyDeadAlloca("memref.alloca", 1) |rw, op| { simplify_dead_alloc(rw, op) }
 }
 
+rewrites! {
+    /// `FoldEmptyCopy`: a copy of or into a memref with a zero dimension goes.
+    FoldEmptyCopy("memref.copy", 1) |rw, op| {
+        let b = &*rw.body;
+        let empty = |v: &ValueId| crate::attr::shape_of(&b[*v].ty).is_some_and(|d| d.contains(&Dim::Static(0)));
+        if !b[op].operands.iter().any(empty) {
+            return false;
+        }
+        rw.erase_op(op);
+        true
+    }
+
+    /// `FoldSelfCopy`: a copy of a memref into itself goes.
+    FoldSelfCopy("memref.copy", 1) |rw, op| {
+        if rw.body[op].operands[0] != rw.body[op].operands[1] {
+            return false;
+        }
+        rw.erase_op(op);
+        true
+    }
+
+    /// `DimOfMemRefReshape`: the dim of a `memref.reshape` loaded from its shape, right after it,
+    /// when the index is known there.
+    DimOfMemRefReshape("memref.dim", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(reshape) = b.def_named(b[op].operands[0], "memref.reshape") else { return false };
+        let idx = b[op].operands[1];
+        let rblock = b[reshape].parent;
+        let idx_block = match b[idx].def {
+            Def::Result(d, _) => b[d].parent,
+            Def::Arg(blk, _) => Some(blk),
+        };
+        if idx_block == rblock {
+            if let Some(d) = b.def_op(idx) && b.position(reshape) < b.position(d) {
+                return false;
+            }
+        } else if b[op].parent != rblock {
+            let (Some(ib), Some(rb)) = (idx_block, rblock) else { return false };
+            let (Some(ir), Some(mut r)) = (b[ib].parent, b[rb].parent) else { return false };
+            // Whether the index's region is a proper ancestor of the reshape's.
+            let mut ancestor = false;
+            while let Some(up) = b[b[r].parent].parent.and_then(|blk| b[blk].parent) {
+                if up == ir {
+                    ancestor = true;
+                    break;
+                }
+                r = up;
+            }
+            if !ancestor {
+                return false;
+            }
+        }
+        let shape = b[reshape].operands[1];
+        let elem = crate::attr::element_type(&b[shape].ty).clone();
+        let ty = b[b[op].results[0]].ty.clone();
+        rw.set_after(reshape);
+        let load = rw.create(OpData::build("memref.load").operands(&[shape, idx]), &[elem.clone()]);
+        let mut v = rw.body[load].results[0];
+        if elem != ty {
+            let c = rw.create(OpData::build("arith.index_cast").operands(&[v]), &[ty]);
+            v = rw.body[c].results[0];
+        }
+        rw.replace_op(op, &[v]);
+        true
+    }
+
+    /// `CollapseShapeOpMemRefCastFolder`, for a cast from an identity layout: the collapse takes
+    /// the cast's source (and is cast back when its type changes).
+    CollapseShapeOpMemRefCastFolder("memref.collapse_shape", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(cast) = b.def_named(b[op].operands[0], "memref.cast") else { return false };
+        let (from, cur) = (b[cast].operands[0], b[op].operands[0]);
+        if !crate::canon::memref_cast_foldable(&b[from].ty, &b[cur].ty) {
+            return false;
+        }
+        let Type::Shaped(st) = &b[from].ty else { return false };
+        if !crate::MemrefToLlvm::identity_layout(st) {
+            return false;
+        }
+        let r = b.reassociation(op);
+        let dims: Vec<Dim> = st.shape.clone().unwrap_or_default();
+        let mut at = 0;
+        let mut shape = Vec::new();
+        for g in &r {
+            let band = &dims[at..at + g.len()];
+            shape.push(if band.iter().any(|d| !matches!(d, Dim::Static(_))) { Dim::Dynamic } else { Dim::Static(band.iter().map(|d| if let Dim::Static(n) = d { *n } else { 1 }).product()) });
+            at += g.len();
+        }
+        let ty = Type::Shaped(mlirformat::Shaped { shape: Some(shape), ..st.clone() });
+        let rt = b[b[op].results[0]].ty.clone();
+        if ty == rt {
+            rw.modify(op, |b| b.set_operand(op, 0, from));
+        } else {
+            let data = OpData { operands: alloc::vec![from], properties: b[op].properties.clone(), ..OpData::build("memref.collapse_shape") };
+            rw.set_before(op);
+            let new = rw.create(data, &[ty]);
+            let new = rw.body[new].results[0];
+            rw.replace_with(op, OpData::build("memref.cast").operands(&[new]), &[rt]);
+        }
+        true
+    }
+}
+
 impl Ofr {
     /// `computeRankReductionMask`: which of `sizes` the shape `reduced` drops (unit sizes, left
     /// to right).
@@ -547,6 +650,8 @@ pub fn patterns(set: &mut crate::PatternSet) {
     set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeExpandOfCollapse { name: "ComposeExpandOfCollapseOp", dialect: "memref" }));
     set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeReassociative { name: "ComposeCollapseOfCollapse", dialect: "memref", root: "memref.collapse_shape", expand: false }));
     set.add_boxed(alloc::boxed::Box::new(super::reshape::ComposeCollapseOfExpand { name: "ComposeCollapseOfExpandOp", dialect: "memref" }));
+    set.add(CollapseShapeOpMemRefCastFolder);
+    set.add(FoldEmptyCopy).add(FoldSelfCopy).add(DimOfMemRefReshape);
     set.add(AllocaScopeInliner);
     set.add(SubViewConstantArguments).add(SubViewOpMemRefCastFolder).add(TrivialSubViewOpFolder);
 }
