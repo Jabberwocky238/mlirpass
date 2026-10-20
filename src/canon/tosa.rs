@@ -42,6 +42,24 @@ impl<'a> Tf<'_, '_, 'a> {
         Some(attr::shape_of(t)?.iter().map(|d| if let Dim::Static(n) = d { Some(*n) } else { None }).collect())
     }
 
+    /// `getStorageElementTypeFromQuantized` of a `!quant.uniform` element type (its storage
+    /// type, unsigned for `u`), else the type itself.
+    fn storage(t: &Type<'a>) -> Type<'a> {
+        let Type::Extended(e) = t else { return t.clone() };
+        let spec = e.body.as_deref().filter(|b| e.name == "quant.uniform" && !b.contains('{')).and_then(|b| b.strip_prefix('<')?.split([':', '<']).next());
+        let Some((sign, width)) = spec.and_then(|s| Some((s.chars().next()?, s[1..].parse().ok()?))) else { return t.clone() };
+        match sign {
+            'u' => Type::Integer { width, signedness: Signedness::Unsigned },
+            'i' => Type::int(width),
+            _ => t.clone(),
+        }
+    }
+
+    /// The elements of constant `v` as integers (`m_Constant` of a `DenseIntElementsAttr`).
+    fn ints_of(b: &Body<'a>, v: ValueId) -> Option<Vec<i64>> {
+        Const::try_from(&b.constant_of(v)?).ok().filter(|k| k.elements)?.ints()
+    }
+
     fn is_static(t: &Type<'_>) -> bool {
         Self::dims(t).is_some_and(|d| d.iter().all(Option::is_some))
     }
@@ -312,7 +330,7 @@ impl<'a> Tf<'_, '_, 'a> {
 
     /// `ResizeOp::fold`: unit scaling, no offset, no border.
     fn resize(&self) -> Fold<'a> {
-        let ints = |i: usize| -> Option<Vec<i128>> { self.dense(i)?.values.iter().map(|v| v.int().map(ApInt::signed)).collect() };
+        let ints = |i: usize| self.dense(i)?.ints();
         let (Some(scale), Some(offset), Some(border)) = (ints(1), ints(2), ints(3)) else { return Fold::Failed };
         if scale.len() != 4 || offset.len() != 2 || border.len() != 2 || scale[0] != scale[1] || scale[2] != scale[3] || offset.iter().chain(&border).any(|x| *x != 0) {
             return Fold::Failed;
@@ -469,6 +487,58 @@ impl<'a> Tf<'_, '_, 'a> {
     }
 }
 
+impl<'a> Tf<'_, '_, 'a> {
+    /// `FoldPadToTensorOp`: `op`'s input padded by a `tosa.pad` in H and W only, the padding
+    /// moved into `op`'s own; `pool` for `max_pool2d` (`PoolPadFoldAdaptor`), else a conv
+    /// (`ConvPadFoldAdaptor`).
+    fn fold_pad(rw: &mut crate::Rewriter<'_, 'a>, op: OpId, pool: bool) -> bool {
+        let b = &*rw.body;
+        let Some(pad) = b.def_named(b[op].operands[0], "tosa.pad") else { return false };
+        let own: Vec<i64> = match b[op].get("pad") {
+            Some(Attribute::DenseArray { values, .. }) => values.iter().filter_map(|v| v.parse().ok()).collect(),
+            _ => return false,
+        };
+        let Some(p) = Tf::ints_of(b, b[pad].operands[1]).filter(|p| own.len() == 4 && p.len() == 8) else { return false };
+        if p[0] != 0 || p[1] != 0 || p[6] != 0 || p[7] != 0 {
+            return false;
+        }
+        let folded = [p[2] + own[0], p[3] + own[1], p[4] + own[2], p[5] + own[3]];
+        let kernel: Vec<i64> = match b[op].get("kernel") {
+            Some(Attribute::DenseArray { values, .. }) => values.iter().filter_map(|v| v.parse().ok()).collect(),
+            _ => Vec::new(),
+        };
+        if pool && (kernel.len() != 2 || folded[2] >= kernel[1] || folded[3] >= kernel[1] || folded[0] >= kernel[0] || folded[1] >= kernel[0]) {
+            return false;
+        }
+        let constant = |v: ValueId| b.constant_of(v).and_then(|a| Const::try_from(&a).ok()).filter(|k| k.elements && attr::element_count(&k.ty) == Some(1));
+        let Some(pad_const) = constant(b[pad].operands[2]) else { return false };
+        let ok = match (pad_const.at(0), attr::element_type(&pad_const.ty)) {
+            (Scalar::Float(f), _) if pool => f.compare(ApFloat::largest(f.kind, true)) == Some(core::cmp::Ordering::Equal),
+            (Scalar::Float(f), _) => f.to_f64() as f32 == 0.0,
+            (Scalar::Int(i), Type::Integer { width, signedness }) if pool => i == if *signedness == Signedness::Unsigned { ApInt::zero(*width) } else { ApInt::signed_min(*width) },
+            (Scalar::Int(i), _) if !pool => constant(b[op].operands[3]).and_then(|z| z.at(0).int()).is_some_and(|z| z.signed() == i.signed()),
+            _ => false,
+        };
+        if !ok || folded.iter().any(|v| *v > 8192) {
+            return false;
+        }
+        let mut data = OpData::build(&b[op].name);
+        data.operands = b[op].operands.clone();
+        data.operands[0] = b[pad].operands[0];
+        if let Some(Attribute::Dict(props)) = &b[op].properties {
+            props.iter().for_each(|a| data.set(&a.name, a.value.clone().unwrap_or(Attribute::Unit)));
+        }
+        // The conv builders spell `local_bound` (`DefaultValuedOptionalAttr`) out.
+        if !pool && data.get("local_bound").is_none() {
+            data.set("local_bound", Attribute::Bool(false));
+        }
+        data.set("pad", Attribute::DenseArray { ty: Type::int(64), values: folded.iter().map(|v| alloc::format!("{v}").into()).collect() });
+        let ty = b[b[op].results[0]].ty.clone();
+        rw.replace_with(op, data, &[ty]);
+        true
+    }
+}
+
 /// The fold hook of tosa op `op`.
 pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold<'a> {
     Tf { b, op, c }.fold()
@@ -537,7 +607,7 @@ rewrites! {
         let get = |o: OpId, n: &str| scalar_attr(b[o].get(n));
         let (Some(l1), Some(h1), Some(l2), Some(h2)) = (get(op, "min_val"), get(op, "max_val"), get(inner, "min_val"), get(inner, "max_val")) else { return false };
         let src = b[inner].operands[0];
-        let elem = attr::element_type(&b[src].ty).clone();
+        let elem = Tf::storage(attr::element_type(&b[src].ty));
         let (lo, hi) = match (l1, h1, l2, h2) {
             (Scalar::Float(a), Scalar::Float(b_), Scalar::Float(c), Scalar::Float(d)) => {
                 let lt = |x: ApFloat, y: ApFloat| x.compare(y) == Some(core::cmp::Ordering::Less);
@@ -577,6 +647,122 @@ rewrites! {
             return false;
         }
         rw.replace_op(op, &[input]);
+        true
+    }
+
+    /// `FoldPadToTensorOp<MaxPool2dOp>`: a pad of the lowest value into the pool's padding.
+    FoldPadToMaxPool2d("tosa.max_pool2d", 1) |rw, op| {
+        Tf::fold_pad(rw, op, true)
+    }
+
+    /// `FoldPadToTensorOp<Conv2DOp>`: a pad of the input zero point into the conv's padding.
+    FoldPadToConv2d("tosa.conv2d", 1) |rw, op| {
+        Tf::fold_pad(rw, op, false)
+    }
+
+    /// `FoldPadToTensorOp<DepthwiseConv2DOp>`.
+    FoldPadToDepthwiseConv2d("tosa.depthwise_conv2d", 1) |rw, op| {
+        Tf::fold_pad(rw, op, false)
+    }
+
+    /// `ConcatSliceOptimization`: a slice within one input of a concat slices that input.
+    ConcatSliceOptimization("tosa.slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(concat) = b.def_named(b[op].operands[0], "tosa.concat") else { return false };
+        if !Tf::is_static(&b[b[concat].results[0]].ty) {
+            return false;
+        }
+        let axis = match b[concat].get("axis") {
+            Some(Attribute::Int { lit, .. }) => lit.parse::<usize>().ok(),
+            _ => None,
+        };
+        let (Some(axis), Some(mut starts), Some(sizes)) = (axis, Tf::ints_of(b, b[op].operands[1]), Tf::ints_of(b, b[op].operands[2])) else { return false };
+        if axis >= starts.len().min(sizes.len()) {
+            return false;
+        }
+        let mut found = None;
+        for input in b[concat].operands.clone() {
+            let Some(dim) = dims_of(b, input).filter(|d| d.iter().all(Option::is_some)).and_then(|d| *d.get(axis)?) else { return false };
+            if starts[axis] >= 0 && starts[axis] + sizes[axis] <= dim {
+                found = Some(input);
+                break;
+            }
+            starts[axis] -= dim;
+        }
+        let Some(input) = found else { return false };
+        let ty = b[b[op].results[0]].ty.clone();
+        rw.set_before(op);
+        let start = const_shape(rw, &starts);
+        let size = const_shape(rw, &sizes);
+        rw.replace_with(op, OpData::build("tosa.slice").operands(&[input, start, size]), &[ty]);
+        true
+    }
+
+    /// `PadSliceOptimization`: a slice of a pad pads only what the slice keeps.
+    PadSliceOptimization("tosa.slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let Some(pad) = b.def_named(b[op].operands[0], "tosa.pad") else { return false };
+        if b[b[pad].results[0]].uses.len() != 1 {
+            return false;
+        }
+        let input = b[pad].operands[0];
+        let (Some(dims), Some(_)) = (dims_of(b, input), dims_of(b, b[pad].results[0])) else { return false };
+        let (Some(paddings), Some(starts), Some(sizes)) = (Tf::ints_of(b, b[pad].operands[1]), Tf::ints_of(b, b[op].operands[1]), Tf::ints_of(b, b[op].operands[2])) else { return false };
+        let rank = dims.len();
+        if paddings.len() < 2 * rank || starts.len() < rank || sizes.len() < rank || dims.iter().enumerate().any(|(i, d)| d.is_none() && (starts[i] != 0 || sizes[i] != -1)) {
+            return false;
+        }
+        let mut new_starts = alloc::vec![0i64; rank];
+        let mut new_paddings = alloc::vec![0i64; 2 * rank];
+        let mut shape = alloc::vec![Dim::Dynamic; rank];
+        let mut updated = false;
+        for (i, d) in dims.iter().enumerate() {
+            let (lo, hi, start) = (paddings[2 * i], paddings[2 * i + 1], starts[i]);
+            let end = start + sizes[i];
+            let Some(dim) = *d else {
+                (new_paddings[2 * i], new_paddings[2 * i + 1], new_starts[i]) = (lo, hi, start);
+                continue;
+            };
+            if start < 0 || end > lo + dim + hi {
+                return false;
+            }
+            new_starts[i] = (start - lo).max(0);
+            let (new_lo, new_hi) = ((lo - start).max(0), (end - (lo + dim)).max(0));
+            (new_paddings[2 * i], new_paddings[2 * i + 1]) = (new_lo, new_hi);
+            updated |= new_starts[i] != start || new_lo != lo || new_hi != hi;
+            shape[i] = Dim::Static(new_lo + dim + new_hi);
+        }
+        if !updated {
+            return false;
+        }
+        let pad_ty = Type::Shaped(mlirformat::Shaped { kind: mlirformat::ShapedKind::Tensor, shape: Some(shape), elem: attr::element_type(&b[input].ty).clone().into(), extras: Vec::new() });
+        let (pad_const, size, ty) = (b[pad].operands[2], b[op].operands[2], b[b[op].results[0]].ty.clone());
+        rw.set_before(op);
+        let paddings = const_shape(rw, &new_paddings);
+        let new_pad = rw.create(OpData::build("tosa.pad").operands(&[input, paddings, pad_const]), &[pad_ty]);
+        let new_pad = rw.body[new_pad].results[0];
+        let start = const_shape(rw, &new_starts);
+        rw.replace_with(op, OpData::build("tosa.slice").operands(&[new_pad, start, size]), &[ty]);
+        true
+    }
+
+    /// `SliceDynamicSizeCanonicalization`: a `-1` size where the result's dim is static.
+    SliceDynamicSizeCanonicalization("tosa.slice", 1) |rw, op| {
+        let b = &*rw.body;
+        let (Some(mut sizes), Some(out)) = (Tf::ints_of(b, b[op].operands[2]), dims_of(b, b[op].results[0])) else { return false };
+        let mut replace = false;
+        for (s, d) in sizes.iter_mut().zip(&out) {
+            if let (-1, Some(d)) = (*s, d) {
+                (*s, replace) = (*d, true);
+            }
+        }
+        if !replace {
+            return false;
+        }
+        let (input, start, ty) = (b[op].operands[0], b[op].operands[1], b[b[op].results[0]].ty.clone());
+        rw.set_before(op);
+        let size = const_shape(rw, &sizes);
+        rw.replace_with(op, OpData::build("tosa.slice").operands(&[input, start, size]), &[ty]);
         true
     }
 
@@ -657,7 +843,9 @@ fn const_shape<'a>(rw: &mut crate::Rewriter<'_, 'a>, shape: &[i64]) -> ValueId {
 pub fn patterns(set: &mut crate::PatternSet) {
     set.add(ClampIsNoOp).add(ClampClampOptimization);
     set.add(ConcatOptimization);
-    set.add(MaxPool2dIsNoOp);
+    set.add(FoldPadToConv2d).add(FoldPadToDepthwiseConv2d);
+    set.add(MaxPool2dIsNoOp).add(FoldPadToMaxPool2d);
+    set.add(ConcatSliceOptimization).add(PadSliceOptimization).add(SliceDynamicSizeCanonicalization);
     set.add(SelectOfLogicalNot);
     set.add(ConsolidateTransposeOptimization).add(TransposeIsReshape);
 }

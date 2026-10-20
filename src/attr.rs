@@ -150,6 +150,12 @@ impl<'a> Const<'a> {
         Some(Self { ty, values: self.values.iter().map(|v| f(*v)).collect::<Option<_>>()?, elements: self.elements })
     }
 
+    /// `getValues<int64_t>`: every element as an integer, a splat repeated over the shape.
+    pub fn ints(&self) -> Option<Vec<i64>> {
+        let n = if self.is_splat() { element_count(&self.ty)? } else { self.values.len() };
+        (0..n).map(|i| self.at(i).int().map(|v| v.signed() as i64)).collect()
+    }
+
     /// Element `i` (a splat repeats).
     pub fn at(&self, i: usize) -> Scalar {
         if self.is_splat() { self.values[0] } else { self.values[i] }
