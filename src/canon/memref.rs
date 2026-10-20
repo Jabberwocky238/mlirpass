@@ -414,6 +414,83 @@ rewrites! {
     }
 }
 
+/// `SimplifyAllocConst`: constant non-negative dynamic sizes made static; the new alloc cast
+/// back to the old type.
+fn simplify_alloc_const(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
+    let b = &*rw.body;
+    let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
+    let n = segs.first().copied().unwrap_or(0);
+    let sizes = &b[op].operands[..n];
+    let constant = |v: &ValueId| b.ofr_int(Ofr::V(*v)).filter(|c| *c >= 0);
+    if !sizes.iter().any(|v| constant(v).is_some()) {
+        return false;
+    }
+    let rt = b[b[op].results[0]].ty.clone();
+    let Type::Shaped(s) = &rt else { return false };
+    let mut dynamic = Vec::new();
+    let mut next = sizes.iter();
+    let shape = s.shape.as_ref().map(|dims| dims.iter().map(|d| match d {
+        Dim::Dynamic => {
+            let v = next.next().expect("a size per dynamic dim");
+            match constant(v) {
+                Some(c) => Dim::Static(c),
+                None => {
+                    dynamic.push(*v);
+                    Dim::Dynamic
+                }
+            }
+        }
+        d => d.clone(),
+    }).collect());
+    let ty = Type::Shaped(mlirformat::Shaped { shape, ..s.clone() });
+    let mut ops = dynamic.clone();
+    ops.extend(&b[op].operands[n..]);
+    let mut data = OpData::build(&b[op].name).operands(&ops).segments(&[dynamic.len(), b[op].operands.len() - n]);
+    if let Some(a) = b[op].get("alignment") {
+        data.set("alignment", a.clone());
+    }
+    rw.set_before(op);
+    let new = rw.create(data, &[ty]);
+    let new = rw.body[new].results[0];
+    rw.replace_with(op, OpData::build("memref.cast").operands(&[new]), &[rt]);
+    true
+}
+
+/// `SimplifyDeadAlloc`: an alloc only stored into and deallocated goes, with those uses.
+fn simplify_dead_alloc(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
+    let b = &*rw.body;
+    let v = b[op].results[0];
+    let users: Vec<OpId> = b[v].uses.iter().map(|u| u.op).collect();
+    let dead = users.iter().zip(&b[v].uses).all(|(u, use_)| match &*b[*u].name {
+        "memref.store" => use_.index != 0,
+        "memref.dealloc" => true,
+        _ => false,
+    });
+    if !dead {
+        return false;
+    }
+    let mut seen = Vec::new();
+    for u in users {
+        if !seen.contains(&u) {
+            seen.push(u);
+            rw.erase_op(u);
+        }
+    }
+    rw.erase_op(op);
+    true
+}
+
+rewrites! {
+    /// `SimplifyAllocConst<AllocOp>`.
+    SimplifyAllocConst("memref.alloc", 1) |rw, op| { simplify_alloc_const(rw, op) }
+    /// `SimplifyDeadAlloc<AllocOp>`.
+    SimplifyDeadAlloc("memref.alloc", 1) |rw, op| { simplify_dead_alloc(rw, op) }
+    /// `SimplifyAllocConst<AllocaOp>`.
+    SimplifyAllocaConst("memref.alloca", 1) |rw, op| { simplify_alloc_const(rw, op) }
+    /// `SimplifyDeadAlloc<AllocaOp>`.
+    SimplifyDeadAlloca("memref.alloca", 1) |rw, op| { simplify_dead_alloc(rw, op) }
+}
+
 impl Ofr {
     /// `computeRankReductionMask`: which of `sizes` the shape `reduced` drops (unit sizes, left
     /// to right).
@@ -465,6 +542,7 @@ impl Ofr {
 }
 
 pub fn patterns(set: &mut crate::PatternSet) {
+    set.add(SimplifyAllocConst).add(SimplifyDeadAlloc).add(SimplifyAllocaConst).add(SimplifyDeadAlloca);
     set.add(AllocaScopeInliner);
     set.add(SubViewConstantArguments).add(SubViewOpMemRefCastFolder).add(TrivialSubViewOpFolder);
 }
