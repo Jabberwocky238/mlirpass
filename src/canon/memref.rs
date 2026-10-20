@@ -157,8 +157,26 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
             Fold::Failed
         }
         "memref.extract_strided_metadata" => fold_extract_strided_metadata(b, op),
+        "memref.transpose" => fold_transpose(b, op),
         _ => Fold::Failed,
     }
+}
+
+/// `TransposeOp::fold`: an identity of the same type is its input; a transpose of a
+/// transpose takes the inner one's input with the composed permutation.
+fn fold_transpose<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
+    let (src, res) = (b[op].operands[0], b[op].results[0]);
+    let Some(perm) = b.affine_map(op, "permutation") else { return Fold::Failed };
+    if perm.is_identity() && b[src].ty == b[res].ty {
+        return Folded::Value(src).into();
+    }
+    let Some(inner) = b.def_named(src, "memref.transpose") else { return Fold::Failed };
+    let Some(other) = b.affine_map(inner, "permutation") else { return Fold::Failed };
+    let composed = perm.compose(&other);
+    let input = b[inner].operands[0];
+    b.set_operand(op, 0, input);
+    b[op].set("permutation", super::affine::map_attr(&composed));
+    Fold::InPlace
 }
 
 fn in_place<'a>(changed: bool) -> Fold<'a> {
