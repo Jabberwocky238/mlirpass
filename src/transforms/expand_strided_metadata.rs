@@ -160,7 +160,7 @@ impl<'a> Rewriter<'_, 'a> {
     fn extract_metadata(&mut self, src: ValueId) -> OpId {
         let s = memref(&self.body[src].ty).expect("a ranked memref").clone();
         let rank = s.shape.as_ref().map_or(0, Vec::len);
-        let space: Vec<Attribute> = s.extras.iter().filter(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")).cloned().collect();
+        let space: Vec<Attribute> = s.extras.iter().filter(|a| !a.is_layout()).cloned().collect();
         let base = Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(Vec::new()), elem: s.elem.clone(), extras: space });
         let mut types = vec![base, Type::Index];
         types.extend(vec![Type::Index; 2 * rank]);
@@ -382,7 +382,7 @@ fn alloc_folder(rw: &mut Rewriter<'_, '_>, op: OpId, alloc: &str) -> bool {
     let Some(a) = b.def_named(b[op].operands[0], alloc) else { return false };
     let av = b[a].results[0];
     let Some(mt) = memref(&b[av].ty) else { return false };
-    if mt.extras.iter().any(|x| matches!(x, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")) {
+    if mt.extras.iter().any(|x| x.is_layout()) {
         return false;
     }
     let dims = b.dims_of(av).unwrap_or_default();
@@ -481,7 +481,7 @@ rewrites! {
         let Some(g) = b.def_named(b[op].operands[0], "memref.get_global") else { return false };
         let gv = b[g].results[0];
         let Some(mt) = memref(&b[gv].ty) else { return false };
-        if mt.extras.iter().any(|x| matches!(x, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")) {
+        if mt.extras.iter().any(|x| x.is_layout()) {
             return false;
         }
         let dims = b.dims_of(gv).unwrap_or_default();
@@ -568,7 +568,7 @@ rewrites! {
         let mut results = rw.body[ex].results.clone();
         if base_used {
             let Type::Shaped(bt) = rw.body[results[0]].ty.clone() else { return false };
-            let space: Vec<Attribute> = memref(&cast_ty).map_or(Vec::new(), |s| s.extras.iter().filter(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")).cloned().collect());
+            let space: Vec<Attribute> = memref(&cast_ty).map_or(Vec::new(), |s| s.extras.iter().filter(|a| !a.is_layout()).cloned().collect());
             let nt = Type::Shaped(Shaped { extras: space, ..bt });
             let o = rw.create(OpData::build("memref.memory_space_cast").operands(&[results[0]]), &[nt]);
             results[0] = rw.body[o].results[0];

@@ -64,7 +64,7 @@ impl LlvmOptions {
     /// The address space of a memref (`None` when it cannot be expressed).
     pub fn address_space(&self, s: &Shaped<'_>) -> Option<u32> {
         // The memory space is the last extra that is not a layout.
-        let space = s.extras.iter().find(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map"));
+        let space = s.extras.iter().find(|a| !a.is_layout());
         match space {
             None => Some(0),
             // `getMemRefAddressSpace`: a signless or index integer.

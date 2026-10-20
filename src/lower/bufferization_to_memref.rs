@@ -25,7 +25,7 @@ impl BufferizationToMemref {
         let alloc = match &s.shape {
             None => Self::unranked(&mut cr.rw, input, s),
             Some(shape) => {
-                let alloc_ty = Type::Shaped(Shaped { extras: s.extras.iter().filter(|a| !Self::layout(a)).cloned().collect(), ..s.clone() });
+                let alloc_ty = Type::Shaped(Shaped { extras: s.extras.iter().filter(|a| !a.is_layout()).cloned().collect(), ..s.clone() });
                 if !crate::canon::memref_cast_compatible(&alloc_ty, &ty) {
                     return false;
                 }
@@ -60,10 +60,6 @@ impl BufferizationToMemref {
 }
 
 impl BufferizationToMemref {
-    fn layout(a: &mlirformat::Attribute<'_>) -> bool {
-        matches!(a, mlirformat::Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")
-    }
-
     fn values<'a>(vs: &[ValueId]) -> Vec<mlirformat::Value<'a>> {
         vs.iter().map(|v| (*v).into()).collect()
     }

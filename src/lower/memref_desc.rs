@@ -8,7 +8,7 @@
 
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, Shaped, Type};
+use mlirformat::{Attribute, Dim, Shaped, StridedLayout, Type};
 
 use crate::{ConversionRewriter, LlvmOptions, Listener, OpData, Rewriter, ValueId};
 
@@ -17,15 +17,14 @@ use crate::{ConversionRewriter, LlvmOptions, Listener, OpData, Rewriter, ValueId
 impl LlvmOptions {
     /// `getStridesAndOffset`: from a `strided<...>` layout, or row-major for the identity.
     pub fn strides_and_offset(&self, s: &Shaped<'_>) -> Option<(Vec<i64>, i64)> {
-        let layout = s.extras.iter().find_map(|a| match a {
-            Attribute::Builtin { name, body, .. } if name == "strided" || name == "affine_map" => Some((name == "strided", body)),
-            _ => None,
-        });
+        let layout = s.layout();
         let shape = s.shape.as_ref()?;
-        if let Some((false, map)) = layout {
+        if let Some(Attribute::Builtin { name, body: map, .. }) = layout
+            && name == "affine_map"
+        {
             return Linear::strides(map, shape.len());
         }
-        let Some((_, body)) = layout else {
+        let Some(layout) = layout else {
             let mut strides = alloc::vec![0i64; shape.len()];
             let mut running = 1i64;
             for (i, d) in shape.iter().enumerate().rev() {
@@ -37,15 +36,7 @@ impl LlvmOptions {
             }
             return Some((strides, 0));
         };
-        // `<[s0, s1], offset: o>`
-        let inner = body.trim().strip_prefix('<')?.strip_suffix('>')?;
-        let (list, rest) = inner.split_once(']')?;
-        let num = |t: &str| if t.trim() == "?" { Some(Dim::DYNAMIC) } else { t.trim().parse().ok() };
-        let strides = list.trim_start_matches('[').split(',').filter(|t| !t.trim().is_empty()).map(num).collect::<Option<Vec<_>>>()?;
-        let offset = match rest.split_once("offset:") {
-            Some((_, o)) => num(o)?,
-            None => 0,
-        };
+        let StridedLayout { strides, offset } = StridedLayout::try_from(layout).ok()?;
         Some((strides, offset))
     }
 }

@@ -1,9 +1,8 @@
 //! `memref`: folds, as `MemRefOps.cpp`.
 
-use alloc::format;
 use alloc::vec::Vec;
 
-use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
+use mlirformat::{arith, Attribute, Dim, ShapedKind, StridedLayout, Type};
 
 use crate::{Body, Const, Def, Fold, Folded, LlvmOptions, OpData, OpId, ValueId};
 
@@ -725,12 +724,9 @@ rewrites! {
         let src = b[op].operands[0];
         let Type::Shaped(st) = &b[src].ty else { return false };
         let c = |o: &Ofr| if let Ofr::C(c) = o { *c } else { Dim::DYNAMIC };
-        let num = |n: i64| if n == Dim::DYNAMIC { alloc::string::String::from("?") } else { format!("{n}") };
-        let strides: Vec<_> = lists[2].iter().map(|o| num(c(o))).collect();
-        let offset = c(&lists[0][0]);
-        let body = if offset == 0 { format!("<[{}]>", strides.join(", ")) } else { format!("<[{}], offset: {}>", strides.join(", "), num(offset)) };
-        let mut extras = alloc::vec![Attribute::Builtin { name: "strided".into(), body: body.into(), ty: None }];
-        extras.extend(st.extras.iter().filter(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")).cloned());
+        let layout = StridedLayout { strides: lists[2].iter().map(c).collect(), offset: c(&lists[0][0]) };
+        let mut extras = alloc::vec![layout.into()];
+        extras.extend(st.extras.iter().filter(|a| !a.is_layout()).cloned());
         let shape = lists[1].iter().map(|o| if let Ofr::C(n) = o { Dim::Static(*n) } else { Dim::Dynamic }).collect();
         let ty = Type::Shaped(mlirformat::Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: st.elem.clone(), extras });
         let rt = b[b[op].results[0]].ty.clone();
@@ -782,12 +778,8 @@ impl Ofr {
             shape.push(if z == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(z) });
             out_strides.push(if t == Dim::DYNAMIC || *s == Dim::DYNAMIC { Dim::DYNAMIC } else { t * s });
         }
-        let num = |n: i64| if n == Dim::DYNAMIC { alloc::string::String::from("?") } else { format!("{n}") };
-        let list: Vec<_> = out_strides.iter().map(|n| num(*n)).collect();
-        let body = if offset == 0 { format!("<[{}]>", list.join(", ")) } else { format!("<[{}], offset: {}>", list.join(", "), num(offset)) };
-        let layout = Attribute::Builtin { name: "strided".into(), body: body.into(), ty: None };
-        let mut extras = alloc::vec![layout];
-        extras.extend(src.extras.iter().filter(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")).cloned());
+        let mut extras = alloc::vec![StridedLayout { strides: out_strides, offset }.into()];
+        extras.extend(src.extras.iter().filter(|a| !a.is_layout()).cloned());
         Some(Type::Shaped(mlirformat::Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: src.elem.clone(), extras }))
     }
 }

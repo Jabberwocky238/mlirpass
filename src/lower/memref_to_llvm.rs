@@ -7,7 +7,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
-use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{Attribute, Dim, Shaped, ShapedKind, StridedLayout, Type};
 
 use crate::{BlockId, ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, ValueId, Visibility};
 use mlirformat::llvm_types::LlvmType;
@@ -65,10 +65,7 @@ impl MemrefToLlvm {
     /// `MemRefLayoutAttrInterface::isIdentity`: no layout, `strided<[1]>`, or `(d0, ...) -> (d0, ...)`.
     pub fn identity_layout(s: &Shaped<'_>) -> bool {
         s.extras.iter().all(|a| match a {
-            Attribute::Builtin { name, body, .. } if name == "strided" => {
-                let inner: String = body.chars().filter(|c| !c.is_whitespace()).collect();
-                matches!(&*inner, "<[]>" | "<[1]>" | "<[],offset:0>" | "<[1],offset:0>")
-            }
+            Attribute::Builtin { name, .. } if name == "strided" => StridedLayout::try_from(a).is_ok_and(|l| l.is_identity()),
             Attribute::Builtin { name, body, .. } if name == "affine_map" => {
                 let Some((dims, results)) = body.trim_start_matches('<').trim_end_matches('>').split_once("->") else { return false };
                 let squash = |t: &str| t.chars().filter(|c| !c.is_whitespace()).collect::<String>();
@@ -856,7 +853,7 @@ impl MemrefToLlvm {
             }
             let rank = cr.llvm_constant(Attribute::Int { lit: format!("{}", Self::rank(s)).into(), ty: Some(opts.index()) }, opts.index());
             let p = Self::promote(cr, d);
-            let ty = LlvmConverter::convert_memref(opts, &Shaped { shape: None, extras: s.extras.iter().filter(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")).cloned().collect(), ..s.clone() })?;
+            let ty = LlvmConverter::convert_memref(opts, &Shaped { shape: None, extras: s.extras.iter().filter(|a| !a.is_layout()).cloned().collect(), ..s.clone() })?;
             Some(cr.rw.pack_unranked(ty, &[rank, p]))
         };
         let (Some(us), Some(ut)) = (unranked(cr, &src, sd), unranked(cr, &dst, td)) else { return false };

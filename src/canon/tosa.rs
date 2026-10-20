@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, FloatKind, Signedness, Type};
+use mlirformat::{Attribute, Dim, FloatKind, Signedness, Type, UniformQuantized};
 
 use crate::{ApFloat, ApInt, Body, Const, Fold, Folded, OpData, OpId, Scalar, ValueId};
 
@@ -45,14 +45,7 @@ impl<'a> Tf<'_, '_, 'a> {
     /// `getStorageElementTypeFromQuantized` of a `!quant.uniform` element type (its storage
     /// type, unsigned for `u`), else the type itself.
     fn storage(t: &Type<'a>) -> Type<'a> {
-        let Type::Extended(e) = t else { return t.clone() };
-        let spec = e.body.as_deref().filter(|b| e.name == "quant.uniform" && !b.contains('{')).and_then(|b| b.strip_prefix('<')?.split([':', '<']).next());
-        let Some((sign, width)) = spec.and_then(|s| Some((s.chars().next()?, s[1..].parse().ok()?))) else { return t.clone() };
-        match sign {
-            'u' => Type::Integer { width, signedness: Signedness::Unsigned },
-            'i' => Type::int(width),
-            _ => t.clone(),
-        }
+        UniformQuantized::try_from(t).map_or_else(|()| t.clone(), |q| q.storage_type())
     }
 
     /// The elements of constant `v` as integers (`m_Constant` of a `DenseIntElementsAttr`).

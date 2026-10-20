@@ -45,7 +45,7 @@ impl Memref {
 
     /// The type without its layout (`MemRefType::get(shape, elem, {}, space)`).
     fn without_layout<'a>(s: &Shaped<'a>) -> Type<'a> {
-        let extras = s.extras.iter().filter(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")).cloned().collect();
+        let extras = s.extras.iter().filter(|a| !a.is_layout()).cloned().collect();
         Type::Shaped(Shaped { extras, ..s.clone() })
     }
 }
