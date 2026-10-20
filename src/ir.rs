@@ -273,9 +273,9 @@ impl<'a> Body<'a> {
     /// Adds a detached op with results of `types`; its operands' uses are recorded.
     pub fn create(&mut self, mut data: OpData<'a>, types: &[Type<'a>]) -> OpId {
         if data.defaults {
-            for (k, v) in crate::canon::context_defaults(self.ctx.0, &data.name) {
-                if data.get(k).is_none() {
-                    data.set(k, v);
+            for a in self.ctx.0.defaults(&data.name) {
+                if data.get(&a.name).is_none() {
+                    data.set(&a.name, a.value.unwrap_or(Attribute::Unit));
                 }
             }
             data.defaults = false;

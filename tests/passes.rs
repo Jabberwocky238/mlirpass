@@ -16,7 +16,7 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::Fixtures;
-use mlirpass::mlirformat::{MlirOpt, OpInfos};
+use mlirpass::mlirformat::MlirOpt;
 use mlirpass::{Body, Invocation, Passes};
 
 /// Chunks matching exactly; raise it whenever a change makes more match.
@@ -56,9 +56,8 @@ fn first_diff(a: &str, b: &str) -> String {
 
 #[test]
 fn passes() {
-    // The fixtures are generic: no dialect syntax, but every upstream op's ODS facts.
-    let mut opt = MlirOpt::new();
-    *opt.infos_mut() = OpInfos::upstream();
+    // Every upstream dialect: its ops' ODS facts and declared defaults.
+    let opt = MlirOpt::upstream();
     let passes = Passes::upstream();
     let filter = std::env::var("FILTER").ok();
     let show = std::env::var_os("SHOW").is_some();

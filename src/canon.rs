@@ -77,11 +77,12 @@ impl<'a> AttrExt<'a> for Attribute<'a> {
 }
 
 impl<'a> OpData<'a> {
-    /// A detached op named `name` with its default-valued properties, which ODS builders set
-    /// and generic printing shows.
+    /// A detached op named `name` as its ODS builder makes it: its default-valued properties
+    /// (added from the context when it is created in a [`Body`](crate::Body)) and what the
+    /// builder sets.
     pub fn build(name: &str) -> Self {
         let mut d = OpData::named(String::from(name));
-        for (k, v) in defaults(name) {
+        for (k, v) in builder_sets(name) {
             d.set(k, v);
         }
         d.defaults = true;
@@ -113,46 +114,12 @@ impl<'a> OpData<'a> {
     }
 }
 
-/// The default-valued properties of op `name` that depend on what `ctx` knows of it: the
-/// fast-math flags of `complex`, `math` and `llvm` ops, and `llvm`'s overflow flags.
-pub fn context_defaults<'a>(ctx: &dyn mlirformat::OpRegistry, name: &str) -> Vec<(&'static str, Attribute<'a>)> {
-    let inherent = ctx.op_info(name).map_or(&[][..], |i| i.inherent);
-    let mut out = Vec::new();
-    if (name.starts_with("complex.") || name.starts_with("math.")) && inherent.contains(&"fastmath") {
-        out.push(("fastmath", Attribute::dialect("arith.fastmath", "<none>")));
-    }
-    if name.starts_with("llvm.") {
-        if inherent.contains(&"fastmathFlags") {
-            out.push(("fastmathFlags", Attribute::dialect("llvm.fastmath", "<none>")));
-        }
-        if inherent.contains(&"overflowFlags") {
-            out.push(("overflowFlags", Attribute::Int { lit: "0".into(), ty: Some(Type::int(32)) }));
-        }
-    }
-    out
-}
-
-/// The default-valued properties of op `name`.
-fn defaults<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
+/// What the C++ builders of op `name` set besides its declared defaults (those come from the
+/// context, [`OpRegistry::defaults`](mlirformat::OpRegistry::defaults)).
+fn builder_sets<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
     match name {
-        "arith.addi" | "arith.subi" | "arith.muli" | "arith.shli" | "arith.trunci" => alloc::vec![("overflowFlags", Attribute::dialect("arith.overflow", "<none>"))],
-        "arith.addf" | "arith.subf" | "arith.mulf" | "arith.divf" | "arith.remf" | "arith.negf" | "arith.maximumf" | "arith.maxnumf" | "arith.minimumf" | "arith.minnumf" | "arith.cmpf" => alloc::vec![("fastmath", Attribute::dialect("arith.fastmath", "<none>"))],
-        "ub.poison" => alloc::vec![("value", Attribute::dialect("ub.poison", ""))],
         "vector.load" | "vector.store" | "memref.load" | "memref.store" => alloc::vec![("nontemporal", Attribute::Bool(false))],
-        // LLVM ops: the fast-math and overflow flags default to none.
-        n if n.starts_with("llvm.") => {
-            let mut out = Vec::new();
-            let int = |v: &'static str, w: u32| Attribute::Int { lit: v.into(), ty: Some(Type::int(w)) };
-            match n {
-                "llvm.func" => out.extend([("CConv", Attribute::dialect("llvm.cconv", "<ccc>")), ("linkage", Attribute::dialect("llvm.linkage", "<external>")), ("visibility_", int("0", 64))]),
-                "llvm.mlir.global" => out.extend([("addr_space", int("0", 32)), ("visibility_", int("0", 64))]),
-                "llvm.call" => out.extend([("CConv", Attribute::dialect("llvm.cconv", "<ccc>")), ("TailCallKind", Attribute::dialect("llvm.tailcallkind", "<none>")), ("op_bundle_sizes", Attribute::DenseArray { ty: Type::int(32), values: Vec::new() })]),
-                "llvm.getelementptr" => out.push(("noWrapFlags", int("0", 32))),
-                "llvm.load" | "llvm.store" => out.push(("ordering", int("0", 64))),
-                _ => {}
-            }
-            out
-        }
+        "llvm.call" => alloc::vec![("op_bundle_sizes", Attribute::DenseArray { ty: Type::int(32), values: Vec::new() })],
         _ => Vec::new(),
     }
 }
