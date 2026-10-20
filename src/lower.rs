@@ -263,6 +263,28 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         self.type_converter().and_then(|tc| tc.convert(e)).is_none_or(|c| !matches!(c, Type::Float(_)))
     }
 
+    /// `FailOnUnsupportedFP`: whether an operand or result has an unsupported float type.
+    pub fn unsupported_fp_op(&self, op: OpId) -> bool {
+        let b = &*self.rw.body;
+        b[op].operands.iter().chain(&b[op].results).any(|v| self.unsupported_float(&b[*v].ty))
+    }
+
+    /// `AttrConvertFastMathToLLVM`: `fastmath` becomes `fastmathFlags`.
+    pub fn fastmath_to_llvm(attrs: &mut Vec<NamedAttr<'a>>) {
+        if let Some(i) = attrs.iter().position(|a| a.name == "fastmath") {
+            let a = attrs.remove(i);
+            attrs.push(NamedAttr { name: "fastmathFlags".into(), value: Some(llvm_fastmath(a.value.as_ref())) });
+        }
+    }
+
+    /// `AttrConvertOverflowToLLVM`: `overflowFlags` as the LLVM property.
+    pub fn overflow_to_llvm(attrs: &mut Vec<NamedAttr<'a>>) {
+        if let Some(i) = attrs.iter().position(|a| a.name == "overflowFlags") {
+            let a = attrs.remove(i);
+            attrs.push(NamedAttr { name: "overflowFlags".into(), value: Some(llvm_overflow(a.value.as_ref())) });
+        }
+    }
+
     /// The op's attributes, inherent and discardable, sorted (`getAttrs()`).
     pub fn all_attrs(&self, op: OpId) -> Vec<NamedAttr<'a>> {
         let d = &self.rw.body[op];
@@ -649,7 +671,7 @@ impl Run for ConvertMathToEmitc {
         MathToEmitc::populate(&mut patterns, self.target == LanguageTarget::Cpp11);
         let mut target = ConversionTarget::default();
         target.legal_op("emitc.call_opaque");
-        for r in MathToEmitc::roots() {
+        for r in MathToEmitc::ROOTS {
             target.illegal_op(r);
         }
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)

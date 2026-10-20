@@ -12,6 +12,11 @@
 //!   `populate(patterns, [tc,] [opts,] flags..)`, in declaration order. `options = Type`: the
 //!   methods also take `opts` (`OptLowering`; `plain` opts one out); `extra = path` is called
 //!   last with the same arguments, for patterns that are not methods.
+//! - `#[map("from" => "to", ..)]` on that `impl` block: a lowering generated whole. Without
+//!   `via`, the one-to-one rewrite (`fastmath` / `overflow` attributes converted for llvm, `fp`
+//!   failing on unsupported floats, `unconstrained` without a rounding mode, `scalar` not
+//!   unrolling vectors); with `via = template(args..)`, a call of the family's template
+//!   `template(cr, op, operands, "to", [opts,] args..)`. The impl also gets `ROOTS`.
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as Tokens};
@@ -265,6 +270,87 @@ impl Parse for LoweringArgs {
     }
 }
 
+/// An impl's `#[map("from" => "to", flags.., benefit = n, when = expr, via = template)]`.
+struct MapArgs {
+    from: LitStr,
+    to: LitStr,
+    flags: Vec<Ident>,
+    benefit: Option<LitInt>,
+    when: Option<Expr>,
+    via: Option<Expr>,
+}
+
+impl Parse for MapArgs {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let from: LitStr = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let to: LitStr = input.parse()?;
+        let mut args = MapArgs { from, to, flags: Vec::new(), benefit: None, when: None, via: None };
+        while input.parse::<Option<Token![,]>>()?.is_some() && !input.is_empty() {
+            let k: Ident = input.parse()?;
+            if input.parse::<Option<Token![=]>>()?.is_none() {
+                match k.to_string().as_str() {
+                    "fastmath" | "overflow" | "fp" | "scalar" | "unconstrained" | "untyped" => args.flags.push(k),
+                    o => return Err(syn::Error::new(k.span(), format!("unknown #[map] flag `{o}`"))),
+                }
+                continue;
+            }
+            match k.to_string().as_str() {
+                "benefit" => args.benefit = Some(input.parse()?),
+                "when" => args.when = Some(input.parse()?),
+                "via" => args.via = Some(input.parse()?),
+                o => return Err(syn::Error::new(k.span(), format!("unknown #[map] argument `{o}`"))),
+            }
+        }
+        Ok(args)
+    }
+}
+
+impl MapArgs {
+    fn has(&self, f: &str) -> bool {
+        self.flags.iter().any(|x| x == f)
+    }
+
+    /// The body of the lowering this row is: a call of its template, or the one-to-one
+    /// rewrite itself.
+    fn body(&self, opts: bool) -> Tokens {
+        let to = &self.to;
+        let o = opts.then(|| quote!(opts,));
+        if let Some(via) = &self.via {
+            return match via {
+                Expr::Call(c) => {
+                    let (f, a) = (&c.func, c.args.iter());
+                    quote!(#f(cr, op, operands, #to, #o #(#a),*))
+                }
+                e => quote!(#e(cr, op, operands, #to, #o)),
+            };
+        }
+        let unconstrained = self.has("unconstrained").then(|| quote! {
+            if cr.rw.body[op].get("roundingmode").is_some() {
+                return false;
+            }
+        });
+        let fp = self.has("fp").then(|| quote! {
+            if cr.unsupported_fp_op(op) {
+                return false;
+            }
+        });
+        let fastmath = self.has("fastmath").then(|| quote!(crate::ConversionRewriter::fastmath_to_llvm(&mut attrs);));
+        let overflow = self.has("overflow").then(|| quote!(crate::ConversionRewriter::overflow_to_llvm(&mut attrs);));
+        let rewrite = if self.has("scalar") { quote!(cr.one_to_one_rewrite(op, #to, &ops, &attrs)) } else { quote!(cr.vector_one_to_one(op, #to, &ops, &attrs)) };
+        quote! {
+            #unconstrained
+            #fp
+            let Some(ops) = crate::ConversionRewriter::one_to_one(operands) else { return false };
+            #[allow(unused_mut)]
+            let mut attrs = cr.all_attrs(op);
+            #fastmath
+            #overflow
+            #rewrite
+        }
+    }
+}
+
 /// `#[patterns(..)]`: see the crate docs.
 #[proc_macro_attribute]
 pub fn patterns(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -273,7 +359,21 @@ pub fn patterns(attr: TokenStream, item: TokenStream) -> TokenStream {
         Err(e) => return e.to_compile_error().into(),
     };
     let mut imp = parse_macro_input!(item as ItemImpl);
+    let mut maps = Vec::new();
+    let mut kept = Vec::new();
+    for a in core::mem::take(&mut imp.attrs) {
+        if a.path().is_ident("map") {
+            match a.parse_args::<MapArgs>() {
+                Ok(m) => maps.push(m),
+                Err(e) => return e.to_compile_error().into(),
+            }
+        } else {
+            kept.push(a);
+        }
+    }
+    imp.attrs = kept;
     let mut adds = Vec::new();
+    let mut roots: Vec<LitStr> = Vec::new();
     for it in imp.items.iter_mut() {
         let ImplItem::Fn(m) = it else { continue };
         let Some(pos) = m.attrs.iter().position(|a| a.path().is_ident("lowering")) else { continue };
@@ -287,6 +387,9 @@ pub fn patterns(attr: TokenStream, item: TokenStream) -> TokenStream {
         let add = if args.converter && !l.untyped { quote!(patterns.add_with(tc, l)) } else { quote!(patterns.add(l)) };
         let when = l.when.map_or_else(|| quote!(true), |w| quote!(#w));
         for root in &l.roots {
+            if !roots.iter().any(|r| r.value() == root.value()) {
+                roots.push(root.clone());
+            }
             let make = if args.options.is_some() && !l.plain {
                 quote!(crate::lower::OptLowering { root: #root, opts, f: Self::#f })
             } else {
@@ -300,6 +403,42 @@ pub fn patterns(attr: TokenStream, item: TokenStream) -> TokenStream {
             });
         }
     }
+    let opts_ty = args.options.clone();
+    for (i, m) in maps.iter().enumerate() {
+        let f = format_ident!("__map{}", i);
+        let body = m.body(opts_ty.is_some());
+        let opt_param = opts_ty.as_ref().map(|t| quote!(opts: #t,));
+        let doc = format!("`{}` ⇒ `{}`.", m.from.value(), m.to.value());
+        imp.items.push(syn::parse_quote! {
+            #[doc = #doc]
+            fn #f(cr: &mut crate::ConversionRewriter<'_, '_, '_>, op: crate::OpId, operands: &[alloc::vec::Vec<crate::ValueId>], #opt_param) -> bool {
+                let _ = operands;
+                #body
+            }
+        });
+        let from = &m.from;
+        if !roots.iter().any(|r| r.value() == from.value()) {
+            roots.push(from.clone());
+        }
+        let benefit = m.benefit.as_ref().map_or_else(|| quote!(1), |b| quote!(#b));
+        let when = m.when.as_ref().map_or_else(|| quote!(true), |w| quote!(#w));
+        let make = if opts_ty.is_some() {
+            quote!(crate::lower::OptLowering { root: #from, opts, f: Self::#f })
+        } else {
+            quote!(crate::lower::Lowering { root: #from, benefit: #benefit, f: Self::#f })
+        };
+        let add = if args.converter && !m.has("untyped") { quote!(patterns.add_with(tc, l)) } else { quote!(patterns.add(l)) };
+        adds.push(quote! {
+            if #when {
+                let l = #make;
+                #add;
+            }
+        });
+    }
+    imp.items.push(syn::parse_quote! {
+        /// Every root the patterns above lower.
+        pub const ROOTS: &'static [&'static str] = &[#(#roots),*];
+    });
     let tc = args.converter.then(|| quote!(tc: usize,));
     let opts = args.options.as_ref().map(|t| quote!(opts: #t,));
     let names: Vec<&Ident> = args.params.iter().map(|p| &p.0).collect();

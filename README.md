@@ -54,6 +54,15 @@ impl ComplexToLlvm {
 }
 ```
 
+Rows that differ only in their target are generated whole with `#[map]` on the same `impl`:
+
+```rust
+#[patterns(converter)]
+#[map("arith.addf" => "llvm.fadd", fastmath, fp)]            // the one-to-one rewrite itself
+#[map("arith.shli" => "emitc.bitwise_left_shift", via = Self::shift(true))] // a family template
+impl ArithToLlvm { /* the special cases, as #[lowering] methods */ }
+```
+
 `#[pass("name", on = "op", extra = [..], check = path)]` gives the `mlir-opt` name, the anchor
 op, options accepted but unused, and a validation hook; the registry (`src/pass/registry.rs`)
 lists the types only. `#[patterns]` takes `converter` (a type converter index), `options = T`

@@ -7,122 +7,52 @@ use alloc::vec::Vec;
 use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Type};
 
-use super::{llvm_fastmath, llvm_overflow};
+use super::llvm_fastmath;
 use crate::canon::AttrExt;
-use crate::{ApInt, Const, ConversionPattern, ConversionPatterns, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
-
-/// How an op's attributes carry over (`AttrConvert*`).
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Attrs {
-    PassThrough,
-    FastMath,
-    Overflow,
-}
-
-/// `VectorConvertToLLVMPattern<From, To, Attrs, FailOnUnsupportedFP>`.
-pub struct OneToOne {
-    pub from: &'static str,
-    pub to: &'static str,
-    pub attrs: Attrs,
-    pub fail_on_unsupported_fp: bool,
-    /// `ConstrainedVectorConvertToLLVMPattern`: only without a rounding mode.
-    pub unconstrained: bool,
-}
-
-impl ConversionPattern for OneToOne {
-    fn name(&self) -> &str {
-        self.to
-    }
-
-    fn root(&self) -> Option<&str> {
-        Some(self.from)
-    }
-
-    fn rewrite(&self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
-        if self.unconstrained && cr.rw.body[op].get("roundingmode").is_some() {
-            return false;
-        }
-        if self.fail_on_unsupported_fp {
-            let b = &*cr.rw.body;
-            let types: Vec<Type> = b[op].operands.iter().chain(&b[op].results).map(|v| b[*v].ty.clone()).collect();
-            if types.iter().any(|t| cr.unsupported_float(t)) {
-                return false;
-            }
-        }
-        let Some(operands) = ConversionRewriter::one_to_one(operands) else { return false };
-        let mut attrs = cr.all_attrs(op);
-        match self.attrs {
-            Attrs::PassThrough => {}
-            Attrs::FastMath => {
-                if let Some(i) = attrs.iter().position(|a| a.name == "fastmath") {
-                    let a = attrs.remove(i);
-                    attrs.push(NamedAttr { name: "fastmathFlags".into(), value: Some(llvm_fastmath(a.value.as_ref())) });
-                }
-            }
-            Attrs::Overflow => {
-                if let Some(i) = attrs.iter().position(|a| a.name == "overflowFlags") {
-                    let a = attrs.remove(i);
-                    attrs.push(NamedAttr { name: "overflowFlags".into(), value: Some(llvm_overflow(a.value.as_ref())) });
-                }
-            }
-        }
-        cr.vector_one_to_one(op, self.to, &operands, &attrs)
-    }
-}
-
-/// The patterns without special cases, as one table.
-macro_rules! one_to_one {
-    ($($from:literal => $to:literal $attrs:ident $($fp:ident)?;)*) => {
-        const ONE_TO_ONE: &[(&str, &str, Attrs, bool)] = &[$(($from, $to, Attrs::$attrs, one_to_one!(@fp $($fp)?)),)*];
-    };
-    (@fp) => { false };
-    (@fp fp) => { true };
-}
-
-one_to_one! {
-    "arith.addf" => "llvm.fadd" FastMath fp;
-    "arith.addi" => "llvm.add" Overflow;
-    "arith.andi" => "llvm.and" PassThrough;
-    "arith.bitcast" => "llvm.bitcast" PassThrough;
-    "arith.divf" => "llvm.fdiv" FastMath fp;
-    "arith.divsi" => "llvm.sdiv" PassThrough;
-    "arith.divui" => "llvm.udiv" PassThrough;
-    "arith.extf" => "llvm.fpext" PassThrough fp;
-    "arith.extsi" => "llvm.sext" PassThrough;
-    "arith.extui" => "llvm.zext" PassThrough;
-    "arith.fptosi" => "llvm.fptosi" PassThrough fp;
-    "arith.fptoui" => "llvm.fptoui" PassThrough fp;
-    "arith.maximumf" => "llvm.intr.maximum" FastMath fp;
-    "arith.maxnumf" => "llvm.intr.maxnum" FastMath fp;
-    "arith.maxsi" => "llvm.intr.smax" PassThrough;
-    "arith.maxui" => "llvm.intr.umax" PassThrough;
-    "arith.minimumf" => "llvm.intr.minimum" FastMath fp;
-    "arith.minnumf" => "llvm.intr.minnum" FastMath fp;
-    "arith.minsi" => "llvm.intr.smin" PassThrough;
-    "arith.minui" => "llvm.intr.umin" PassThrough;
-    "arith.mulf" => "llvm.fmul" FastMath fp;
-    "arith.muli" => "llvm.mul" Overflow;
-    "arith.negf" => "llvm.fneg" FastMath fp;
-    "arith.ori" => "llvm.or" PassThrough;
-    "arith.remf" => "llvm.frem" FastMath fp;
-    "arith.remsi" => "llvm.srem" PassThrough;
-    "arith.remui" => "llvm.urem" PassThrough;
-    "arith.select" => "llvm.select" PassThrough;
-    "arith.shli" => "llvm.shl" Overflow;
-    "arith.shrsi" => "llvm.ashr" PassThrough;
-    "arith.shrui" => "llvm.lshr" PassThrough;
-    "arith.sitofp" => "llvm.sitofp" PassThrough;
-    "arith.subf" => "llvm.fsub" FastMath fp;
-    "arith.subi" => "llvm.sub" Overflow;
-    "arith.trunci" => "llvm.trunc" Overflow;
-    "arith.uitofp" => "llvm.uitofp" PassThrough fp;
-    "arith.xori" => "llvm.xor" PassThrough;
-}
+use crate::{ApInt, Const, ConversionPattern, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
 
 /// The arith ⇒ llvm patterns, in `populateArithToLLVMConversionPatterns` order.
 pub struct ArithToLlvm;
 
-#[patterns(converter, extra = Self::one_to_one)]
+#[patterns(converter)]
+#[map("arith.truncf" => "llvm.fptrunc", fp, unconstrained)]
+#[map("arith.addf" => "llvm.fadd", fastmath, fp)]
+#[map("arith.addi" => "llvm.add", overflow)]
+#[map("arith.andi" => "llvm.and")]
+#[map("arith.bitcast" => "llvm.bitcast")]
+#[map("arith.divf" => "llvm.fdiv", fastmath, fp)]
+#[map("arith.divsi" => "llvm.sdiv")]
+#[map("arith.divui" => "llvm.udiv")]
+#[map("arith.extf" => "llvm.fpext", fp)]
+#[map("arith.extsi" => "llvm.sext")]
+#[map("arith.extui" => "llvm.zext")]
+#[map("arith.fptosi" => "llvm.fptosi", fp)]
+#[map("arith.fptoui" => "llvm.fptoui", fp)]
+#[map("arith.maximumf" => "llvm.intr.maximum", fastmath, fp)]
+#[map("arith.maxnumf" => "llvm.intr.maxnum", fastmath, fp)]
+#[map("arith.maxsi" => "llvm.intr.smax")]
+#[map("arith.maxui" => "llvm.intr.umax")]
+#[map("arith.minimumf" => "llvm.intr.minimum", fastmath, fp)]
+#[map("arith.minnumf" => "llvm.intr.minnum", fastmath, fp)]
+#[map("arith.minsi" => "llvm.intr.smin")]
+#[map("arith.minui" => "llvm.intr.umin")]
+#[map("arith.mulf" => "llvm.fmul", fastmath, fp)]
+#[map("arith.muli" => "llvm.mul", overflow)]
+#[map("arith.negf" => "llvm.fneg", fastmath, fp)]
+#[map("arith.ori" => "llvm.or")]
+#[map("arith.remf" => "llvm.frem", fastmath, fp)]
+#[map("arith.remsi" => "llvm.srem")]
+#[map("arith.remui" => "llvm.urem")]
+#[map("arith.select" => "llvm.select")]
+#[map("arith.shli" => "llvm.shl", overflow)]
+#[map("arith.shrsi" => "llvm.ashr")]
+#[map("arith.shrui" => "llvm.lshr")]
+#[map("arith.sitofp" => "llvm.sitofp")]
+#[map("arith.subf" => "llvm.fsub", fastmath, fp)]
+#[map("arith.subi" => "llvm.sub", overflow)]
+#[map("arith.trunci" => "llvm.trunc", overflow)]
+#[map("arith.uitofp" => "llvm.uitofp", fp)]
+#[map("arith.xori" => "llvm.xor")]
 impl ArithToLlvm {
     /// `IdentityBitcastLowering`: a bitcast between types that convert alike.
     #[lowering("arith.bitcast", benefit = 10)]
@@ -346,23 +276,11 @@ impl ArithToLlvm {
         true
     }
 
-    /// The ops lowered one to one, from `ONE_TO_ONE`.
-    fn one_to_one(patterns: &mut ConversionPatterns<'_>, tc: usize) {
-        for (from, to, attrs, fp) in ONE_TO_ONE {
-            patterns.add_with(tc, OneToOne { from, to, attrs: *attrs, fail_on_unsupported_fp: *fp, unconstrained: false });
-        }
-    }
-
-
-    /// `TruncFOpLowering` without a rounding mode, `ConstrainedTruncFOpLowering` with one.
+    /// `ConstrainedTruncFOpLowering` (the `#[map]` row is `TruncFOpLowering`, without one).
     #[lowering("arith.truncf")]
     fn truncf(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
-        let Some(mode) = cr.rw.body[op].get("roundingmode").cloned() else {
-            return OneToOne { from: "arith.truncf", to: "llvm.fptrunc", attrs: Attrs::PassThrough, fail_on_unsupported_fp: true, unconstrained: true }.rewrite(cr, op, operands);
-        };
-        let b = &*cr.rw.body;
-        let types: Vec<Type> = b[op].operands.iter().chain(&b[op].results).map(|v| b[*v].ty.clone()).collect();
-        if types.iter().any(|t| cr.unsupported_float(t)) {
+        let Some(mode) = cr.rw.body[op].get("roundingmode").cloned() else { return false };
+        if cr.unsupported_fp_op(op) {
             return false;
         }
         let Some(ops) = ConversionRewriter::one_to_one(operands) else { return false };

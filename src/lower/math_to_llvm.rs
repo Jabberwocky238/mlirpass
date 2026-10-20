@@ -6,44 +6,40 @@ use alloc::vec::Vec;
 use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Type};
 
-use super::arith_to_llvm::{Attrs, OneToOne};
 use super::llvm_fastmath;
-use crate::{ApFloat, Const, ConversionPatterns, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
-
-/// `ConvertFMFMathToLLVMPattern` pairs (and `ctpop`, which passes its attributes through).
-const FASTMATH: &[(&str, &str)] = &[
-    ("math.absf", "llvm.intr.fabs"),
-    ("math.ceil", "llvm.intr.ceil"),
-    ("math.copysign", "llvm.intr.copysign"),
-    ("math.cos", "llvm.intr.cos"),
-    ("math.cosh", "llvm.intr.cosh"),
-    ("math.acos", "llvm.intr.acos"),
-    ("math.exp2", "llvm.intr.exp2"),
-    ("math.exp", "llvm.intr.exp"),
-    ("math.fpowi", "llvm.intr.powi"),
-    ("math.floor", "llvm.intr.floor"),
-    ("math.fma", "llvm.intr.fma"),
-    ("math.log10", "llvm.intr.log10"),
-    ("math.log2", "llvm.intr.log2"),
-    ("math.log", "llvm.intr.log"),
-    ("math.powf", "llvm.intr.pow"),
-    ("math.roundeven", "llvm.intr.roundeven"),
-    ("math.round", "llvm.intr.round"),
-    ("math.sin", "llvm.intr.sin"),
-    ("math.sinh", "llvm.intr.sinh"),
-    ("math.asin", "llvm.intr.asin"),
-    ("math.sqrt", "llvm.intr.sqrt"),
-    ("math.trunc", "llvm.intr.trunc"),
-    ("math.tan", "llvm.intr.tan"),
-    ("math.tanh", "llvm.intr.tanh"),
-    ("math.atan", "llvm.intr.atan"),
-    ("math.atan2", "llvm.intr.atan2"),
-];
+use crate::{ApFloat, Const, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
 
 /// The math ⇒ llvm patterns.
 pub struct MathToLlvm;
 
-#[patterns(converter, approximate_log1p: bool, extra = Self::one_to_one)]
+#[patterns(converter, approximate_log1p: bool)]
+#[map("math.ctpop" => "llvm.intr.ctpop", fp)]
+#[map("math.absf" => "llvm.intr.fabs", fastmath, fp)]
+#[map("math.ceil" => "llvm.intr.ceil", fastmath, fp)]
+#[map("math.copysign" => "llvm.intr.copysign", fastmath, fp)]
+#[map("math.cos" => "llvm.intr.cos", fastmath, fp)]
+#[map("math.cosh" => "llvm.intr.cosh", fastmath, fp)]
+#[map("math.acos" => "llvm.intr.acos", fastmath, fp)]
+#[map("math.exp2" => "llvm.intr.exp2", fastmath, fp)]
+#[map("math.exp" => "llvm.intr.exp", fastmath, fp)]
+#[map("math.fpowi" => "llvm.intr.powi", fastmath, fp)]
+#[map("math.floor" => "llvm.intr.floor", fastmath, fp)]
+#[map("math.fma" => "llvm.intr.fma", fastmath, fp)]
+#[map("math.log10" => "llvm.intr.log10", fastmath, fp)]
+#[map("math.log2" => "llvm.intr.log2", fastmath, fp)]
+#[map("math.log" => "llvm.intr.log", fastmath, fp)]
+#[map("math.powf" => "llvm.intr.pow", fastmath, fp)]
+#[map("math.roundeven" => "llvm.intr.roundeven", fastmath, fp)]
+#[map("math.round" => "llvm.intr.round", fastmath, fp)]
+#[map("math.sin" => "llvm.intr.sin", fastmath, fp)]
+#[map("math.sinh" => "llvm.intr.sinh", fastmath, fp)]
+#[map("math.asin" => "llvm.intr.asin", fastmath, fp)]
+#[map("math.sqrt" => "llvm.intr.sqrt", fastmath, fp)]
+#[map("math.trunc" => "llvm.intr.trunc", fastmath, fp)]
+#[map("math.tan" => "llvm.intr.tan", fastmath, fp)]
+#[map("math.tanh" => "llvm.intr.tanh", fastmath, fp)]
+#[map("math.atan" => "llvm.intr.atan", fastmath, fp)]
+#[map("math.atan2" => "llvm.intr.atan2", fastmath, fp)]
 impl MathToLlvm {
     /// The op's attributes with `fastmath` as `fastmathFlags` (`AttrConvertFastMathToLLVM`).
     fn fmf_attrs(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Vec<NamedAttr<'static>> {
@@ -208,14 +204,6 @@ impl MathToLlvm {
     #[lowering("math.isfinite")]
     fn isfinite(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::fpclass(cr, op, operands, 504)
-    }
-
-    /// The ops lowered one to one: `ctpop`, and `FASTMATH`.
-    fn one_to_one(patterns: &mut ConversionPatterns<'_>, tc: usize, _: bool) {
-        patterns.add_with(tc, OneToOne { from: "math.ctpop", to: "llvm.intr.ctpop", attrs: Attrs::PassThrough, fail_on_unsupported_fp: true, unconstrained: false });
-        for (from, to) in FASTMATH {
-            patterns.add_with(tc, OneToOne { from, to, attrs: Attrs::FastMath, fail_on_unsupported_fp: true, unconstrained: false });
-        }
     }
 
 }

@@ -8,52 +8,30 @@ use mlirpass_macros::patterns;
 use mlirformat::{Attribute, Type};
 
 use crate::canon::AttrExt;
-use crate::{ConversionPatterns, ConversionRewriter, OpData, OpId, ValueId};
-
-/// `OneToOneConvertToLLVMPattern` pairs.
-const ONE_TO_ONE: &[(&str, &str)] = &[
-    ("index.add", "llvm.add"),
-    ("index.sub", "llvm.sub"),
-    ("index.mul", "llvm.mul"),
-    ("index.divs", "llvm.sdiv"),
-    ("index.divu", "llvm.udiv"),
-    ("index.rems", "llvm.srem"),
-    ("index.remu", "llvm.urem"),
-    ("index.maxs", "llvm.intr.smax"),
-    ("index.maxu", "llvm.intr.umax"),
-    ("index.mins", "llvm.intr.smin"),
-    ("index.minu", "llvm.intr.umin"),
-    ("index.shl", "llvm.shl"),
-    ("index.shrs", "llvm.ashr"),
-    ("index.shru", "llvm.lshr"),
-    ("index.and", "llvm.and"),
-    ("index.or", "llvm.or"),
-    ("index.xor", "llvm.xor"),
-];
+use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
 /// The index ⇒ llvm patterns.
 pub struct IndexToLlvm;
 
-/// `OneToOneConvertToLLVMPattern`.
-struct OneToOne(&'static str, &'static str);
-
-impl crate::ConversionPattern for OneToOne {
-    fn name(&self) -> &str {
-        self.1
-    }
-
-    fn root(&self) -> Option<&str> {
-        Some(self.0)
-    }
-
-    fn rewrite(&self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
-        let Some(ops) = ConversionRewriter::one_to_one(operands) else { return false };
-        let attrs = cr.all_attrs(op);
-        cr.one_to_one_rewrite(op, self.1, &ops, &attrs)
-    }
-}
-
-#[patterns(converter, extra = Self::one_to_one)]
+#[patterns(converter)]
+#[map("index.add" => "llvm.add", scalar)]
+#[map("index.sub" => "llvm.sub", scalar)]
+#[map("index.mul" => "llvm.mul", scalar)]
+#[map("index.divs" => "llvm.sdiv", scalar)]
+#[map("index.divu" => "llvm.udiv", scalar)]
+#[map("index.rems" => "llvm.srem", scalar)]
+#[map("index.remu" => "llvm.urem", scalar)]
+#[map("index.maxs" => "llvm.intr.smax", scalar)]
+#[map("index.maxu" => "llvm.intr.umax", scalar)]
+#[map("index.mins" => "llvm.intr.smin", scalar)]
+#[map("index.minu" => "llvm.intr.umin", scalar)]
+#[map("index.shl" => "llvm.shl", scalar)]
+#[map("index.shrs" => "llvm.ashr", scalar)]
+#[map("index.shru" => "llvm.lshr", scalar)]
+#[map("index.and" => "llvm.and", scalar)]
+#[map("index.or" => "llvm.or", scalar)]
+#[map("index.xor" => "llvm.xor", scalar)]
+#[map("index.bool.constant" => "llvm.mlir.constant", scalar)]
 impl IndexToLlvm {
     /// `LLVM::ConstantOp::create(type, int)`.
     fn int<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, ty: &Type<'a>, v: i64) -> ValueId {
@@ -198,14 +176,6 @@ impl IndexToLlvm {
         let value: Attribute = crate::Const::int(v.trunc(w), ty.clone()).into();
         cr.replace_new(op, OpData::build("llvm.mlir.constant").with("value", value), &[ty]);
         true
-    }
-
-    /// The ops lowered one to one, from `ONE_TO_ONE`.
-    fn one_to_one(patterns: &mut ConversionPatterns<'_>, tc: usize) {
-        for (from, to) in ONE_TO_ONE {
-            patterns.add_with(tc, OneToOne(from, to));
-        }
-        patterns.add_with(tc, OneToOne("index.bool.constant", "llvm.mlir.constant"));
     }
 
 }
