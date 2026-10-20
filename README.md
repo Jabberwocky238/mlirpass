@@ -16,6 +16,7 @@ Alpha (`0.1.0-alpha.1`): 3928 of the 4831 fixture cases match `mlir-opt` 22.1.8 
 |---|---|---|
 | `ir` | arena IR with use-def chains; `Module` ⇄ IR | `mlir/IR` |
 | `pass` | pass manager, `--pass-pipeline` syntax, registry | `mlir/Pass` |
+| `parallel` | `Executor` (`Serial`, `ThreadPool`): nested pipelines over isolated ops (functions) as parallel tasks | `OpToOpPassAdaptor`, `llvm::ThreadPool` |
 | `rewrite` | patterns, rewriter, greedy driver, folding | `PatternMatch`, `GreedyPatternRewriteDriver` |
 | `conversion` | conversion target, type converter, dialect conversion | `DialectConversion` |
 | `llvm` | everything llvm: the type converter, dialect → `llvm`, the llvm folds, `DataLayout`, the llvm memory-slot interfaces | `mlir/lib/Conversion/*ToLLVM`, `Dialect/LLVMIR` |
@@ -118,6 +119,11 @@ rewrites! {
 `mem2reg` / `sroa` ask the memory-slot interfaces (`src/transforms/memslot.rs`) as traits a
 dialect implements once for its ops by name: `Promotable` and `Destructurable`, on the unit
 structs `LlvmSlots` and `MemrefSlots`.
+
+Nested pipelines run in parallel: `PassManager::run_on(body, op, &ThreadPool::default())` moves
+each op of a nested pipeline that is `IsolatedFromAbove` (`llvm.func(...)`, `func.func(...)`) into
+a body of its own and runs them as the pool's tasks; the result is the same as with `Serial`
+(`run`, `-mlir-disable-threading`). The command line threads by default, as `mlir-opt`.
 
 Nothing is global. Pipelines name passes through a `PassRegistry` (`Passes::upstream()` registers
 every pass: `Invocation::parse(&passes, args)`); a `Body` asks its context (mlirformat's `MlirOpt`,
