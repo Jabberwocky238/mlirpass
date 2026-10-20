@@ -400,6 +400,12 @@ pub fn patterns(attr: TokenStream, item: TokenStream) -> TokenStream {
             };
             let name = &m.sig.ident;
             let w = format_ident!("__typed_{}", name);
+            // Without a type converter, the op's own operands (an `OpRewritePattern`).
+            let ops_src = if args.converter && !l.untyped {
+                quote!(crate::ConversionRewriter::one_to_one(operands)?)
+            } else {
+                quote!({ let _ = operands; cr.rw.body[op].operands.clone() })
+            };
             let mut n = 0usize;
             let mut fetch = Vec::new();
             let mut args_v = Vec::new();
@@ -418,7 +424,7 @@ pub fn patterns(attr: TokenStream, item: TokenStream) -> TokenStream {
             typed_fns.push(syn::parse_quote! {
                 fn #w(cr: &mut crate::ConversionRewriter<'_, '_, '_>, op: crate::OpId, operands: &[alloc::vec::Vec<crate::ValueId>]) -> bool {
                     let run = |cr: &mut crate::ConversionRewriter<'_, '_, '_>| -> Option<bool> {
-                        let __ops = crate::ConversionRewriter::one_to_one(operands)?;
+                        let __ops = #ops_src;
                         #(#fetch)*
                         let __r = {
                             let mut __b = #builder(cr, op);
@@ -627,8 +633,11 @@ impl OpsRewrite {
                 Expr::Call(c)
             }
             Expr::MethodCall(mut m) => {
+                // A call on the builder: its arguments are evaluated first, in order (they
+                // may build ops through it too).
+                let on_builder = { let r = &m.receiver; quote!(#r) }.to_string() == { let b = &self.b; quote!(#b) }.to_string();
                 *m.receiver = self.expr(*m.receiver, pre);
-                m.args = m.args.into_iter().map(|a| self.expr(a, pre)).collect();
+                m.args = m.args.into_iter().map(|a| if on_builder { self.operand(a, pre) } else { self.expr(a, pre) }).collect();
                 Expr::MethodCall(m)
             }
             Expr::Tuple(mut t) => {

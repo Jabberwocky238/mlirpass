@@ -4,17 +4,81 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirpass_macros::patterns;
+use mlirpass_macros::{ops, patterns};
 use mlirformat::{Attribute, NamedAttr, Type};
 
 use super::llvm_fastmath;
 use crate::canon::AttrExt;
 use crate::{ApInt, Const, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
 
+/// `arith::CmpIPredicate`s.
+const EQ: i64 = 0;
+const NE: i64 = 1;
+const SLT: i64 = 2;
+
+/// Builds the arith expansions of `ceildiv` / `floordiv` over values of type `ty`.
+struct Ar<'c, 'r, 'a, 'p> {
+    cr: &'c mut ConversionRewriter<'r, 'a, 'p>,
+    ty: Type<'a>,
+}
+
+impl Ar<'_, '_, '_, '_> {
+    /// An `arith.constant` of `v` (an `int`, or a splat) of the type.
+    fn int(&mut self, v: i128) -> ValueId {
+        let ty = self.ty.clone();
+        let e = attr::element_type(&ty).clone();
+        let w = attr::int_width(&e).map_or(64, |w| w.0);
+        let value: Attribute = match &ty {
+            Type::Shaped(_) => Const::splat(Scalar::Int(ApInt::new(w, v)), ty.clone()).into(),
+            _ => Const::int(ApInt::new(w, v), e).into(),
+        };
+        self.cr.build(OpData::build("arith.constant").with("value", value), ty)
+    }
+
+    fn cmp(&mut self, pred: i64, l: ValueId, r: ValueId) -> ValueId {
+        let ty = attr::with_element(&self.cr.rw.body[l].ty.clone(), Type::I1);
+        self.cr.build(OpData::build("arith.cmpi").operands(&[l, r]).with("predicate", Attribute::i64(pred)), ty)
+    }
+
+    fn arith(&mut self, name: &str, l: ValueId, r: ValueId) -> ValueId {
+        let ty = self.cr.rw.body[l].ty.clone();
+        self.cr.build(OpData::build(name).operands(&[l, r]), ty)
+    }
+
+    fn add(&mut self, l: ValueId, r: ValueId) -> ValueId {
+        self.arith("arith.addi", l, r)
+    }
+
+    fn sub(&mut self, l: ValueId, r: ValueId) -> ValueId {
+        self.arith("arith.subi", l, r)
+    }
+
+    fn mul(&mut self, l: ValueId, r: ValueId) -> ValueId {
+        self.arith("arith.muli", l, r)
+    }
+
+    fn div(&mut self, l: ValueId, r: ValueId) -> ValueId {
+        self.arith("arith.divsi", l, r)
+    }
+
+    fn divui(&mut self, l: ValueId, r: ValueId) -> ValueId {
+        self.arith("arith.divui", l, r)
+    }
+
+    fn and(&mut self, l: ValueId, r: ValueId) -> ValueId {
+        self.arith("arith.andi", l, r)
+    }
+
+    fn select(&mut self, c: ValueId, a: ValueId, b: ValueId) -> ValueId {
+        let ty = self.ty.clone();
+        self.cr.build(OpData::build("arith.select").operands(&[c, a, b]), ty)
+    }
+}
+
 /// The arith ⇒ llvm patterns, in `populateArithToLLVMConversionPatterns` order.
 pub struct ArithToLlvm;
 
-#[patterns(converter)]
+#[patterns(converter, builder = Self::ar)]
 #[map("arith.truncf" => "llvm.fptrunc", fp, unconstrained)]
 #[map("arith.addf" => "llvm.fadd", fastmath, fp)]
 #[map("arith.addi" => "llvm.add", overflow)]
@@ -202,78 +266,47 @@ impl ArithToLlvm {
         Self::cmp(cr, op, operands, true)
     }
 
-    /// An `arith.constant` of `v` (an `int`, or a splat) of type `ty`.
-    fn arith_const(cr: &mut ConversionRewriter<'_, '_, '_>, ty: &Type<'_>, v: i128) -> ValueId {
-        let e = attr::element_type(ty).clone().owned_type();
-        let w = attr::int_width(&e).map_or(64, |w| w.0);
-        let value: Attribute = match ty {
-            Type::Shaped(_) => Const::splat(Scalar::Int(ApInt::new(w, v)), ty.clone().owned_type()).into(),
-            _ => Const::int(ApInt::new(w, v), e).into(),
-        };
-        cr.build(OpData::build("arith.constant").with("value", value), ty.clone().owned_type())
-    }
-
-    fn cmpi_op(cr: &mut ConversionRewriter<'_, '_, '_>, pred: i64, l: ValueId, r: ValueId) -> ValueId {
-        let ty = attr::with_element(&cr.rw.body[l].ty.clone(), Type::I1);
-        cr.build(OpData::build("arith.cmpi").operands(&[l, r]).with("predicate", Attribute::i64(pred)), ty)
-    }
-
-    fn arith(cr: &mut ConversionRewriter<'_, '_, '_>, name: &str, ops: &[ValueId]) -> ValueId {
-        let ty = cr.rw.body[ops[0]].ty.clone();
-        cr.build(OpData::build(name).operands(ops), ty)
+    /// The expansion builder: arith ops of the op's operand type.
+    fn ar<'c, 'r, 'a, 'p>(cr: &'c mut ConversionRewriter<'r, 'a, 'p>, op: OpId) -> Ar<'c, 'r, 'a, 'p> {
+        let ty = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
+        Ar { cr, ty }
     }
 
     /// `CeilDivUIOpConverter`.
     #[lowering("arith.ceildivui", untyped)]
-    fn ceildivui(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
-        let (a, b) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
-        let ty = cr.rw.body[a].ty.clone();
-        let zero = Self::arith_const(cr, &ty, 0);
-        let cmp = Self::cmpi_op(cr, 0, a, zero);
-        let one = Self::arith_const(cr, &ty, 1);
-        let minus = Self::arith(cr, "arith.subi", &[a, one]);
-        let q = Self::arith(cr, "arith.divui", &[minus, b]);
-        let plus = Self::arith(cr, "arith.addi", &[q, one]);
-        cr.replace_new(op, OpData::build("arith.select").operands(&[cmp, zero, plus]), &[ty]);
-        true
+    #[ops(b)]
+    fn ceildivui(b: &mut Ar<'_, '_, '_, '_>, x: ValueId, y: ValueId) -> ValueId {
+        let zero = b.int(0);
+        let is_zero = b.cmp(EQ, x, zero);
+        let one = b.int(1);
+        let q = b.divui(x - one, y);
+        b.select(is_zero, zero, q + one)
     }
 
     /// `CeilDivSIOpConverter`.
     #[lowering("arith.ceildivsi", untyped)]
-    fn ceildivsi(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
-        let (a, b) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
-        let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
-        let zero = Self::arith_const(cr, &ty, 0);
-        let one = Self::arith_const(cr, &ty, 1);
-        let q = Self::arith(cr, "arith.divsi", &[a, b]);
-        let p = Self::arith(cr, "arith.muli", &[q, b]);
-        let ne = Self::cmpi_op(cr, 1, a, p);
-        let an = Self::cmpi_op(cr, 2, a, zero);
-        let bn = Self::cmpi_op(cr, 2, b, zero);
-        let same = Self::cmpi_op(cr, 0, an, bn);
-        let cond = Self::arith(cr, "arith.andi", &[ne, same]);
-        let plus = Self::arith(cr, "arith.addi", &[q, one]);
-        cr.replace_new(op, OpData::build("arith.select").operands(&[cond, plus, q]), &[ty]);
-        true
+    #[ops(b)]
+    fn ceildivsi(b: &mut Ar<'_, '_, '_, '_>, x: ValueId, y: ValueId) -> ValueId {
+        let zero = b.int(0);
+        let one = b.int(1);
+        let q = x / y;
+        let inexact = b.cmp(NE, x, q * y);
+        let same_sign = b.cmp(EQ, b.cmp(SLT, x, zero), b.cmp(SLT, y, zero));
+        let cond = inexact & same_sign;
+        b.select(cond, q + one, q)
     }
 
     /// `FloorDivSIOpConverter`.
     #[lowering("arith.floordivsi", untyped)]
-    fn floordivsi(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
-        let (a, b) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
-        let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
-        let q = Self::arith(cr, "arith.divsi", &[a, b]);
-        let p = Self::arith(cr, "arith.muli", &[q, b]);
-        let ne = Self::cmpi_op(cr, 1, a, p);
-        let zero = Self::arith_const(cr, &ty, 0);
-        let an = Self::cmpi_op(cr, 2, a, zero);
-        let bn = Self::cmpi_op(cr, 2, b, zero);
-        let opposite = Self::cmpi_op(cr, 1, an, bn);
-        let cond = Self::arith(cr, "arith.andi", &[ne, opposite]);
-        let minus = Self::arith_const(cr, &ty, -1);
-        let qm = Self::arith(cr, "arith.addi", &[q, minus]);
-        cr.replace_new(op, OpData::build("arith.select").operands(&[cond, qm, q]), &[ty]);
-        true
+    #[ops(b)]
+    fn floordivsi(b: &mut Ar<'_, '_, '_, '_>, x: ValueId, y: ValueId) -> ValueId {
+        let q = x / y;
+        let inexact = b.cmp(NE, x, q * y);
+        let zero = b.int(0);
+        let opposite = b.cmp(NE, b.cmp(SLT, x, zero), b.cmp(SLT, y, zero));
+        let cond = inexact & opposite;
+        let minus_one = b.int(-1);
+        b.select(cond, q + minus_one, q)
     }
 
     /// `ConstrainedTruncFOpLowering` (the `#[map]` row is `TruncFOpLowering`, without one).
@@ -302,13 +335,3 @@ impl ArithToLlvm {
     }
 }
 
-/// `Type::owned`, as a method on types.
-trait OwnedType {
-    fn owned_type(self) -> Type<'static>;
-}
-
-impl OwnedType for Type<'_> {
-    fn owned_type(self) -> Type<'static> {
-        crate::Owned::owned(&self)
-    }
-}
