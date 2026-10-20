@@ -91,10 +91,31 @@ blocks!(f;
 ```
 
 `#[pass("name", on = "op", extra = [..], check = path)]` gives the `mlir-opt` name, the anchor
-op, options accepted but unused, and a validation hook. `#[patterns]` takes `converter` (a type
+op, options accepted but unused, and a validation hook; on a `fn` pass, `ty = Name` names the
+generated struct (default: the name in CamelCase). `#[patterns]` takes `converter` (a type
 converter index), `options = T` (methods also take the options), `extra = path` (non-method
 patterns) and `flag: T` parameters; `#[lowering]` takes the roots, `benefit`, `when`, `untyped`
 and `plain`.
+
+Inside the crate, canonicalization patterns (`src/canon/*.rs`) are declared with the
+`rewrites!` macro: one unit struct per pattern, its root op (`_`: any op, for interface
+patterns such as `EraseDeadLinalgOp`), its benefit, and a body that matches and rewrites:
+
+```rust
+rewrites! {
+    /// `FoldFillWithTensorExtract`: an element of a fill is the fill value.
+    FoldFillWithTensorExtract("tensor.extract", 1) |rw, op| {
+        let Some(f) = rw.body.def_named(rw.body[op].operands[0], "linalg.fill") else { return false };
+        let v = rw.body[f].operands[0];
+        rw.replace_op(op, &[v]);
+        true
+    }
+}
+```
+
+`mem2reg` / `sroa` ask the memory-slot interfaces (`src/transforms/memslot.rs`) as traits a
+dialect implements once for its ops by name: `Promotable` and `Destructurable`, on the unit
+structs `LlvmSlots` and `MemrefSlots`.
 
 Nothing is global. Pipelines name passes through a `PassRegistry` (`Passes::upstream()` registers
 every pass: `Invocation::parse(&passes, args)`); a `Body` asks its context (mlirformat's `MlirOpt`,
