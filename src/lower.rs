@@ -3,6 +3,7 @@
 mod affine_to_std;
 mod arith_to_emitc;
 mod arith_to_llvm;
+mod bufferization_to_memref;
 mod cf_to_llvm;
 mod complex_to_std;
 mod emitc;
@@ -43,6 +44,7 @@ use mlirformat::llvm_types::LlvmType;
 pub use affine_to_std::AffineToStd;
 pub use arith_to_emitc::ArithToEmitc;
 pub use arith_to_llvm::ArithToLlvm;
+pub use bufferization_to_memref::{BufferizationToMemref, ConvertBufferizationToMemref};
 pub use cf_to_llvm::{AssertLowering, CfToLlvm};
 pub use complex_to_std::{ComplexToLlvm, ComplexToStd};
 pub use emitc::Emitc;

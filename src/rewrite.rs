@@ -7,6 +7,7 @@
 //! first, blocks in post-order, ops in reverse), telling the listener about each op.
 
 use alloc::boxed::Box;
+use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::Type;
@@ -61,6 +62,61 @@ impl<'r, 'a, L: Listener<'a>> Rewriter<'r, 'a, L> {
 }
 
 impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
+    /// An op built with its regions' contents first, as builders with body callbacks do: the
+    /// nested ops are created (and reported) before the op is inserted.
+    pub fn with_body(&mut self, data: OpData<'a>, types: &[Type<'a>], blocks: &[Vec<Type<'a>>], fill: &mut dyn FnMut(&mut Self, usize, &[ValueId])) -> OpId {
+        let op = self.body.create(data, types);
+        let mut made = Vec::new();
+        for args in blocks {
+            let r = self.body.add_region(op);
+            let a: Vec<_> = args.iter().map(|t| (t.clone(), None)).collect();
+            made.push(self.body.add_block(r, &a));
+        }
+        let saved = self.ip;
+        for (k, blk) in made.into_iter().enumerate() {
+            self.set_end(blk);
+            let args = self.body[blk].args.clone();
+            fill(self, k, &args);
+        }
+        self.ip = saved;
+        self.insert(op)
+    }
+
+    /// `scf::ForOp::create` with a body builder returning what it yields.
+    pub fn build_for(&mut self, lb: ValueId, ub: ValueId, step: ValueId, inits: &[ValueId], body: &mut dyn FnMut(&mut Self, ValueId, &[ValueId]) -> Vec<ValueId>) -> OpId {
+        let types = self.body.types(inits);
+        let mut ops = vec![lb, ub, step];
+        ops.extend(inits);
+        let mut args = vec![Type::Index];
+        args.extend(types.clone());
+        self.with_body(OpData::build("scf.for").operands(&ops), &types, &[args], &mut |rw, _, a| {
+            let y = body(rw, a[0], &a[1..]);
+            rw.create(OpData::build("scf.yield").operands(&y), &[]);
+        })
+    }
+
+    /// `scf::IfOp::create` with only a then builder: the else region stays empty.
+    pub fn build_if_then(&mut self, cond: ValueId, then: &mut dyn FnMut(&mut Self)) -> OpId {
+        let op = self.body.create(OpData::build("scf.if").operands(&[cond]), &[]);
+        let r = self.body.add_region(op);
+        self.body.add_region(op);
+        let blk = self.body.add_block(r, &[]);
+        let saved = self.ip;
+        self.set_end(blk);
+        then(self);
+        self.create(OpData::build("scf.yield"), &[]);
+        self.ip = saved;
+        self.insert(op)
+    }
+
+    /// `scf::IfOp::create` with then and else builders.
+    pub fn build_if(&mut self, cond: ValueId, types: &[Type<'a>], then: &mut dyn FnMut(&mut Self) -> Option<ValueId>, other: &mut dyn FnMut(&mut Self) -> Option<ValueId>) -> OpId {
+        self.with_body(OpData::build("scf.if").operands(&[cond]), types, &[Vec::new(), Vec::new()], &mut |rw, k, _| {
+            let v = if k == 0 { then(rw) } else { other(rw) };
+            rw.create(OpData::build("scf.yield").operands(&v.into_iter().collect::<Vec<_>>()), &[]);
+        })
+    }
+
     // ---- insertion point -------------------------------------------------------------
 
     pub fn set_before(&mut self, op: OpId) {
