@@ -9,7 +9,7 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-Alpha (`0.1.0-alpha.1`): 3928 of the 4831 fixture cases match `mlir-opt` 22.1.8 byte for byte
+`0.1.0`: 3928 of the 4831 fixture cases match `mlir-opt` 22.1.8 byte for byte
 (`cargo test --test passes -- --nocapture` counts them per group; SPIR-V is not started).
 
 | part | what it is | upstream |
