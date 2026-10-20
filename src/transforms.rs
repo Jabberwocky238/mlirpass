@@ -6,6 +6,7 @@ mod cse;
 mod expand_strided_metadata;
 mod licm;
 mod mem2reg;
+mod memref_slots;
 mod memslot;
 mod promote_buffers;
 mod remove_dead_values;
