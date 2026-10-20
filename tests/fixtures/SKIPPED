@@ -31,6 +31,8 @@ Conversion__VectorToLLVM__pass-option-serialization.1	prints logs, not IR: --dum
 Conversion__VectorToLLVM__vector-scalable-memcpy.0	pipes into mlir-opt
 Conversion__VectorToSPIRV__vector-reduction-to-spirv-dot-prod.0	test-only pass --test-vector-reduction-to-spirv-dot-prod
 Dialect__ArmSME__canonicalize.0	pipes into mlir-opt
+Dialect__LLVMIR__sroa-statistics.0	prints logs, not IR: --mlir-pass-statistics
+Dialect__MemRef__mem2reg-statistics.0	prints logs, not IR: --mlir-pass-statistics
 Transforms__compose-subview.0	test-only pass -test-compose-subview
 Transforms__composite-pass.0	prints logs, not IR: --log-actions-to=-
 Transforms__composite-pass.1	prints logs, not IR: --log-actions-to=-

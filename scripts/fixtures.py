@@ -29,6 +29,7 @@ OUT_OF_SCOPE = (
 def tests(root: Path):
     found = list(root.glob("Conversion/**/*.mlir")) + list(root.glob("Transforms/*.mlir"))
     found += list(root.glob("Dialect/**/canonicalize*.mlir"))
+    found += list(root.glob("Dialect/**/mem2reg*.mlir")) + list(root.glob("Dialect/**/sroa*.mlir"))
     for path in sorted(set(found)):
         rel = path.relative_to(root)
         if rel.parts[0] == "Conversion" and any(s in part for part in rel.parts[1:-1] for s in OUT_OF_SCOPE):

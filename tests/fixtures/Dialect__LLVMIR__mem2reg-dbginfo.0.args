@@ -1,0 +1,1 @@
+--pass-pipeline=builtin.module(llvm.func(mem2reg{region-simplify=false}))

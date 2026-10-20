@@ -53,6 +53,8 @@ impl Passes {
     pub fn upstream() -> Self {
         let mut p = Self::new();
         p.register::<ConvertArithToLlvm>();
+        p.register::<Mem2Reg>();
+        p.register::<Sroa>();
         p.register::<ConvertCfToLlvm>();
         p.register::<FinalizeMemrefToLlvm>();
         p.register::<ConvertVectorToLlvm>();
