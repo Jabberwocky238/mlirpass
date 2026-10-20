@@ -28,7 +28,7 @@ impl TosaToLinalgNamed {
     }
 
     fn elem<'a>(t: &Type<'a>) -> Type<'a> {
-        crate::attr::element_type(t).clone()
+        t.element_type().clone()
     }
 
     /// `getZeroPoint`: the first element of a constant zero-point tensor.
@@ -171,7 +171,7 @@ impl TosaToLinalgNamed {
         let dyn_dims = Self::conv_dyn_dims(cr, input, weight, &rdims, &pad_a, &stride, &dil, &sizes, &sizes);
         let mut zero_attr = Self::zero(&ie);
         if has_zp {
-            let w = crate::bit_width(&ie).unwrap_or(8);
+            let w = ie.bit_width().unwrap_or(8);
             let (lo, hi) = (-(1i64 << (w - 1)), (1i64 << (w - 1)) - 1);
             if izp < lo || izp > hi {
                 return false;
@@ -248,7 +248,7 @@ impl TosaToLinalgNamed {
         let ws = dims_of(&Self::ty(cr, weight));
         let mut zero_attr = Self::zero(&ie);
         if !null {
-            let w = crate::bit_width(&ie).unwrap_or(8);
+            let w = ie.bit_width().unwrap_or(8);
             if izp < -(1i64 << (w - 1)) || izp > (1i64 << (w - 1)) - 1 {
                 return false;
             }
@@ -530,7 +530,7 @@ impl TosaToLinalgNamed {
             if matches!(acc, Type::Float(_)) {
                 let cf = cr.op1("arith.sitofp", &[count], acc.clone());
                 pv = cr.bin("arith.divf", pv, cf);
-                if crate::bit_width(&acc) > crate::bit_width(&re) {
+                if acc.bit_width() > re.bit_width() {
                     pv = cr.op1("arith.truncf", &[pv], re.clone());
                 }
                 return vec![pv];
@@ -563,7 +563,7 @@ impl TosaToLinalgNamed {
                 let z = cr.constant(int_attr(i128::from(ozp), &st), st);
                 scaled = cr.bin("arith.addi", scaled, z);
             }
-            let w = crate::bit_width(&re).unwrap_or(32);
+            let w = re.bit_width().unwrap_or(32);
             let mn = cr.constant(int_attr(-(1i128 << (w - 1)), &acc), acc.clone());
             let mx = cr.constant(int_attr((1i128 << (w - 1)) - 1, &acc), acc.clone());
             let lo = cr.bin("arith.maxsi", mn, scaled);

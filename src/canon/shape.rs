@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
 
-use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId, attr};
+use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId};
 
 const DYNAMIC: i64 = i64::MIN;
 
@@ -44,7 +44,7 @@ impl Shp {
     /// The values of a `DenseIntElementsAttr`.
     fn ints(a: &Attribute<'_>) -> Option<Vec<i64>> {
         let c = Const::try_from(a).ok().filter(|c| c.elements)?;
-        let n = attr::element_count(&c.ty)?;
+        let n = c.ty.element_count()?;
         (0..n).map(|i| c.at(i).int().map(|x| x.signed() as i64)).collect()
     }
 
@@ -55,7 +55,7 @@ impl Shp {
 
     /// The dims of a ranked shaped type, dynamic as [`DYNAMIC`].
     fn dims(t: &Type<'_>) -> Option<Vec<i64>> {
-        attr::shape_of(t).map(|ds| ds.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
+        t.shape().map(|ds| ds.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
     }
 
     /// `OpTrait::util::getBroadcastedShape`.
@@ -141,7 +141,7 @@ impl<'a> Body<'a> {
 
 /// `ShapeDialect::materializeConstant`.
 pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
-    if crate::is_poison(value) {
+    if value.is_poison() {
         return Some(OpData::build("ub.poison").with("value", value.clone()));
     }
     if Shp::is(ty, "shape") || Shp::extent_tensor(ty) {
@@ -170,7 +170,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
                 return Folded::Value(ops[0]).into();
             }
             if b[op].name == "shape.add"
-                && let Some(p) = c.iter().flatten().find(|a| crate::is_poison(a))
+                && let Some(p) = c.iter().flatten().find(|a| a.is_poison())
             {
                 return attr(p.clone());
             }
@@ -686,7 +686,7 @@ rewrites! {
         let st = b[shape].ty.clone();
         if st != ty {
             rw.set_before(op);
-            if attr::element_type(&st) == attr::element_type(&ty) {
+            if st.element_type() == ty.element_type() {
                 shape = rw.one(OpData::build("tensor.cast").operands(&[shape]), ty);
             } else if !Shp::extent_tensor(&st) {
                 shape = rw.one(OpData::build("arith.index_cast").operands(&[shape]), ty);

@@ -143,7 +143,7 @@ impl IndexToLlvm {
         if in_ty == out {
             cr.replace_values(op, &[input]);
         } else {
-            let name = if crate::attr::bit_width(&in_ty) > crate::attr::bit_width(&out) { "llvm.trunc" } else { ext };
+            let name = if in_ty.bit_width() > out.bit_width() { "llvm.trunc" } else { ext };
             cr.replace_new(op, OpData::build(name).operands(&[input]), &[out]);
         }
         true
@@ -180,7 +180,7 @@ impl IndexToLlvm {
 
     #[lowering("index.sizeof")]
     fn sizeof(b: &mut Ll<'_, '_, '_, '_>) -> ValueId {
-        let bits = crate::attr::bit_width(&b.ty).unwrap_or(64) as i64;
+        let bits = b.ty.bit_width().unwrap_or(64) as i64;
         b.int(bits)
     }
 
@@ -188,7 +188,7 @@ impl IndexToLlvm {
     fn constant(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(tc) = cr.type_converter() else { return false };
         let Some(ty) = tc.convert(&Type::Index) else { return false };
-        let w = crate::attr::bit_width(&ty).unwrap_or(64);
+        let w = ty.bit_width().unwrap_or(64);
         let Some(v) = cr.rw.body[op].get("value").and_then(|a| crate::Const::try_from(a).ok()).and_then(|c| c.as_int()) else { return false };
         let value: Attribute = crate::Const::int(v.trunc(w), ty.clone()).into();
         cr.replace_new(op, OpData::build("llvm.mlir.constant").with("value", value), &[ty]);
@@ -204,7 +204,7 @@ pub struct UbToLlvm;
 impl UbToLlvm {
     #[lowering("ub.poison")]
     fn poison(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
-        if !cr.rw.body[op].get("value").is_some_and(crate::is_poison) {
+        if !cr.rw.body[op].get("value").is_some_and(Attribute::is_poison) {
             return false;
         }
         let Some(tc) = cr.type_converter() else { return false };

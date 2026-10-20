@@ -7,7 +7,7 @@ use mlirpass_macros::patterns;
 use mlirformat::{Attribute, NamedAttr, Type};
 
 use super::llvm_fastmath;
-use crate::{ApFloat, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId, attr};
+use crate::{ApFloat, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 use mlirformat::llvm_types::LlvmType;
 
 /// The math ⇒ llvm patterns.
@@ -118,7 +118,7 @@ impl MathToLlvm {
 
     /// A constant 1.0 of (1-d vector or scalar) type `ty`.
     fn one<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, ty: &Type<'a>) -> Option<ValueId> {
-        let Type::Float(k) = *attr::element_type(ty) else { return None };
+        let Type::Float(k) = *ty.element_type() else { return None };
         let one = Scalar::Float(ApFloat::from_f64(k, 1.0)?);
         let value: Attribute = match ty {
             Type::Shaped(_) => Const::splat(one, ty.clone()).into(),

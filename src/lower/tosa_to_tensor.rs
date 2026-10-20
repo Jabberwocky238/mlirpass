@@ -45,7 +45,7 @@ impl TosaToTensor {
     }
 
     fn dims(t: &Type<'_>) -> Option<Vec<i64>> {
-        crate::attr::shape_of(t).map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
+        t.shape().map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
     }
 
     /// `TensorType::clone(shape)`.
@@ -60,7 +60,7 @@ impl TosaToTensor {
         let b = &*cr.rw.body;
         let d = b.def_named(v, "tosa.const_shape")?;
         let c = Const::try_from(b[d].get("values")?).ok()?;
-        let n = crate::attr::element_count(&c.ty)?;
+        let n = c.ty.element_count()?;
         (0..n).map(|i| c.at(i).int().map(|x| x.signed() as i64)).collect()
     }
 
@@ -316,7 +316,7 @@ impl TosaToTensor {
         let Some(vals) = Self::const_shape(cr, padding) else { return false };
         let rank = Self::dims(&cr.rw.body[input].ty).map_or(0, |d| d.len());
         let zero = Self::cidx(cr, 0);
-        let et = crate::attr::element_type(&cr.rw.body[pad_const].ty).clone();
+        let et = cr.rw.body[pad_const].ty.element_type().clone();
         let pc = Self::fold1(cr, OpData::build("tensor.extract").operands(&[pad_const, zero]), et.clone());
         let mut low = Vec::new();
         let mut high = Vec::new();

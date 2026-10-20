@@ -189,11 +189,11 @@ impl Reshape {
     }
 
     fn dims(t: &Type<'_>) -> Vec<i64> {
-        crate::attr::shape_of(t).map_or_else(Vec::new, |d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
+        t.shape().map_or_else(Vec::new, |d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
     }
 
     fn rank(t: &Type<'_>) -> usize {
-        crate::attr::shape_of(t).map_or(0, <[Dim]>::len)
+        t.shape().map_or(0, <[Dim]>::len)
     }
 }
 

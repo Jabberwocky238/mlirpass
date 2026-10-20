@@ -9,7 +9,7 @@ use mlirformat::arith::CmpIPredicate;
 use mlirformat::{arith, Attribute, NamedAttr, Type};
 
 use super::llvm_fastmath;
-use crate::{ApInt, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId, attr};
+use crate::{ApInt, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 use mlirformat::llvm_types::LlvmType;
 
 /// Builds the arith expansions of `ceildiv` / `floordiv` over values of type `ty`.
@@ -22,8 +22,8 @@ impl Ar<'_, '_, '_, '_> {
     /// An `arith.constant` of `v` (an `int`, or a splat) of the type.
     fn int(&mut self, v: i128) -> ValueId {
         let ty = self.ty.clone();
-        let e = attr::element_type(&ty).clone();
-        let w = attr::int_width(&e).map_or(64, |w| w.0);
+        let e = ty.element_type().clone();
+        let w = e.int_width().map_or(64, |w| w.0);
         let value: Attribute = match &ty {
             Type::Shaped(_) => Const::splat(Scalar::Int(ApInt::new(w, v)), ty.clone()).into(),
             _ => Const::int(ApInt::new(w, v), e).into(),
@@ -32,7 +32,7 @@ impl Ar<'_, '_, '_, '_> {
     }
 
     fn cmp(&mut self, pred: i64, l: ValueId, r: ValueId) -> ValueId {
-        let ty = attr::with_element(&self.cr.rw.body[l].ty.clone(), Type::I1);
+        let ty = self.cr.rw.body[l].ty.clone().with_element(Type::I1);
         self.cr.build(OpData::build("arith.cmpi").operands(&[l, r]).with("predicate", Attribute::i64(pred)), ty)
     }
 
@@ -140,8 +140,8 @@ impl ArithToLlvm {
         let b = &*cr.rw.body;
         let res_ty = b[b[op].results[0]].ty.clone();
         let in_ty = b[b[op].operands[0]].ty.clone();
-        let (Some(t), Some(s)) = (tc.convert(attr::element_type(&res_ty)), tc.convert(attr::element_type(&in_ty))) else { return false };
-        let (tb, sb) = (attr::bit_width(&t), attr::bit_width(&s));
+        let (Some(t), Some(s)) = (tc.convert(res_ty.element_type()), tc.convert(in_ty.element_type())) else { return false };
+        let (tb, sb) = (t.bit_width(), s.bit_width());
         if tb == sb {
             cr.replace_values(op, &[src]);
             return true;
@@ -192,11 +192,11 @@ impl ArithToLlvm {
         if !LlvmType::compatible(&ty) || matches!(LlvmType::try_from(&ty), Ok(LlvmType::Array(..))) {
             return false;
         }
-        let Some(w) = attr::bit_width(&ty) else { return false };
+        let Some(w) = ty.bit_width() else { return false };
         let (wide, shift): (Type, Attribute) = match &ty {
             Type::Integer { .. } => (Type::int(2 * w), Const::int(ApInt::new(2 * w, w as i128), Type::int(2 * w)).into()),
             _ => {
-                let wt = attr::with_element(&ty, Type::int(2 * w));
+                let wt = ty.with_element(Type::int(2 * w));
                 (wt.clone(), Const::splat(Scalar::Int(ApInt::new(2 * w, w as i128)), wt).into())
             }
         };

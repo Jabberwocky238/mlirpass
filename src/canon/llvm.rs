@@ -62,7 +62,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>]) ->
             let ty = b[b[op].results[0]].ty.clone();
             let Some(c) = consts.first().cloned().flatten().and_then(|a| Const::try_from(&a).ok()).filter(|c| !c.elements) else { return Fold::Failed };
             let Some(Scalar::Int(i)) = c.values.first().copied() else { return Fold::Failed };
-            let w = crate::attr::int_width(&ty).map_or(64, |w| w.0);
+            let w = ty.int_width().map_or(64, |w| w.0);
             Folded::Attr(Const::int(i.zext(w), ty).into()).into()
         }
         "llvm.shl" | "llvm.or" => {
@@ -70,7 +70,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>]) ->
             let int = |k: usize| consts.get(k).cloned().flatten().and_then(|a| Const::try_from(&a).ok()).filter(|c| !c.elements).and_then(|c| c.as_int());
             let Some(r) = int(1) else { return Fold::Failed };
             if name == "llvm.shl" {
-                let w = crate::attr::int_width(&ty).map_or(64, |w| w.0);
+                let w = ty.int_width().map_or(64, |w| w.0);
                 if r.unsigned() >= u128::from(w) {
                     return Fold::Failed;
                 }

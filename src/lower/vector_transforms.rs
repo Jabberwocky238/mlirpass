@@ -72,7 +72,7 @@ pub fn vshape(t: &Type<'_>) -> Option<(Vec<i64>, Vec<bool>)> {
 }
 
 pub fn elem<'x, 'a>(t: &'x Type<'a>) -> &'x Type<'a> {
-    crate::attr::element_type(t)
+    t.element_type()
 }
 
 pub fn vector_type<'a>(shape: &[i64], scalable: &[bool], e: Type<'a>) -> Type<'a> {
@@ -90,7 +90,7 @@ pub fn index_attr<'a>(v: i64) -> Attribute<'a> {
 pub fn zeros<'a>(ty: &Type<'a>) -> Attribute<'a> {
     let z = match elem(ty) {
         Type::Float(k) => Scalar::Float(crate::ApFloat::from_f64(*k, 0.0).expect("zero")),
-        t => Scalar::Int(ApInt::new(crate::bit_width(t).unwrap_or(64), 0)),
+        t => Scalar::Int(ApInt::new(t.bit_width().unwrap_or(64), 0)),
     };
     Const::splat(z, ty.clone()).into()
 }
@@ -319,7 +319,7 @@ fn cast_index_like<'a>(rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, v: ValueId) -> 
     if matches!(vt, Type::Index) != matches!(ty, Type::Index) {
         return rw.make1(OpData::build("arith.index_cast").operands(&[v]), ty.clone());
     }
-    let (a, b) = (crate::bit_width(ty).unwrap_or(64), crate::bit_width(&vt).unwrap_or(64));
+    let (a, b) = (ty.bit_width().unwrap_or(64), vt.bit_width().unwrap_or(64));
     rw.make1(OpData::build(if a > b { "arith.extsi" } else { "arith.trunci" }).operands(&[v]), ty.clone())
 }
 

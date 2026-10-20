@@ -354,7 +354,7 @@ impl MemrefToLlvm {
                 let n: i64 = s.shape.iter().flatten().map(|d| if let Dim::Static(n) | Dim::Scalable(n) = d { *n } else { 1 }).product();
                 (n as u64 * Self::type_size(opts, &s.elem)? * 8).next_power_of_two() / 8
             }
-            t => u64::from(crate::bit_width(t)?.div_ceil(8)),
+            t => u64::from(t.bit_width()?.div_ceil(8)),
         })
     }
 
@@ -398,7 +398,7 @@ impl MemrefToLlvm {
             return false;
         }
         let Some((sizes, strides, mut bytes)) = Self::desc_sizes(cr, opts, &s, &dynamic, true) else { return false };
-        let scalar = matches!(&*s.elem, Type::Index | Type::Float(_)) || crate::int_width(&s.elem).is_some_and(|(_, sg)| sg == mlirformat::Signedness::Signless);
+        let scalar = matches!(&*s.elem, Type::Index | Type::Float(_)) || s.elem.int_width().is_some_and(|(_, sg)| sg == mlirformat::Signedness::Signless);
         let alignment = match cr.rw.body[op].get("alignment").and_then(Self::int) {
             Some(a) => Some(Self::const_index(cr, opts, a)),
             None if !scalar => {

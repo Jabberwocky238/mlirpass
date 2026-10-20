@@ -131,11 +131,11 @@ pub struct MathToFuncs;
 
 impl MathToFuncs {
     fn elem<'a>(t: &Type<'a>) -> Type<'a> {
-        crate::attr::element_type(t).clone()
+        t.element_type().clone()
     }
 
     fn width(t: &Type<'_>) -> u32 {
-        crate::bit_width(t).unwrap_or(0)
+        t.bit_width().unwrap_or(0)
     }
 
     /// A private `linkonce_odr` function `name : ty` at the end of `module`, with its entry block.
@@ -446,11 +446,11 @@ pub struct ConvertMathToFuncs {
 
 impl ConvertMathToFuncs {
     fn int_result(b: &Body<'_>, op: OpId) -> bool {
-        matches!(crate::attr::element_type(&b[b[op].results[0]].ty), Type::Integer { .. })
+        matches!(b[b[op].results[0]].ty.element_type(), Type::Integer { .. })
     }
 
     fn fpowi_ok(&self, b: &Body<'_>, op: OpId) -> bool {
-        let e = crate::attr::element_type(&b[b[op].operands[1]].ty);
+        let e = b[b[op].operands[1]].ty.element_type();
         matches!(e, Type::Integer { .. }) && MathToFuncs::width(e) >= self.min_width
     }
 
@@ -497,7 +497,7 @@ impl Run for ConvertMathToFuncs {
         }
         let min = self.min_width;
         target.dynamic_op("math.fpowi", move |b, o| {
-            let e = crate::attr::element_type(&b[b[o].operands[1]].ty);
+            let e = b[b[o].operands[1]].ty.element_type();
             Some(!(matches!(e, Type::Integer { .. }) && MathToFuncs::width(e) >= min))
         });
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)

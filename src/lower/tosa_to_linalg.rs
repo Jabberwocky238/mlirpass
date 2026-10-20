@@ -19,7 +19,7 @@ type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 type Pool = BTreeMap<i64, ValueId>;
 
 fn elem<'a>(t: &Type<'a>) -> Type<'a> {
-    crate::attr::element_type(t).clone()
+    t.element_type().clone()
 }
 
 fn float<'a>(v: f64, ty: &Type<'a>) -> Attribute<'a> {
@@ -32,7 +32,7 @@ fn ap<'a>(v: ApFloat, ty: &Type<'a>) -> Attribute<'a> {
 }
 
 fn width(t: &Type<'_>) -> u32 {
-    crate::bit_width(t).unwrap_or(0)
+    t.bit_width().unwrap_or(0)
 }
 
 fn smin(w: u32) -> i128 {
@@ -510,7 +510,7 @@ impl TosaToLinalg {
     #[lowering("tosa.add", "tosa.sub", "tosa.mul", "tosa.intdiv", "tosa.negate", "tosa.pow", "tosa.reciprocal", "tosa.rsqrt", "tosa.log", "tosa.exp", "tosa.abs", "tosa.sin", "tosa.cos", "tosa.tanh", "tosa.erf", "tosa.bitwise_and", "tosa.bitwise_or", "tosa.bitwise_not", "tosa.bitwise_xor", "tosa.logical_and", "tosa.logical_not", "tosa.logical_or", "tosa.logical_xor", "tosa.cast", "tosa.logical_left_shift", "tosa.logical_right_shift", "tosa.arithmetic_right_shift", "tosa.clz", "tosa.select", "tosa.greater", "tosa.greater_equal", "tosa.equal", "tosa.maximum", "tosa.minimum", "tosa.ceil", "tosa.floor", "tosa.clamp", "tosa.sigmoid")]
     fn pointwise(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
-        let ranked = |v: &ValueId| crate::attr::shape_of(&b[*v].ty).is_some();
+        let ranked = |v: &ValueId| b[*v].ty.shape().is_some();
         if !b[op].operands.iter().all(ranked) || !b[op].results.iter().all(ranked) {
             return false;
         }
@@ -623,7 +623,7 @@ impl TosaToLinalg {
         let name = b[op].name.clone();
         let input = b[op].operands[0];
         let (it, rt) = (Self::ty(cr, input), Self::ty(cr, cr.rw.body[op].results[0]));
-        if crate::attr::shape_of(&it).is_none() || crate::attr::shape_of(&rt).is_none() {
+        if it.shape().is_none() || rt.shape().is_none() {
             return false;
         }
         let axis = match cr.rw.body[op].get("axis") {
@@ -858,7 +858,7 @@ impl TosaToLinalg {
     fn gather(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (values, indices) = (o[0][0], o[1][0]);
         let rt = Self::ty(cr, cr.rw.body[op].results[0]);
-        if crate::attr::shape_of(&Self::ty(cr, cr.rw.body[op].operands[0])).is_none() || crate::attr::shape_of(&rt).is_none() {
+        if Self::ty(cr, cr.rw.body[op].operands[0]).shape().is_none() || rt.shape().is_none() {
             return false;
         }
         let mut dyn_dims = Vec::new();
@@ -955,7 +955,7 @@ impl TosaToLinalg {
         let dyn_dims: Vec<ValueId> = dims_of(&ot).iter().enumerate().filter(|(_, d)| **d == DYNAMIC).map(|(i, _)| i).collect::<Vec<_>>().into_iter().map(|i| cr.tdim(input, i as i64)).collect();
         let ints = |cr: &Cr<'_, '_, '_>, v: ValueId| -> Option<Vec<i32>> {
             let c = Const::try_from(&cr.rw.body.constant_of(v)?).ok()?;
-            let n = crate::attr::element_count(&c.ty)?;
+            let n = c.ty.element_count()?;
             (0..n).map(|i| c.at(i).int().map(|x| x.signed() as i32)).collect()
         };
         let (mc, sc) = (ints(cr, ops[1]), ints(cr, ops[2]));
@@ -1111,7 +1111,7 @@ impl TosaToLinalg {
     #[lowering("tosa.rfft2d", "tosa.fft2d", untyped)]
     fn fft(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
-        let ranked = |v: &ValueId| crate::attr::shape_of(&b[*v].ty).is_some();
+        let ranked = |v: &ValueId| b[*v].ty.shape().is_some();
         if !b[op].operands.iter().all(ranked) || !b[op].results.iter().all(ranked) {
             return false;
         }
@@ -1250,7 +1250,7 @@ impl TosaToLinalg {
     fn resize_broadcast(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
         let (it, rt) = (Self::ty(cr, input), Self::ty(cr, cr.rw.body[op].results[0]));
-        if crate::attr::shape_of(&it).is_none() || crate::attr::shape_of(&rt).is_none() {
+        if it.shape().is_none() || rt.shape().is_none() {
             return false;
         }
         let (id, rd) = (dims_of(&it), dims_of(&rt));

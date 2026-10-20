@@ -11,7 +11,6 @@
 extern crate alloc;
 
 mod affine;
-mod attr;
 mod branch;
 #[macro_use]
 mod canon;
@@ -23,7 +22,6 @@ mod equivalence;
 mod fold;
 mod greedy;
 mod invocation;
-mod num;
 mod ir;
 mod llvm;
 mod lower;
@@ -36,7 +34,6 @@ mod traits;
 mod transforms;
 
 pub use affine::{AffineExpr, AffineMap, Bin as AffineBin, IntegerSet};
-pub use attr::*;
 pub use conversion::*;
 pub use dominance::*;
 pub use effects::*;
@@ -45,7 +42,6 @@ pub use greedy::*;
 pub use ir::*;
 pub use llvm::*;
 pub use lower::*;
-pub use num::*;
 pub use invocation::*;
 pub use pass::*;
 pub use region_branch::*;
@@ -54,3 +50,4 @@ pub use symbol::*;
 pub use transforms::*;
 pub use traits::*;
 pub use mlirformat;
+pub use mlirformat::{ApFloat, ApInt, Const, Scalar};

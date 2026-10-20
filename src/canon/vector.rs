@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
-use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, Scalar, ValueId, attr};
+use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, Scalar, ValueId};
 
 /// `kPoisonIndex` of extract / insert positions and shuffle masks.
 const POISON: i64 = -1;
@@ -33,7 +33,7 @@ fn vrank(t: &Type<'_>) -> Option<usize> {
 }
 
 fn elem<'x, 'a>(t: &'x Type<'a>) -> &'x Type<'a> {
-    attr::element_type(t)
+    t.element_type()
 }
 
 /// `computeStrides` of a shape (row-major suffix products).
@@ -245,7 +245,7 @@ impl<'a> Folder<'_, 'a> {
         if b.static_position(op).is_empty() && b[src].ty == b.result_ty(op) {
             return Self::value(src);
         }
-        if self.cst(0).is_some_and(attr::is_poison) {
+        if self.cst(0).is_some_and(Attribute::is_poison) {
             return Self::poison();
         }
         let in_place = self.fold_constant_positions();
@@ -652,7 +652,7 @@ impl<'a> Folder<'_, 'a> {
         let begin = linearize(&full, &strides(&shape)) as usize;
         let src = Const::try_from(src_attr).ok()?;
         let inserted: Vec<Scalar> = if src.elements {
-            let count = attr::element_count(&src.ty)?;
+            let count = src.ty.element_count()?;
             (0..count).map(|i| src.values[if src.is_splat() { 0 } else { i }]).collect()
         } else {
             src.values.clone()
@@ -696,7 +696,7 @@ impl<'a> Folder<'_, 'a> {
             }
         }
         let Some(a) = self.cst(0) else { return Fold::Failed };
-        if attr::is_poison(a) {
+        if a.is_poison() {
             return Self::poison();
         }
         let Ok(c) = Const::try_from(a) else { return Fold::Failed };
@@ -723,7 +723,7 @@ impl<'a> Folder<'_, 'a> {
             return Self::value(self.b[op].operands[1]);
         }
         let (Some(a1), Some(a2)) = (self.cst(0), self.cst(1)) else { return Fold::Failed };
-        let (p1, p2) = (attr::is_poison(a1), attr::is_poison(a2));
+        let (p1, p2) = (a1.is_poison(), a2.is_poison());
         if p1 && p2 {
             return Self::poison();
         }
@@ -783,7 +783,7 @@ impl<'a> Folder<'_, 'a> {
             return Self::value(self.b[bc].operands[0]);
         }
         match self.cst(0) {
-            Some(a) if attr::is_poison(a) => Self::poison(),
+            Some(a) if a.is_poison() => Self::poison(),
             Some(a) => match Const::try_from(a).ok().filter(|c| c.elements) {
                 Some(c) => Self::attr(Const { ty: rt, ..c }.into()),
                 None => Fold::Failed,
@@ -835,7 +835,7 @@ impl<'a> Folder<'_, 'a> {
         let op = self.op;
         let rt = self.b.result_ty(op);
         if let Some(a) = self.cst(0) {
-            if attr::is_poison(a) {
+            if a.is_poison() {
                 return Self::poison();
             }
             if let Some(c) = Const::try_from(a).ok().filter(|c| c.elements && c.is_splat()) {
@@ -862,7 +862,7 @@ impl<'a> Folder<'_, 'a> {
             }
         }
         // `foldFromElementsToConstant`.
-        if elems.is_empty() || self.c.iter().any(|c| c.as_ref().is_none_or(attr::is_poison)) {
+        if elems.is_empty() || self.c.iter().any(|c| c.as_ref().is_none_or(Attribute::is_poison)) {
             return Fold::Failed;
         }
         let rt = self.b.result_ty(op);
@@ -1053,7 +1053,7 @@ impl<'a> Folder<'_, 'a> {
             let minor = |p: &Option<Perm>| p.as_ref().is_some_and(Perm::minor_identity);
             let zero = |vs: Vec<ValueId>| vs.iter().all(|v| const_int(b, *v) == Some(0));
             let rshape = vshape(&b.result_ty(read)).map(|s| s.0);
-            let tshape = attr::shape_of(&b[base].ty).map(|d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { DYNAMIC }).collect::<Vec<_>>());
+            let tshape = b[base].ty.shape().map(|d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { DYNAMIC }).collect::<Vec<_>>());
             if b.transfer_rank(op) != 0
                 && b.transfer_rank(read) != 0
                 && minor(&rp)
@@ -1130,7 +1130,7 @@ impl<'a> Body<'a> {
         match &*self[d].name {
             "arith.constant" => {
                 let c = Const::try_from(self[d].get("value")?).ok().filter(|c| c.elements)?;
-                let n = attr::element_count(&c.ty)?;
+                let n = c.ty.element_count()?;
                 let mut val: i64 = 0;
                 for i in 0..n {
                     let b = c.values[if c.is_splat() { 0 } else { i }].int()?.is_one();
@@ -1259,7 +1259,7 @@ impl<'a> Body<'a> {
         }
         let Some(perm) = self.perm(op) else { return false };
         let shaped = if self[op].name == "vector.transfer_read" { self.operand_ty(op, 0) } else { self.operand_ty(op, 1) };
-        let sshape: Vec<i64> = attr::shape_of(&shaped).map_or(Vec::new(), |d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { DYNAMIC }).collect());
+        let sshape: Vec<i64> = shaped.shape().map_or(Vec::new(), |d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { DYNAMIC }).collect());
         let vt = if self[op].name == "vector.transfer_read" { self.result_ty(op) } else { self.operand_ty(op, 0) };
         let (vs, _) = vshape(&vt).unwrap_or_default();
         let indices = self.transfer_indices(op);
@@ -1864,7 +1864,7 @@ rewrites! {
         if dn > 256 && b[dst].uses.len() != 1 {
             return false;
         }
-        if attr::is_poison(&da) || attr::is_poison(&sa) || i64_array(b, op, "strides").iter().any(|s| *s != 1) {
+        if da.is_poison() || sa.is_poison() || i64_array(b, op, "strides").iter().any(|s| *s != 1) {
             return false;
         }
         let (Ok(dc), Ok(sc)) = (Const::try_from(&da), Const::try_from(&sa)) else { return false };

@@ -168,7 +168,7 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
         "shape" => shape::materialize(value, ty),
         "tensor" => arith::materialize(value, ty),
         "tosa" => tosa::materialize(value, ty),
-        "ub" => crate::is_poison(value).then(|| OpData::build("ub.poison").with("value", value.clone())),
+        "ub" => value.is_poison().then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,
     }
 }

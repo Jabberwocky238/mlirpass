@@ -51,7 +51,7 @@ pub fn tensor_type<'a>(dims: &[i64], elem: Type<'a>) -> Type<'a> {
 }
 
 pub fn dims_of(t: &Type<'_>) -> Vec<i64> {
-    crate::attr::shape_of(t).map_or_else(Vec::new, |d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
+    t.shape().map_or_else(Vec::new, |d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
 }
 
 /// `#linalg.iterator_type<...>` values.
@@ -132,7 +132,7 @@ impl<'a> Cr<'_, 'a, '_> {
         for (k, v) in props {
             data.set(k, v);
         }
-        let args: Vec<(Type<'a>, Option<_>)> = ops.iter().map(|v| (crate::attr::element_type(&self.rw.body[*v].ty).clone(), None)).collect();
+        let args: Vec<(Type<'a>, Option<_>)> = ops.iter().map(|v| (self.rw.body[*v].ty.element_type().clone(), None)).collect();
         let op = self.rw.create_with(data, results, |b, o| {
             let r = b.add_region(o);
             b.add_block(r, &args);
@@ -222,7 +222,7 @@ impl<'a> Cr<'_, 'a, '_> {
         if &from == to {
             return v;
         }
-        let width = |t: &Type<'_>| crate::bit_width(t).unwrap_or(0);
+        let width = |t: &Type<'_>| t.bit_width().unwrap_or(0);
         let name = match (&from, to) {
             (Type::Float(_), Type::Integer { .. }) => if unsigned { "arith.fptoui" } else { "arith.fptosi" },
             (Type::Index, Type::Integer { .. }) | (Type::Integer { .. }, Type::Index) => "arith.index_cast",

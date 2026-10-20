@@ -300,7 +300,7 @@ impl<'a> Body<'a> {
         let Some(index) = self.const_index(self[d].operands[1]) else { return false };
         while self[op].name == "memref.cast" {
             let s = self[op].operands[0];
-            if crate::attr::shape_of(&self[s].ty).is_none() {
+            if self[s].ty.shape().is_none() {
                 return false;
             }
             let Def::Result(o, _) = self[s].def else { return false };
@@ -310,7 +310,7 @@ impl<'a> Body<'a> {
             return false;
         }
         let rt = &self[self[op].results[0]].ty;
-        let Some(shape) = crate::attr::shape_of(rt) else { return false };
+        let Some(shape) = rt.shape() else { return false };
         let Some(dim) = shape.get(index as usize) else { return false };
         if matches!(dim, mlirformat::Dim::Static(_)) {
             return true;

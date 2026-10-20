@@ -110,7 +110,7 @@ impl VectorToLlvm {
             },
             Type::Shaped(s) if s.kind == ShapedKind::Vector => {
                 let n: i64 = s.shape.iter().flatten().map(Self::dim).product();
-                let bits = i64::from(crate::bit_width(&s.elem)?) * n;
+                let bits = i64::from(s.elem.bit_width()?) * n;
                 (((bits + 7) / 8).max(1) as u64).next_power_of_two() as i64
             }
             _ => return None,
@@ -299,7 +299,7 @@ impl VectorToLlvm {
 
     /// The neutral element of a reduction `what` on `ty` (`createReductionNeutralValue`).
     fn neutral<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>, what: &str) -> ValueId {
-        let w = crate::bit_width(ty).unwrap_or(64);
+        let w = ty.bit_width().unwrap_or(64);
         let value = match what {
             "zero" if matches!(ty, Type::Float(_)) => Attribute::Float { lit: "0.000000e+00".into(), ty: Some(ty.clone()) },
             "zero" => Attribute::Int { lit: "0".into(), ty: Some(ty.clone()) },
@@ -447,7 +447,7 @@ impl VectorToLlvm {
             (k @ ("maximumf" | "minimumf"), _) => {
                 // `lowerMaskedReductionWithRegular`: masked-off lanes get a neutral value.
                 let vt = cr.rw.body[v].ty.clone();
-                let (bits, lit) = match (k, crate::bit_width(&lt)) {
+                let (bits, lit) = match (k, lt.bit_width()) {
                     ("maximumf", Some(16)) => (16, "-5.960460e-08"),
                     ("maximumf", Some(64)) => (64, "-4.940660e-324"),
                     ("maximumf", _) => (32, "-1.401300e-45"),
@@ -691,10 +691,10 @@ impl VectorToLlvm {
         let indices = cr.build(OpData::build("llvm.intr.stepvector"), vt.clone());
         let bound = operands[0][0];
         let bt = cr.rw.body[bound].ty.clone();
-        let bound = match (crate::bit_width(&bt), &bt) {
+        let bound = match (bt.bit_width(), &bt) {
             (_, Type::Index) => cr.build(OpData::build("arith.index_cast").operands(&[bound]), it.clone()),
-            (Some(w), _) if w > crate::bit_width(&it).unwrap_or(64) => cr.build(OpData::build("arith.trunci").operands(&[bound]), it.clone()),
-            (Some(w), _) if w < crate::bit_width(&it).unwrap_or(64) => cr.build(OpData::build("arith.extsi").operands(&[bound]), it.clone()),
+            (Some(w), _) if w > it.bit_width().unwrap_or(64) => cr.build(OpData::build("arith.trunci").operands(&[bound]), it.clone()),
+            (Some(w), _) if w < it.bit_width().unwrap_or(64) => cr.build(OpData::build("arith.extsi").operands(&[bound]), it.clone()),
             _ => bound,
         };
         let bounds = cr.build(OpData::build("vector.broadcast").operands(&[bound]), vt);

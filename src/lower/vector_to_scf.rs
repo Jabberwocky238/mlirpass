@@ -31,7 +31,7 @@ struct Xfer<'a> {
     read: bool,
     base: ValueId,
     indices: Vec<ValueId>,
-    /// The padding (read) or the stored vector (write).
+    /// The padding (read) or the stored vector write.
     value: ValueId,
     mask: Option<ValueId>,
     vt: Type<'a>,
@@ -409,7 +409,7 @@ fn transfer_op_conversion<'a>(rw: &mut Rw<'_, 'a>, op: OpId, o: VectorToScfOptio
             rw.make1(OpData::build("vector.type_cast").operands(&[mb]), t)
         });
     }
-    let n = crate::attr::shape_of(&casted_ty).and_then(|d| d.last()).map_or(0, |d| if let Dim::Static(n) = d { *n } else { 0 });
+    let n = casted_ty.shape().and_then(|d| d.last()).map_or(0, |d| if let Dim::Static(n) = d { *n } else { 0 });
     let lb = rw.cidx(0);
     let ub = rw.cidx(n);
     let step = rw.cidx(1);
@@ -1005,7 +1005,7 @@ fn scalable_transpose_write(rw: &mut Rw<'_, '_>, op: OpId, o: VectorToScfOptions
     }
     let inits: Vec<ValueId> = if x.tensor { vec![x.base] } else { Vec::new() };
     let in_bounds_rest = x.in_bounds.get(1..).unwrap_or(&[]).to_vec();
-    let rank = crate::attr::shape_of(&rw.body[x.base].ty).map_or(0, <[Dim]>::len) as u32;
+    let rank = rw.body[x.base].ty.shape().map_or(0, <[Dim]>::len) as u32;
     let map = AffineMap { dims: rank, syms: 0, results: vec![AffineExpr::Dim(rank - 1)] };
     let f = rw.build_for(lb, ub, step, &inits, &mut |rw, iv, args| {
         let xi = rw.xfer_indices(&x, iv);

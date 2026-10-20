@@ -89,7 +89,7 @@ impl<'a> Body<'a> {
     /// A `cf.switch`'s case values.
     fn case_values(&self, op: OpId) -> Option<(Const<'a>, Vec<ApInt>)> {
         let c = Const::try_from(self[op].get("case_values")?).ok()?;
-        let n = crate::attr::element_count(&c.ty)?;
+        let n = c.ty.element_count()?;
         let values = (0..n).map(|i| c.at(i).int()).collect::<Option<Vec<_>>>()?;
         Some((c, values))
     }

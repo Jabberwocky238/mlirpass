@@ -246,7 +246,7 @@ impl LlvmConverter {
         match k {
             FloatKind::BF16 | FloatKind::F16 | FloatKind::F32 | FloatKind::F64 | FloatKind::F80 | FloatKind::F128 => Some(Type::Float(k)),
             FloatKind::TF32 => None,
-            k => crate::attr::bit_width(&Type::Float(k)).map(Type::int),
+            k => Type::Float(k).bit_width().map(Type::int),
         }
     }
 

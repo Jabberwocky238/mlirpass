@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Type};
 
-use crate::{ApInt, Body, BlockId, Const, Fold, Mapping, OpData, OpId, PatternSet, RegionId, Rewriter, ValueId, attr};
+use crate::{ApInt, Body, BlockId, Const, Fold, Mapping, OpData, OpId, PatternSet, RegionId, Rewriter, ValueId};
 
 impl<'a> Body<'a> {
     /// The terminator of `op`'s region `r` (its last block).
@@ -27,8 +27,8 @@ impl<'a> Body<'a> {
 
     /// `constantTripCount` with `computeUbMinusLb`.
     fn trip_count(&self, lb: ValueId, ub: ValueId, step: ValueId, signed: bool) -> Option<ApInt> {
-        let width = attr::int_width(&self[lb].ty).map_or(64, |w| w.0);
-        if attr::int_width(&self[ub].ty).map(|w| w.0) != Some(width) || matches!(self[lb].ty, Type::Index) != matches!(self[ub].ty, Type::Index) {
+        let width = self[lb].ty.int_width().map_or(64, |w| w.0);
+        if self[ub].ty.int_width().map(|w| w.0) != Some(width) || matches!(self[lb].ty, Type::Index) != matches!(self[ub].ty, Type::Index) {
             return None;
         }
         if lb == ub {

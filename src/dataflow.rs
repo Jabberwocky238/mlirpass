@@ -254,7 +254,7 @@ impl<'b, 'a> Solver<'b, 'a> {
             "cf.switch" => {
                 let Some(cases) = b[op].get("case_values").and_then(|a| Const::try_from(a).ok()) else { return Some(succ[0]) };
                 let v = Self::int_of(&c[0])?;
-                let n = crate::attr::element_count(&cases.ty).unwrap_or(0);
+                let n = cases.ty.element_count().unwrap_or(0);
                 Some((0..n).find(|i| cases.at(*i).int().is_some_and(|x| x.signed() == v)).map_or(succ[0], |i| succ[i + 1]))
             }
             _ => None,

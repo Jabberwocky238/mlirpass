@@ -9,7 +9,7 @@ use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
 use super::reshape::{ComposeCollapseOfExpand, ComposeExpandOfCollapse, ComposeReassociative, Reassoc, Reshape};
 use super::MemrefOfr as Ofr;
-use crate::{AffineExpr, AffineMap, Body, Const, DYNAMIC, Fold, Folded, Mapping, OpData, OpId, PatternSet, Rewriter, Trait, ValueId, attr};
+use crate::{AffineExpr, AffineMap, Body, Const, DYNAMIC, Fold, Folded, Mapping, OpData, OpId, PatternSet, Rewriter, Trait, ValueId};
 
 /// The tensor types' helpers.
 struct Tn;
@@ -24,7 +24,7 @@ impl Tn {
     }
 
     fn dims(t: &Type<'_>) -> Option<Vec<i64>> {
-        attr::shape_of(t).map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
+        t.shape().map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
     }
 
     /// `RankedTensorType::get(dims, elem, encoding)`.
@@ -69,7 +69,7 @@ impl Tn {
                 _ => return None,
             });
         }
-        Some(Self::tensor(&join, attr::element_type(one).clone(), Vec::new()))
+        Some(Self::tensor(&join, one.element_type().clone(), Vec::new()))
     }
 
     /// `computeRankReductionMask`: the dims of `orig` dropped to get `reduced`.
@@ -96,7 +96,7 @@ impl Tn {
     /// `isRankReducedType(original, candidate) == Success`.
     fn rank_reduced(orig: &Type<'_>, cand: &Type<'_>) -> bool {
         let (Some(o), Some(c)) = (Self::dims(orig), Self::dims(cand)) else { return false };
-        o.len() >= c.len() && Self::rank_reduction_mask(&o, &c, false).is_some() && attr::element_type(orig) == attr::element_type(cand)
+        o.len() >= c.len() && Self::rank_reduction_mask(&o, &c, false).is_some() && orig.element_type() == cand.element_type()
     }
 
     /// `ExtractSliceOp::inferResultType`.
@@ -410,7 +410,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
         }
         "tensor.extract" => {
             if let Some(k) = c[0].as_ref().and_then(|a| Const::try_from(a).ok()).filter(|k| k.elements && k.is_splat()) {
-                return Folded::Attr(Const::scalar(k.values[0], attr::element_type(&k.ty).clone()).into()).into();
+                return Folded::Attr(Const::scalar(k.values[0], k.ty.element_type().clone()).into()).into();
             }
             let mut idx = Vec::new();
             for a in &c[1..] {
@@ -433,7 +433,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
                 let dims = Tn::dims(&k.ty).unwrap_or_default();
                 if idx.len() == dims.len() && idx.iter().zip(&dims).all(|(i, d)| *i >= 0 && i < d) {
                     let flat = idx.iter().zip(&dims).fold(0i64, |acc, (i, d)| acc * d + i);
-                    return Folded::Attr(Const::scalar(k.at(flat as usize), attr::element_type(&k.ty).clone()).into()).into();
+                    return Folded::Attr(Const::scalar(k.at(flat as usize), k.ty.element_type().clone()).into()).into();
                 }
             }
             // `foldExtractAfterInsert`.
@@ -453,12 +453,12 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
         "tensor.gather" => reshape_constant(c[0].as_ref(), &rt).map_or(Fold::Failed, |a| Folded::Attr(a).into()),
         "tensor.insert" => {
             let (Some(s), Some(d)) = (c[0].as_ref().and_then(|a| Const::try_from(a).ok()), c[1].as_ref().and_then(|a| Const::try_from(a).ok())) else { return Fold::Failed };
-            if d.elements && d.is_splat() && s.values.first() == d.values.first() && attr::element_type(&d.ty) == &s.ty {
+            if d.elements && d.is_splat() && s.values.first() == d.values.first() && d.ty.element_type() == &s.ty {
                 return Folded::Attr(c[1].clone().expect("constant")).into();
             }
             Fold::Failed
         }
-        "tensor.rank" => match attr::shape_of(&b[ops[0]].ty) {
+        "tensor.rank" => match b[ops[0]].ty.shape() {
             Some(d) => Folded::Attr(Tn::index(d.len() as i64)).into(),
             None => Fold::Failed,
         },
@@ -853,7 +853,7 @@ rewrites! {
         for (i, v) in b[op].operands.iter().enumerate() {
             let Some(d) = Tn::dims(&b[*v].ty) else { return false };
             shape[dim] = d[dim];
-            let t = Tn::tensor(&shape, attr::element_type(&inferred).clone(), Vec::new());
+            let t = Tn::tensor(&shape, inferred.element_type().clone(), Vec::new());
             if !Tn::preserves(&t, &b[*v].ty) {
                 casts.push((i, *v, t));
             }
@@ -910,7 +910,7 @@ rewrites! {
         let b = &*rw.body;
         let Some(r) = b.def_named(b[op].operands[0], "tensor.reshape") else { return false };
         let (shape, i) = (b[r].operands[1], b[op].operands[1]);
-        let elem = attr::element_type(&b[shape].ty).clone();
+        let elem = b[shape].ty.element_type().clone();
         rw.set_after(op);
         let mut v = rw.single(OpData::build("tensor.extract").operands(&[shape, i]), elem.clone());
         if elem != Type::Index {
@@ -948,7 +948,7 @@ rewrites! {
                 kept.push(v);
             }
         }
-        let ty = Tn::tensor(&dims, attr::element_type(&rt).clone(), Vec::new());
+        let ty = Tn::tensor(&dims, rt.element_type().clone(), Vec::new());
         rw.replace_with(op, OpData::build("tensor.empty").operands(&kept), &[ty]);
         true
     }
@@ -1012,7 +1012,7 @@ rewrites! {
             return false;
         }
         let src_ty = b[b[op].operands[0]].ty.clone();
-        let elem = attr::element_type(&src_ty).clone();
+        let elem = src_ty.element_type().clone();
         let mut input = vec![1i64; Tn::dims(&src_ty).map_or(0, |d| d.len())];
         for (i, d) in input.iter_mut().enumerate() {
             for od in &r[i] {
@@ -1091,7 +1091,7 @@ rewrites! {
         let b = &*rw.body;
         let Some(ic) = b.def_named(b[op].operands[0], "arith.index_cast") else { return false };
         let input = b[ic].operands[0];
-        let elem = attr::element_type(&b[input].ty).clone();
+        let elem = b[input].ty.element_type().clone();
         let mut ops = vec![input];
         ops.extend(&b[op].operands[1..]);
         let ty = b[b[op].results[0]].ty.clone();
@@ -1455,7 +1455,7 @@ fn concat_type<'a>(b: &Body<'a>, op: OpId, dim: usize) -> Option<Type<'a>> {
             }
         }
     }
-    Some(Tn::tensor(&sizes, attr::element_type(&b[b[op].operands[0]].ty).clone(), Vec::new()))
+    Some(Tn::tensor(&sizes, b[b[op].operands[0]].ty.element_type().clone(), Vec::new()))
 }
 
 /// A `tensor.expand_shape` to `shape`.

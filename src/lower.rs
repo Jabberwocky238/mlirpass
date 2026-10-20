@@ -302,7 +302,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
 
     /// `isUnsupportedFloatingPointType`: a float (element) type the converter does not keep a float.
     pub fn unsupported_float(&self, t: &Type<'a>) -> bool {
-        let e = crate::attr::element_type(t);
+        let e = t.element_type();
         if !matches!(e, Type::Float(_)) {
             return false;
         }

@@ -181,7 +181,7 @@ impl ShapeToStd {
             return false;
         }
         let Some(c) = cr.rw.body[op].get("shape").and_then(|a| crate::Const::try_from(a).ok()) else { return false };
-        let n = crate::attr::element_count(&c.ty).unwrap_or(0);
+        let n = c.ty.element_count().unwrap_or(0);
         let ext: Vec<ValueId> = (0..n).map(|i| Self::cidx(cr, c.at(i).int().map_or(0, |x| x.unsigned() as i64))).collect();
         let t = tensor_type(&[n as i64], Type::Index);
         let fe = Self::make1(cr, OpData::build("tensor.from_elements").operands(&ext), t.clone());
@@ -234,7 +234,7 @@ impl ShapeToStd {
         let (v, i) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
         let rt = Self::result_ty(cr, op);
         let st = match &cr.rw.body[v].ty {
-            t if crate::attr::shape_of(t).is_some() => tensor_type(&[dims_of(t).len() as i64], Type::Index),
+            t if t.shape().is_some() => tensor_type(&[dims_of(t).len() as i64], Type::Index),
             Type::Shaped(_) => Self::extent_tensor(),
             _ => Type::Extended(mlirformat::Extended { name: "shape.shape".into(), body: None, params: Vec::new() }),
         };
@@ -353,7 +353,7 @@ impl ShapeToStd {
         }
         let t = o[0][0];
         let tt = Self::ty(cr, t);
-        if let Some(dims) = crate::attr::shape_of(&tt).filter(|_| matches!(&tt, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Tensor)).map(|_| dims_of(&tt)) {
+        if let Some(dims) = tt.shape().filter(|_| matches!(&tt, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Tensor)).map(|_| dims_of(&tt)) {
             let ext: Vec<ValueId> = dims
                 .iter()
                 .enumerate()
@@ -413,7 +413,7 @@ impl ShapeToStd {
     #[lowering("shape.to_extent_tensor")]
     fn to_extent_tensor(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let t = Self::ty(cr, o[0][0]);
-        if crate::attr::shape_of(&t).is_none() || !matches!(&t, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Tensor) {
+        if t.shape().is_none() || !matches!(&t, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Tensor) {
             return false;
         }
         let rt = Self::result_ty(cr, op);

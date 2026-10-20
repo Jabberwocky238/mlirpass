@@ -45,7 +45,7 @@ impl<'a> Body<'a> {
 
     /// A shaped type's dims, `DYNAMIC` for `?`.
     pub fn dims_of(&self, v: ValueId) -> Option<Vec<i64>> {
-        Some(crate::attr::shape_of(&self[v].ty)?.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
+        Some(self[v].ty.shape()?.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
     }
 
     pub fn dense_i64(&self, op: OpId, name: &str) -> Vec<i64> {
@@ -132,7 +132,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
             Fold::Failed
         }
         "memref.dim" => fold_dim(b, op),
-        "memref.rank" => match crate::attr::shape_of(&b[b[op].operands[0]].ty) {
+        "memref.rank" => match b[b[op].operands[0]].ty.shape() {
             Some(s) => Folded::Attr(index_attr(s.len() as i64)).into(),
             None => Fold::Failed,
         },
@@ -368,7 +368,7 @@ rewrites! {
         }
         let src = b[op].operands[0];
         let (Type::Shaped(st), rt) = (b[src].ty.clone(), b[b[op].results[0]].ty.clone()) else { return false };
-        let dims = |t: &Type<'_>| crate::attr::shape_of(t).map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect::<Vec<_>>()).unwrap_or_default();
+        let dims = |t: &Type<'_>| t.shape().map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect::<Vec<_>>()).unwrap_or_default();
         if !Ofr::in_bounds(&dims(&b[src].ty), &o, &s, &t) {
             return false;
         }
@@ -387,7 +387,7 @@ rewrites! {
         let b = &*rw.body;
         let src = b[op].operands[0];
         let (st, rt) = (b[src].ty.clone(), b[b[op].results[0]].ty.clone());
-        let (Some(shape), Some(rshape)) = (crate::attr::shape_of(&st), crate::attr::shape_of(&rt)) else { return false };
+        let (Some(shape), Some(rshape)) = (st.shape(), rt.shape()) else { return false };
         let [o, s, t] = b.slice_lists(op);
         let trivial = shape.len() == rshape.len()
             && o.iter().all(|x| matches!(x, Ofr::C(0)))
@@ -419,7 +419,7 @@ rewrites! {
         let Type::Shaped(st) = b[from].ty.clone() else { return false };
         let rt = b[b[op].results[0]].ty.clone();
         let [o, s, t] = b.slice_lists(op);
-        let dims = crate::attr::shape_of(&rt).map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect::<Vec<_>>()).unwrap_or_default();
+        let dims = rt.shape().map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect::<Vec<_>>()).unwrap_or_default();
         let Some(ty) = Ofr::subview_type(&st, &o, &s, &t, &Ofr::dropped(&s, &dims)) else { return false };
         let mut data = OpData { operands: b[op].operands.clone(), ..OpData::named(b[op].name.clone()) };
         data.properties = b[op].properties.clone();
@@ -513,7 +513,7 @@ rewrites! {
     /// `FoldEmptyCopy`: a copy of or into a memref with a zero dimension goes.
     FoldEmptyCopy("memref.copy", 1) |rw, op| {
         let b = &*rw.body;
-        let empty = |v: &ValueId| crate::attr::shape_of(&b[*v].ty).is_some_and(|d| d.contains(&Dim::Static(0)));
+        let empty = |v: &ValueId| b[*v].ty.shape().is_some_and(|d| d.contains(&Dim::Static(0)));
         if !b[op].operands.iter().any(empty) {
             return false;
         }
@@ -562,7 +562,7 @@ rewrites! {
             }
         }
         let shape = b[reshape].operands[1];
-        let elem = crate::attr::element_type(&b[shape].ty).clone();
+        let elem = b[shape].ty.element_type().clone();
         let ty = b[b[op].results[0]].ty.clone();
         rw.set_after(reshape);
         let load = rw.create(OpData::build("memref.load").operands(&[shape, idx]), &[elem.clone()]);
