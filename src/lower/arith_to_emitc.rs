@@ -7,7 +7,7 @@ use mlirformat::{Attribute, ShapedKind, Type};
 
 use super::emitc::Emitc;
 use crate::canon::AttrExt;
-use crate::{ConversionPattern, ConversionRewriter, OpData, OpId, ValueId};
+use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 

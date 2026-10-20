@@ -225,29 +225,29 @@ impl<'a> Cx<'_, '_, 'a, '_> {
     }
 
     /// `computeAbs`.
+    #[ops(self, fmf = f2)]
     fn abs(&mut self, real: ValueId, imag: ValueId, fmf: Fmf, fun: AbsFn) -> ValueId {
-        let one = self.cst(1.0);
+        let one = 1.0;
         let ar = self.m("absf", real, fmf);
         let ai = self.m("absf", imag, fmf);
         let mut max = self.f("arith.maximumf", &[ar, ai], fmf);
         let mut min = self.f("arith.minimumf", &[ar, ai], fmf);
         let f2 = fmf.without_nan_inf();
-        let ratio = self.div(min, max, f2);
-        let sq = self.mul(ratio, ratio, f2);
-        let mut sq1 = self.add(sq, one, f2);
+        let ratio = min / max;
+        let mut sq1 = ratio * ratio + one;
         if fun == AbsFn::Rsqrt {
             sq1 = self.m("rsqrt", sq1, f2);
             min = self.m("rsqrt", min, f2);
             max = self.m("rsqrt", max, f2);
         }
         let result = if fun == AbsFn::Sqrt {
-            let quarter = self.cst(0.25);
+            let quarter = 0.25;
             let s = self.m("sqrt", max, f2);
             let p = self.f("math.powf", &[sq1, quarter], f2);
-            self.mul(s, p, f2)
+            s * p
         } else {
             let s = self.m("sqrt", sq1, f2);
-            self.mul(max, s, f2)
+            max * s
         };
         let nan = self.cmp(P::Uno, result, result, f2);
         self.select(nan, min, result)
@@ -263,96 +263,67 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         p
     }
 
-    /// `convertDivToStandardUsingAlgebraic`.
+    /// `convertDivToStandardUsingAlgebraic` (and its LLVM twin).
+    #[ops(self, fmf = f)]
     fn div_algebraic(&mut self, lr: ValueId, li: ValueId, rr: ValueId, ri: ValueId, f: Fmf) -> (ValueId, ValueId) {
-        let a = self.mul(rr, rr, f);
-        let b = self.mul(ri, ri, f);
-        let norm = self.add(a, b, f);
-        let a = self.mul(lr, rr, f);
-        let b = self.mul(li, ri, f);
-        let rnum = self.add(a, b, f);
-        let a = self.mul(li, rr, f);
-        let b = self.mul(lr, ri, f);
-        let inum = self.sub(a, b, f);
-        (self.div(rnum, norm, f), self.div(inum, norm, f))
+        let norm = rr * rr + ri * ri;
+        let rnum = lr * rr + li * ri;
+        let inum = li * rr - lr * ri;
+        (rnum / norm, inum / norm)
     }
 
-    /// `convertDivToStandardUsingRangeReduction`.
+    /// `convertDivToStandardUsingRangeReduction` (and its LLVM twin).
+    #[ops(self, fmf = f)]
     fn div_range_reduction(&mut self, lr: ValueId, li: ValueId, rr: ValueId, ri: ValueId, f: Fmf) -> (ValueId, ValueId) {
         let n = Fmf::NONE;
-        let ratio1 = self.div(rr, ri, f);
-        let t = self.mul(ratio1, rr, f);
-        let denom1 = self.add(ri, t, f);
-        let t = self.mul(lr, ratio1, f);
-        let rn1 = self.add(t, li, f);
-        let r1 = self.div(rn1, denom1, f);
-        let t = self.mul(li, ratio1, f);
-        let in1 = self.sub(t, lr, f);
-        let i1 = self.div(in1, denom1, f);
-        let ratio2 = self.div(ri, rr, f);
-        let t = self.mul(ratio2, ri, f);
-        let denom2 = self.add(rr, t, f);
-        let t = self.mul(li, ratio2, f);
-        let rn2 = self.add(lr, t, f);
-        let r2 = self.div(rn2, denom2, f);
-        let t = self.mul(lr, ratio2, f);
-        let in2 = self.sub(li, t, f);
-        let i2 = self.div(in2, denom2, f);
-        let zero = self.cst(0.0);
+        let ratio1 = rr / ri;
+        let denom1 = ri + ratio1 * rr;
+        let r1 = (lr * ratio1 + li) / denom1;
+        let i1 = (li * ratio1 - lr) / denom1;
+        let ratio2 = ri / rr;
+        let denom2 = rr + ratio2 * ri;
+        let r2 = (lr + li * ratio2) / denom2;
+        let i2 = (li - lr * ratio2) / denom2;
+        let zero = 0.0;
         let rra = self.m("absf", rr, f);
         let rrz = self.cmp(P::Oeq, rra, zero, n);
         let ria = self.m("absf", ri, f);
         let riz = self.cmp(P::Oeq, ria, zero, n);
         let lrn = self.cmp(P::Ord, lr, zero, n);
         let lin = self.cmp(P::Ord, li, zero, n);
-        let lnn = self.or(lrn, lin);
-        let bz = self.and(rrz, riz);
-        let is_inf = self.and(lnn, bz);
+        let is_inf = (lrn | lin) & (rrz & riz);
         let inf = self.inf(false);
         let infs = self.f("math.copysign", &[inf, rr], n);
-        let infr = self.mul(infs, lr, f);
-        let infi = self.mul(infs, li, f);
+        let infr = infs * lr;
+        let infi = infs * li;
         let rrf = self.cmp(P::One, rra, inf, n);
         let rif = self.cmp(P::One, ria, inf, n);
-        let rf = self.and(rrf, rif);
+        let rf = rrf & rif;
         let lra = self.m("absf", lr, f);
         let lri = self.cmp(P::Oeq, lra, inf, n);
         let lia = self.m("absf", li, f);
         let lii = self.cmp(P::Oeq, lia, inf, n);
-        let linf = self.or(lri, lii);
-        let inf_fin = self.and(linf, rf);
-        let one = self.cst(1.0);
+        let inf_fin = (lri | lii) & rf;
+        let one = 1.0;
         let s = self.select(lri, one, zero);
         let lris = self.f("math.copysign", &[s, lr], n);
         let s = self.select(lii, one, zero);
         let liis = self.f("math.copysign", &[s, li], n);
-        let a = self.mul(lris, rr, f);
-        let b = self.mul(liis, ri, f);
-        let t = self.add(a, b, f);
-        let r3 = self.mul(inf, t, f);
-        let a = self.mul(lris, ri, f);
-        let b = self.mul(liis, rr, f);
-        let t = self.sub(b, a, f);
-        let i3 = self.mul(inf, t, f);
+        let r3 = inf * (lris * rr + liis * ri);
+        let a = lris * ri;
+        let i3 = inf * (liis * rr - a);
         let lrf = self.cmp(P::One, lra, inf, n);
         let lif = self.cmp(P::One, lia, inf, n);
-        let lf = self.and(lrf, lif);
+        let lf = lrf & lif;
         let rri = self.cmp(P::Oeq, rra, inf, n);
         let rii = self.cmp(P::Oeq, ria, inf, n);
-        let rinf = self.or(rri, rii);
-        let fin_inf = self.and(lf, rinf);
+        let fin_inf = lf & (rri | rii);
         let s = self.select(rri, one, zero);
         let rris = self.f("math.copysign", &[s, rr], n);
         let s = self.select(rii, one, zero);
         let riis = self.f("math.copysign", &[s, ri], n);
-        let a = self.mul(lr, rris, f);
-        let b = self.mul(li, riis, f);
-        let t = self.add(a, b, f);
-        let r4 = self.mul(zero, t, f);
-        let a = self.mul(li, rris, f);
-        let b = self.mul(lr, riis, f);
-        let t = self.sub(a, b, f);
-        let i4 = self.mul(zero, t, f);
+        let r4 = zero * (lr * rris + li * riis);
+        let i4 = zero * (li * rris - lr * riis);
         let smaller = self.cmp(P::Olt, rra, ria, n);
         let r5 = self.select(smaller, r1, r2);
         let i5 = self.select(smaller, i1, i2);
@@ -364,7 +335,7 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         let is1 = self.select(is_inf, infi, is2);
         let rn = self.cmp(P::Uno, r5, zero, n);
         let inn = self.cmp(P::Uno, i5, zero, n);
-        let both = self.and(rn, inn);
+        let both = rn & inn;
         (self.select(both, rs1, r5), self.select(both, is1, i5))
     }
 

@@ -9,7 +9,7 @@ use mlirformat::{Attribute, NamedAttr, Type};
 
 use super::llvm_fastmath;
 use crate::canon::AttrExt;
-use crate::{ApInt, Const, ConversionPattern, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
+use crate::{ApInt, Const, ConversionRewriter, LlvmType, OpData, OpId, Scalar, ValueId, attr};
 
 /// The arith ⇒ llvm patterns, in `populateArithToLLVMConversionPatterns` order.
 pub struct ArithToLlvm;
