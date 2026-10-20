@@ -1,6 +1,7 @@
 //! `memref`'s memory slots, as `MemRefMemorySlot.cpp`: `memref.alloca` allocates them,
 //! `memref.load` / `memref.store` access them, and a small static memref splits into its elements.
-//! Both [`Promotable`] (`mem2reg`) and [`Destructurable`] (`sroa`) of [`MemrefSlots`].
+//! Both [`Promotable`] (`mem2reg`) and [`Destructurable`] (`sroa`) of [`MemrefSlots`], and of
+//! [`TestSlots`] (`test.multi_slot_alloca`, whose slots are memrefs too).
 
 use alloc::vec::Vec;
 
@@ -54,6 +55,29 @@ impl MemrefSlots {
         ty.element_count()?;
         Some((s.dims()?, (*s.elem).clone()))
     }
+
+    /// `destructure`'s new allocators: an op `name` of one `memref<T>` per used index, after
+    /// `alloc`, in `used`'s order, `T` being `slot`'s type at the index.
+    fn sub_allocators<'a>(rw: &mut Rewriter<'_, 'a>, name: &str, alloc: OpId, slot: &DestructurableMemorySlot<'a>, used: &[Attribute<'a>], allocators: &mut Vec<OpId>) -> Vec<(Attribute<'a>, MemorySlot<'a>)> {
+        rw.set_after(alloc);
+        let loc = rw.body[alloc].loc.clone();
+        let mut sub = |index: &Attribute<'a>| {
+            let elem = slot.subelements.iter().find(|(i, _)| i == index).expect("a used index is a subelement").1.clone();
+            let ty = Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(Vec::new()), elem: elem.clone().into(), extras: Vec::new() });
+            let data = OpData { loc: loc.clone(), ..OpData::build(name) };
+            let op = rw.create(if name == "memref.alloca" { data.segments(&[0, 0]) } else { data }, &[ty]);
+            allocators.push(op);
+            (index.clone(), MemorySlot { ptr: rw.body[op].results[0], elem })
+        };
+        used.iter().map(&mut sub).collect()
+    }
+
+    /// `handlePromotionComplete`'s first step: the default value goes if unused.
+    fn drop_default(rw: &mut Rewriter<'_, '_>, default: Option<ValueId>) {
+        if let Some(d) = default.filter(|d| rw.body[*d].uses.is_empty()).and_then(|d| rw.body.def_op(d)) {
+            rw.erase_op(d);
+        }
+    }
 }
 
 impl Promotable for MemrefSlots {
@@ -78,9 +102,7 @@ impl Promotable for MemrefSlots {
 
     /// `AllocaOp::handlePromotionComplete`: the default value goes if unused, then the alloca.
     fn handle_promotion_complete<'a>(&self, rw: &mut Rewriter<'_, 'a>, alloc: OpId, _: &MemorySlot<'a>, default: Option<ValueId>) -> Option<OpId> {
-        if let Some(d) = default.filter(|d| rw.body[*d].uses.is_empty()).and_then(|d| rw.body.def_op(d)) {
-            rw.erase_op(d);
-        }
+        Self::drop_default(rw, default);
         rw.erase_op(alloc);
         None
     }
@@ -162,17 +184,8 @@ impl Destructurable for MemrefSlots {
 
     /// `AllocaOp::destructure`: one `memref<T>` alloca per used index, after `alloc`, in
     /// `used`'s order.
-    fn destructure<'a>(&self, cx: Slots<'_>, rw: &mut Rewriter<'_, 'a>, alloc: OpId, slot: &DestructurableMemorySlot<'a>, used: &[Attribute<'a>], allocators: &mut Vec<OpId>) -> Vec<(Attribute<'a>, MemorySlot<'a>)> {
-        rw.set_after(alloc);
-        let loc = rw.body[alloc].loc.clone();
-        let mut sub = |index: &Attribute<'a>| {
-            let elem = cx.type_at(&slot.slot.elem, index).expect("a used index is valid");
-            let ty = Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(Vec::new()), elem: elem.clone().into(), extras: Vec::new() });
-            let op = rw.create(OpData { loc: loc.clone(), ..OpData::build("memref.alloca").segments(&[0, 0]) }, &[ty]);
-            allocators.push(op);
-            (index.clone(), MemorySlot { ptr: rw.body[op].results[0], elem })
-        };
-        used.iter().map(&mut sub).collect()
+    fn destructure<'a>(&self, _: Slots<'_>, rw: &mut Rewriter<'_, 'a>, alloc: OpId, slot: &DestructurableMemorySlot<'a>, used: &[Attribute<'a>], allocators: &mut Vec<OpId>) -> Vec<(Attribute<'a>, MemorySlot<'a>)> {
+        Self::sub_allocators(rw, "memref.alloca", alloc, slot, used, allocators)
     }
 
     fn handle_destructuring_complete<'a>(&self, rw: &mut Rewriter<'_, 'a>, alloc: OpId, _: &DestructurableMemorySlot<'a>) -> Option<OpId> {
@@ -203,5 +216,73 @@ impl Destructurable for MemrefSlots {
         let operands = rw.body[op].operands[..keep].iter().copied().chain([ptr]).collect();
         rw.modify(op, |b| b.set_operands(op, operands));
         Deletion::Keep
+    }
+}
+
+/// `test.multi_slot_alloca`'s interfaces (`TestOpDefs.cpp`): one slot per result.
+pub struct TestSlots;
+
+impl TestSlots {
+    const ALLOCA: &str = "test.multi_slot_alloca";
+
+    /// `createNewMultiAllocaWithoutSlot`: `alloc` built again before itself without result
+    /// `ptr` (the other results' uses moving over), or nothing when `ptr` was its last.
+    fn without<'a>(rw: &mut Rewriter<'_, 'a>, alloc: OpId, ptr: ValueId) -> Option<OpId> {
+        let rest: Vec<ValueId> = rw.body[alloc].results.iter().copied().filter(|r| *r != ptr).collect();
+        let (ip, loc, types) = (rw.ip, rw.body[alloc].loc.clone(), rw.body.types(&rest));
+        let new = (!rest.is_empty()).then(|| {
+            rw.set_before(alloc);
+            let new = rw.create(OpData { loc, ..OpData::build(Self::ALLOCA) }, &types);
+            for (old, new) in rest.iter().zip(rw.body[new].results.clone()) {
+                rw.replace_all_uses(*old, new);
+            }
+            new
+        });
+        rw.ip = ip;
+        rw.erase_op(alloc);
+        new
+    }
+}
+
+impl Promotable for TestSlots {
+    fn dialect(&self) -> &str {
+        "test"
+    }
+
+    fn promotable_slots<'a>(&self, b: &Body<'a>, op: OpId) -> Option<Vec<MemorySlot<'a>>> {
+        (b[op].name == Self::ALLOCA).then_some(())?;
+        Some(b[op].results.iter().map(|r| MemorySlot { ptr: *r, elem: b[*r].ty.element_type().clone() }).collect())
+    }
+
+    /// `test.constant 42 : i32`.
+    fn default_value<'a>(&self, rw: &mut Rewriter<'_, 'a>, alloc: OpId, slot: &MemorySlot<'a>) -> ValueId {
+        let data = OpData { loc: rw.body[alloc].loc.clone(), ..OpData::build("test.constant").with("value", Attribute::integer(42, Type::int(32))) };
+        let c = rw.create(data, core::slice::from_ref(&slot.elem));
+        rw.body[c].results[0]
+    }
+
+    fn handle_promotion_complete<'a>(&self, rw: &mut Rewriter<'_, 'a>, alloc: OpId, slot: &MemorySlot<'a>, default: Option<ValueId>) -> Option<OpId> {
+        MemrefSlots::drop_default(rw, default);
+        Self::without(rw, alloc, slot.ptr)
+    }
+}
+
+impl Destructurable for TestSlots {
+    fn dialect(&self) -> &str {
+        "test"
+    }
+
+    fn destructurable_slots<'a>(&self, cx: Slots<'_>, b: &Body<'a>, op: OpId) -> Option<Vec<DestructurableMemorySlot<'a>>> {
+        (b[op].name == Self::ALLOCA).then_some(())?;
+        let slot = |r: &ValueId| cx.subelements(&b[*r].ty).map(|subelements| DestructurableMemorySlot { slot: MemorySlot { ptr: *r, elem: b[*r].ty.clone() }, subelements });
+        Some(b[op].results.iter().filter_map(slot).collect())
+    }
+
+    fn destructure<'a>(&self, _: Slots<'_>, rw: &mut Rewriter<'_, 'a>, alloc: OpId, slot: &DestructurableMemorySlot<'a>, used: &[Attribute<'a>], allocators: &mut Vec<OpId>) -> Vec<(Attribute<'a>, MemorySlot<'a>)> {
+        MemrefSlots::sub_allocators(rw, Self::ALLOCA, alloc, slot, used, allocators)
+    }
+
+    fn handle_destructuring_complete<'a>(&self, rw: &mut Rewriter<'_, 'a>, alloc: OpId, slot: &DestructurableMemorySlot<'a>) -> Option<OpId> {
+        Self::without(rw, alloc, slot.slot.ptr)
     }
 }

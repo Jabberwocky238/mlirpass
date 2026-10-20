@@ -21,6 +21,7 @@ use mlirpass_macros::pass;
 use mlirformat::llvm_types::LlvmType;
 use mlirformat::{llvm, Attribute, Error, ShapedKind, Type};
 
+use super::memref_slots::TestSlots;
 use super::memslot::{Deletion, LlvmSlots, MemorySlot, MemrefSlots, Promotable};
 use crate::{BlockId, Body, DataLayout, DomTree, OpId, Quiet, RegionId, Rewriter, TypedOp, Use, ValueId};
 
@@ -28,7 +29,7 @@ use crate::{BlockId, Body, DataLayout, DomTree, OpId, Quiet, RegionId, Rewriter,
 /// `region-simplify` is accepted and, as in `Mem2Reg.cpp`, unused.
 #[pass("mem2reg", ty = Mem2Reg, extra = ["region-simplify"])]
 pub fn mem2reg<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-    let dialects: [&dyn Promotable; 2] = [&LlvmSlots, &MemrefSlots];
+    let dialects: [&dyn Promotable; 3] = [&LlvmSlots, &MemrefSlots, &TestSlots];
     let promotion = Promotion { dialects: &dialects };
     for r in body[op].regions.clone() {
         if body[r].blocks.is_empty() {

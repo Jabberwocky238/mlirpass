@@ -8,11 +8,12 @@ mod llvm;
 use mlirpass_macros::pass;
 use mlirformat::Error;
 
+use super::memref_slots::TestSlots;
 use super::memslot::{Destructurable, LlvmSlots, MemrefSlots};
 use crate::{Body, OpId};
 
 #[pass("sroa", ty = Sroa)]
 pub fn sroa<'a>(_body: &mut Body<'a>, _op: OpId) -> Result<(), Error> {
-    let _dialects: [&dyn Destructurable; 2] = [&LlvmSlots, &MemrefSlots];
+    let _dialects: [&dyn Destructurable; 3] = [&LlvmSlots, &MemrefSlots, &TestSlots];
     Ok(())
 }
