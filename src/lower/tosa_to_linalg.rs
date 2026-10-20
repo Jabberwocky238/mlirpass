@@ -1183,7 +1183,232 @@ impl TosaToLinalg {
         true
     }
 
-    /// `populateTosaToLinalgConversionPatterns` (what is ported of it).
+    /// The `tosa.resize` mode (`Some(true)` for bilinear, `Some(false)` nearest).
+    fn bilinear(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<bool> {
+        let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("mode") else { return None };
+        match ext.body.as_deref()? {
+            m if m.contains("BILINEAR") => Some(true),
+            m if m.contains("NEAREST_NEIGHBOR") => Some(false),
+            _ => None,
+        }
+    }
+
+    /// `ResizeUnaryConverter`.
+    fn resize_unary(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let input = cr.rw.body[op].operands[0];
+        let (it, rt) = (Self::ty(cr, input), Self::ty(cr, cr.rw.body[op].results[0]));
+        let (id, rd) = (dims_of(&it), dims_of(&rt));
+        if id[1] != 1 || id[2] != 1 || rd[1] != 1 || rd[2] != 1 {
+            return false;
+        }
+        let Some(bilinear) = Self::bilinear(cr, op) else { return false };
+        if it == rt {
+            cr.replace_values(op, &[input]);
+            return true;
+        }
+        let Some(scale) = TosaToTensor::const_shape(cr, cr.rw.body[op].operands[1]) else { return false };
+        let reassoc = [vec![0], vec![1, 2, 3]];
+        let (ie, re) = (elem(&it), elem(&rt));
+        let ct = super::linalg_build::tensor_type(&[id[0], id[3]], ie.clone());
+        let collapse = cr.collapse(input, &reassoc, ct);
+        let dyn_dims = Self::dyn_dims(cr, input, |i, d| d == DYNAMIC && (i == 0 || i == 3));
+        let gt = super::linalg_build::tensor_type(&[id[0], id[3]], re.clone());
+        let empty = cr.op1("tensor.empty", &dyn_dims, gt.clone());
+        let id2 = AffineMap::identity(2);
+        let g = cr.generic(core::slice::from_ref(&gt), &[collapse], &[empty], &[id2.clone(), id2], &[true, true], &mut |cr, a| {
+            let mut v = a[0];
+            if ie != re {
+                v = cr.op1("arith.extsi", &[v], re.clone());
+                for s in [scale[0], scale[2]] {
+                    if bilinear && s != 0 {
+                        let c = cr.constant(int_attr(i128::from(s as i32), &Type::int(32)), Type::int(32));
+                        v = cr.bin("arith.muli", v, c);
+                    }
+                }
+            }
+            vec![v]
+        });
+        let gr = cr.rw.body[g].results[0];
+        let v = TosaToTensor::expand(cr, rt, gr, &reassoc, false);
+        cr.replace_values(op, &[v]);
+        true
+    }
+
+    /// `MaterializeResizeBroadcast`.
+    fn resize_broadcast(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let input = cr.rw.body[op].operands[0];
+        let (it, rt) = (Self::ty(cr, input), Self::ty(cr, cr.rw.body[op].results[0]));
+        if crate::attr::shape_of(&it).is_none() || crate::attr::shape_of(&rt).is_none() {
+            return false;
+        }
+        let (id, rd) = (dims_of(&it), dims_of(&rt));
+        let (batch, channels, ih, iw, oh, ow) = (id[0], id[3], id[1], id[2], rd[1], rd[2]);
+        if (ih != 1 || oh == 1) && (iw != 1 || ow == 1) {
+            return false;
+        }
+        let re = elem(&rt);
+        let rshape = [batch, if ih == 1 { 1 } else { oh }, if iw == 1 { 1 } else { ow }, channels];
+        let o = &cr.rw.body[op];
+        let data = OpData { results: Vec::new(), successors: Vec::new(), regions: Vec::new(), parent: None, ..o.clone() };
+        let resize = cr.build(data, super::linalg_build::tensor_type(&rshape, re.clone()));
+        let mut reassoc = vec![vec![0], vec![1]];
+        if ih != 1 {
+            reassoc.push(Vec::new());
+        }
+        reassoc.last_mut().expect("a group").push(2);
+        if iw != 1 {
+            reassoc.push(Vec::new());
+        }
+        reassoc.last_mut().expect("a group").push(3);
+        let mut cshape = vec![batch];
+        let mut in_dims = vec![0];
+        if ih != 1 {
+            cshape.push(oh);
+            in_dims.push(1);
+        }
+        if iw != 1 {
+            cshape.push(ow);
+            in_dims.push(2);
+        }
+        cshape.push(channels);
+        in_dims.push(3);
+        let collapse = cr.collapse(resize, &reassoc, super::linalg_build::tensor_type(&cshape, re.clone()));
+        let dyn_dims = Self::dyn_dims(cr, input, |i, d| d == DYNAMIC && (i == 0 || i == 3));
+        let empty = cr.op1("tensor.empty", &dyn_dims, rt.clone());
+        let maps = [Self::dims_map(4, &in_dims), AffineMap::identity(4)];
+        let g = cr.generic(core::slice::from_ref(&rt), &[collapse], &[empty], &maps, &[true; 4], &mut |_, a| vec![a[0]]);
+        let r = cr.rw.body[g].results[0];
+        cr.replace_values(op, &[r]);
+        true
+    }
+
+    /// `GenericResizeConverter`.
+    fn resize<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let ops = cr.rw.body[op].operands.clone();
+        let input = ops[0];
+        let (it, rt) = (Self::ty(cr, input), Self::ty(cr, cr.rw.body[op].results[0]));
+        let re = elem(&rt);
+        let fp = matches!(re, Type::Float(_));
+        let id = dims_of(&it);
+        let (ih, iw) = (id[1], id[2]);
+        let out = cr.rw.body[op].results[0];
+        let Some(dyn_dims) = super::TosaToLinalgNamed::dynamic_batch(cr, &[input, out]) else { return false };
+        let Some(bilinear) = Self::bilinear(cr, op) else { return false };
+        let (Some(scale), Some(offset), Some(border)) = (TosaToTensor::const_shape(cr, ops[1]), TosaToTensor::const_shape(cr, ops[2]), TosaToTensor::const_shape(cr, ops[3])) else { return false };
+        let empty = cr.op1("tensor.empty", &dyn_dims, rt.clone());
+        let g = cr.generic(core::slice::from_ref(&rt), &[], &[empty], &[AffineMap::identity(4)], &[true; 4], &mut |cr, _| {
+            let i32t = Type::int(32);
+            let c32 = |cr: &mut Cr<'_, 'a, '_>, v: i64| cr.constant(int_attr(i128::from(v as i32), &Type::int(32)), Type::int(32));
+            let [batch, y, x, channel] = [0, 1, 2, 3].map(|d| cr.index(d));
+            let zero = c32(cr, 0);
+            let zero_fp = cr.constant(float(0.0, &re), re.clone());
+            let hmax = c32(cr, ih - 1);
+            let wmax = c32(cr, iw - 1);
+            let in_y = cr.op1("arith.index_cast", &[y], i32t.clone());
+            let in_x = cr.op1("arith.index_cast", &[x], i32t.clone());
+            let [ysn, ysd, xsn, xsd] = [0, 1, 2, 3].map(|i| c32(cr, scale[i]));
+            let [yo, xo] = [0, 1].map(|i| c32(cr, offset[i]));
+            let _ = [0, 1].map(|i| c32(cr, border[i]));
+            let index_delta = |cr: &mut Cr<'_, 'a, '_>, v: ValueId, sn: ValueId, sd: ValueId, off: ValueId, size: i64| -> (ValueId, ValueId) {
+                if size == 1 {
+                    return (zero, if fp { zero_fp } else { zero });
+                }
+                let m = cr.bin("arith.muli", v, sd);
+                let val = cr.bin("arith.addi", m, off);
+                if fp {
+                    let index = cr.bin("arith.floordivsi", val, sn);
+                    let r = cr.bin("arith.remsi", val, sn);
+                    let rf = cr.op1("arith.sitofp", &[r], re.clone());
+                    let sf = cr.op1("arith.uitofp", &[sn], re.clone());
+                    return (index, cr.bin("arith.divf", rf, sf));
+                }
+                let index = cr.bin("arith.divsi", val, sn);
+                let d = cr.bin("arith.muli", index, sn);
+                (index, cr.bin("arith.subi", val, d))
+            };
+            let (iy, dy) = index_delta(cr, in_y, ysn, ysd, yo, ih);
+            let (ix, dx) = index_delta(cr, in_x, xsn, xsd, xo, iw);
+            if !bilinear {
+                let one = c32(cr, 1);
+                let nearest = |cr: &mut Cr<'_, 'a, '_>, v: ValueId, dv: ValueId, s: ValueId, max: ValueId, size: i64| -> ValueId {
+                    if size == 1 {
+                        return cr.cidx(0);
+                    }
+                    let pred = if fp {
+                        let h = cr.constant(float(0.5, &re), re.clone());
+                        cmpf(cr, 3, dv, h)
+                    } else {
+                        let dd = cr.bin("arith.shli", dv, one);
+                        cmpi(cr, 5, dd, s)
+                    };
+                    let off = cr.op1("arith.select", &[pred, one, zero], Type::int(32));
+                    let v = cr.bin("arith.addi", v, off);
+                    let v = Self::clamp_int(cr, v, zero, max, false);
+                    cr.op1("arith.index_cast", &[v], Type::Index)
+                };
+                let iy = nearest(cr, iy, dy, ysn, hmax, ih);
+                let ix = nearest(cr, ix, dx, xsn, wmax, iw);
+                return vec![cr.op1("tensor.extract", &[input, batch, iy, ix, channel], elem(&it))];
+            }
+            let one = c32(cr, 1);
+            let clamped = |cr: &mut Cr<'_, 'a, '_>, v: ValueId, max: ValueId| -> (ValueId, ValueId) {
+                let v1 = cr.bin("arith.addi", v, one);
+                let v0 = Self::clamp_int(cr, v, zero, max, false);
+                let v1 = Self::clamp_int(cr, v1, zero, max, false);
+                (cr.op1("arith.index_cast", &[v0], Type::Index), cr.op1("arith.index_cast", &[v1], Type::Index))
+            };
+            let (y0, y1) = clamped(cr, iy, hmax);
+            let (x0, x1) = clamped(cr, ix, wmax);
+            let ie = elem(&it);
+            let ex = |cr: &mut Cr<'_, 'a, '_>, yy: ValueId, xx: ValueId| cr.op1("tensor.extract", &[input, batch, yy, xx, channel], ie.clone());
+            let (mut v00, mut v01, mut v10, mut v11) = (ex(cr, y0, x0), ex(cr, y0, x1), ex(cr, y1, x0), ex(cr, y1, x1));
+            if fp {
+                let onef = cr.constant(float(1.0, &re), re.clone());
+                let interp = |cr: &mut Cr<'_, 'a, '_>, a: ValueId, b: ValueId, d: ValueId, size: i64| -> ValueId {
+                    if size == 1 {
+                        return a;
+                    }
+                    let omd = cr.bin("arith.subf", onef, d);
+                    let m0 = cr.bin("arith.mulf", a, omd);
+                    let m1 = cr.bin("arith.mulf", b, d);
+                    cr.bin("arith.addf", m0, m1)
+                };
+                let top = interp(cr, v00, v01, dx, iw);
+                let bottom = interp(cr, v10, v11, dx, iw);
+                return vec![interp(cr, top, bottom, dy, ih)];
+            }
+            for v in [&mut v00, &mut v01, &mut v10, &mut v11] {
+                *v = cr.op1("arith.extsi", &[*v], re.clone());
+            }
+            let (mut dx, mut dy) = (dx, dy);
+            if width(&re) > width(&Self::ty(cr, dx)) {
+                dx = cr.op1("arith.extsi", &[dx], re.clone());
+                dy = cr.op1("arith.extsi", &[dy], re.clone());
+            }
+            let (mut ysn, mut xsn) = (ysn, xsn);
+            if width(&re) > 32 {
+                ysn = cr.op1("arith.extsi", &[ysn], re.clone());
+                xsn = cr.op1("arith.extsi", &[xsn], re.clone());
+            }
+            let interp = |cr: &mut Cr<'_, 'a, '_>, a: ValueId, b: ValueId, w1: ValueId, s: ValueId, size: i64| -> ValueId {
+                if size == 1 {
+                    return cr.bin("arith.muli", a, s);
+                }
+                let w0 = cr.bin("arith.subi", s, w1);
+                let m0 = cr.bin("arith.muli", a, w0);
+                let m1 = cr.bin("arith.muli", b, w1);
+                cr.bin("arith.addi", m0, m1)
+            };
+            let top = interp(cr, v00, v01, dx, xsn, iw);
+            let bottom = interp(cr, v10, v11, dx, xsn, iw);
+            vec![interp(cr, top, bottom, dy, ysn, ih)]
+        });
+        let r = cr.rw.body[g].results[0];
+        cr.replace_values(op, &[r]);
+        true
+    }
+
+    /// `populateTosaToLinalgConversionPatterns`.
     pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize) {
         const POINTWISE: [&str; 38] = [
             "tosa.add", "tosa.sub", "tosa.mul", "tosa.intdiv", "tosa.negate", "tosa.pow", "tosa.reciprocal", "tosa.rsqrt", "tosa.log", "tosa.exp", "tosa.abs", "tosa.sin", "tosa.cos", "tosa.tanh", "tosa.erf", "tosa.bitwise_and", "tosa.bitwise_or", "tosa.bitwise_not", "tosa.bitwise_xor", "tosa.logical_and", "tosa.logical_not", "tosa.logical_or", "tosa.logical_xor", "tosa.cast", "tosa.logical_left_shift", "tosa.logical_right_shift", "tosa.arithmetic_right_shift", "tosa.clz", "tosa.select", "tosa.greater", "tosa.greater_equal", "tosa.equal", "tosa.maximum", "tosa.minimum", "tosa.ceil", "tosa.floor", "tosa.clamp", "tosa.sigmoid",
@@ -1196,6 +1421,9 @@ impl TosaToLinalg {
         }
         for (root, f) in [("tosa.argmax", Self::argmax as super::LowerFn), ("tosa.rescale", Self::rescale), ("tosa.reverse", Self::reverse), ("tosa.rfft2d", Self::fft), ("tosa.fft2d", Self::fft), ("tosa.table", Self::table), ("tosa.tile", Self::tile)] {
             patterns.add(Lowering { root, benefit: 1, f });
+        }
+        for (benefit, f) in [(100, Self::resize as super::LowerFn), (200, Self::resize_unary), (300, Self::resize_broadcast)] {
+            patterns.add(Lowering { root: "tosa.resize", benefit, f });
         }
         patterns.add_with(tc, Lowering { root: "tosa.gather", benefit: 1, f: Self::gather });
         patterns.add(Lowering { root: "tosa.identity", benefit: 1, f: |cr, op, _| {
