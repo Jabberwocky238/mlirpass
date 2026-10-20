@@ -227,22 +227,6 @@ impl<'a> Rewriter<'_, 'a> {
 }
 
 impl Body<'_> {
-    /// `getStaticMemIntrLen`: the length operand (or `len` attribute) if constant.
-    fn mem_intr_len(&self, op: OpId) -> Option<u64> {
-        match self[op].get("len") {
-            Some(Attribute::Int { lit, .. }) => lit.parse().ok(),
-            _ => self.const_index(self[op].operands[2]).map(|l| l as u64),
-        }
-    }
-
-    fn is_volatile(&self, op: OpId) -> bool {
-        match self[op].get("isVolatile") {
-            Some(Attribute::Int { lit, .. }) => lit != "0" && lit != "false",
-            Some(Attribute::Bool(v)) => *v,
-            _ => false,
-        }
-    }
-
     /// The single blocking use is of the slot pointer.
     fn only_slot_use(&self, slot: &MemorySlot<'_>, blocking: &[Use]) -> bool {
         matches!(blocking, [u] if self[u.op].operands[u.index as usize] == slot.ptr)
