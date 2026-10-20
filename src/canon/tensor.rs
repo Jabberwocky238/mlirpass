@@ -228,6 +228,14 @@ impl Tn {
     }
 }
 
+impl<'a> OpData<'a> {
+    /// A `tensor` slice op (`extract_slice`, `insert_slice`) with leading operands `lead` and
+    /// mixed offsets, sizes and strides.
+    pub fn sliced(name: &str, lead: &[ValueId], lists: &[Vec<Ofr>; 3]) -> Self {
+        Tn::slice_op(name, lead, lists)
+    }
+}
+
 impl<'a> Body<'a> {
     /// Whether `v` is an `index` constant (`matchConstantIndex`).
     fn is_const_index(&self, v: ValueId) -> bool {
