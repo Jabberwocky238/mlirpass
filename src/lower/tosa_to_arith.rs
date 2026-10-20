@@ -33,7 +33,7 @@ impl<'a> Sc<'_, '_, 'a, '_> {
     fn cst(&mut self, ty: &Type<'a>, v: i64) -> ValueId {
         let attr: Attribute<'a> = match ty {
             Type::Shaped(s) => {
-                let w = crate::attr::int_width(&s.elem).map_or(64, |w| w.0);
+                let w = s.elem.int_width().map_or(64, |w| w.0);
                 Const::splat(Scalar::Int(ApInt::new(w, i128::from(v))), ty.clone()).into()
             }
             _ => Attribute::Int { lit: Cow::Owned(format!("{v}")), ty: Some(ty.clone()) },
@@ -138,7 +138,7 @@ impl TosaToArith {
         let one64 = s.cst(&i64t, 1);
         let thirty_one = s.cst(&i32t, 31);
         let shift32 = s.op("arith.extui", &[shift], &i32t);
-        let value64 = if crate::attr::element_type(&vt) != &Type::int(64) { s.op("arith.extsi", &[value], &i64t) } else { value };
+        let value64 = if vt.element_type() != &Type::int(64) { s.op("arith.extsi", &[value], &i64t) } else { value };
         let m64 = s.op("arith.extsi", &[mult], &i64t);
         let mut mul = value64 * m64;
         let shift64 = s.op("arith.extui", &[shift32], &i64t);
@@ -159,7 +159,7 @@ impl TosaToArith {
     #[ops(s)]
     fn bits32(s: &mut Sc<'_, '_, '_, '_>, value: ValueId, mult: ValueId, shift: ValueId, round: Rounding) -> Option<ValueId> {
         let double = round.0?;
-        if crate::attr::int_width(crate::attr::element_type(&s.ty(value))).is_some_and(|w| w.0 > 32) {
+        if s.ty(value).element_type().int_width().is_some_and(|w| w.0 > 32) {
             return None;
         }
         let rt = s.rt.clone();
@@ -200,7 +200,7 @@ impl TosaToArith {
         low = s.shrui(low, shift32);
         low = s.select(over, zero, low);
         let result = low + high;
-        Some(if crate::attr::element_type(&rt) != &Type::int(32) { s.op("arith.trunci", &[result], &rt) } else { result })
+        Some(if rt.element_type() != &Type::int(32) { s.op("arith.trunci", &[result], &rt) } else { result })
     }
 
 }

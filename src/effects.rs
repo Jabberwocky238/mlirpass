@@ -163,7 +163,7 @@ impl Body<'_> {
             "affine.for" => (self[op].get("step").and_then(|a| if let mlirformat::Attribute::Int { lit, .. } = a { lit.parse::<i64>().ok() } else { None }) == Some(1)).then_some(true),
             "tensor.dim" | "memref.dim" => {
                 let i = c(self[op].operands[1])?;
-                let rank = crate::attr::shape_of(&self[self[op].operands[0]].ty)?.len() as i128;
+                let rank = self[self[op].operands[0]].ty.shape()?.len() as i128;
                 (i < rank).then_some(false)
             }
             "test.conditionally_speculatable_op" => self.def_named(self[op].operands[0], "arith.constant").map(|_| false),
@@ -180,7 +180,7 @@ impl Body<'_> {
                 let first_dynamic = if pack { segs.as_ref().map_or(2, |s| s[..3].iter().sum()) } else { 2 };
                 let mut dynamic = self[op].operands[first_dynamic..].iter();
                 let packed = &self[self[op].operands[usize::from(pack)]].ty;
-                let shape = crate::attr::shape_of(packed)?;
+                let shape = packed.shape()?;
                 let dims = &shape[shape.len() - tiles.len()..];
                 for (d, t) in dims.iter().zip(&tiles) {
                     let constant = *t != i64::MIN || dynamic.next().is_some_and(|v| c(*v).is_some());

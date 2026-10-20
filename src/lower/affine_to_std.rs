@@ -1,7 +1,6 @@
 //! `lower-affine`, as `AffineToStandard.cpp`, the affine expression expansion of
 //! `Affine/Utils/Utils.cpp` and `AffineExpandIndexOps.cpp`.
 
-use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -15,17 +14,13 @@ pub struct AffineToStd;
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-fn index_attr<'a>(v: i64) -> Attribute<'a> {
-    Attribute::Int { lit: format!("{v}").into(), ty: Some(Type::Index) }
-}
-
 const NSW: &str = "<nsw>";
 const NSW_NUW: &str = "<nsw, nuw>";
 
 #[patterns]
 impl AffineToStd {
     fn constant(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
-        cr.emit(&arith::Constant::new(index_attr(v), Type::Index))
+        cr.emit(&arith::Constant::new(Attribute::index(v), Type::Index))
     }
 
     fn binary(cr: &mut Cr<'_, '_, '_>, name: &str, a: ValueId, b: ValueId) -> ValueId {
@@ -335,7 +330,7 @@ impl AffineToStd {
         let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
         let multi = b[op].operands[..segs[0]].to_vec();
         if multi.is_empty() {
-            cr.replace_by(op, &arith::Constant::new(index_attr(0), Type::Index));
+            cr.replace_by(op, &arith::Constant::new(Attribute::index(0), Type::Index));
             return true;
         }
         let dynamic = b[op].operands[segs[0]..].to_vec();

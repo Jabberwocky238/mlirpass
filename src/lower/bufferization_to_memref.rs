@@ -4,10 +4,9 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{arith, memref, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type, arith, memref};
 use mlirpass_macros::{pass, patterns};
 
-use super::vector_transforms::index_attr;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionRewriter as Cr, ConversionTarget, Converter, Listener, Mode, OpData, OpId, Rewriter, ValueId};
 use mlirformat::Error;
 
@@ -26,7 +25,7 @@ impl BufferizationToMemref {
         let alloc = match &s.shape {
             None => Self::unranked(&mut cr.rw, input, s),
             Some(shape) => {
-                let alloc_ty = Type::Shaped(Shaped { extras: s.extras.iter().filter(|a| !Self::layout(a)).cloned().collect(), ..s.clone() });
+                let alloc_ty = Type::Shaped(Shaped { extras: s.extras.iter().filter(|a| !a.is_layout()).cloned().collect(), ..s.clone() });
                 if !crate::canon::memref_cast_compatible(&alloc_ty, &ty) {
                     return false;
                 }
@@ -61,10 +60,6 @@ impl BufferizationToMemref {
 }
 
 impl BufferizationToMemref {
-    fn layout(a: &mlirformat::Attribute<'_>) -> bool {
-        matches!(a, mlirformat::Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")
-    }
-
     fn values<'a>(vs: &[ValueId]) -> Vec<mlirformat::Value<'a>> {
         vs.iter().map(|v| (*v).into()).collect()
     }
@@ -75,7 +70,7 @@ impl BufferizationToMemref {
     }
 
     fn cidx<'a, L: Listener<'a> + ?Sized>(rw: &mut Rewriter<'_, 'a, L>, v: i64) -> ValueId {
-        Self::result(rw, &arith::Constant::new(index_attr(v), Type::Index))
+        Self::result(rw, &arith::Constant::new(Attribute::index(v), Type::Index))
     }
 
     /// Operand group `k` of `op` (`operandSegmentSizes`).

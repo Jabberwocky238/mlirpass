@@ -2,16 +2,13 @@
 //! regions (`RegionBuilderHelper` and the OpDSL bodies of the named ops), `linalg.generic`,
 //! and the tensor ops around them.
 
-use alloc::borrow::Cow;
-use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
-use super::vector_transforms::{dense_i64, index_attr};
-use crate::canon::{MemrefOfr as Ofr, map_attr};
-use crate::{AffineMap, ConversionRewriter, DYNAMIC, OpData, OpId, ValueId};
+use crate::canon::MemrefOfr as Ofr;
+use crate::{AffineMap, ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -44,16 +41,6 @@ pub enum Bin {
     MaxU,
 }
 
-/// Static and dynamic sizes as `tensor.empty` / `tensor::getMixedSizes` take them.
-pub fn tensor_type<'a>(dims: &[i64], elem: Type<'a>) -> Type<'a> {
-    let shape = dims.iter().map(|d| if *d == DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
-    Type::Shaped(Shaped { kind: ShapedKind::Tensor, shape: Some(shape), elem: elem.into(), extras: Vec::new() })
-}
-
-pub fn dims_of(t: &Type<'_>) -> Vec<i64> {
-    crate::attr::shape_of(t).map_or_else(Vec::new, |d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
-}
-
 /// `#linalg.iterator_type<...>` values.
 pub fn iterators<'a>(kinds: &[bool]) -> Attribute<'a> {
     Attribute::Array(kinds.iter().map(|par| Attribute::dialect("linalg.iterator_type", if *par { "<parallel>" } else { "<reduction>" })).collect())
@@ -69,7 +56,7 @@ pub fn i64_elements<'a>(v: &[i64], vector: bool) -> Attribute<'a> {
 
 impl<'a> Cr<'_, 'a, '_> {
     pub fn cidx(&mut self, v: i64) -> ValueId {
-        self.emit(&arith::Constant::new(index_attr(v), Type::Index))
+        self.emit(&arith::Constant::new(Attribute::index(v), Type::Index))
     }
 
     pub fn constant(&mut self, value: Attribute<'a>, ty: Type<'a>) -> ValueId {
@@ -94,25 +81,25 @@ impl<'a> Cr<'_, 'a, '_> {
 
     /// `tensor.empty` of static `dims` (dynamic ones from `dynamic`).
     pub fn empty(&mut self, dims: &[i64], elem: Type<'a>, dynamic: &[ValueId]) -> ValueId {
-        self.op1("tensor.empty", dynamic, tensor_type(dims, elem))
+        self.op1("tensor.empty", dynamic, Type::tensor(dims, elem))
     }
 
     /// `tensor.empty` of mixed sizes.
     pub fn empty_mixed(&mut self, sizes: &[Ofr], elem: Type<'a>) -> ValueId {
-        let dims: Vec<i64> = sizes.iter().map(|s| if let Ofr::C(c) = s { *c } else { DYNAMIC }).collect();
+        let dims: Vec<i64> = sizes.iter().map(|s| if let Ofr::C(c) = s { *c } else { Dim::DYNAMIC }).collect();
         let dynamic: Vec<ValueId> = sizes.iter().filter_map(|s| if let Ofr::V(v) = s { Some(*v) } else { None }).collect();
         self.empty(&dims, elem, &dynamic)
     }
 
     /// `tensor::getMixedSizes` (dynamic sizes by a folded `tensor.dim`).
     pub fn mixed_sizes(&mut self, v: ValueId) -> Vec<Ofr> {
-        (0..dims_of(&self.rw.body[v].ty).len()).map(|i| self.mixed_size(v, i)).collect()
+        (0..self.rw.body[v].ty.dims().unwrap_or_default().len()).map(|i| self.mixed_size(v, i)).collect()
     }
 
     /// `tensor::getMixedSize`.
     pub fn mixed_size(&mut self, v: ValueId, i: usize) -> Ofr {
-        let d = dims_of(&self.rw.body[v].ty)[i];
-        if d != DYNAMIC {
+        let d = self.rw.body[v].ty.dims().unwrap_or_default()[i];
+        if d != Dim::DYNAMIC {
             return Ofr::C(d);
         }
         let k = self.cidx(i as i64);
@@ -132,7 +119,7 @@ impl<'a> Cr<'_, 'a, '_> {
         for (k, v) in props {
             data.set(k, v);
         }
-        let args: Vec<(Type<'a>, Option<_>)> = ops.iter().map(|v| (crate::attr::element_type(&self.rw.body[*v].ty).clone(), None)).collect();
+        let args: Vec<(Type<'a>, Option<_>)> = ops.iter().map(|v| (self.rw.body[*v].ty.element_type().clone(), None)).collect();
         let op = self.rw.create_with(data, results, |b, o| {
             let r = b.add_region(o);
             b.add_block(r, &args);
@@ -149,7 +136,7 @@ impl<'a> Cr<'_, 'a, '_> {
 
     /// `linalg.generic` with all-parallel or given iterators.
     pub fn generic(&mut self, results: &[Type<'a>], inputs: &[ValueId], outputs: &[ValueId], maps: &[AffineMap], iters: &[bool], body: &mut dyn FnMut(&mut Self, &[ValueId]) -> Vec<ValueId>) -> OpId {
-        let props = vec![("indexing_maps", Attribute::Array(maps.iter().map(map_attr).collect())), ("iterator_types", iterators(iters))];
+        let props = vec![("indexing_maps", Attribute::Array(maps.iter().map(Attribute::from).collect())), ("iterator_types", iterators(iters))];
         self.structured("linalg.generic", inputs, outputs, results, props, body)
     }
 
@@ -222,7 +209,7 @@ impl<'a> Cr<'_, 'a, '_> {
         if &from == to {
             return v;
         }
-        let width = |t: &Type<'_>| crate::bit_width(t).unwrap_or(0);
+        let width = |t: &Type<'_>| t.bit_width().unwrap_or(0);
         let name = match (&from, to) {
             (Type::Float(_), Type::Integer { .. }) => if unsigned { "arith.fptoui" } else { "arith.fptosi" },
             (Type::Index, Type::Integer { .. }) | (Type::Integer { .. }, Type::Index) => "arith.index_cast",
@@ -253,7 +240,7 @@ impl<'a> Cr<'_, 'a, '_> {
     /// `tensor.pad` of `input` by static `low`/`high`, padded with the constant `value`.
     pub fn pad_static(&mut self, input: ValueId, low: &[i64], high: &[i64], value: ValueId, ty: Type<'a>) -> ValueId {
         let rank = low.len();
-        let data = OpData::build("tensor.pad").operands(&[input]).segments(&[1, 0, 0]).with("static_low", dense_i64(low)).with("static_high", dense_i64(high));
+        let data = OpData::build("tensor.pad").operands(&[input]).segments(&[1, 0, 0]).with("static_low", Attribute::dense_i64(low)).with("static_high", Attribute::dense_i64(high));
         let op = self.rw.create_with(data, core::slice::from_ref(&ty), |b, p| {
             let r = b.add_region(p);
             let args: Vec<_> = (0..rank).map(|_| (Type::Index, None)).collect();
@@ -275,10 +262,3 @@ impl<'a> Cr<'_, 'a, '_> {
     }
 }
 
-/// An integer attribute `v : ty`.
-pub fn int_attr<'a>(v: i128, ty: &Type<'a>) -> Attribute<'a> {
-    match ty {
-        Type::Integer { width: 1, .. } => Attribute::Bool(v != 0),
-        _ => Attribute::Int { lit: Cow::Owned(format!("{v}")), ty: Some(ty.clone()) },
-    }
-}

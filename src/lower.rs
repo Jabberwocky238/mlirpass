@@ -58,7 +58,6 @@ pub use index_to_llvm::{IndexToLlvm, UbToLlvm};
 pub use math_to_emitc::MathToEmitc;
 pub use math_to_funcs::{ConvertMathToFuncs, MathToFuncs};
 pub use math_to_llvm::MathToLlvm;
-pub use memref_desc::DYNAMIC;
 pub use memref_to_emitc::MemrefToEmitc;
 pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
 pub use scf_to_cf::ScfToCf;
@@ -165,11 +164,6 @@ impl<O: Copy> crate::ConversionPattern for OptLowering<O> {
     }
 }
 
-/// `array<i64: ...>`.
-fn positions<'a>(p: &[i64]) -> Attribute<'a> {
-    Attribute::DenseArray { ty: Type::int(64), values: p.iter().map(|x| Cow::Owned(format!("{x}"))).collect() }
-}
-
 impl<'a> ConversionRewriter<'_, 'a, '_> {
     /// Builds `data` with one result of type `ty` at the insertion point; the result.
     pub fn build(&mut self, data: OpData<'a>, ty: Type<'a>) -> ValueId {
@@ -193,13 +187,13 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
                 _ => ty,
             };
         }
-        self.build(OpData::build("llvm.extractvalue").operands(&[agg]).with("position", positions(pos)), ty)
+        self.build(OpData::build("llvm.extractvalue").operands(&[agg]).with("position", Attribute::dense_i64(pos)), ty)
     }
 
     /// `llvm.insertvalue` of `v` into `agg` at `pos`.
     pub fn insert_value(&mut self, agg: ValueId, v: ValueId, pos: &[i64]) -> ValueId {
         let ty = self.rw.body[agg].ty.clone();
-        self.build(OpData::build("llvm.insertvalue").operands(&[agg, v]).with("position", positions(pos)), ty)
+        self.build(OpData::build("llvm.insertvalue").operands(&[agg, v]).with("position", Attribute::dense_i64(pos)), ty)
     }
 
     /// `llvm.mlir.poison : ty`.
@@ -302,7 +296,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
 
     /// `isUnsupportedFloatingPointType`: a float (element) type the converter does not keep a float.
     pub fn unsupported_float(&self, t: &Type<'a>) -> bool {
-        let e = crate::attr::element_type(t);
+        let e = t.element_type();
         if !matches!(e, Type::Float(_)) {
             return false;
         }

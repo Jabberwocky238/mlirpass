@@ -1,7 +1,5 @@
 //! `cf`: canonicalization patterns, as `ControlFlowOps.cpp`.
 
-use alloc::borrow::Cow;
-use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -17,13 +15,8 @@ impl<'a> OpData<'a> {
 
     /// `operandSegmentSizes` for operand groups of `sizes`.
     pub fn segments(self, sizes: &[usize]) -> Self {
-        self.with("operandSegmentSizes", dense_i32(sizes))
+        self.with("operandSegmentSizes", Attribute::dense_i32(sizes))
     }
-}
-
-/// `array<i32: ...>`.
-fn dense_i32<'a>(v: &[usize]) -> Attribute<'a> {
-    Attribute::DenseArray { ty: Type::int(32), values: v.iter().map(|x| Cow::Owned(format!("{x}"))).collect() }
 }
 
 impl<'a> Body<'a> {
@@ -89,7 +82,7 @@ impl<'a> Body<'a> {
     /// A `cf.switch`'s case values.
     fn case_values(&self, op: OpId) -> Option<(Const<'a>, Vec<ApInt>)> {
         let c = Const::try_from(self[op].get("case_values")?).ok()?;
-        let n = crate::attr::element_count(&c.ty)?;
+        let n = c.ty.element_count()?;
         let values = (0..n).map(|i| c.at(i).int()).collect::<Option<Vec<_>>>()?;
         Some((c, values))
     }
@@ -112,7 +105,7 @@ impl<'a> Rewriter<'_, 'a> {
             operands.extend(ops);
             segs.push(ops.len());
         }
-        let mut data = OpData::build("cf.switch").operands(&operands).successors(&core::iter::once(default.0).chain(cases.iter().map(|c| c.1)).collect::<Vec<_>>()).segments(&[1, default.1.len(), segs.iter().sum()]).with("case_operand_segments", dense_i32(&segs));
+        let mut data = OpData::build("cf.switch").operands(&operands).successors(&core::iter::once(default.0).chain(cases.iter().map(|c| c.1)).collect::<Vec<_>>()).segments(&[1, default.1.len(), segs.iter().sum()]).with("case_operand_segments", Attribute::dense_i32(&segs));
         if !cases.is_empty() {
             let shape = Type::Shaped(mlirformat::Shaped { kind: mlirformat::ShapedKind::Vector, shape: Some(vec![mlirformat::Dim::Static(cases.len() as i64)]), elem: flag_ty.into(), extras: Vec::new() });
             let values = cases.iter().map(|c| crate::Scalar::Int(c.0)).collect();

@@ -7,9 +7,9 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
-use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{Attribute, Dim, Shaped, ShapedKind, StridedLayout, Type};
 
-use crate::{BlockId, ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, ValueId, Visibility, DYNAMIC};
+use crate::{BlockId, ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, ValueId, Visibility};
 use mlirformat::llvm_types::LlvmType;
 
 /// The memref ⇒ llvm patterns.
@@ -62,17 +62,10 @@ impl MemrefToLlvm {
         s.shape.as_ref().map_or(0, Vec::len)
     }
 
-    pub fn dims(s: &Shaped<'_>) -> Vec<i64> {
-        s.shape.iter().flatten().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect()
-    }
-
     /// `MemRefLayoutAttrInterface::isIdentity`: no layout, `strided<[1]>`, or `(d0, ...) -> (d0, ...)`.
     pub fn identity_layout(s: &Shaped<'_>) -> bool {
         s.extras.iter().all(|a| match a {
-            Attribute::Builtin { name, body, .. } if name == "strided" => {
-                let inner: String = body.chars().filter(|c| !c.is_whitespace()).collect();
-                matches!(&*inner, "<[]>" | "<[1]>" | "<[],offset:0>" | "<[1],offset:0>")
-            }
+            Attribute::Builtin { name, .. } if name == "strided" => StridedLayout::try_from(a).is_ok_and(|l| l.is_identity()),
             Attribute::Builtin { name, body, .. } if name == "affine_map" => {
                 let Some((dims, results)) = body.trim_start_matches('<').trim_end_matches('>').split_once("->") else { return false };
                 let squash = |t: &str| t.chars().filter(|c| !c.is_whitespace()).collect::<String>();
@@ -161,11 +154,11 @@ impl MemrefToLlvm {
     /// `getMemRefDescriptorSizes`: sizes, row-major strides, and the element count (or byte
     /// size).
     fn desc_sizes<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, dynamic: &[ValueId], bytes: bool) -> Option<(Vec<ValueId>, Vec<ValueId>, ValueId)> {
-        let shape = Self::dims(s);
+        let shape = s.dims().unwrap_or_default();
         let mut dynamic = dynamic.iter();
         let mut sizes = Vec::new();
         for &d in &shape {
-            sizes.push(if d == DYNAMIC { *dynamic.next()? } else { Self::const_index(cr, opts, d) });
+            sizes.push(if d == Dim::DYNAMIC { *dynamic.next()? } else { Self::const_index(cr, opts, d) });
         }
         let mut stride = 1i64;
         let mut running = Self::const_index(cr, opts, 1);
@@ -173,15 +166,15 @@ impl MemrefToLlvm {
         for i in (0..shape.len()).rev() {
             strides[i] = running;
             let use_size = stride == 1;
-            if shape[i] == DYNAMIC {
-                stride = DYNAMIC;
+            if shape[i] == Dim::DYNAMIC {
+                stride = Dim::DYNAMIC;
             }
-            if stride != DYNAMIC {
+            if stride != Dim::DYNAMIC {
                 stride *= shape[i];
             }
             running = if use_size {
                 sizes[i]
-            } else if stride == DYNAMIC {
+            } else if stride == Dim::DYNAMIC {
                 Self::arith(cr, "llvm.mul", running, sizes[i])
             } else {
                 Self::const_index(cr, opts, stride)
@@ -222,7 +215,7 @@ impl MemrefToLlvm {
         if offset == 0 {
             return Some(ptr);
         }
-        let off = if offset == DYNAMIC { cr.extract(desc, &[2]) } else { Self::const_index(cr, opts, offset) };
+        let off = if offset == Dim::DYNAMIC { cr.extract(desc, &[2]) } else { Self::const_index(cr, opts, offset) };
         let elem = Self::elem(cr, &s.elem)?;
         let ty = cr.rw.body[ptr].ty.clone();
         Some(Self::gep(cr, ty, elem, ptr, &[Gep::V(off)], 0))
@@ -237,7 +230,7 @@ impl MemrefToLlvm {
         for (i, &idx) in indices.iter().enumerate() {
             let mut inc = idx;
             if strides[i] != 1 {
-                let st = if strides[i] == DYNAMIC { cr.extract(desc, &[4, i as i64]) } else { Self::const_index(cr, opts, strides[i]) };
+                let st = if strides[i] == Dim::DYNAMIC { cr.extract(desc, &[4, i as i64]) } else { Self::const_index(cr, opts, strides[i]) };
                 inc = Self::arith_flags(cr, "llvm.mul", inc, st, overflow);
             }
             index = Some(match index {
@@ -354,7 +347,7 @@ impl MemrefToLlvm {
                 let n: i64 = s.shape.iter().flatten().map(|d| if let Dim::Static(n) | Dim::Scalable(n) = d { *n } else { 1 }).product();
                 (n as u64 * Self::type_size(opts, &s.elem)? * 8).next_power_of_two() / 8
             }
-            t => u64::from(crate::bit_width(t)?.div_ceil(8)),
+            t => u64::from(t.bit_width()?.div_ceil(8)),
         })
     }
 
@@ -383,7 +376,7 @@ impl MemrefToLlvm {
                 None => 16.max(elt.next_power_of_two() as i64),
             };
             let align = Self::const_index(cr, opts, alignment);
-            let divisor: u64 = Self::dims(&s).iter().filter(|d| **d != DYNAMIC).fold(elt, |a, d| a * *d as u64);
+            let divisor: u64 = s.dims().unwrap_or_default().iter().filter(|d| **d != Dim::DYNAMIC).fold(elt, |a, d| a * *d as u64);
             if divisor % alignment as u64 != 0 {
                 bytes = Self::aligned(cr, bytes, align);
             }
@@ -398,7 +391,7 @@ impl MemrefToLlvm {
             return false;
         }
         let Some((sizes, strides, mut bytes)) = Self::desc_sizes(cr, opts, &s, &dynamic, true) else { return false };
-        let scalar = matches!(&*s.elem, Type::Index | Type::Float(_)) || crate::int_width(&s.elem).is_some_and(|(_, sg)| sg == mlirformat::Signedness::Signless);
+        let scalar = matches!(&*s.elem, Type::Index | Type::Float(_)) || s.elem.int_width().is_some_and(|(_, sg)| sg == mlirformat::Signedness::Signless);
         let alignment = match cr.rw.body[op].get("alignment").and_then(Self::int) {
             Some(a) => Some(Self::const_index(cr, opts, a)),
             None if !scalar => {
@@ -564,12 +557,12 @@ impl MemrefToLlvm {
             cr.replace(op, vec![vec![v]]);
             return true;
         }
-        let dims = Self::dims(&s);
+        let dims = s.dims().unwrap_or_default();
         let original = cr.rw.body[op].operands[1];
         let known = Self::known_int(cr, original).or_else(|| Self::known_int(cr, index));
         let v = match known {
             Some(i) if i >= 0 && (i as usize) < dims.len() => {
-                if dims[i as usize] == DYNAMIC {
+                if dims[i as usize] == Dim::DYNAMIC {
                     cr.extract(desc, &[3, i])
                 } else {
                     Self::const_index(cr, opts, dims[i as usize])
@@ -645,7 +638,7 @@ impl MemrefToLlvm {
     /// `convertGlobalMemrefTypeToLLVM`: nested arrays, outermost dimension first.
     fn global_type<'a>(cr: &Cr<'_, 'a, '_>, s: &Shaped<'a>) -> Option<Type<'a>> {
         let mut t = Self::elem(cr, &s.elem)?;
-        for d in Self::dims(s).iter().rev() {
+        for d in s.dims().unwrap_or_default().iter().rev() {
             t = LlvmType::array(*d as u64, t);
         }
         Some(t)
@@ -809,8 +802,8 @@ impl MemrefToLlvm {
 
     /// `isStaticShapeAndContiguousRowMajor`.
     pub fn contiguous(opts: LlvmOptions, s: &Shaped<'_>) -> bool {
-        let dims = Self::dims(s);
-        if s.shape.is_none() || dims.contains(&DYNAMIC) {
+        let dims = s.dims().unwrap_or_default();
+        if s.shape.is_none() || dims.contains(&Dim::DYNAMIC) {
             return false;
         }
         let Some((strides, _)) = opts.strides_and_offset(s) else { return false };
@@ -830,7 +823,7 @@ impl MemrefToLlvm {
     fn copy<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let (Some(src), Some(dst)) = (Self::operand_memref(cr, op, 0), Self::operand_memref(cr, op, 1)) else { return false };
-        let contiguous = |s: &Shaped<'a>| s.shape.is_some() && (Self::identity_layout(s) || (!Self::dims(s).contains(&DYNAMIC) && Self::dims(s).iter().product::<i64>() > 0 && Self::contiguous(opts, s)));
+        let contiguous = |s: &Shaped<'a>| s.shape.is_some() && (Self::identity_layout(s) || (!s.dims().unwrap_or_default().contains(&Dim::DYNAMIC) && s.dims().unwrap_or_default().iter().product::<i64>() > 0 && Self::contiguous(opts, s)));
         let (sd, td) = (operands[0][0], operands[1][0]);
         if contiguous(&src) && contiguous(&dst) {
             let mut n = Self::const_index(cr, opts, 1);
@@ -860,7 +853,7 @@ impl MemrefToLlvm {
             }
             let rank = cr.llvm_constant(Attribute::Int { lit: format!("{}", Self::rank(s)).into(), ty: Some(opts.index()) }, opts.index());
             let p = Self::promote(cr, d);
-            let ty = LlvmConverter::convert_memref(opts, &Shaped { shape: None, extras: s.extras.iter().filter(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")).cloned().collect(), ..s.clone() })?;
+            let ty = LlvmConverter::convert_memref(opts, &Shaped { shape: None, extras: s.extras.iter().filter(|a| !a.is_layout()).cloned().collect(), ..s.clone() })?;
             Some(cr.rw.pack_unranked(ty, &[rank, p]))
         };
         let (Some(us), Some(ut)) = (unranked(cr, &src, sd), unranked(cr, &dst, td)) else { return false };
@@ -970,14 +963,14 @@ impl MemrefToLlvm {
         d = cr.insert_value(d, a, &[0]);
         d = cr.insert_value(d, b, &[1]);
         let so = Self::static_list(cr, op, "static_offsets");
-        let off = if so.first() == Some(&DYNAMIC) { offs[0] } else { Self::const_index(cr, opts, so.first().copied().unwrap_or(0)) };
+        let off = if so.first() == Some(&Dim::DYNAMIC) { offs[0] } else { Self::const_index(cr, opts, so.first().copied().unwrap_or(0)) };
         d = cr.insert_value(d, off, &[2]);
         let (ss, st) = (Self::static_list(cr, op, "static_sizes"), Self::static_list(cr, op, "static_strides"));
         let (mut ds, mut dt) = (sizes.into_iter(), strides.into_iter());
         for i in 0..Self::rank(&dst) {
-            let v = if ss[i] == DYNAMIC { ds.next().unwrap_or(off) } else { Self::const_index(cr, opts, ss[i]) };
+            let v = if ss[i] == Dim::DYNAMIC { ds.next().unwrap_or(off) } else { Self::const_index(cr, opts, ss[i]) };
             d = cr.insert_value(d, v, &[3, i as i64]);
-            let v = if st[i] == DYNAMIC { dt.next().unwrap_or(off) } else { Self::const_index(cr, opts, st[i]) };
+            let v = if st[i] == Dim::DYNAMIC { dt.next().unwrap_or(off) } else { Self::const_index(cr, opts, st[i]) };
             d = cr.insert_value(d, v, &[4, i as i64]);
         }
         cr.replace(op, vec![vec![d]]);
@@ -990,27 +983,27 @@ impl MemrefToLlvm {
         let (Some(src), Some(shape), Some(dst)) = (Self::operand_memref(cr, op, 0), Self::operand_memref(cr, op, 1), Self::result_memref(cr, op)) else { return false };
         let (sd, shd) = (operands[0][0], operands[1][0]);
         let idx = opts.index();
-        if !Self::dims(&shape).contains(&DYNAMIC) && shape.shape.is_some() {
+        if !shape.dims().unwrap_or_default().contains(&Dim::DYNAMIC) && shape.shape.is_some() {
             let Some(ty) = LlvmConverter::convert_memref(opts, &dst) else { return false };
             let mut d = cr.poison(ty);
             let (a, b, _) = Self::pointers(cr, opts, &src, sd, false);
             d = cr.insert_value(d, a, &[0]);
             d = cr.insert_value(d, b, &[1]);
             let Some((strides, offset)) = opts.strides_and_offset(&dst) else { return false };
-            if offset == DYNAMIC {
+            if offset == Dim::DYNAMIC {
                 return false;
             }
             let off = Self::const_index(cr, opts, offset);
             d = cr.insert_value(d, off, &[2]);
-            let dims = Self::dims(&dst);
+            let dims = dst.dims().unwrap_or_default();
             let mut stride: Option<ValueId> = None;
             for i in (0..dims.len()).rev() {
-                if strides[i] != DYNAMIC {
+                if strides[i] != Dim::DYNAMIC {
                     stride = Some(Self::const_index(cr, opts, strides[i]));
                 } else if stride.is_none() {
                     stride = Some(Self::const_index(cr, opts, 1));
                 }
-                let size = if dims[i] != DYNAMIC {
+                let size = if dims[i] != Dim::DYNAMIC {
                     Self::const_index(cr, opts, dims[i])
                 } else {
                     // A `memref.load %shape[i]`, legalized in turn, cast to the index type.
@@ -1161,12 +1154,12 @@ impl MemrefToLlvm {
         t = cr.insert_value(t, b, &[1]);
         let off = Self::const_index(cr, opts, offset);
         t = cr.insert_value(t, off, &[2]);
-        let dims = Self::dims(&dst);
+        let dims = dst.dims().unwrap_or_default();
         let (mut stride, mut next): (Option<ValueId>, Option<ValueId>) = (None, None);
         for i in (0..dims.len()).rev() {
-            let size = if dims[i] != DYNAMIC { Self::const_index(cr, opts, dims[i]) } else { dynamic[dims[..i].iter().filter(|d| **d == DYNAMIC).count()] };
+            let size = if dims[i] != Dim::DYNAMIC { Self::const_index(cr, opts, dims[i]) } else { dynamic[dims[..i].iter().filter(|d| **d == Dim::DYNAMIC).count()] };
             t = cr.insert_value(t, size, &[3, i as i64]);
-            let st = if strides[i] != DYNAMIC {
+            let st = if strides[i] != Dim::DYNAMIC {
                 Self::const_index(cr, opts, strides[i])
             } else if let Some(n) = next {
                 match stride {

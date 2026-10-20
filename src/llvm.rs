@@ -64,7 +64,7 @@ impl LlvmOptions {
     /// The address space of a memref (`None` when it cannot be expressed).
     pub fn address_space(&self, s: &Shaped<'_>) -> Option<u32> {
         // The memory space is the last extra that is not a layout.
-        let space = s.extras.iter().find(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map"));
+        let space = s.extras.iter().find(|a| !a.is_layout());
         match space {
             None => Some(0),
             // `getMemRefAddressSpace`: a signless or index integer.
@@ -246,7 +246,7 @@ impl LlvmConverter {
         match k {
             FloatKind::BF16 | FloatKind::F16 | FloatKind::F32 | FloatKind::F64 | FloatKind::F80 | FloatKind::F128 => Some(Type::Float(k)),
             FloatKind::TF32 => None,
-            k => crate::attr::bit_width(&Type::Float(k)).map(Type::int),
+            k => Type::Float(k).bit_width().map(Type::int),
         }
     }
 

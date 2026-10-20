@@ -3,12 +3,12 @@
 
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Error, Type};
+use mlirformat::{Attribute, Dim, Error, Type};
 use mlirpass_macros::{pass, patterns};
 
-use super::linalg_build::{dims_of, Named};
+use super::linalg_build::Named;
 use crate::canon::MemrefOfr as Ofr;
-use crate::{Body, ConversionConfig, ConversionPatterns, ConversionRewriter as Cr, ConversionTarget, Converter, Mode, OpData, OpId, Trait, ValueId, DYNAMIC};
+use crate::{Body, ConversionConfig, ConversionPatterns, ConversionRewriter as Cr, ConversionTarget, Converter, Mode, OpData, OpId, Trait, ValueId};
 
 /// The tensor ⇒ linalg patterns.
 pub struct TensorToLinalg;
@@ -22,9 +22,9 @@ impl TensorToLinalg {
         let src = cr.rw.body[op].operands[0];
         let (low, high) = (Self::mixed(cr.rw.body, op, "static_low", 1), Self::mixed(cr.rw.body, op, "static_high", 2));
         let rt = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
-        let dims = dims_of(&rt);
+        let dims = rt.dims().unwrap_or_default();
         let mut dynamic = Vec::new();
-        for (d, _) in dims.iter().enumerate().filter(|(_, n)| **n == DYNAMIC) {
+        for (d, _) in dims.iter().enumerate().filter(|(_, n)| **n == Dim::DYNAMIC) {
             let size = cr.mixed_size(src, d);
             let size = Self::idx(cr, size);
             let (l, h) = (Self::idx(cr, low[d]), Self::idx(cr, high[d]));
@@ -72,7 +72,7 @@ impl TensorToLinalg {
         let start: usize = sizes.iter().take(segment).sum();
         let mut dynamic = b[op].operands[start..].iter();
         values.iter().filter_map(|v| v.parse::<i64>().ok()).map(|v| match v {
-            DYNAMIC => {
+            Dim::DYNAMIC => {
                 let d = *dynamic.next().expect("a value per dynamic entry");
                 b.const_index(d).map_or(Ofr::V(d), Ofr::C)
             }

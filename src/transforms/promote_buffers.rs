@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use mlirpass_macros::pass;
 use mlirformat::{Error, FloatKind, ShapedKind, Type};
 
-use crate::{Body, EffectKind, OpData, OpId, Run, RegionId, Trait, ValueId, attr};
+use crate::{Body, EffectKind, OpData, OpId, Run, RegionId, Trait, ValueId};
 
 #[pass("promote-buffers-to-stack", on = "func.func")]
 pub struct PromoteBuffersToStack {
@@ -138,7 +138,7 @@ impl Body<'_> {
             }),
             Type::Complex(e) => Self::element_bits(e, index).map(|b| 2 * b),
             Type::Shaped(s) if s.kind == ShapedKind::Vector => {
-                let n = attr::element_count(t)? as u64;
+                let n = t.element_count()? as u64;
                 Some(n * Self::element_bits(&s.elem, index)?)
             }
             _ => None,
@@ -150,7 +150,7 @@ impl Body<'_> {
         let Some(def) = self.def_named(v, "memref.alloc") else { return false };
         let Type::Shaped(s) = &self[v].ty else { return false };
         let Some(dims) = &s.shape else { return false };
-        match attr::element_count(&self[v].ty) {
+        match self[v].ty.element_count() {
             Some(n) => Self::element_bits(&s.elem, u64::from(crate::LlvmOptions { index_bitwidth: 0, ..crate::LlvmOptions::default() }.at(self, def).index_bitwidth)).is_some_and(|bits| n as u64 * bits <= max_bytes * 8),
             None => dims.len() <= max_rank && self[def].operands.iter().all(|o| self.def_named(*o, "memref.rank").is_some()),
         }

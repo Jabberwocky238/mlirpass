@@ -4,11 +4,9 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{Attribute, Dim, ShapedKind, Type};
 
-use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId, attr};
-
-const DYNAMIC: i64 = i64::MIN;
+use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId};
 
 /// The shape dialect's types and attributes.
 struct Shp;
@@ -24,16 +22,10 @@ impl Shp {
         matches!(t, Type::Shaped(s) if s.kind == ShapedKind::Tensor && s.shape.as_ref().is_some_and(|d| d.len() == 1) && *s.elem == Type::Index)
     }
 
-    /// `tensor<N x index>`.
-    fn extent_type<'a>(n: i64) -> Type<'a> {
-        let dim = if n == DYNAMIC { Dim::Dynamic } else { Dim::Static(n) };
-        Type::Shaped(Shaped { kind: ShapedKind::Tensor, shape: Some(vec![dim]), elem: Type::Index.into(), extras: Vec::new() })
-    }
-
     /// `getIndexTensorAttr`.
     fn index_tensor<'a>(v: &[i64]) -> Attribute<'a> {
         let values = v.iter().map(|x| Scalar::Int(ApInt::new(64, i128::from(*x)))).collect();
-        Const { ty: Self::extent_type(v.len() as i64), values, elements: true }.into()
+        Const { ty: Type::tensor(&[v.len() as i64], Type::Index), values, elements: true }.into()
     }
 
     /// `v : index`.
@@ -44,7 +36,7 @@ impl Shp {
     /// The values of a `DenseIntElementsAttr`.
     fn ints(a: &Attribute<'_>) -> Option<Vec<i64>> {
         let c = Const::try_from(a).ok().filter(|c| c.elements)?;
-        let n = attr::element_count(&c.ty)?;
+        let n = c.ty.element_count()?;
         (0..n).map(|i| c.at(i).int().map(|x| x.signed() as i64)).collect()
     }
 
@@ -53,18 +45,13 @@ impl Shp {
         Const::try_from(a).ok().filter(|c| !c.elements)?.as_int().map(|x| x.signed() as i64)
     }
 
-    /// The dims of a ranked shaped type, dynamic as [`DYNAMIC`].
-    fn dims(t: &Type<'_>) -> Option<Vec<i64>> {
-        attr::shape_of(t).map(|ds| ds.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
-    }
-
     /// `OpTrait::util::getBroadcastedShape`.
     fn broadcasted(a: &[i64], b: &[i64]) -> Option<Vec<i64>> {
         let mut r = if a.len() > b.len() { a.to_vec() } else { b.to_vec() };
         let n = r.len();
         for (k, (x, y)) in a.iter().rev().zip(b.iter().rev()).enumerate() {
             let (x, y) = (*x, *y);
-            r[n - 1 - k] = if x == DYNAMIC || y == DYNAMIC {
+            r[n - 1 - k] = if x == Dim::DYNAMIC || y == Dim::DYNAMIC {
                 if x > 1 {
                     x
                 } else if y > 1 {
@@ -74,7 +61,7 @@ impl Shp {
                 } else if y == 1 {
                     x
                 } else {
-                    DYNAMIC
+                    Dim::DYNAMIC
                 }
             } else if x == y || y == 1 {
                 x
@@ -98,7 +85,7 @@ impl Shp {
                 if d == 1 {
                     continue;
                 }
-                if d == DYNAMIC {
+                if d == Dim::DYNAMIC {
                     if dynamic || non_one.is_some() {
                         return false;
                     }
@@ -118,7 +105,7 @@ impl<'a> Body<'a> {
     /// `getShapeVec`: the extents of a `shape_of` of a ranked value, or of a constant.
     fn shape_vec(&self, v: ValueId) -> Option<Vec<i64>> {
         if let Some(s) = self.def_named(v, "shape.shape_of") {
-            return Shp::dims(&self[self[s].operands[0]].ty);
+            return (self[self[s].operands[0]].ty).dims();
         }
         Shp::ints(&self.constant_of(v)?)
     }
@@ -141,7 +128,7 @@ impl<'a> Body<'a> {
 
 /// `ShapeDialect::materializeConstant`.
 pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
-    if crate::is_poison(value) {
+    if value.is_poison() {
         return Some(OpData::build("ub.poison").with("value", value.clone()));
     }
     if Shp::is(ty, "shape") || Shp::extent_tensor(ty) {
@@ -170,7 +157,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
                 return Folded::Value(ops[0]).into();
             }
             if b[op].name == "shape.add"
-                && let Some(p) = c.iter().flatten().find(|a| crate::is_poison(a))
+                && let Some(p) = c.iter().flatten().find(|a| a.is_poison())
             {
                 return attr(p.clone());
             }
@@ -241,10 +228,10 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
         }
         "shape.cstr_require" | "shape.index_to_size" | "shape.size_to_index" => c[0].clone().map_or(Fold::Failed, attr),
         "shape.dim" => {
-            let Some(dims) = Shp::dims(&b[ops[0]].ty) else { return Fold::Failed };
+            let Some(dims) = (b[ops[0]].ty).dims() else { return Fold::Failed };
             let Some(i) = b.shape_const_index(ops[1]) else { return Fold::Failed };
             match usize::try_from(i).ok().and_then(|i| dims.get(i)) {
-                Some(&d) if d != DYNAMIC => attr(Shp::index(d)),
+                Some(&d) if d != Dim::DYNAMIC => attr(Shp::index(d)),
                 _ => Fold::Failed,
             }
         }
@@ -317,7 +304,7 @@ impl<'a> Rewriter<'_, 'a> {
     fn remove_empty_shape_operands(&mut self, op: OpId) -> bool {
         let b = &*self.body;
         let empty = |v: &ValueId| {
-            Shp::dims(&b[*v].ty).is_some_and(|d| d.first() == Some(&0)) && matches!(b[*v].ty, Type::Shaped(_))
+            b[*v].ty.dims().is_some_and(|d| d.first() == Some(&0)) && matches!(b[*v].ty, Type::Shaped(_))
                 || b.def_named(*v, "shape.const_shape").and_then(|c| b[c].get("shape")).and_then(Shp::ints).is_some_and(|s| s.is_empty())
         };
         let kept: Vec<ValueId> = b[op].operands.iter().copied().filter(|v| !empty(v)).collect();
@@ -342,7 +329,7 @@ impl<'a> Rewriter<'_, 'a> {
             .operands
             .iter()
             .map(|v| match b.def_named(*v, "tensor.cast") {
-                Some(c) if Shp::dims(&b[*v].ty).is_some_and(|d| d.first() == Some(&DYNAMIC)) => {
+                Some(c) if b[*v].ty.dims().is_some_and(|d| d.first() == Some(&Dim::DYNAMIC)) => {
                     changed = true;
                     b[c].operands[0]
                 }
@@ -508,13 +495,13 @@ rewrites! {
     BroadcastConcretizeResultType("shape.broadcast", 1) |rw, op| {
         let b = &*rw.body;
         let rt = b[b[op].results[0]].ty.clone();
-        if Shp::dims(&rt).and_then(|d| d.first().copied()) != Some(DYNAMIC) || !matches!(rt, Type::Shaped(_)) {
+        if rt.dims().and_then(|d| d.first().copied()) != Some(Dim::DYNAMIC) || !matches!(rt, Type::Shaped(_)) {
             return false;
         }
         let mut max = 0;
         for v in &b[op].operands {
-            if let (Type::Shaped(_), Some(d)) = (&b[*v].ty, Shp::dims(&b[*v].ty)) {
-                if d[0] == DYNAMIC {
+            if let (Type::Shaped(_), Some(d)) = (&b[*v].ty, b[*v].ty.dims()) {
+                if d[0] == Dim::DYNAMIC {
                     return false;
                 }
                 max = max.max(d[0]);
@@ -522,7 +509,7 @@ rewrites! {
         }
         let ops = b[op].operands.clone();
         rw.set_before(op);
-        let n = rw.one(OpData::build("shape.broadcast").operands(&ops), Shp::extent_type(max));
+        let n = rw.one(OpData::build("shape.broadcast").operands(&ops), Type::tensor(&[max], Type::Index));
         rw.replace_with(op, OpData::build("tensor.cast").operands(&[n]), &[rt]);
         true
     }
@@ -546,7 +533,7 @@ rewrites! {
         }
         let rt = b[b[op].results[0]].ty.clone();
         rw.set_before(op);
-        let c = rw.one(OpData::build("shape.const_shape").with("shape", Shp::index_tensor(&folded)), Shp::extent_type(folded.len() as i64));
+        let c = rw.one(OpData::build("shape.const_shape").with("shape", Shp::index_tensor(&folded)), Type::tensor(&[folded.len() as i64], Type::Index));
         kept.push(c);
         rw.replace_with(op, OpData::build("shape.broadcast").operands(&kept), &[rt]);
         true
@@ -583,12 +570,12 @@ rewrites! {
         let b = &*rw.body;
         let Some(c) = b.def_named(b[op].operands[0], "shape.const_shape") else { return false };
         let rt = &b[b[op].results[0]].ty;
-        if !Shp::dims(rt).is_some_and(|d| !d.contains(&DYNAMIC)) {
+        if !rt.dims().is_some_and(|d| !d.contains(&Dim::DYNAMIC)) {
             return false;
         }
         let Some(shape) = b[c].get("shape").cloned() else { return false };
         let n = Shp::ints(&shape).map_or(0, |v| v.len() as i64);
-        rw.replace_with(op, OpData::build("shape.const_shape").with("shape", shape), &[Shp::extent_type(n)]);
+        rw.replace_with(op, OpData::build("shape.const_shape").with("shape", shape), &[Type::tensor(&[n], Type::Index)]);
         true
     }
 
@@ -644,7 +631,7 @@ rewrites! {
         let b = &*rw.body;
         let Some(s) = b.def_named(b[op].operands[0], "shape.shape_of") else { return false };
         let arg = &b[b[s].operands[0]].ty;
-        let (Type::Shaped(st), Some(d)) = (arg, Shp::dims(arg)) else { return false };
+        let (Type::Shaped(st), Some(d)) = (arg, arg.dims()) else { return false };
         if st.kind != ShapedKind::Tensor {
             return false;
         }
@@ -663,11 +650,11 @@ rewrites! {
     ShapeOfCastExtentTensor("tensor.cast", 1) |rw, op| {
         let b = &*rw.body;
         let ty = b[b[op].results[0]].ty.clone();
-        let Some(d) = Shp::dims(&ty).filter(|d| d.len() == 1) else { return false };
+        let Some(d) = ty.dims().filter(|d| d.len() == 1) else { return false };
         let Some(s) = b.def_named(b[op].operands[0], "shape.shape_of") else { return false };
         let arg = b[s].operands[0];
-        let (Type::Shaped(at), Some(ad)) = (&b[arg].ty, Shp::dims(&b[arg].ty)) else { return false };
-        if at.kind != ShapedKind::Tensor || (d[0] != DYNAMIC && d[0] != ad.len() as i64) {
+        let (Type::Shaped(at), Some(ad)) = (&b[arg].ty, b[arg].ty.dims()) else { return false };
+        if at.kind != ShapedKind::Tensor || (d[0] != Dim::DYNAMIC && d[0] != ad.len() as i64) {
             return false;
         }
         rw.replace_with(op, OpData::build("shape.shape_of").operands(&[arg]), &[ty]);
@@ -686,7 +673,7 @@ rewrites! {
         let st = b[shape].ty.clone();
         if st != ty {
             rw.set_before(op);
-            if attr::element_type(&st) == attr::element_type(&ty) {
+            if st.element_type() == ty.element_type() {
                 shape = rw.one(OpData::build("tensor.cast").operands(&[shape]), ty);
             } else if !Shp::extent_tensor(&st) {
                 shape = rw.one(OpData::build("arith.index_cast").operands(&[shape]), ty);
@@ -710,10 +697,10 @@ rewrites! {
     ShapeOfOpToConstShape("shape.shape_of", 1) |rw, op| {
         let b = &*rw.body;
         let arg = &b[b[op].operands[0]].ty;
-        let Some(d) = Shp::dims(arg).filter(|d| !d.contains(&DYNAMIC)) else { return false };
+        let Some(d) = arg.dims().filter(|d| !d.contains(&Dim::DYNAMIC)) else { return false };
         let ty = b[b[op].results[0]].ty.clone();
         rw.set_before(op);
-        let ct = Shp::extent_type(d.len() as i64);
+        let ct = Type::tensor(&[d.len() as i64], Type::Index);
         let mut c = rw.one(OpData::build("shape.const_shape").with("shape", Shp::index_tensor(&d)), ct.clone());
         if ct != ty {
             c = rw.one(OpData::build("tensor.cast").operands(&[c]), ty);

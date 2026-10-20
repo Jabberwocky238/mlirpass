@@ -2,9 +2,9 @@
 
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, FloatKind, Signedness, Type};
+use mlirformat::{Attribute, Dim, FloatKind, Signedness, Type, UniformQuantized};
 
-use crate::{ApFloat, ApInt, Body, Const, Fold, Folded, OpData, OpId, Scalar, ValueId, attr};
+use crate::{ApFloat, ApInt, Body, Const, Fold, Folded, OpData, OpId, Scalar, ValueId};
 
 /// One fold: the op, its operands' constants.
 struct Tf<'b, 'c, 'a> {
@@ -39,20 +39,13 @@ impl<'a> Tf<'_, '_, 'a> {
 
     /// A `RankedTensorType`'s dims (dynamic as `None`).
     fn dims(t: &Type<'_>) -> Option<Vec<Option<i64>>> {
-        Some(attr::shape_of(t)?.iter().map(|d| if let Dim::Static(n) = d { Some(*n) } else { None }).collect())
+        Some(t.shape()?.iter().map(|d| if let Dim::Static(n) = d { Some(*n) } else { None }).collect())
     }
 
     /// `getStorageElementTypeFromQuantized` of a `!quant.uniform` element type (its storage
     /// type, unsigned for `u`), else the type itself.
     fn storage(t: &Type<'a>) -> Type<'a> {
-        let Type::Extended(e) = t else { return t.clone() };
-        let spec = e.body.as_deref().filter(|b| e.name == "quant.uniform" && !b.contains('{')).and_then(|b| b.strip_prefix('<')?.split([':', '<']).next());
-        let Some((sign, width)) = spec.and_then(|s| Some((s.chars().next()?, s[1..].parse().ok()?))) else { return t.clone() };
-        match sign {
-            'u' => Type::Integer { width, signedness: Signedness::Unsigned },
-            'i' => Type::int(width),
-            _ => t.clone(),
-        }
+        UniformQuantized::try_from(t).map_or_else(|()| t.clone(), |q| q.storage_type())
     }
 
     /// The elements of constant `v` as integers (`m_Constant` of a `DenseIntElementsAttr`).
@@ -105,7 +98,7 @@ impl<'a> Tf<'_, '_, 'a> {
     fn binary(&self, ty: Type<'a>, int: impl Fn(ApInt, ApInt) -> Option<Scalar>, float: impl Fn(ApFloat, ApFloat) -> Option<Scalar>) -> Fold<'a> {
         let (Some(l), Some(r)) = (self.dense(0), self.dense(1)) else { return Fold::Failed };
         let (Some(ls), Some(rs)) = (Self::splat(&l), Self::splat(&r)) else { return Fold::Failed };
-        if attr::element_type(&l.ty) != attr::element_type(&r.ty) {
+        if l.ty.element_type() != r.ty.element_type() {
             return Fold::Failed;
         }
         let s = match (ls, rs) {
@@ -173,7 +166,7 @@ impl<'a> Tf<'_, '_, 'a> {
         if Self::dims(&lt).is_none() || Self::dims(&rt).is_none() || Self::dims(&ty).is_none() {
             return Fold::Failed;
         }
-        let elem = attr::element_type(&ty).clone();
+        let elem = ty.element_type().clone();
         let mut shift = 0i64;
         if matches!(elem, Type::Integer { width: 32, .. }) && self.b[self.op].operands.len() > 2 {
             let Some(s) = self.dense(2) else { return Fold::Failed };
@@ -201,7 +194,7 @@ impl<'a> Tf<'_, '_, 'a> {
         let s = match (ls, rs) {
             (Scalar::Int(a), Scalar::Int(b)) if shift == 0 => Some(Scalar::Int(a.mul(b))),
             (Scalar::Int(a), Scalar::Int(b)) => {
-                let w = attr::int_width(&elem).map_or(32, |w| w.0);
+                let w = elem.int_width().map_or(32, |w| w.0);
                 let mut p = a.signed() * b.signed() + (1i128 << (shift - 1));
                 p >>= shift;
                 (i128::from(i32::MIN)..=i128::from(i32::MAX)).contains(&p).then(|| Scalar::Int(ApInt::new(w, p)))
@@ -236,7 +229,7 @@ impl<'a> Tf<'_, '_, 'a> {
     fn equal(&self) -> Fold<'a> {
         let ty = self.result_ty();
         let lt = self.ty(self.operand(0));
-        if matches!(attr::element_type(&lt), Type::Integer { .. }) && Self::is_static(&ty) && self.operand(0) == self.operand(1) {
+        if matches!(lt.element_type(), Type::Integer { .. }) && Self::is_static(&ty) && self.operand(0) == self.operand(1) {
             return Self::splat_of(Scalar::Int(ApInt::new(1, 1)), ty);
         }
         self.binary(ty, |a, b| Some(Scalar::Int(ApInt::new(1, i128::from(a == b)))), |a, b| Some(Scalar::Int(ApInt::new(1, i128::from(a.compare(b) == Some(core::cmp::Ordering::Equal))))))
@@ -250,7 +243,7 @@ impl<'a> Tf<'_, '_, 'a> {
             return Self::value(input);
         }
         let Some(s) = self.dense(0).as_ref().and_then(Self::splat) else { return Fold::Failed };
-        let (ie, oe) = (attr::element_type(&it).clone(), attr::element_type(&ty).clone());
+        let (ie, oe) = (it.element_type().clone(), ty.element_type().clone());
         let out = match (s, &ie, &oe) {
             (Scalar::Float(f), _, Type::Float(k)) => f.convert(*k).map(Scalar::Float),
             (Scalar::Int(i), Type::Integer { signedness, .. }, Type::Float(k)) => {
@@ -265,7 +258,7 @@ impl<'a> Tf<'_, '_, 'a> {
             }
             (Scalar::Float(f), _, Type::Integer { width, .. }) => {
                 let x = f.to_f64();
-                (x.is_finite()).then(|| Scalar::Int(ApInt::new(*width, x.round_ties_even() as i128)))
+                x.is_finite().then(|| Scalar::Int(ApInt::new(*width, x.round_ties_even() as i128)))
             }
             (Scalar::Int(i), Type::Integer { width: iw, signedness }, Type::Integer { width: ow, .. }) => Some(Scalar::Int(if *ow == 1 {
                 ApInt::new(1, i128::from(!i.is_zero()))
@@ -415,7 +408,7 @@ impl<'a> Tf<'_, '_, 'a> {
         if let Some(k) = self.dense(0)
             && let Some(s) = Self::splat(&k)
             && Self::is_static(&ty)
-            && attr::element_type(&k.ty) == attr::element_type(&ty)
+            && k.ty.element_type() == ty.element_type()
         {
             return Self::splat_of(s, ty);
         }
@@ -482,7 +475,7 @@ impl<'a> Tf<'_, '_, 'a> {
             return Fold::Failed;
         }
         let axis = self.int_attr("axis").unwrap_or(0) as usize;
-        let Type::Integer { width, .. } = *attr::element_type(&ty) else { return Fold::Failed };
+        let Type::Integer { width, .. } = *ty.element_type() else { return Fold::Failed };
         if Self::dims(&it).and_then(|d| d.get(axis).copied().flatten()) == Some(1) { Self::splat_of(Scalar::Int(ApInt::zero(width)), ty) } else { Fold::Failed }
     }
 }
@@ -510,9 +503,9 @@ impl<'a> Tf<'_, '_, 'a> {
         if pool && (kernel.len() != 2 || folded[2] >= kernel[1] || folded[3] >= kernel[1] || folded[0] >= kernel[0] || folded[1] >= kernel[0]) {
             return false;
         }
-        let constant = |v: ValueId| b.constant_of(v).and_then(|a| Const::try_from(&a).ok()).filter(|k| k.elements && attr::element_count(&k.ty) == Some(1));
+        let constant = |v: ValueId| b.constant_of(v).and_then(|a| Const::try_from(&a).ok()).filter(|k| k.elements && k.ty.element_count() == Some(1));
         let Some(pad_const) = constant(b[pad].operands[2]) else { return false };
-        let ok = match (pad_const.at(0), attr::element_type(&pad_const.ty)) {
+        let ok = match (pad_const.at(0), pad_const.ty.element_type()) {
             (Scalar::Float(f), _) if pool => f.compare(ApFloat::largest(f.kind, true)) == Some(core::cmp::Ordering::Equal),
             (Scalar::Float(f), _) => f.to_f64() as f32 == 0.0,
             (Scalar::Int(i), Type::Integer { width, signedness }) if pool => i == if *signedness == Signedness::Unsigned { ApInt::zero(*width) } else { ApInt::signed_min(*width) },
@@ -532,7 +525,7 @@ impl<'a> Tf<'_, '_, 'a> {
         if !pool && data.get("local_bound").is_none() {
             data.set("local_bound", Attribute::Bool(false));
         }
-        data.set("pad", Attribute::DenseArray { ty: Type::int(64), values: folded.iter().map(|v| alloc::format!("{v}").into()).collect() });
+        data.set("pad", Attribute::dense_i64(&folded));
         let ty = b[b[op].results[0]].ty.clone();
         rw.replace_with(op, data, &[ty]);
         true
@@ -575,7 +568,7 @@ rewrites! {
     ClampIsNoOp("tosa.clamp", 1) |rw, op| {
         let b = &*rw.body;
         let input = b[op].operands[0];
-        let elem = attr::element_type(&b[input].ty).clone();
+        let elem = b[input].ty.element_type().clone();
         let (Some(lo), Some(hi)) = (scalar_attr(b[op].get("min_val")), scalar_attr(b[op].get("max_val"))) else { return false };
         let noop = match (&elem, lo, hi) {
             (Type::Float(_), Scalar::Float(l), Scalar::Float(h)) => l.is_inf() && l.is_negative() && h.is_inf() && !h.is_negative(),
@@ -607,7 +600,7 @@ rewrites! {
         let get = |o: OpId, n: &str| scalar_attr(b[o].get(n));
         let (Some(l1), Some(h1), Some(l2), Some(h2)) = (get(op, "min_val"), get(op, "max_val"), get(inner, "min_val"), get(inner, "max_val")) else { return false };
         let src = b[inner].operands[0];
-        let elem = Tf::storage(attr::element_type(&b[src].ty));
+        let elem = Tf::storage(b[src].ty.element_type());
         let (lo, hi) = match (l1, h1, l2, h2) {
             (Scalar::Float(a), Scalar::Float(b_), Scalar::Float(c), Scalar::Float(d)) => {
                 let lt = |x: ApFloat, y: ApFloat| x.compare(y) == Some(core::cmp::Ordering::Less);
@@ -735,7 +728,7 @@ rewrites! {
         if !updated {
             return false;
         }
-        let pad_ty = Type::Shaped(mlirformat::Shaped { kind: mlirformat::ShapedKind::Tensor, shape: Some(shape), elem: attr::element_type(&b[input].ty).clone().into(), extras: Vec::new() });
+        let pad_ty = Type::Shaped(mlirformat::Shaped { kind: mlirformat::ShapedKind::Tensor, shape: Some(shape), elem: b[input].ty.element_type().clone().into(), extras: Vec::new() });
         let (pad_const, size, ty) = (b[pad].operands[2], b[op].operands[2], b[b[op].results[0]].ty.clone());
         rw.set_before(op);
         let paddings = const_shape(rw, &new_paddings);

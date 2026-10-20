@@ -8,14 +8,14 @@ use alloc::vec::Vec;
 use mlirformat::{arith, linalg, Attribute, Dim, NamedAttr, Shaped, ShapedKind, Type};
 
 use super::MemrefOfr as Ofr;
-use crate::{AffineExpr, AffineMap, Body, Const, DYNAMIC, Def, Fold, Folded, Mapping, OpData, OpId, PatternSet, Rewriter, Trait, TypedOp, ValueId, attr};
+use crate::{AffineExpr, AffineMap, Body, Const, Def, Fold, Folded, Mapping, OpData, OpId, PatternSet, Rewriter, Trait, TypedOp, ValueId};
 
 /// The `linalg` ops' helpers.
 struct Lg;
 
 impl Lg {
     fn dims(t: &Type<'_>) -> Option<Vec<i64>> {
-        attr::shape_of(t).map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
+        t.dims()
     }
 
     fn kind(t: &Type<'_>) -> Option<ShapedKind> {
@@ -39,13 +39,13 @@ impl Lg {
     }
 
     fn static_shape(t: &Type<'_>) -> bool {
-        Self::dims(t).is_some_and(|d| !d.contains(&DYNAMIC))
+        Self::dims(t).is_some_and(|d| !d.contains(&Dim::DYNAMIC))
     }
 
     /// `RankedTensorType::clone(dims)`: element type and encoding kept.
     fn with_dims<'a>(t: &Type<'a>, dims: &[i64]) -> Type<'a> {
         let Type::Shaped(s) = t else { return t.clone() };
-        let shape = dims.iter().map(|d| if *d == DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
+        let shape = dims.iter().map(|d| if *d == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
         Type::Shaped(Shaped { shape: Some(shape), ..s.clone() })
     }
 
@@ -131,11 +131,11 @@ impl Lg {
 
     /// `tensor::CastOp::areCastCompatible`.
     fn cast_compatible(a: &Type<'_>, b: &Type<'_>) -> bool {
-        if !Self::is_tensor(a) || !Self::is_tensor(b) || attr::element_type(a) != attr::element_type(b) {
+        if !Self::is_tensor(a) || !Self::is_tensor(b) || a.element_type() != b.element_type() {
             return false;
         }
         match (Self::dims(a), Self::dims(b)) {
-            (Some(x), Some(y)) => x.len() == y.len() && x.iter().zip(&y).all(|(p, q)| *p == DYNAMIC || *q == DYNAMIC || p == q),
+            (Some(x), Some(y)) => x.len() == y.len() && x.iter().zip(&y).all(|(p, q)| *p == Dim::DYNAMIC || *q == Dim::DYNAMIC || p == q),
             _ => true,
         }
     }
@@ -269,7 +269,7 @@ impl<'a> Relayout<'a> {
         let pack = b[op].name == "linalg.pack";
         let padding = pack.then(|| b.segments(op, "operandSegmentSizes")).flatten().and_then(|s| (s.get(2) == Some(&1)).then(|| ops[2]));
         let mut dynamic = ops[2 + usize::from(padding.is_some())..].iter();
-        let tiles = b.dense_i64(op, "static_inner_tiles").into_iter().map(|t| if t == DYNAMIC { Ofr::V(*dynamic.next().expect("a dynamic tile")) } else { Ofr::C(t) }).collect();
+        let tiles = b.dense_i64(op, "static_inner_tiles").into_iter().map(|t| if t == Dim::DYNAMIC { Ofr::V(*dynamic.next().expect("a dynamic tile")) } else { Ofr::C(t) }).collect();
         Self { pack, source: ops[0], dest: ops[1], padding, tiles, inner: b.dense_i64(op, "inner_dims_pos"), outer: b.dense_i64(op, "outer_dims_perm"), attrs: b[op].attributes.clone() }
     }
 
@@ -282,7 +282,7 @@ impl<'a> Relayout<'a> {
             match t {
                 Ofr::C(c) => st.push(*c),
                 Ofr::V(v) => {
-                    st.push(DYNAMIC);
+                    st.push(Dim::DYNAMIC);
                     dy.push((*v).into());
                 }
             }
@@ -318,12 +318,12 @@ impl<'a> Relayout<'a> {
         }
         self.inner.iter().zip(&self.tiles).any(|(pos, tile)| {
             let pos = *pos as usize;
-            if input[pos] == DYNAMIC {
+            if input[pos] == Dim::DYNAMIC {
                 return false;
             }
             match b.ofr_int(*tile) {
                 Some(c) => input[pos] % c != 0,
-                None => tiles[pos] != DYNAMIC && input[pos] % tiles[pos] != 0,
+                None => tiles[pos] != Dim::DYNAMIC && input[pos] % tiles[pos] != 0,
             }
         })
     }
@@ -331,7 +331,7 @@ impl<'a> Relayout<'a> {
     /// `paddingIsNotNeeded`.
     fn padding_not_needed(&self, b: &Body<'_>) -> bool {
         let (Some(src), Some(dst)) = (Lg::dims(&b[self.source].ty), Lg::dims(&b[self.dest].ty)) else { return false };
-        !self.inner.iter().any(|p| src[*p as usize] == DYNAMIC) && !self.tiles.iter().any(|t| matches!(t, Ofr::V(_))) && !self.requires_padding(b, &src, &dst)
+        !self.inner.iter().any(|p| src[*p as usize] == Dim::DYNAMIC) && !self.tiles.iter().any(|t| matches!(t, Ofr::V(_))) && !self.requires_padding(b, &src, &dst)
     }
 
     /// `inferStaticShape`: the source and dest shapes with the untiled dims each side knows.
@@ -351,10 +351,10 @@ impl<'a> Relayout<'a> {
                     sp = inv[dp] as usize;
                 }
             }
-            if (src[sp] == DYNAMIC) == (dst[dp] == DYNAMIC) {
+            if (src[sp] == Dim::DYNAMIC) == (dst[dp] == Dim::DYNAMIC) {
                 continue;
             }
-            let size = if src[sp] == DYNAMIC { dst[dp] } else { src[sp] };
+            let size = if src[sp] == Dim::DYNAMIC { dst[dp] } else { src[sp] };
             src[sp] = size;
             dst[dp] = size;
             changed = true;
@@ -377,8 +377,8 @@ impl<'a> Relayout<'a> {
             outer = Lg::permute(&outer, &Lg::invert(&self.outer));
         }
         self.inner.iter().zip(&self.tiles).all(|(pos, tile)| {
-            let (p, tile) = (*pos as usize, if let Ofr::C(c) = tile { *c } else { DYNAMIC });
-            st[p] != DYNAMIC && outer[p] != DYNAMIC && tile != DYNAMIC && outer[p] * tile - st[p] < tile
+            let (p, tile) = (*pos as usize, if let Ofr::C(c) = tile { *c } else { Dim::DYNAMIC });
+            st[p] != Dim::DYNAMIC && outer[p] != Dim::DYNAMIC && tile != Dim::DYNAMIC && outer[p] * tile - st[p] < tile
         })
     }
 }
@@ -404,7 +404,7 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold
             let rt = b[b[op].results[0]].ty.clone();
             let Some(k) = c[0].as_ref().and_then(|a| Const::try_from(a).ok()).filter(|k| k.elements && k.is_splat()) else { return Fold::Failed };
             let pad = Relayout::of(b, op).padding.and_then(|_| c[2].as_ref());
-            if !Lg::static_shape(&rt) || pad.is_some_and(|p| Const::try_from(p).ok().is_none_or(|p| p.values != k.values || &p.ty != attr::element_type(&k.ty))) {
+            if !Lg::static_shape(&rt) || pad.is_some_and(|p| Const::try_from(p).ok().is_none_or(|p| p.values != k.values || &p.ty != k.ty.element_type())) {
                 return Fold::Failed;
             }
             Folded::Attr(Const { ty: rt, ..k }.into()).into()
@@ -432,7 +432,7 @@ impl<'a> Rewriter<'_, 'a> {
     /// `transpose`, `broadcast`), result types those of its tensor init; its results. The
     /// OpDSL scalar cast is not built: the first operand's element type is the init's.
     fn structured(&mut self, data: OpData<'a>) -> Vec<ValueId> {
-        let args: Vec<(Type<'a>, Option<_>)> = data.operands.iter().map(|v| (attr::element_type(&self.body[*v].ty).clone(), None)).collect();
+        let args: Vec<(Type<'a>, Option<_>)> = data.operands.iter().map(|v| (self.body[*v].ty.element_type().clone(), None)).collect();
         let types = Lg::results_for(&self.body[*data.operands.last().expect("an init")].ty);
         let op = self.create_with(data, &types, |b, o| {
             let r = b.add_region(o);
@@ -466,7 +466,7 @@ impl<'a> Rewriter<'_, 'a> {
 
     /// `tensor::EmptyOp::create(b, loc, sizes, elem)`.
     fn empty(&mut self, sizes: &[Ofr], elem: Type<'a>) -> ValueId {
-        let dims: Vec<i64> = sizes.iter().map(|s| if let Ofr::C(c) = s { *c } else { DYNAMIC }).collect();
+        let dims: Vec<i64> = sizes.iter().map(|s| if let Ofr::C(c) = s { *c } else { Dim::DYNAMIC }).collect();
         let dynamic: Vec<ValueId> = sizes.iter().filter_map(|s| if let Ofr::V(v) = s { Some(*v) } else { None }).collect();
         let e = self.create(OpData::build("tensor.empty").operands(&dynamic), &[Lg::tensor(&dims, elem)]);
         self.body[e].results[0]
@@ -559,7 +559,7 @@ impl<'a> Rewriter<'_, 'a> {
         (r.source, r.dest) = (through(r.source), through(r.dest));
         let packed = Lg::dims(&b[if r.pack { r.dest } else { r.source }].ty).unwrap_or_default();
         let tail = &packed[packed.len() - r.tiles.len()..];
-        r.tiles = tail.iter().zip(&r.tiles).map(|(s, t)| if *s == DYNAMIC || matches!(t, Ofr::C(_)) { *t } else { Ofr::C(*s) }).collect();
+        r.tiles = tail.iter().zip(&r.tiles).map(|(s, t)| if *s == Dim::DYNAMIC || matches!(t, Ofr::C(_)) { *t } else { Ofr::C(*s) }).collect();
         let old = b[b[op].results[0]].ty.clone();
         self.set_before(op);
         let mut new = r.create(self);
@@ -638,8 +638,8 @@ impl<'a> Rewriter<'_, 'a> {
             && u.can_fold_slice(b, user.op)
         {
             let lists = b.slice_lists(user.op);
-            let sizes: Vec<i64> = lists[1].iter().map(|s| if let Ofr::C(c) = s { *c } else { DYNAMIC }).collect();
-            let ty = Lg::tensor(&sizes, attr::element_type(&b[u.dest].ty).clone());
+            let sizes: Vec<i64> = lists[1].iter().map(|s| if let Ofr::C(c) = s { *c } else { Dim::DYNAMIC }).collect();
+            let ty = Lg::tensor(&sizes, b[u.dest].ty.element_type().clone());
             self.set_before(op);
             let s = self.create(OpData::sliced("tensor.extract_slice", &[u.dest], &lists), &[ty.clone()]);
             let s = self.body[s].results[0];
@@ -728,7 +728,7 @@ rewrites! {
             }
             for (s, e) in Lg::dims(&b[*v].ty).unwrap_or_default().into_iter().zip(&m.results) {
                 if let AffineExpr::Dim(d) = e
-                    && s != DYNAMIC
+                    && s != Dim::DYNAMIC
                     && !known.iter().any(|k| k.0 == *d)
                 {
                     known.push((*d, s));
@@ -745,7 +745,7 @@ rewrites! {
             }
             let dims = Lg::dims(&t).unwrap_or_default();
             let init = inits.contains(&k);
-            if init && !dims.contains(&DYNAMIC) {
+            if init && !dims.contains(&Dim::DYNAMIC) {
                 types.push(t);
                 casts.push(None);
                 continue;
@@ -755,7 +755,7 @@ rewrites! {
                 .iter()
                 .zip(&m.results)
                 .map(|(s, e)| match (s, e) {
-                    (&DYNAMIC, AffineExpr::Dim(d)) => known.iter().find(|k| k.0 == *d).map_or(DYNAMIC, |k| {
+                    (&Dim::DYNAMIC, AffineExpr::Dim(d)) => known.iter().find(|k| k.0 == *d).map_or(Dim::DYNAMIC, |k| {
                         need = true;
                         k.1
                     }),
@@ -902,7 +902,7 @@ rewrites! {
         let sum = AffineMap { dims: 3, syms: 0, results: vec![AffineExpr::Dim(0).add(AffineExpr::Dim(1)).add(AffineExpr::Dim(2))] };
         let mut sizes = Vec::new();
         for (i, d) in dims.iter().enumerate() {
-            if *d != DYNAMIC {
+            if *d != Dim::DYNAMIC {
                 sizes.push(Ofr::C(*d));
                 continue;
             }
@@ -911,7 +911,7 @@ rewrites! {
             let dim = rw.create_or_fold(OpData::build("tensor.dim").operands(&[src, k]), &[Type::Index])[0];
             sizes.push(rw.composed_folded_apply(sum.clone(), &[Ofr::V(dim), low[i], high[i]]));
         }
-        let empty = rw.empty(&sizes, attr::element_type(&rt).clone());
+        let empty = rw.empty(&sizes, rt.element_type().clone());
         let mut r = rw.fill(value, empty)[0];
         if rw.body[r].ty != rt {
             r = rw.tensor_cast(r, rt);
@@ -946,7 +946,7 @@ rewrites! {
             }
             let [po, ps, pt] = flat(prev);
             let disjoint = (0..rank(b[prev].results[0])).any(|i| {
-                if [io[i], is[i], it[i], po[i], ps[i], pt[i]].contains(&DYNAMIC) {
+                if [io[i], is[i], it[i], po[i], ps[i], pt[i]].contains(&Dim::DYNAMIC) {
                     return false;
                 }
                 let (pe, ne) = (po[i] + (ps[i] - 1) * pt[i], io[i] + (is[i] - 1) * it[i]);
@@ -973,7 +973,7 @@ rewrites! {
         }
         let mut sizes = Vec::new();
         for (i, d) in pdims.iter().enumerate() {
-            sizes.push(if *d == DYNAMIC { Ofr::V(rw.tensor_dim(psrc, i)) } else { Ofr::C(*d) });
+            sizes.push(if *d == Dim::DYNAMIC { Ofr::V(rw.tensor_dim(psrc, i)) } else { Ofr::C(*d) });
         }
         rw.replace_with(op, OpData::sliced("tensor.insert_slice", &[psrc, dst], &[new_offsets, sizes, strides]), &[rt]);
         true
@@ -1020,11 +1020,11 @@ rewrites! {
         let inv = Lg::invert(&perm);
         let result_dims: Vec<i64> = dims.iter().map(|d| inv[*d as usize]).collect();
         let (src, init) = (b[bc].operands[0], b[op].operands[1]);
-        let (shape, elem) = (Lg::dims(&b[src].ty).unwrap_or_default(), attr::element_type(&b[src].ty).clone());
+        let (shape, elem) = (Lg::dims(&b[src].ty).unwrap_or_default(), b[src].ty.element_type().clone());
         rw.set_before(op);
         let mut sizes = Vec::new();
         for (i, d) in shape.iter().enumerate() {
-            sizes.push(if *d == DYNAMIC { Ofr::V(rw.tensor_dim(src, i)) } else { Ofr::C(*d) });
+            sizes.push(if *d == Dim::DYNAMIC { Ofr::V(rw.tensor_dim(src, i)) } else { Ofr::C(*d) });
         }
         let empty = rw.empty(&Lg::permute(&sizes, &result_perm), elem);
         let t = rw.transpose(src, empty, &result_perm)[0];

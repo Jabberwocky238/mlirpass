@@ -6,9 +6,8 @@ use alloc::vec::Vec;
 use mlirpass_macros::patterns;
 use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Signedness, Type};
 
-use super::vector_transforms::{dense_i64, index_attr};
 use crate::canon::MemrefOfr as Ofr;
-use crate::{Const, ConversionRewriter, DYNAMIC, OpData, OpId, Rewriter, TypeConverter, ValueId};
+use crate::{Const, ConversionRewriter, OpData, OpId, Rewriter, TypeConverter, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -44,14 +43,10 @@ impl TosaToTensor {
         tc
     }
 
-    fn dims(t: &Type<'_>) -> Option<Vec<i64>> {
-        crate::attr::shape_of(t).map(|d| d.iter().map(|d| if let Dim::Static(n) = d { *n } else { DYNAMIC }).collect())
-    }
-
     /// `TensorType::clone(shape)`.
     fn with_shape<'a>(t: &Type<'a>, dims: &[i64]) -> Type<'a> {
         let Type::Shaped(s) = t else { return t.clone() };
-        let shape = dims.iter().map(|d| if *d == DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
+        let shape = dims.iter().map(|d| if *d == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
         Type::Shaped(Shaped { kind: ShapedKind::Tensor, shape: Some(shape), elem: s.elem.clone(), extras: if s.shape.is_some() { s.extras.clone() } else { Vec::new() } })
     }
 
@@ -60,7 +55,7 @@ impl TosaToTensor {
         let b = &*cr.rw.body;
         let d = b.def_named(v, "tosa.const_shape")?;
         let c = Const::try_from(b[d].get("values")?).ok()?;
-        let n = crate::attr::element_count(&c.ty)?;
+        let n = c.ty.element_count()?;
         (0..n).map(|i| c.at(i).int().map(|x| x.signed() as i64)).collect()
     }
 
@@ -69,8 +64,8 @@ impl TosaToTensor {
         if shape.is_empty() {
             return Self::with_shape(input, &[]);
         }
-        let dims = Self::dims(input);
-        let fixed = dims.as_ref().is_some_and(|d| !d.contains(&DYNAMIC));
+        let dims = input.dims();
+        let fixed = dims.as_ref().is_some_and(|d| !d.contains(&Dim::DYNAMIC));
         let total: i64 = if fixed { dims.as_ref().expect("ranked").iter().product() } else { -1 };
         let mut res: Vec<i64> = shape
             .iter()
@@ -79,26 +74,26 @@ impl TosaToTensor {
                     return *s;
                 }
                 if !fixed {
-                    return DYNAMIC;
+                    return Dim::DYNAMIC;
                 }
                 let rest = -shape.iter().product::<i64>();
                 if rest == 0 { 0 } else { total / rest }
             })
             .collect();
-        if !fixed && !res.contains(&DYNAMIC) {
-            res[0] = DYNAMIC;
+        if !fixed && !res.contains(&Dim::DYNAMIC) {
+            res[0] = Dim::DYNAMIC;
         }
         Self::with_shape(input, &res)
     }
 
     /// `inferReshapeCollapsedType`.
     fn collapsed_type<'a>(lhs: &Type<'a>, rhs: &Type<'a>) -> Type<'a> {
-        let (l, r) = (Self::dims(lhs).unwrap_or_default(), Self::dims(rhs).unwrap_or_default());
+        let (l, r) = (lhs.dims().unwrap_or_default(), rhs.dims().unwrap_or_default());
         if l.is_empty() || r.is_empty() {
             return Self::with_shape(lhs, &[]);
         }
-        if l.contains(&DYNAMIC) || r.contains(&DYNAMIC) {
-            return Self::with_shape(lhs, &[DYNAMIC]);
+        if l.contains(&Dim::DYNAMIC) || r.contains(&Dim::DYNAMIC) {
+            return Self::with_shape(lhs, &[Dim::DYNAMIC]);
         }
         let mut out = Vec::new();
         let (mut li, mut ri) = (0, 0);
@@ -128,11 +123,11 @@ impl TosaToTensor {
 
     /// `createReassociationMapForCollapse`.
     fn reassociation(src: &Type<'_>, dst: &Type<'_>) -> Vec<Vec<i64>> {
-        let (s, d) = (Self::dims(src).unwrap_or_default(), Self::dims(dst).unwrap_or_default());
+        let (s, d) = (src.dims().unwrap_or_default(), dst.dims().unwrap_or_default());
         if s.is_empty() || d.is_empty() {
             return Vec::new();
         }
-        if s.contains(&DYNAMIC) || d.contains(&DYNAMIC) {
+        if s.contains(&Dim::DYNAMIC) || d.contains(&Dim::DYNAMIC) {
             return vec![(0..s.len() as i64).collect()];
         }
         let mut map = vec![Vec::new(); d.len()];
@@ -165,16 +160,16 @@ impl TosaToTensor {
     }
 
     fn cidx(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
-        cr.emit(&arith::Constant::new(index_attr(v), Type::Index))
+        cr.emit(&arith::Constant::new(Attribute::index(v), Type::Index))
     }
 
     /// `tensor::getMixedSize`: static sizes as constants, dynamic ones by `tensor.dim`.
     fn mixed_sizes(cr: &mut Cr<'_, '_, '_>, v: ValueId) -> Vec<Ofr> {
-        let dims = Self::dims(&cr.rw.body[v].ty).unwrap_or_default();
+        let dims = cr.rw.body[v].ty.dims().unwrap_or_default();
         dims.iter()
             .enumerate()
             .map(|(i, d)| {
-                if *d != DYNAMIC {
+                if *d != Dim::DYNAMIC {
                     return Ofr::C(*d);
                 }
                 let k = Self::cidx(cr, i as i64);
@@ -196,11 +191,11 @@ impl TosaToTensor {
     /// inferred by `inferExpandShapeOutputShape`), then folded.
     pub fn expand<'a>(cr: &mut Cr<'_, 'a, '_>, ty: Type<'a>, src: ValueId, r: &[Vec<i64>], fold: bool) -> ValueId {
         let input = Self::mixed_sizes(cr, src);
-        let out = Self::dims(&ty).unwrap_or_default();
+        let out = ty.dims().unwrap_or_default();
         let mut shape: Option<Vec<Ofr>> = None;
         if input.is_empty() {
             shape = Some(vec![Ofr::C(1); out.len()]);
-        } else if !out.contains(&DYNAMIC) {
+        } else if !out.contains(&Dim::DYNAMIC) {
             shape = Some(out.iter().map(|d| Ofr::C(*d)).collect());
         } else {
             let mut s: Vec<Ofr> = out.iter().map(|d| Ofr::C(*d)).collect();
@@ -210,7 +205,7 @@ impl TosaToTensor {
                 let mut dynamic = None;
                 for i in group {
                     let d = out[*i as usize];
-                    if d == DYNAMIC {
+                    if d == Dim::DYNAMIC {
                         if dynamic.is_some() {
                             ok = false;
                         }
@@ -239,12 +234,12 @@ impl TosaToTensor {
             match o {
                 Ofr::C(c) => statics.push(*c),
                 Ofr::V(v) => {
-                    statics.push(DYNAMIC);
+                    statics.push(Dim::DYNAMIC);
                     ops.push(*v);
                 }
             }
         }
-        let data = OpData::build("tensor.expand_shape").operands(&ops).with("reassociation", crate::canon::Reshape::attr(&r.to_vec())).with("static_output_shape", dense_i64(&statics));
+        let data = OpData::build("tensor.expand_shape").operands(&ops).with("reassociation", crate::canon::Reshape::attr(&r.to_vec())).with("static_output_shape", Attribute::dense_i64(&statics));
         if fold { Self::fold1(cr, data, ty) } else { cr.build(data, ty) }
     }
 
@@ -259,7 +254,7 @@ impl TosaToTensor {
         }
         let shape_v = cr.rw.body[op].operands[1];
         let Some(shape) = Self::const_shape(cr, shape_v) else { return false };
-        let in_ty = if shape.is_empty() { Self::with_shape(&it, &vec![1; Self::dims(&it).map_or(0, |d| d.len())]) } else { it.clone() };
+        let in_ty = if shape.is_empty() { Self::with_shape(&it, &vec![1; it.dims().map_or(0, |d| d.len())]) } else { it.clone() };
         let ex = Self::expanded_type(&in_ty, &shape);
         let co = Self::collapsed_type(&in_ty, &ex);
         let cast = Self::fold1(cr, OpData::build("tensor.cast").operands(&[input]), in_ty.clone());
@@ -277,14 +272,14 @@ impl TosaToTensor {
         let input = o[0][0];
         let b = &*cr.rw.body;
         let rt = b[b[op].results[0]].ty.clone();
-        let Some(rdims) = Self::dims(&rt) else { return false };
+        let Some(rdims) = rt.dims() else { return false };
         let (start_v, size_v) = (b[op].operands[1], b[op].operands[2]);
         let (Some(starts), Some(sizes0)) = (Self::const_shape(cr, start_v), Self::const_shape(cr, size_v)) else { return false };
         let strides = vec![1i64; rdims.len()];
         let mut sizes = Vec::new();
         let mut dynamic = Vec::new();
         for (i, s) in sizes0.iter().enumerate() {
-            sizes.push(if *s == -1 { DYNAMIC } else { *s });
+            sizes.push(if *s == -1 { Dim::DYNAMIC } else { *s });
             if *s != -1 {
                 continue;
             }
@@ -295,7 +290,7 @@ impl TosaToTensor {
         }
         let mut ops = vec![input];
         ops.extend(&dynamic);
-        let data = OpData::build("tensor.extract_slice").operands(&ops).segments(&[1, 0, dynamic.len(), 0]).with("static_offsets", dense_i64(&starts)).with("static_sizes", dense_i64(&sizes)).with("static_strides", dense_i64(&strides));
+        let data = OpData::build("tensor.extract_slice").operands(&ops).segments(&[1, 0, dynamic.len(), 0]).with("static_offsets", Attribute::dense_i64(&starts)).with("static_sizes", Attribute::dense_i64(&sizes)).with("static_strides", Attribute::dense_i64(&strides));
         let new = cr.build(data, rt);
         for v in [start_v, size_v] {
             if cr.rw.body[v].uses.len() == 1
@@ -314,9 +309,9 @@ impl TosaToTensor {
         let (input, padding, pad_const) = (b[op].operands[0], b[op].operands[1], b[op].operands[2]);
         let rt = b[b[op].results[0]].ty.clone();
         let Some(vals) = Self::const_shape(cr, padding) else { return false };
-        let rank = Self::dims(&cr.rw.body[input].ty).map_or(0, |d| d.len());
+        let rank = cr.rw.body[input].ty.dims().map_or(0, |d| d.len());
         let zero = Self::cidx(cr, 0);
-        let et = crate::attr::element_type(&cr.rw.body[pad_const].ty).clone();
+        let et = cr.rw.body[pad_const].ty.element_type().clone();
         let pc = Self::fold1(cr, OpData::build("tensor.extract").operands(&[pad_const, zero]), et.clone());
         let mut low = Vec::new();
         let mut high = Vec::new();
@@ -327,7 +322,7 @@ impl TosaToTensor {
         let mut ops = vec![input];
         ops.extend(&low);
         ops.extend(&high);
-        let data = OpData::build("tensor.pad").operands(&ops).segments(&[1, rank, rank]).with("static_low", dense_i64(&vec![DYNAMIC; rank])).with("static_high", dense_i64(&vec![DYNAMIC; rank]));
+        let data = OpData::build("tensor.pad").operands(&ops).segments(&[1, rank, rank]).with("static_low", Attribute::dense_i64(&vec![Dim::DYNAMIC; rank])).with("static_high", Attribute::dense_i64(&vec![Dim::DYNAMIC; rank]));
         let new = cr.rw.create_with(data, core::slice::from_ref(&rt), |b, p| {
             let r = b.add_region(p);
             let args: Vec<_> = (0..rank).map(|_| (Type::Index, None)).collect();
@@ -344,7 +339,7 @@ impl TosaToTensor {
     fn concat(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let rt = b[b[op].results[0]].ty.clone();
-        let Some(rdims) = Self::dims(&rt) else { return false };
+        let Some(rdims) = rt.dims() else { return false };
         let axis = match b[op].get("axis") {
             Some(Attribute::Int { lit, .. }) => lit.parse::<usize>().unwrap_or(0),
             _ => 0,
@@ -366,7 +361,7 @@ impl TosaToTensor {
         sizes[axis] = *axis_offsets.last().expect("an offset");
         let mut dyn_dims = Vec::new();
         for (i, d) in rdims.iter().enumerate() {
-            if *d == DYNAMIC {
+            if *d == Dim::DYNAMIC {
                 dyn_dims.push(Self::value_of(cr, sizes[i]));
             }
         }
@@ -397,14 +392,14 @@ impl TosaToTensor {
                 match o {
                     Ofr::C(c) => st.push(*c),
                     Ofr::V(v) => {
-                        st.push(DYNAMIC);
+                        st.push(Dim::DYNAMIC);
                         ops.push(*v);
                         k += 1;
                     }
                 }
             }
             segs.push(k);
-            data.set(n, dense_i64(&st));
+            data.set(n, Attribute::dense_i64(&st));
         }
         data.operands(&ops).segments(&segs)
     }

@@ -7,7 +7,7 @@ use core::cmp::Ordering;
 
 use mlirformat::{arith, Attribute, FloatKind, Type};
 
-use crate::{ApFloat, ApInt, Body, Const, Fold, Folded, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId, attr};
+use crate::{ApFloat, ApInt, Body, Const, Fold, Folded, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId};
 
 /// `CmpIPredicate`, by case value.
 const EQ: i64 = 0;
@@ -23,7 +23,7 @@ const UGE: i64 = 9;
 
 /// `ConstantOp::materialize` (poison becomes `ub.poison`).
 pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
-    if crate::is_poison(value) {
+    if value.is_poison() {
         return Some(OpData::build("ub.poison").with("value", value.clone()));
     }
     // `isBuildableWith`: a typed int, float or elements attribute of exactly `ty`, signless.
@@ -167,7 +167,7 @@ impl<'x, 'a> Folder<'x, 'a> {
     }
 
     fn poison(&self, i: usize) -> bool {
-        self.c.get(i).and_then(Option::as_ref).is_some_and(crate::is_poison)
+        self.c.get(i).and_then(Option::as_ref).is_some_and(Attribute::is_poison)
     }
 
     fn prop(&self, name: &str) -> Option<&Attribute<'a>> {
@@ -210,7 +210,7 @@ impl<'x, 'a> Folder<'x, 'a> {
             return self.c[0].clone().map(Folded::Attr).into();
         }
         let Some(c) = self.cst(0) else { return Fold::Failed };
-        let elem = attr::element_type(&ty).clone();
+        let elem = ty.element_type().clone();
         let ty = if c.elements { ty } else { elem };
         c.map(ty, f).map(|c| Folded::Attr(c.into())).into()
     }
@@ -225,10 +225,10 @@ impl<'x, 'a> Folder<'x, 'a> {
 
     /// `Builder::getZeroAttr`.
     fn zero_attr(ty: &Type<'a>) -> Option<Attribute<'a>> {
-        let elem = attr::element_type(ty);
+        let elem = ty.element_type();
         let z = match elem {
             Type::Float(k) => Scalar::Float(ApFloat::from_f64(*k, 0.0)?),
-            t => Scalar::Int(ApInt::zero(attr::int_width(t)?.0)),
+            t => Scalar::Int(ApInt::zero(t.int_width()?.0)),
         };
         Some(match ty {
             Type::Shaped(s) if s.kind != mlirformat::ShapedKind::MemRef => Const::splat(z, ty.clone()).into(),
@@ -246,7 +246,7 @@ impl<'x, 'a> Folder<'x, 'a> {
     }
 
     fn width_of(&self, v: ValueId) -> Option<u32> {
-        attr::int_width(attr::element_type(&self.b[v].ty)).map(|w| w.0)
+        self.b[v].ty.element_type().int_width().map(|w| w.0)
     }
 
     /// The fold of the op.
@@ -365,7 +365,7 @@ impl<'x, 'a> Folder<'x, 'a> {
                     return Self::value(self.res());
                 }
                 let ty = self.ty();
-                let Some(w) = attr::int_width(attr::element_type(&ty)).map(|w| w.0) else { return Fold::Failed };
+                let Some(w) = ty.element_type().int_width().map(|w| w.0) else { return Fold::Failed };
                 let signed = op == "extsi";
                 self.unary(ty, move |a| Some(Scalar::Int(if signed { a.int()?.sext(w) } else { a.int()?.zext(w) })))
             }
@@ -374,7 +374,7 @@ impl<'x, 'a> Folder<'x, 'a> {
             "truncf" => self.truncf(),
             "uitofp" | "sitofp" => {
                 let ty = self.ty();
-                let Type::Float(k) = *attr::element_type(&ty) else { return Fold::Failed };
+                let Type::Float(k) = *ty.element_type() else { return Fold::Failed };
                 let signed = op == "sitofp";
                 self.unary(ty, move |a| {
                     let i = a.int()?;
@@ -390,7 +390,7 @@ impl<'x, 'a> Folder<'x, 'a> {
             }
             "fptoui" | "fptosi" => {
                 let ty = self.ty();
-                let Some(w) = attr::int_width(attr::element_type(&ty)).map(|w| w.0) else { return Fold::Failed };
+                let Some(w) = ty.element_type().int_width().map(|w| w.0) else { return Fold::Failed };
                 let signed = op == "fptosi";
                 self.unary(ty, move |a| {
                     let x = a.float()?.to_f64();
@@ -407,7 +407,7 @@ impl<'x, 'a> Folder<'x, 'a> {
             }
             "index_cast" | "index_castui" => {
                 let ty = self.ty();
-                let w = attr::int_width(attr::element_type(&ty)).map_or(64, |w| w.0);
+                let w = ty.element_type().int_width().map_or(64, |w| w.0);
                 let signed = op == "index_cast";
                 self.unary(ty, move |a| {
                     let i = a.int()?;
@@ -471,7 +471,7 @@ impl<'x, 'a> Folder<'x, 'a> {
     fn subi(&mut self) -> Fold<'a> {
         if self.v(0) == self.v(1) {
             let ty = self.ty();
-            let dynamic = matches!(&ty, Type::Shaped(_)) && attr::element_count(&ty).is_none();
+            let dynamic = matches!(&ty, Type::Shaped(_)) && ty.element_count().is_none();
             if !dynamic {
                 return Self::attr(Self::zero_attr(&ty));
             }
@@ -653,7 +653,7 @@ impl<'x, 'a> Folder<'x, 'a> {
                     self.b.set_operand(self.op, 0, src);
                     return Self::value(self.res());
                 }
-                if attr::element_type(&self.b[src].ty) == attr::element_type(&self.ty()) {
+                if self.b[src].ty.element_type() == self.ty().element_type() {
                     return Self::value(src);
                 }
             }
@@ -669,7 +669,7 @@ impl<'x, 'a> Folder<'x, 'a> {
     }
 
     fn float_kind(&self, v: ValueId) -> Option<FloatKind> {
-        match attr::element_type(&self.b[v].ty) {
+        match self.b[v].ty.element_type() {
             Type::Float(k) => Some(*k),
             _ => None,
         }
@@ -705,7 +705,7 @@ impl<'x, 'a> Folder<'x, 'a> {
             if let (Some(s), Some(mid), Some(res)) = (s, mid, res)
                 && representable_by(s, mid)
             {
-                let (sw, rw) = (attr::bit_width(&Type::Float(s)), attr::bit_width(&Type::Float(res)));
+                let (sw, rw) = (Type::Float(s).bit_width(), Type::Float(res).bit_width());
                 if sw > rw {
                     self.b.set_operand(self.op, 0, src);
                     return Self::value(self.res());
@@ -721,14 +721,14 @@ impl<'x, 'a> Folder<'x, 'a> {
     fn bitcast(&self) -> Fold<'a> {
         let ty = self.ty();
         let Some(a) = self.c[0].as_ref() else { return Fold::Failed };
-        if crate::is_poison(a) && !matches!(ty, Type::Shaped(_)) {
+        if a.is_poison() && !matches!(ty, Type::Shaped(_)) {
             return Self::attr(Some(a.clone()));
         }
         let Ok(c) = Const::try_from(a) else { return Fold::Failed };
         if !c.elements && matches!(ty, Type::Shaped(_)) {
             return Fold::Failed;
         }
-        let elem = attr::element_type(&ty).clone();
+        let elem = ty.element_type().clone();
         let target = if c.elements { ty.clone() } else { elem.clone() };
         c.map(target, |s| {
             let bits = match s {
@@ -737,7 +737,7 @@ impl<'x, 'a> Folder<'x, 'a> {
             };
             Some(match &elem {
                 Type::Float(k) => Scalar::Float(ApFloat::from_bits(*k, bits as u64)?),
-                t => Scalar::Int(ApInt::from_bits(attr::int_width(t)?.0, bits)),
+                t => Scalar::Int(ApInt::from_bits(t.int_width()?.0, bits)),
             })
         })
         .map(|c| Folded::Attr(c.into()))
@@ -766,11 +766,11 @@ impl<'x, 'a> Folder<'x, 'a> {
                     return Self::value(self.b[e].operands[0]);
                 }
             }
-            if self.width_of(self.v(0)) == Some(1) && matches!(attr::element_type(&self.b[self.v(0)].ty), Type::Integer { .. }) && pred == NE {
+            if self.width_of(self.v(0)) == Some(1) && matches!(self.b[self.v(0)].ty.element_type(), Type::Integer { .. }) && pred == NE {
                 return Self::value(self.v(0));
             }
         }
-        if self.one(1) && self.width_of(self.v(0)) == Some(1) && matches!(attr::element_type(&self.b[self.v(0)].ty), Type::Integer { .. }) && pred == EQ {
+        if self.one(1) && self.width_of(self.v(0)) == Some(1) && matches!(self.b[self.v(0)].ty.element_type(), Type::Integer { .. }) && pred == EQ {
             return Self::value(self.v(0));
         }
         if self.c[0].is_some() && self.c[1].is_none() {
@@ -791,7 +791,7 @@ impl<'x, 'a> Folder<'x, 'a> {
             return Self::value(self.res());
         }
         let Some(lhs) = self.cst(0) else { return Fold::Failed };
-        let i1 = attr::with_element(&lhs.ty, Type::I1);
+        let i1 = lhs.ty.with_element(Type::I1);
         self.binary(Some(i1), |a, b| Some(Scalar::Int(ApInt::new(1, i128::from(cmpi(pred, a.int()?, b.int()?)))))).map(Folded::Attr).into()
     }
 
@@ -827,7 +827,7 @@ impl<'x, 'a> Folder<'x, 'a> {
         if !(c.elements && l.elements && r.elements) {
             return Fold::Failed;
         }
-        let n = attr::element_count(&l.ty).unwrap_or(1);
+        let n = l.ty.element_count().unwrap_or(1);
         let values = (0..n).map(|i| if c.at(i).int().is_some_and(|b| !b.is_zero()) { l.at(i) } else { r.at(i) }).collect();
         Self::attr(Some(Const { ty: l.ty.clone(), values, elements: true }.into()))
     }
@@ -840,7 +840,7 @@ impl<'x, 'a> Folder<'x, 'a> {
         }
         let Some(sum) = self.binary(None, |a, b| Some(Scalar::Int(a.int()?.add(b.int()?)))) else { return Fold::Failed };
         let (Ok(s), Some(l)) = (Const::try_from(&sum), self.cst(0)) else { return Fold::Failed };
-        let i1 = attr::with_element(&s.ty, Type::I1);
+        let i1 = s.ty.with_element(Type::I1);
         let n = s.values.len().max(l.values.len());
         let values = (0..n).map(|i| Scalar::Int(ApInt::new(1, i128::from(s.at(i).int().zip(l.at(i).int()).is_some_and(|(x, y)| x.ucmp(y) == Ordering::Less))))).collect();
         Fold::Results(vec![Folded::Attr(sum), Folded::Attr(Const { ty: i1, values, elements: s.elements }.into())])
@@ -929,7 +929,7 @@ impl<'a> Body<'a> {
 
     /// The width of a scalar or element int / float type, `-1` otherwise.
     fn elem_width(&self, v: ValueId) -> i64 {
-        attr::bit_width(&self[v].ty).map_or(-1, i64::from)
+        self[v].ty.bit_width().map_or(-1, i64::from)
     }
 }
 
@@ -1109,7 +1109,7 @@ rewrites! {
         }
         let ty = b[x].ty.clone();
         let Some(zero) = Folder::zero_attr(&ty) else { return false };
-        let i1 = attr::with_element(&ty, Type::I1);
+        let i1 = ty.with_element(Type::I1);
         rw.set_before(op);
         let z = rw.constant(zero, ty.clone());
         let cmp = rw.make(op, OpData::build("arith.cmpi").operands(&[x, z]).with("predicate", Attribute::i64(SLT)), i1);

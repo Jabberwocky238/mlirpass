@@ -9,8 +9,6 @@ use alloc::vec::Vec;
 use mlirformat::{arith, Attribute, Error, FunctionType, Type};
 use mlirpass_macros::{blocks, pass, patterns};
 
-use super::linalg_build::{dims_of, int_attr};
-use super::vector_transforms::dense_i64;
 use crate::{ApFloat, BlockId, Body, Const, ConversionConfig, ConversionPatterns, ConversionRewriter, ConversionTarget, Converter, Mode, OpData, OpId, RegionId, Run, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
@@ -82,7 +80,7 @@ impl<'a> Fb<'_, 'a> {
     }
 
     fn int(&mut self, v: i128, ty: &Type<'a>) -> ValueId {
-        let o = self.op(OpData::build("arith.constant").with("value", int_attr(v, ty)), &[ty.clone()]);
+        let o = self.op(OpData::build("arith.constant").with("value", Attribute::integer(v, ty.clone())), &[ty.clone()]);
         self.b[o].results[0]
     }
 
@@ -131,11 +129,11 @@ pub struct MathToFuncs;
 
 impl MathToFuncs {
     fn elem<'a>(t: &Type<'a>) -> Type<'a> {
-        crate::attr::element_type(t).clone()
+        t.element_type().clone()
     }
 
     fn width(t: &Type<'_>) -> u32 {
-        crate::bit_width(t).unwrap_or(0)
+        t.bit_width().unwrap_or(0)
     }
 
     /// A private `linkonce_odr` function `name : ty` at the end of `module`, with its entry block.
@@ -374,7 +372,7 @@ impl MathToFuncs {
         }
         let vt = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
         let et = Self::elem(&vt);
-        let shape = dims_of(&vt);
+        let shape = vt.dims().unwrap_or_default();
         let zero: Attribute = match &et {
             Type::Float(k) => Const::splat(Scalar::Float(ApFloat::from_f64(*k, 0.0).expect("a float")), vt.clone()).into(),
             _ => Const::splat(Scalar::Int(crate::ApInt::new(Self::width(&et), 0)), vt.clone()).into(),
@@ -394,11 +392,11 @@ impl MathToFuncs {
                 .iter()
                 .map(|v| {
                     let ty = Self::elem(&cr.rw.body[*v].ty);
-                    cr.build(OpData::build("vector.extract").operands(&[*v]).with("static_position", dense_i64(&pos)), ty)
+                    cr.build(OpData::build("vector.extract").operands(&[*v]).with("static_position", Attribute::dense_i64(&pos)), ty)
                 })
                 .collect();
             let s = cr.build(OpData::build(&name).operands(&ops), et.clone());
-            result = cr.build(OpData::build("vector.insert").operands(&[s, result]).with("static_position", dense_i64(&pos)), vt.clone());
+            result = cr.build(OpData::build("vector.insert").operands(&[s, result]).with("static_position", Attribute::dense_i64(&pos)), vt.clone());
         }
         cr.replace_values(op, &[result]);
         true
@@ -446,11 +444,11 @@ pub struct ConvertMathToFuncs {
 
 impl ConvertMathToFuncs {
     fn int_result(b: &Body<'_>, op: OpId) -> bool {
-        matches!(crate::attr::element_type(&b[b[op].results[0]].ty), Type::Integer { .. })
+        matches!(b[b[op].results[0]].ty.element_type(), Type::Integer { .. })
     }
 
     fn fpowi_ok(&self, b: &Body<'_>, op: OpId) -> bool {
-        let e = crate::attr::element_type(&b[b[op].operands[1]].ty);
+        let e = b[b[op].operands[1]].ty.element_type();
         matches!(e, Type::Integer { .. }) && MathToFuncs::width(e) >= self.min_width
     }
 
@@ -497,7 +495,7 @@ impl Run for ConvertMathToFuncs {
         }
         let min = self.min_width;
         target.dynamic_op("math.fpowi", move |b, o| {
-            let e = crate::attr::element_type(&b[b[o].operands[1]].ty);
+            let e = b[b[o].operands[1]].ty.element_type();
             Some(!(matches!(e, Type::Integer { .. }) && MathToFuncs::width(e) >= min))
         });
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)

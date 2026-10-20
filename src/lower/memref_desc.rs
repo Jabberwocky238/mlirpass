@@ -6,49 +6,37 @@
 //! unranked  { rank, ptr to a ranked descriptor }
 //! ```
 
-use alloc::borrow::Cow;
-use alloc::format;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, Shaped, Type};
+use mlirformat::{Attribute, Dim, Shaped, StridedLayout, Type};
 
 use crate::{ConversionRewriter, LlvmOptions, Listener, OpData, Rewriter, ValueId};
 
 /// `ShapedType::kDynamic`.
-pub const DYNAMIC: i64 = i64::MIN;
 
 impl LlvmOptions {
     /// `getStridesAndOffset`: from a `strided<...>` layout, or row-major for the identity.
     pub fn strides_and_offset(&self, s: &Shaped<'_>) -> Option<(Vec<i64>, i64)> {
-        let layout = s.extras.iter().find_map(|a| match a {
-            Attribute::Builtin { name, body, .. } if name == "strided" || name == "affine_map" => Some((name == "strided", body)),
-            _ => None,
-        });
+        let layout = s.layout();
         let shape = s.shape.as_ref()?;
-        if let Some((false, map)) = layout {
+        if let Some(Attribute::Builtin { name, body: map, .. }) = layout
+            && name == "affine_map"
+        {
             return Linear::strides(map, shape.len());
         }
-        let Some((_, body)) = layout else {
+        let Some(layout) = layout else {
             let mut strides = alloc::vec![0i64; shape.len()];
             let mut running = 1i64;
             for (i, d) in shape.iter().enumerate().rev() {
                 strides[i] = running;
                 running = match (running, d) {
-                    (DYNAMIC, _) | (_, Dim::Dynamic) => DYNAMIC,
+                    (Dim::DYNAMIC, _) | (_, Dim::Dynamic) => Dim::DYNAMIC,
                     (r, Dim::Static(n) | Dim::Scalable(n)) => r * n,
                 };
             }
             return Some((strides, 0));
         };
-        // `<[s0, s1], offset: o>`
-        let inner = body.trim().strip_prefix('<')?.strip_suffix('>')?;
-        let (list, rest) = inner.split_once(']')?;
-        let num = |t: &str| if t.trim() == "?" { Some(DYNAMIC) } else { t.trim().parse().ok() };
-        let strides = list.trim_start_matches('[').split(',').filter(|t| !t.trim().is_empty()).map(num).collect::<Option<Vec<_>>>()?;
-        let offset = match rest.split_once("offset:") {
-            Some((_, o)) => num(o)?,
-            None => 0,
-        };
+        let StridedLayout { strides, offset } = StridedLayout::try_from(layout).ok()?;
         Some((strides, offset))
     }
 }
@@ -93,12 +81,12 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
 
     fn insert_at(&mut self, agg: ValueId, v: ValueId, pos: &[i64]) -> ValueId {
         let ty = self.body[agg].ty.clone();
-        let p = Attribute::DenseArray { ty: Type::int(64), values: pos.iter().map(|x| Cow::Owned(format!("{x}"))).collect() };
+        let p = Attribute::dense_i64(&pos);
         self.value(OpData::build("llvm.insertvalue").operands(&[agg, v]).with("position", p), ty)
     }
 
     pub fn index_const(&mut self, ty: &Type<'a>, v: i64) -> ValueId {
-        let value = Attribute::Int { lit: Cow::Owned(format!("{v}")), ty: Some(Type::Index) };
+        let value = Attribute::index(v);
         self.value(OpData::build("llvm.mlir.constant").with("value", value), ty.clone())
     }
 
@@ -174,7 +162,7 @@ impl From<Coef> for i64 {
     fn from(c: Coef) -> i64 {
         match c {
             Coef::K(k) => k,
-            Coef::Dyn => DYNAMIC,
+            Coef::Dyn => Dim::DYNAMIC,
         }
     }
 }

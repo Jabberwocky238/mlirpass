@@ -15,14 +15,6 @@ pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a
 }
 
 /// An `affine_map<...>` attribute.
-pub fn map_attr<'a>(m: &AffineMap) -> Attribute<'a> {
-    Attribute::Builtin { name: "affine_map".into(), body: format!("<{m}>").into(), ty: None }
-}
-
-/// An `affine_set<...>` attribute.
-pub fn set_attr<'a>(s: &IntegerSet) -> Attribute<'a> {
-    Attribute::Builtin { name: "affine_set".into(), body: format!("<{s}>").into(), ty: None }
-}
 
 /// A map or a set, for the operand canonicalizations shared by both.
 pub trait MapOrSet: Clone {
@@ -68,100 +60,14 @@ impl MapOrSet for IntegerSet {
     }
 }
 
-impl AffineMap {
-    /// `AffineMap::replace(expr, replacement, numDims, numSymbols)`.
-    pub fn replace_expr(&self, from: &AffineExpr, to: &AffineExpr, nd: u32, ns: u32) -> Self {
-        Self { dims: nd, syms: ns, results: self.results.iter().map(|r| r.replace_sub(from, to)).collect() }
-    }
-
-    /// `shiftDims(n)` then `shiftSymbols(m)`.
-    pub fn shifted(&self, nd: u32, ns: u32) -> Self {
-        let dims: Vec<AffineExpr> = (0..self.dims).map(|d| AffineExpr::Dim(d + nd)).collect();
-        let syms: Vec<AffineExpr> = (0..self.syms).map(|s| AffineExpr::Sym(s + ns)).collect();
-        self.replace(&dims, &syms, self.dims + nd, self.syms + ns)
-    }
-
-    /// `partialConstantFold` / `constantFold`: the results when all fold, `Err` on poison.
-    pub fn constant_fold(&self, consts: &[Option<i64>]) -> Result<Option<Vec<i64>>, ()> {
-        let mut out = Vec::new();
-        for r in &self.results {
-            match r.const_eval(self.dims, consts)? {
-                Some(v) => out.push(v),
-                None => return Ok(None),
-            }
-        }
-        Ok(Some(out))
-    }
-}
-
-impl AffineExpr {
-    /// `replace(DenseMap{from: to})`.
-    pub fn replace_sub(&self, from: &AffineExpr, to: &AffineExpr) -> AffineExpr {
-        if self == from {
-            return to.clone();
-        }
-        match self {
-            AffineExpr::Bin(k, l, r) => {
-                let (nl, nr) = (l.replace_sub(from, to), r.replace_sub(from, to));
-                if nl == **l && nr == **r {
-                    return self.clone();
-                }
-                AffineExpr::binary(*k, nl, nr)
-            }
-            _ => self.clone(),
-        }
-    }
-
-    /// `AffineExprConstantFolder`: `Err` on poison (division by zero, mod by < 1).
-    pub fn const_eval(&self, dims: u32, consts: &[Option<i64>]) -> Result<Option<i64>, ()> {
-        use crate::AffineBin as B;
-        Ok(match self {
-            AffineExpr::Const(c) => Some(*c),
-            AffineExpr::Dim(d) => consts.get(*d as usize).copied().flatten(),
-            AffineExpr::Sym(s) => consts.get((dims + s) as usize).copied().flatten(),
-            AffineExpr::Bin(k, l, r) => {
-                let (Some(a), Some(b)) = (l.const_eval(dims, consts)?, r.const_eval(dims, consts)?) else { return Ok(None) };
-                match k {
-                    B::Add => Some(a.wrapping_add(b)),
-                    B::Mul => Some(a.wrapping_mul(b)),
-                    B::Mod => {
-                        if b < 1 {
-                            return Err(());
-                        }
-                        Some(a.rem_euclid(b))
-                    }
-                    B::FloorDiv | B::CeilDiv => {
-                        if b == 0 {
-                            return Err(());
-                        }
-                        let q = a / b;
-                        let exact = a % b == 0;
-                        Some(match k {
-                            B::FloorDiv if !exact && ((a < 0) != (b < 0)) => q - 1,
-                            B::CeilDiv if !exact && ((a < 0) == (b < 0)) => q + 1,
-                            _ => q,
-                        })
-                    }
-                }
-            }
-        })
-    }
-}
-
 impl<'a> Body<'a> {
     /// The affine map in attribute `name` of `op`.
     pub fn affine_map(&self, op: OpId, name: &str) -> Option<AffineMap> {
-        match self[op].get(name)? {
-            Attribute::Builtin { name, body, .. } if name == "affine_map" => AffineMap::parse(body),
-            _ => None,
-        }
+        AffineMap::try_from(self[op].get(name)?).ok()
     }
 
     pub fn integer_set(&self, op: OpId, name: &str) -> Option<IntegerSet> {
-        match self[op].get(name)? {
-            Attribute::Builtin { name, body, .. } if name == "affine_set" => IntegerSet::parse(body),
-            _ => None,
-        }
+        IntegerSet::try_from(self[op].get(name)?).ok()
     }
 
     fn parent_region_of(&self, v: ValueId) -> Option<RegionId> {
@@ -300,7 +206,7 @@ impl<'a> Body<'a> {
         let Some(index) = self.const_index(self[d].operands[1]) else { return false };
         while self[op].name == "memref.cast" {
             let s = self[op].operands[0];
-            if crate::attr::shape_of(&self[s].ty).is_none() {
+            if self[s].ty.shape().is_none() {
                 return false;
             }
             let Def::Result(o, _) = self[s].def else { return false };
@@ -310,7 +216,7 @@ impl<'a> Body<'a> {
             return false;
         }
         let rt = &self[self[op].results[0]].ty;
-        let Some(shape) = crate::attr::shape_of(rt) else { return false };
+        let Some(shape) = rt.shape() else { return false };
         let Some(dim) = shape.get(index as usize) else { return false };
         if matches!(dim, mlirformat::Dim::Static(_)) {
             return true;
@@ -647,8 +553,8 @@ impl<'a> Body<'a> {
         if self.for_constant_bound(f, true) == Some(0) {
             return step;
         }
-        let lb = self.affine_map(f, "lowerBoundMap").map_or(1, |m| m.results.iter().fold(0u64, |g, r| crate::affine::gcd_u64(g, r.largest_known_divisor().unsigned_abs())));
-        crate::affine::gcd_u64(lb, step.unsigned_abs()) as i64
+        let lb = self.affine_map(f, "lowerBoundMap").map_or(1, |m| m.results.iter().fold(0u64, |g, r| AffineExpr::gcd(g, r.largest_known_divisor().unsigned_abs())));
+        AffineExpr::gcd(lb, step.unsigned_abs()) as i64
     }
 
     fn non_negative_bounded_by(&self, e: &AffineExpr, ops: &[ValueId], k: i64) -> bool {
@@ -782,52 +688,6 @@ impl<'a> Body<'a> {
     }
 }
 
-impl AffineExpr {
-    /// `getBoundForAffineExpr`.
-    pub fn bound(&self, nd: u32, ns: u32, lbs: &[Option<i64>], ubs: &[Option<i64>], upper: bool) -> Option<i64> {
-        use crate::AffineBin as B;
-        if let AffineExpr::Bin(k, l, r) = self {
-            match k {
-                B::FloorDiv => {
-                    let c = r.as_const().filter(|c| *c >= 1)?;
-                    return Some(l.bound(nd, ns, lbs, ubs, upper)?.div_euclid(c));
-                }
-                B::CeilDiv => {
-                    let c = r.as_const().filter(|c| *c >= 1)?;
-                    let b = l.bound(nd, ns, lbs, ubs, upper)?;
-                    return Some(-((-b).div_euclid(c)));
-                }
-                B::Mod => {
-                    if let Some(c) = r.as_const().filter(|c| *c >= 1) {
-                        let lb = l.bound(nd, ns, lbs, ubs, false);
-                        let ub = l.bound(nd, ns, lbs, ubs, upper);
-                        if let (Some(lb), Some(ub)) = (lb, ub)
-                            && lb.div_euclid(c) == ub.div_euclid(c)
-                        {
-                            return Some(if upper { ub.rem_euclid(c) } else { lb.rem_euclid(c) });
-                        }
-                        return Some(if upper { c - 1 } else { 0 });
-                    }
-                }
-                _ => {}
-            }
-        }
-        let (flat, locals) = self.flatten(nd, ns)?;
-        if locals > 0 {
-            return None;
-        }
-        let mut b: i64 = 0;
-        for i in 0..(nd + ns) as usize {
-            if flat[i] > 0 {
-                b += (if upper { ubs[i] } else { lbs[i] })? * flat[i];
-            } else if flat[i] < 0 {
-                b += (if upper { lbs[i] } else { ubs[i] })? * flat[i];
-            }
-        }
-        Some(b + flat.last()?)
-    }
-}
-
 /// `shortenAddChainsContainingAll`: an add chain holding every expected term maps to `new`
 /// plus the rest.
 fn shorten_add_chains(e: &AffineExpr, expected: &[AffineExpr], new: &AffineExpr, repl: &mut Vec<(AffineExpr, AffineExpr)>) {
@@ -872,25 +732,6 @@ fn shorten_add_chains(e: &AffineExpr, expected: &[AffineExpr], new: &AffineExpr,
     }
 }
 
-impl AffineExpr {
-    /// `replace(DenseMap)`: whole subexpressions found in `map` are swapped.
-    pub fn replace_all(&self, map: &[(AffineExpr, AffineExpr)]) -> AffineExpr {
-        if let Some((_, to)) = map.iter().find(|(f, _)| f == self) {
-            return to.clone();
-        }
-        match self {
-            AffineExpr::Bin(k, l, r) => {
-                let (nl, nr) = (l.replace_all(map), r.replace_all(map));
-                if nl == **l && nr == **r {
-                    return self.clone();
-                }
-                AffineExpr::binary(*k, nl, nr)
-            }
-            _ => self.clone(),
-        }
-    }
-}
-
 // ---- folds -----------------------------------------------------------------------------
 
 /// The fold of an `affine` op.
@@ -906,10 +747,6 @@ pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     }
 }
 
-fn index_attr<'a>(v: i64) -> Attribute<'a> {
-    Attribute::Int { lit: format!("{v}").into(), ty: Some(Type::Index) }
-}
-
 fn fold_apply<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let Some(map) = b.affine_map(op, "map") else { return Fold::Failed };
     let Some(e) = map.results.first() else { return Fold::Failed };
@@ -921,7 +758,7 @@ fn fold_apply<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let consts: Vec<Option<i64>> = b[op].operands.iter().map(|v| b.const_index(*v)).collect();
     match map.constant_fold(&consts) {
         Err(()) => Folded::Attr(Attribute::dialect("ub.poison", "")).into(),
-        Ok(Some(r)) => Folded::Attr(index_attr(r[0])).into(),
+        Ok(Some(r)) => Folded::Attr(Attribute::index(r[0])).into(),
         Ok(None) => Fold::Failed,
     }
 }
@@ -950,11 +787,11 @@ fn fold_min_max<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         if folded == map {
             return Fold::Failed;
         }
-        b[op].set("map", map_attr(&folded));
+        b[op].set("map", Attribute::from(&folded));
         return Fold::InPlace;
     };
     let v = if b[op].name == "affine.min" { results.iter().min() } else { results.iter().max() };
-    Folded::Attr(index_attr(*v.expect("non-empty"))).into()
+    Folded::Attr(Attribute::index(*v.expect("non-empty"))).into()
 }
 
 impl<'a> Body<'a> {
@@ -978,8 +815,8 @@ impl<'a> Body<'a> {
         all.extend(ub);
         all.extend(inits);
         self.set_operands(f, all);
-        self[f].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: segs.iter().map(|x| format!("{x}").into()).collect() });
-        self[f].set(if lower { "lowerBoundMap" } else { "upperBoundMap" }, map_attr(map));
+        self[f].set("operandSegmentSizes", Attribute::dense_i32(&segs));
+        self[f].set(if lower { "lowerBoundMap" } else { "upperBoundMap" }, Attribute::from(map));
     }
 
     fn for_constant_bounds(&self, f: OpId) -> Option<(i64, i64)> {
@@ -1120,7 +957,7 @@ fn fold_if<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         return Fold::Failed;
     }
     b.set_operands(op, ops);
-    b[op].set("condition", set_attr(&set));
+    b[op].set("condition", Attribute::from(&set));
     Fold::InPlace
 }
 
@@ -1146,7 +983,7 @@ fn sort_min_max_terms(map: &AffineMap) -> Option<AffineMap> {
 }
 
 fn replace_min_max(rw: &mut crate::Rewriter<'_, '_>, op: OpId, name: &str, map: &AffineMap, operands: &[ValueId]) -> bool {
-    rw.replace_with(op, OpData::build(name).operands(operands).with("map", map_attr(map)), &[Type::Index]);
+    rw.replace_with(op, OpData::build(name).operands(operands).with("map", Attribute::from(map)), &[Type::Index]);
     true
 }
 
@@ -1272,7 +1109,7 @@ impl<'a> Body<'a> {
         if !delin {
             self[op].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec![format!("{n}").into(), format!("{}", keep.len()).into()] });
         }
-        self[op].set("static_basis", Attribute::DenseArray { ty: Type::int(64), values: statics.iter().map(|x| format!("{x}").into()).collect() });
+        self[op].set("static_basis", Attribute::dense_i64(&statics));
         true
     }
 }
@@ -1352,7 +1189,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
         let ty = self.body[index].ty.clone();
         let mut ops = vec![index];
         ops.extend(dynamic);
-        let d = OpData::build("affine.delinearize_index").operands(&ops).with("static_basis", Attribute::DenseArray { ty: Type::int(64), values: statics.iter().map(|x| format!("{x}").into()).collect() });
+        let d = OpData::build("affine.delinearize_index").operands(&ops).with("static_basis", Attribute::dense_i64(&statics));
         let o = self.create(d, &vec![ty; n]);
         self.body[o].results.clone()
     }
@@ -1378,7 +1215,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
             .operands(&ops)
             .with("disjoint", if disjoint { Attribute::Unit } else { Attribute::Bool(false) })
             .with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec![format!("{}", multi.len()).into(), format!("{}", dynamic.len()).into()] })
-            .with("static_basis", Attribute::DenseArray { ty: Type::int(64), values: statics.iter().map(|x| format!("{x}").into()).collect() })
+            .with("static_basis", Attribute::dense_i64(&statics))
     }
 
     fn linearize(&mut self, multi: &[ValueId], basis: &[Ofr], disjoint: bool) -> ValueId {
@@ -1388,7 +1225,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
     }
 
     fn index_constant(&mut self, v: i64) -> ValueId {
-        let o = self.emit(&arith::Constant::new(index_attr(v), Type::Index));
+        let o = self.emit(&arith::Constant::new(Attribute::index(v), Type::Index));
         self.body[o].results[0]
     }
 
@@ -1417,7 +1254,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
             }
         });
         let map = AffineMap { dims: 0, syms, results: vec![e] };
-        let o = self.create(OpData::build("affine.apply").operands(&dynamic).with("map", map_attr(&map)), &[Type::Index]);
+        let o = self.create(OpData::build("affine.apply").operands(&dynamic).with("map", Attribute::from(&map)), &[Type::Index]);
         Ofr::V(self.body[o].results[0])
     }
 }
@@ -1453,7 +1290,7 @@ fn simplify_affine_op(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     let types = b.types(&b[op].results.clone());
     let mut data = OpData::build(&b[op].name.clone()).operands(&operands).attrs(b[op].attributes.clone());
     data.properties = b[op].properties.clone();
-    data.set(attr, map_attr(&map));
+    data.set(attr, Attribute::from(&map));
     rw.replace_with(op, data, &types);
     true
 }
@@ -1701,7 +1538,7 @@ rewrites! {
             return false;
         }
         if idx.is_empty() {
-            rw.replace_by(op, &arith::Constant::new(index_attr(0), Type::Index));
+            rw.replace_by(op, &arith::Constant::new(Attribute::index(0), Type::Index));
             return true;
         }
         let data = rw.linearize_data(&idx, &basis, disjoint);
