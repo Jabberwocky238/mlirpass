@@ -148,6 +148,22 @@ impl From<ValueId> for Value<'_> {
     }
 }
 
+/// ⭐ One of mlirformat's typed ops (`mlirformat::arith::Constant::new(..)`), built into a body.
+pub trait TypedOp {
+    /// The op detached, and its result types.
+    fn split<'a>(&self) -> (OpData<'a>, Vec<Type<'a>>);
+}
+
+impl<O> TypedOp for O
+where
+    for<'o> Operation<'static>: TryFrom<&'o O, Error = Error>,
+{
+    fn split<'a>(&self) -> (OpData<'a>, Vec<Type<'a>>) {
+        // A typed op always serializes; only regions and successors are refused.
+        OpData::of(self).unwrap_or_else(|e| panic!("{e}"))
+    }
+}
+
 impl<'a> OpData<'a> {
     /// ⭐ mlirformat's typed op `op` (operands are [`ValueId`]s turned [`Value`]s), detached,
     /// with its default-valued properties as [`OpData::build`] gives them; and its result types.
@@ -273,6 +289,12 @@ impl<'a> Body<'a> {
         let results = types.iter().enumerate().map(|(i, ty)| self.value(ty.clone(), Def::Result(id, i as u32), None)).collect();
         self[id].results = results;
         id
+    }
+
+    /// Adds mlirformat's typed op `op`, detached.
+    pub fn emit(&mut self, op: &impl TypedOp) -> OpId {
+        let (data, types) = op.split();
+        self.create(data, &types)
     }
 
     /// Whether attribute `name` of an op `op_name` is inherent (declared by its ODS, so in the

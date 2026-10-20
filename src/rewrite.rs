@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 
 use mlirformat::Type;
 
-use crate::{Body, BlockId, OpData, OpId, RegionId, ValueId};
+use crate::{Body, BlockId, OpData, OpId, RegionId, TypedOp, ValueId};
 
 /// Told about every change a [`Rewriter`] makes. `body` is the IR just before (erased) or just
 /// after (the rest) the change.
@@ -99,6 +99,12 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
     pub fn create(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
         let op = self.body.create(data, types);
         self.insert(op)
+    }
+
+    /// ⭐ Builds mlirformat's typed op `op` at the insertion point.
+    pub fn emit(&mut self, op: &impl TypedOp) -> OpId {
+        let (data, types) = op.split();
+        self.create(data, &types)
     }
 
     /// `createOrFold`: builds an op at the insertion point and folds it; when the fold yields
@@ -201,6 +207,12 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         let results = self.body[new].results.clone();
         self.replace_op(op, &results);
         new
+    }
+
+    /// [`Rewriter::replace_with`] mlirformat's typed op `with`.
+    pub fn replace_by(&mut self, op: OpId, with: &impl TypedOp) -> OpId {
+        let (data, types) = with.split();
+        self.replace_with(op, data, &types)
     }
 
     /// ⭐ Erases `op` and everything in it, telling the listener about each op.

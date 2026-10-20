@@ -6,7 +6,7 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, ShapedKind, Type};
+use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
 use super::MemrefOfr as Ofr;
 use crate::{Body, Const, DYNAMIC, Fold, Folded, OpData, OpId, Pattern, Rewriter, ValueId};
@@ -383,7 +383,7 @@ impl Pattern for ComposeCollapseOfExpand {
                     acc = rw.index_mul(acc, val(v));
                 }
                 if statics != 1 {
-                    let k = rw.create(OpData::build("arith.constant").with("value", Attribute::Int { lit: Cow::Owned(format!("{statics}")), ty: Some(Type::Index) }), &[Type::Index]);
+                    let k = rw.emit(&arith::Constant::new(Attribute::Int { lit: Cow::Owned(format!("{statics}")), ty: Some(Type::Index) }, Type::Index));
                     let k = rw.body[k].results[0];
                     acc = rw.index_mul(acc, k);
                 }

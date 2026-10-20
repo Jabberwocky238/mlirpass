@@ -5,7 +5,7 @@ use alloc::collections::BTreeSet;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Type};
+use mlirformat::{arith, Attribute, Type};
 
 use crate::{ApInt, Body, BlockId, Const, Fold, Mapping, OpData, OpId, PatternSet, RegionId, Rewriter, ValueId, attr};
 
@@ -324,7 +324,7 @@ rewrites! {
                 Some(c) => c,
                 None => {
                     rw.set_before(op);
-                    let c = rw.create(OpData::build("arith.constant").with("value", Attribute::Bool(v)), &[Type::I1]);
+                    let c = rw.emit(&arith::Constant::new(Attribute::Bool(v), Type::I1));
                     let c = rw.body[c].results[0];
                     *slot = Some(c);
                     c
@@ -417,7 +417,7 @@ rewrites! {
                     None => {
                         rw.set_before(op);
                         let ty = rw.body[cond].ty.clone();
-                        let c = rw.create(OpData::build("arith.constant").with("value", Attribute::Bool(true)), &[ty]);
+                        let c = rw.emit(&arith::Constant::new(Attribute::Bool(true), ty));
                         let c = rw.body[c].results[0];
                         constant = Some(c);
                         c
@@ -459,7 +459,7 @@ rewrites! {
                     } else {
                         continue;
                     };
-                    rw.replace_with(cmp2, OpData::build("arith.constant").with("value", Attribute::Bool(same)), &[Type::I1]);
+                    rw.replace_by(cmp2, &arith::Constant::new(Attribute::Bool(same), Type::I1));
                     changed = true;
                 }
             }

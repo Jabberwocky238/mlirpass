@@ -5,7 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 
-use mlirformat::{Attribute, FloatKind, Type};
+use mlirformat::{arith, Attribute, FloatKind, Type};
 
 use super::AttrExt;
 use crate::{ApFloat, ApInt, Body, Const, Fold, Folded, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId, attr};
@@ -893,7 +893,7 @@ fn representable_by(a: FloatKind, b: FloatKind) -> bool {
 impl<'a> Rewriter<'_, 'a> {
     /// An `arith.constant` of `value` at the insertion point.
     fn constant(&mut self, value: Attribute<'a>, ty: Type<'a>) -> ValueId {
-        let c = self.create(OpData::build("arith.constant").with("value", value), &[ty]);
+        let c = self.emit(&arith::Constant::new(value, ty));
         self.body[c].results[0]
     }
 
@@ -1384,7 +1384,7 @@ fn cmpf_int_to_fp_const(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     }
     let Some(fpred) = pred_of(b[op].get("predicate")) else { return false };
     let constant = |rw: &mut Rewriter<'_, '_>, v: bool| {
-        let t = rw.replace_with(op, OpData::build("arith.constant").with("value", Attribute::Bool(v)), &[Type::I1]);
+        let t = rw.replace_by(op, &arith::Constant::new(Attribute::Bool(v), Type::I1));
         let _ = t;
         true
     };

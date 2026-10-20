@@ -7,7 +7,7 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
 use super::vector_transforms::{dense_i64, index_attr};
 use crate::canon::{AttrExt, MemrefOfr as Ofr, map_attr};
@@ -69,11 +69,11 @@ pub fn i64_elements<'a>(v: &[i64], vector: bool) -> Attribute<'a> {
 
 impl<'a> Cr<'_, 'a, '_> {
     pub fn cidx(&mut self, v: i64) -> ValueId {
-        self.build(OpData::build("arith.constant").with("value", index_attr(v)), Type::Index)
+        self.emit(&arith::Constant::new(index_attr(v), Type::Index))
     }
 
     pub fn constant(&mut self, value: Attribute<'a>, ty: Type<'a>) -> ValueId {
-        self.build(OpData::build("arith.constant").with("value", value), ty)
+        self.emit(&arith::Constant::new(value, ty))
     }
 
     pub fn op1(&mut self, name: &str, ops: &[ValueId], ty: Type<'a>) -> ValueId {

@@ -5,7 +5,7 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
 use super::reshape::{ComposeCollapseOfExpand, ComposeExpandOfCollapse, ComposeReassociative, Reassoc, Reshape};
 use super::MemrefOfr as Ofr;
@@ -1450,7 +1450,7 @@ fn reshape_with_constant(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let Some(c) = b.constant_of(b[op].operands[0]).and_then(|a| Const::try_from(&a).ok()).filter(|c| c.elements && c.is_splat()) else { return false };
     let ty = b[b[op].results[0]].ty.clone();
-    rw.replace_with(op, OpData::build("arith.constant").with("value", Const { ty: ty.clone(), ..c }.into()), &[ty]);
+    rw.replace_by(op, &arith::Constant::new(Const { ty: ty.clone(), ..c }.into(), ty));
     true
 }
 

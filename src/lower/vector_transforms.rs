@@ -6,7 +6,7 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
 use crate::canon::AttrExt;
 use crate::{ApInt, Body, Const, ConversionRewriter, LlvmOptions, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId, DYNAMIC};
@@ -539,7 +539,7 @@ rewrites! {
         }
         let n: i64 = shape.iter().product();
         let c: Attribute = Const { ty: rt.clone(), values: (0..n).map(|i| Scalar::Int(ApInt::new(64, i128::from(i)))).collect(), elements: true }.into();
-        rw.replace_with(op, OpData::build("arith.constant").with("value", c), &[rt]);
+        rw.replace_by(op, &arith::Constant::new(c, rt));
         true
     }
 
@@ -655,13 +655,13 @@ rewrites! {
         };
         if shape.is_empty() {
             let c = bool_const(vec![dims[0] == 1], &dt);
-            rw.replace_with(op, OpData::build("arith.constant").with("value", c), &[dt]);
+            rw.replace_by(op, &arith::Constant::new(c, dt));
             return true;
         }
         let t = dims[0];
         if shape.len() == 1 {
             let c = if t == 0 || t == shape[0] { bool_const(vec![t != 0], &dt) } else { bool_const((0..shape[0]).map(|i| i < t).collect(), &dt) };
-            rw.replace_with(op, OpData::build("arith.constant").with("value", c), &[dt]);
+            rw.replace_by(op, &arith::Constant::new(c, dt));
             return true;
         }
         if scal[0] {

@@ -7,7 +7,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::pass;
-use mlirformat::{Attribute, Shaped, ShapedKind, Type};
+use mlirformat::{arith, Attribute, Shaped, ShapedKind, Type};
 
 use crate::canon::{MemrefOfr as Ofr, map_attr};
 use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, GreedyConfig, LlvmOptions, OpData, OpId, PatternSet, Rewriter, ValueId, DYNAMIC};
@@ -155,7 +155,7 @@ impl<'a> Rewriter<'_, 'a> {
         match o {
             Ofr::V(v) => v,
             Ofr::C(c) => {
-                let k = self.create(OpData::build("arith.constant").with("value", index_attr(c)), &[Type::Index]);
+                let k = self.emit(&arith::Constant::new(index_attr(c), Type::Index));
                 self.body[k].results[0]
             }
         }
@@ -506,7 +506,7 @@ rewrites! {
         };
         let mut results = vec![base];
         for v in core::iter::once(0).chain(dims).chain(strides) {
-            let k = rw.create(OpData::build("arith.constant").with("value", index_attr(v)), &[Type::Index]);
+            let k = rw.emit(&arith::Constant::new(index_attr(v), Type::Index));
             results.push(rw.body[k].results[0]);
         }
         rw.replace_op(op, &results);

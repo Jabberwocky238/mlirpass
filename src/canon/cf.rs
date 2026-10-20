@@ -5,7 +5,7 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Type};
+use mlirformat::{arith, Attribute, Type};
 
 use crate::{ApInt, Body, BlockId, Const, OpData, OpId, PatternSet, Rewriter, ValueId};
 
@@ -241,7 +241,7 @@ rewrites! {
                     Some(c) => c,
                     None => {
                         rw.set_before(op);
-                        let c = rw.create(OpData::build("arith.constant").with("value", Attribute::Bool(value)), &[Type::I1]);
+                        let c = rw.emit(&arith::Constant::new(Attribute::Bool(value), Type::I1));
                         let v = rw.body[c].results[0];
                         constant = Some(v);
                         v

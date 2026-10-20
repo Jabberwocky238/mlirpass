@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 
 use mlirpass_macros::{ops, patterns};
 use mlirformat::arith::CmpIPredicate;
-use mlirformat::{Attribute, Shaped, Type};
+use mlirformat::{arith, Attribute, Shaped, Type};
 
 use super::FromOp;
 use crate::canon::AttrExt;
@@ -39,7 +39,7 @@ impl<'a> Sc<'_, '_, 'a, '_> {
             }
             _ => Attribute::Int { lit: Cow::Owned(format!("{v}")), ty: Some(ty.clone()) },
         };
-        self.cr.build(OpData::build("arith.constant").with("value", attr), ty.clone())
+        self.cr.emit(&arith::Constant::new(attr, ty.clone()))
     }
 
     fn op(&mut self, name: &str, ops: &[ValueId], ty: &Type<'a>) -> ValueId {
@@ -118,7 +118,7 @@ impl TosaToArith {
     fn constant(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(v) = cr.rw.body[op].get("values").cloned() else { return false };
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
-        cr.replace_new(op, OpData::build("arith.constant").with("value", v), &[ty]);
+        cr.replace_by(op, &arith::Constant::new(v, ty));
         true
     }
 

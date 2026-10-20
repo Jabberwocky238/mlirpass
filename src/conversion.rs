@@ -24,7 +24,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Error, Str, Type};
 
-use crate::{Body, BlockId, InsertPoint, Listener, OpData, OpId, RegionId, Rewriter, ValueId};
+use crate::{Body, BlockId, InsertPoint, Listener, OpData, OpId, RegionId, Rewriter, TypedOp, ValueId};
 
 /// The marker a pure type conversion's cast carries until the end.
 const PURE: &str = "__pure_type_conversion__";
@@ -581,6 +581,12 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
     /// `replaceOp` with single values.
     pub fn replace_values(&mut self, op: OpId, values: &[ValueId]) {
         self.replace(op, values.iter().map(|v| vec![*v]).collect());
+    }
+
+    /// [`ConversionRewriter::replace_new`] mlirformat's typed op `with`.
+    pub fn replace_by(&mut self, op: OpId, with: &impl TypedOp) -> OpId {
+        let (data, types) = with.split();
+        self.replace_new(op, data, &types)
     }
 
     /// Builds `data` (with the given result types) before `op` and replaces `op` by it.

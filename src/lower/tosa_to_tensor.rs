@@ -4,7 +4,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
-use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Signedness, Type};
+use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Signedness, Type};
 
 use super::vector_transforms::{dense_i64, index_attr};
 use crate::canon::MemrefOfr as Ofr;
@@ -165,7 +165,7 @@ impl TosaToTensor {
     }
 
     fn cidx(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
-        cr.build(OpData::build("arith.constant").with("value", index_attr(v)), Type::Index)
+        cr.emit(&arith::Constant::new(index_attr(v), Type::Index))
     }
 
     /// `tensor::getMixedSize`: static sizes as constants, dynamic ones by `tensor.dim`.

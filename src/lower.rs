@@ -170,12 +170,8 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     }
 
     /// Builds mlirformat's typed op `op` at the insertion point; its first result.
-    pub fn emit<O>(&mut self, op: &O) -> ValueId
-    where
-        for<'o> mlirformat::Operation<'static>: TryFrom<&'o O, Error = mlirformat::Error>,
-    {
-        let (data, types) = OpData::of(op).unwrap_or_else(|e| panic!("{e}"));
-        let o = self.rw.create(data, &types);
+    pub fn emit(&mut self, op: &impl crate::TypedOp) -> ValueId {
+        let o = self.rw.emit(op);
         self.rw.body[o].results[0]
     }
 

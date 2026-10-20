@@ -5,7 +5,7 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Type};
+use mlirformat::{arith, Attribute, Type};
 
 use super::AttrExt;
 use crate::{AffineExpr, AffineMap, Body, Const, Def, Fold, Folded, IntegerSet, OpData, OpId, RegionId, Trait, ValueId};
@@ -1389,7 +1389,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
     }
 
     fn index_constant(&mut self, v: i64) -> ValueId {
-        let o = self.create(OpData::build("arith.constant").with("value", index_attr(v)), &[Type::Index]);
+        let o = self.emit(&arith::Constant::new(index_attr(v), Type::Index));
         self.body[o].results[0]
     }
 
@@ -1702,7 +1702,7 @@ rewrites! {
             return false;
         }
         if idx.is_empty() {
-            rw.replace_with(op, OpData::build("arith.constant").with("value", index_attr(0)), &[Type::Index]);
+            rw.replace_by(op, &arith::Constant::new(index_attr(0), Type::Index));
             return true;
         }
         let data = rw.linearize_data(&idx, &basis, disjoint);

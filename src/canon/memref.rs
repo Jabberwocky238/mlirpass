@@ -3,7 +3,7 @@
 use alloc::format;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, ShapedKind, Type};
+use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
 use crate::{Body, Const, Def, Fold, Folded, LlvmOptions, OpData, OpId, ValueId, DYNAMIC};
 
@@ -281,7 +281,7 @@ fn fold_extract_strided_metadata<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         if b[v].uses.is_empty() {
             continue;
         }
-        let k = b.create(OpData::build("arith.constant").with("value", index_attr(c)), &[Type::Index]);
+        let k = b.emit(&arith::Constant::new(index_attr(c), Type::Index));
         b.insert_before(k, op);
         let kv = b[k].results[0];
         for u in b[v].uses.clone().into_iter().rev() {

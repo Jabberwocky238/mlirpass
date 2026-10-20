@@ -6,7 +6,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
-use mlirformat::{Attribute, Type};
+use mlirformat::{arith, Attribute, Type};
 
 use crate::canon::AttrExt;
 use crate::{AffineBin, AffineExpr, AffineMap, ConversionRewriter, OpData, OpId, ValueId};
@@ -26,7 +26,7 @@ const NSW_NUW: &str = "<nsw, nuw>";
 #[patterns]
 impl AffineToStd {
     fn constant(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
-        cr.build(OpData::build("arith.constant").with("value", index_attr(v)), Type::Index)
+        cr.emit(&arith::Constant::new(index_attr(v), Type::Index))
     }
 
     fn binary(cr: &mut Cr<'_, '_, '_>, name: &str, a: ValueId, b: ValueId) -> ValueId {
@@ -222,7 +222,7 @@ impl AffineToStd {
         }
         let cond = match cond {
             Some(c) => c,
-            None => cr.build(OpData::build("arith.constant").with("value", Attribute::Bool(true)), Type::int(1)),
+            None => cr.emit(&arith::Constant::new(Attribute::Bool(true), Type::int(1))),
         };
         let types = cr.rw.body.types(&cr.rw.body[op].results.clone());
         let new = cr.rw.create_with(OpData::build("scf.if").operands(&[cond]), &types, |b, f| {
@@ -336,7 +336,7 @@ impl AffineToStd {
         let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
         let multi = b[op].operands[..segs[0]].to_vec();
         if multi.is_empty() {
-            cr.replace_new(op, OpData::build("arith.constant").with("value", index_attr(0)), &[Type::Index]);
+            cr.replace_by(op, &arith::Constant::new(index_attr(0), Type::Index));
             return true;
         }
         let dynamic = b[op].operands[segs[0]..].to_vec();

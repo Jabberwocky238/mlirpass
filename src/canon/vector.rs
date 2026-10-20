@@ -3,7 +3,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
 
 use super::AttrExt;
 use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, Scalar, ValueId, attr};
@@ -1545,7 +1545,7 @@ rewrites! {
         }
         if all_false {
             let c: Attribute = Const::splat(Scalar::Int(ApInt::new(1, 0)), rt.clone()).into();
-            rw.replace_with(op, OpData::build("arith.constant").with("value", c), &[rt]);
+            rw.replace_by(op, &arith::Constant::new(c, rt));
         } else if !unknown {
             rw.replace_with(op, OpData::build("vector.create_mask").operands(&operands[pos.len()..]), &[rt]);
         } else {
@@ -1897,7 +1897,7 @@ rewrites! {
             }
         }
         let c: Attribute = Const { ty: dt.clone(), values, elements: true }.into();
-        rw.replace_with(op, OpData::build("arith.constant").with("value", c), &[dt]);
+        rw.replace_by(op, &arith::Constant::new(c, dt));
         true
     }
 
@@ -1916,7 +1916,7 @@ rewrites! {
         let mut new = Vec::new();
         for i in 0..n {
             let ty = rw.body[sizes[i]].ty.clone();
-            let c = rw.create(OpData::build("arith.constant").with("value", Attribute::Int { lit: alloc::format!("{}", offsets[i]).into(), ty: Some(ty.clone()) }), &[ty.clone()]);
+            let c = rw.emit(&arith::Constant::new(Attribute::Int { lit: alloc::format!("{}", offsets[i]).into(), ty: Some(ty.clone()) }, ty.clone()));
             let cv = rw.body[c].results[0];
             let s = rw.create(OpData::build("arith.subi").operands(&[sizes[i], cv]), &[ty]);
             new.push(rw.body[s].results[0]);
@@ -2417,7 +2417,7 @@ rewrites! {
             }
             rw.set_after(cmp);
             let c: Attribute = Const::splat(Scalar::Int(ApInt::new(1, i128::from(v))), ty.clone()).into();
-            let o = rw.create(OpData::build("arith.constant").with("value", c), &[ty]);
+            let o = rw.emit(&arith::Constant::new(c, ty));
             let nv = rw.body[o].results[0];
             rw.replace_op(cmp, &[nv]);
             return true;

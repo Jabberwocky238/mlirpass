@@ -5,7 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirpass_macros::patterns;
-use mlirformat::{Attribute, Type};
+use mlirformat::{arith, Attribute, Type};
 
 use super::linalg_build::{dims_of, tensor_type};
 use super::vector_transforms::index_attr;
@@ -193,7 +193,7 @@ impl ShapeToStd {
     #[lowering("shape.const_size")]
     fn const_size(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(v) = cr.rw.body[op].get("value").and_then(|a| crate::Const::try_from(a).ok()).and_then(|c| c.at(0).int()) else { return false };
-        cr.replace_new(op, OpData::build("arith.constant").with("value", index_attr(v.signed() as i64)), &[Type::Index]);
+        cr.replace_by(op, &arith::Constant::new(index_attr(v.signed() as i64), Type::Index));
         true
     }
 
@@ -309,7 +309,7 @@ impl ShapeToStd {
             return false;
         }
         if o.len() <= 1 {
-            cr.replace_new(op, OpData::build("arith.constant").with("value", Attribute::Bool(true)), &[Type::int(1)]);
+            cr.replace_by(op, &arith::Constant::new(Attribute::Bool(true), Type::int(1)));
             return true;
         }
         let zero = Self::cidx(cr, 0);

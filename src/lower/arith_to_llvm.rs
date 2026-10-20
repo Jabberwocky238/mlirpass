@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 
 use mlirpass_macros::{ops, patterns};
 use mlirformat::arith::CmpIPredicate;
-use mlirformat::{Attribute, NamedAttr, Type};
+use mlirformat::{arith, Attribute, NamedAttr, Type};
 
 use super::llvm_fastmath;
 use crate::canon::AttrExt;
@@ -28,7 +28,7 @@ impl Ar<'_, '_, '_, '_> {
             Type::Shaped(_) => Const::splat(Scalar::Int(ApInt::new(w, v)), ty.clone()).into(),
             _ => Const::int(ApInt::new(w, v), e).into(),
         };
-        self.cr.build(OpData::build("arith.constant").with("value", value), ty)
+        self.cr.emit(&arith::Constant::new(value, ty))
     }
 
     fn cmp(&mut self, pred: i64, l: ValueId, r: ValueId) -> ValueId {

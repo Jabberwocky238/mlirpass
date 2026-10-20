@@ -6,7 +6,7 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Error, FunctionType, Type};
+use mlirformat::{arith, Attribute, Error, FunctionType, Type};
 use mlirpass_macros::{blocks, pass, patterns};
 
 use super::linalg_build::{dims_of, int_attr};
@@ -380,7 +380,7 @@ impl MathToFuncs {
             Type::Float(k) => Const::splat(Scalar::Float(ApFloat::from_f64(*k, 0.0).expect("a float")), vt.clone()).into(),
             _ => Const::splat(Scalar::Int(crate::ApInt::new(Self::width(&et), 0)), vt.clone()).into(),
         };
-        let mut result = cr.build(OpData::build("arith.constant").with("value", zero), vt.clone());
+        let mut result = cr.emit(&arith::Constant::new(zero, vt.clone()));
         let n: i64 = shape.iter().product();
         let name = cr.rw.body[op].name.clone();
         let inputs = cr.rw.body[op].operands.clone();
