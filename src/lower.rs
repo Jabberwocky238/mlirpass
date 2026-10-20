@@ -41,7 +41,7 @@ pub use affine_to_std::AffineToStd;
 pub use arith_to_emitc::ArithToEmitc;
 pub use arith_to_llvm::ArithToLlvm;
 pub use cf_to_llvm::{AssertLowering, CfToLlvm};
-pub use complex_to_std::ComplexToStd;
+pub use complex_to_std::{ComplexToLlvm, ComplexToStd};
 pub use emitc::Emitc;
 pub use func_to_emitc::FuncToEmitc;
 pub use func_to_llvm::FuncToLlvm;
@@ -531,7 +531,7 @@ impl TryFrom<&Options<'_>> for ConvertToLlvm {
 }
 
 /// The dialects that implement `ConvertToLLVMPatternInterface`, by namespace.
-const TO_LLVM: &[&str] = &["arith", "cf", "func", "index", "math", "memref", "ub", "vector"];
+const TO_LLVM: &[&str] = &["arith", "cf", "complex", "func", "index", "math", "memref", "ub", "vector"];
 
 impl Pass for ConvertToLlvm {
     fn name(&self) -> &str {
@@ -549,6 +549,7 @@ impl Pass for ConvertToLlvm {
                 "index" => IndexToLlvm::populate(&mut patterns, i),
                 "math" => MathToLlvm::populate(&mut patterns, i, true),
                 "ub" => UbToLlvm::populate(&mut patterns, i),
+                "complex" => ComplexToLlvm::populate(&mut patterns, i, false),
                 "func" => FuncToLlvm::populate(&mut patterns, i, LlvmOptions::derived().at(body, op)),
                 "vector" => VectorToLlvm::populate(&mut patterns, i, VectorOptions { llvm: LlvmOptions::derived().at(body, op), reassociate_fp_reductions: false, force_32bit_indices: true, use_vector_alignment: false, counter: &self.counter }),
                 "memref" => MemrefToLlvm::populate(&mut patterns, i, MemrefOptions { llvm: LlvmOptions::derived().at(body, op), aligned_alloc: false, generic: false }),
@@ -937,6 +938,39 @@ impl Pass for TosaToLinalgNamedPass {
         }
         target.unknown(Action::Legal);
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Full)
+    }
+}
+
+/// `convert-complex-to-llvm`.
+pub struct ConvertComplexToLlvm {
+    improved: bool,
+}
+
+impl TryFrom<&Options<'_>> for ConvertComplexToLlvm {
+    type Error = Error;
+    fn try_from(o: &Options<'_>) -> Result<Self, Error> {
+        o.only("convert-complex-to-llvm", &["complex-range"])?;
+        match o.get("complex-range").unwrap_or("basic") {
+            "improved" => Ok(Self { improved: true }),
+            "basic" | "none" => Ok(Self { improved: false }),
+            r => Err(Error(format!("convert-complex-to-llvm: bad complex-range `{r}`"))),
+        }
+    }
+}
+
+impl Pass for ConvertComplexToLlvm {
+    fn name(&self) -> &str {
+        "convert-complex-to-llvm"
+    }
+
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let tc = LlvmConverter::build(LlvmOptions::derived().at(body, op));
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        ComplexToLlvm::populate(&mut patterns, i, self.improved);
+        let mut target = ConversionTarget::default();
+        target.legal_dialect("llvm").illegal_dialect("complex");
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
 }
 

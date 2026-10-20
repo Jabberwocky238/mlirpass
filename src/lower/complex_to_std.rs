@@ -71,6 +71,8 @@ struct Cx<'c, 'r, 'a, 'p> {
     cr: &'c mut ConversionRewriter<'r, 'a, 'p>,
     et: Type<'a>,
     ct: Type<'a>,
+    /// Build `llvm` ops (`ComplexToLLVM`) instead of `arith` / `math`.
+    llvm: bool,
 }
 
 impl<'a> Cx<'_, '_, 'a, '_> {
@@ -79,7 +81,7 @@ impl<'a> Cx<'_, '_, 'a, '_> {
             Type::Complex(e) => (**e).clone(),
             t => t.clone(),
         };
-        Cx { cr, et, ct }
+        Cx { cr, et, ct, llvm: false }
     }
 
     fn mk(&mut self, data: OpData<'a>, ty: Type<'a>) -> ValueId {
@@ -89,6 +91,19 @@ impl<'a> Cx<'_, '_, 'a, '_> {
     /// An element-typed op with fast-math flags.
     fn f(&mut self, name: &str, ops: &[ValueId], fmf: Fmf) -> ValueId {
         let ty = self.et.clone();
+        if self.llvm {
+            let name = match name {
+                "arith.addf" => "llvm.fadd",
+                "arith.subf" => "llvm.fsub",
+                "arith.mulf" => "llvm.fmul",
+                "arith.divf" => "llvm.fdiv",
+                "math.absf" => "llvm.intr.fabs",
+                "math.copysign" => "llvm.intr.copysign",
+                "math.sqrt" => "llvm.intr.sqrt",
+                n => n,
+            };
+            return self.mk(OpData::build(name).operands(ops).with("fastmathFlags", super::llvm_fastmath(Some(&fmf.attr()))), ty);
+        }
         self.mk(OpData::build(name).operands(ops).with("fastmath", fmf.attr()), ty)
     }
 
@@ -107,7 +122,8 @@ impl<'a> Cx<'_, '_, 'a, '_> {
     fn float(&mut self, v: ApFloat) -> ValueId {
         let ty = self.et.clone();
         let attr: Attribute<'a> = Const::scalar(Scalar::Float(v), ty.clone()).into();
-        self.mk(OpData::build("arith.constant").with("value", attr), ty)
+        let name = if self.llvm { "llvm.mlir.constant" } else { "arith.constant" };
+        self.mk(OpData::build(name).with("value", attr), ty)
     }
 
     fn inf(&mut self, negative: bool) -> ValueId {
@@ -141,6 +157,9 @@ impl<'a> Cx<'_, '_, 'a, '_> {
     }
 
     fn cmp(&mut self, p: P, a: ValueId, b: ValueId, fmf: Fmf) -> ValueId {
+        if self.llvm {
+            return self.mk(OpData::build("llvm.fcmp").operands(&[a, b]).with("predicate", Attribute::i64(p as i64)), Type::int(1));
+        }
         self.mk(OpData::build("arith.cmpf").operands(&[a, b]).with("predicate", Attribute::i64(p as i64)).with("fastmath", fmf.attr()), Type::int(1))
     }
 
@@ -150,16 +169,38 @@ impl<'a> Cx<'_, '_, 'a, '_> {
     }
 
     fn and(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        self.bit("arith.andi", a, b)
+        self.bit(if self.llvm { "llvm.and" } else { "arith.andi" }, a, b)
     }
 
     fn or(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        self.bit("arith.ori", a, b)
+        self.bit(if self.llvm { "llvm.or" } else { "arith.ori" }, a, b)
     }
 
     fn select(&mut self, c: ValueId, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.cr.rw.body[a].ty.clone();
-        self.mk(OpData::build("arith.select").operands(&[c, a, b]), ty)
+        self.mk(OpData::build(if self.llvm { "llvm.select" } else { "arith.select" }).operands(&[c, a, b]), ty)
+    }
+
+    /// `ComplexStructBuilder`: field `i` of the struct `v`.
+    fn field(&mut self, v: ValueId, i: i64) -> ValueId {
+        let ty = self.et.clone();
+        self.mk(OpData::build("llvm.extractvalue").operands(&[v]).with("position", Attribute::DenseArray { ty: Type::int(64), values: alloc::vec![alloc::format!("{i}").into()] }), ty)
+    }
+
+    /// `ComplexStructBuilder::poison` with both fields set.
+    fn pack(&mut self, st: Type<'a>, re: ValueId, im: ValueId) -> ValueId {
+        let v = self.mk(OpData::build("llvm.mlir.poison"), st);
+        self.insert(v, re, im)
+    }
+
+    /// `setReal`, then `setImaginary`.
+    fn insert(&mut self, mut v: ValueId, re: ValueId, im: ValueId) -> ValueId {
+        let st = self.cr.rw.body[v].ty.clone();
+        for (i, x) in [re, im].into_iter().enumerate() {
+            let p = Attribute::DenseArray { ty: Type::int(64), values: alloc::vec![alloc::format!("{i}").into()] };
+            v = self.mk(OpData::build("llvm.insertvalue").operands(&[v, x]).with("position", p), st.clone());
+        }
+        v
     }
 
     fn add(&mut self, a: ValueId, b: ValueId, f: Fmf) -> ValueId {
@@ -845,6 +886,132 @@ impl ComplexToStd {
         ];
         for (root, f) in table {
             patterns.add(Lowering { root, benefit: 1, f });
+        }
+    }
+}
+
+/// `complex` ⇒ `llvm`, as `ComplexToLLVM.cpp`.
+pub struct ComplexToLlvm;
+
+impl ComplexToLlvm {
+    /// The element type, the struct type, and a builder.
+    fn begin<'c, 'r, 'a, 'p>(cr: &'c mut Cr<'r, 'a, 'p>, op: OpId) -> Option<(Cx<'c, 'r, 'a, 'p>, Type<'a>)> {
+        let ct = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
+        let st = cr.type_converter()?.convert(&ct)?;
+        let mut b = Cx::new(cr, ct);
+        b.llvm = true;
+        Some((b, st))
+    }
+
+    /// Both operands unpacked: (lhs re, lhs im, rhs re, rhs im).
+    fn unpack(b: &mut Cx<'_, '_, '_, '_>, o: &[Vec<ValueId>]) -> (ValueId, ValueId, ValueId, ValueId) {
+        let lr = b.field(o[0][0], 0);
+        let li = b.field(o[0][0], 1);
+        let rr = b.field(o[1][0], 0);
+        let ri = b.field(o[1][0], 1);
+        (lr, li, rr, ri)
+    }
+
+    fn abs(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let fmf = Fmf::of(cr, op);
+        let ct = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
+        let mut b = Cx::new(cr, ct);
+        b.llvm = true;
+        let re = b.field(o[0][0], 0);
+        let im = b.field(o[0][0], 1);
+        let rr = b.mul(re, re, fmf);
+        let ii = b.mul(im, im, fmf);
+        let n = b.add(rr, ii, fmf);
+        let ty = b.et.clone();
+        cr.replace_new(op, OpData::build("llvm.intr.sqrt").operands(&[n]), &[ty]);
+        true
+    }
+
+    fn constant(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let ct = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
+        let Some(st) = cr.type_converter().and_then(|tc| tc.convert(&ct)) else { return false };
+        let mut data = OpData::build("llvm.mlir.constant");
+        if let Some(v) = cr.rw.body[op].get("value").cloned() {
+            data.set("value", v);
+        }
+        cr.replace_new(op, data, &[st]);
+        true
+    }
+
+    fn create(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let Some((mut b, st)) = Self::begin(cr, op) else { return false };
+        let v = b.pack(st, o[0][0], o[1][0]);
+        cr.replace_values(op, &[v]);
+        true
+    }
+
+    fn part(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let ct = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
+        let i = i64::from(cr.rw.body[op].name == "complex.im");
+        let mut b = Cx::new(cr, ct);
+        let v = b.field(o[0][0], i);
+        cr.replace_values(op, &[v]);
+        true
+    }
+
+    fn arith(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let fmf = Fmf::of(cr, op);
+        let name = cr.rw.body[op].name.clone();
+        let Some((mut b, st)) = Self::begin(cr, op) else { return false };
+        let (lr, li, rr, ri) = Self::unpack(&mut b, o);
+        let poison = b.mk(OpData::build("llvm.mlir.poison"), st.clone());
+        let (re, im) = match &*name {
+            "complex.add" => (b.add(lr, rr, fmf), b.add(li, ri, fmf)),
+            "complex.sub" => (b.sub(lr, rr, fmf), b.sub(li, ri, fmf)),
+            "complex.mul" => {
+                let a = b.mul(rr, lr, fmf);
+                let c = b.mul(ri, li, fmf);
+                let re = b.sub(a, c, fmf);
+                let a = b.mul(li, rr, fmf);
+                let c = b.mul(lr, ri, fmf);
+                (re, b.add(a, c, fmf))
+            }
+            _ => return false,
+        };
+        let v = b.insert(poison, re, im);
+        cr.replace_values(op, &[v]);
+        true
+    }
+
+    fn div(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], improved: bool) -> bool {
+        let fmf = Fmf::of(cr, op);
+        let Some((mut b, st)) = Self::begin(cr, op) else { return false };
+        let (lr, li, rr, ri) = Self::unpack(&mut b, o);
+        let poison = b.mk(OpData::build("llvm.mlir.poison"), st.clone());
+        let (re, im) = if improved { b.div_range_reduction(lr, li, rr, ri, fmf) } else { b.div_algebraic(lr, li, rr, ri, fmf) };
+        let v = b.insert(poison, re, im);
+        cr.replace_values(op, &[v]);
+        true
+    }
+
+    fn div_improved(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        Self::div(cr, op, o, true)
+    }
+
+    fn div_basic(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        Self::div(cr, op, o, false)
+    }
+
+    /// `populateComplexToLLVMConversionPatterns`; `improved`: `complex-range=improved`.
+    pub fn populate(patterns: &mut ConversionPatterns<'_>, tc: usize, improved: bool) {
+        let table: [(&'static str, super::LowerFn); 9] = [
+            ("complex.abs", Self::abs),
+            ("complex.add", Self::arith),
+            ("complex.constant", Self::constant),
+            ("complex.create", Self::create),
+            ("complex.im", Self::part),
+            ("complex.mul", Self::arith),
+            ("complex.re", Self::part),
+            ("complex.sub", Self::arith),
+            ("complex.div", if improved { Self::div_improved } else { Self::div_basic }),
+        ];
+        for (root, f) in table {
+            patterns.add_with(tc, Lowering { root, benefit: 1, f });
         }
     }
 }

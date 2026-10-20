@@ -53,6 +53,7 @@ registry! {
     "convert-complex-to-standard" => ConvertComplexToStandard,
     "convert-shape-to-std" on "builtin.module" => ConvertShapeToStd,
     "convert-scf-to-cf" => ConvertScfToCf,
+    "convert-complex-to-llvm" => ConvertComplexToLlvm,
     "convert-arith-to-emitc" => ConvertArithToEmitc,
     "convert-to-emitc" => ConvertToEmitc,
     "convert-memref-to-emitc" on "builtin.module" => ConvertMemrefToEmitc,
