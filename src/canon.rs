@@ -36,6 +36,7 @@ mod reshape;
 mod scf;
 mod shape;
 mod tensor;
+mod tosa;
 mod vector;
 
 use alloc::string::String;
@@ -151,6 +152,7 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("vector") => vector::Folder { b: body, op, c: consts }.fold(),
         Some("shape") => shape::fold(body, op, consts),
         Some("tensor") => tensor::fold(body, op, consts),
+        Some("tosa") => tosa::fold(body, op, consts),
         _ => Fold::Failed,
     }
 }
@@ -165,6 +167,7 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
         "vector" => vector::materialize(value, ty),
         "shape" => shape::materialize(value, ty),
         "tensor" => arith::materialize(value, ty),
+        "tosa" => tosa::materialize(value, ty),
         "ub" => crate::is_poison(value).then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,
     }
