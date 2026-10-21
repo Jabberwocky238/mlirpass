@@ -16,7 +16,7 @@ members = ["macros"]
 
 [dependencies]
 mlirpass-macros = { path = "macros", version = "0.1.0" }
-mlirformat = { path = "../mlirformat.rs", version = "0.4.0", default-features = false }
+mlirformat = { version = "0.4.0", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }
 
