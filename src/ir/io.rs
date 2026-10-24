@@ -242,7 +242,7 @@ impl<'a> Body<'a> {
             items.push(item.clone());
         }
         let ops: Vec<&'m Operation<'a>> = m.items.iter().filter_map(|i| if let Item::Op(op) = i { Some(op) } else { None }).collect();
-        let empty = Body { ctx: crate::Ctx(ctx), ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items };
+        let empty = Body { ctx: crate::Ctx(ctx), ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items, journal: crate::ir::Journal::default() };
         let mut im = Import { body: empty, aliases, scopes: alloc::vec![Scope::default()] };
         match ops.as_slice() {
             [module] if module.name == "builtin.module" => {

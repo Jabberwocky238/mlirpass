@@ -18,9 +18,10 @@ use core::ops::{Index, IndexMut};
 
 use mlirformat::{Attribute, Error, MlirOpt, NamedAttr, Operation, Str, Type, Value};
 
-/// Index newtypes into the arena, each with `Index` / `IndexMut` on [`Body`].
+/// Index newtypes into the arena, each with `Index` / `IndexMut` on [`Body`]; `IndexMut` saves the
+/// entry's old value first while a [`Checkpoint`] is open (see [`Journal`]).
 macro_rules! ids {
-    ($($(#[$m:meta])* $id:ident => $data:ident $(<$lt:lifetime>)?, $field:ident;)*) => {$(
+    ($($(#[$m:meta])* $id:ident => $data:ident $(<$lt:lifetime>)?, $field:ident, $kind:ident;)*) => {$(
         $(#[$m])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $id(pub u32);
@@ -40,17 +41,118 @@ macro_rules! ids {
 
         impl<'a> IndexMut<$id> for Body<'a> {
             fn index_mut(&mut self, id: $id) -> &mut Self::Output {
-                &mut self.$field[usize::from(id)]
+                let i = usize::from(id);
+                if self.journal.saves(Kind::$kind, i) {
+                    self.journal.undo.push(Saved::$kind(i, self.$field[i].clone()));
+                }
+                &mut self.$field[i]
             }
         }
     )*};
+
+    (@saved $($kind:ident => $data:ident $(<$lt:lifetime>)?, $field:ident;)*) => {
+        /// Which arena an entry lives in.
+        #[derive(Debug, Clone, Copy)]
+        enum Kind {
+            $($kind),*
+        }
+
+        /// An arena entry's value before the first write after a checkpoint.
+        #[derive(Debug, Clone)]
+        enum Saved<'a> {
+            $($kind(usize, $data $(<$lt>)?)),*
+        }
+
+        impl<'a> Body<'a> {
+            /// Puts a saved value back (rollback).
+            fn restore(&mut self, saved: Saved<'a>) {
+                match saved {
+                    $(Saved::$kind(i, d) => self.$field[i] = d),*
+                }
+            }
+
+            /// The arenas' lengths, in [`Kind`] order.
+            fn lens(&self) -> [usize; 4] {
+                [$(self.$field.len()),*]
+            }
+
+            /// Drops what was appended after `lens`.
+            fn truncate(&mut self, lens: [usize; 4]) {
+                let mut k = 0;
+                $(self.$field.truncate(lens[k]); k += 1;)*
+                let _ = k;
+            }
+        }
+    };
 }
 
 ids! {
-    OpId => OpData<'a>, ops;
-    BlockId => BlockData, blocks;
-    RegionId => RegionData, regions;
-    ValueId => ValueData<'a>, values;
+    OpId => OpData<'a>, ops, Op;
+    BlockId => BlockData, blocks, Block;
+    RegionId => RegionData, regions, Region;
+    ValueId => ValueData<'a>, values, Value;
+}
+
+ids! {
+    @saved
+    Op => OpData<'a>, ops;
+    Block => BlockData, blocks;
+    Region => RegionData, regions;
+    Value => ValueData<'a>, values;
+}
+
+/// ⭐ Undo log for cheap rollback: while a [`Checkpoint`] is open, the first write to an entry
+/// that existed when it was taken saves the entry's old value; entries appended since are just
+/// truncated away. Rolling back costs what was touched, not the size of the body (a clone of
+/// the whole body per pattern attempt made dialect conversion quadratic).
+///
+/// Checkpoints nest: each one is an epoch, and an entry is saved at most once per epoch.
+#[derive(Debug, Clone, Default)]
+pub struct Journal<'a> {
+    undo: Vec<Saved<'a>>,
+    /// Open checkpoints.
+    depth: u32,
+    epoch: u32,
+    next_epoch: u32,
+    /// The arenas' lengths when the innermost open checkpoint was taken.
+    lens: [usize; 4],
+    /// Per arena and entry, the epoch it was last saved in.
+    saved: [Vec<u32>; 4],
+}
+
+/// A journal compares equal to any other: bodies compare by their IR.
+impl PartialEq for Journal<'_> {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Journal<'_> {
+    /// Whether a write to entry `i` of `kind` must save its old value first (and marks it saved).
+    fn saves(&mut self, kind: Kind, i: usize) -> bool {
+        let k = kind as usize;
+        if self.depth == 0 || i >= self.lens[k] {
+            return false;
+        }
+        let saved = &mut self.saved[k];
+        if saved.len() <= i {
+            saved.resize(i + 1, u32::MAX);
+        }
+        let fresh = saved[i] != self.epoch;
+        saved[i] = self.epoch;
+        fresh
+    }
+}
+
+/// ⭐ A point to roll a [`Body`] back to ([`Body::checkpoint`]); every one is closed exactly once,
+/// by [`Body::rollback`] or [`Body::release`], innermost first.
+#[derive(Debug)]
+#[must_use = "a checkpoint is closed by rollback or release"]
+pub struct Checkpoint {
+    undo: usize,
+    lens: [usize; 4],
+    outer_epoch: u32,
+    outer_lens: [usize; 4],
 }
 
 /// One operation. Operand and result types live on the values.
@@ -139,6 +241,48 @@ pub struct Body<'a> {
     /// Module items that are not IR: `{-# ... #-}` bodies, and the aliases the input defined
     /// (already inlined everywhere; kept so that a `loc(#loc3)` still has its definition).
     pub items: Vec<mlirformat::Item<'a>>,
+    journal: Journal<'a>,
+}
+
+impl Body<'_> {
+    /// ⭐ Opens a checkpoint: until it is closed, [`Self::rollback`] can bring the IR back to
+    /// this point (what `*body = snapshot` did, at the cost of what changed since).
+    pub fn checkpoint(&mut self) -> Checkpoint {
+        let j = &mut self.journal;
+        let cp = Checkpoint { undo: j.undo.len(), lens: [0; 4], outer_epoch: j.epoch, outer_lens: j.lens };
+        let lens = self.lens();
+        let j = &mut self.journal;
+        j.depth += 1;
+        j.next_epoch += 1;
+        j.epoch = j.next_epoch;
+        j.lens = lens;
+        Checkpoint { lens, ..cp }
+    }
+
+    /// ⭐ Brings the IR back to `cp` and closes it.
+    pub fn rollback(&mut self, cp: Checkpoint) {
+        while self.journal.undo.len() > cp.undo {
+            let saved = self.journal.undo.pop().expect("longer than the mark");
+            self.restore(saved);
+        }
+        self.truncate(cp.lens);
+        self.close(&cp);
+    }
+
+    /// ⭐ Keeps what changed since `cp` and closes it (an outer checkpoint can still undo it).
+    pub fn release(&mut self, cp: Checkpoint) {
+        self.close(&cp);
+    }
+
+    fn close(&mut self, cp: &Checkpoint) {
+        let j = &mut self.journal;
+        j.depth -= 1;
+        j.epoch = cp.outer_epoch;
+        j.lens = cp.outer_lens;
+        if j.depth == 0 {
+            j.undo.clear();
+        }
+    }
 }
 
 /// A value as an operand of one of mlirformat's typed ops: named by its id.
@@ -261,7 +405,7 @@ impl<'a> OpData<'a> {
 impl<'a> Body<'a> {
     /// An empty `builtin.module` with one empty block.
     pub fn new(ctx: &'a MlirOpt) -> Self {
-        let mut body = Self { ctx: Ctx(ctx), ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items: Vec::new() };
+        let mut body = Self { ctx: Ctx(ctx), ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), journal: Journal::default(), items: Vec::new() };
         body.root = body.create(OpData::named("builtin.module"), &[]);
         let region = body.add_region(body.root);
         body.add_block(region, &[]);

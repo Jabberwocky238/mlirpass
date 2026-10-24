@@ -12,8 +12,9 @@
 //! Replacements are recorded in a value mapping and only applied at the end (commit), where
 //! users left on the old types get `builtin.unrealized_conversion_cast` source
 //! materializations; unresolved ones are reconciled, the rest handed to the type converter.
-//! Rollback restores a snapshot of the body and of the conversion state, which is exactly
-//! what undoing every recorded rewrite since then would give.
+//! Rollback undoes every change since the attempt began: the body's and the conversion state's
+//! undo logs ([`crate::Checkpoint`], [`StateMark`]) restore what was there, at the cost of what
+//! changed — not a copy of the whole body per attempt.
 
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
@@ -284,7 +285,8 @@ enum Rewrite {
     ReplaceValue(ValueId, Option<usize>),
 }
 
-/// `ConversionPatternRewriterImpl`'s state; cloned for rollback.
+/// `ConversionPatternRewriterImpl`'s state. Rolled back with an undo log ([`StateMark`]), as
+/// the body is ([`crate::Checkpoint`]): cloning it per pattern attempt was quadratic.
 #[derive(Debug, Clone, Default)]
 pub struct ConvState<'a> {
     mapping: BTreeMap<Vec<ValueId>, Vec<ValueId>>,
@@ -294,6 +296,32 @@ pub struct ConvState<'a> {
     ignored_ops: BTreeSet<OpId>,
     unresolved: BTreeMap<OpId, MatInfo<'a>>,
     rewrites: Vec<Rewrite>,
+    new_ops: Vec<OpId>,
+    modified_ops: Vec<OpId>,
+    /// What to undo while a mark is open: what the sets and maps held before each change.
+    undo: Vec<Undo<'a>>,
+    /// Open marks.
+    depth: u32,
+}
+
+/// One change to [`ConvState`] to undo on rollback.
+#[derive(Debug, Clone)]
+enum Undo<'a> {
+    Mapping(Vec<ValueId>, Option<Vec<ValueId>>),
+    MappedTo(ValueId),
+    ReplacedOp(OpId),
+    ReplacedValue(ValueId),
+    Ignored(OpId),
+    Unresolved(OpId, Option<MatInfo<'a>>),
+}
+
+/// A point to roll a [`ConvState`] back to; closed by [`ConvState::rollback`] or
+/// [`ConvState::release`], innermost first.
+#[derive(Debug)]
+#[must_use = "a mark is closed by rollback or release"]
+struct StateMark {
+    undo: usize,
+    rewrites: usize,
     new_ops: Vec<OpId>,
     modified_ops: Vec<OpId>,
 }
@@ -316,8 +344,101 @@ impl<'a> Listener<'a> for ConvState<'a> {
 
 impl<'a> ConvState<'a> {
     fn map(&mut self, from: Vec<ValueId>, to: Vec<ValueId>) {
-        self.mapped_to.extend(to.iter().copied());
-        self.mapping.insert(from, to);
+        for v in &to {
+            if self.mapped_to.insert(*v) && self.depth > 0 {
+                self.undo.push(Undo::MappedTo(*v));
+            }
+        }
+        let old = self.mapping.insert(from.clone(), to);
+        if self.depth > 0 {
+            self.undo.push(Undo::Mapping(from, old));
+        }
+    }
+
+    fn replace_ops(&mut self, ops: impl IntoIterator<Item = OpId>) {
+        for o in ops {
+            if self.replaced_ops.insert(o) && self.depth > 0 {
+                self.undo.push(Undo::ReplacedOp(o));
+            }
+        }
+    }
+
+    fn replace_value(&mut self, v: ValueId) {
+        if self.replaced_values.insert(v) && self.depth > 0 {
+            self.undo.push(Undo::ReplacedValue(v));
+        }
+    }
+
+    fn ignore(&mut self, ops: impl IntoIterator<Item = OpId>) {
+        for o in ops {
+            if self.ignored_ops.insert(o) && self.depth > 0 {
+                self.undo.push(Undo::Ignored(o));
+            }
+        }
+    }
+
+    fn set_unresolved(&mut self, op: OpId, info: Option<MatInfo<'a>>) {
+        let old = match info {
+            Some(info) => self.unresolved.insert(op, info),
+            None => self.unresolved.remove(&op),
+        };
+        if self.depth > 0 {
+            self.undo.push(Undo::Unresolved(op, old));
+        }
+    }
+
+    /// Opens a mark (with the body's [`crate::Checkpoint`]).
+    fn mark(&mut self) -> StateMark {
+        self.depth += 1;
+        StateMark { undo: self.undo.len(), rewrites: self.rewrites.len(), new_ops: self.new_ops.clone(), modified_ops: self.modified_ops.clone() }
+    }
+
+    /// Brings the state back to `m` and closes it.
+    fn rollback(&mut self, m: StateMark) {
+        while self.undo.len() > m.undo {
+            match self.undo.pop().expect("longer than the mark") {
+                Undo::Mapping(from, Some(old)) => {
+                    self.mapping.insert(from, old);
+                }
+                Undo::Mapping(from, None) => {
+                    self.mapping.remove(&from);
+                }
+                Undo::MappedTo(v) => {
+                    self.mapped_to.remove(&v);
+                }
+                Undo::ReplacedOp(o) => {
+                    self.replaced_ops.remove(&o);
+                }
+                Undo::ReplacedValue(v) => {
+                    self.replaced_values.remove(&v);
+                }
+                Undo::Ignored(o) => {
+                    self.ignored_ops.remove(&o);
+                }
+                Undo::Unresolved(o, Some(info)) => {
+                    self.unresolved.insert(o, info);
+                }
+                Undo::Unresolved(o, None) => {
+                    self.unresolved.remove(&o);
+                }
+            }
+        }
+        self.rewrites.truncate(m.rewrites);
+        self.new_ops = m.new_ops;
+        self.modified_ops = m.modified_ops;
+        self.close();
+    }
+
+    /// Keeps what changed since `m` and closes it (an outer mark can still undo it).
+    fn release(&mut self, _m: StateMark) {
+        self.close();
+    }
+
+    fn close(&mut self) {
+        self.depth -= 1;
+        if self.depth == 0 {
+            self.undo.clear();
+        }
     }
 
     /// `lookupOrDefault`.
@@ -522,7 +643,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         }
         let results = self.rw.body[op].results.clone();
         let st = self.state();
-        st.unresolved.insert(op, MatInfo { kind, original, converter });
+        st.set_unresolved(op, Some(MatInfo { kind, original, converter }));
         if !to_map.is_empty() {
             st.map(to_map, results.clone());
         }
@@ -575,7 +696,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
             st.map(vec![r], v);
         }
         st.rewrites.push(Rewrite::ReplaceOp(op, current));
-        st.replaced_ops.extend(nested);
+        st.replace_ops(nested);
     }
 
     /// `replaceOp` with single values.
@@ -613,7 +734,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
     pub fn replace_value(&mut self, from: ValueId, to: Vec<ValueId>) {
         let current = self.current;
         let st = self.state();
-        st.replaced_values.insert(from);
+        st.replace_value(from);
         st.map(vec![from], to);
         st.rewrites.push(Rewrite::ReplaceValue(from, current));
     }
@@ -622,7 +743,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
     pub fn erase_block_recorded(&mut self, block: BlockId) {
         let ops: Vec<OpId> = self.rw.body[block].ops.iter().flat_map(|o| self.rw.body.ops_in(*o)).collect();
         self.rw.body.remove_block(block);
-        self.state().replaced_ops.extend(ops);
+        self.state().replace_ops(ops);
     }
 
     /// `startOpModification` .. `finalizeOpModification` around `f`.
@@ -688,7 +809,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
 
     fn replace_value_with(&mut self, from: ValueId, to: Vec<ValueId>, converter: Option<usize>) {
         let st = self.state();
-        st.replaced_values.insert(from);
+        st.replace_value(from);
         st.map(vec![from], to);
         st.rewrites.push(Rewrite::ReplaceValue(from, converter));
     }
@@ -852,7 +973,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         }
         if let Some(recursive) = self.target.is_legal(body, op) {
             if recursive {
-                state.ignored_ops.extend(body.ops_in(op).into_iter().skip(1));
+                state.ignore(body.ops_in(op).into_iter().skip(1));
             }
             return true;
         }
@@ -868,19 +989,22 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         if body.constant_value(op).is_some() {
             return false;
         }
-        let snapshot = (body.clone(), state.clone());
+        let (cp, mark) = (body.checkpoint(), state.mark());
         state.new_ops.clear();
         state.modified_ops.clear();
         match body.fold(op) {
             crate::Fold::Failed => {
-                *body = snapshot.0;
-                *state = snapshot.1;
+                body.rollback(cp);
+                state.rollback(mark);
                 false
             }
             crate::Fold::InPlace => {
                 state.new_ops.clear();
                 state.modified_ops.clear();
-                self.legalize(body, state, op)
+                let ok = self.legalize(body, state, op);
+                body.release(cp);
+                state.release(mark);
+                ok
             }
             crate::Fold::Results(results) => {
                 let name = body[op].name.clone();
@@ -893,8 +1017,8 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
                         crate::Folded::Value(v) => values.push(v),
                         crate::Folded::Attr(a) => {
                             let Some(data) = body.materialize(&name, &a, ty) else {
-                                *body = snapshot.0;
-                                *state = snapshot.1;
+                                body.rollback(cp);
+                                state.rollback(mark);
                                 return false;
                             };
                             let c = body.create(OpData { loc: loc.clone(), ..data }, core::slice::from_ref(ty));
@@ -912,11 +1036,13 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
                 state.modified_ops.clear();
                 for c in new_ops {
                     if !self.legalize(body, state, c) {
-                        *body = snapshot.0;
-                        *state = snapshot.1;
+                        body.rollback(cp);
+                        state.rollback(mark);
                         return false;
                     }
                 }
+                body.release(cp);
+                state.release(mark);
                 true
             }
         }
@@ -930,7 +1056,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
             if !self.applied.insert(i) {
                 continue;
             }
-            let snapshot = (body.clone(), state.clone());
+            let (cp, mark) = (body.checkpoint(), state.mark());
             state.new_ops.clear();
             state.modified_ops.clear();
             let tc = self.patterns.patterns[i].1;
@@ -946,8 +1072,8 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
                 }
             };
             if !matched {
-                *body = snapshot.0;
-                *state = snapshot.1;
+                body.rollback(cp);
+                state.rollback(mark);
                 self.applied.remove(&i);
                 continue;
             }
@@ -956,10 +1082,12 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
             let ok = modified.iter().all(|o| self.legalize(body, state, *o)) && new_ops.iter().all(|o| self.legalize(body, state, *o));
             self.applied.remove(&i);
             if ok {
+                body.release(cp);
+                state.release(mark);
                 return true;
             }
-            *body = snapshot.0;
-            *state = snapshot.1;
+            body.rollback(cp);
+            state.rollback(mark);
         }
         false
     }
@@ -1068,7 +1196,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         }
         for op in erase {
             for o in body.ops_in(op) {
-                state.unresolved.remove(&o);
+                state.set_unresolved(o, None);
             }
             body.drop_result_uses(op);
             body.erase(op);
