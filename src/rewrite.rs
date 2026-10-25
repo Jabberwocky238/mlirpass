@@ -327,8 +327,10 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         for (a, v) in self.body[source].args.clone().into_iter().zip(args) {
             self.replace_all_uses(a, *v);
         }
-        for o in self.body[source].ops.clone() {
-            self.move_before(o, dest, before);
+        let at = before.map(|b| self.body.position(b));
+        let n = self.body[source].ops.len();
+        for o in self.body.splice(source, 0..n, dest, at) {
+            self.listener.moved(self.body, o);
         }
         if self.ip.is_some_and(|ip| ip.block == source) {
             self.ip = Some(InsertPoint { block: dest, before });
@@ -363,10 +365,11 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         let pos = self.body[region].blocks.iter().position(|b| *b == block).expect("block not in region");
         self.body[region].blocks.pop();
         self.body[region].blocks.insert(pos + 1, new);
-        // Moved one by one, as `RewriterBase::splitBlock` does with a listener.
+        // Moved in one go; the listener still hears of each op, as `RewriterBase::splitBlock` tells it.
         let i = self.body.position(at);
-        for o in self.body[block].ops[i..].to_vec() {
-            self.move_before(o, new, None);
+        let n = self.body[block].ops.len();
+        for o in self.body.splice(block, i..n, new, None) {
+            self.listener.moved(self.body, o);
         }
         new
     }

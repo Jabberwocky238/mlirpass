@@ -43,7 +43,7 @@ macro_rules! ids {
             fn index_mut(&mut self, id: $id) -> &mut Self::Output {
                 let i = usize::from(id);
                 if self.journal.saves(Kind::$kind, i) {
-                    self.journal.undo.push(Saved::$kind(i, self.$field[i].clone()));
+                    self.journal.undo.push(Undo::Saved(Saved::$kind(i, self.$field[i].clone())));
                 }
                 &mut self.$field[i]
             }
@@ -101,15 +101,32 @@ ids! {
     Value => ValueData<'a>, values;
 }
 
+/// One entry of the undo log.
+#[derive(Debug, Clone)]
+enum Undo<'a> {
+    /// An arena entry's value before the first write after a checkpoint.
+    Saved(Saved<'a>),
+    /// An op went into block `block` at `at`.
+    Inserted { block: usize, at: usize },
+    /// `op` came out of block `block` at `at`.
+    Removed { block: usize, at: usize, op: OpId },
+    /// `len` ops moved from block `from` (at `at_from`) into block `to` (at `at_to`) in one go.
+    Spliced { from: usize, at_from: usize, to: usize, at_to: usize, len: usize },
+}
+
 /// ⭐ Undo log for cheap rollback: while a [`Checkpoint`] is open, the first write to an entry
 /// that existed when it was taken saves the entry's old value; entries appended since are just
 /// truncated away. Rolling back costs what was touched, not the size of the body (a clone of
 /// the whole body per pattern attempt made dialect conversion quadratic).
 ///
+/// A block's op list is the exception: inserting, detaching and moving ops log just that edit
+/// ([`Body::insert`], [`Body::detach`], [`Body::splice`]) — saving the whole list on the first
+/// edit of every pattern attempt made a conversion over one long block quadratic in its length.
+///
 /// Checkpoints nest: each one is an epoch, and an entry is saved at most once per epoch.
 #[derive(Debug, Clone, Default)]
 pub struct Journal<'a> {
-    undo: Vec<Saved<'a>>,
+    undo: Vec<Undo<'a>>,
     /// Open checkpoints.
     depth: u32,
     epoch: u32,
@@ -262,8 +279,17 @@ impl Body<'_> {
     /// ⭐ Brings the IR back to `cp` and closes it.
     pub fn rollback(&mut self, cp: Checkpoint) {
         while self.journal.undo.len() > cp.undo {
-            let saved = self.journal.undo.pop().expect("longer than the mark");
-            self.restore(saved);
+            match self.journal.undo.pop().expect("longer than the mark") {
+                Undo::Saved(saved) => self.restore(saved),
+                Undo::Inserted { block, at } => {
+                    self.blocks[block].ops.remove(at);
+                }
+                Undo::Removed { block, at, op } => self.blocks[block].ops.insert(at, op),
+                Undo::Spliced { from, at_from, to, at_to, len } => {
+                    let moved: Vec<OpId> = self.blocks[to].ops.drain(at_to..at_to + len).collect();
+                    self.blocks[from].ops.splice(at_from..at_from, moved);
+                }
+            }
         }
         self.truncate(cp.lens);
         self.close(&cp);
@@ -504,12 +530,61 @@ impl<'a> Body<'a> {
 
     // ---- placement ---------------------------------------------------------------------
 
+    /// Whether an edit of `block`'s op list goes into the undo log (a checkpoint is open and the
+    /// block existed when it was taken; blocks made since are truncated away whole).
+    fn logs(&self, block: BlockId) -> bool {
+        self.journal.depth > 0 && usize::from(block) < self.journal.lens[Kind::Block as usize]
+    }
+
     /// Inserts detached `op` into `block` at position `at` (`None`: the end).
     pub fn insert(&mut self, op: OpId, block: BlockId, at: Option<usize>) {
         debug_assert!(self[op].parent.is_none(), "op is already placed");
-        let at = at.unwrap_or(self[block].ops.len());
-        self[block].ops.insert(at, op);
+        let b = usize::from(block);
+        let at = at.unwrap_or(self.blocks[b].ops.len());
+        if self.logs(block) {
+            self.journal.undo.push(Undo::Inserted { block: b, at });
+        }
+        self.blocks[b].ops.insert(at, op);
         self[op].parent = Some(block);
+    }
+
+    /// ⭐ Moves the ops at `range` of `from` into `to` before position `at` (`None`: the end), in one
+    /// go and in order; the moved ops. `from` and `to` differ.
+    pub fn splice(&mut self, from: BlockId, range: core::ops::Range<usize>, to: BlockId, at: Option<usize>) -> Vec<OpId> {
+        debug_assert_ne!(from, to, "splice within one block");
+        let (f, t) = (usize::from(from), usize::from(to));
+        let at_from = range.start;
+        let moved: Vec<OpId> = self.blocks[f].ops.drain(range).collect();
+        let at = at.unwrap_or(self.blocks[t].ops.len());
+        if self.logs(from) || self.logs(to) {
+            self.journal.undo.push(Undo::Spliced { from: f, at_from, to: t, at_to: at, len: moved.len() });
+        }
+        self.blocks[t].ops.splice(at..at, moved.iter().copied());
+        for &o in &moved {
+            self[o].parent = Some(to);
+        }
+        moved
+    }
+
+    /// Takes `ops` out of their blocks, one pass over each block (they stay whole).
+    pub fn detach_all(&mut self, ops: &[OpId]) {
+        let mut by_block: alloc::collections::BTreeMap<BlockId, alloc::collections::BTreeSet<OpId>> = alloc::collections::BTreeMap::new();
+        for &op in ops {
+            if let Some(block) = self.ops[usize::from(op)].parent {
+                by_block.entry(block).or_default().insert(op);
+            }
+        }
+        for (block, gone) in by_block {
+            if self.logs(block) {
+                // Logged edit by edit, so that a rollback can put them back.
+                gone.iter().for_each(|&op| self.detach(op));
+                continue;
+            }
+            self.blocks[usize::from(block)].ops.retain(|o| !gone.contains(o));
+            for op in gone {
+                self[op].parent = None;
+            }
+        }
     }
 
     /// Inserts detached `op` right before `before`.
@@ -532,11 +607,17 @@ impl<'a> Body<'a> {
         self[block].ops.iter().position(|o| *o == op).expect("op not in its block")
     }
 
-    /// Takes `op` out of its block, keeping it whole.
+    /// Takes `op` out of its block, keeping it whole. Looks from the end: erasing a block's ops
+    /// last first costs nothing per op.
     pub fn detach(&mut self, op: OpId) {
-        if let Some(block) = self[op].parent.take() {
-            self[block].ops.retain(|o| *o != op);
+        let Some(block) = self.ops[usize::from(op)].parent else { return };
+        let b = usize::from(block);
+        let at = self.blocks[b].ops.iter().rposition(|o| *o == op).expect("op not in its block");
+        if self.logs(block) {
+            self.journal.undo.push(Undo::Removed { block: b, at, op });
         }
+        self.blocks[b].ops.remove(at);
+        self[op].parent = None;
     }
 
     // ---- use-def -----------------------------------------------------------------------

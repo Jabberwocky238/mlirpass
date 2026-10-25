@@ -779,10 +779,8 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         blocks.pop();
         let pos = blocks.iter().position(|x| *x == block).expect("in region");
         blocks.insert(pos + 1, new);
-        for o in self.rw.body[block].ops.clone() {
-            self.rw.body.detach(o);
-            self.rw.body.insert(o, new, None);
-        }
+        let n = self.rw.body[block].ops.len();
+        self.rw.body.splice(block, 0..n, new, None);
         // Branches to the old block now go to the new one.
         for (t, s) in self.rw.body.predecessors(block) {
             self.rw.body[t].successors[s] = new;
@@ -837,13 +835,9 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         for (a, v) in self.rw.body[source].args.clone().into_iter().zip(args) {
             self.replace_value_with(a, vec![*v], current);
         }
-        for o in self.rw.body[source].ops.clone() {
-            self.rw.body.detach(o);
-            match before {
-                Some(b) => self.rw.body.insert_before(o, b),
-                None => self.rw.body.insert(o, dest, None),
-            }
-        }
+        let at = before.map(|b| self.rw.body.position(b));
+        let n = self.rw.body[source].ops.len();
+        self.rw.body.splice(source, 0..n, dest, at);
         if self.rw.ip.is_some_and(|ip| ip.block == source) {
             self.rw.ip = Some(InsertPoint { block: dest, before });
         }
@@ -1184,7 +1178,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
                             body.replace_all_uses(v, repl);
                         }
                     }
-                    body.detach(op);
                     erase.push(op);
                 }
                 Rewrite::ReplaceValue(v, tc) => {
@@ -1194,6 +1187,8 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
                 }
             }
         }
+        // Out of their blocks in one pass per block (one by one is a scan of the block each)
+        body.detach_all(&erase);
         for op in erase {
             for o in body.ops_in(op) {
                 state.set_unresolved(o, None);
