@@ -8,7 +8,7 @@ use crate::{ops, patterns};
 use mlirformat::arith::CmpIPredicate;
 use mlirformat::{arith, Attribute, Shaped, Type};
 
-use super::FromOp;
+use crate::FromOp;
 use crate::{ApInt, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;

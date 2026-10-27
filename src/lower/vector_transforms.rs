@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
-use crate::{ApInt, Body, Const, ConversionRewriter, LlvmOptions, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId};
+use crate::{ApInt, Body, Const, ConversionRewriter, MemrefLayout, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId};
 
 /// What a lowering needs of its rewriter: the greedy one and the conversion one both do.
 pub trait Build<'a> {
@@ -183,7 +183,7 @@ pub fn transfer_read_to_load<'a, B: Build<'a> + ?Sized>(rw: &mut B, op: OpId, ma
     }) else {
         return false;
     };
-    if !LlvmOptions::default().strides_and_offset(&mt).is_some_and(|(s, _)| s.last().is_none_or(|l| *l == 1)) {
+    if !mt.strides_and_offset().is_some_and(|(s, _)| s.last().is_none_or(|l| *l == 1)) {
         return false;
     }
     let mut ushape = shape.clone();
@@ -245,7 +245,7 @@ pub fn transfer_write_to_store<'a, B: Build<'a> + ?Sized>(rw: &mut B, op: OpId, 
     }) else {
         return false;
     };
-    if !LlvmOptions::default().strides_and_offset(&mt).is_some_and(|(s, _)| s.last().is_none_or(|l| *l == 1)) {
+    if !mt.strides_and_offset().is_some_and(|(s, _)| s.last().is_none_or(|l| *l == 1)) {
         return false;
     }
     let me = &*mt.elem;

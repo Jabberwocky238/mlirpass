@@ -24,7 +24,7 @@ use mlirformat::Error;
 
 use crate::{Body, OpId};
 
-pub use registry::{PassInfo, PassRegistry, Passes};
+pub use registry::{PassInfo, PassRegistry, PassSet, Passes};
 
 /// A pass's `mlir-opt` name and anchor op (`Passes.td`'s `Pass<"name", "op">`); `#[pass]`
 /// declares it.

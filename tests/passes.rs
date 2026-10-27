@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 
 use common::Fixtures;
 use mlirpass::mlirformat::MlirOpt;
-use mlirpass::{Body, Invocation, Passes};
+use mlirpass::{Body, Ctx, Interfaces, Invocation, Passes};
 
 /// Chunks matching exactly; raise it whenever a change makes more match.
 const FLOOR: usize = 3928;
@@ -58,7 +58,8 @@ fn first_diff(a: &str, b: &str) -> String {
 #[test]
 fn passes() {
     // Every upstream dialect: its ops' ODS facts and declared defaults.
-    let opt = MlirOpt::upstream();
+    let (opt, interfaces) = (MlirOpt::upstream(), Interfaces::upstream());
+    let ctx = Ctx::new(&opt, &interfaces);
     let passes = Passes::upstream();
     let filter = std::env::var("FILTER").ok();
     let show = std::env::var_os("SHOW").is_some();
@@ -87,8 +88,8 @@ fn passes() {
         let (ins, outs) = (inv.chunks(&input), inv.chunks(&expected));
         assert_eq!(ins.len(), outs.len(), "{}: chunk counts differ", run.stem);
         for (i, (chunk, want)) in ins.into_iter().zip(outs).enumerate() {
-            let want = if want.trim().is_empty() { String::new() } else { inv.print(&opt, &mut Body::parse(&opt, want).unwrap()) };
-            match inv.run_chunk(&opt, chunk) {
+            let want = if want.trim().is_empty() { String::new() } else { inv.print(&mut Body::parse(ctx, want).unwrap()) };
+            match inv.run_chunk(ctx, chunk) {
                 Ok(got) if got == want => t.exact += 1,
                 Err(_) if want.is_empty() => t.exact += 1,
                 Ok(got) => {

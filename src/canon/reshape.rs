@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
 use super::MemrefOfr as Ofr;
-use crate::{Body, Const, Fold, Folded, OpData, OpId, Pattern, Rewriter, ValueId};
+use crate::{Body, Const, Fold, Folded, MemrefLayout, OpData, OpId, Pattern, Rewriter, ValueId};
 
 /// `ReassociationIndices` of each result (collapse) or source (expand) dimension.
 pub type Reassoc = Vec<Vec<i64>>;
@@ -185,7 +185,7 @@ impl Reshape {
 
     /// `hasNonIdentityLayout`.
     fn non_identity(t: &Type<'_>) -> bool {
-        matches!(t, Type::Shaped(s) if s.kind == ShapedKind::MemRef && !crate::MemrefToLlvm::identity_layout(s))
+        matches!(t, Type::Shaped(s) if s.kind == ShapedKind::MemRef && !s.identity_layout())
     }
 
     fn rank(t: &Type<'_>) -> usize {

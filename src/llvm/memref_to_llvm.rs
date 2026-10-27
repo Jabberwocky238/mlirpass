@@ -7,9 +7,9 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::patterns;
-use mlirformat::{Attribute, Dim, Shaped, ShapedKind, StridedLayout, Type};
+use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
 
-use crate::{BlockId, ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, ValueId, Visibility};
+use crate::{BlockId, ConversionRewriter, LlvmConverter, LlvmOptions, MemrefLayout, OpData, OpId, ValueId, Visibility};
 use mlirformat::llvm_types::LlvmType;
 
 /// The memref ⇒ llvm patterns.
@@ -62,23 +62,9 @@ impl MemrefToLlvm {
         s.shape.as_ref().map_or(0, Vec::len)
     }
 
-    /// `MemRefLayoutAttrInterface::isIdentity`: no layout, `strided<[1]>`, or `(d0, ...) -> (d0, ...)`.
-    pub fn identity_layout(s: &Shaped<'_>) -> bool {
-        s.extras.iter().all(|a| match a {
-            Attribute::Builtin { name, .. } if name == "strided" => StridedLayout::try_from(a).is_ok_and(|l| l.is_identity()),
-            Attribute::Builtin { name, body, .. } if name == "affine_map" => {
-                let Some((dims, results)) = body.trim_start_matches('<').trim_end_matches('>').split_once("->") else { return false };
-                let squash = |t: &str| t.chars().filter(|c| !c.is_whitespace()).collect::<String>();
-                let dims = squash(dims);
-                !dims.contains('[') && dims == squash(results)
-            }
-            _ => true,
-        })
-    }
-
     /// `isConvertibleAndHasIdentityMaps`.
     fn convertible_identity<'a>(cr: &Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>) -> bool {
-        Self::identity_layout(s) && cr.type_converter().is_some_and(|tc| tc.convert(&Type::Shaped(s.clone())).is_some()) && opts.address_space(s).is_some()
+        s.identity_layout() && cr.type_converter().is_some_and(|tc| tc.convert(&Type::Shaped(s.clone())).is_some()) && opts.address_space(s).is_some()
     }
 
     pub fn elem<'a>(cr: &Cr<'_, 'a, '_>, t: &Type<'a>) -> Option<Type<'a>> {
@@ -210,7 +196,7 @@ impl MemrefToLlvm {
 
     /// `MemRefDescriptor::bufferPtr`: the aligned pointer moved by the offset.
     pub fn buffer_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId) -> Option<ValueId> {
-        let (_, offset) = opts.strides_and_offset(s)?;
+        let (_, offset) = s.strides_and_offset()?;
         let ptr = cr.extract(desc, &[1]);
         if offset == 0 {
             return Some(ptr);
@@ -223,7 +209,7 @@ impl MemrefToLlvm {
 
     /// `getStridedElementPtr`.
     pub fn strided_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId, indices: &[ValueId], flags: i64) -> Option<ValueId> {
-        let (strides, _) = opts.strides_and_offset(s)?;
+        let (strides, _) = s.strides_and_offset()?;
         let base = Self::buffer_ptr(cr, opts, s, desc)?;
         let overflow = i64::from(flags & 2 != 0) | (i64::from(flags & 4 != 0) << 1);
         let mut index: Option<ValueId> = None;
@@ -800,30 +786,11 @@ impl MemrefToLlvm {
         true
     }
 
-    /// `isStaticShapeAndContiguousRowMajor`.
-    pub fn contiguous(opts: LlvmOptions, s: &Shaped<'_>) -> bool {
-        let dims = s.dims().unwrap_or_default();
-        if s.shape.is_none() || dims.contains(&Dim::DYNAMIC) {
-            return false;
-        }
-        let Some((strides, _)) = opts.strides_and_offset(s) else { return false };
-        let mut running = 1;
-        let mut cur = dims.len() as i64 - 1;
-        while cur >= 0 && strides[cur as usize] == running {
-            running *= dims[cur as usize];
-            cur -= 1;
-        }
-        while cur >= 0 && dims[cur as usize] == 1 {
-            cur -= 1;
-        }
-        cur < 0
-    }
-
     #[lowering("memref.copy")]
     fn copy<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
         let (Some(src), Some(dst)) = (Self::operand_memref(cr, op, 0), Self::operand_memref(cr, op, 1)) else { return false };
-        let contiguous = |s: &Shaped<'a>| s.shape.is_some() && (Self::identity_layout(s) || (!s.dims().unwrap_or_default().contains(&Dim::DYNAMIC) && s.dims().unwrap_or_default().iter().product::<i64>() > 0 && Self::contiguous(opts, s)));
+        let contiguous = |s: &Shaped<'a>| s.shape.is_some() && (s.identity_layout() || (!s.dims().unwrap_or_default().contains(&Dim::DYNAMIC) && s.dims().unwrap_or_default().iter().product::<i64>() > 0 && s.contiguous_row_major()));
         let (sd, td) = (operands[0][0], operands[1][0]);
         if contiguous(&src) && contiguous(&dst) {
             let mut n = Self::const_index(cr, opts, 1);
@@ -989,7 +956,7 @@ impl MemrefToLlvm {
             let (a, b, _) = Self::pointers(cr, opts, &src, sd, false);
             d = cr.insert_value(d, a, &[0]);
             d = cr.insert_value(d, b, &[1]);
-            let Some((strides, offset)) = opts.strides_and_offset(&dst) else { return false };
+            let Some((strides, offset)) = dst.strides_and_offset() else { return false };
             if offset == Dim::DYNAMIC {
                 return false;
             }
@@ -1137,7 +1104,7 @@ impl MemrefToLlvm {
         let opts = o.llvm;
         let (Some(src), Some(dst)) = (Self::operand_memref(cr, op, 0), Self::result_memref(cr, op)) else { return false };
         let (Some(_), Some(ty)) = (Self::elem(cr, &dst.elem), LlvmConverter::convert_memref(opts, &dst)) else { return false };
-        let Some((strides, offset)) = opts.strides_and_offset(&dst) else { return false };
+        let Some((strides, offset)) = dst.strides_and_offset() else { return false };
         if strides.last().is_some_and(|s| *s != 1 && *s != 0) {
             return false;
         }
@@ -1202,7 +1169,7 @@ impl MemrefToLlvm {
     fn atomic_rmw<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let Some(kind) = cr.rw.body[op].get("kind").and_then(Self::int).and_then(Self::atomic_bin_op) else { return false };
         let Some(s) = Self::operand_memref(cr, op, 1) else { return false };
-        if o.llvm.strides_and_offset(&s).is_none() {
+        if s.strides_and_offset().is_none() {
             return false;
         }
         let indices: Vec<ValueId> = operands[2..].iter().flatten().copied().collect();

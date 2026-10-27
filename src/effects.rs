@@ -1,8 +1,8 @@
 //! Memory effects of ops, as `mlir/Interfaces/SideEffectInterfaces.cpp`.
 //!
 //! What ODS declares comes from the generated table; the ops that compute their effects in C++
-//! (`DeclareOpInterfaceMethods<MemoryEffectOpInterface>`) are written out in
-//! [`Body::custom_effects`].
+//! (`DeclareOpInterfaceMethods<MemoryEffectOpInterface>`) answer through their dialect's
+//! [`OpInterfaces`](crate::OpInterfaces).
 
 use alloc::vec;
 use alloc::vec::Vec;
@@ -20,13 +20,14 @@ pub struct EffectInstance {
 }
 
 impl EffectInstance {
-    const fn on(kind: EffectKind, value: Option<ValueId>) -> Self {
+    pub const fn on(kind: EffectKind, value: Option<ValueId>) -> Self {
         Self { kind, value, resource: "DefaultResource" }
     }
 }
 
 impl Body<'_> {
-    fn is_memref(&self, v: ValueId) -> bool {
+    /// Whether `v` is a memref.
+    pub fn is_memref(&self, v: ValueId) -> bool {
         matches!(&self[v].ty, Type::Shaped(s) if s.kind == ShapedKind::MemRef)
     }
 
@@ -63,59 +64,14 @@ impl Body<'_> {
         }
     }
 
-    /// The effects of the ops whose `getEffects` is C++.
+    /// The effects of the ops whose `getEffects` is C++, from their dialect's interfaces.
     fn custom_effects(&self, op: OpId) -> Vec<EffectInstance> {
-        use EffectKind::{Read, Write};
-        let d = &self[op];
-        let operand = |i: usize| d.operands.get(i).copied();
-        // Volatile or (stronger than unordered) atomic: arbitrary reads and writes besides.
-        let synchronizing = || d.get("volatile_").is_some() || matches!(d.get("ordering"), Some(Attribute::Int { lit, .. }) if !matches!(&**lit, "0" | "1"));
-        match &*d.name {
-            "cf.assert" => vec![EffectInstance::on(Write, None)],
-            "llvm.load" | "llvm.store" => {
-                let (kind, addr) = if d.name == "llvm.load" { (Read, 0) } else { (Write, 1) };
-                let mut out = vec![EffectInstance::on(kind, operand(addr))];
-                if synchronizing() {
-                    out.extend([EffectInstance::on(Write, None), EffectInstance::on(Read, None)]);
-                }
-                out
-            }
-            "llvm.inline_asm" if d.get("has_side_effects").is_some() => vec![EffectInstance::on(Write, None), EffectInstance::on(Read, None)],
-            "llvm.inline_asm" => Vec::new(),
-            "vector.transfer_read" => operand(0).filter(|v| self.is_memref(*v)).map(|v| EffectInstance::on(Read, Some(v))).into_iter().collect(),
-            "vector.transfer_write" => operand(1).filter(|v| self.is_memref(*v)).map(|v| EffectInstance::on(Write, Some(v))).into_iter().collect(),
-            "bufferization.materialize_in_destination" => {
-                let mut out = Vec::new();
-                out.extend(operand(0).filter(|v| self.is_memref(*v)).map(|v| EffectInstance::on(Read, Some(v))));
-                out.extend(operand(1).filter(|v| self.is_memref(*v)).map(|v| EffectInstance::on(Write, Some(v))));
-                out
-            }
-            n if n.starts_with("linalg.") => self.linalg_effects(op),
-            // Not ported yet: assume the worst an interface can say.
-            _ => vec![EffectInstance::on(Write, None), EffectInstance::on(Read, None)],
-        }
-    }
-
-    /// `getGenericEffectsImpl` of a linalg structured op: memref inputs are read, memref inits
-    /// written (and read when the payload uses them).
-    fn linalg_effects(&self, op: OpId) -> Vec<EffectInstance> {
-        use EffectKind::{Read, Write};
-        let (ins, outs) = (self.operand_group(op, 0), self.operand_group(op, 1));
-        let entry = self[op].regions.first().and_then(|r| self[*r].blocks.first()).map(|b| &self[*b].args);
-        let mut out: Vec<_> = ins.iter().filter(|v| self.is_memref(**v)).map(|v| EffectInstance::on(Read, Some(*v))).collect();
-        for (j, v) in outs.iter().enumerate().filter(|(_, v)| self.is_memref(**v)) {
-            let used = entry.and_then(|args| args.get(ins.len() + j)).is_some_and(|a| !self[*a].uses.is_empty());
-            if used {
-                out.push(EffectInstance::on(Read, Some(*v)));
-            }
-            out.push(EffectInstance::on(Write, Some(*v)));
-        }
-        out
+        self.interfaces(op).and_then(|i| i.effects(self, op)).unwrap_or_else(|| vec![EffectInstance::on(EffectKind::Write, None), EffectInstance::on(EffectKind::Read, None)])
     }
 
     /// Whether `op` is registered: known to the op table.
     pub fn registered(&self, op: OpId) -> bool {
-        self.ctx.0.op_info(&self[op].name).is_some()
+        self.ctx.opt.op_info(&self[op].name).is_some()
     }
 
     /// `mightHaveTrait`: an unregistered op might have any.
@@ -154,46 +110,7 @@ impl Body<'_> {
         if !self.has(op, Trait::ConditionallySpeculatable) {
             return None;
         }
-        let c = |v: ValueId| crate::Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int().map(|i| i.signed());
-        let name = &*self[op].name;
-        match name {
-            "arith.divui" | "arith.ceildivui" | "llvm.udiv" => c(self[op].operands[1]).filter(|v| *v != 0).map(|_| false),
-            "arith.divsi" | "arith.ceildivsi" | "llvm.sdiv" => c(self[op].operands[1]).filter(|v| *v != 0 && *v != -1).map(|_| false),
-            "scf.for" => (c(self[op].operands[2]) == Some(1)).then_some(true),
-            "affine.for" => (self[op].get("step").and_then(|a| if let mlirformat::Attribute::Int { lit, .. } = a { lit.parse::<i64>().ok() } else { None }) == Some(1)).then_some(true),
-            "tensor.dim" | "memref.dim" => {
-                let i = c(self[op].operands[1])?;
-                let rank = self[self[op].operands[0]].ty.shape()?.len() as i128;
-                (i < rank).then_some(false)
-            }
-            "test.conditionally_speculatable_op" => self.def_named(self[op].operands[0], "arith.constant").map(|_| false),
-            "linalg.pack" | "linalg.unpack" => {
-                let pack = name == "linalg.pack";
-                let segs = self.segments(op, "operandSegmentSizes");
-                if pack && segs.as_ref().is_some_and(|s| s.get(2) == Some(&1)) {
-                    return Some(false);
-                }
-                let tiles: Vec<i64> = match self[op].get("static_inner_tiles") {
-                    Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
-                    _ => Vec::new(),
-                };
-                let first_dynamic = if pack { segs.as_ref().map_or(2, |s| s[..3].iter().sum()) } else { 2 };
-                let mut dynamic = self[op].operands[first_dynamic..].iter();
-                let packed = &self[self[op].operands[usize::from(pack)]].ty;
-                let shape = packed.shape()?;
-                let dims = &shape[shape.len() - tiles.len()..];
-                for (d, t) in dims.iter().zip(&tiles) {
-                    let constant = *t != i64::MIN || dynamic.next().is_some_and(|v| c(*v).is_some());
-                    if !constant || !matches!(d, mlirformat::Dim::Static(_)) {
-                        return None;
-                    }
-                }
-                Some(false)
-            }
-            "vector.transfer_read" | "vector.transfer_write" => self[op].operands.iter().all(|v| !self.is_memref(*v)).then_some(false),
-            n if n.starts_with("linalg.") => self[op].operands.iter().all(|v| !self.is_memref(*v)).then_some(true),
-            _ => None,
-        }
+        self.interfaces(op).and_then(|i| i.speculatability(self, op))
     }
 
     /// `isSpeculatable`.

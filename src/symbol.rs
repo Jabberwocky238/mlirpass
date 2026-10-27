@@ -53,7 +53,7 @@ impl<'a> Body<'a> {
 
     /// An op that may be a symbol table nobody can tell about: one region, dialect unknown.
     pub fn maybe_unknown_symbol_table(&self, op: OpId) -> bool {
-        self[op].regions.len() == 1 && !self.ctx.0.knows_dialect_of(&self[op].name)
+        self[op].regions.len() == 1 && !self.ctx.opt.knows_dialect_of(&self[op].name)
     }
 
     /// The symbol named `name` directly in symbol table `table`.

@@ -9,7 +9,7 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-`0.1.2`: 3928 of the 4831 fixture cases match `mlir-opt` 22.1.8 byte for byte
+`0.2.0`: 3928 of the 4831 fixture cases match `mlir-opt` 22.1.8 byte for byte
 (`cargo test --test passes -- --nocapture` counts them per group; SPIR-V is not started).
 
 | part | what it is | upstream |
@@ -18,9 +18,12 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 | `pass` | pass manager, `--pass-pipeline` syntax, registry | `mlir/Pass` |
 | `parallel` | `Executor` (`Serial`, `ThreadPool`): nested pipelines over isolated ops (functions) as parallel tasks | `OpToOpPassAdaptor`, `llvm::ThreadPool` |
 | `rewrite` | patterns, rewriter, greedy driver, folding | `PatternMatch`, `GreedyPatternRewriteDriver` |
-| `conversion` | conversion target, type converter, dialect conversion | `DialectConversion` |
+| `conversion` | conversion target, type converter, dialect conversion, `#[lowering]`s as patterns, the `DialectInterfaces` trait `convert-to-*` asks | `DialectConversion` |
+| `layout` | `MemrefLayout`: a memref's strides, offset, identity / contiguous layout | `BuiltinTypes` |
 | `llvm` | everything llvm: the type converter, dialect → `llvm`, the llvm folds, `DataLayout`, the llvm memory-slot interfaces | `mlir/lib/Conversion/*ToLLVM`, `Dialect/LLVMIR` |
-| `lower` | dialect → `emitc`, and between dialects (no llvm) | `mlir/lib/Conversion` |
+| `emitc` | dialect → `emitc`: the EmitC type converter, `convert-to-emitc` | `mlir/lib/Conversion/*ToEmitC` |
+| `lower` | between dialects (no llvm, no emitc) | `mlir/lib/Conversion` |
+| `dialects` | each upstream dialect's `OpInterfaces`, one unit struct each (`ScfDialect`, ...) | `mlir/lib/Dialect/*/IR` |
 | `transforms` | `canonicalize`, `cse`, `sccp`, `inline`, `symbol-dce`, `mem2reg`, `sroa`, ... (dialect-independent) | `mlir/lib/Transforms` |
 
 Dialects: every dialect mlirformat describes.
@@ -125,9 +128,13 @@ each op of a nested pipeline that is `IsolatedFromAbove` (`llvm.func(...)`, `fun
 a body of its own and runs them as the pool's tasks; the result is the same as with `Serial`
 (`run`, `-mlir-disable-threading`). The command line threads by default, as `mlir-opt`.
 
-Nothing is global. Pipelines name passes through a `PassRegistry` (`Passes::upstream()` registers
-every pass: `Invocation::parse(&passes, args)`); a `Body` asks its context (mlirformat's `MlirOpt`,
-holding the loaded dialects) what it knows of ops; `convert-to-llvm` / `convert-to-emitc` ask the
+Nothing is global. Pipelines name passes through a `PassRegistry` (`Invocation::parse(&passes, args)`);
+each module declares its passes as a `PassSet` (`pass_set!(LlvmPasses: ConvertArithToLlvm, ...)`):
+`Passes::new().with::<LlvmPasses>()` registers just those, `Passes::upstream()` every set. A `Body`
+asks its `Ctx` what it knows of ops: mlirformat's `MlirOpt` (the loaded dialects, ODS's table) and
+the `Interfaces` holding each dialect's `OpInterfaces` (what upstream computes in C++: effects,
+speculatability, branch and region-branch successors, calls), so core names no dialect's op
+(`Body::parse(Ctx::new(&opt, &Interfaces::upstream()), src)`). `convert-to-llvm` / `convert-to-emitc` ask the
 `DialectInterfaces` they hold which dialects have an interface and what each adds.
 
 ## Fixtures

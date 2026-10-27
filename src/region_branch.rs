@@ -1,6 +1,7 @@
 //! `RegionBranchOpInterface`: where control goes between an op and its regions, and which
-//! values flow along. Written out per op (`getSuccessorRegions`, `getEntrySuccessorOperands`,
-//! `RegionBranchTerminatorOpInterface::getSuccessorOperands`).
+//! values flow along: each dialect's [`OpInterfaces`](crate::OpInterfaces) answer
+//! `getSuccessorRegions`, `getEntrySuccessorOperands` and
+//! `RegionBranchTerminatorOpInterface::getSuccessorOperands` for its ops.
 
 use alloc::collections::BTreeMap;
 use alloc::vec;
@@ -28,77 +29,26 @@ pub type Operand = (OpId, usize);
 impl<'a> Body<'a> {
     /// Whether `op` implements the interface, as far as this crate describes it.
     pub fn is_region_branch(&self, op: OpId) -> bool {
-        matches!(&*self[op].name, "affine.for" | "scf.for" | "scf.if" | "scf.while" | "scf.execute_region" | "scf.index_switch" | "test.region_if" | "memref.alloca_scope")
-    }
-
-    /// `getTrivialConstantTripCount` of an `affine.for`.
-    fn affine_trip_count(&self, op: OpId) -> Option<i64> {
-        let step = self.for_step(op);
-        let (lb, ub) = (self.for_constant_bound(op, true)?, self.for_constant_bound(op, false)?);
-        (step > 0).then(|| if ub - lb <= 0 { 0 } else { (ub - lb + step - 1) / step })
+        self.interfaces(op).is_some_and(|i| i.is_region_branch(self, op))
     }
 
     /// The entry block's arguments of region `r` of `op`, from `skip` on.
-    fn region_args(&self, op: OpId, r: usize, skip: usize) -> Vec<ValueId> {
+    pub fn region_args(&self, op: OpId, r: usize, skip: usize) -> Vec<ValueId> {
         let region = self[op].regions[r];
         self[region].blocks.first().map(|b| self[*b].args.iter().skip(skip).copied().collect()).unwrap_or_default()
     }
 
     /// `getSuccessorRegions(point)`: each successor with its inputs.
     pub fn region_successors(&self, op: OpId, point: Point) -> Vec<(Succ, Vec<ValueId>)> {
-        let results = self[op].results.clone();
-        match &*self[op].name {
-            "scf.for" => vec![(Succ::Region(0), self.region_args(op, 0, 1)), (Succ::Parent, results)],
-            "affine.for" => {
-                let body = (Succ::Region(0), self.region_args(op, 0, 1));
-                match (self.affine_trip_count(op), point) {
-                    (Some(1), Point::Terminator(_)) | (Some(0), Point::Parent) => vec![(Succ::Parent, results)],
-                    (Some(0), Point::Terminator(_)) => Vec::new(),
-                    (Some(_), Point::Parent) => vec![body],
-                    _ => vec![body, (Succ::Parent, results)],
-                }
-            }
-            "scf.if" => match point {
-                Point::Parent => {
-                    let else_empty = self[self[op].regions[1]].blocks.is_empty();
-                    vec![(Succ::Region(0), Vec::new()), if else_empty { (Succ::Parent, results) } else { (Succ::Region(1), Vec::new()) }]
-                }
-                Point::Terminator(_) => vec![(Succ::Parent, results)],
-            },
-            "scf.while" => match point {
-                Point::Parent => vec![(Succ::Region(0), self.region_args(op, 0, 0))],
-                Point::Terminator(t) if self[t].name == "scf.condition" => vec![(Succ::Region(1), self.region_args(op, 1, 0)), (Succ::Parent, results)],
-                Point::Terminator(_) => vec![(Succ::Region(0), self.region_args(op, 0, 0))],
-            },
-            // The then and else regions take the operands, both go to the join region.
-            "test.region_if" => match point {
-                Point::Parent => vec![(Succ::Region(0), self.region_args(op, 0, 0)), (Succ::Region(1), self.region_args(op, 1, 0))],
-                Point::Terminator(t) if self[t].parent.and_then(|b| self[b].parent) == Some(self[op].regions[2]) => vec![(Succ::Parent, results)],
-                Point::Terminator(_) => vec![(Succ::Region(2), self.region_args(op, 2, 0))],
-            },
-            "scf.execute_region" | "scf.index_switch" | "memref.alloca_scope" => match point {
-                Point::Parent => (0..self[op].regions.len()).map(|r| (Succ::Region(r), Vec::new())).collect(),
-                Point::Terminator(_) => vec![(Succ::Parent, results)],
-            },
-            _ => Vec::new(),
-        }
+        self.interfaces(op).map(|i| i.region_successors(self, op, point)).unwrap_or_default()
     }
 
     /// The operands flowing from `point` to its successors.
     pub fn forwarded(&self, op: OpId, point: Point) -> Vec<Operand> {
         match point {
-            Point::Parent => match &*self[op].name {
-                "scf.for" => (3..self[op].operands.len()).map(|i| (op, i)).collect(),
-                "affine.for" => {
-                    let seg = self.segments(op, "operandSegmentSizes").unwrap_or_default();
-                    let start = seg.iter().take(2).sum();
-                    (start..self[op].operands.len()).map(|i| (op, i)).collect()
-                }
-                "scf.while" | "test.region_if" => (0..self[op].operands.len()).map(|i| (op, i)).collect(),
-                _ => Vec::new(),
-            },
+            Point::Parent => self.interfaces(op).map(|i| i.entry_operands(self, op)).unwrap_or_default(),
             Point::Terminator(t) => {
-                let skip = usize::from(self[t].name == "scf.condition");
+                let skip = self.interfaces(t).map_or(0, |i| i.terminator_skip(self, t));
                 (skip..self[t].operands.len()).map(|i| (t, i)).collect()
             }
         }
@@ -110,7 +60,7 @@ impl<'a> Body<'a> {
         for r in &self[op].regions {
             for b in &self[*r].blocks {
                 if let Some(&t) = self[*b].ops.last()
-                    && matches!(&*self[t].name, "scf.yield" | "scf.condition" | "test.region_if_yield" | "affine.yield" | "memref.alloca_scope.return")
+                    && self.interfaces(t).is_some_and(|i| i.is_region_terminator(self, t))
                 {
                     out.push(Point::Terminator(t));
                 }

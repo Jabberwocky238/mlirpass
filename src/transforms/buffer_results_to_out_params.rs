@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 use mlirformat::{Attribute, Dim, Error, FunctionType, NamedAttr, Shaped, Type};
 use crate::pass;
 
-use crate::{Body, Def, LlvmOptions, OpData, OpId, Run, ValueId, Visibility};
+use crate::{Body, Def, MemrefLayout, OpData, OpId, Run, ValueId, Visibility};
 
 #[pass("buffer-results-to-out-params", on = "builtin.module")]
 pub struct BufferResultsToOutParams {
@@ -36,7 +36,7 @@ impl Memref {
 
     /// `hasFullyDynamicLayoutMap`.
     fn fully_dynamic(s: &Shaped<'_>) -> bool {
-        LlvmOptions::default().strides_and_offset(s).is_some_and(|(st, off)| st.iter().all(|x| *x == Dim::DYNAMIC) && off == Dim::DYNAMIC)
+        s.strides_and_offset().is_some_and(|(st, off)| st.iter().all(|x| *x == Dim::DYNAMIC) && off == Dim::DYNAMIC)
     }
 
     fn static_shape(s: &Shaped<'_>) -> bool {
@@ -84,7 +84,7 @@ impl BufferResultsToOutParams {
         let mut erased = Vec::new();
         for (i, t) in ft.results.iter().enumerate() {
             if let Some(s) = Memref::shaped(t) {
-                if !crate::MemrefToLlvm::identity_layout(s) && !Memref::fully_dynamic(s) {
+                if !s.identity_layout() && !Memref::fully_dynamic(s) {
                     return Err(Error("cannot create out param for result with unsupported layout".into()));
                 }
                 erased.push(i);
@@ -212,7 +212,7 @@ impl BufferResultsToOutParams {
                 let a = b.create(OpData::build("memref.alloc").operands(&d).segments(&[d.len(), 0]), &[at]);
                 b.insert_before(a, call);
                 let mut p = b[a].results[0];
-                if !crate::MemrefToLlvm::identity_layout(&s) {
+                if !s.identity_layout() {
                     let c = b.create(OpData::build("memref.cast").operands(&[p]), &[b[m].ty.clone()]);
                     b.insert_before(c, call);
                     p = b[c].results[0];

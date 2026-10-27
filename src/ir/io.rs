@@ -216,7 +216,7 @@ impl<'m, 'a> Import<'m, 'a> {
 impl<'a> Body<'a> {
     /// The body of module `m` in context `ctx`: its one `builtin.module` becomes the root;
     /// loose top-level ops are wrapped in one, as `mlir-opt` does.
-    pub fn import<'m>(ctx: &'a mlirformat::MlirOpt, m: &'m Module<'a>) -> Result<Self, Error> {
+    pub fn import<'m>(ctx: crate::Ctx<'a>, m: &'m Module<'a>) -> Result<Self, Error> {
         let mut aliases = Aliases::default();
         let mut items = Vec::new();
         for item in &m.items {
@@ -242,7 +242,7 @@ impl<'a> Body<'a> {
             items.push(item.clone());
         }
         let ops: Vec<&'m Operation<'a>> = m.items.iter().filter_map(|i| if let Item::Op(op) = i { Some(op) } else { None }).collect();
-        let empty = Body { ctx: crate::Ctx(ctx), ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items, journal: crate::ir::Journal::default() };
+        let empty = Body { ctx, ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items, journal: crate::ir::Journal::default() };
         let mut im = Import { body: empty, aliases, scopes: alloc::vec![Scope::default()] };
         match ops.as_slice() {
             [module] if module.name == "builtin.module" => {
@@ -384,9 +384,9 @@ impl<'a> Body<'a> {
         ex.op(id)
     }
 
-    /// Text → body, with `opt`'s dialects for custom forms.
-    pub fn parse(opt: &'a mlirformat::MlirOpt, src: &'a str) -> Result<Self, Error> {
-        let m = opt.parse(src).map_err(|e| Error(format!("{e}")))?;
-        Body::import(opt, &m)
+    /// Text → body, with the context's dialects for custom forms.
+    pub fn parse(ctx: crate::Ctx<'a>, src: &'a str) -> Result<Self, Error> {
+        let m = ctx.opt.parse(src).map_err(|e| Error(format!("{e}")))?;
+        Body::import(ctx, &m)
     }
 }

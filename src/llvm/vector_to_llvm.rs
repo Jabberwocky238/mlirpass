@@ -10,7 +10,7 @@ use crate::patterns;
 use mlirformat::{Attribute, Dim, FloatKind, Shaped, ShapedKind, Type};
 
 use super::memref_to_llvm::{Cr, Gep, MemrefToLlvm as M};
-use crate::{LlvmOptions, OpData, OpId, ValueId};
+use crate::{LlvmOptions, MemrefLayout, OpData, OpId, ValueId};
 use mlirformat::llvm_types::LlvmType;
 
 /// The vector ⇒ llvm patterns.
@@ -133,7 +133,7 @@ impl VectorToLlvm {
 
     /// `isMemRefTypeSupported`: unit innermost stride and an integer address space.
     fn memref_supported(opts: LlvmOptions, s: &Shaped<'_>) -> bool {
-        opts.address_space(s).is_some() && opts.strides_and_offset(s).is_some_and(|(st, _)| st.last().is_none_or(|l| *l == 1))
+        opts.address_space(s).is_some() && s.strides_and_offset().is_some_and(|(st, _)| st.last().is_none_or(|l| *l == 1))
     }
 
     #[lowering("vector.bitcast")]
@@ -621,12 +621,12 @@ impl VectorToLlvm {
     }
 
     /// `computeContiguousStrides`.
-    fn contiguous_strides(opts: LlvmOptions, s: &Shaped<'_>) -> Option<Vec<i64>> {
-        let (strides, _) = opts.strides_and_offset(s)?;
+    fn contiguous_strides(s: &Shaped<'_>) -> Option<Vec<i64>> {
+        let (strides, _) = s.strides_and_offset()?;
         if strides.last().is_some_and(|l| *l != 1) {
             return None;
         }
-        if M::identity_layout(s) {
+        if s.identity_layout() {
             return Some(strides);
         }
         let sizes = s.dims().unwrap_or_default();
@@ -649,10 +649,10 @@ impl VectorToLlvm {
             return false;
         }
         let Some(ty) = crate::LlvmConverter::convert_memref(o.llvm, &dst) else { return false };
-        if Self::contiguous_strides(o.llvm, &src).is_none() {
+        if Self::contiguous_strides(&src).is_none() {
             return false;
         }
-        let Some(ts) = Self::contiguous_strides(o.llvm, &dst) else { return false };
+        let Some(ts) = Self::contiguous_strides(&dst) else { return false };
         if ts.contains(&Dim::DYNAMIC) {
             return false;
         }

@@ -5,20 +5,21 @@
 mod common;
 
 use common::Fixtures;
-use mlirpass::Body;
+use mlirpass::{Body, Ctx, Interfaces};
 use mlirpass::mlirformat::{Item, MlirOpt, Module};
 
 /// Text → body → text, generic.
-fn trip(opt: &MlirOpt, src: &str) -> Result<(String, bool), String> {
-    let m = opt.parse(src).map_err(|e| format!("mlirformat: {e}"))?;
+fn trip(ctx: Ctx<'_>, src: &str) -> Result<(String, bool), String> {
+    let m = ctx.opt.parse(src).map_err(|e| format!("mlirformat: {e}"))?;
     let aliased = m.items.iter().any(|i| matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. }));
-    let body = Body::import(opt, &m).map_err(|e| format!("import: {e}"))?;
-    Ok((opt.show(&Module::from(&body)).to_string(), aliased))
+    let body = Body::import(ctx, &m).map_err(|e| format!("import: {e}"))?;
+    Ok((ctx.opt.show(&Module::from(&body)).to_string(), aliased))
 }
 
 #[test]
 fn roundtrip() {
-    let opt = MlirOpt::new();
+    let (opt, interfaces) = (MlirOpt::new(), Interfaces::new());
+    let ctx = Ctx::new(&opt, &interfaces);
     let (mut chunks, mut failed) = (0usize, Vec::new());
     for run in Fixtures::runs() {
         for kind in ["in", "generic"] {
@@ -30,8 +31,8 @@ fn roundtrip() {
                 }
                 chunks += 1;
                 let at = format!("{}.{kind} #{i}", run.stem);
-                let verdict = trip(&opt, chunk).and_then(|(once, aliased)| {
-                    let (twice, _) = trip(&opt, &once)?;
+                let verdict = trip(ctx, chunk).and_then(|(once, aliased)| {
+                    let (twice, _) = trip(ctx, &once)?;
                     if twice != once {
                         return Err("second trip changed the text".into());
                     }

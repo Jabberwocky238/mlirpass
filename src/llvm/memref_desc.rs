@@ -8,38 +8,9 @@
 
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim, Shaped, StridedLayout, Type};
+use mlirformat::{Attribute, Dim, Shaped, Type};
 
-use crate::{ConversionRewriter, LlvmOptions, Listener, OpData, Rewriter, ValueId};
-
-/// `ShapedType::kDynamic`.
-
-impl LlvmOptions {
-    /// `getStridesAndOffset`: from a `strided<...>` layout, or row-major for the identity.
-    pub fn strides_and_offset(&self, s: &Shaped<'_>) -> Option<(Vec<i64>, i64)> {
-        let layout = s.layout();
-        let shape = s.shape.as_ref()?;
-        if let Some(Attribute::Builtin { name, body: map, .. }) = layout
-            && name == "affine_map"
-        {
-            return Linear::strides(map, shape.len());
-        }
-        let Some(layout) = layout else {
-            let mut strides = alloc::vec![0i64; shape.len()];
-            let mut running = 1i64;
-            for (i, d) in shape.iter().enumerate().rev() {
-                strides[i] = running;
-                running = match (running, d) {
-                    (Dim::DYNAMIC, _) | (_, Dim::Dynamic) => Dim::DYNAMIC,
-                    (r, Dim::Static(n) | Dim::Scalable(n)) => r * n,
-                };
-            }
-            return Some((strides, 0));
-        };
-        let StridedLayout { strides, offset } = StridedLayout::try_from(layout).ok()?;
-        Some((strides, offset))
-    }
-}
+use crate::{ConversionRewriter, Listener, LlvmOptions, MemrefLayout, OpData, Rewriter, ValueId};
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
     /// `createIndexAttrConstant`: an `llvm.mlir.constant` of `v : index` typed `ty`.
@@ -112,7 +83,7 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
 
     /// `MemRefDescriptor::fromStaticShape`: the pointers, then offset, sizes and strides constant.
     pub fn desc_from_static(&mut self, opts: LlvmOptions, s: &Shaped<'a>, desc_ty: Type<'a>, ptr: ValueId, aligned: ValueId) -> Option<ValueId> {
-        let (strides, offset) = opts.strides_and_offset(s)?;
+        let (strides, offset) = s.strides_and_offset()?;
         let idx = opts.index();
         let mut d = self.value(OpData::build("llvm.mlir.poison"), desc_ty);
         d = self.insert_at(d, ptr, &[0]);
@@ -127,166 +98,5 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
             d = self.insert_at(d, st, &[4, i as i64]);
         }
         Some(d)
-    }
-}
-
-/// A coefficient of a linear affine expression: known, or depending on a symbol.
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Coef {
-    K(i64),
-    Dyn,
-}
-
-impl core::ops::Add for Coef {
-    type Output = Coef;
-    fn add(self, o: Coef) -> Coef {
-        match (self, o) {
-            (Coef::K(a), Coef::K(b)) => Coef::K(a + b),
-            _ => Coef::Dyn,
-        }
-    }
-}
-
-impl core::ops::Mul for Coef {
-    type Output = Coef;
-    fn mul(self, o: Coef) -> Coef {
-        match (self, o) {
-            (Coef::K(0), _) | (_, Coef::K(0)) => Coef::K(0),
-            (Coef::K(a), Coef::K(b)) => Coef::K(a * b),
-            _ => Coef::Dyn,
-        }
-    }
-}
-
-impl From<Coef> for i64 {
-    fn from(c: Coef) -> i64 {
-        match c {
-            Coef::K(k) => k,
-            Coef::Dyn => Dim::DYNAMIC,
-        }
-    }
-}
-
-/// `extractStrides` over a single-result affine map: `Σ dᵢ·strideᵢ + offset`, where a
-/// symbol makes its coefficient dynamic. Anything not linear in the dims has no strides.
-#[derive(Debug, Clone)]
-struct Linear {
-    dims: Vec<Coef>,
-    off: Coef,
-}
-
-impl Linear {
-    fn constant(rank: usize, c: Coef) -> Self {
-        Self { dims: alloc::vec![Coef::K(0); rank], off: c }
-    }
-
-    fn is_constant(&self) -> bool {
-        self.dims.iter().all(|d| *d == Coef::K(0))
-    }
-
-    fn add(mut self, o: Linear) -> Self {
-        self.dims.iter_mut().zip(o.dims).for_each(|(a, b)| *a = *a + b);
-        self.off = self.off + o.off;
-        self
-    }
-
-    fn scale(mut self, c: Coef) -> Self {
-        self.dims.iter_mut().for_each(|d| *d = *d * c);
-        self.off = self.off * c;
-        self
-    }
-
-    fn mul(self, o: Linear) -> Option<Self> {
-        match (self.is_constant(), o.is_constant()) {
-            (true, _) => Some(o.scale(self.off)),
-            (_, true) => Some(self.scale(o.off)),
-            _ => None,
-        }
-    }
-
-    /// The strides and offset of `<(d0, ...)[s0, ...] -> (expr)>`; the identity map is row-major.
-    fn strides(map: &str, rank: usize) -> Option<(Vec<i64>, i64)> {
-        let (_, results) = map.split_once("->")?;
-        let results = results.trim().strip_suffix('>')?.trim();
-        let expr = results.strip_prefix('(')?.strip_suffix(')')?;
-        let tokens = Self::tokens(expr)?;
-        let mut p = Parser { tokens: &tokens, at: 0, rank };
-        let lin = p.sum()?;
-        if p.at != tokens.len() {
-            return None;
-        }
-        Some((lin.dims.into_iter().map(i64::from).collect(), lin.off.into()))
-    }
-
-    fn tokens(e: &str) -> Option<Vec<&str>> {
-        let mut out = Vec::new();
-        let mut rest = e.trim_start();
-        while let Some(c) = rest.chars().next() {
-            let n = if "+-*(),".contains(c) { 1 } else { rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap_or(rest.len()) };
-            if n == 0 {
-                return None;
-            }
-            out.push(&rest[..n]);
-            rest = rest[n..].trim_start();
-        }
-        Some(out)
-    }
-}
-
-/// Recursive descent over affine expression tokens.
-struct Parser<'t, 's> {
-    tokens: &'t [&'s str],
-    at: usize,
-    rank: usize,
-}
-
-impl<'s> Parser<'_, 's> {
-    fn peek(&self) -> Option<&'s str> {
-        self.tokens.get(self.at).copied()
-    }
-
-    fn sum(&mut self) -> Option<Linear> {
-        let mut acc = self.product()?;
-        while let Some(op @ ("+" | "-")) = self.peek() {
-            self.at += 1;
-            let mut rhs = self.product()?;
-            if op == "-" {
-                rhs = rhs.scale(Coef::K(-1));
-            }
-            acc = acc.add(rhs);
-        }
-        Some(acc)
-    }
-
-    fn product(&mut self) -> Option<Linear> {
-        let mut acc = self.atom()?;
-        while self.peek() == Some("*") {
-            self.at += 1;
-            acc = acc.mul(self.atom()?)?;
-        }
-        Some(acc)
-    }
-
-    fn atom(&mut self) -> Option<Linear> {
-        let t = self.peek()?;
-        self.at += 1;
-        if t == "(" {
-            let e = self.sum()?;
-            (self.peek() == Some(")")).then_some(())?;
-            self.at += 1;
-            return Some(e);
-        }
-        if t == "-" {
-            return Some(self.atom()?.scale(Coef::K(-1)));
-        }
-        if let Some(i) = t.strip_prefix('d').and_then(|i| i.parse::<usize>().ok()) {
-            let mut l = Linear::constant(self.rank, Coef::K(0));
-            *l.dims.get_mut(i)? = Coef::K(1);
-            return Some(l);
-        }
-        if t.strip_prefix('s').is_some_and(|i| i.parse::<usize>().is_ok()) {
-            return Some(Linear::constant(self.rank, Coef::Dyn));
-        }
-        Some(Linear::constant(self.rank, Coef::K(t.parse().ok()?)))
     }
 }

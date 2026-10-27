@@ -13,7 +13,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Error, Item, MlirOpt, Module};
 
-use crate::{Body, PassManager};
+use crate::{Body, Ctx, PassManager};
 
 /// The marker `-split-input-file` splits on by default.
 pub const SPLIT_MARKER: &str = "// -----";
@@ -97,11 +97,11 @@ impl Invocation {
 
     /// ⭐ One chunk: parse, run the pipeline, and print as the flags say. `Ok("")`: the chunk
     /// failed as `-verify-diagnostics` expected it to.
-    pub fn run_chunk(&self, opt: &MlirOpt, chunk: &str) -> Result<String, Error> {
-        let mut body = Body::parse(opt, chunk)?;
+    pub fn run_chunk(&self, ctx: Ctx<'_>, chunk: &str) -> Result<String, Error> {
+        let mut body = Body::parse(ctx, chunk)?;
         let root = body.root;
         match self.pipeline.run_on(&mut body, root, &*self.executor()) {
-            Ok(()) => Ok(self.print(opt, &mut body)),
+            Ok(()) => Ok(self.print(&mut body)),
             Err(_) if self.verify_diagnostics && chunk.contains("expected-error") => Ok(String::new()),
             Err(e) => Err(e),
         }
@@ -117,7 +117,8 @@ impl Invocation {
     }
 
     /// The body as `mlir-opt` prints it under these flags.
-    pub fn print(&self, opt: &MlirOpt, body: &mut Body<'_>) -> String {
+    pub fn print(&self, body: &mut Body<'_>) -> String {
+        let opt = body.ctx.opt;
         if !self.debuginfo {
             body.set_locs(body.root, None);
         }
@@ -142,8 +143,28 @@ impl Invocation {
     }
 
     /// The whole input, chunk by chunk, joined as `mlir-opt` joins them.
-    pub fn run(&self, opt: &MlirOpt, src: &str) -> Result<String, Error> {
-        let outs = self.chunks(src).into_iter().map(|c| self.run_chunk(opt, c)).collect::<Result<Vec<_>, _>>()?;
+    pub fn run(&self, ctx: Ctx<'_>, src: &str) -> Result<String, Error> {
+        let outs = self.chunks(src).into_iter().map(|c| self.run_chunk(ctx, c)).collect::<Result<Vec<_>, _>>()?;
         Ok(outs.join(&format!("{SPLIT_MARKER}\n")))
+    }
+}
+
+impl crate::Interfaces<'_> {
+    /// The op interfaces of every dialect this crate describes.
+    pub fn upstream() -> Self {
+        use crate::*;
+        let mut i = Self::new();
+        i.register(&AffineDialect).register(&ArithDialect).register(&BufferizationDialect).register(&CfDialect).register(&FuncDialect).register(&LinalgDialect).register(&LlvmDialect).register(&MemrefDialect);
+        i.register(&ScfDialect).register(&ShapeDialect).register(&SpirvDialect).register(&TensorDialect).register(&TestDialect).register(&TosaDialect).register(&UbDialect).register(&VectorDialect);
+        i
+    }
+}
+
+impl crate::Passes {
+    /// Every pass this crate implements.
+    pub fn upstream() -> Self {
+        let mut p = Self::new();
+        p.with::<crate::ConversionPasses>().with::<crate::TransformPasses>().with::<crate::LowerPasses>().with::<crate::LlvmPasses>().with::<crate::EmitcPasses>();
+        p
     }
 }

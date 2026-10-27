@@ -5,7 +5,7 @@
 
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Extended, Type};
+use mlirformat::{Attribute, Type};
 
 use crate::{Body, OpData, OpId, Trait, ValueId};
 
@@ -55,28 +55,20 @@ impl<'a> Body<'a> {
         if !self.has(op, Trait::ConstantLike) {
             return None;
         }
-        let d = &self[op];
-        let ext = |name: &str| Attribute::Extended { ext: Extended { name: alloc::string::String::from(name).into(), body: None, params: Vec::new() }, ty: None };
-        match &*d.name {
-            "ub.poison" => Some(d.get("value").cloned().unwrap_or_else(|| ext("ub.poison"))),
-            // `ZeroOp::fold`: a builtin zero where the type has one.
-            "llvm.mlir.zero" => Some(match &self[d.results[0]].ty {
-                t @ (Type::Integer { .. } | Type::Index) => Attribute::Int { lit: "0".into(), ty: Some(t.clone()) },
-                t @ Type::Float(_) => Attribute::Float { lit: "0.000000e+00".into(), ty: Some(t.clone()) },
-                _ => ext("llvm.zero"),
-            }),
-            "llvm.mlir.undef" => Some(ext("llvm.undef")),
-            "llvm.mlir.poison" => Some(ext("llvm.poison")),
-            "shape.const_shape" => d.get("shape").cloned(),
-            "shape.const_witness" => d.get("passing").cloned(),
-            "tosa.const" | "tosa.const_shape" => d.get("values").cloned(),
-            _ => d.get("value").cloned(),
+        match self.interfaces(op) {
+            Some(i) => i.constant_value(self, op),
+            None => self[op].get("value").cloned(),
         }
     }
 
     /// The constant behind `v`, if its defining op is one.
     pub fn constant_of(&self, v: ValueId) -> Option<Attribute<'a>> {
         self.def_op(v).and_then(|o| self.constant_value(o))
+    }
+
+    /// The integer constant behind `v` (a scalar, not a splat).
+    pub fn int_constant(&self, v: ValueId) -> Option<i128> {
+        crate::Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int().map(|i| i.signed())
     }
 
     /// Each operand's constant value, as fold hooks receive them.
@@ -113,7 +105,7 @@ impl<'a> Body<'a> {
 
     /// The traits' folds, in trait order: the first that succeeds wins.
     fn fold_traits(&mut self, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold<'a> {
-        let traits = self.ctx.0.op_info(&self[op].name).map_or(&[][..], |i| i.traits);
+        let traits = self.ctx.opt.op_info(&self[op].name).map_or(&[][..], |i| i.traits);
         for t in traits {
             let f = match t {
                 Trait::IsCommutative => self.fold_commutative(op, consts),

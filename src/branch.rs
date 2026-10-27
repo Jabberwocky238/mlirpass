@@ -6,30 +6,11 @@ use alloc::vec::Vec;
 
 use mlirformat::Attribute;
 
-use crate::{Body, OpId};
-
-/// How a branch op lays out its successor operands.
-enum Layout {
-    /// All operands go to successor 0.
-    All,
-    /// Operand group `first + i` (by `operandSegmentSizes`) goes to successor `i`.
-    Groups { first: usize },
-    /// Group `default` goes to successor 0; group `cases`, split by the dense array property
-    /// `split`, to successors 1, 2, …
-    Cases { default: Option<usize>, cases: usize, split: &'static str },
-}
+use crate::{Body, BranchLayout as Layout, OpId};
 
 impl Body<'_> {
     fn layout(&self, op: OpId) -> Option<Layout> {
-        Some(match &*self[op].name {
-            "cf.br" | "llvm.br" | "spirv.Branch" | "test.br" => Layout::All,
-            "cf.cond_br" | "llvm.cond_br" | "spirv.BranchConditional" => Layout::Groups { first: 1 },
-            "llvm.invoke" => Layout::Groups { first: 1 },
-            "cf.switch" | "llvm.switch" => Layout::Cases { default: Some(1), cases: 2, split: "case_operand_segments" },
-            "spirv.Switch" => Layout::Cases { default: Some(1), cases: 2, split: "target_operand_segments" },
-            "llvm.indirectbr" => Layout::Cases { default: None, cases: 1, split: "indbr_operand_segments" },
-            _ => return None,
-        })
+        self.interfaces(op)?.branch_layout(self, op)
     }
 
     /// The sizes in dense array `name` of `op` (`operandSegmentSizes` and the like).
@@ -79,6 +60,21 @@ impl Body<'_> {
     /// Whether `op` implements `BranchOpInterface` (as far as this crate knows).
     pub fn is_branch(&self, op: OpId) -> bool {
         self.layout(op).is_some()
+    }
+
+    /// `SuccessorOperands` of successor `i`: the produced arguments, then the range of the
+    /// forwarded operands.
+    pub fn successor_layout(&self, op: OpId, i: usize) -> Option<(usize, core::ops::Range<usize>)> {
+        match self.interfaces(op).and_then(|f| f.produced_successor_operands(self, op, i)) {
+            Some(l) => Some(l),
+            None => self.successor_operands(op, i).map(|r| (0, r)),
+        }
+    }
+
+    /// Whether `op` forwards operands to its successors: a branch, or a terminator whose
+    /// successor operands also produce arguments.
+    pub fn forwards_to_successors(&self, op: OpId) -> bool {
+        self.is_branch(op) || self.interfaces(op).is_some_and(|f| f.produced_successor_operands(self, op, 0).is_some())
     }
 
     /// Appends `values` to the operands forwarded to successor `i`.

@@ -4,23 +4,33 @@
 mod arith_to_llvm;
 mod canon;
 mod cf_to_llvm;
+mod complex_to_llvm;
 mod data_layout;
+mod dialect;
 mod func_to_llvm;
 mod index_to_llvm;
+mod interfaces;
 mod math_to_llvm;
 mod memslot;
 mod memref_desc;
 mod memref_to_llvm;
+mod pattern;
+mod request_c_wrappers;
 mod vector_to_llvm;
 
 pub use arith_to_llvm::ArithToLlvm;
 pub use canon::{fold as llvm_fold, materialize as llvm_materialize};
 pub use cf_to_llvm::{AssertLowering, CfToLlvm};
+pub use complex_to_llvm::ComplexToLlvm;
 pub use data_layout::DataLayout;
+pub use dialect::LlvmDialect;
 pub use func_to_llvm::FuncToLlvm;
 pub use index_to_llvm::{IndexToLlvm, UbToLlvm};
+pub use interfaces::{LlvmEnv, ToLlvmInterfaces};
 pub use math_to_llvm::MathToLlvm;
 pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
+pub use pattern::unescape;
+pub use request_c_wrappers::RequestCWrappers;
 pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
 
 use alloc::borrow::Cow;
@@ -33,7 +43,7 @@ use crate::pass;
 use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, Dim, Error, FloatKind, NamedAttr, Shaped, ShapedKind, Signedness, Type};
 
-use crate::{Action, Body, ComplexRange, ComplexToLlvm, DialectInterfaces, LlvmEnv, transfer_read_to_load, transfer_write_to_store, ConversionConfig, ConversionPatterns, ConversionRewriter, ConversionTarget, Converter, Lowering, Mode, OpData, OpId, Run, ToLlvmInterfaces, TypeConverter, ValueId};
+use crate::{Action, Body, ComplexRange, ConversionConfig, ConversionPatterns, ConversionRewriter, ConversionTarget, Converter, DialectInterfaces, Lowering, MemrefLayout, Mode, OpData, OpId, Run, TypeConverter, ValueId, transfer_read_to_load, transfer_write_to_store};
 
 /// `LowerToLLVMOptions`.
 #[derive(Debug, Clone, Copy)]
@@ -101,7 +111,7 @@ impl LlvmOptions {
 
     /// `isStrided`: an identity, `strided<...>` or linear `affine_map` layout.
     pub fn strided(&self, s: &Shaped<'_>) -> bool {
-        s.extras.iter().all(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "affine_map")) || self.strides_and_offset(s).is_some()
+        s.extras.iter().all(|a| !matches!(a, Attribute::Builtin { name, .. } if name == "affine_map")) || s.strides_and_offset().is_some()
     }
 
     /// `getMemRefDescriptorFields`.
@@ -751,3 +761,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     }
 }
 
+crate::pass_set! {
+    /// Every lowering to `llvm`.
+    LlvmPasses: ConvertArithToLlvm, ConvertCfToLlvm, ConvertComplexToLlvm, ConvertFuncToLlvm, ConvertIndexToLlvm, ConvertMathToLlvm, ConvertToLlvm, ConvertUbToLlvm, ConvertVectorToLlvm, FinalizeMemrefToLlvm, RequestCWrappers, SetLlvmModuleDataLayout
+}

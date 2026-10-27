@@ -227,9 +227,19 @@ pub struct ValueData<'a> {
     pub loc: Option<Str<'a>>,
 }
 
-/// The context a [`Body`] lives in: what it knows of ops (`MLIRContext`).
+/// The context a [`Body`] lives in (`MLIRContext`): what ODS says of ops, and the dialects'
+/// [`OpInterfaces`](crate::OpInterfaces).
 #[derive(Clone, Copy)]
-pub struct Ctx<'a>(pub &'a MlirOpt);
+pub struct Ctx<'a> {
+    pub opt: &'a MlirOpt,
+    pub interfaces: &'a crate::Interfaces<'a>,
+}
+
+impl<'a> Ctx<'a> {
+    pub fn new(opt: &'a MlirOpt, interfaces: &'a crate::Interfaces<'a>) -> Self {
+        Self { opt, interfaces }
+    }
+}
 
 impl core::fmt::Debug for Ctx<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -262,6 +272,11 @@ pub struct Body<'a> {
 }
 
 impl Body<'_> {
+    /// The single block of a symbol table op like `builtin.module`.
+    pub fn top_block(&self, op: OpId) -> BlockId {
+        self[self[op].regions[0]].blocks[0]
+    }
+
     /// ⭐ Opens a checkpoint: until it is closed, [`Self::rollback`] can bring the IR back to
     /// this point (what `*body = snapshot` did, at the cost of what changed since).
     pub fn checkpoint(&mut self) -> Checkpoint {
@@ -430,8 +445,8 @@ impl<'a> OpData<'a> {
 
 impl<'a> Body<'a> {
     /// An empty `builtin.module` with one empty block.
-    pub fn new(ctx: &'a MlirOpt) -> Self {
-        let mut body = Self { ctx: Ctx(ctx), ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), journal: Journal::default(), items: Vec::new() };
+    pub fn new(ctx: Ctx<'a>) -> Self {
+        let mut body = Self { ctx, ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), journal: Journal::default(), items: Vec::new() };
         body.root = body.create(OpData::named("builtin.module"), &[]);
         let region = body.add_region(body.root);
         body.add_block(region, &[]);
@@ -443,7 +458,7 @@ impl<'a> Body<'a> {
     /// Adds a detached op with results of `types`; its operands' uses are recorded.
     pub fn create(&mut self, mut data: OpData<'a>, types: &[Type<'a>]) -> OpId {
         if data.defaults {
-            for a in self.ctx.0.defaults(&data.name) {
+            for a in self.ctx.opt.defaults(&data.name) {
                 if data.get(&a.name).is_none() {
                     data.set(&a.name, a.value.unwrap_or(Attribute::Unit));
                 }
@@ -470,14 +485,14 @@ impl<'a> Body<'a> {
     /// Whether attribute `name` of an op `op_name` is inherent (declared by its ODS, so in the
     /// `<{...}>` properties); `None` when the context does not know the op.
     pub fn inherent(&self, op_name: &str, name: &str) -> Option<bool> {
-        let info = self.ctx.0.op_info(op_name)?;
+        let info = self.ctx.opt.op_info(op_name)?;
         Some(info.inherent.contains(&name) || matches!(name, "operandSegmentSizes" | "resultSegmentSizes"))
     }
 
     /// Puts each attribute of `data` among its properties or its discardable attributes, as
     /// the context says; an op the context does not know keeps what it has.
     pub fn place(&self, data: &mut OpData<'a>) {
-        if self.ctx.0.op_info(&data.name).is_none() {
+        if self.ctx.opt.op_info(&data.name).is_none() {
             return;
         }
         let mut all: Vec<NamedAttr<'a>> = match data.properties.take() {

@@ -64,9 +64,9 @@ impl Populate {
             self.roots.push(root.clone());
         }
         let make = if opts {
-            quote!(crate::lower::OptLowering { root: #root, opts, f: Self::#f })
+            quote!(crate::OptLowering { root: #root, opts, f: Self::#f })
         } else {
-            quote!(crate::lower::Lowering { root: #root, benefit: #benefit, f: Self::#f })
+            quote!(crate::Lowering { root: #root, benefit: #benefit, f: Self::#f })
         };
         let add = if typed { quote!(patterns.add_with(tc, l)) } else { quote!(patterns.add(l)) };
         self.adds.push(quote! {

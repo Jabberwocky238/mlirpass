@@ -58,7 +58,7 @@ impl<'a> Body<'a> {
     /// attributes of `op`'s ancestors (the nearest wins: what `DataLayout::closest` reads); the
     /// body and the op there.
     pub fn split_off(&self, op: OpId) -> (Self, OpId) {
-        let mut sub = Body::new(self.ctx.0);
+        let mut sub = Body::new(self.ctx);
         let mut ancestors = Vec::new();
         let mut at = self.parent_op(op);
         while let Some(a) = at {

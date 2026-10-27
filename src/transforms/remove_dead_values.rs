@@ -143,7 +143,7 @@ impl<'a> Rdv<'_, '_, 'a> {
         let operands: Vec<_> = self.body()[op].operands.iter().map(|v| Some(*v)).collect();
         let mut dead_unforwarded: Vec<bool> = self.lives(&operands).iter().map(|l| !l).collect();
         let n = self.body()[op].successors.len();
-        let layouts: Vec<_> = (0..n).map(|k| self.s.successor_layout(op, k).unwrap_or((0, 0..0))).collect();
+        let layouts: Vec<_> = (0..n).map(|k| self.body().successor_layout(op, k).unwrap_or((0, 0..0))).collect();
         for (_, r) in &layouts {
             for i in r.clone() {
                 dead_unforwarded[i] = false;
@@ -178,7 +178,7 @@ impl<'a> Rdv<'_, '_, 'a> {
             self.func(op, top);
         } else if b.is_region_branch(op) {
             self.region_branch(op);
-        } else if b.is_branch(op) || b[op].name == "test.internal_br" {
+        } else if b.forwards_to_successors(op) {
             self.branch(op);
         } else if b.might_have(op, Trait::IsTerminator) || b.has(op, Trait::CallOpInterface) {
         } else {
@@ -300,10 +300,7 @@ impl Cleanup {
             }
         }
         for (op, k, dead) in &self.successors {
-            let (produced, len) = match body[*op].name.as_ref() {
-                "test.internal_br" => (*k, body.segments(*op, "operandSegmentSizes").and_then(|s| s.get(*k).copied()).unwrap_or(0)),
-                _ => (0, body.successor_operands(*op, *k).map_or(0, |r| r.len())),
-            };
+            let (produced, len) = body.successor_layout(*op, *k).map_or((0, 0), |(p, r)| (p, r.len()));
             if produced + len != dead.len() {
                 continue;
             }

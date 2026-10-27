@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, ShapedKind, StridedLayout, Type};
 
-use crate::{Body, Const, Def, Fold, Folded, LlvmOptions, OpData, OpId, ValueId};
+use crate::{Body, Const, Def, Fold, Folded, MemrefLayout, OpData, OpId, ValueId};
 
 /// `MemRefDialect::materializeConstant`.
 pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
@@ -242,7 +242,7 @@ fn fold_reinterpret_cast<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
 fn fold_subview<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let (src, res) = (b[op].operands[0], b[op].results[0]);
     let static_layout = |t: &Type<'_>| match t {
-        Type::Shaped(s) => LlvmOptions::default().strides_and_offset(s).is_some_and(|(st, o)| !st.contains(&Dim::DYNAMIC) && o != Dim::DYNAMIC) || !s.extras.iter().any(|a| matches!(a, Attribute::Builtin { name, .. } if name == "strided")),
+        Type::Shaped(s) => s.strides_and_offset().is_some_and(|(st, o)| !st.contains(&Dim::DYNAMIC) && o != Dim::DYNAMIC) || !s.extras.iter().any(|a| matches!(a, Attribute::Builtin { name, .. } if name == "strided")),
         _ => false,
     };
     let static_shape = b.dims_of(res).is_some_and(|d| !d.contains(&Dim::DYNAMIC));
@@ -266,7 +266,7 @@ fn fold_subview<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
 fn fold_extract_strided_metadata<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let src = b[op].operands[0];
     let Type::Shaped(s) = b[src].ty.clone() else { return Fold::Failed };
-    let Some((strides, offset)) = LlvmOptions::default().strides_and_offset(&s) else { return Fold::Failed };
+    let Some((strides, offset)) = s.strides_and_offset() else { return Fold::Failed };
     let dims = b.dims_of(src).unwrap_or_default();
     let rank = dims.len();
     let results = b[op].results.clone();
@@ -577,7 +577,7 @@ rewrites! {
             return false;
         }
         let Type::Shaped(st) = &b[from].ty else { return false };
-        if !crate::MemrefToLlvm::identity_layout(st) {
+        if !st.identity_layout() {
             return false;
         }
         let r = b.reassociation(op);
@@ -615,7 +615,7 @@ rewrites! {
             return false;
         }
         let Type::Shaped(st) = &b[from].ty else { return false };
-        if !crate::MemrefToLlvm::identity_layout(st) {
+        if !st.identity_layout() {
             return false;
         }
         let mut shape = b.mixed_output_shape(op);
@@ -666,7 +666,7 @@ impl Ofr {
     fn statics(t: &Type<'_>) -> Option<(Vec<i64>, Vec<i64>, i64)> {
         let Type::Shaped(s) = t else { return None };
         let sizes = s.shape.as_ref()?.iter().map(|d| if let Dim::Static(n) = d { *n } else { Dim::DYNAMIC }).collect();
-        let (strides, offset) = LlvmOptions::default().strides_and_offset(s)?;
+        let (strides, offset) = s.strides_and_offset()?;
         Some((sizes, strides, offset))
     }
 }
@@ -759,7 +759,7 @@ impl Ofr {
     /// `SubViewOp::inferResultType` of memref `src`, then the `dropped` dims taken out
     /// (`SubViewReturnTypeCanonicalizer`): a `strided` layout from the source's.
     fn subview_type<'a>(src: &mlirformat::Shaped<'a>, offsets: &[Ofr], sizes: &[Ofr], strides: &[Ofr], dropped: &[bool]) -> Option<Type<'a>> {
-        let (src_strides, src_offset) = LlvmOptions::default().strides_and_offset(src)?;
+        let (src_strides, src_offset) = src.strides_and_offset()?;
         let c = |o: &Ofr| if let Ofr::C(c) = o { *c } else { Dim::DYNAMIC };
         // `hasValidSizesOffsets`, `hasValidStrides`.
         if offsets.iter().chain(sizes).any(|o| matches!(o, Ofr::C(n) if *n < 0)) || strides.iter().any(|o| matches!(o, Ofr::C(0))) {

@@ -7,7 +7,7 @@ use alloc::vec;
 use mlirformat::{Attribute, Shaped, ShapedKind, Signedness, Type};
 use mlirformat::emitc_types::EmitcType;
 
-use crate::{ConversionRewriter, OpData, OpId, Rewriter, TypeConverter, ValueId};
+use crate::{ConversionRewriter, MemrefLayout, OpData, OpId, Rewriter, TypeConverter, ValueId};
 
 /// The EmitC conversions and the type helpers they need.
 pub struct Emitc;
@@ -16,7 +16,7 @@ impl Emitc {
     /// `isMemRefTypeLegalForEmitC`: static, identity layout, ranked and not empty.
     pub fn memref_legal(s: &Shaped<'_>) -> bool {
         let dims = s.dims().unwrap_or_default();
-        s.kind == ShapedKind::MemRef && s.shape.is_some() && !dims.is_empty() && dims.iter().all(|d| *d > 0) && super::MemrefToLlvm::identity_layout(s)
+        s.kind == ShapedKind::MemRef && s.shape.is_some() && !dims.is_empty() && dims.iter().all(|d| *d > 0) && s.identity_layout()
     }
 
     /// `populateMemRefToEmitCTypeConversion`: legal memrefs are arrays; `size_t` says whether

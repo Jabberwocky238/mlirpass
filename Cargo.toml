@@ -1,6 +1,6 @@
 [package]
 name = "mlirpass"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 description = "MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion and the upstream lowerings, on top of mlirformat"
 license = "MIT"
@@ -15,7 +15,7 @@ exclude = ["tests", ".github"]
 members = ["macros"]
 
 [dependencies]
-mlirpass-macros = { path = "macros", version = "0.1.0" }
+mlirpass-macros = { path = "macros", version = "0.2.0" }
 mlirformat = { version = "0.4.0", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }

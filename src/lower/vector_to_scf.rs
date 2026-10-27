@@ -9,7 +9,7 @@ use mlirformat::{Attribute, Dim, Error, ShapedKind, Shaped, Type};
 
 use super::vector_transforms::{Build, VectorBuild, elem, vshape};
 use crate::canon::MemrefOfr as Ofr;
-use crate::{AffineExpr, AffineMap, Body, GreedyConfig, LlvmOptions, OpData, OpId, Run, Pattern, PatternSet, Rewriter, Trait, ValueId};
+use crate::{AffineExpr, AffineMap, Body, GreedyConfig, MemrefLayout, OpData, OpId, Pattern, PatternSet, Rewriter, Run, Trait, ValueId};
 
 /// The label of transfers being lowered (`kPassLabel`).
 const LABEL: &str = "__vector_to_scf_lowering__";
@@ -1036,7 +1036,7 @@ fn transfer_1d(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
     if mt.kind != ShapedKind::MemRef {
         return false;
     }
-    let unit = LlvmOptions::default().strides_and_offset(mt).is_some_and(|(s, _)| s.last().is_none_or(|l| *l == 1));
+    let unit = mt.strides_and_offset().is_some_and(|(s, _)| s.last().is_none_or(|l| *l == 1));
     if minor_identity(&x.map) && unit {
         return false;
     }

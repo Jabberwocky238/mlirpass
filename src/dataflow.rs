@@ -142,8 +142,8 @@ impl<'b, 'a> Solver<'b, 'a> {
     /// `CallOpInterface::resolveCallable`.
     fn resolve(&self, call: OpId) -> Option<OpId> {
         let b = &*self.body;
-        if b[call].name == "func.call_indirect" {
-            return b.def_op(b[call].operands[0]);
+        if let Some(callee) = b.interfaces(call).and_then(|i| i.indirect_callee(b, call)) {
+            return b.def_op(callee);
         }
         let Some(Attribute::SymbolRef(path)) = b[call].get("callee") else { return None };
         let mut t = b.parent_op(call);
@@ -185,13 +185,6 @@ impl<'b, 'a> Solver<'b, 'a> {
             .collect()
     }
 
-    fn int_of(a: &Option<Attribute<'_>>) -> Option<i128> {
-        match a.as_ref()? {
-            Attribute::Bool(b) => Some(i128::from(*b)),
-            a => Const::try_from(a).ok()?.at(0).int().map(|i| i.signed()),
-        }
-    }
-
     fn is_region_branch(&self, op: OpId) -> bool {
         self.body.is_region_branch(op)
     }
@@ -200,32 +193,18 @@ impl<'b, 'a> Solver<'b, 'a> {
     fn entry_successors(&self, op: OpId, c: &[Option<Attribute<'a>>]) -> Vec<(Succ, Vec<ValueId>)> {
         let b = &*self.body;
         let all = b.region_successors(op, Point::Parent);
-        match &*b[op].name {
-            "scf.if" => match Self::int_of(&c[0]) {
-                Some(1) => vec![all[0].clone()],
-                Some(_) => vec![all[1].clone()],
-                None => all,
-            },
-            "scf.index_switch" => {
-                let Some(v) = Self::int_of(&c[0]) else { return all };
-                let cases = b.segments(op, "cases").unwrap_or_default();
-                let i = cases.iter().position(|x| *x as i128 == v).map_or(0, |i| i + 1);
-                vec![(Succ::Region(i), Vec::new())]
-            }
-            _ => all,
+        match b.interfaces(op) {
+            Some(i) => i.entry_successors(b, op, c, all),
+            None => all,
         }
     }
 
     /// A region terminator's `getSuccessorRegions(operands)`.
     fn terminator_successors(&self, op: OpId, t: OpId, c: &[Option<Attribute<'a>>]) -> Vec<(Succ, Vec<ValueId>)> {
-        let all = self.body.region_successors(op, Point::Terminator(t));
-        if self.body[t].name != "scf.condition" {
-            return all;
-        }
-        // `[after, parent]`.
-        match Self::int_of(&c[0]) {
-            Some(1) => all.into_iter().filter(|s| s.0 != Succ::Parent).collect(),
-            Some(_) => all.into_iter().filter(|s| s.0 == Succ::Parent).collect(),
+        let b = &*self.body;
+        let all = b.region_successors(op, Point::Terminator(t));
+        match b.interfaces(t) {
+            Some(i) => i.terminator_successors(b, t, c, all),
             None => all,
         }
     }
@@ -247,18 +226,7 @@ impl<'b, 'a> Solver<'b, 'a> {
     /// `BranchOpInterface::getSuccessorForOperands`.
     fn successor_for(&self, op: OpId, c: &[Option<Attribute<'a>>]) -> Option<BlockId> {
         let b = &*self.body;
-        let succ = &b[op].successors;
-        match &*b[op].name {
-            "cf.br" | "llvm.br" => Some(succ[0]),
-            "cf.cond_br" | "llvm.cond_br" => Self::int_of(&c[0]).map(|v| if v & 1 == 1 { succ[0] } else { succ[1] }),
-            "cf.switch" => {
-                let Some(cases) = b[op].get("case_values").and_then(|a| Const::try_from(a).ok()) else { return Some(succ[0]) };
-                let v = Self::int_of(&c[0])?;
-                let n = cases.ty.element_count().unwrap_or(0);
-                Some((0..n).find(|i| cases.at(*i).int().is_some_and(|x| x.signed() == v)).map_or(succ[0], |i| succ[i + 1]))
-            }
-            _ => None,
-        }
+        b.interfaces(op)?.successor_for(b, op, c)
     }
 
     fn is_region_or_callable_return(&self, op: OpId) -> bool {
@@ -319,7 +287,7 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
         if !self.body[op].successors.is_empty() {
             let from = self.body[op].parent.expect("placed");
-            let targets = if self.body.is_branch(op) || self.body[op].name == "test.internal_br" {
+            let targets = if self.body.forwards_to_successors(op) {
                 let Some(c) = self.operand_values(op) else { return };
                 match self.successor_for(op, &c) {
                     Some(s) => vec![s],
@@ -422,19 +390,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// `SuccessorOperands` of successor `i`: the produced arguments, then the range of the
-    /// forwarded operands.
-    pub fn successor_layout(&self, t: OpId, i: usize) -> Option<(usize, core::ops::Range<usize>)> {
-        match &*self.body[t].name {
-            "test.internal_br" => {
-                let seg = self.body.segments(t, "operandSegmentSizes").unwrap_or_default();
-                let start: usize = seg.iter().take(i).sum();
-                Some((i, start..start + seg.get(i).copied().unwrap_or(0)))
-            }
-            _ => self.body.successor_operands(t, i).map(|r| (0, r)),
-        }
-    }
-
     /// `AbstractSparseForwardDataFlowAnalysis::visitBlock`.
     fn sparse_block(&mut self, block: BlockId) {
         let args = self.body[block].args.clone();
@@ -467,7 +422,7 @@ impl<'b, 'a> Solver<'b, 'a> {
             if !self.edges.contains(&(from, block)) {
                 continue;
             }
-            let Some((produced, range)) = self.successor_layout(t, i) else { return self.unknown(&args) };
+            let Some((produced, range)) = self.body.successor_layout(t, i) else { return self.unknown(&args) };
             let ops: Vec<ValueId> = self.body[t].operands[range].to_vec();
             for (k, a) in args.iter().enumerate() {
                 match k.checked_sub(produced).and_then(|k| ops.get(k)) {
@@ -569,17 +524,17 @@ impl<'b, 'a> Solver<'b, 'a> {
 
 
 impl Body<'_> {
+    /// The integer (or bool) a constant operand holds, as successor selection reads it.
+    pub fn selector_of(a: &Option<Attribute<'_>>) -> Option<i128> {
+        match a.as_ref()? {
+            Attribute::Bool(b) => Some(i128::from(*b)),
+            a => Const::try_from(a).ok()?.at(0).int().map(|i| i.signed()),
+        }
+    }
+
     /// `CallOpInterface::getArgOperands` as a range of the operands.
     pub fn call_arg_range(&self, call: OpId) -> core::ops::Range<usize> {
-        let n = self[call].operands.len();
-        match &*self[call].name {
-            "func.call_indirect" => 1..n,
-            "test.call_with_segments" => {
-                let seg = self.segments(call, "operandSegmentSizes").unwrap_or_default();
-                seg[0]..seg[0] + seg[1]
-            }
-            _ => 0..n,
-        }
+        self.interfaces(call).and_then(|i| i.call_args(self, call)).unwrap_or(0..self[call].operands.len())
     }
 }
 
@@ -649,10 +604,10 @@ impl Solver<'_, '_> {
             }
             return;
         }
-        if self.body.is_branch(op) || self.body[op].name == "test.internal_br" {
+        if self.body.forwards_to_successors(op) {
             let mut accounted = vec![false; operands.len()];
             for (k, blk) in self.body[op].successors.clone().into_iter().enumerate() {
-                let (produced, range) = self.successor_layout(op, k).unwrap_or((0, 0..0));
+                let (produced, range) = self.body.successor_layout(op, k).unwrap_or((0, 0..0));
                 for (j, i) in range.enumerate() {
                     accounted[i] = true;
                     if let Some(a) = self.body[blk].args.get(produced + j).copied() {

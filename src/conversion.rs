@@ -16,6 +16,9 @@
 //! undo logs ([`crate::Checkpoint`], [`StateMark`]) restore what was there, at the cost of what
 //! changed — not a copy of the whole body per attempt.
 
+mod interfaces;
+mod lowering;
+
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
@@ -26,6 +29,10 @@ use alloc::vec::Vec;
 use mlirformat::{Error, Str, Type};
 
 use crate::{Body, BlockId, InsertPoint, Listener, OpData, OpId, RegionId, Rewriter, TypedOp, ValueId};
+
+pub use interfaces::DialectInterfaces;
+pub(crate) use lowering::FromOp;
+pub use lowering::{ConversionPasses, LowerFn, Lowering, OptLowering, ReconcileUnrealizedCasts, Replacement};
 
 /// The marker a pure type conversion's cast carries until the end.
 const PURE: &str = "__pure_type_conversion__";

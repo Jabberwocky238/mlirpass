@@ -1,6 +1,6 @@
 //! The passes a pipeline can name, with the op each is anchored on (`Passes.td`'s
 //! `Pass<"name", "op">`). Nothing is global: a [`PassRegistry`] is handed to whoever parses a
-//! pipeline; [`Passes`] is the default one, [`Passes::upstream`] every pass this crate has.
+//! pipeline; [`Passes`] is the default one, filled from [`PassSet`]s.
 
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
@@ -8,9 +8,6 @@ use alloc::collections::BTreeMap;
 use mlirformat::Error;
 
 use super::{Options, Pass, PassDecl};
-use crate::llvm::*;
-use crate::lower::*;
-use crate::transforms::*;
 
 /// A registered pass.
 pub struct PassInfo {
@@ -50,58 +47,31 @@ impl Passes {
         self
     }
 
-    /// Every pass this crate implements.
-    pub fn upstream() -> Self {
-        let mut p = Self::new();
-        p.register::<ConvertArithToLlvm>();
-        p.register::<Mem2Reg>();
-        p.register::<Sroa>();
-        p.register::<ConvertCfToLlvm>();
-        p.register::<FinalizeMemrefToLlvm>();
-        p.register::<ConvertVectorToLlvm>();
-        p.register::<ConvertVectorToScf>();
-        p.register::<ConvertFuncToLlvm>();
-        p.register::<ConvertIndexToLlvm>();
-        p.register::<ConvertMathToLlvm>();
-        p.register::<ConvertUbToLlvm>();
-        p.register::<ConvertToLlvm>();
-        p.register::<TosaToTensorPass>();
-        p.register::<TosaToArithPass>();
-        p.register::<TosaToLinalgNamedPass>();
-        p.register::<TosaToLinalgPass>();
-        p.register::<ConvertComplexToStandard>();
-        p.register::<ConvertShapeToStd>();
-        p.register::<ConvertScfToCf>();
-        p.register::<ConvertComplexToLlvm>();
-        p.register::<ConvertArithToEmitc>();
-        p.register::<ConvertToEmitc>();
-        p.register::<ConvertMemrefToEmitc>();
-        p.register::<ConvertScfToEmitc>();
-        p.register::<ConvertMathToEmitc>();
-        p.register::<ConvertBufferizationToMemref>();
-        p.register::<TosaToScfPass>();
-        p.register::<ConvertTensorToLinalg>();
-        p.register::<ConvertMathToLibm>();
-        p.register::<ConvertComplexToLibm>();
-        p.register::<ConvertFuncToEmitc>();
-        p.register::<ReconcileUnrealizedCasts>();
-        p.register::<SetLlvmModuleDataLayout>();
-        p.register::<Canonicalize>();
-        p.register::<Cse>();
-        p.register::<ExpandStridedMetadata>();
-        p.register::<LowerAffine>();
-        p.register::<LoopInvariantCodeMotion>();
-        p.register::<PromoteBuffersToStack>();
-        p.register::<RequestCWrappers>();
-        p.register::<StripDebugInfo>();
-        p.register::<SymbolDce>();
-        p.register::<Sccp>();
-        p.register::<BufferResultsToOutParams>();
-        p.register::<ConvertMathToFuncs>();
-        p.register::<RemoveDeadValues>();
-        p.register::<SymbolPrivatize>();
-        p
+    /// Registers every pass of set `S`.
+    pub fn with<S: PassSet>(&mut self) -> &mut Self {
+        S::register(self);
+        self
     }
+}
+
+/// ⭐ Passes registered together: a module's, a target's.
+pub trait PassSet {
+    fn register(passes: &mut Passes);
+}
+
+/// `pass_set!(Name: PassA, PassB, ...)`: the unit struct `Name`, a [`PassSet`] of those passes.
+#[macro_export]
+macro_rules! pass_set {
+    ($(#[$m:meta])* $name:ident: $($p:ty),* $(,)?) => {
+        $(#[$m])*
+        pub struct $name;
+
+        impl $crate::PassSet for $name {
+            fn register(passes: &mut $crate::Passes) {
+                $(passes.register::<$p>();)*
+            }
+        }
+    };
 }
 
 impl PassRegistry for Passes {

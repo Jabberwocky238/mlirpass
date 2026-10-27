@@ -76,7 +76,7 @@ impl LoweringArgs {
                     n += 1;
                 } else {
                     let ty = &t.ty;
-                    fetch.push(quote!(let #v = <#ty as crate::lower::FromOp>::from_op(cr, op);));
+                    fetch.push(quote!(let #v = <#ty as crate::FromOp>::from_op(cr, op);));
                 }
                 args_v.push(v);
             }
@@ -89,7 +89,7 @@ impl LoweringArgs {
                             let mut __b = #builder(cr, op);
                             Self::#name(&mut __b, #(#args_v),*)
                         };
-                        Some(crate::lower::Replacement::replace(__r, cr, op))
+                        Some(crate::Replacement::replace(__r, cr, op))
                     };
                     run(cr).unwrap_or(false)
                 }

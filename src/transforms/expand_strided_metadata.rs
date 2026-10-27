@@ -9,7 +9,7 @@ use crate::pass;
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type, arith};
 
 use crate::canon::MemrefOfr as Ofr;
-use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, GreedyConfig, LlvmOptions, OpData, OpId, PatternSet, Rewriter, ValueId};
+use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, GreedyConfig, MemrefLayout, OpData, OpId, PatternSet, Rewriter, ValueId};
 
 #[pass("expand-strided-metadata")]
 pub struct ExpandStridedMetadata;
@@ -203,7 +203,7 @@ impl<'a> Rewriter<'_, 'a> {
         let src = b[sv].operands[0];
         let st = memref(&b[src].ty)?.clone();
         let rank = st.shape.as_ref()?.len();
-        let (src_strides, src_offset) = LlvmOptions::default().strides_and_offset(&st)?;
+        let (src_strides, src_offset) = st.strides_and_offset()?;
         let [sub_offs, sub_sizes, sub_strides] = b.mixed_osz(sv);
         let dropped = b.subview_dropped_dims(sv);
         let ex = self.extract_metadata(src);
@@ -250,7 +250,7 @@ impl<'a> Rewriter<'_, 'a> {
         let rt = memref(&b[b[r].results[0]].ty)?.clone();
         let src_rank = st.shape.as_ref()?.len();
         let res_rank = rt.shape.as_ref()?.len();
-        let (strides, offset) = LlvmOptions::default().strides_and_offset(&st)?;
+        let (strides, offset) = st.strides_and_offset()?;
         let groups = reassociation(b, r);
         let ex = self.extract_metadata(src);
         let er = self.body[ex].results.clone();
@@ -333,7 +333,7 @@ impl<'a> Rewriter<'_, 'a> {
                 let stride = match last {
                     Some(l) => l,
                     None => {
-                        let (cs, _) = LlvmOptions::default().strides_and_offset(&rt)?;
+                        let (cs, _) = rt.strides_and_offset()?;
                         if cs[g] == Dim::DYNAMIC {
                             let d = group.iter().find(|d| strides[**d] == Dim::DYNAMIC)?;
                             orig_strides[*d]
