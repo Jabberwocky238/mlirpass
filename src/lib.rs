@@ -34,6 +34,7 @@ mod region;
 mod rewrite;
 mod symbol;
 mod transforms;
+mod verify;
 
 pub use branch::*;
 pub use canon::{Fold, Folded};

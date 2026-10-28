@@ -263,7 +263,7 @@ impl PassManager {
             match e {
                 Entry::Pass(p) => {
                     p.run(body, op)?;
-                    body.verify_branches(op)?;
+                    body.verify(op)?;
                 }
                 Entry::Adaptor(mgrs) => {
                     let work: Vec<(OpId, &PassManager)> = body
