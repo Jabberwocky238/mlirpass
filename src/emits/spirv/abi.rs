@@ -187,6 +187,48 @@ impl Abi {
         Ok(())
     }
 
+    /// `ProcessGraphInterfaceVarABI`: an entry graph's arguments and results as
+    /// `<name>_arg_<i>` / `<name>_res_<i>` globals, named by a `spirv.ARM.GraphEntryPoint`.
+    fn graph_vars(body: &mut Body<'_>, g: OpId) -> Result<(), Error> {
+        let failed = || Error(String::from("failed to legalize operation 'spirv.ARM.Graph'"));
+        fn abis<'a>(body: &Body<'a>, g: OpId, key: &str) -> Vec<Option<Attribute<'a>>> {
+            match body[g].get(key) {
+                Some(Attribute::Array(ds)) => ds.iter().map(|d| match d {
+                    Attribute::Dict(d) => d.iter().find(|e| e.name == "spirv.interface_var_abi").and_then(|e| e.value.clone()),
+                    _ => None,
+                }).collect(),
+                _ => Vec::new(),
+            }
+        }
+        let Some(Attribute::Type(Type::Function(fty))) = body[g].get("function_type").cloned() else { return Err(failed()) };
+        let (args, results) = (abis(body, g, "arg_attrs"), abis(body, g, "res_attrs"));
+        if args.iter().chain(&results).all(Option::is_none) {
+            return Ok(());
+        }
+        if !matches!(body[g].get("entry_point"), Some(Attribute::Bool(true))) {
+            return Err(failed());
+        }
+        let name = body[g].get("sym_name").and_then(super::lower::symbol_text).ok_or_else(failed)?;
+        let mut vars = Vec::new();
+        for (kind, types, abis) in [("arg", &fty.inputs, &args), ("res", &fty.results, &results)] {
+            for (i, t) in types.iter().enumerate() {
+                let abi = abis.get(i).cloned().flatten().ok_or_else(failed)?;
+                let (set, binding, sc) = Self::interface_var(&abi).ok_or_else(failed)?;
+                let var = format!("{name}_{kind}_{i}");
+                let ty = SpirvType::ptr(t.clone(), sc.as_deref().unwrap_or("UniformConstant"));
+                let data = OpData::build("spirv.GlobalVariable").with("binding", Self::int_attr(binding)).with("descriptor_set", Self::int_attr(set)).with("sym_name", Attribute::str(&var)).with("type", Attribute::Type(ty));
+                let o = body.create(data, &[]);
+                body.insert_before(o, g);
+                vars.push(Attribute::SymbolRef(vec![var.into()]));
+            }
+        }
+        body[g].remove("arg_attrs");
+        body[g].remove("res_attrs");
+        let ep = body.create(OpData::build("spirv.ARM.GraphEntryPoint").with("fn", Attribute::SymbolRef(vec![name.into()])).with("interface", Attribute::Array(vars)), &[]);
+        body.insert_before(ep, g);
+        Ok(())
+    }
+
     /// `lowerEntryPointABIAttr`.
     fn entry_point(body: &mut Body<'_>, module: OpId, f: OpId, env: &TargetEnv) -> Result<(), Error> {
         let Some(attr) = body[f].get("spirv.entry_point_abi").cloned() else { return Ok(()) };
@@ -258,9 +300,14 @@ impl Abi {
 #[crate::pass("spirv-lower-abi-attrs", on = "spirv.module")]
 pub fn spirv_lower_abi_attrs<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
     let env = TargetEnv::find(body, module).ok_or_else(|| Error(String::from("'spirv.module' op missing SPIR-V target env attribute")))?;
-    let funcs: Vec<OpId> = body[body.top_block(module)].ops.iter().copied().filter(|o| body[*o].name == "spirv.func" && body[*o].get("spirv.entry_point_abi").is_some()).collect();
-    for f in &funcs {
-        Abi::interface_vars(body, *f)?;
+    let ops = body[body.top_block(module)].ops.clone();
+    let funcs: Vec<OpId> = ops.iter().copied().filter(|o| body[*o].name == "spirv.func" && body[*o].get("spirv.entry_point_abi").is_some()).collect();
+    for o in ops {
+        match &*body[o].name {
+            "spirv.func" if funcs.contains(&o) => Abi::interface_vars(body, o)?,
+            "spirv.ARM.Graph" => Abi::graph_vars(body, o)?,
+            _ => {}
+        }
     }
     for f in funcs {
         Abi::entry_point(body, module, f, &env)?;

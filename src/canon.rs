@@ -202,6 +202,7 @@ pub fn patterns() -> PatternSet {
     memref::patterns(&mut set);
     scf::patterns(&mut set);
     shape::patterns(&mut set);
+    spirv::patterns(&mut set);
     tensor::patterns(&mut set);
     tosa::patterns(&mut set);
     vector::patterns(&mut set);
