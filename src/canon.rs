@@ -52,6 +52,7 @@ use crate::{Body, MemrefLayout, OpData, OpId, PatternSet, Trait, ValueId};
 
 pub use memref::Ofr as MemrefOfr;
 pub use reshape::Reshape;
+pub(crate) use spirv::gl_patterns as spirv_gl_patterns;
 
 impl<'a> OpData<'a> {
     /// A detached op named `name` as its ODS builder makes it: its default-valued properties

@@ -15,9 +15,11 @@ mod memref_to_spirv;
 mod scf_to_spirv;
 mod serialize;
 mod target;
+mod transforms;
 mod tensor_to_spirv;
 mod types;
 mod ub_to_spirv;
+mod unify_aliased;
 mod vector_to_spirv;
 #[path = "spirv/tables.gen.rs"]
 mod tables;
@@ -27,6 +29,7 @@ use alloc::vec::Vec;
 use mlirformat::Attribute;
 
 pub use abi::{SpirvLowerAbiAttrs, SpirvUpdateVce, VulkanLayout};
+pub use transforms::{DecorateSpirvCompositeTypeLayout, SpirvCanonicalizeGl, SpirvPromoteToReplicatedConstants, SpirvRewriteInserts, SpirvWebgpuPrepare};
 pub use arith_to_spirv::{ArithSpirvOptions, ArithToSpirv};
 pub use cf_to_spirv::CfToSpirv;
 pub use complex_to_spirv::ComplexToSpirv;
@@ -42,6 +45,7 @@ pub use serialize::SpirvBinary;
 pub use target::{Needs, TargetEnv};
 pub use tensor_to_spirv::TensorToSpirv;
 pub use ub_to_spirv::UbToSpirv;
+pub use unify_aliased::SpirvUnifyAliasedResource;
 pub use vector_to_spirv::{VectorSpirvOptions, VectorToSpirv};
 pub use types::{SpirvOptions, SpirvTypes, explicit_layout};
 
@@ -433,5 +437,5 @@ pub fn convert_ub_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> R
 
 crate::pass_set! {
     /// Every lowering to `spirv`.
-    SpirvPasses: ConvertCfToSpirv, ConvertComplexToSpirv, ConvertIndexToSpirv, ConvertMathToSpirv, ConvertTensorToSpirv, ConvertVectorToSpirv, ConvertUbToSpirv, SpirvLowerAbiAttrs, SpirvUpdateVce, ConvertScfToSpirv, ConvertArithToSpirv, ConvertFuncToSpirv, ConvertGpuToSpirv, ConvertMemrefToSpirv, MapMemrefSpirvStorageClass
+    SpirvPasses: SpirvWebgpuPrepare, SpirvUnifyAliasedResource, SpirvPromoteToReplicatedConstants, SpirvRewriteInserts, DecorateSpirvCompositeTypeLayout, SpirvCanonicalizeGl, ConvertCfToSpirv, ConvertComplexToSpirv, ConvertIndexToSpirv, ConvertMathToSpirv, ConvertTensorToSpirv, ConvertVectorToSpirv, ConvertUbToSpirv, SpirvLowerAbiAttrs, SpirvUpdateVce, ConvertScfToSpirv, ConvertArithToSpirv, ConvertFuncToSpirv, ConvertGpuToSpirv, ConvertMemrefToSpirv, MapMemrefSpirvStorageClass
 }

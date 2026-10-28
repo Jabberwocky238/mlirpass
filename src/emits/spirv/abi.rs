@@ -392,3 +392,4 @@ pub fn spirv_update_vce<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Err
     body[module].set("vce_triple", vce);
     Ok(())
 }
+

@@ -567,8 +567,12 @@ pub fn patterns(set: &mut PatternSet) {
     set.add(ConvertLogicalNotOfINotEqual);
     set.add(ConvertLogicalNotOfLogicalEqual);
     set.add(ConvertLogicalNotOfLogicalNotEqual);
-    set.add(ConvertComparisonIntoClamp);
     set.add(ConvertSelectionOpToSelect);
+}
+
+/// `populateSPIRVGLCanonicalizationPatterns`: the clamp patterns.
+pub fn gl_patterns(set: &mut PatternSet) {
+    set.add(ConvertComparisonIntoClamp);
 }
 
 /// `SPIRVDialect::materializeConstant`: a `spirv.Constant`.
