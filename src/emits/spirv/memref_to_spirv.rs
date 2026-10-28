@@ -71,7 +71,7 @@ impl MemrefToSpirv {
     }
 
     /// `linearizeIndex`.
-    fn linearize<'a>(cr: &mut Cr<'_, 'a, '_>, indices: &[ValueId], strides: &[i64], offset: i64, ty: &Type<'a>) -> ValueId {
+    pub(crate) fn linearize<'a>(cr: &mut Cr<'_, 'a, '_>, indices: &[ValueId], strides: &[i64], offset: i64, ty: &Type<'a>) -> ValueId {
         let mut lin = cr.spirv_const(ty.clone(), Attribute::integer(i128::from(offset), ty.clone()));
         for (i, s) in indices.iter().zip(strides) {
             let stride = cr.spirv_const(ty.clone(), Attribute::integer(i128::from(*s), ty.clone()));

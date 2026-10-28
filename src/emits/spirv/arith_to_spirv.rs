@@ -45,7 +45,7 @@ impl ArithToSpirv {
     }
 
     /// A scalar of type `ty`'s element, splat over `ty` when it is a vector.
-    fn splat<'a>(ty: &Type<'a>, f: impl Fn(&Type<'a>) -> Scalar) -> Attribute<'a> {
+    pub(crate) fn splat<'a>(ty: &Type<'a>, f: impl Fn(&Type<'a>) -> Scalar) -> Attribute<'a> {
         match ty {
             Type::Shaped(s) => {
                 let v = f(&s.elem);
@@ -84,7 +84,7 @@ impl ArithToSpirv {
 
     /// `spirv::ElementwiseOpPattern` (and `ElementwiseArithOpPattern`, which adds the
     /// overflow decorations).
-    fn elementwise<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], spirv: &str, o: ArithSpirvOptions) -> bool {
+    pub(crate) fn elementwise<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], spirv: &str, o: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(dst) = Self::result_ty(cr, op) else { return false };
         if Self::unsigned_emulated(cr, op, spirv, &dst) {

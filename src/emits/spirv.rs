@@ -3,14 +3,19 @@
 
 mod abi;
 mod arith_to_spirv;
+mod cf_to_spirv;
+mod complex_to_spirv;
 mod func_to_spirv;
 mod glsl;
 mod gpu_to_spirv;
+mod index_to_spirv;
 mod lower;
+mod math_to_spirv;
 mod memref_to_spirv;
 mod scf_to_spirv;
 mod serialize;
 mod target;
+mod tensor_to_spirv;
 mod types;
 mod ub_to_spirv;
 mod vector_to_spirv;
@@ -23,14 +28,19 @@ use mlirformat::Attribute;
 
 pub use abi::{SpirvLowerAbiAttrs, SpirvUpdateVce, VulkanLayout};
 pub use arith_to_spirv::{ArithSpirvOptions, ArithToSpirv};
+pub use cf_to_spirv::CfToSpirv;
+pub use complex_to_spirv::ComplexToSpirv;
 pub use func_to_spirv::FuncToSpirv;
 pub use glsl::SpirvGlsl;
 pub use gpu_to_spirv::{ConvertGpuToSpirv, GpuSpirvOptions, GpuToSpirv};
+pub use index_to_spirv::IndexToSpirv;
 pub use lower::ClientApi;
+pub use math_to_spirv::MathToSpirv;
 pub use memref_to_spirv::{MemrefSpirvOptions, MemrefToSpirv};
 pub use scf_to_spirv::ScfToSpirv;
 pub use serialize::SpirvBinary;
 pub use target::{Needs, TargetEnv};
+pub use tensor_to_spirv::TensorToSpirv;
 pub use ub_to_spirv::UbToSpirv;
 pub use vector_to_spirv::{VectorSpirvOptions, VectorToSpirv};
 pub use types::{SpirvOptions, SpirvTypes, explicit_layout};
@@ -198,6 +208,101 @@ impl crate::Run for ConvertFuncToSpirv {
     }
 }
 
+/// `convert-cf-to-spirv`.
+#[crate::pass("convert-cf-to-spirv")]
+pub struct ConvertCfToSpirv {
+    #[opt("emulate-lt-32-bit-scalar-types", default = true)]
+    emulate_lt32: bool,
+    #[opt("emulate-unsupported-float-types", default = true)]
+    emulate_floats: bool,
+}
+
+impl crate::Run for ConvertCfToSpirv {
+    fn run<'a>(&self, body: &mut crate::Body<'a>, op: crate::OpId) -> Result<(), mlirformat::Error> {
+        let env = TargetEnv::lookup(body, op);
+        let types = SpirvTypes { env: &env, opts: SpirvOptions { emulate_lt32: self.emulate_lt32, emulate_unsupported_floats: self.emulate_floats, ..SpirvOptions::default() } };
+        let tc = types.converter();
+        let mut patterns = crate::ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        CfToSpirv::populate(&mut patterns, i);
+        let target = env.conversion_target();
+        crate::Converter::new(&target, &patterns, crate::ConversionConfig::default()).apply(body, &[op], crate::Mode::Partial)
+    }
+}
+
+/// `convert-index-to-spirv`.
+#[crate::pass("convert-index-to-spirv")]
+pub struct ConvertIndexToSpirv {
+    #[opt("use-64bit-index")]
+    index64: bool,
+}
+
+impl crate::Run for ConvertIndexToSpirv {
+    fn run<'a>(&self, body: &mut crate::Body<'a>, op: crate::OpId) -> Result<(), mlirformat::Error> {
+        let env = TargetEnv::lookup(body, op);
+        let types = SpirvTypes { env: &env, opts: SpirvOptions { index64: self.index64, ..SpirvOptions::default() } };
+        let tc = types.converter();
+        let mut patterns = crate::ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        IndexToSpirv::populate(&mut patterns, i);
+        let mut target = env.conversion_target();
+        target.legal_op("builtin.unrealized_conversion_cast").legal_dialect("spirv").illegal_dialect("index");
+        crate::Converter::new(&target, &patterns, crate::ConversionConfig::default()).apply(body, &[op], crate::Mode::Partial)
+    }
+}
+
+/// `convert-math-to-spirv`.
+#[crate::pass("convert-math-to-spirv")]
+pub fn convert_math_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> Result<(), mlirformat::Error> {
+    let env = TargetEnv::lookup(body, op);
+    let types = SpirvTypes { env: &env, opts: SpirvOptions::default() };
+    let tc = types.converter();
+    let mut patterns = crate::ConversionPatterns::default();
+    let i = patterns.converter(&tc);
+    MathToSpirv::populate(&mut patterns, i);
+    let mut target = env.conversion_target();
+    target.legal_op("builtin.unrealized_conversion_cast");
+    crate::Converter::new(&target, &patterns, crate::ConversionConfig::default()).apply(body, &[op], crate::Mode::Partial)
+}
+
+/// `convert-tensor-to-spirv`.
+#[crate::pass("convert-tensor-to-spirv")]
+pub struct ConvertTensorToSpirv {
+    #[opt("emulate-lt-32-bit-scalar-types", default = true)]
+    emulate_lt32: bool,
+    #[opt("emulate-unsupported-float-types", default = true)]
+    emulate_floats: bool,
+}
+
+impl crate::Run for ConvertTensorToSpirv {
+    fn run<'a>(&self, body: &mut crate::Body<'a>, op: crate::OpId) -> Result<(), mlirformat::Error> {
+        let env = TargetEnv::lookup(body, op);
+        let types = SpirvTypes { env: &env, opts: SpirvOptions { emulate_lt32: self.emulate_lt32, emulate_unsupported_floats: self.emulate_floats, ..SpirvOptions::default() } };
+        let tc = types.converter();
+        let mut patterns = crate::ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        ArithToSpirv::populate(&mut patterns, i, ArithSpirvOptions { no_wrap: env.allows_ext("SPV_KHR_no_integer_wrap_decoration"), emulate_floats: self.emulate_floats });
+        FuncToSpirv::populate(&mut patterns, i);
+        TensorToSpirv::populate(&mut patterns, i, 64);
+        let target = env.conversion_target();
+        crate::Converter::new(&target, &patterns, crate::ConversionConfig::default()).apply(body, &[op], crate::Mode::Partial)
+    }
+}
+
+/// `convert-complex-to-spirv`.
+#[crate::pass("convert-complex-to-spirv")]
+pub fn convert_complex_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> Result<(), mlirformat::Error> {
+    let env = TargetEnv::lookup(body, op);
+    let types = SpirvTypes { env: &env, opts: SpirvOptions::default() };
+    let tc = types.converter();
+    let mut patterns = crate::ConversionPatterns::default();
+    let i = patterns.converter(&tc);
+    ComplexToSpirv::populate(&mut patterns, i);
+    let mut target = env.conversion_target();
+    target.legal_op("builtin.unrealized_conversion_cast");
+    crate::Converter::new(&target, &patterns, crate::ConversionConfig::default()).apply(body, &[op], crate::Mode::Partial)
+}
+
 /// `convert-arith-to-spirv`.
 #[crate::pass("convert-arith-to-spirv")]
 pub struct ConvertArithToSpirv {
@@ -327,5 +432,5 @@ pub fn convert_ub_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> R
 
 crate::pass_set! {
     /// Every lowering to `spirv`.
-    SpirvPasses: ConvertVectorToSpirv, ConvertUbToSpirv, SpirvLowerAbiAttrs, SpirvUpdateVce, ConvertScfToSpirv, ConvertArithToSpirv, ConvertFuncToSpirv, ConvertGpuToSpirv, ConvertMemrefToSpirv, MapMemrefSpirvStorageClass
+    SpirvPasses: ConvertCfToSpirv, ConvertComplexToSpirv, ConvertIndexToSpirv, ConvertMathToSpirv, ConvertTensorToSpirv, ConvertVectorToSpirv, ConvertUbToSpirv, SpirvLowerAbiAttrs, SpirvUpdateVce, ConvertScfToSpirv, ConvertArithToSpirv, ConvertFuncToSpirv, ConvertGpuToSpirv, ConvertMemrefToSpirv, MapMemrefSpirvStorageClass
 }

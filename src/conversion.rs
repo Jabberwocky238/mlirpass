@@ -210,7 +210,7 @@ impl<'c> TypeConverter<'c> {
         Some(sig)
     }
 
-    fn materialize_source<'a>(&self, rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, inputs: &[ValueId]) -> Option<ValueId> {
+    pub fn materialize_source<'a>(&self, rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, inputs: &[ValueId]) -> Option<ValueId> {
         self.sources.iter().rev().find_map(|f| f(rw, ty, inputs))
     }
 

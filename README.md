@@ -9,7 +9,7 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-`0.3.0`: 4311 of the 5001 fixture cases match `mlir-opt` 22.1.8 byte for byte
+`0.3.0`: 4334 of the 5001 fixture cases match `mlir-opt` 22.1.8 byte for byte
 (`cargo test --test passes -- --nocapture` counts them per group), MLIR's own `Dialect/SPIRV`,
 `Dialect/GPU` and `*ToSPIRV` tests included. 12 of MLIR's 13 `Integration/GPU/Vulkan` tests
 produce the numbers their checks expect, run on Vulkan (lavapipe) both as SPIR-V and as GLSL
@@ -36,7 +36,7 @@ The backends live under `src/emits`, one cargo feature each (all on by default):
 |---|---|---|
 | `llvm` | the type converter, dialect → `llvm`, the llvm folds, the llvm memory-slot interfaces | `mlir/lib/Conversion/*ToLLVM`, `Dialect/LLVMIR` |
 | `emitc` | dialect → `emitc`: the EmitC type converter, `convert-to-emitc` | `mlir/lib/Conversion/*ToEmitC` |
-| `spirv` | target env, type converter, `gpu` / `func` / `arith` / `memref` / `scf` / `vector` / `ub` → `spirv`, `spirv-lower-abi-attrs`, `spirv-update-vce`; `SpirvBinary` (the serializer) and `SpirvGlsl` (GLSL 4.50) emit | `mlir/lib/Conversion/*ToSPIRV`, `Target/SPIRV` |
+| `spirv` | target env, type converter, `gpu` / `func` / `arith` / `cf` / `complex` / `index` / `math` / `memref` / `scf` / `tensor` / `vector` / `ub` → `spirv`, `spirv-lower-abi-attrs`, `spirv-update-vce`; `SpirvBinary` (the serializer) and `SpirvGlsl` (GLSL 4.50) emit | `mlir/lib/Conversion/*ToSPIRV`, `Target/SPIRV` |
 
 Dialects: every dialect mlirformat describes.
 
