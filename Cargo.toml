@@ -19,6 +19,8 @@ mlirpass-macros = { path = "macros", version = "0.3.0" }
 mlirformat = { version = "0.4.4", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }
+# f64 trunc / ldexp / rint without std (all exact).
+libm = "0.2"
 
 [features]
 default = ["std", "cli", "llvm", "emitc", "spirv"]

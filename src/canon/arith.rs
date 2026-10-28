@@ -397,8 +397,8 @@ impl<'x, 'a> Folder<'x, 'a> {
                     if !x.is_finite() {
                         return None;
                     }
-                    let t = x.trunc();
-                    let (lo, hi) = if signed { (-(2f64.powi(w as i32 - 1)), 2f64.powi(w as i32 - 1)) } else { (0.0, 2f64.powi(w as i32)) };
+                    let t = libm::trunc(x);
+                    let (lo, hi) = if signed { (-libm::ldexp(1.0, w as i32 - 1), libm::ldexp(1.0, w as i32 - 1)) } else { (0.0, libm::ldexp(1.0, w as i32)) };
                     if t < lo || t >= hi {
                         return None;
                     }
@@ -1375,7 +1375,13 @@ fn cmpf_int_to_fp_const(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
                 return false;
             }
         } else if v != 0.0 {
-            let exp = v.abs().log2().floor() as i32;
+            // `ilogb`: the exact binary exponent (a subnormal's as if normalized), ⛔ `log2().floor()`,
+            // which rounds up to `k` just below 2ᵏ.
+            let bits = v.abs().to_bits();
+            let exp = match (bits >> 52) as i32 {
+                0 => 63 - bits.leading_zeros() as i32 - 1074,
+                e => e - 1023,
+            };
             if mantissa <= exp && exp <= value_bits {
                 return false;
             }
@@ -1419,8 +1425,8 @@ fn cmpf_int_to_fp_const(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
             return constant(rw, matches!(pred, NE | UGT | UGE));
         }
     }
-    let t = rv.trunc();
-    let fits = if unsigned { t >= 0.0 && t < 2f64.powi(w as i32) } else { t >= -(2f64.powi(w as i32 - 1)) && t < 2f64.powi(w as i32 - 1) };
+    let t = libm::trunc(rv);
+    let fits = if unsigned { t >= 0.0 && t < libm::ldexp(1.0, w as i32) } else { t >= -libm::ldexp(1.0, w as i32 - 1) && t < libm::ldexp(1.0, w as i32 - 1) };
     if !fits {
         return false;
     }

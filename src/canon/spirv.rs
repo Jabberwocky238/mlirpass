@@ -385,6 +385,7 @@ fn negate_compare(rw: &mut Rewriter<'_, '_>, op: OpId, from: &str, to: &str) -> 
 
 /// The DRR clamp rewrites: `select(cmp(select(cmp(min, x), x, min), max), .., max)` and
 /// `select(cmp(max, x), max, select(cmp(x, min), min, x))` as `spirv.GL.*Clamp(x, min, max)`.
+#[cfg_attr(not(feature = "spirv"), allow(dead_code))]
 fn clamp(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     const PAIRS: [(&str, &str); 6] = [
         ("spirv.FOrdLessThan", "spirv.GL.FClamp"),
@@ -510,6 +511,7 @@ rewrites! {
         negate_compare(rw, op, "spirv.LogicalNotEqual", "spirv.LogicalEqual")
     }
 
+    #[cfg_attr(not(feature = "spirv"), allow(dead_code))]
     ConvertComparisonIntoClamp("spirv.Select", 4) |rw, op| {
         clamp(rw, op)
     }
@@ -571,6 +573,7 @@ pub fn patterns(set: &mut PatternSet) {
 }
 
 /// `populateSPIRVGLCanonicalizationPatterns`: the clamp patterns.
+#[cfg(feature = "spirv")]
 pub fn gl_patterns(set: &mut PatternSet) {
     set.add(ConvertComparisonIntoClamp);
 }

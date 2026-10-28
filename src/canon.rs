@@ -55,6 +55,7 @@ use crate::{Body, MemrefLayout, OpData, OpId, PatternSet, Trait, ValueId};
 
 pub use memref::Ofr as MemrefOfr;
 pub use reshape::Reshape;
+#[cfg(feature = "spirv")]
 pub(crate) use spirv::gl_patterns as spirv_gl_patterns;
 
 impl<'a> OpData<'a> {

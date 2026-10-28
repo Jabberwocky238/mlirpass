@@ -258,7 +258,7 @@ impl<'a> Tf<'_, '_, 'a> {
             }
             (Scalar::Float(f), _, Type::Integer { width, .. }) => {
                 let x = f.to_f64();
-                x.is_finite().then(|| Scalar::Int(ApInt::new(*width, x.round_ties_even() as i128)))
+                x.is_finite().then(|| Scalar::Int(ApInt::new(*width, libm::rint(x) as i128)))
             }
             (Scalar::Int(i), Type::Integer { width: iw, signedness }, Type::Integer { width: ow, .. }) => Some(Scalar::Int(if *ow == 1 {
                 ApInt::new(1, i128::from(!i.is_zero()))
