@@ -15,12 +15,24 @@ use crate::{Point, Succ};
 use crate::{Body, BlockId, Const, Def, Fold, Folded, OpId, RegionId, Trait, ValueId, Visibility};
 
 /// `ConstantValue` in its `Lattice`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Cv<'a> {
     Uninit,
     /// A constant, with the dialect that produced it.
     Known(Attribute<'a>, String),
     Unknown,
+}
+
+/// `ConstantValue::operator==`: the constants alone. The dialect only says who materializes it:
+/// `math.cos` of a NaN and an `arith.constant` NaN are the same value, and the join keeps the first.
+impl PartialEq for Cv<'_> {
+    fn eq(&self, o: &Self) -> bool {
+        match (self, o) {
+            (Cv::Known(a, _), Cv::Known(b, _)) => a == b,
+            (Cv::Uninit, Cv::Uninit) | (Cv::Unknown, Cv::Unknown) => true,
+            _ => false,
+        }
+    }
 }
 
 impl<'a> Cv<'a> {

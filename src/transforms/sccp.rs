@@ -27,10 +27,23 @@ impl Rewrite<'_, '_, '_> {
             Some(k) => k.4,
             None => {
                 let Some(data) = body.materialize(&dialect, &attr, &ty) else { return false };
-                let op = body.create(data, core::slice::from_ref(&ty));
-                let entry = body[region].blocks[0];
-                body.insert(op, entry, Some(0));
-                let r = body[op].results[0];
+                let made: String = data.name.split_once('.').map_or(&*data.name, |(ns, _)| ns).into();
+                // `tryGetOrCreateConstant`: a constant one dialect materializes as another's
+                // (`math` ⇒ `arith.constant`) is that dialect's too: one it already has wins.
+                let existing = (made != dialect).then(|| self.folder.iter().find(|k| k.0 == region && k.1 == made && k.2 == attr && k.3 == ty).map(|k| k.4)).flatten();
+                let r = match existing {
+                    Some(r) => r,
+                    None => {
+                        let op = body.create(data, core::slice::from_ref(&ty));
+                        let entry = body[region].blocks[0];
+                        body.insert(op, entry, Some(0));
+                        let r = body[op].results[0];
+                        if made != dialect {
+                            self.folder.push((region, made, attr.clone(), ty.clone(), r));
+                        }
+                        r
+                    }
+                };
                 self.folder.push((region, dialect, attr, ty, r));
                 r
             }
