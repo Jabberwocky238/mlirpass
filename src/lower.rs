@@ -4,6 +4,7 @@ mod affine_to_std;
 mod bufferization_to_memref;
 mod complex_to_std;
 mod linalg_build;
+mod linalg_to_loops;
 mod math_to_funcs;
 mod scf_to_cf;
 mod shape_to_std;
@@ -26,6 +27,7 @@ use crate::{Action, Body, ConversionConfig, ConversionPatterns, ConversionTarget
 pub use affine_to_std::AffineToStd;
 pub use bufferization_to_memref::{BufferizationToMemref, ConvertBufferizationToMemref};
 pub use complex_to_std::{ComplexToStd, Cx as ComplexCx, Fmf as ComplexFmf};
+pub use linalg_to_loops::{ConvertLinalgToAffineLoops, ConvertLinalgToLoops, ConvertLinalgToParallelLoops, LinalgLoops};
 pub use math_to_funcs::{ConvertMathToFuncs, MathToFuncs};
 pub use scf_to_cf::ScfToCf;
 pub use shape_to_std::ShapeToStd;
@@ -184,5 +186,5 @@ pub fn tosa_to_tensor<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
 
 crate::pass_set! {
     /// The lowerings between dialects.
-    LowerPasses: ConvertBufferizationToMemref, ConvertComplexToLibm, ConvertComplexToStandard, ConvertMathToFuncs, ConvertMathToLibm, ConvertScfToCf, ConvertShapeToStd, ConvertTensorToLinalg, ConvertVectorToScf, LowerAffine, TosaToArithPass, TosaToLinalgNamedPass, TosaToLinalgPass, TosaToScfPass, TosaToTensorPass
+    LowerPasses: ConvertBufferizationToMemref, ConvertComplexToLibm, ConvertLinalgToAffineLoops, ConvertLinalgToLoops, ConvertLinalgToParallelLoops, ConvertComplexToStandard, ConvertMathToFuncs, ConvertMathToLibm, ConvertScfToCf, ConvertShapeToStd, ConvertTensorToLinalg, ConvertVectorToScf, LowerAffine, TosaToArithPass, TosaToLinalgNamedPass, TosaToLinalgPass, TosaToScfPass, TosaToTensorPass
 }

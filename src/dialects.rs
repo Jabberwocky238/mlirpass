@@ -22,7 +22,7 @@ pub use arith::ArithDialect;
 pub use bufferization::BufferizationDialect;
 pub use cf::CfDialect;
 pub use func::FuncDialect;
-pub use linalg::LinalgDialect;
+pub use linalg::{IndexAttr, LinalgDialect, OpDsl, OPDSL};
 pub use memref::MemrefDialect;
 pub use scf::ScfDialect;
 pub use shape::ShapeDialect;

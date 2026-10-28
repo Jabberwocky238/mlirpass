@@ -2,9 +2,58 @@
 
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Dim};
+use mlirformat::{AffineExpr, AffineMap, Attribute, Dim};
 
 use crate::{Body, EffectInstance, EffectKind, OpId, OpInterfaces};
+
+#[path = "linalg_named.gen.rs"]
+mod named;
+pub use named::OPDSL;
+
+/// An OpDSL op (`LinalgNamedStructuredOps.yaml`), as mlir-linalg-ods-yaml-gen reads it for
+/// `getIndexingMaps` / `getIteratorTypesArray`.
+pub struct OpDsl<'s> {
+    pub name: &'s str,
+    /// Each loop's iterator type, `true` for a reduction; none when the op is rank polymorphic.
+    pub reductions: &'s [bool],
+    /// `static_indexing_maps` as written.
+    pub maps: &'s [&'s str],
+    pub attrs: &'s [IndexAttr<'s>],
+}
+
+/// An index attribute (`strides`, `dilations`): the symbol each element binds, its defaults.
+pub struct IndexAttr<'s> {
+    pub name: &'s str,
+    pub syms: &'s [u32],
+    pub defaults: &'s [i64],
+}
+
+impl OpDsl<'_> {
+    /// The OpDSL op named `name`.
+    pub fn of(name: &str) -> Option<&OpDsl<'_>> {
+        OPDSL.iter().find(|o| o.name == name)
+    }
+
+    /// The iteration domain has rank zero: the maps follow the operands' ranks.
+    pub fn rank_polymorphic(&self) -> bool {
+        self.reductions.is_empty()
+    }
+
+    /// `getIndexingMaps` of a static-rank op: the symbols an index attribute binds become its
+    /// values (`attr(name)`, or the defaults), the others are dropped, and each map is simplified.
+    pub fn indexing_maps(&self, attr: impl Fn(&str) -> Option<Vec<i64>>) -> Option<Vec<AffineMap>> {
+        let maps: Vec<AffineMap> = self.maps.iter().map(|m| AffineMap::parse(m.strip_prefix("affine_map")?)).collect::<Option<_>>()?;
+        let first = maps.first()?;
+        let mut syms: Vec<AffineExpr> = (0..first.syms).map(AffineExpr::Sym).collect();
+        for a in self.attrs {
+            let values = attr(a.name).unwrap_or_else(|| a.defaults.to_vec());
+            for (s, v) in a.syms.iter().zip(values) {
+                *syms.get_mut(*s as usize)? = AffineExpr::Const(v);
+            }
+        }
+        Some(maps.iter().map(|m| m.replace(&[], &syms, m.dims, 0).simplified()).collect())
+    }
+}
 
 /// The `linalg` dialect.
 pub struct LinalgDialect;

@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use mlirformat::{arith, linalg, Attribute, Dim, NamedAttr, Shaped, ShapedKind, Type};
 
 use super::MemrefOfr as Ofr;
-use crate::{AffineExpr, AffineMap, Body, Const, Def, Fold, Folded, Mapping, OpData, OpId, PatternSet, Rewriter, Trait, TypedOp, ValueId};
+use crate::{AffineExpr, AffineMap, Body, OpDsl, Const, Def, Fold, Folded, Mapping, OpData, OpId, PatternSet, Rewriter, Trait, TypedOp, ValueId};
 
 /// The `linalg` ops' helpers.
 struct Lg;
@@ -146,33 +146,7 @@ impl Lg {
 
     /// The OpDSL ops whose maps are identities of the init's rank (scalars: no results).
     fn rank_polymorphic(name: &str) -> bool {
-        matches!(
-            name,
-            "linalg.fill"
-                | "linalg.copy"
-                | "linalg.abs"
-                | "linalg.add"
-                | "linalg.ceil"
-                | "linalg.div"
-                | "linalg.div_unsigned"
-                | "linalg.erf"
-                | "linalg.exp"
-                | "linalg.floor"
-                | "linalg.log"
-                | "linalg.max"
-                | "linalg.min"
-                | "linalg.mul"
-                | "linalg.negf"
-                | "linalg.powf"
-                | "linalg.reciprocal"
-                | "linalg.round"
-                | "linalg.rsqrt"
-                | "linalg.select"
-                | "linalg.sqrt"
-                | "linalg.square"
-                | "linalg.sub"
-                | "linalg.tanh"
-        )
+        OpDsl::of(name).is_some_and(OpDsl::rank_polymorphic)
     }
 
     /// Whether `linalg` op `name` folds with `memref::foldMemRefCast` (the OpDSL ops and the
@@ -188,7 +162,7 @@ impl<'a> Body<'a> {
     }
 
     /// `getIndexingMapsArray`: from `indexing_maps`, or as the op computes them.
-    fn indexing_maps(&self, op: OpId) -> Option<Vec<AffineMap>> {
+    pub(crate) fn indexing_maps(&self, op: OpId) -> Option<Vec<AffineMap>> {
         if let Some(Attribute::Array(ms)) = self[op].get("indexing_maps") {
             return ms
                 .iter()
@@ -211,6 +185,7 @@ impl<'a> Body<'a> {
                 let drop = self.dense_i64(op, "dimensions");
                 Some(vec![map((0..rank).filter(|d| !drop.contains(&i64::from(*d))).map(AffineExpr::Dim).collect()), id])
             }
+            n if let Some(dsl) = OpDsl::of(n).filter(|d| !d.rank_polymorphic()) => dsl.indexing_maps(|a| Some(self.dense_i64(op, a)).filter(|v| !v.is_empty())),
             n if Lg::rank_polymorphic(n) => Some(self[op].operands.iter().map(|v| if Lg::dims(&self[*v].ty).is_none_or(|d| d.is_empty()) { map(Vec::new()) } else { id.clone() }).collect()),
             _ => None,
         }
@@ -232,7 +207,7 @@ impl<'a> Body<'a> {
     }
 
     /// `hasPureBufferSemantics`.
-    fn pure_buffer(&self, op: OpId) -> bool {
+    pub(crate) fn pure_buffer(&self, op: OpId) -> bool {
         self[op].operands.iter().all(|v| !Lg::is_tensor(&self[*v].ty))
     }
 
