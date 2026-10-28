@@ -29,7 +29,7 @@ pub use complex::ComplexDialect;
 pub use func::FuncDialect;
 pub use gpu::GpuDialect;
 pub use index::IndexDialect;
-pub use linalg::LinalgDialect;
+pub use linalg::{IndexAttr, LinalgDialect, OpDsl, OPDSL};
 pub use math::MathDialect;
 pub use memref::MemrefDialect;
 pub use scf::ScfDialect;

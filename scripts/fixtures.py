@@ -30,6 +30,8 @@ def tests(root: Path):
     found = list(root.glob("Conversion/**/*.mlir")) + list(root.glob("Transforms/*.mlir"))
     found += list(root.glob("Dialect/**/canonicalize*.mlir"))
     found += list(root.glob("Dialect/**/mem2reg*.mlir")) + list(root.glob("Dialect/**/sroa*.mlir"))
+    # Linalg to loops: convert-linalg-to-{loops,parallel-loops,affine-loops}.
+    found += [root / "Dialect/Linalg/loops.mlir", root / "Dialect/Linalg/parallel-loops.mlir", root / "Dialect/Linalg/affine.mlir"]
     # The SPIR-V and GPU dialects whole: their ops, transforms and canonicalization.
     found += list(root.glob("Dialect/SPIRV/**/*.mlir")) + list(root.glob("Dialect/GPU/**/*.mlir"))
     for path in sorted(set(found)):
