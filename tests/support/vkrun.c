@@ -3,11 +3,13 @@
 //   vkrun <shader.spv> <entry> <groups x> <groups y> <groups z> <buffer file>...
 //
 // Buffer file i is storage buffer (set 0, binding i), read before the dispatch and written
-// back after it.
+// back after it. Prints the timings `VulkanRuntime::submitCommandBuffers` prints.
+
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <vulkan/vulkan.h>
 
 #define CHECK(x)                                                                         \
@@ -143,13 +145,36 @@ int main(int argc, char **argv) {
   CHECK(vkAllocateCommandBuffers(dev, &cbai, &cb));
   VkCommandBufferBeginInfo cbbi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, NULL};
   CHECK(vkBeginCommandBuffer(cb, &cbbi));
+  VkQueryPoolCreateInfo qpci = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO, NULL, 0, VK_QUERY_TYPE_TIMESTAMP, 2, 0};
+  VkQueryPool qpool;
+  int timed = qp[qf].timestampValidBits != 0 && vkCreateQueryPool(dev, &qpci, NULL, &qpool) == VK_SUCCESS;
+  if (timed) {
+    vkCmdResetQueryPool(cb, qpool, 0, 2);
+    vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, qpool, 0);
+  }
   vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pipe);
   vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pl, 0, 1, &ds, 0, NULL);
   vkCmdDispatch(cb, (uint32_t)atoi(argv[3]), (uint32_t)atoi(argv[4]), (uint32_t)atoi(argv[5]));
+  if (timed)
+    vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, qpool, 1);
   CHECK(vkEndCommandBuffer(cb));
   VkSubmitInfo si = {VK_STRUCTURE_TYPE_SUBMIT_INFO, NULL, 0, NULL, NULL, 1, &cb, 0, NULL};
+  struct timespec t0, t1, t2;
+  clock_gettime(CLOCK_MONOTONIC, &t0);
   CHECK(vkQueueSubmit(queue, 1, &si, VK_NULL_HANDLE));
+  clock_gettime(CLOCK_MONOTONIC, &t1);
   CHECK(vkQueueWaitIdle(queue));
+  clock_gettime(CLOCK_MONOTONIC, &t2);
+  if (timed) {
+    uint64_t ts[2];
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(phys, &props);
+    if (vkGetQueryPoolResults(dev, qpool, 0, 2, sizeof ts, ts, sizeof ts[0], VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) == VK_SUCCESS)
+      printf("Compute shader execution time: %.3gus\n", (double)(ts[1] - ts[0]) * props.limits.timestampPeriod / 1000);
+  }
+  long us = 1000000;
+  printf("Command buffer submit time: %ldus\nWait idle time: %ldus\n", (t1.tv_sec - t0.tv_sec) * us + (t1.tv_nsec - t0.tv_nsec) / 1000,
+         (t2.tv_sec - t1.tv_sec) * us + (t2.tv_nsec - t1.tv_nsec) / 1000);
 
   for (int i = 0; i < nbuf; i++) {
     FILE *f = fopen(argv[6 + i], "wb");

@@ -32,7 +32,7 @@ struct Buf {
 #[derive(Clone)]
 enum Val {
     Scalar(Scalar, Type<'static>),
-    Elements(Vec<Scalar>, Type<'static>),
+    Elements(Vec<Scalar>),
     Buf(usize),
 }
 
@@ -210,7 +210,8 @@ impl<'b, 'a> Host<'b, 'a> {
     }
 
     /// Runs `@main`; `launch` runs one kernel on the buffers.
-    fn run(&mut self, main: OpId, launch: &mut dyn FnMut(&str, &str, [i64; 3], &mut [Buf]) -> Result<(), String>) -> Result<(), String> {
+    /// `launch` runs a kernel and returns what the runtime printed (its timings).
+    fn run(&mut self, main: OpId, launch: &mut dyn FnMut(&str, &str, [i64; 3], &mut [Buf]) -> Result<String, String>) -> Result<(), String> {
         let b = self.body;
         let block = b[b[main].regions[0]].blocks[0];
         for op in b[block].ops.clone() {
@@ -220,7 +221,7 @@ impl<'b, 'a> Host<'b, 'a> {
                 "arith.constant" => {
                     let c = Const::try_from(d.get("value").ok_or("no value")?).map_err(|_| String::from("bad constant"))?;
                     let ty = c.ty.owned();
-                    let v = if c.elements { Val::Elements(c.values.clone(), ty) } else { Val::Scalar(c.values[0], ty) };
+                    let v = if c.elements { Val::Elements(c.values.clone()) } else { Val::Scalar(c.values[0], ty) };
                     self.vals.insert(res.unwrap(), v);
                 }
                 "memref.alloc" => {
@@ -236,7 +237,7 @@ impl<'b, 'a> Host<'b, 'a> {
                     self.vals.insert(res.unwrap(), Val::Buf(i));
                 }
                 "vector.store" => {
-                    let Some(Val::Elements(es, _)) = self.vals.get(&d.operands[0]).cloned() else { return Err(String::from("vector.store of what")) };
+                    let Some(Val::Elements(es)) = self.vals.get(&d.operands[0]).cloned() else { return Err(String::from("vector.store of what")) };
                     let i = self.buf(d.operands[1])?;
                     let idx: Vec<i64> = d.operands[2..].iter().map(|v| self.int(*v)).collect::<Result<_, _>>()?;
                     let shape = self.bufs[i].shape.clone();
@@ -282,7 +283,8 @@ impl<'b, 'a> Host<'b, 'a> {
                             _ => return Err(String::from("kernel argument of what")),
                         }
                     }
-                    launch(&module, &kernel, grid, &mut bufs)?;
+                    let printed = launch(&module, &kernel, grid, &mut bufs)?;
+                    self.out.push_str(&printed);
                     for (a, nb) in args.iter().zip(bufs) {
                         if let Some(Val::Buf(i)) = self.vals.get(a) {
                             self.bufs[*i].data = nb.data;
@@ -298,7 +300,7 @@ impl<'b, 'a> Host<'b, 'a> {
 }
 
 /// Runs `spv` on lavapipe over `bufs`.
-fn device(vkrun: &Path, dir: &Path, spv: &[u8], entry: &str, grid: [i64; 3], bufs: &mut [Buf]) -> Result<(), String> {
+fn device(vkrun: &Path, dir: &Path, spv: &[u8], entry: &str, grid: [i64; 3], bufs: &mut [Buf]) -> Result<String, String> {
     let shader = dir.join("shader.spv");
     fs::write(&shader, spv).map_err(|e| e.to_string())?;
     let files: Vec<PathBuf> = (0..bufs.len()).map(|i| dir.join(format!("buf{i}.bin"))).collect();
@@ -312,7 +314,7 @@ fn device(vkrun: &Path, dir: &Path, spv: &[u8], entry: &str, grid: [i64; 3], buf
     for (f, b) in files.iter().zip(bufs.iter_mut()) {
         b.data = fs::read(f).map_err(|e| e.to_string())?;
     }
-    Ok(())
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 fn tool(cmd: &str) -> bool {
