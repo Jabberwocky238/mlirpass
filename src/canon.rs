@@ -100,7 +100,7 @@ impl<'a> OpData<'a> {
 fn builder_sets<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
     match name {
         "vector.load" | "vector.store" | "memref.load" | "memref.store" => alloc::vec![("nontemporal", Attribute::Bool(false))],
-        "llvm.call" => alloc::vec![("op_bundle_sizes", Attribute::DenseArray { ty: Type::int(32), values: Vec::new() })],
+        "llvm.call" | "llvm.call_intrinsic" => alloc::vec![("op_bundle_sizes", Attribute::DenseArray { ty: Type::int(32), values: Vec::new() })],
         _ => Vec::new(),
     }
 }

@@ -146,3 +146,6 @@ Transforms__test-strict-pattern-driver.1	test-only pass -test-strict-pattern-dri
 Transforms__test-strict-pattern-driver.2	test-only pass -test-strict-pattern-driver=strictness=ExistingOps
 Dialect__Linalg__affine.1	test-only pass -test-lower-to-llvm
 Dialect__Linalg__loops.2	test-only pass -test-lower-to-llvm
+Dialect__AMX__invalid.0	mlir-opt failed (reading the input)
+Dialect__X86Vector__cvt-packed-f32-to-bf16.0	pipes into mlir-translate
+Dialect__X86Vector__dot-bf16.0	pipes into mlir-translate

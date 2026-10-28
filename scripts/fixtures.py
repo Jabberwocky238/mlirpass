@@ -10,7 +10,8 @@ For every kept `// RUN: mlir-opt ...` line of a test file it writes, under tests
     <name>.<k>.generic.mlir the same with --mlir-print-op-generic
 
 `<name>` is the path below mlir/test with `/` turned into `__`. A RUN line is dropped (and listed
-in tests/fixtures/SKIPPED with why) when it pipes into a second tool other than FileCheck, runs a
+in tests/fixtures/SKIPPED with why) when it pipes into a second tool other than FileCheck (or a bare
+`mlir-opt`, which only prints back), runs a
 test-only `-test-*` pass, or mlir-opt itself fails on it. `-verify-diagnostics` runs are kept:
 mlir-opt still prints the chunks that succeed.
 """
@@ -34,6 +35,9 @@ def tests(root: Path):
     found += [root / "Dialect/Linalg/loops.mlir", root / "Dialect/Linalg/parallel-loops.mlir", root / "Dialect/Linalg/affine.mlir"]
     # The SPIR-V and GPU dialects whole: their ops, transforms and canonicalization.
     found += list(root.glob("Dialect/SPIRV/**/*.mlir")) + list(root.glob("Dialect/GPU/**/*.mlir"))
+    # The x86 CPU dialects: their LLVM lowering (`convert-vector-to-llvm` `enable-x86vector` /
+    # `enable-amx`) and the rest of their tests.
+    found += list(root.glob("Dialect/X86Vector/*.mlir")) + list(root.glob("Dialect/AMX/*.mlir"))
     for path in sorted(set(found)):
         rel = path.relative_to(root)
         if rel.parts[0] == "Conversion" and any(s in part for part in rel.parts[1:-1] for s in OUT_OF_SCOPE):
@@ -68,6 +72,9 @@ def args_of(cmd: str):
         return None, f"not mlir-opt: {first[:1]}"
     for later in stages[1:]:
         tool = later.split()[0] if later.split() else ""
+        # A bare `mlir-opt` only parses and prints back what the first one printed.
+        if later.split() == ["mlir-opt"]:
+            continue
         if tool != "FileCheck":
             return None, f"pipes into {tool}"
     args = [a for a in first[1:] if a != "%s"]

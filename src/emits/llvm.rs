@@ -16,6 +16,7 @@ mod memref_to_llvm;
 mod pattern;
 mod request_c_wrappers;
 mod vector_to_llvm;
+mod x86_to_llvm;
 
 pub use arith_to_llvm::ArithToLlvm;
 pub use canon::{fold as llvm_fold, materialize as llvm_materialize};
@@ -30,6 +31,7 @@ pub use math_to_llvm::MathToLlvm;
 pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
 pub use request_c_wrappers::RequestCWrappers;
 pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
+pub use x86_to_llvm::X86ToLlvm;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -618,7 +620,7 @@ pub struct ConvertVectorToLlvm {
 impl ConvertVectorToLlvm {
     /// What is not ported makes the pass unsupported, not wrong.
     fn check(&self) -> Result<(), Error> {
-        let flags = [("enable-amx", self.amx), ("enable-arm-neon", self.arm_neon), ("enable-arm-sve", self.arm_sve), ("enable-arm-i8mm", self.arm_i8mm), ("enable-arm-bf16", self.arm_bf16), ("enable-x86vector", self.x86vector)];
+        let flags = [("enable-arm-neon", self.arm_neon), ("enable-arm-sve", self.arm_sve), ("enable-arm-i8mm", self.arm_i8mm), ("enable-arm-bf16", self.arm_bf16)];
         if let Some((f, _)) = flags.iter().find(|f| f.1) {
             return Err(Error(format!("convert-vector-to-llvm: {f} is not ported")));
         }
@@ -638,14 +640,25 @@ impl Run for ConvertVectorToLlvm {
             body.apply_greedily(r, &pre, &crate::GreedyConfig::default());
         }
         let opts = LlvmOptions::default();
-        let tc = LlvmConverter::build(opts);
+        let mut tc = LlvmConverter::build(opts);
+        if self.amx {
+            X86ToLlvm::convert_tiles(&mut tc);
+        }
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         patterns.add(Lowering { root: "vector.transfer_read", benefit: 1, f: |cr, op, _| transfer_read_to_load(cr, op, None) });
         patterns.add(Lowering { root: "vector.transfer_write", benefit: 1, f: |cr, op, _| transfer_write_to_store(cr, op, None) });
         VectorToLlvm::populate(&mut patterns, i, VectorOptions { llvm: opts, reassociate_fp_reductions: self.reassociate, force_32bit_indices: self.force32, use_vector_alignment: self.vector_alignment, counter: &self.counter });
+        // The CPU dialects (`enable-x86vector`, `enable-amx`) lower to intrinsic calls.
+        X86ToLlvm::populate(&mut patterns, i, opts, self.x86vector, self.amx);
         let mut target = llvm_target();
         target.legal_dialect("arith").legal_dialect("memref");
+        if self.x86vector {
+            target.illegal_dialect("x86vector");
+        }
+        if self.amx {
+            target.illegal_dialect("amx");
+        }
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
 }

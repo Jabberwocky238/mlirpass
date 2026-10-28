@@ -1,0 +1,2 @@
+-cse
+-convert-vector-to-llvm=enable-amx
