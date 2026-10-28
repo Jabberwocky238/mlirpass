@@ -33,6 +33,7 @@ macro_rules! rewrites {
 mod affine;
 mod arith;
 mod cf;
+mod gpu;
 mod linalg;
 mod memref;
 mod reshape;
@@ -148,6 +149,7 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
     match body[op].name.split_once('.').map(|(ns, _)| ns) {
         Some("arith") => arith::Folder { b: body, op, c: consts }.fold(),
         Some("scf") => scf::fold(body, op),
+        Some("gpu") => gpu::fold(body, op),
         Some("affine") => affine::fold(body, op),
         Some("memref") => memref::fold(body, op),
         #[cfg(feature = "llvm")]
@@ -199,6 +201,7 @@ pub fn patterns() -> PatternSet {
     affine::patterns(&mut set);
     arith::patterns(&mut set);
     cf::patterns(&mut set);
+    gpu::patterns(&mut set);
     linalg::patterns(&mut set);
     memref::patterns(&mut set);
     scf::patterns(&mut set);

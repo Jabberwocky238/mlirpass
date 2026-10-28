@@ -9,7 +9,7 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-`0.3.0`: 4426 of the 5001 fixture cases match `mlir-opt` 22.1.8 byte for byte
+`0.3.0`: 4442 of the 5001 fixture cases match `mlir-opt` 22.1.8 byte for byte
 (`cargo test --test passes -- --nocapture` counts them per group), MLIR's own `Dialect/SPIRV`,
 `Dialect/GPU` and `*ToSPIRV` tests included. All 13 of MLIR's `Integration/GPU/Vulkan` tests
 produce the numbers their checks expect, run on Vulkan (lavapipe) both as SPIR-V and as GLSL

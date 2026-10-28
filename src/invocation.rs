@@ -154,7 +154,7 @@ impl crate::Interfaces<'_> {
     pub fn upstream() -> Self {
         use crate::*;
         let mut i = Self::new();
-        i.register(&AffineDialect).register(&ArithDialect).register(&BufferizationDialect).register(&CfDialect).register(&FuncDialect).register(&LinalgDialect).register(&MemrefDialect);
+        i.register(&AffineDialect).register(&ArithDialect).register(&BufferizationDialect).register(&CfDialect).register(&FuncDialect).register(&GpuDialect).register(&LinalgDialect).register(&MemrefDialect);
         i.register(&ScfDialect).register(&ShapeDialect).register(&SpirvDialect).register(&TensorDialect).register(&TestDialect).register(&TosaDialect).register(&UbDialect).register(&VectorDialect);
         #[cfg(feature = "llvm")]
         i.register(&LlvmDialect);
