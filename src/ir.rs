@@ -546,16 +546,15 @@ impl<'a> Body<'a> {
     /// Puts each attribute of `data` among its properties or its discardable attributes, as
     /// the context says; an op the context does not know keeps what it has.
     pub fn place(&self, data: &mut OpData<'a>) {
-        if self.ctx.opt.op_info(&data.name).is_none() {
-            return;
-        }
+        // One lookup for the op, not one per attribute (`inherent`).
+        let Some(info) = self.ctx.opt.op_info(&data.name) else { return };
         let mut all: Vec<NamedAttr<'a>> = match data.properties.take() {
             Some(Attribute::Dict(d)) => d,
             _ => Vec::new(),
         };
         all.append(&mut data.attributes);
         all.sort_by(|a, b| a.name.cmp(&b.name));
-        let (props, attrs): (Vec<_>, Vec<_>) = all.into_iter().partition(|a| self.inherent(&data.name, &a.name) == Some(true));
+        let (props, attrs): (Vec<_>, Vec<_>) = all.into_iter().partition(|a| info.inherent.contains(&&*a.name) || matches!(&*a.name, "operandSegmentSizes" | "resultSegmentSizes"));
         data.properties = (!props.is_empty()).then_some(Attribute::Dict(props));
         data.attributes = attrs;
     }

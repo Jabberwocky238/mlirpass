@@ -30,8 +30,11 @@ pub struct Invocation {
     pub verify_diagnostics: bool,
     pub input: Option<String>,
     pub output: Option<String>,
-    /// Not `-mlir-disable-threading`: nested pipelines run on a [`ThreadPool`](crate::ThreadPool).
+    /// Not `-mlir-disable-threading`: nested pipelines run on [`Invocation::pool`].
     pub threading: bool,
+    /// Made once: sizing it asks the OS (cgroups, affinity), too slow to repeat per chunk.
+    #[cfg(feature = "std")]
+    pub pool: crate::ThreadPool,
 }
 
 /// Flags that change nothing this crate does.
@@ -40,7 +43,7 @@ const IGNORED: &[&str] = &["allow-unregistered-dialect", "verify-each", "mlir-pr
 impl Invocation {
     /// The `mlir-opt` arguments `args`, the passes named from `reg`.
     pub fn parse<S: AsRef<str>>(reg: &dyn crate::PassRegistry, args: &[S]) -> Result<Self, Error> {
-        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, verify_diagnostics: false, input: None, output: None, threading: true };
+        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, verify_diagnostics: false, input: None, output: None, threading: true, #[cfg(feature = "std")] pool: crate::ThreadPool::default() };
         let mut it = args.iter().map(AsRef::as_ref);
         while let Some(arg) = it.next() {
             let Some(flag) = arg.strip_prefix('-').filter(|f| !f.is_empty()) else {
@@ -100,7 +103,7 @@ impl Invocation {
     pub fn run_chunk(&self, ctx: Ctx<'_>, chunk: &str) -> Result<String, Error> {
         let mut body = Body::parse(ctx, chunk)?;
         let root = body.root;
-        match self.pipeline.run_on(&mut body, root, &*self.executor()) {
+        match self.pipeline.run_on(&mut body, root, self.executor()) {
             Ok(()) => Ok(self.print(&mut body)),
             Err(_) if self.verify_diagnostics && chunk.contains("expected-error") => Ok(String::new()),
             Err(e) => Err(e),
@@ -108,12 +111,12 @@ impl Invocation {
     }
 
     /// What runs nested pipelines: a thread pool unless threading is off (or there is no `std`).
-    pub fn executor(&self) -> alloc::boxed::Box<dyn crate::Executor> {
+    pub fn executor(&self) -> &dyn crate::Executor {
         #[cfg(feature = "std")]
         if self.threading {
-            return alloc::boxed::Box::new(crate::ThreadPool::default());
+            return &self.pool;
         }
-        alloc::boxed::Box::new(crate::Serial)
+        &crate::Serial
     }
 
     /// The body as `mlir-opt` prints it under these flags.
@@ -128,6 +131,9 @@ impl Invocation {
         }
         // Aliases are inlined on import; keep only those raw dialect text still names.
         let show = |m: &Module<'_>| if self.generic { format!("{}", MlirOpt::new().show(m)) } else { format!("{}", opt.show(m)) };
+        if !m.items.iter().any(|i| matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. })) {
+            return show(&m);
+        }
         let bare = Module { items: m.items.iter().filter(|i| !matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. })).cloned().collect() };
         let text = show(&bare);
         let named = |sigil: char, name: &str| {

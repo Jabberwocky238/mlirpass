@@ -404,34 +404,35 @@ pub trait Pattern {
     fn rewrite(&self, rw: &mut Rewriter<'_, '_>, op: OpId) -> bool;
 }
 
-/// Patterns ordered as `PatternApplicator` tries them: by benefit, highest first, stable.
+/// Patterns ordered as `PatternApplicator` tries them: by benefit, highest first, stable. Kept
+/// in that order as they are added, so [`PatternSet::for_op`] just filters.
 #[derive(Default)]
 pub struct PatternSet {
-    patterns: Vec<Box<dyn Pattern>>,
+    /// Each with its place in that order: benefit (highest first), then op-specific before any-op.
+    patterns: Vec<((core::cmp::Reverse<u16>, bool), Box<dyn Pattern>)>,
 }
 
 impl PatternSet {
     pub fn add(&mut self, p: impl Pattern + 'static) -> &mut Self {
-        self.patterns.push(Box::new(p));
-        self
+        self.add_boxed(Box::new(p))
     }
 
+    /// Goes after every pattern tried before it or alongside it (stable).
     pub fn add_boxed(&mut self, p: Box<dyn Pattern>) -> &mut Self {
-        self.patterns.push(p);
+        let key = (core::cmp::Reverse(p.benefit()), p.root().is_none());
+        let at = self.patterns.partition_point(|q| q.0 <= key);
+        self.patterns.insert(at, (key, p));
         self
     }
 
     /// Keeps the patterns `keep` accepts.
     pub fn retain(&mut self, keep: impl Fn(&dyn Pattern) -> bool) {
-        self.patterns.retain(|p| keep(p.as_ref()));
+        self.patterns.retain(|p| keep(p.1.as_ref()));
     }
 
     /// The patterns for op `name`, in the order they are tried.
-    pub fn for_op(&self, name: &str) -> Vec<&dyn Pattern> {
-        let mut out: Vec<&dyn Pattern> = self.patterns.iter().map(Box::as_ref).filter(|p| p.root().is_none_or(|r| r == name)).collect();
-        // Op-specific patterns go before any-op ones of the same benefit.
-        out.sort_by(|a, b| b.benefit().cmp(&a.benefit()).then(a.root().is_none().cmp(&b.root().is_none())));
-        out
+    pub fn for_op<'s>(&'s self, name: &'s str) -> impl Iterator<Item = &'s dyn Pattern> {
+        self.patterns.iter().map(|p| p.1.as_ref()).filter(move |p| p.root().is_none_or(|r| r == name))
     }
 
     pub fn is_empty(&self) -> bool {

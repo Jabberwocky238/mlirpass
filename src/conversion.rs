@@ -885,7 +885,7 @@ pub struct Converter<'x, 'c, 'p> {
     patterns: &'x ConversionPatterns<'p>,
     config: ConversionConfig,
     /// Pattern indices per root name, in cost-model order; any-op patterns under `""`.
-    order: BTreeMap<String, Vec<usize>>,
+    order: BTreeMap<&'x str, Vec<usize>>,
     applied: BTreeSet<usize>,
 }
 
@@ -899,22 +899,21 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
     /// `buildLegalizationGraph` + `computeLegalizationGraphBenefit`, simplified to what it
     /// decides: patterns ordered by legalization depth, then benefit, stably.
     fn cost_model(&mut self) {
-        let any_op = self.patterns.patterns.iter().any(|(p, _)| p.root().is_none());
-        let mut by_root: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        for (i, (p, _)) in self.patterns.patterns.iter().enumerate() {
+        let pats = &self.patterns.patterns;
+        let any_op = pats.iter().any(|(p, _)| p.root().is_none());
+        let mut by_root: BTreeMap<&'x str, Vec<usize>> = BTreeMap::new();
+        for (i, (p, _)) in pats.iter().enumerate() {
             let root = p.root().unwrap_or("");
             if !root.is_empty() && matches!(self.target.action(root), Some(Action::Legal)) {
                 continue;
             }
-            by_root.entry(root.into()).or_default().push(i);
+            by_root.entry(root).or_default().push(i);
         }
-        let mut depth: BTreeMap<String, usize> = BTreeMap::new();
-        let roots: Vec<String> = by_root.keys().cloned().collect();
-        for r in &roots {
+        let mut depth: BTreeMap<&'x str, usize> = BTreeMap::new();
+        for r in by_root.keys() {
             self.op_depth(r, &by_root, &mut depth, any_op);
         }
         for (root, mut idx) in by_root {
-            let pats = &self.patterns.patterns;
             let d = |i: usize| pats[i].0.generated().iter().map(|g| depth.get(*g).copied().unwrap_or(0) + 1).max().unwrap_or(1).max(1);
             if idx.len() > 1 && !any_op {
                 idx.sort_by(|a, b| d(*a).cmp(&d(*b)).then(pats[*b].0.benefit().cmp(&pats[*a].0.benefit())));
@@ -925,7 +924,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         }
     }
 
-    fn op_depth(&self, op: &str, by_root: &BTreeMap<String, Vec<usize>>, depth: &mut BTreeMap<String, usize>, any_op: bool) -> usize {
+    fn op_depth(&self, op: &'x str, by_root: &BTreeMap<&'x str, Vec<usize>>, depth: &mut BTreeMap<&'x str, usize>, any_op: bool) -> usize {
         if any_op {
             return 0;
         }
@@ -933,7 +932,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
             return *d;
         }
         let Some(pats) = by_root.get(op).filter(|p| !p.is_empty()) else { return 0 };
-        depth.insert(op.into(), usize::MAX - 1);
+        depth.insert(op, usize::MAX - 1);
         let mut min = usize::MAX;
         for i in pats {
             let mut d = 1;
@@ -942,7 +941,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
             }
             min = min.min(d);
         }
-        depth.insert(op.into(), min);
+        depth.insert(op, min);
         min
     }
 
