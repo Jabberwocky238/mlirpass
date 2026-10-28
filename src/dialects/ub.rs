@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Extended};
 
-use crate::{Body, OpId, OpInterfaces};
+use crate::{Body, DialectInliner, InlineAll, OpId, OpInterfaces};
 
 /// The `ub` dialect.
 pub struct UbDialect;
@@ -13,6 +13,11 @@ pub struct UbDialect;
 impl OpInterfaces for UbDialect {
     fn namespace(&self) -> &str {
         "ub"
+    }
+
+    /// Every op inlines (`UBInlinerInterface`).
+    fn inliner(&self) -> Option<&dyn DialectInliner> {
+        Some(&InlineAll { calls: false, regions: false })
     }
 
     fn constant_value<'a>(&self, b: &Body<'a>, op: OpId) -> Option<Attribute<'a>> {

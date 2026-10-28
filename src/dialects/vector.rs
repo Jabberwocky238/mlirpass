@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use crate::{Body, EffectInstance, EffectKind, OpId, OpInterfaces};
+use crate::{Body, DialectInliner, EffectInstance, EffectKind, InlineAll, OpId, OpInterfaces};
 
 /// The `vector` dialect.
 pub struct VectorDialect;
@@ -10,6 +10,11 @@ pub struct VectorDialect;
 impl OpInterfaces for VectorDialect {
     fn namespace(&self) -> &str {
         "vector"
+    }
+
+    /// Every op inlines (`VectorInlinerInterface`).
+    fn inliner(&self) -> Option<&dyn DialectInliner> {
+        Some(&InlineAll { calls: false, regions: false })
     }
 
     fn effects(&self, b: &Body<'_>, op: OpId) -> Option<Vec<EffectInstance>> {

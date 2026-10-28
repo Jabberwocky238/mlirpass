@@ -4,6 +4,7 @@ mod buffer_results_to_out_params;
 mod canonicalize;
 mod cse;
 mod expand_strided_metadata;
+mod inline;
 mod licm;
 mod mem2reg;
 mod memref_slots;
@@ -20,6 +21,7 @@ pub use buffer_results_to_out_params::BufferResultsToOutParams;
 pub use canonicalize::Canonicalize;
 pub use cse::Cse;
 pub use expand_strided_metadata::ExpandStridedMetadata;
+pub use inline::Inline;
 pub use licm::LoopInvariantCodeMotion;
 pub use mem2reg::Mem2Reg;
 pub use memslot::{Deletion, Destructurable, DestructurableMemorySlot, MemorySlot, Promotable, Slots};
@@ -33,5 +35,5 @@ pub use symbol_privatize::SymbolPrivatize;
 
 crate::pass_set! {
     /// The dialect-independent transforms, as `mlir/lib/Transforms`.
-    TransformPasses: BufferResultsToOutParams, Canonicalize, Cse, ExpandStridedMetadata, LoopInvariantCodeMotion, Mem2Reg, PromoteBuffersToStack, RemoveDeadValues, Sccp, Sroa, StripDebugInfo, SymbolDce, SymbolPrivatize
+    TransformPasses: BufferResultsToOutParams, Canonicalize, Cse, ExpandStridedMetadata, Inline, LoopInvariantCodeMotion, Mem2Reg, PromoteBuffersToStack, RemoveDeadValues, Sccp, Sroa, StripDebugInfo, SymbolDce, SymbolPrivatize
 }

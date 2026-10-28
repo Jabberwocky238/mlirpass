@@ -3,7 +3,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::{Body, OpId, OpInterfaces, Point, Succ, ValueId};
+use crate::{Body, DialectInliner, InlineAll, OpId, OpInterfaces, Point, Succ, ValueId};
 
 /// The `memref` dialect.
 pub struct MemrefDialect;
@@ -11,6 +11,11 @@ pub struct MemrefDialect;
 impl OpInterfaces for MemrefDialect {
     fn namespace(&self) -> &str {
         "memref"
+    }
+
+    /// Ops inline, and into regions (`MemRefInlinerInterface`).
+    fn inliner(&self) -> Option<&dyn DialectInliner> {
+        Some(&InlineAll { calls: false, regions: true })
     }
 
     fn speculatability(&self, b: &Body<'_>, op: OpId) -> Option<bool> {

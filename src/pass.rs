@@ -184,7 +184,24 @@ impl<'s> Options<'s> {
 
     /// A comma-separated list option.
     pub fn list(&self, key: &str) -> Vec<&'s str> {
-        self.get(key).map(|v| v.split(',').map(str::trim).filter(|s| !s.is_empty()).collect()).unwrap_or_default()
+        let Some(v) = self.get(key) else { return Vec::new() };
+        // Commas inside `(...)` / `{...}` belong to the element (`op-pipelines=func.func(a,b)`).
+        let mut out = Vec::new();
+        let (mut depth, mut start) = (0i32, 0);
+        for (i, c) in v.char_indices() {
+            match c {
+                '(' | '{' | '[' => depth += 1,
+                ')' | '}' | ']' => depth -= 1,
+                ',' if depth == 0 => {
+                    out.push(v[start..i].trim());
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        out.push(v[start..].trim());
+        out.retain(|s| !s.is_empty());
+        out
     }
 }
 

@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use mlirformat::Attribute;
 
-use crate::{Body, BlockId, BranchLayout, Const, EffectInstance, EffectKind, OpId, OpInterfaces};
+use crate::{BlockId, Body, BranchLayout, Const, DialectInliner, EffectInstance, EffectKind, InlineAll, OpId, OpInterfaces};
 
 /// The `cf` dialect.
 pub struct CfDialect;
@@ -13,6 +13,11 @@ pub struct CfDialect;
 impl OpInterfaces for CfDialect {
     fn namespace(&self) -> &str {
         "cf"
+    }
+
+    /// Calls and ops inline; `cf` has no regions (`ControlFlowInlinerInterface`).
+    fn inliner(&self) -> Option<&dyn DialectInliner> {
+        Some(&InlineAll { calls: true, regions: false })
     }
 
     fn effects(&self, b: &Body<'_>, op: OpId) -> Option<Vec<EffectInstance>> {

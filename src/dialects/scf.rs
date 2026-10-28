@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use mlirformat::Attribute;
 
-use crate::{Body, OpId, OpInterfaces, Operand, Point, Succ, ValueId};
+use crate::{Body, DialectInliner, OpId, OpInterfaces, Operand, Point, Succ, ValueId};
 
 /// The `scf` dialect.
 pub struct ScfDialect;
@@ -13,6 +13,10 @@ pub struct ScfDialect;
 impl OpInterfaces for ScfDialect {
     fn namespace(&self) -> &str {
         "scf"
+    }
+
+    fn inliner(&self) -> Option<&dyn DialectInliner> {
+        Some(self)
     }
 
     fn speculatability(&self, b: &Body<'_>, op: OpId) -> Option<bool> {
@@ -93,6 +97,26 @@ impl OpInterfaces for ScfDialect {
             Some(1) => all.into_iter().filter(|s| s.0 != Succ::Parent).collect(),
             Some(_) => all.into_iter().filter(|s| s.0 == Succ::Parent).collect(),
             None => all,
+        }
+    }
+}
+
+/// `SCFInlinerInterface`.
+impl DialectInliner for ScfDialect {
+    fn legal_region(&self, _: &Body<'_>, _: crate::RegionId) -> bool {
+        true
+    }
+
+    fn legal_op(&self, _: &Body<'_>, _: OpId) -> bool {
+        true
+    }
+
+    fn replace_with_terminator(&self, b: &mut Body<'_>, op: OpId, results: &[ValueId]) {
+        if b[op].name != "scf.yield" {
+            return;
+        }
+        for (r, v) in results.iter().zip(b[op].operands.clone()) {
+            b.replace_all_uses(*r, v);
         }
     }
 }

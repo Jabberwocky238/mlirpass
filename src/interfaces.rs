@@ -5,9 +5,9 @@
 use alloc::vec::Vec;
 use core::ops::Range;
 
-use mlirformat::Attribute;
+use mlirformat::{Attribute, Type};
 
-use crate::{BlockId, Body, EffectInstance, OpId, Operand, Point, Succ, ValueId};
+use crate::{BlockId, Body, EffectInstance, InsertPoint, OpId, Operand, Point, RegionId, Succ, ValueId};
 pub use mlirformat::{Effect, EffectKind, EffectOn, Effects, OpInfo, Trait};
 
 /// How a branch lays out its successor operands (`BranchOpInterface::getSuccessorOperands`).
@@ -107,6 +107,78 @@ pub trait OpInterfaces: Sync {
     /// `CallOpInterface::getCallableForCallee` of an indirect call: the callee value.
     fn indirect_callee(&self, _: &Body<'_>, _: OpId) -> Option<ValueId> {
         None
+    }
+
+    /// The dialect's `DialectInlinerInterface`; `None`: it has none, and nothing of it inlines.
+    fn inliner(&self) -> Option<&dyn DialectInliner> {
+        None
+    }
+}
+
+/// ⭐ `DialectInlinerInterface`: what the inliner asks of a dialect. The defaults are the C++
+/// defaults: nothing is legal, terminators are left alone.
+pub trait DialectInliner: Sync {
+    /// `isLegalToInline(call, callable, wouldBeCloned)`, asked of the call's dialect.
+    fn legal_call(&self, _: &Body<'_>, _call: OpId, _callable: OpId) -> bool {
+        false
+    }
+
+    /// `isLegalToInline(dest, src, ...)`, asked of the dialect of `dest`'s op.
+    fn legal_region(&self, _: &Body<'_>, _dest: RegionId) -> bool {
+        false
+    }
+
+    /// `isLegalToInline(op, dest, ...)`, asked of `op`'s dialect.
+    fn legal_op(&self, _: &Body<'_>, _op: OpId) -> bool {
+        false
+    }
+
+    /// `shouldAnalyzeRecursively`: whether `op`'s regions are checked too.
+    fn analyze_recursively(&self, _: &Body<'_>, _op: OpId) -> bool {
+        true
+    }
+
+    /// `handleTerminator(op, newDest)`: a terminator of a multi-block inlined region, branching
+    /// to `dest` instead.
+    fn branch_terminator(&self, _: &mut Body<'_>, _op: OpId, _dest: BlockId) {}
+
+    /// `handleTerminator(op, valuesToRepl)`: the single block's terminator replacing the call's
+    /// results.
+    fn replace_with_terminator(&self, _: &mut Body<'_>, _op: OpId, _results: &[ValueId]) {}
+
+    /// `materializeCallConversion`: an op casting `input` to `ty`, placed at `at`.
+    fn call_conversion<'a>(&self, _: &mut Body<'a>, _input: ValueId, _ty: &Type<'a>, _at: InsertPoint, _loc: Option<mlirformat::Str<'a>>) -> Option<OpId> {
+        None
+    }
+
+    /// `handleArgument` / `handleResult` (asked of the callable's dialect): the value to use
+    /// for an argument or result with attributes `attrs`, built at `at`.
+    fn handle_value<'a>(&self, _: &mut Body<'a>, _call: OpId, value: ValueId, _attrs: Option<&Attribute<'a>>, _result: bool, _at: InsertPoint) -> ValueId {
+        value
+    }
+
+    /// `processInlinedCallBlocks`.
+    fn process_inlined(&self, _: &mut Body<'_>, _call: OpId, _blocks: &[BlockId]) {}
+}
+
+/// The common inliner interface: every op legal, regions (`regions`) and calls (`calls`) as
+/// the dialect says.
+pub struct InlineAll {
+    pub calls: bool,
+    pub regions: bool,
+}
+
+impl DialectInliner for InlineAll {
+    fn legal_call(&self, _: &Body<'_>, _: OpId, _: OpId) -> bool {
+        self.calls
+    }
+
+    fn legal_region(&self, _: &Body<'_>, _: RegionId) -> bool {
+        self.regions
+    }
+
+    fn legal_op(&self, _: &Body<'_>, _: OpId) -> bool {
+        true
     }
 }
 

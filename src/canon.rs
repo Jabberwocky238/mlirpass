@@ -33,6 +33,7 @@ macro_rules! rewrites {
 mod affine;
 mod arith;
 mod cf;
+mod func;
 mod gpu;
 mod linalg;
 mod memref;
@@ -41,6 +42,7 @@ mod scf;
 mod shape;
 mod spirv;
 mod tensor;
+mod test;
 mod tosa;
 mod vector;
 
@@ -150,6 +152,7 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("arith") => arith::Folder { b: body, op, c: consts }.fold(),
         Some("scf") => scf::fold(body, op),
         Some("gpu") => gpu::fold(body, op),
+        Some("builtin") => body.fold_unrealized_cast(op),
         Some("affine") => affine::fold(body, op),
         Some("memref") => memref::fold(body, op),
         #[cfg(feature = "llvm")]
@@ -161,6 +164,26 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("linalg") => linalg::fold(body, op, consts),
         Some("spirv") => spirv::Folder { b: body, op, c: consts }.fold(),
         _ => Fold::Failed,
+    }
+}
+
+impl<'a> Body<'a> {
+    /// `UnrealizedConversionCastOp::fold`: a cast to its own types, or back through a cast
+    /// all of whose results it takes, is its inputs.
+    fn fold_unrealized_cast(&self, op: OpId) -> Fold<'a> {
+        if self[op].name != "builtin.unrealized_conversion_cast" {
+            return Fold::Failed;
+        }
+        let (ins, outs) = (&self[op].operands, &self[op].results);
+        let values = |vs: &[ValueId]| Fold::Results(vs.iter().map(|v| Folded::Value(*v)).collect());
+        if self.types(ins) == self.types(outs) {
+            return values(ins);
+        }
+        let Some(inner) = ins.first().and_then(|v| self.def_op(*v)).filter(|d| self[*d].name == "builtin.unrealized_conversion_cast") else { return Fold::Failed };
+        if self[inner].results != *ins || self.types(&self[inner].operands) != self.types(outs) {
+            return Fold::Failed;
+        }
+        values(&self[inner].operands)
     }
 }
 
@@ -201,6 +224,7 @@ pub fn patterns() -> PatternSet {
     affine::patterns(&mut set);
     arith::patterns(&mut set);
     cf::patterns(&mut set);
+    func::patterns(&mut set);
     gpu::patterns(&mut set);
     linalg::patterns(&mut set);
     memref::patterns(&mut set);
@@ -208,6 +232,7 @@ pub fn patterns() -> PatternSet {
     shape::patterns(&mut set);
     spirv::patterns(&mut set);
     tensor::patterns(&mut set);
+    test::patterns(&mut set);
     tosa::patterns(&mut set);
     vector::patterns(&mut set);
     set

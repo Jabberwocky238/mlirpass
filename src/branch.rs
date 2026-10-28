@@ -287,7 +287,7 @@ impl<'a> Body<'a> {
             if let Some(at) = before {
                 self[into].blocks.pop();
                 let pos = self[into].blocks.iter().position(|x| *x == at).expect("block not in region");
-                self[into].blocks.insert(pos + made.len(), nb);
+                self[into].blocks.insert(pos, nb);
             }
             for (x, y) in fresh.into_iter().zip(self[nb].args.clone()) {
                 map.map(x, y);

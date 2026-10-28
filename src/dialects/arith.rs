@@ -1,6 +1,6 @@
 //! The `arith` dialect's op interfaces.
 
-use crate::{Body, OpId, OpInterfaces};
+use crate::{Body, DialectInliner, InlineAll, OpId, OpInterfaces};
 
 /// The `arith` dialect.
 pub struct ArithDialect;
@@ -8,6 +8,11 @@ pub struct ArithDialect;
 impl OpInterfaces for ArithDialect {
     fn namespace(&self) -> &str {
         "arith"
+    }
+
+    /// Every op inlines (`ArithInlinerInterface`).
+    fn inliner(&self) -> Option<&dyn DialectInliner> {
+        Some(&InlineAll { calls: false, regions: false })
     }
 
     fn speculatability(&self, b: &Body<'_>, op: OpId) -> Option<bool> {

@@ -663,6 +663,14 @@ impl<'a> Body<'a> {
         self.insert(op, block, Some(at));
     }
 
+    /// Inserts detached `op` at insertion point `at`: before its op, else at the end.
+    pub fn put(&mut self, op: OpId, at: crate::InsertPoint) {
+        match at.before {
+            Some(b) => self.insert_before(op, b),
+            None => self.insert(op, at.block, None),
+        }
+    }
+
     /// Inserts detached `op` right after `after`.
     pub fn insert_after(&mut self, op: OpId, after: OpId) {
         let block = self[after].parent.expect("anchor is not placed");
@@ -1226,7 +1234,11 @@ impl Body<'_> {
             }
             None => String::from(*l),
         }).collect();
-        Some(lines.join("\n"))
+        let mut out = lines.join("\n");
+        if text.ends_with('\n') {
+            out.push('\n');
+        }
+        Some(out)
     }
 }
 
