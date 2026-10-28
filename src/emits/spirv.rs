@@ -21,6 +21,7 @@ mod types;
 mod ub_to_spirv;
 mod unify_aliased;
 mod vector_to_spirv;
+mod wmma_to_spirv;
 #[path = "spirv/tables.gen.rs"]
 mod tables;
 
@@ -47,6 +48,7 @@ pub use tensor_to_spirv::TensorToSpirv;
 pub use ub_to_spirv::UbToSpirv;
 pub use unify_aliased::SpirvUnifyAliasedResource;
 pub use vector_to_spirv::{VectorSpirvOptions, VectorToSpirv};
+pub use wmma_to_spirv::WmmaToSpirv;
 pub use types::{SpirvOptions, SpirvTypes, explicit_layout};
 
 /// What an op or an enum case needs of the target (`SPIRVAvailability.td`): versions (the

@@ -482,11 +482,13 @@ impl crate::Run for ConvertGpuToSpirv {
             }
             let opts = super::SpirvOptions { index64: self.index64, ..super::SpirvOptions::default() };
             let types = super::SpirvTypes { env: &env, opts };
-            let tc = types.converter();
+            let mut tc = types.converter();
+            super::WmmaToSpirv::convert_types(&mut tc);
             let gpu = GpuSpirvOptions { index64: self.index64, shader: env.allows_cap("Shader"), kernel: env.allows_cap("Kernel"), interface_abi: env.shader(), subgroup_size: env.subgroup_size() };
             let mut patterns = crate::ConversionPatterns::default();
             let i = patterns.converter(&tc);
             GpuToSpirv::populate(&mut patterns, i, gpu);
+            super::WmmaToSpirv::populate(&mut patterns, i, super::MemrefSpirvOptions { index64: self.index64, kernel: env.allows_cap("Kernel"), bool_bits: 8 });
             super::ScfToSpirv::populate(&mut patterns, i);
             super::ArithToSpirv::populate(&mut patterns, i, super::ArithSpirvOptions { no_wrap: env.allows_ext("SPV_KHR_no_integer_wrap_decoration"), emulate_floats: true });
             super::MemrefToSpirv::populate(&mut patterns, i, super::MemrefSpirvOptions { index64: self.index64, kernel: env.allows_cap("Kernel"), bool_bits: 8 });
