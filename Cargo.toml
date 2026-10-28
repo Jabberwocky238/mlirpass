@@ -1,6 +1,6 @@
 [package]
 name = "mlirpass"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 description = "MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion and the upstream lowerings, on top of mlirformat"
 license = "MIT"
@@ -16,7 +16,7 @@ members = ["macros"]
 
 [dependencies]
 mlirpass-macros = { path = "macros", version = "0.3.0" }
-mlirformat = { version = "0.4.2", default-features = false }
+mlirformat = { version = "0.4.4", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }
 
@@ -51,7 +51,3 @@ required-features = ["spirv"]
 [[test]]
 name = "vulkan"
 required-features = ["spirv"]
-
-# Local mlirformat while the x86vector / amx dialects land there; dropped before publishing.
-[patch.crates-io]
-mlirformat = { path = "../mlirformat" }
