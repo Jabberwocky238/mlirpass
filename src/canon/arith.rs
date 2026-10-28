@@ -56,6 +56,43 @@ fn overflow_attr<'a>(bits: u8) -> Attribute<'a> {
     Attribute::dialect("arith.overflow", body)
 }
 
+/// An IEEE float format's exponent and mantissa widths (the formats [`ApFloat`] holds).
+pub(super) fn float_layout(kind: FloatKind) -> Option<(u32, u32)> {
+    Some(match kind {
+        FloatKind::F64 => (11, 52),
+        FloatKind::F32 => (8, 23),
+        FloatKind::TF32 => (8, 10),
+        FloatKind::F16 => (5, 10),
+        FloatKind::BF16 => (8, 7),
+        FloatKind::F8E5M2 => (5, 2),
+        FloatKind::F8E4M3 => (4, 3),
+        FloatKind::F8E3M4 => (3, 4),
+        _ => return None,
+    })
+}
+
+/// `APFloat::convert` of a NaN, when `convertFloatValue` keeps it: quiet (a signaling one is an
+/// invalid operation), and no payload bit shifted out (`losesInfo`); the payload moves with the
+/// mantissa's top, the sign stays.
+fn nan_convert(f: ApFloat, to: FloatKind) -> Option<ApFloat> {
+    let ((_, ms), (ed, md)) = (float_layout(f.kind)?, float_layout(to)?);
+    let mant = f.bits & ((1 << ms) - 1);
+    if (mant >> (ms - 1)) & 1 == 0 {
+        return None;
+    }
+    let mant = if md < ms {
+        let lost = ms - md;
+        if mant & ((1 << lost) - 1) != 0 {
+            return None;
+        }
+        mant >> lost
+    } else {
+        mant << (md - ms)
+    };
+    let sign = u64::from(f.is_negative()) << (ed + md);
+    ApFloat::from_bits(to, sign | (((1 << ed) - 1) << md) | mant)
+}
+
 /// Whether fastmath flags `a` include every flag named.
 fn fastmath_has(a: Option<&Attribute<'_>>, flags: &[&str]) -> bool {
     let Some(Attribute::Extended { ext, .. }) = a else { return false };
@@ -116,7 +153,15 @@ fn minmax(a: ApFloat, b: ApFloat, max: bool, nan_wins: bool) -> ApFloat {
         if nan_wins {
             return if a.is_nan() { a.quieted() } else { b.quieted() };
         }
-        return if a.is_nan() { b } else { a };
+        // `maxnum` / `minnum` (IEEE 754-2008): a signaling NaN comes back quieted, a quiet one
+        // gives way to the other operand.
+        let signaling = |f: ApFloat| f.is_nan() && f.quieted() != f;
+        return match () {
+            _ if signaling(a) => a.quieted(),
+            _ if signaling(b) => b.quieted(),
+            _ if a.is_nan() => b,
+            _ => a,
+        };
     }
     if a.is_zero() && b.is_zero() && a.is_negative() != b.is_negative() {
         return if a.is_negative() == max { b } else { a };
@@ -141,11 +186,11 @@ impl<'x, 'a> Folder<'x, 'a> {
         self.b[self.op].results[0]
     }
 
-    fn ty(&self) -> Type<'a> {
+    pub(super) fn ty(&self) -> Type<'a> {
         self.b[self.res()].ty.clone()
     }
 
-    fn cst(&self, i: usize) -> Option<Const<'a>> {
+    pub(super) fn cst(&self, i: usize) -> Option<Const<'a>> {
         self.c.get(i)?.as_ref().and_then(|a| Const::try_from(a).ok())
     }
 
@@ -180,7 +225,7 @@ impl<'x, 'a> Folder<'x, 'a> {
 
     /// `constFoldBinaryOp`: poison passes through; scalars, splats and elements fold
     /// element-wise into `ty` (default: the operands' type).
-    fn binary(&self, ty: Option<Type<'a>>, f: impl Fn(Scalar, Scalar) -> Option<Scalar>) -> Option<Attribute<'a>> {
+    pub(super) fn binary(&self, ty: Option<Type<'a>>, f: impl Fn(Scalar, Scalar) -> Option<Scalar>) -> Option<Attribute<'a>> {
         for i in 0..2 {
             if self.poison(i) {
                 return self.c[i].clone();
@@ -205,7 +250,7 @@ impl<'x, 'a> Folder<'x, 'a> {
     }
 
     /// `constFoldUnaryOp` / `constFoldCastOp` into `ty`.
-    fn unary(&self, ty: Type<'a>, f: impl Fn(Scalar) -> Option<Scalar>) -> Fold<'a> {
+    pub(super) fn unary(&self, ty: Type<'a>, f: impl Fn(Scalar) -> Option<Scalar>) -> Fold<'a> {
         if self.poison(0) {
             return self.c[0].clone().map(Folded::Attr).into();
         }
@@ -691,10 +736,12 @@ impl<'x, 'a> Folder<'x, 'a> {
         let Some(k) = self.float_kind(self.res()) else { return Fold::Failed };
         self.unary(ty, move |a| {
             let f = a.float()?;
+            if f.is_nan() {
+                return nan_convert(f, k).map(Scalar::Float);
+            }
             let to = f.convert(k)?;
             let back = to.convert(f.kind)?;
-            let exact = if f.is_nan() { to.is_nan() } else { back.bits == f.bits && to.is_inf() == f.is_inf() };
-            exact.then_some(Scalar::Float(to))
+            (back.bits == f.bits && to.is_inf() == f.is_inf()).then_some(Scalar::Float(to))
         })
     }
 

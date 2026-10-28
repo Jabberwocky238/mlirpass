@@ -36,6 +36,7 @@ mod cf;
 mod func;
 mod gpu;
 mod linalg;
+mod math;
 mod memref;
 mod reshape;
 mod scf;
@@ -151,6 +152,7 @@ impl<'a> Body<'a> {
 pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold<'a> {
     match body[op].name.split_once('.').map(|(ns, _)| ns) {
         Some("arith") => arith::Folder { b: body, op, c: consts }.fold(),
+        Some("math") => arith::Folder { b: body, op, c: consts }.math(),
         Some("scf") => scf::fold(body, op),
         Some("gpu") => gpu::fold(body, op),
         Some("builtin") => body.fold_unrealized_cast(op),
@@ -192,6 +194,9 @@ impl<'a> Body<'a> {
 pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
     match ns {
         "arith" => arith::materialize(value, ty),
+        // `MathDialect::materializeConstant`: poison as `ub.poison`, the rest as arith does.
+        "math" if value.is_poison() => Some(OpData::build("ub.poison").with("value", value.clone())),
+        "math" => arith::materialize(value, ty),
         "affine" => affine::materialize(value, ty),
         "memref" => memref::materialize(value, ty),
         #[cfg(feature = "llvm")]
