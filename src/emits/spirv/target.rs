@@ -157,6 +157,19 @@ impl TargetEnv {
 
     // ---- types -------------------------------------------------------------------------
 
+    /// `getAddressingModel`: by the first of `Kernel` (`Physical32` / `Physical64`) and
+    /// `PhysicalStorageBufferAddresses` among the given capabilities, else `Logical`.
+    pub fn addressing_model(&self, index64: bool) -> &'static str {
+        for c in &self.given_caps {
+            match &**c {
+                "Kernel" => return if index64 { "Physical64" } else { "Physical32" },
+                "PhysicalStorageBufferAddresses" => return "PhysicalStorageBuffer64",
+                _ => {}
+            }
+        }
+        "Logical"
+    }
+
     /// `spirv::ScalarType::classof`.
     pub fn is_scalar(t: &Type<'_>) -> bool {
         match t {

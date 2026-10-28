@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
     return 2;
   }
   int nbuf = argc - 6;
-  VkApplicationInfo app = {VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "vkrun", 1, NULL, 0, VK_API_VERSION_1_1};
+  VkApplicationInfo app = {VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "vkrun", 1, NULL, 0, VK_API_VERSION_1_3};
   VkInstanceCreateInfo ici = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, NULL, 0, &app, 0, NULL, 0, NULL};
   VkInstance inst;
   CHECK(vkCreateInstance(&ici, NULL, &inst));
@@ -56,6 +56,10 @@ int main(int argc, char **argv) {
     fprintf(stderr, "no Vulkan device\n");
     return 1;
   }
+  VkPhysicalDeviceProperties devprops;
+  vkGetPhysicalDeviceProperties(phys, &devprops);
+  if (getenv("VKRUN_DEVICE"))
+    fprintf(stderr, "vkrun: %s\n", devprops.deviceName);
   uint32_t nq = 0;
   vkGetPhysicalDeviceQueueFamilyProperties(phys, &nq, NULL);
   VkQueueFamilyProperties *qp = calloc(nq, sizeof *qp);
@@ -68,11 +72,23 @@ int main(int argc, char **argv) {
   // Everything the device has: the tests' shaders ask for what their target env allows.
   VkPhysicalDeviceFeatures feats;
   vkGetPhysicalDeviceFeatures(phys, &feats);
-  VkPhysicalDeviceVulkan11Features f11 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
+  // Cooperative matrices, where the device has them (the one extension enabled: the rest
+  // the tests use is core).
+  uint32_t next = 0;
+  vkEnumerateDeviceExtensionProperties(phys, NULL, &next, NULL);
+  VkExtensionProperties *exts = calloc(next, sizeof *exts);
+  vkEnumerateDeviceExtensionProperties(phys, NULL, &next, exts);
+  int coop = 0;
+  for (uint32_t i = 0; i < next; i++)
+    coop |= strcmp(exts[i].extensionName, "VK_KHR_cooperative_matrix") == 0;
+  const char *coop_ext = "VK_KHR_cooperative_matrix";
+  VkPhysicalDeviceCooperativeMatrixFeaturesKHR fcoop = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR};
+  VkPhysicalDeviceVulkan13Features f13 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES, coop ? &fcoop : NULL};
+  VkPhysicalDeviceVulkan11Features f11 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES, &f13};
   VkPhysicalDeviceVulkan12Features f12 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, &f11};
   VkPhysicalDeviceFeatures2 f2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &f12};
   vkGetPhysicalDeviceFeatures2(phys, &f2);
-  VkDeviceCreateInfo dci = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, &f2, 0, 1, &qci, 0, NULL, 0, NULL, NULL};
+  VkDeviceCreateInfo dci = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, &f2, 0, 1, &qci, 0, NULL, coop ? 1u : 0u, coop ? &coop_ext : NULL, NULL};
   VkDevice dev;
   CHECK(vkCreateDevice(phys, &dci, NULL, &dev));
   VkQueue queue;

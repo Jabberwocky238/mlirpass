@@ -26,6 +26,8 @@ pub struct GpuSpirvOptions {
     pub interface_abi: bool,
     /// The resource limits' `subgroup_size`.
     pub subgroup_size: u32,
+    /// `getAddressingModel` of the target.
+    pub addressing: &'static str,
 }
 
 impl GpuSpirvOptions {
@@ -323,14 +325,14 @@ impl GpuToSpirv {
     /// `GPUModuleConversion`.
     #[lowering("gpu.module")]
     fn module<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuSpirvOptions) -> bool {
-        let (addressing, memory) = if o.kernel {
-            (if o.index64 { "Physical64" } else { "Physical32" }, "OpenCL")
+        let memory = if o.kernel {
+            "OpenCL"
         } else if o.shader {
-            ("Logical", "GLSL450")
+            "GLSL450"
         } else {
             return false;
         };
-        let addressing = if !o.kernel && cr.rw.body[op].get("spirv.target_env").is_some_and(|a| format!("{a}").contains("PhysicalStorageBufferAddresses")) { "PhysicalStorageBuffer64" } else { addressing };
+        let addressing = o.addressing;
         let Some(name) = cr.rw.body[op].get("sym_name").and_then(symbol_text) else { return false };
         let mut data = OpData::build("spirv.module")
             .with("addressing_model", Cr::spirv_enum("addressing_model", addressing))
@@ -484,7 +486,7 @@ impl crate::Run for ConvertGpuToSpirv {
             let types = super::SpirvTypes { env: &env, opts };
             let mut tc = types.converter();
             super::WmmaToSpirv::convert_types(&mut tc);
-            let gpu = GpuSpirvOptions { index64: self.index64, shader: env.allows_cap("Shader"), kernel: env.allows_cap("Kernel"), interface_abi: env.shader(), subgroup_size: env.subgroup_size() };
+            let gpu = GpuSpirvOptions { index64: self.index64, shader: env.allows_cap("Shader"), kernel: env.allows_cap("Kernel"), interface_abi: env.shader(), subgroup_size: env.subgroup_size(), addressing: env.addressing_model(self.index64) };
             let mut patterns = crate::ConversionPatterns::default();
             let i = patterns.converter(&tc);
             GpuToSpirv::populate(&mut patterns, i, gpu);

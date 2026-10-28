@@ -6,7 +6,10 @@
 //! test's own FileCheck lines.
 //!
 //! Skipped without a C compiler, glslang or lavapipe. `FILTER=<substring>` narrows the tests;
-//! `SHOW=1` prints what each run printed.
+//! `SHOW=1` prints what each run printed. `VULKAN_ICD=<icd.json>` runs them on another driver,
+//! e.g. a real GPU's (`/usr/share/vulkan/icd.d/intel_icd.json`); there,
+//! `cooperative_matrix_on_device` also checks a subgroup MMA kernel lowered with the device's
+//! own target env (`tests/support/vkinfo.c`) against the product computed on the host.
 
 mod common;
 
@@ -20,6 +23,12 @@ use mlirpass::mlirformat::{Attribute, Const, Scalar, Type};
 use mlirpass::{Body, Ctx, Emit, Interfaces, Invocation, OpId, Passes, Serial, SpirvBinary, SpirvGlsl, ValueId};
 
 const LAVAPIPE: &str = "/usr/share/vulkan/icd.d/lvp_icd.json";
+
+/// The Vulkan driver to run on: `VULKAN_ICD` (an ICD manifest, e.g. `intel_icd.json` for a real
+/// GPU), lavapipe by default.
+fn icd() -> String {
+    std::env::var("VULKAN_ICD").unwrap_or_else(|_| String::from(LAVAPIPE))
+}
 
 /// A host buffer: a memref's elements, as the device sees them.
 #[derive(Clone)]
@@ -307,7 +316,7 @@ fn device(vkrun: &Path, dir: &Path, spv: &[u8], entry: &str, grid: [i64; 3], buf
     for (f, b) in files.iter().zip(bufs.iter()) {
         fs::write(f, &b.data).map_err(|e| e.to_string())?;
     }
-    let out = Command::new(vkrun).env("VK_ICD_FILENAMES", LAVAPIPE).arg(&shader).arg(entry).args(grid.iter().map(|g| g.to_string())).args(&files).output().map_err(|e| e.to_string())?;
+    let out = Command::new(vkrun).env("VK_ICD_FILENAMES", icd()).arg(&shader).arg(entry).args(grid.iter().map(|g| g.to_string())).args(&files).output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(format!("vkrun: {}", String::from_utf8_lossy(&out.stderr).trim()));
     }
@@ -323,7 +332,7 @@ fn tool(cmd: &str) -> bool {
 
 #[test]
 fn vulkan_integration() {
-    if !tool("cc") || !tool("glslangValidator") || !Path::new(LAVAPIPE).exists() {
+    if !tool("cc") || !tool("glslangValidator") || !Path::new(&icd()).exists() {
         eprintln!("cc, glslangValidator or lavapipe missing: skipped");
         return;
     }
@@ -398,4 +407,105 @@ fn vulkan_integration() {
     for f in &failed {
         eprintln!("  {f}");
     }
+}
+
+/// The device's `#spirv.target_env` (`tests/support/vkinfo.c`), when it reports one.
+fn device_target_env(target: &Path) -> Option<String> {
+    let vkinfo = target.join("vkinfo");
+    let built = Command::new("cc").args(["-O1", "-o"]).arg(&vkinfo).arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/vkinfo.c")).arg("-lvulkan").status().ok()?;
+    assert!(built.success(), "vkinfo does not build");
+    let out = Command::new(&vkinfo).env("VK_ICD_FILENAMES", icd()).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+}
+
+/// The first `f16 x f16 + f32` cooperative matrix configuration of a target env: `(m, n, k)`.
+fn f16_f32_coop_matrix(env: &str) -> Option<(i64, i64, i64)> {
+    env.split("#spirv.coop_matrix_props_khr<").skip(1).find_map(|p| {
+        let field = |key: &str| p.split(&format!("{key} = ")).nth(1)?.split([',', '>']).next().map(str::trim);
+        let ok = field("a_type")? == "f16" && field("b_type")? == "f16" && field("c_type")? == "f32" && field("scope")? == "<Subgroup";
+        ok.then(|| Some((field("m_size")?.parse().ok()?, field("n_size")?.parse().ok()?, field("k_size")?.parse().ok()?)))?
+    })
+}
+
+/// A `C += A x B` subgroup MMA kernel on the device's own cooperative matrix shape, lowered by
+/// mlirpass with the device's target env, run on the device, and compared element by element
+/// with the product computed here (small integers: exact in f16 and in the f32 sums).
+///
+/// Runs where `VULKAN_ICD` names a device with `VK_KHR_cooperative_matrix` and an f16 / f32
+/// configuration (lavapipe has none: skipped).
+#[test]
+fn cooperative_matrix_on_device() {
+    if !tool("cc") || !Path::new(&icd()).exists() {
+        eprintln!("cc or the Vulkan driver missing: skipped");
+        return;
+    }
+    let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/vulkan");
+    fs::create_dir_all(&target).unwrap();
+    let Some(env) = device_target_env(&target) else {
+        eprintln!("no Vulkan device: skipped");
+        return;
+    };
+    let Some((m, n, k)) = f16_f32_coop_matrix(&env) else {
+        eprintln!("the device has no f16 x f16 + f32 cooperative matrices: skipped");
+        return;
+    };
+    let vkrun = target.join("vkrun");
+    let built = Command::new("cc").args(["-O1", "-o"]).arg(&vkrun).arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/vkrun.c")).arg("-lvulkan").status().unwrap();
+    assert!(built.success(), "vkrun does not build");
+
+    let sb = "#spirv.storage_class<StorageBuffer>";
+    let (ma, mb, mc) = (format!("memref<{m}x{k}xf16, {sb}>"), format!("memref<{k}x{n}xf16, {sb}>"), format!("memref<{m}x{n}xf32, {sb}>"));
+    let (ta, tb, tc) = (format!("!gpu.mma_matrix<{m}x{k}xf16, \"AOp\">"), format!("!gpu.mma_matrix<{k}x{n}xf16, \"BOp\">"), format!("!gpu.mma_matrix<{m}x{n}xf32, \"COp\">"));
+    let text = format!(
+        "module attributes {{gpu.container_module, spirv.target_env = {env}}} {{
+  gpu.module @kernels {{
+    gpu.func @matmul(%a: {ma}, %b: {mb}, %c: {mc}) kernel attributes {{spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 1, 1]>}} {{
+      %i0 = arith.constant 0 : index
+      %A = gpu.subgroup_mma_load_matrix %a[%i0, %i0] {{leadDimension = {k} : index}} : {ma} -> {ta}
+      %B = gpu.subgroup_mma_load_matrix %b[%i0, %i0] {{leadDimension = {n} : index}} : {mb} -> {tb}
+      %C = gpu.subgroup_mma_load_matrix %c[%i0, %i0] {{leadDimension = {n} : index}} : {mc} -> {tc}
+      %D = gpu.subgroup_mma_compute %A, %B, %C : {ta}, {tb} -> {tc}
+      gpu.subgroup_mma_store_matrix %D, %c[%i0, %i0] {{leadDimension = {n} : index}} : {tc}, {mc}
+      gpu.return
+    }}
+  }}
+}}"
+    );
+    let (opt, interfaces, passes) = (mlirpass::mlirformat::MlirOpt::upstream(), Interfaces::upstream(), Passes::upstream());
+    let ctx = Ctx::new(&opt, &interfaces);
+    let mut body = Body::parse(ctx, &text).unwrap();
+    let inv = Invocation::parse(&passes, &["--pass-pipeline=builtin.module(convert-gpu-to-spirv,spirv.module(spirv-lower-abi-attrs,spirv-update-vce))"]).unwrap();
+    let root = body.root;
+    inv.pipeline.run_on(&mut body, root, &Serial).unwrap();
+    let top = body.top_block(root);
+    let module = body[top].ops.iter().copied().find(|o| body[*o].name == "spirv.module").expect("a spirv.module");
+    let words = SpirvBinary::default().emit(&body, module).unwrap();
+
+    let (a, b, c): (Vec<f32>, Vec<f32>, Vec<f32>) = (
+        (0..m * k).map(|x| ((x * 7) % 9 - 4) as f32).collect(),
+        (0..k * n).map(|x| ((x * 5) % 7 - 3) as f32).collect(),
+        (0..m * n).map(|x| (x % 11 - 5) as f32).collect(),
+    );
+    let f16 = |v: &[f32]| v.iter().flat_map(|x| (mlirpass::mlirformat::ApFloat::from_f64(mlirpass::mlirformat::FloatKind::F16, f64::from(*x)).unwrap().bits as u16).to_le_bytes()).collect::<Vec<u8>>();
+    let buf = |elem: Type<'static>, shape: Vec<i64>, data: Vec<u8>| Buf { elem, shape, data };
+    let mut bufs = vec![
+        buf(Type::Float(mlirpass::mlirformat::FloatKind::F16), vec![m, k], f16(&a)),
+        buf(Type::Float(mlirpass::mlirformat::FloatKind::F16), vec![k, n], f16(&b)),
+        buf(Type::Float(mlirpass::mlirformat::FloatKind::F32), vec![m, n], c.iter().flat_map(|x| x.to_le_bytes()).collect()),
+    ];
+    let dir = target.join("cooperative_matrix");
+    fs::create_dir_all(&dir).unwrap();
+    device(&vkrun, &dir, &SpirvBinary::bytes(&words), "matmul", [1, 1, 1], &mut bufs).unwrap();
+    let got: Vec<f32> = bufs[2].data.chunks(4).map(|w| f32::from_le_bytes(w.try_into().unwrap())).collect();
+    let mut bad = 0;
+    for i in 0..m {
+        for j in 0..n {
+            let want = c[(i * n + j) as usize] + (0..k).map(|x| a[(i * k + x) as usize] * b[(x * n + j) as usize]).sum::<f32>();
+            if got[(i * n + j) as usize] != want {
+                bad += 1;
+            }
+        }
+    }
+    eprintln!("cooperative matrix {m}x{n}x{k} (f16 x f16 + f32) on the device: {} of {} elements exact", m * n - bad, m * n);
+    assert_eq!(bad, 0);
 }
