@@ -7,6 +7,7 @@ mod gpu_outlining;
 mod linalg_build;
 mod math_to_funcs;
 mod scf_to_cf;
+mod scf_to_gpu;
 mod shape_to_std;
 mod tensor_to_linalg;
 mod to_libm;
@@ -24,12 +25,13 @@ use mlirformat::Error;
 use crate::pass;
 use crate::{Action, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, Run};
 
-pub use affine_to_std::AffineToStd;
+pub use affine_to_std::{AffineExpand, AffineToStd};
 pub use bufferization_to_memref::{BufferizationToMemref, ConvertBufferizationToMemref};
 pub use gpu_outlining::{GpuKernelOutlining, GpuLaunchSinkIndexComputations};
 pub use complex_to_std::{ComplexToStd, Cx as ComplexCx, Fmf as ComplexFmf};
 pub use math_to_funcs::{ConvertMathToFuncs, MathToFuncs};
 pub use scf_to_cf::ScfToCf;
+pub use scf_to_gpu::{ConvertAffineForToGpu, ConvertParallelLoopsToGpu, GpuMapParallelLoops};
 pub use shape_to_std::ShapeToStd;
 pub use tensor_to_linalg::{ConvertTensorToLinalg, TensorToLinalg};
 pub use to_libm::{ComplexToLibm, ConvertComplexToLibm, ConvertMathToLibm, MathToLibm};
@@ -186,5 +188,5 @@ pub fn tosa_to_tensor<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
 
 crate::pass_set! {
     /// The lowerings between dialects.
-    LowerPasses: GpuKernelOutlining, GpuLaunchSinkIndexComputations, ConvertBufferizationToMemref, ConvertComplexToLibm, ConvertComplexToStandard, ConvertMathToFuncs, ConvertMathToLibm, ConvertScfToCf, ConvertShapeToStd, ConvertTensorToLinalg, ConvertVectorToScf, LowerAffine, TosaToArithPass, TosaToLinalgNamedPass, TosaToLinalgPass, TosaToScfPass, TosaToTensorPass
+    LowerPasses: ConvertAffineForToGpu, ConvertParallelLoopsToGpu, GpuMapParallelLoops, GpuKernelOutlining, GpuLaunchSinkIndexComputations, ConvertBufferizationToMemref, ConvertComplexToLibm, ConvertComplexToStandard, ConvertMathToFuncs, ConvertMathToLibm, ConvertScfToCf, ConvertShapeToStd, ConvertTensorToLinalg, ConvertVectorToScf, LowerAffine, TosaToArithPass, TosaToLinalgNamedPass, TosaToLinalgPass, TosaToScfPass, TosaToTensorPass
 }
