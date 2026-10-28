@@ -114,7 +114,7 @@ pub fn unescape(s: &str) -> Vec<u8> {
                 match hex {
                     Some(v) => {
                         out.push(v);
-                        i += 4;
+                        i += 3;
                         continue;
                     }
                     None => out.push(b[i + 1]),

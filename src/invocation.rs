@@ -164,7 +164,7 @@ impl crate::Passes {
     /// Every pass this crate implements.
     pub fn upstream() -> Self {
         let mut p = Self::new();
-        p.with::<crate::ConversionPasses>().with::<crate::TransformPasses>().with::<crate::LowerPasses>().with::<crate::LlvmPasses>().with::<crate::EmitcPasses>();
+        p.with::<crate::ConversionPasses>().with::<crate::TransformPasses>().with::<crate::LowerPasses>().with::<crate::LlvmPasses>().with::<crate::EmitcPasses>().with::<crate::SpirvPasses>();
         p
     }
 }

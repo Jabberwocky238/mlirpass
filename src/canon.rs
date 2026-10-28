@@ -38,6 +38,7 @@ mod memref;
 mod reshape;
 mod scf;
 mod shape;
+mod spirv;
 mod tensor;
 mod tosa;
 mod vector;
@@ -154,6 +155,7 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("tensor") => tensor::fold(body, op, consts),
         Some("tosa") => tosa::fold(body, op, consts),
         Some("linalg") => linalg::fold(body, op, consts),
+        Some("spirv") => spirv::Folder { b: body, op, c: consts }.fold(),
         _ => Fold::Failed,
     }
 }
@@ -169,6 +171,7 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
         "shape" => shape::materialize(value, ty),
         "tensor" | "linalg" => arith::materialize(value, ty),
         "tosa" => tosa::materialize(value, ty),
+        "spirv" => spirv::materialize(value, ty),
         "ub" => value.is_poison().then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,
     }

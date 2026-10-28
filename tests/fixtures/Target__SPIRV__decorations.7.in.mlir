@@ -1,0 +1,4 @@
+"spirv.module"() <{addressing_model = #spirv.addressing_model<Logical>, memory_model = #spirv.memory_model<GLSL450>, vce_triple = #spirv.vce<v1.0, [Shader, Linkage], []>}> ({
+  "spirv.GlobalVariable"() <{location = 0 : i32, sym_name = "var", type = !spirv.ptr<vector<4xf32>, Output>}> {relaxed_precision} : () -> ()
+}) : () -> ()
+

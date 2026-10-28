@@ -30,3 +30,7 @@ cli = ["std"]
 name = "mlirpass"
 path = "src/cli/main.rs"
 required-features = ["cli"]
+
+# Local mlirformat while spirv types land there; dropped before publishing.
+[patch.crates-io]
+mlirformat = { path = "../mlirformat" }

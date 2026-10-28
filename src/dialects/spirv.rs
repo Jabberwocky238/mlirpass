@@ -14,7 +14,7 @@ impl OpInterfaces for SpirvDialect {
         Some(match &*b[op].name {
             "spirv.Branch" => BranchLayout::All,
             "spirv.BranchConditional" => BranchLayout::Groups { first: 1 },
-            "spirv.Switch" => BranchLayout::Cases { default: Some(1), cases: 2, split: "target_operand_segments" },
+            "spirv.Switch" => BranchLayout::Cases { default: Some(1), cases: 2, split: "case_operand_segments" },
             _ => return None,
         })
     }

@@ -3,7 +3,7 @@
 
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Error, NamedAttr, Type};
+use mlirformat::{Error, NamedAttr, Type};
 
 use crate::pass;
 use crate::{Body, ConversionPattern, ConversionRewriter, OpData, OpId, TypedOp, ValueId};
@@ -79,14 +79,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
 
     /// The op's attributes, inherent and discardable, sorted (`getAttrs()`).
     pub fn all_attrs(&self, op: OpId) -> Vec<NamedAttr<'a>> {
-        let d = &self.rw.body[op];
-        let mut out: Vec<NamedAttr<'a>> = match &d.properties {
-            Some(Attribute::Dict(p)) => p.clone(),
-            _ => Vec::new(),
-        };
-        out.extend(d.attributes.iter().cloned());
-        out.sort_by(|a, b| a.name.cmp(&b.name));
-        out
+        self.rw.body[op].all_attrs()
     }
 }
 

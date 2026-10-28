@@ -396,6 +396,17 @@ impl<'a> OpData<'a> {
     }
 
     /// Attribute `name`, inherent or discardable.
+    /// The op's attributes, inherent and discardable, sorted (`getAttrs()`).
+    pub fn all_attrs(&self) -> Vec<NamedAttr<'a>> {
+        let mut out: Vec<NamedAttr<'a>> = match &self.properties {
+            Some(Attribute::Dict(p)) => p.clone(),
+            _ => Vec::new(),
+        };
+        out.extend(self.attributes.iter().cloned());
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        out
+    }
+
     pub fn get(&self, name: &str) -> Option<&Attribute<'a>> {
         let find = |d: &[NamedAttr<'a>]| d.iter().position(|a| a.name == name);
         let d = if find(self.dict(true)).is_some() { self.dict(true) } else { self.dict(false) };
