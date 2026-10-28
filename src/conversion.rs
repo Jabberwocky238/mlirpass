@@ -1375,6 +1375,7 @@ impl Replacement for Vec<ValueId> {
 /// A lowering that needs the pass options `O`.
 pub struct OptLowering<O> {
     pub root: &'static str,
+    pub benefit: u16,
     pub opts: O,
     pub f: for<'r, 'a, 'p> fn(&mut ConversionRewriter<'r, 'a, 'p>, OpId, &[Vec<ValueId>], O) -> bool,
 }
@@ -1386,6 +1387,10 @@ impl<O: Copy> ConversionPattern for OptLowering<O> {
 
     fn root(&self) -> Option<&str> {
         Some(self.root)
+    }
+
+    fn benefit(&self) -> u16 {
+        self.benefit
     }
 
     fn rewrite(&self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {

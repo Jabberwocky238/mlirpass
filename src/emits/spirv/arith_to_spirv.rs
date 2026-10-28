@@ -187,7 +187,7 @@ impl ArithToSpirv {
         }
         let Some(dst) = cr.converted(&src) else { return false };
         let Some(value) = cr.rw.body[op].get("value").cloned() else { return false };
-        let Ok(c) = Const::try_from(&value) else { return false };
+        let Some(c) = Const::try_from(&value).ok().or_else(|| cr.rw.body.resource_const(&value)) else { return false };
         let n = src.element_count().unwrap_or(0) as i64;
         let rank = s.shape.as_ref().map_or(0, Vec::len);
         let mut attr_ty = src.clone();

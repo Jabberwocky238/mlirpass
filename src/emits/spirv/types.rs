@@ -222,7 +222,28 @@ impl<'t> SpirvTypes<'t> {
         let fixed = !s.dims()?.contains(&Dim::DYNAMIC);
         let elements = Type::Shaped(s.clone()).element_count().unwrap_or(0) as i64;
         if storage == "Image" {
-            return None;
+            // A sampled image of single-element texels (`R32f`, ...), whatever the rank.
+            let dim = match s.dims()?.len() {
+                1 => "Dim1D",
+                2 => "Dim2D",
+                3 => "Dim3D",
+                _ => return None,
+            };
+            if !TargetEnv::is_scalar(&s.elem) {
+                return None;
+            }
+            let format = match &*s.elem {
+                Type::Float(FloatKind::F16) => "R16f",
+                Type::Float(FloatKind::F32) => "R32f",
+                Type::Integer { width: 16, signedness: Signedness::Unsigned } => "R16ui",
+                Type::Integer { width: 32, signedness: Signedness::Unsigned } => "R32ui",
+                Type::Integer { width: 16, .. } => "R16i",
+                Type::Integer { width: 32, .. } => "R32i",
+                _ => return None,
+            };
+            let params = [dim, "DepthUnknown", "NonArrayed", "SingleSampled", "NeedSampler", format].map(alloc::string::String::from);
+            let image: Type<'static> = SpirvType::Image { elem: (*s.elem).owned().into(), params }.into();
+            return Some(SpirvType::ptr(SpirvType::SampledImage(image.into()).into(), "UniformConstant"));
         }
         if let Type::Integer { width, signedness } = &*s.elem {
             if *width == 1 {

@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use crate::patterns;
 use mlirformat::spirv_types::SpirvType;
-use mlirformat::{Attribute, Const, Type};
+use mlirformat::{ApFloat, Attribute, Const, Scalar, Type};
 
 use super::{SpirvTypes, TargetEnv};
 use crate::{ConversionRewriter, OpData, OpId, ValueId};
@@ -372,6 +372,42 @@ impl VectorToSpirv {
             };
             Some(cr.build(OpData::build(n).operands(&[l, r]), t.clone()))
         })
+    }
+
+    /// `VectorReductionToFPDotProd`: a float `add` reduction as `spirv.Dot` (of the operands
+    /// of an `arith.mulf`, else with ones), ahead of the generic patterns.
+    #[lowering("vector.reduction", benefit = 2)]
+    fn reduction_dot<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        if !matches!(cr.rw.body[op].get("kind"), Some(Attribute::Extended { ext, .. }) if ext.body.as_deref().unwrap_or("").trim_matches(['<', '>']) == "add") {
+            return false;
+        }
+        let Some(ty @ Type::Float(_)) = Self::result_ty(cr, op, 0) else { return false };
+        let (vec, acc) = (ops[0], ops.get(1).copied());
+        let vt = cr.rw.body[vec].ty.clone();
+        let Type::Shaped(vs) = &vt else {
+            match acc {
+                Some(acc) => {
+                    cr.replace_new(op, OpData::build("spirv.FAdd").operands(&[acc, vec]), &[ty]);
+                }
+                None => cr.replace_values(op, &[vec]),
+            }
+            return true;
+        };
+        let (lhs, rhs) = match cr.rw.body.def_op(vec).filter(|d| cr.rw.body[*d].name == "arith.mulf") {
+            Some(mul) => (cr.rw.body[mul].operands[0], cr.rw.body[mul].operands[1]),
+            None => {
+                let Type::Float(k) = *vs.elem else { return false };
+                let one = Const::splat(Scalar::Float(ApFloat::from_f64(k, 1.0).expect("a float")), vt.clone());
+                (vec, cr.spirv_const(vt.clone(), one.into()))
+            }
+        };
+        let mut res = cr.build(OpData::build("spirv.Dot").operands(&[lhs, rhs]), ty.clone());
+        if let Some(acc) = acc {
+            res = cr.build(OpData::build("spirv.FAdd").operands(&[acc, res]), ty);
+        }
+        cr.replace_values(op, &[res]);
+        true
     }
 
     /// `VectorShapeCast`.

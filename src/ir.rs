@@ -274,6 +274,46 @@ pub struct Body<'a> {
     journal: Journal<'a>,
 }
 
+impl<'a> Body<'a> {
+    /// `DenseElementsAttr::getFromRawBuffer` of a `dense_resource<name>`'s blob (the
+    /// `{-# dialect_resources #-}` hex, its 4-byte alignment header dropped): little-endian
+    /// elements of whole bytes, or one splat element.
+    pub fn resource_const(&self, attr: &Attribute<'a>) -> Option<crate::Const<'a>> {
+        let Attribute::Builtin { name, body, ty: Some(ty) } = attr else { return None };
+        if name != "dense_resource" {
+            return None;
+        }
+        let key = body.trim_matches(['<', '>']);
+        let hex = self.items.iter().find_map(|i| {
+            let Item::Metadata { body } = i else { return None };
+            let (_, rest) = body.split_once(&*format!("{key}:"))?;
+            let (_, rest) = rest.split_once("\"0x")?;
+            Some(String::from(rest.split('"').next()?.trim()))
+        })?;
+        let bytes: Vec<u8> = (0..hex.len() / 2).map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16)).collect::<Result<_, _>>().ok()?;
+        let data = bytes.get(4..)?;
+        let elem = ty.element_type().clone();
+        let width = elem.bit_width()?;
+        if width % 8 != 0 {
+            return None;
+        }
+        let size = (width / 8) as usize;
+        let n = ty.element_count()?;
+        if data.len() != n * size && data.len() != size {
+            return None;
+        }
+        let scalar = |chunk: &[u8]| {
+            let bits = chunk.iter().rev().fold(0u128, |acc, b| (acc << 8) | u128::from(*b));
+            Some(match &elem {
+                Type::Float(k) => mlirformat::Scalar::Float(mlirformat::ApFloat::from_bits(*k, bits as u64)?),
+                _ => mlirformat::Scalar::Int(mlirformat::ApInt::from_bits(width, bits)),
+            })
+        };
+        let values = data.chunks(size).map(scalar).collect::<Option<Vec<_>>>()?;
+        Some(crate::Const { ty: ty.clone(), values, elements: true })
+    }
+}
+
 impl Body<'_> {
     /// The single block of a symbol table op like `builtin.module`.
     pub fn top_block(&self, op: OpId) -> BlockId {
@@ -1140,8 +1180,53 @@ impl<'a> From<&Body<'a>> for Module<'a> {
         ex.name_op(body.root);
         let (meta, mut items): (Vec<_>, Vec<_>) = body.items.iter().cloned().partition(|i| matches!(i, Item::Metadata { .. }));
         items.push(Item::Op(ex.op(body.root)));
-        items.extend(meta);
+        let used = body.used_resources();
+        items.extend(meta.into_iter().filter_map(|m| match m {
+            Item::Metadata { body: text } => Body::keep_resources(&text, &used).map(|t| Item::Metadata { body: t.into() }),
+            m => Some(m),
+        }));
         Module { items }
+    }
+}
+
+impl Body<'_> {
+    /// The `dense_resource<key>` keys the ops still reference.
+    fn used_resources(&self) -> Vec<String> {
+        fn scan(a: &Attribute<'_>, out: &mut Vec<String>) {
+            match a {
+                Attribute::Builtin { name, body, .. } if name == "dense_resource" => out.push(String::from(body.trim_matches(['<', '>']))),
+                Attribute::Array(es) => es.iter().for_each(|e| scan(e, out)),
+                Attribute::Dict(es) => es.iter().filter_map(|e| e.value.as_ref()).for_each(|e| scan(e, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.walk(self.root, &mut |o| self[o].all_attrs().iter().filter_map(|a| a.value.as_ref()).for_each(|a| scan(a, &mut out)));
+        out
+    }
+
+    /// A `{-# ... #-}` body without the `dialect_resources` blobs nothing references, as the
+    /// printer only emits referenced ones; `None` once nothing is left.
+    fn keep_resources(text: &str, used: &[String]) -> Option<String> {
+        if !text.contains("dialect_resources") {
+            return Some(String::from(text));
+        }
+        let blob = |l: &str| l.trim_start().split_once(": \"0x").map(|(k, _)| String::from(k.trim()));
+        let kept: Vec<&str> = text.lines().filter(|l| blob(l).is_none_or(|k| used.contains(&k))).collect();
+        let n = kept.iter().filter(|l| blob(l).is_some()).count();
+        if n == 0 {
+            return None;
+        }
+        // The last blob of a list loses its comma.
+        let mut seen = 0;
+        let lines: Vec<String> = kept.iter().map(|l| match blob(l) {
+            Some(_) => {
+                seen += 1;
+                String::from(if seen == n { l.trim_end_matches(',') } else { l })
+            }
+            None => String::from(*l),
+        }).collect();
+        Some(lines.join("\n"))
     }
 }
 

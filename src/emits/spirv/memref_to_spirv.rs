@@ -148,7 +148,7 @@ impl MemrefToSpirv {
             return v;
         }
         let zero = cr.spirv_const(ty.clone(), Attribute::integer(0, ty));
-        cr.build(OpData::build("spirv.INotEqual").operands(&[v, zero]), Type::I1)
+        cr.create_or_fold(OpData::build("spirv.INotEqual").operands(&[v, zero]), Type::I1)
     }
 
     /// `castBoolToIntN`.
@@ -158,7 +158,7 @@ impl MemrefToSpirv {
         }
         let zero = cr.spirv_const(ty.clone(), Attribute::integer(0, ty.clone()));
         let one = cr.spirv_const(ty.clone(), Attribute::integer(1, ty.clone()));
-        cr.build(OpData::build("spirv.Select").operands(&[v, one, zero]), ty)
+        cr.create_or_fold(OpData::build("spirv.Select").operands(&[v, one, zero]), ty)
     }
 
     /// The element type a memref's converted pointer points into.
@@ -218,6 +218,36 @@ impl MemrefToSpirv {
         cr.rw.ip = saved;
         let v = cr.build(OpData::build("spirv.mlir.addressof").with("variable", Attribute::SymbolRef(vec![name.into()])), ptr);
         cr.replace_values(op, &[v]);
+        true
+    }
+
+    /// `AtomicRMWOpPattern`: the integer kinds, as `spirv.Atomic*` on the element.
+    #[lowering("memref.atomic_rmw")]
+    fn atomic_rmw<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefSpirvOptions) -> bool {
+        let r = cr.rw.body[op].results[0];
+        if matches!(cr.rw.body[r].ty, Type::Float(_)) {
+            return false;
+        }
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let m = cr.rw.body[op].operands[1];
+        let Some(s) = Self::memref(&cr.rw.body[m].ty).cloned() else { return false };
+        let Some(scope) = Self::atomic_scope(&s) else { return false };
+        let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
+        let Some(ptr) = Self::element_ptr(cr, &s, ops[1], &ops[2..], o) else { return false };
+        let kind = cr.rw.body[op].get("kind").and_then(|a| mlirformat::Const::try_from(a).ok()).and_then(|c| c.as_int()).map(|i| i.signed());
+        // `arith::AtomicRMWKind`.
+        let name = match kind {
+            Some(1) => "spirv.AtomicIAdd",
+            Some(6) => "spirv.AtomicSMax",
+            Some(7) => "spirv.AtomicUMax",
+            Some(10) => "spirv.AtomicSMin",
+            Some(11) => "spirv.AtomicUMin",
+            Some(14) => "spirv.AtomicOr",
+            Some(2) => "spirv.AtomicAnd",
+            _ => return false,
+        };
+        let data = OpData::build(name).operands(&[ptr, ops[0]]).with("memory_scope", Cr::spirv_enum("scope", scope)).with("semantics", Cr::spirv_enum("memory_semantics", "AcquireRelease"));
+        cr.replace_new(op, data, &[ty]);
         true
     }
 
@@ -286,6 +316,57 @@ impl MemrefToSpirv {
         true
     }
 
+    /// `ImageLoadOpPattern`: a scalar out of a sampled image, fetched as a texel's red.
+    #[lowering("memref.load")]
+    fn image_load<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: MemrefSpirvOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let m = cr.rw.body[op].operands[0];
+        let mt = cr.rw.body[m].ty.clone();
+        let Some(s) = Self::memref(&mt).cloned() else { return false };
+        if SpirvTypes::storage_class(&s).as_deref() != Some("Image") {
+            return false;
+        }
+        let Some(req) = Self::requirements(cr, op, ops[0]) else { return false };
+        let Some(rank) = s.shape.as_ref().map(Vec::len) else { return false };
+        if !super::TargetEnv::is_scalar(&s.elem) {
+            return false;
+        }
+        let Some(SpirvType::Ptr { pointee, .. }) = cr.converted(&mt).and_then(|t| SpirvType::try_from(&t).ok()) else { return false };
+        let Ok(SpirvType::SampledImage(image)) = SpirvType::try_from(&*pointee) else { return false };
+        let sampled = cr.build(Self::with_req(OpData::build("spirv.Load").operands(&[ops[0]]), req), (*pointee).owned());
+        let img = cr.build(OpData::build("spirv.Image").operands(&[sampled]), (*image).owned());
+        let coords = match rank {
+            1 => ops[1],
+            _ => {
+                // `extractLoadCoordsForComposite`: in layout order, fastest moving first.
+                let perm: Vec<usize> = match s.layout() {
+                    None => (0..rank).collect(),
+                    Some(Attribute::Builtin { name, body, .. }) if name == "affine_map" => {
+                        let Some(map) = mlirformat::AffineMap::parse(body) else { return false };
+                        let Some(perm) = map.results.iter().map(|e| match e { mlirformat::AffineExpr::Dim(d) => Some(*d as usize), _ => None }).collect::<Option<Vec<_>>>() else { return false };
+                        if perm.len() != rank || map.dims as usize != rank {
+                            return false;
+                        }
+                        perm
+                    }
+                    _ => return false,
+                };
+                let mut coords = vec![ops[1]; rank];
+                for (pos, d) in perm.iter().enumerate() {
+                    coords[pos] = ops[1 + d];
+                }
+                coords.reverse();
+                let ity = cr.rw.body[ops[1]].ty.clone();
+                cr.build(OpData::build("spirv.CompositeConstruct").operands(&coords), Type::vector(&[rank as i64], &[], ity))
+            }
+        };
+        let elem = (*s.elem).clone();
+        let texel = cr.build(OpData::build("spirv.ImageFetch").operands(&[img, coords]), Type::vector(&[4], &[], elem.clone()));
+        let v = cr.build(OpData::build("spirv.CompositeExtract").operands(&[texel]).with("indices", Attribute::Array(vec![Attribute::integer(0, Type::int(32))])), elem);
+        cr.replace_values(op, &[v]);
+        true
+    }
+
     /// `StoreOpPattern` / `IntStoreOpPattern`: a narrower integer in wider words is stored
     /// by clearing its bits and or-ing them in, atomically.
     #[lowering("memref.store")]
@@ -333,11 +414,7 @@ impl MemrefToSpirv {
         }
         let v = cr.create_or_fold(OpData::build("spirv.ShiftLeftLogical").operands(&[v, offset]), dst.clone());
         let adjusted = Self::adjust_chain(cr, chain, src_bits, dst_bits);
-        let scope = match SpirvTypes::storage_class(&s).as_deref() {
-            Some("StorageBuffer") => "Device",
-            Some("Workgroup") => "Workgroup",
-            _ => return false,
-        };
+        let Some(scope) = Self::atomic_scope(&s) else { return false };
         for (name, val) in [("spirv.AtomicAnd", clear), ("spirv.AtomicOr", v)] {
             let data = OpData::build(name).operands(&[adjusted, val]).with("memory_scope", Cr::spirv_enum("scope", scope)).with("semantics", Cr::spirv_enum("memory_semantics", "AcquireRelease"));
             cr.build(data, dst.clone());
@@ -346,9 +423,102 @@ impl MemrefToSpirv {
         cr.erase(chain);
         true
     }
+
+    /// `MemorySpaceCastOpPattern`: through a generic pointer (kernels only).
+    #[lowering("memref.memory_space_cast")]
+    fn memory_space_cast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefSpirvOptions) -> bool {
+        if !o.kernel {
+            return false;
+        }
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let (src, r) = (cr.rw.body[op].operands[0], cr.rw.body[op].results[0]);
+        let (Some(st), Some(rt)) = (Self::memref(&cr.rw.body[src].ty).cloned(), Self::memref(&cr.rw.body[r].ty).cloned()) else { return false };
+        let (Some(ssc), Some(rsc)) = (SpirvTypes::storage_class(&st), SpirvTypes::storage_class(&rt)) else { return false };
+        let Some(result_ptr) = cr.converted(&Type::Shaped(rt)) else { return false };
+        let mut generic = result_ptr.clone();
+        if ssc != "Generic" && rsc != "Generic" {
+            let mut via = st.clone();
+            via.extras.retain(|a| a.is_layout());
+            via.extras.push(Cr::spirv_enum("storage_class", "Generic"));
+            let Some(g) = cr.converted(&Type::Shaped(via)) else { return false };
+            generic = g;
+        }
+        let mut v = ops[0];
+        if ssc != "Generic" {
+            v = cr.build(OpData::build("spirv.PtrCastToGeneric").operands(&[v]), generic);
+        }
+        if rsc != "Generic" {
+            v = cr.build(OpData::build("spirv.GenericCastToPtr").operands(&[v]), result_ptr);
+        }
+        cr.replace_values(op, &[v]);
+        true
+    }
+
+    /// `ReinterpretCastPattern`: the same pointer, offset by the cast's offset.
+    #[lowering("memref.reinterpret_cast")]
+    fn reinterpret_cast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: MemrefSpirvOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let src = ops[0];
+        let st = cr.rw.body[src].ty.clone();
+        if !matches!(SpirvType::try_from(&st), Ok(SpirvType::Ptr { .. })) {
+            return false;
+        }
+        let r = cr.rw.body[op].results[0];
+        if cr.converted(&cr.rw.body[r].ty.clone()).as_ref() != Some(&st) {
+            return false;
+        }
+        let Some(statics) = cr.rw.body[op].get("static_offsets").and_then(Attribute::dense_values) else { return false };
+        let Some(&first) = statics.first() else { return false };
+        let offset = if first == mlirformat::Dim::DYNAMIC {
+            let Some(segs) = cr.rw.body.segments(op, "operandSegmentSizes") else { return false };
+            let Some(&v) = ops.get(segs[0]) else { return false };
+            Some(v)
+        } else if first == 0 {
+            None
+        } else {
+            let Some(ity) = cr.converted(&Type::Index) else { return false };
+            Some(cr.spirv_const(ity.clone(), Attribute::integer(i128::from(first), ity)))
+        };
+        match offset {
+            None => cr.replace_values(op, &[src]),
+            Some(off) => {
+                cr.replace_new(op, OpData::build("spirv.InBoundsPtrAccessChain").operands(&[src, off]), &[st]);
+            }
+        }
+        true
+    }
+
+    /// `CastPattern`: nothing to do once both sides convert alike.
+    #[lowering("memref.cast")]
+    fn cast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: MemrefSpirvOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let r = cr.rw.body[op].results[0];
+        if cr.converted(&cr.rw.body[r].ty.clone()).as_ref() != Some(&cr.rw.body[ops[0]].ty) {
+            return false;
+        }
+        cr.replace_values(op, &ops);
+        true
+    }
+
+    /// `ExtractAlignedPointerAsIndexOpPattern`.
+    #[lowering("memref.extract_aligned_pointer_as_index")]
+    fn extract_aligned_pointer<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: MemrefSpirvOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let Some(ity) = cr.converted(&Type::Index) else { return false };
+        cr.replace_new(op, OpData::build("spirv.ConvertPtrToU").operands(&ops), &[ity]);
+        true
+    }
 }
 
 impl MemrefToSpirv {
+    /// `getAtomicOpScope`.
+    fn atomic_scope(s: &Shaped<'_>) -> Option<&'static str> {
+        match SpirvTypes::storage_class(s).as_deref() {
+            Some("StorageBuffer") => Some("Device"),
+            Some("Workgroup") => Some("Workgroup"),
+            _ => None,
+        }
+    }
     fn with_req<'a>(mut data: OpData<'a>, req: Vec<(&str, Attribute<'a>)>) -> OpData<'a> {
         for (k, v) in req {
             data.set(k, v);
