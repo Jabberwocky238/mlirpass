@@ -111,9 +111,10 @@ impl<'a> Rewriter<'_, 'a> {
     fn replace_op_with_region(&mut self, op: OpId, region: RegionId, args: &[ValueId]) {
         let block = self.body[region].blocks[0];
         let term = *self.body[block].ops.last().expect("terminator");
-        let results = self.body[term].operands.clone();
         let parent = self.body[op].parent.expect("placed");
         self.inline_block_before(block, parent, Some(op), args);
+        // Read after inlining: a yielded block argument is by now what replaced it.
+        let results = self.body[term].operands.clone();
         self.replace_op(op, &results);
         self.erase_op(term);
     }
