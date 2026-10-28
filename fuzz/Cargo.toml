@@ -1,0 +1,17 @@
+[package]
+name = "mlirpass-fuzz"
+version = "0.0.0"
+edition = "2024"
+description = "Random valid MLIR, run through mlirpass and mlir-opt 22.1.8 side by side; and timed"
+license = "MIT"
+publish = false
+
+[dependencies]
+mlirpass = { path = ".." }
+
+[profile.release]
+debug = "line-tables-only"
+
+# mlirformat next to mlirpass (its linear-time parser), until that is on crates.io.
+[patch.crates-io]
+mlirformat = { path = "../../mlirformat" }

@@ -161,6 +161,12 @@ need no LLVM. Regenerate with a vanilla 22.1.8 build:
 python3 scripts/fixtures.py --llvm $LLVM --mlir-opt $LLVM_BUILD/bin/mlir-opt
 ```
 
+## Fuzzing
+
+`fuzz/` (a crate of its own) generates random valid IR and runs it through mlirpass and
+`mlir-opt` 22.1.8 side by side, every non-exact case saved; it also times both on big modules
+(`fuzz/README.md`).
+
 ## License
 
 MIT

@@ -9,10 +9,12 @@ readme = "README.md"
 keywords = ["mlir", "compiler", "ir", "pass", "lowering"]
 categories = ["compilers", "no-std"]
 # The mlir-opt fixtures stay in the repository.
-exclude = ["tests", ".github"]
+exclude = ["tests", ".github", "fuzz"]
 
 [workspace]
 members = ["macros"]
+# Random IR against mlir-opt, and timings: a crate of its own (`fuzz/README.md`).
+exclude = ["fuzz"]
 
 [dependencies]
 mlirpass-macros = { path = "macros", version = "0.3.0" }
