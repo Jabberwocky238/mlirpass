@@ -127,7 +127,7 @@ macro_rules! kinds {
     };
 }
 
-kinds! { Const = 3, IntBin = 8, FloatBin = 5, Cmp = 4, Select = 2, Cast = 5, Math = 2, If = 2, For = 2, Mem = 2, Call = 1 }
+kinds! { Const = 3, IntBin = 8, FloatBin = 5, Cmp = 4, Select = 2, Cast = 5, Math = 4, If = 2, For = 2, Mem = 2, Call = 1 }
 
 /// Int binaries (on `iN` and `index`), float binaries, unary math.
 const INT_BIN: &[&str] = &[
@@ -136,7 +136,12 @@ const INT_BIN: &[&str] = &[
 const FLOAT_BIN: &[&str] = &["addf", "subf", "mulf", "divf", "remf", "maximumf", "minimumf", "maxnumf", "minnumf"];
 const CMPI: &[&str] = &["eq", "ne", "slt", "sle", "sgt", "sge", "ult", "ule", "ugt", "uge"];
 const CMPF: &[&str] = &["false", "oeq", "ogt", "oge", "olt", "ole", "one", "ord", "ueq", "ugt", "uge", "ult", "ule", "une", "uno", "true"];
-const MATH_F: &[&str] = &["absf", "floor", "ceil", "round", "trunc"];
+const MATH_F: &[&str] = &[
+    "absf", "floor", "ceil", "round", "roundeven", "trunc", "sqrt", "acos", "acosh", "asin", "asinh", "atan", "atanh", "cos", "cosh", "sin", "sinh",
+    "erf", "erfc", "log", "log2", "log10", "log1p", "exp", "exp2", "expm1", "tan", "tanh",
+];
+const MATH_F2: &[&str] = &["copysign", "atan2", "powf"];
+const MATH_CLASS: &[&str] = &["isfinite", "isinf", "isnan", "isnormal"];
 const MATH_I: &[&str] = &["absi", "ctpop", "ctlz", "cttz"];
 
 /// ⭐ One module being written.
@@ -317,13 +322,7 @@ impl<'r> Gen<'r> {
                 self.define(v, t);
             }
             Kind::Cast => self.cast(),
-            Kind::Math => {
-                let (t, op) = if self.rng.chance(0.5) { (*self.rng.pick(&[Ty::F32, Ty::F64]), *self.rng.pick(MATH_F)) } else { (*self.rng.pick(&Ty::INTS[1..]), *self.rng.pick(MATH_I)) };
-                let a = self.value(t);
-                let v = self.fresh();
-                self.line(format_args!("{v} = math.{op} {a} : {t}"));
-                self.define(v, t);
-            }
+            Kind::Math => self.math(),
             Kind::If if depth < self.shape.depth => self.scf_if(depth),
             Kind::For if depth < self.shape.depth => self.scf_for(depth),
             Kind::Mem => self.mem(),
@@ -333,6 +332,23 @@ impl<'r> Gen<'r> {
                 self.constant(t);
             }
         }
+    }
+
+    /// A `math` op: a float unary or binary, a classification (to `i1`), an integer unary, `ipowi`.
+    fn math(&mut self) {
+        let ft = *self.rng.pick(&[Ty::F32, Ty::F64]);
+        let it = *self.rng.pick(&Ty::INTS[1..]);
+        let (op, t, args, res) = match self.rng.below(10) {
+            0..=4 => (*self.rng.pick(MATH_F), ft, 1, ft),
+            5 => (*self.rng.pick(MATH_F2), ft, 2, ft),
+            6 => (*self.rng.pick(MATH_CLASS), ft, 1, Ty::I1),
+            7 | 8 => (*self.rng.pick(MATH_I), it, 1, it),
+            _ => ("ipowi", it, 2, it),
+        };
+        let ops: Vec<String> = (0..args).map(|_| self.value(t)).collect();
+        let v = self.fresh();
+        self.line(format_args!("{v} = math.{op} {} : {t}", ops.join(", ")));
+        self.define(v, res);
     }
 
     /// One of arith's casts, between types it accepts.
