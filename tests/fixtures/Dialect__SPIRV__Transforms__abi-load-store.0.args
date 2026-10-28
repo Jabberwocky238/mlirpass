@@ -1,0 +1,4 @@
+-spirv-lower-abi-attrs
+-verify-diagnostics
+-o
+-

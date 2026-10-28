@@ -916,6 +916,38 @@ impl<'b, 'a> Glsl<'b, 'a> {
             "spirv.MemoryBarrier" => {
                 let _ = writeln!(out, "{p}memoryBarrier();");
             }
+            "spirv.IAddCarry" | "spirv.ISubBorrow" | "spirv.UMulExtended" | "spirv.SMulExtended" => {
+                // A `(low, high)` struct from GLSL's out-parameter builtins.
+                let r = res.expect("result");
+                let st = self.ty(&self.body[r].ty.clone())?;
+                let et = self.ty(&self.body[operands[0]].ty.clone())?;
+                let ut = Self::unsigned(&et);
+                let (a, b) = (self.expr(operands[0])?, self.expr(operands[1])?);
+                let n = self.fresh("v");
+                let (hi, lo) = (self.fresh("hi"), self.fresh("lo"));
+                let _ = writeln!(out, "{p}{st} {n};");
+                match &*name {
+                    "spirv.IAddCarry" | "spirv.ISubBorrow" => {
+                        let f = if name == "spirv.IAddCarry" { "uaddCarry" } else { "usubBorrow" };
+                        let _ = writeln!(out, "{p}{ut} {hi};");
+                        let _ = writeln!(out, "{p}{n}.m0 = {et}({f}({ut}({a}), {ut}({b}), {hi}));");
+                        let _ = writeln!(out, "{p}{n}.m1 = {et}({hi});");
+                    }
+                    "spirv.UMulExtended" => {
+                        let _ = writeln!(out, "{p}{ut} {hi}, {lo};");
+                        let _ = writeln!(out, "{p}umulExtended({ut}({a}), {ut}({b}), {hi}, {lo});");
+                        let _ = writeln!(out, "{p}{n}.m0 = {et}({lo});");
+                        let _ = writeln!(out, "{p}{n}.m1 = {et}({hi});");
+                    }
+                    _ => {
+                        let _ = writeln!(out, "{p}{et} {hi}, {lo};");
+                        let _ = writeln!(out, "{p}imulExtended({a}, {b}, {hi}, {lo});");
+                        let _ = writeln!(out, "{p}{n}.m0 = {lo};");
+                        let _ = writeln!(out, "{p}{n}.m1 = {hi};");
+                    }
+                }
+                self.vals.insert(r, Val::Expr(n));
+            }
             "spirv.CompositeInsert" => {
                 let r = res.expect("result");
                 let t = self.ty(&self.body[r].ty.clone())?;

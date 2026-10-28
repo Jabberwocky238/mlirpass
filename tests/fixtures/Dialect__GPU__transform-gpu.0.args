@@ -1,0 +1,4 @@
+--transform-interpreter
+--split-input-file
+-canonicalize
+-cse

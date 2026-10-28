@@ -1,0 +1,5 @@
+-decorate-spirv-composite-type-layout
+-split-input-file
+-verify-diagnostics
+-o
+-

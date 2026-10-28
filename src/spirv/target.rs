@@ -92,6 +92,46 @@ impl TargetEnv {
         Self::default_env()
     }
 
+    /// `TargetEnv::allows(ArrayRef<Capability>)`: the first of `ors` the target has.
+    pub fn first_cap<'s>(&self, ors: &'s [String]) -> Option<&'s String> {
+        ors.iter().find(|c| self.allows_cap(c))
+    }
+
+    pub fn first_ext<'s>(&self, ors: &'s [String]) -> Option<&'s String> {
+        ors.iter().find(|e| self.allows_ext(e))
+    }
+
+    /// `getRecursiveImpliedCapabilities`: breadth first.
+    pub fn implied(cap: &str) -> Vec<String> {
+        let e = EnumSpec::of("Capability");
+        let direct = |c: &str| e.and_then(|e| e.case(c)).map(|c| c.implies.iter().map(|i| String::from(*i)).collect::<Vec<_>>()).unwrap_or_default();
+        let mut all = direct(cap);
+        let mut i = 0;
+        while i < all.len() {
+            for c in direct(&all[i]) {
+                if !all.contains(&c) {
+                    all.push(c);
+                }
+            }
+            i += 1;
+        }
+        all
+    }
+
+    /// `lookupTargetEnv`: the nearest `spirv.target_env`, if any.
+    pub fn find(body: &Body<'_>, op: OpId) -> Option<Self> {
+        let mut at = Some(op);
+        while let Some(o) = at {
+            if body.is_symbol_table(o)
+                && let Some(t) = body[o].get("spirv.target_env").and_then(|a| Self::parse(&format!("{a}")))
+            {
+                return Some(t);
+            }
+            at = body.parent_op(o);
+        }
+        None
+    }
+
     /// The resource limits' `subgroup_size` (32 by default).
     pub fn subgroup_size(&self) -> u32 {
         self.text.split("subgroup_size").nth(1).and_then(|r| r.trim_start_matches([' ', '=']).split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()).unwrap_or(32)
@@ -209,7 +249,13 @@ impl TargetEnv {
                     Self::case_needs("StorageClass", &sc, caps, exts);
                 }
                 Ok(SpirvType::SampledImage(i)) => Self::type_needs(&i, storage, caps, exts),
-                Ok(SpirvType::Image { elem, .. }) => Self::type_needs(&elem, storage, caps, exts),
+                Ok(SpirvType::Image { elem, params }) => {
+                    let (mut c, mut e) = (Needs::new(), Needs::new());
+                    Self::case_needs("Dim", &params[0], &mut c, &mut e);
+                    Self::case_needs("ImageFormat", &params[5], &mut c, &mut e);
+                    caps.extend(c);
+                    Self::type_needs(&elem, storage, caps, exts);
+                }
                 Ok(SpirvType::CoopMatrix { elem, .. }) => {
                     Self::type_needs(&elem, storage, caps, exts);
                     exts.push(one(&["SPV_KHR_cooperative_matrix"]));
@@ -235,8 +281,15 @@ impl TargetEnv {
     // ---- ops ---------------------------------------------------------------------------
 
     /// What op `op` needs: its own availability and that of the enum values it holds.
-    fn op_needs(body: &Body<'_>, op: OpId, spec: &OpSpec<'_>) -> (Option<u8>, Option<u8>, Needs, Needs) {
+    pub(crate) fn op_needs(body: &Body<'_>, op: OpId, spec: &OpSpec<'_>) -> (Option<u8>, Option<u8>, Needs, Needs) {
         let (mut lo, mut hi) = (spec.avail.min, spec.avail.max);
+        // `SelectOp::getMinVersion` (C++): a scalar condition picking whole composites is 1.4.
+        if spec.name == "spirv.Select" {
+            let cond = &body[body[op].operands[0]].ty;
+            let res = &body[body[op].results[0]].ty;
+            let composite = Self::is_valid_vector(res) || SpirvType::try_from(res).is_ok_and(|t| matches!(t, SpirvType::Array { .. } | SpirvType::Struct { .. } | SpirvType::Matrix { .. } | SpirvType::CoopMatrix { .. }));
+            lo = Some(if Self::is_scalar(cond) && composite { 4 } else { 0 });
+        }
         let (mut caps, mut exts) = (Needs::new(), Needs::new());
         Self::avail_needs(&spec.avail, &mut caps, &mut exts);
         for a in spec.args {

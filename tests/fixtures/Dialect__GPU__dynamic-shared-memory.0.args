@@ -1,0 +1,3 @@
+-convert-gpu-to-nvvm
+-cse
+-canonicalize

@@ -1,0 +1,2 @@
+--split-input-file
+--pass-pipeline=builtin.module(spirv.module(inline{default-pipeline=}))

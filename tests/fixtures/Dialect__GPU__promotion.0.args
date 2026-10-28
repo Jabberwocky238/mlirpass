@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+-pass-pipeline=builtin.module(gpu.module(gpu.func(test-gpu-memory-promotion)))
+-split-input-file

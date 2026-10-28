@@ -1,0 +1,1 @@
+--spirv-attach-target=module=spirv_warm.* ver=v1.0 caps=Kernel vendor=Intel device_type=Other device_id=0

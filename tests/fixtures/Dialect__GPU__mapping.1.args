@@ -1,0 +1,2 @@
+-gpu-map-parallel-loops=mapping-policy=innermost-first
+-split-input-file

@@ -1,0 +1,2 @@
+--gpu-kernel-outlining
+--convert-gpu-to-nvvm

@@ -1,0 +1,4 @@
+PIPELINE: 
+CHECK: Compute shader execution time
+CHECK: Command buffer submit time
+CHECK: Wait idle time

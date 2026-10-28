@@ -1,0 +1,5 @@
+-spirv-rewrite-inserts
+-split-input-file
+-verify-diagnostics
+-o
+-

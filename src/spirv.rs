@@ -1,6 +1,7 @@
 //! ⭐ SPIR-V out of MLIR (`mlir/lib/Target/SPIRV`): the binary serializer, on tables generated
 //! from the dialect's ODS (`scripts/spirv_tables.py`), and GLSL source.
 
+mod abi;
 mod arith_to_spirv;
 mod func_to_spirv;
 mod glsl;
@@ -18,6 +19,7 @@ use alloc::vec::Vec;
 
 use mlirformat::Attribute;
 
+pub use abi::{SpirvLowerAbiAttrs, SpirvUpdateVce, VulkanLayout};
 pub use arith_to_spirv::{ArithSpirvOptions, ArithToSpirv};
 pub use func_to_spirv::FuncToSpirv;
 pub use glsl::SpirvGlsl;
@@ -293,5 +295,5 @@ pub fn convert_scf_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> 
 
 crate::pass_set! {
     /// Every lowering to `spirv`.
-    SpirvPasses: ConvertScfToSpirv, ConvertArithToSpirv, ConvertFuncToSpirv, ConvertGpuToSpirv, ConvertMemrefToSpirv, MapMemrefSpirvStorageClass
+    SpirvPasses: SpirvLowerAbiAttrs, SpirvUpdateVce, ConvertScfToSpirv, ConvertArithToSpirv, ConvertFuncToSpirv, ConvertGpuToSpirv, ConvertMemrefToSpirv, MapMemrefSpirvStorageClass
 }

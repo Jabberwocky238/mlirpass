@@ -1,0 +1,3 @@
+PIPELINE: 
+CHECK: [0, 2]
+CHECK: [1, 3]

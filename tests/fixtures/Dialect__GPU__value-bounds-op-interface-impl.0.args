@@ -1,0 +1,3 @@
+-pass-pipeline=builtin.module(  func.func(test-affine-reify-value-bounds),  gpu.module(llvm.func(test-affine-reify-value-bounds)),  gpu.module(gpu.func(test-affine-reify-value-bounds)))
+-verify-diagnostics
+-split-input-file

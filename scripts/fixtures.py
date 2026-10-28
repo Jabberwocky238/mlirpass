@@ -30,6 +30,8 @@ def tests(root: Path):
     found = list(root.glob("Conversion/**/*.mlir")) + list(root.glob("Transforms/*.mlir"))
     found += list(root.glob("Dialect/**/canonicalize*.mlir"))
     found += list(root.glob("Dialect/**/mem2reg*.mlir")) + list(root.glob("Dialect/**/sroa*.mlir"))
+    # The SPIR-V and GPU dialects whole: their ops, transforms and canonicalization.
+    found += list(root.glob("Dialect/SPIRV/**/*.mlir")) + list(root.glob("Dialect/GPU/**/*.mlir"))
     for path in sorted(set(found)):
         rel = path.relative_to(root)
         if rel.parts[0] == "Conversion" and any(s in part for part in rel.parts[1:-1] for s in OUT_OF_SCOPE):
@@ -95,18 +97,22 @@ def main():
     ap.add_argument("--llvm", required=True, help="llvm-project checkout at llvmorg-22.1.8")
     ap.add_argument("--mlir-opt", required=True, help="a vanilla mlir-opt 22.1.8")
     ap.add_argument("-o", default=str(Path(__file__).resolve().parent.parent / "tests" / "fixtures"))
+    ap.add_argument("--only", action="append", help="regenerate just the tests matching these globs (relative to mlir/test), keeping the rest")
     opts = ap.parse_args()
 
     root = Path(opts.llvm) / "mlir" / "test"
     out = Path(opts.o)
     out.mkdir(parents=True, exist_ok=True)
-    for old in out.glob("*.mlir"):
-        old.unlink()
-    for old in out.glob("*.args"):
-        old.unlink()
+    if not opts.only:
+        for old in out.glob("*.mlir"):
+            old.unlink()
+        for old in out.glob("*.args"):
+            old.unlink()
 
     skipped, kept = [], 0
     for path, rel in tests(root):
+        if opts.only and not any(rel.match(g) for g in opts.only):
+            continue
         name = "__".join(rel.with_suffix("").parts)
         text = path.read_text()
         wrote_input = False
@@ -137,7 +143,8 @@ def main():
             (out / f"{name}.{k}.generic.mlir").write_text(generic.stdout)
             kept += 1
 
-    (out / "SKIPPED").write_text("".join(s + "\n" for s in skipped))
+    with open(out / "SKIPPED", "a" if opts.only else "w") as f:
+        f.write("".join(s + "\n" for s in skipped))
     print(f"kept {kept} RUN lines, skipped {len(skipped)} (see {out / 'SKIPPED'})")
 
 

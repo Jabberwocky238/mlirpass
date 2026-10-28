@@ -1,0 +1,3 @@
+--split-input-file
+--spirv-lower-abi-attrs
+--verify-diagnostics

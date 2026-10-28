@@ -1,0 +1,4 @@
+-allow-unregistered-dialect
+-gpu-launch-sink-index-computations
+-split-input-file
+-verify-diagnostics

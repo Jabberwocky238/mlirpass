@@ -1,0 +1,3 @@
+-split-input-file
+-spirv-unify-aliased-resource
+-verify-diagnostics
