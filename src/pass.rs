@@ -283,32 +283,83 @@ impl PassManager {
                     body.verify(op)?;
                 }
                 Entry::Adaptor(mgrs) => {
-                    let work: Vec<(OpId, &PassManager)> = body
-                        .children(op)
-                        .into_iter()
-                        .filter_map(|c| {
+                    // Each op the managers anchor on, with its place in its block (for the graft).
+                    let work: Vec<(OpId, usize, &PassManager)> = body[op]
+                        .regions
+                        .iter()
+                        .flat_map(|r| &body[*r].blocks)
+                        .flat_map(|b| body[*b].ops.iter().enumerate())
+                        .filter_map(|(at, &c)| {
                             let name = &body[c].name;
-                            mgrs.iter().find(|m| m.anchor.as_deref() == Some(&**name)).or_else(|| mgrs.iter().find(|m| m.anchor.is_none())).map(|m| (c, m))
+                            mgrs.iter().find(|m| m.anchor.as_deref() == Some(&**name)).or_else(|| mgrs.iter().find(|m| m.anchor.is_none())).map(|m| (c, at, m))
                         })
                         .collect();
-                    if exec.width() < 2 || work.len() < 2 || !work.iter().all(|(c, _)| body.isolated(*c)) {
-                        for (c, m) in work {
+                    if exec.width() < 2 || work.len() < 2 || !work.iter().all(|(c, ..)| body.isolated(*c)) {
+                        for (c, _, m) in work {
                             m.run_on(body, c, exec)?;
                         }
                         continue;
                     }
-                    let mut subs: Vec<_> = work.iter().map(|(c, _)| body.split_off(*c)).collect();
-                    let mut results: Vec<Result<(), Error>> = work.iter().map(|_| Ok(())).collect();
-                    let tasks = subs.iter_mut().zip(&work).zip(results.iter_mut()).map(|(((sub, at), (_, m)), r)| Box::new(move || *r = m.run_on(sub, *at, &crate::Serial)) as crate::Task<'_>).collect();
+                    let Some(first) = Self::calibrate(body, &work, exec)? else { continue };
+                    let work = &work[first..];
+                    // Each task splits its op off the shared body itself (reading only), so the
+                    // copying out runs in parallel too; the moving back is one append per op.
+                    let mut done: Vec<Option<(Result<(), Error>, Body<'_>, OpId)>> = work.iter().map(|_| None).collect();
+                    let shared: &Body<'_> = body;
+                    let tasks = done
+                        .iter_mut()
+                        .zip(work)
+                        .map(|(slot, (c, _, m))| {
+                            Box::new(move || {
+                                let (mut sub, at) = shared.split_off(*c);
+                                *slot = Some((m.run_on(&mut sub, at, &crate::Serial), sub, at));
+                            }) as crate::Task<'_>
+                        })
+                        .collect();
                     exec.execute(tasks);
-                    results.into_iter().collect::<Result<(), Error>>()?;
-                    for ((c, _), (sub, at)) in work.iter().zip(&subs) {
-                        body.graft(*c, sub, *at);
+                    let done: Vec<_> = done.into_iter().map(|d| d.expect("every task ran")).collect();
+                    if let Some(e) = done.iter().find_map(|(r, ..)| r.as_ref().err()) {
+                        return Err(e.clone());
+                    }
+                    for ((c, at, _), (_, sub, with)) in work.iter().zip(done) {
+                        body.graft(*c, *at, sub, with);
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    /// ⭐ Whether moving the ops out to threads pays: runs the nested pipelines in place, one op
+    /// after the other, until a 32nd of the ops' IR has run, and times it. Moving an op out
+    /// and back costs about [`MOVE_NS_PER_OP`] per op inside it, whatever the pipeline; running
+    /// it costs what was measured, and the threads share that. `None`: not worth it, so every op
+    /// has run here; else how many did (the rest go to the threads).
+    #[cfg(feature = "std")]
+    fn calibrate(body: &mut Body<'_>, work: &[(OpId, usize, &PassManager)], exec: &dyn crate::Executor) -> Result<Option<usize>, Error> {
+        let sizes: Vec<usize> = work.iter().map(|(c, ..)| body.op_count(*c)).collect();
+        let total: usize = sizes.iter().sum();
+        let (t, mut ran, mut first) = (std::time::Instant::now(), 0, 0);
+        while first < work.len() && ran * 32 < total {
+            let (c, _, m) = work[first];
+            m.run_on(body, c, exec)?;
+            ran += sizes[first];
+            first += 1;
+        }
+        let per_op = t.elapsed().as_nanos() as f64 / ran.max(1) as f64;
+        let w = exec.width() as f64;
+        if work.len() - first < 2 || per_op * (w - 1.0) / w < MOVE_NS_PER_OP {
+            for &(c, _, m) in &work[first..] {
+                m.run_on(body, c, exec)?;
+            }
+            return Ok(None);
+        }
+        Ok(Some(first))
+    }
+
+    #[cfg(not(feature = "std"))]
+    fn calibrate(_: &mut Body<'_>, _: &[(OpId, usize, &PassManager)], _: &dyn crate::Executor) -> Result<Option<usize>, Error> {
+        Ok(Some(0))
     }
 
     /// Parses the elements of a textual pipeline into this manager: `a, b{x=1}, func.func(c)`.
@@ -403,7 +454,17 @@ impl fmt::Display for PassManager {
     }
 }
 
+/// What moving an op into a body of its own and back costs, per op inside it (split, graft):
+/// measured on generated modules of a thousand functions (`fuzz`, `bench`).
+#[cfg(feature = "std")]
+const MOVE_NS_PER_OP: f64 = 300.0;
+
 impl Body<'_> {
+    /// How many ops `op` holds, itself included.
+    pub fn op_count(&self, op: OpId) -> usize {
+        1 + self[op].regions.iter().flat_map(|r| &self[*r].blocks).flat_map(|b| &self[*b].ops).map(|o| self.op_count(*o)).sum::<usize>()
+    }
+
     /// The ops directly inside `op`'s regions, in order.
     pub fn children(&self, op: OpId) -> Vec<OpId> {
         self[op].regions.iter().flat_map(|r| &self[*r].blocks).flat_map(|b| self[*b].ops.iter().copied()).collect()

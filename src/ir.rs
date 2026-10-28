@@ -96,6 +96,72 @@ ids! {
     ValueId => ValueData<'a>, values, Value;
 }
 
+/// Where the ids of an absorbed body moved ([`Body::absorb`]): each arena's offset.
+#[derive(Debug, Clone, Copy)]
+pub struct Offsets {
+    pub op: u32,
+    pub block: u32,
+    pub region: u32,
+    pub value: u32,
+}
+
+/// An arena entry (or an id in one) with every id it holds moved by [`Offsets`].
+pub trait Shift {
+    fn shift(self, o: &Offsets) -> Self;
+}
+
+macro_rules! shift_ids {
+    ($($id:ident => $f:ident),*) => {$(
+        impl Shift for $id {
+            fn shift(self, o: &Offsets) -> Self {
+                $id(self.0 + o.$f)
+            }
+        }
+    )*};
+}
+
+shift_ids!(OpId => op, BlockId => block, RegionId => region, ValueId => value);
+
+impl<T: Shift> Shift for Vec<T> {
+    fn shift(self, o: &Offsets) -> Self {
+        self.into_iter().map(|x| x.shift(o)).collect()
+    }
+}
+
+impl<T: Shift> Shift for Option<T> {
+    fn shift(self, o: &Offsets) -> Self {
+        self.map(|x| x.shift(o))
+    }
+}
+
+/// A struct whose id fields shift (the rest is kept).
+macro_rules! shift_fields {
+    ($($t:ident $(<$lt:lifetime>)? { $($f:ident),* })*) => {$(
+        impl $(<$lt>)? Shift for $t $(<$lt>)? {
+            fn shift(self, o: &Offsets) -> Self {
+                Self { $($f: self.$f.shift(o),)* ..self }
+            }
+        }
+    )*};
+}
+
+shift_fields! {
+    OpData<'a> { operands, results, successors, regions, parent }
+    BlockData { args, ops, parent }
+    RegionData { blocks, parent }
+    ValueData<'a> { def, uses }
+    Use { op }
+}
+
+impl Shift for Def {
+    fn shift(self, o: &Offsets) -> Self {
+        match self {
+            Def::Result(op, i) => Def::Result(op.shift(o), i),
+            Def::Arg(b, i) => Def::Arg(b.shift(o), i),
+        }
+    }
+}
+
 ids! {
     @saved
     Op => OpData<'a>, ops;
@@ -520,6 +586,12 @@ impl<'a> Body<'a> {
             data.defaults = false;
         }
         self.place(&mut data);
+        self.push_op(data, types)
+    }
+
+    /// [`create`](Self::create) for an op already placed (a copy of one in a body): no
+    /// defaults to add, no attributes to sort.
+    pub fn push_op(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
         let id = OpId(self.ops.len() as u32);
         for (index, v) in data.operands.iter().enumerate() {
             self[*v].uses.push(Use { op: id, index: index as u32 });
@@ -528,6 +600,32 @@ impl<'a> Body<'a> {
         let results = types.iter().enumerate().map(|(i, ty)| self.value(ty.clone(), Def::Result(id, i as u32), None)).collect();
         self[id].results = results;
         id
+    }
+
+    /// ⭐ Moves every entry of `from` into this body, ids shifted past this body's own; the
+    /// returned offsets say where `from`'s ids now are ([`Shift`]). Nothing is copied or looked
+    /// up op by op: what moving an isolated op back from a body of its own costs
+    /// ([`crate::parallel`]). `from`'s root and its block come along, detached and unused.
+    pub fn absorb(&mut self, from: Body<'a>) -> Offsets {
+        let o = Offsets { op: self.ops.len() as u32, block: self.blocks.len() as u32, region: self.regions.len() as u32, value: self.values.len() as u32 };
+        self.ops.extend(from.ops.into_iter().map(|d| d.shift(&o)));
+        self.blocks.extend(from.blocks.into_iter().map(|d| d.shift(&o)));
+        self.regions.extend(from.regions.into_iter().map(|d| d.shift(&o)));
+        self.values.extend(from.values.into_iter().map(|d| d.shift(&o)));
+        o
+    }
+
+    /// Puts `new` (detached) where `old` is, at `at` in its block; `old` is left detached.
+    pub fn swap_in(&mut self, old: OpId, at: usize, new: OpId) {
+        let block = self[old].parent.expect("old is placed");
+        if self.logs(block) {
+            self.insert_before(new, old);
+            return self.detach(old);
+        }
+        debug_assert_eq!(self.blocks[usize::from(block)].ops[at], old);
+        self.blocks[usize::from(block)].ops[at] = new;
+        self[new].parent = Some(block);
+        self[old].parent = None;
     }
 
     /// Adds mlirformat's typed op `op`, detached.

@@ -8,6 +8,14 @@
 //!            [`ThreadPool`] (a fixed number of workers taking the next task as they finish)
 //! ```
 //!
+//! ```text
+//! calibrate  the first ops' pipelines run in place, timed; the rest go to the threads only when
+//!            running an op costs more than moving it out and back (`PassManager::calibrate`)
+//! split_off  in each task: the op copied out of the shared body (read only, in parallel)
+//! graft      after the batch: each body's arenas appended whole (`Body::absorb`, ids shifted),
+//!            the op swapped into its old slot; nothing is looked up or copied op by op
+//! ```
+//!
 //! Results do not depend on the executor: a task only sees its own body, and bodies go back in
 //! their original order.
 
@@ -20,7 +28,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(feature = "std")]
 use std::sync::Mutex;
 
-use crate::{Body, OpData, OpId, Trait, ValueId};
+use crate::{Body, OpData, OpId, Shift, Trait, ValueId};
 
 /// ⭐ A unit of work: run once, on whichever thread the executor picks.
 pub type Task<'s> = Box<dyn FnOnce() + Send + 's>;
@@ -77,12 +85,22 @@ impl<'a> Body<'a> {
         (sub, moved)
     }
 
-    /// `op` replaced by `from`'s `with`, moved over (`split_off`'s inverse).
-    pub fn graft(&mut self, op: OpId, from: &Body<'a>, with: OpId) {
-        let new = self.transplant(from, with);
-        self.insert_before(new, op);
+    /// `op` (at `at` in its block) replaced by `from`'s `with`, moved over whole
+    /// (`split_off`'s inverse): `from`'s arenas join this body's, nothing is copied.
+    pub fn graft(&mut self, op: OpId, at: usize, from: Body<'a>, with: OpId) {
+        let new = with.shift(&self.absorb(from));
+        self.detach(new);
         let results = self[new].results.clone();
-        self.replace_op(op, &results);
+        self.swap_in(op, at, new);
+        // What `op` used and defined is now `new`'s.
+        if !self[op].operands.is_empty() {
+            self.set_operands(op, Vec::new());
+        }
+        if !results.is_empty() {
+            for (r, w) in self[op].results.clone().into_iter().zip(&results) {
+                self.replace_all_uses(r, *w);
+            }
+        }
     }
 
     /// A detached copy of `from`'s `op` (and everything in it) in this body. Operands are set once
@@ -107,7 +125,7 @@ impl<'a> Body<'a> {
     fn shell(&mut self, from: &Body<'a>, op: OpId, values: &mut Vec<(ValueId, ValueId)>, blocks: &mut Vec<(crate::BlockId, crate::BlockId)>, made: &mut Vec<(OpId, OpId)>) -> OpId {
         let d = &from[op];
         let data = OpData { operands: Vec::new(), results: Vec::new(), successors: Vec::new(), regions: Vec::new(), parent: None, defaults: false, ..d.clone() };
-        let new = self.create(data, &from.types(&d.results));
+        let new = self.push_op(data, &from.types(&d.results));
         for (a, b) in d.results.iter().zip(self[new].results.clone()) {
             self[b].loc = from[*a].loc.clone();
             values.push((*a, b));
