@@ -9,22 +9,34 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-`0.2.0`: 3928 of the 4831 fixture cases match `mlir-opt` 22.1.8 byte for byte
-(`cargo test --test passes -- --nocapture` counts them per group; SPIR-V is not started).
+`0.3.0`: 4311 of the 5001 fixture cases match `mlir-opt` 22.1.8 byte for byte
+(`cargo test --test passes -- --nocapture` counts them per group), MLIR's own `Dialect/SPIRV`,
+`Dialect/GPU` and `*ToSPIRV` tests included. 12 of MLIR's 13 `Integration/GPU/Vulkan` tests
+produce the numbers their checks expect, run on Vulkan (lavapipe) both as SPIR-V and as GLSL
+(`cargo test --test vulkan`).
 
 | part | what it is | upstream |
 |---|---|---|
 | `ir` | arena IR with use-def chains; `Module` ⇄ IR | `mlir/IR` |
 | `pass` | pass manager, `--pass-pipeline` syntax, registry | `mlir/Pass` |
 | `parallel` | `Executor` (`Serial`, `ThreadPool`): nested pipelines over isolated ops (functions) as parallel tasks | `OpToOpPassAdaptor`, `llvm::ThreadPool` |
-| `rewrite` | patterns, rewriter, greedy driver, folding | `PatternMatch`, `GreedyPatternRewriteDriver` |
+| `rewrite`, `greedy` | patterns, rewriter, greedy driver | `PatternMatch`, `GreedyPatternRewriteDriver` |
+| `canon` | folding (`Fold`) and each dialect's folds and canonicalization patterns | `Operation::fold`, `*Ops.cpp` |
 | `conversion` | conversion target, type converter, dialect conversion, `#[lowering]`s as patterns, the `DialectInterfaces` trait `convert-to-*` asks | `DialectConversion` |
-| `layout` | `MemrefLayout`: a memref's strides, offset, identity / contiguous layout | `BuiltinTypes` |
-| `llvm` | everything llvm: the type converter, dialect → `llvm`, the llvm folds, `DataLayout`, the llvm memory-slot interfaces | `mlir/lib/Conversion/*ToLLVM`, `Dialect/LLVMIR` |
-| `emitc` | dialect → `emitc`: the EmitC type converter, `convert-to-emitc` | `mlir/lib/Conversion/*ToEmitC` |
-| `lower` | between dialects (no llvm, no emitc) | `mlir/lib/Conversion` |
+| `interfaces`, `branch`, `effects` | op traits, op interfaces, `BranchOpInterface` / `RegionBranchOpInterface`, memory effects | `mlir/Interfaces` |
+| `layout` | `MemrefLayout` (strides, offset), `DataLayout` (type sizes, alignments, index bitwidth) | `BuiltinTypes`, `DataLayoutInterfaces` |
+| `lower` | between dialects (no llvm, no emitc, no spirv) | `mlir/lib/Conversion` |
 | `dialects` | each upstream dialect's `OpInterfaces`, one unit struct each (`ScfDialect`, ...) | `mlir/lib/Dialect/*/IR` |
 | `transforms` | `canonicalize`, `cse`, `sccp`, `inline`, `symbol-dce`, `mem2reg`, `sroa`, ... (dialect-independent) | `mlir/lib/Transforms` |
+| `emits` | the `Emit` trait, and the backends below | `mlir-translate` |
+
+The backends live under `src/emits`, one cargo feature each (all on by default):
+
+| feature | what it is | upstream |
+|---|---|---|
+| `llvm` | the type converter, dialect → `llvm`, the llvm folds, the llvm memory-slot interfaces | `mlir/lib/Conversion/*ToLLVM`, `Dialect/LLVMIR` |
+| `emitc` | dialect → `emitc`: the EmitC type converter, `convert-to-emitc` | `mlir/lib/Conversion/*ToEmitC` |
+| `spirv` | target env, type converter, `gpu` / `func` / `arith` / `memref` / `scf` / `vector` / `ub` → `spirv`, `spirv-lower-abi-attrs`, `spirv-update-vce`; `SpirvBinary` (the serializer) and `SpirvGlsl` (GLSL 4.50) emit | `mlir/lib/Conversion/*ToSPIRV`, `Target/SPIRV` |
 
 Dialects: every dialect mlirformat describes.
 

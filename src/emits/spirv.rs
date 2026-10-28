@@ -12,6 +12,8 @@ mod scf_to_spirv;
 mod serialize;
 mod target;
 mod types;
+mod ub_to_spirv;
+mod vector_to_spirv;
 #[path = "spirv/tables.gen.rs"]
 mod tables;
 
@@ -29,6 +31,8 @@ pub use memref_to_spirv::{MemrefSpirvOptions, MemrefToSpirv};
 pub use scf_to_spirv::ScfToSpirv;
 pub use serialize::SpirvBinary;
 pub use target::{Needs, TargetEnv};
+pub use ub_to_spirv::UbToSpirv;
+pub use vector_to_spirv::{VectorSpirvOptions, VectorToSpirv};
 pub use types::{SpirvOptions, SpirvTypes, explicit_layout};
 
 /// What an op or an enum case needs of the target (`SPIRVAvailability.td`): versions (the
@@ -293,7 +297,35 @@ pub fn convert_scf_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> 
     crate::Converter::new(&target, &patterns, crate::ConversionConfig::default()).apply(body, &[op], crate::Mode::Partial)
 }
 
+/// `convert-vector-to-spirv`.
+#[crate::pass("convert-vector-to-spirv")]
+pub fn convert_vector_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> Result<(), mlirformat::Error> {
+    let env = TargetEnv::lookup(body, op);
+    let types = SpirvTypes { env: &env, opts: SpirvOptions::default() };
+    let tc = types.converter();
+    let mut patterns = crate::ConversionPatterns::default();
+    let i = patterns.converter(&tc);
+    VectorToSpirv::populate(&mut patterns, i, VectorSpirvOptions { index64: false, kernel: env.allows_cap("Kernel") });
+    UbToSpirv::populate(&mut patterns, i);
+    let mut target = env.conversion_target();
+    target.legal_op("builtin.unrealized_conversion_cast");
+    crate::Converter::new(&target, &patterns, crate::ConversionConfig::default()).apply(body, &[op], crate::Mode::Partial)
+}
+
+/// `convert-ub-to-spirv`.
+#[crate::pass("convert-ub-to-spirv")]
+pub fn convert_ub_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> Result<(), mlirformat::Error> {
+    let env = TargetEnv::lookup(body, op);
+    let types = SpirvTypes { env: &env, opts: SpirvOptions::default() };
+    let tc = types.converter();
+    let mut patterns = crate::ConversionPatterns::default();
+    let i = patterns.converter(&tc);
+    UbToSpirv::populate(&mut patterns, i);
+    let target = env.conversion_target();
+    crate::Converter::new(&target, &patterns, crate::ConversionConfig::default()).apply(body, &[op], crate::Mode::Partial)
+}
+
 crate::pass_set! {
     /// Every lowering to `spirv`.
-    SpirvPasses: SpirvLowerAbiAttrs, SpirvUpdateVce, ConvertScfToSpirv, ConvertArithToSpirv, ConvertFuncToSpirv, ConvertGpuToSpirv, ConvertMemrefToSpirv, MapMemrefSpirvStorageClass
+    SpirvPasses: ConvertVectorToSpirv, ConvertUbToSpirv, SpirvLowerAbiAttrs, SpirvUpdateVce, ConvertScfToSpirv, ConvertArithToSpirv, ConvertFuncToSpirv, ConvertGpuToSpirv, ConvertMemrefToSpirv, MapMemrefSpirvStorageClass
 }

@@ -154,8 +154,10 @@ impl crate::Interfaces<'_> {
     pub fn upstream() -> Self {
         use crate::*;
         let mut i = Self::new();
-        i.register(&AffineDialect).register(&ArithDialect).register(&BufferizationDialect).register(&CfDialect).register(&FuncDialect).register(&LinalgDialect).register(&LlvmDialect).register(&MemrefDialect);
+        i.register(&AffineDialect).register(&ArithDialect).register(&BufferizationDialect).register(&CfDialect).register(&FuncDialect).register(&LinalgDialect).register(&MemrefDialect);
         i.register(&ScfDialect).register(&ShapeDialect).register(&SpirvDialect).register(&TensorDialect).register(&TestDialect).register(&TosaDialect).register(&UbDialect).register(&VectorDialect);
+        #[cfg(feature = "llvm")]
+        i.register(&LlvmDialect);
         i
     }
 }
@@ -164,7 +166,15 @@ impl crate::Passes {
     /// Every pass this crate implements.
     pub fn upstream() -> Self {
         let mut p = Self::new();
-        p.with::<crate::ConversionPasses>().with::<crate::TransformPasses>().with::<crate::LowerPasses>().with::<crate::LlvmPasses>().with::<crate::EmitcPasses>().with::<crate::SpirvPasses>();
+        p.with::<crate::ConversionPasses>();
+        p.with::<crate::TransformPasses>();
+        p.with::<crate::LowerPasses>();
+        #[cfg(feature = "llvm")]
+        p.with::<crate::LlvmPasses>();
+        #[cfg(feature = "emitc")]
+        p.with::<crate::EmitcPasses>();
+        #[cfg(feature = "spirv")]
+        p.with::<crate::SpirvPasses>();
         p
     }
 }

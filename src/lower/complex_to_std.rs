@@ -78,6 +78,7 @@ impl<'a> Cx<'_, '_, 'a, '_> {
     /// An element-typed op with fast-math flags.
     fn f(&mut self, name: &str, ops: &[ValueId], fmf: Fmf) -> ValueId {
         let ty = self.et.clone();
+        #[cfg(feature = "llvm")]
         if self.llvm {
             let name = match name {
                 "arith.addf" => "llvm.fadd",

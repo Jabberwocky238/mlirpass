@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates src/spirv/tables.gen.rs from the SPIR-V dialect's ODS (llvm-project 22.1.8), as
+"""Generates src/emits/spirv/tables.gen.rs from the SPIR-V dialect's ODS (llvm-project 22.1.8), as
 `mlir-tblgen -gen-spirv-serialization` and `-gen-enum-decls` read it:
 
 * every SPIR-V enum: its cases and values, whether it is a bit enum, and the attribute mnemonics
@@ -157,7 +157,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--llvm", required=True, type=Path)
     ap.add_argument("--mlirformat", required=True)
-    ap.add_argument("--out", type=Path, default=Path(__file__).resolve().parent.parent / "src/spirv/tables.gen.rs")
+    ap.add_argument("--out", type=Path, default=Path(__file__).resolve().parent.parent / "src/emits/spirv/tables.gen.rs")
     a = ap.parse_args()
     d = load(a.llvm, a.mlirformat)
     es, mnemonics = enums(d)

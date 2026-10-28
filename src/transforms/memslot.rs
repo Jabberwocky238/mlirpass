@@ -307,10 +307,6 @@ impl Body<'_> {
     }
 }
 
-/// `llvm`'s memory slot interfaces: [`Promotable`] in `mem2reg/llvm.rs`, [`Destructurable`]
-/// in `sroa/llvm.rs` (`LLVMMemorySlot.cpp`).
-pub struct LlvmSlots;
-
 /// `memref`'s memory slot interfaces: [`Promotable`] in `mem2reg/memref.rs`, [`Destructurable`]
 /// in `sroa/memref.rs` (`MemRefMemorySlot.cpp`).
 pub struct MemrefSlots;

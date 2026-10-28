@@ -21,15 +21,36 @@ serde = { version = "1", default-features = false, features = ["derive", "alloc"
 thiserror = { version = "2", default-features = false }
 
 [features]
-default = ["std", "cli"]
+default = ["std", "cli", "llvm", "emitc", "spirv"]
 std = ["mlirformat/std", "serde/std", "thiserror/std"]
 # The `mlirpass` command line (`cargo install mlirpass`).
 cli = ["std"]
+# The backends under `src/emits`.
+llvm = []
+emitc = []
+spirv = []
 
 [[bin]]
 name = "mlirpass"
-path = "src/cli/main.rs"
+path = "src/main.rs"
 required-features = ["cli"]
+
+# The fixtures run every backend's passes.
+[[test]]
+name = "passes"
+required-features = ["llvm", "emitc", "spirv"]
+
+[[test]]
+name = "spirv"
+required-features = ["spirv"]
+
+[[test]]
+name = "spirv_glsl"
+required-features = ["spirv"]
+
+[[test]]
+name = "vulkan"
+required-features = ["spirv"]
 
 # Local mlirformat while spirv types land there; dropped before publishing.
 [patch.crates-io]

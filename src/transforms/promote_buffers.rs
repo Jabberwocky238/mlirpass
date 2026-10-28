@@ -151,7 +151,7 @@ impl Body<'_> {
         let Type::Shaped(s) = &self[v].ty else { return false };
         let Some(dims) = &s.shape else { return false };
         match self[v].ty.element_count() {
-            Some(n) => Self::element_bits(&s.elem, u64::from(crate::LlvmOptions { index_bitwidth: 0, ..crate::LlvmOptions::default() }.at(self, def).index_bitwidth)).is_some_and(|bits| n as u64 * bits <= max_bytes * 8),
+            Some(n) => Self::element_bits(&s.elem, u64::from(crate::DataLayout::index_bitwidth(self, def))).is_some_and(|bits| n as u64 * bits <= max_bytes * 8),
             None => dims.len() <= max_rank && self[def].operands.iter().all(|o| self.def_named(*o, "memref.rank").is_some()),
         }
     }

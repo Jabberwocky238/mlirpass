@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use mlirformat::{Attribute, Shaped, ShapedKind, Type};
 
 use super::memslot::{Deletion, Destructurable, DestructurableMemorySlot, MemorySlot, MemrefSlots, Promotable, Slots};
-use crate::{Body, Const, MemrefToLlvm, OpData, OpId, Rewriter, Use, ValueId};
+use crate::{Body, Const, OpData, OpId, Rewriter, Use, ValueId};
 
 /// `memref.load` / `memref.store` taken apart: the memref, its indices, and the value stored.
 struct Access<'o> {
@@ -51,7 +51,8 @@ impl<'a> Body<'a> {
 impl MemrefSlots {
     /// A static memref's dims and element type.
     fn static_memref<'a>(ty: &Type<'a>) -> Option<(Vec<i64>, Type<'a>)> {
-        let s = MemrefToLlvm::memref(ty)?;
+        let Type::Shaped(s) = ty else { return None };
+        (s.kind == ShapedKind::MemRef).then_some(())?;
         ty.element_count()?;
         Some((s.dims()?, (*s.elem).clone()))
     }

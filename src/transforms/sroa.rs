@@ -13,7 +13,7 @@ use crate::pass;
 use mlirformat::{Attribute, Error};
 
 use super::memref_slots::TestSlots;
-use super::memslot::{Deletion, Destructurable, DestructurableMemorySlot, LlvmSlots, MemrefSlots, Promotable, Slots};
+use super::memslot::{Deletion, Destructurable, DestructurableMemorySlot, MemrefSlots, Promotable, Slots};
 use crate::{Body, DataLayout, OpId, Quiet, Rewriter, Use};
 
 /// `MemorySlotDestructuringInfo`.
@@ -153,10 +153,10 @@ impl<'s> Destructurer<'s> {
 
 #[pass("sroa", ty = Sroa)]
 pub fn sroa<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-    let dialects: [&dyn Destructurable; 3] = [&LlvmSlots, &MemrefSlots, &TestSlots];
-    let promotable: [&dyn Promotable; 3] = [&LlvmSlots, &MemrefSlots, &TestSlots];
+    let dialects: &[&dyn Destructurable] = &[#[cfg(feature = "llvm")] &crate::LlvmSlots, &MemrefSlots, &TestSlots];
+    let promotable: &[&dyn Promotable] = &[#[cfg(feature = "llvm")] &crate::LlvmSlots, &MemrefSlots, &TestSlots];
     let layout = DataLayout::closest(body, op);
-    let sroa = Destructurer { cx: Slots { dialects: &dialects, layout: &layout }, promotable: &promotable };
+    let sroa = Destructurer { cx: Slots { dialects, layout: &layout }, promotable };
     for region in body[op].regions.clone() {
         if body[region].blocks.is_empty() {
             continue;

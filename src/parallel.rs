@@ -11,16 +11,16 @@
 //! Results do not depend on the executor: a task only sees its own body, and bodies go back in
 //! their original order.
 
-#[cfg(feature = "std")]
-mod pool;
-
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+#[cfg(feature = "std")]
+use core::num::NonZeroUsize;
+#[cfg(feature = "std")]
+use core::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(feature = "std")]
+use std::sync::Mutex;
 
 use crate::{Body, OpData, OpId, Trait, ValueId};
-
-#[cfg(feature = "std")]
-pub use pool::ThreadPool;
 
 /// ⭐ A unit of work: run once, on whichever thread the executor picks.
 pub type Task<'s> = Box<dyn FnOnce() + Send + 's>;
@@ -127,5 +127,58 @@ impl<'a> Body<'a> {
             }
         }
         new
+    }
+}
+
+// The thread-pool [`Executor`]: a fixed number of workers, each taking the next
+// task as it finishes one (`llvm::ThreadPool` with `parallelForEach`'s work sharing). Workers are
+// scoped to a batch, so tasks may borrow what outlives the call.
+
+#[cfg(feature = "std")]
+/// ⭐ Runs tasks on `threads` workers.
+#[derive(Debug, Clone, Copy)]
+pub struct ThreadPool {
+    threads: NonZeroUsize,
+}
+
+#[cfg(feature = "std")]
+impl ThreadPool {
+    pub fn new(threads: NonZeroUsize) -> Self {
+        Self { threads }
+    }
+}
+
+#[cfg(feature = "std")]
+impl Default for ThreadPool {
+    /// As many workers as the machine runs threads.
+    fn default() -> Self {
+        Self::new(std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN))
+    }
+}
+
+#[cfg(feature = "std")]
+impl Executor for ThreadPool {
+    fn execute<'s>(&self, tasks: Vec<Task<'s>>) {
+        let workers = self.threads.get().min(tasks.len());
+        if workers <= 1 {
+            return tasks.into_iter().for_each(|t| t());
+        }
+        let slots: Vec<Mutex<Option<Task<'s>>>> = tasks.into_iter().map(|t| Mutex::new(Some(t))).collect();
+        let next = AtomicUsize::new(0);
+        std::thread::scope(|s| {
+            for _ in 0..workers {
+                s.spawn(|| {
+                    while let Some(slot) = slots.get(next.fetch_add(1, Ordering::Relaxed)) {
+                        if let Some(t) = slot.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                            t();
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    fn width(&self) -> usize {
+        self.threads.get()
     }
 }

@@ -7,7 +7,8 @@ use core::ops::Range;
 
 use mlirformat::Attribute;
 
-use crate::{Body, BlockId, EffectInstance, OpId, Operand, Point, Succ, ValueId};
+use crate::{BlockId, Body, EffectInstance, OpId, Operand, Point, Succ, ValueId};
+pub use mlirformat::{Effect, EffectKind, EffectOn, Effects, OpInfo, Trait};
 
 /// How a branch lays out its successor operands (`BranchOpInterface::getSuccessorOperands`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,5 +138,20 @@ impl Body<'_> {
     /// The interfaces of `op`'s dialect.
     pub fn interfaces(&self, op: OpId) -> Option<&dyn OpInterfaces> {
         self.ctx.interfaces.of(&self[op].name)
+    }
+}
+
+// ⭐ What ODS says about each op, as passes ask it: the table itself is mlirformat's
+// ([`OpInfo`]).
+
+impl Body<'_> {
+    /// Whether `op` has trait (or interface) `t`.
+    pub fn has(&self, op: OpId, t: Trait) -> bool {
+        self.ctx.opt.op_info(&self[op].name).is_some_and(|i| i.has(t))
+    }
+
+    /// `op`'s own memory effects (not its regions').
+    pub fn effects(&self, op: OpId) -> Effects {
+        self.ctx.opt.op_info(&self[op].name).map_or(Effects::Unknown, |i| i.effects)
     }
 }

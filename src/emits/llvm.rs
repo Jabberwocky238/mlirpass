@@ -5,7 +5,6 @@ mod arith_to_llvm;
 mod canon;
 mod cf_to_llvm;
 mod complex_to_llvm;
-mod data_layout;
 mod dialect;
 mod func_to_llvm;
 mod index_to_llvm;
@@ -22,14 +21,13 @@ pub use arith_to_llvm::ArithToLlvm;
 pub use canon::{fold as llvm_fold, materialize as llvm_materialize};
 pub use cf_to_llvm::{AssertLowering, CfToLlvm};
 pub use complex_to_llvm::ComplexToLlvm;
-pub use data_layout::DataLayout;
 pub use dialect::LlvmDialect;
 pub use func_to_llvm::FuncToLlvm;
 pub use index_to_llvm::{IndexToLlvm, UbToLlvm};
 pub use interfaces::{LlvmEnv, ToLlvmInterfaces};
+pub use memslot::LlvmSlots;
 pub use math_to_llvm::MathToLlvm;
 pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
-pub use pattern::unescape;
 pub use request_c_wrappers::RequestCWrappers;
 pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
 
@@ -75,22 +73,7 @@ impl LlvmOptions {
         if self.index_bitwidth != 0 {
             return self;
         }
-        let mut at = Some(op);
-        while let Some(o) = at {
-            if let Some(bits) = body[o].get("dlti.dl_spec").and_then(Self::spec_index) {
-                return Self { index_bitwidth: bits, ..self };
-            }
-            at = body.parent_op(o);
-        }
-        Self { index_bitwidth: 64, ..self }
-    }
-
-    /// The `index` entry of a `#dlti.dl_spec<...>`: `#dlti.dl_entry<index, 32>` or `index = 32`.
-    fn spec_index(a: &Attribute<'_>) -> Option<u32> {
-        let Attribute::Extended { ext, .. } = a else { return None };
-        let body = ext.body.as_deref()?;
-        let (_, rest) = body.split_once("dl_entry<index,").or_else(|| body.split_once("index ="))?;
-        rest.trim_start().split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
+        Self { index_bitwidth: crate::DataLayout::index_bitwidth(body, op), ..self }
     }
 
     pub fn index(&self) -> Type<'static> {

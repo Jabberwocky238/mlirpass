@@ -491,6 +491,7 @@ impl crate::Run for ConvertGpuToSpirv {
             super::ArithToSpirv::populate(&mut patterns, i, super::ArithSpirvOptions { no_wrap: env.allows_ext("SPV_KHR_no_integer_wrap_decoration"), emulate_floats: true });
             super::MemrefToSpirv::populate(&mut patterns, i, super::MemrefSpirvOptions { index64: self.index64, kernel: env.allows_cap("Kernel"), bool_bits: 8 });
             super::FuncToSpirv::populate(&mut patterns, i);
+            super::VectorToSpirv::populate(&mut patterns, i, super::VectorSpirvOptions { index64: self.index64, kernel: env.allows_cap("Kernel") });
             let target = env.conversion_target();
             crate::Converter::new(&target, &patterns, crate::ConversionConfig::default()).apply(body, &[gm], crate::Mode::Full)?;
         }

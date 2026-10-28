@@ -82,7 +82,7 @@ impl MemrefToSpirv {
     }
 
     /// `getElementPtr` (`getVulkanElementPtr` / `getOpenCLElementPtr`).
-    fn element_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, s: &Shaped<'a>, base: ValueId, indices: &[ValueId], o: MemrefSpirvOptions) -> Option<ValueId> {
+    pub(crate) fn element_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, s: &Shaped<'a>, base: ValueId, indices: &[ValueId], o: MemrefSpirvOptions) -> Option<ValueId> {
         let (strides, offset) = s.strides_and_offset()?;
         if strides.contains(&mlirformat::Dim::DYNAMIC) || offset == mlirformat::Dim::DYNAMIC {
             return None;
@@ -233,8 +233,8 @@ impl MemrefToSpirv {
         true
     }
 
-    /// `LoadOpPattern`, and `IntLoadOpPattern` where the element keeps its width (`i1` as
-    /// `boolNumBits`-wide integers).
+    /// `LoadOpPattern` / `IntLoadOpPattern`: a narrower integer (`i1` as `boolNumBits`-wide)
+    /// in wider words is loaded whole, shifted and sign-extended out.
     #[lowering("memref.load")]
     fn load<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -245,37 +245,49 @@ impl MemrefToSpirv {
             return false;
         }
         let int = matches!(*s.elem, Type::Integer { signedness: mlirformat::Signedness::Signless, .. });
-        let mut src_bits = s.elem.bit_width().unwrap_or(32);
-        let bool_ = src_bits == 1;
-        if bool_ {
-            src_bits = o.bool_bits;
-        }
-        let elem = if int {
-            let Some(ptr_t) = cr.converted(&mt) else { return false };
-            let Some(e) = Self::pointee_elem(&ptr_t, o.kernel) else { return false };
-            if e.bit_width() != Some(src_bits) {
-                return false;
-            }
-            Some(e)
-        } else {
-            None
-        };
         let Some(ptr) = Self::element_ptr(cr, &s, ops[0], &ops[1..], o) else { return false };
-        let Some(req) = Self::requirements(cr, op, ptr) else { return false };
-        let Ok(SpirvType::Ptr { pointee, .. }) = SpirvType::try_from(&cr.rw.body[ptr].ty) else { return false };
-        let mut data = OpData::build("spirv.Load").operands(&[ptr]);
-        for (k, v) in req {
-            data.set(k, v);
+        if !int {
+            let Some(req) = Self::requirements(cr, op, ptr) else { return false };
+            let Ok(SpirvType::Ptr { pointee, .. }) = SpirvType::try_from(&cr.rw.body[ptr].ty) else { return false };
+            let v = cr.build(Self::with_req(OpData::build("spirv.Load").operands(&[ptr]), req), (*pointee).owned());
+            cr.replace_values(op, &[v]);
+            return true;
         }
-        let mut v = cr.build(data, elem.unwrap_or_else(|| (*pointee).owned()));
-        if bool_ {
-            v = Self::int_to_bool(cr, v);
+        let bool_ = s.elem.bit_width() == Some(1);
+        let src_bits = if bool_ { o.bool_bits } else { s.elem.bit_width().unwrap_or(32) };
+        let Some(dst) = cr.converted(&mt).and_then(|t| Self::pointee_elem(&t, o.kernel)) else { return false };
+        let dst_bits = dst.bit_width().unwrap_or(32);
+        if src_bits == dst_bits {
+            let Some(req) = Self::requirements(cr, op, ptr) else { return false };
+            let mut v = cr.build(Self::with_req(OpData::build("spirv.Load").operands(&[ptr]), req), dst);
+            if bool_ {
+                v = Self::int_to_bool(cr, v);
+            }
+            cr.replace_values(op, &[v]);
+            return true;
         }
-        cr.replace_values(op, &[v]);
+        if o.kernel {
+            return false;
+        }
+        let Some(chain) = cr.rw.body.def_op(ptr).filter(|d| cr.rw.body[*d].name == "spirv.AccessChain") else { return false };
+        let last = *cr.rw.body[chain].operands.last().expect("indices");
+        let adjusted = Self::adjust_chain(cr, chain, src_bits, dst_bits);
+        let Some(req) = Self::requirements(cr, op, adjusted) else { return false };
+        let word = cr.build(Self::with_req(OpData::build("spirv.Load").operands(&[adjusted]), req), dst.clone());
+        let offset = Self::bit_offset(cr, last, src_bits, dst_bits);
+        let mut r = cr.create_or_fold(OpData::build("spirv.ShiftRightArithmetic").operands(&[word, offset]), dst.clone());
+        let mask = Self::int_const(cr, &dst, (1i128 << src_bits) - 1);
+        r = cr.create_or_fold(OpData::build("spirv.BitwiseAnd").operands(&[r, mask]), dst.clone());
+        let shift = Self::int_const(cr, &dst, i128::from(dst_bits - src_bits));
+        r = cr.create_or_fold(OpData::build("spirv.ShiftLeftLogical").operands(&[r, shift]), dst.clone());
+        r = cr.create_or_fold(OpData::build("spirv.ShiftRightArithmetic").operands(&[r, shift]), dst);
+        cr.replace_values(op, &[r]);
+        cr.erase(chain);
         true
     }
 
-    /// `StoreOpPattern`, and `IntStoreOpPattern` where the element keeps its width.
+    /// `StoreOpPattern` / `IntStoreOpPattern`: a narrower integer in wider words is stored
+    /// by clearing its bits and or-ing them in, atomically.
     #[lowering("memref.store")]
     fn store<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -283,28 +295,92 @@ impl MemrefToSpirv {
         let mt = cr.rw.body[m].ty.clone();
         let Some(s) = Self::memref(&mt).cloned() else { return false };
         let int = matches!(*s.elem, Type::Integer { signedness: mlirformat::Signedness::Signless, .. });
-        let mut value = ops[0];
-        if int {
-            if matches!(SpirvTypes::storage_class(&s).as_deref(), None | Some("Image")) {
-                return false;
-            }
-            let src_bits = if s.elem.bit_width() == Some(1) { o.bool_bits } else { s.elem.bit_width().unwrap_or(32) };
-            let Some(ptr_t) = cr.converted(&mt) else { return false };
-            let Some(e) = Self::pointee_elem(&ptr_t, o.kernel) else { return false };
-            if e.bit_width() != Some(src_bits) {
-                return false;
-            }
-            if s.elem.bit_width() == Some(1) {
-                value = Self::bool_to_int(cr, value, e);
-            }
-        }
         let Some(ptr) = Self::element_ptr(cr, &s, ops[1], &ops[2..], o) else { return false };
-        let Some(req) = Self::requirements(cr, op, ptr) else { return false };
-        let mut data = OpData::build("spirv.Store").operands(&[ptr, value]);
+        if !int {
+            let Some(req) = Self::requirements(cr, op, ptr) else { return false };
+            cr.replace_new(op, Self::with_req(OpData::build("spirv.Store").operands(&[ptr, ops[0]]), req), &[]);
+            return true;
+        }
+        let bool_ = s.elem.bit_width() == Some(1);
+        let src_bits = if bool_ { o.bool_bits } else { s.elem.bit_width().unwrap_or(32) };
+        let Some(dst) = cr.converted(&mt).and_then(|t| Self::pointee_elem(&t, o.kernel)) else { return false };
+        let dst_bits = dst.bit_width().unwrap_or(32);
+        if src_bits == dst_bits {
+            let Some(req) = Self::requirements(cr, op, ptr) else { return false };
+            let value = if bool_ { Self::bool_to_int(cr, ops[0], dst) } else { ops[0] };
+            cr.replace_new(op, Self::with_req(OpData::build("spirv.Store").operands(&[ptr, value]), req), &[]);
+            return true;
+        }
+        if o.kernel {
+            return false;
+        }
+        let Some(chain) = cr.rw.body.def_op(ptr).filter(|d| cr.rw.body[*d].name == "spirv.AccessChain") else { return false };
+        let last = *cr.rw.body[chain].operands.last().expect("indices");
+        let offset = Self::bit_offset(cr, last, src_bits, dst_bits);
+        let mask = Self::int_const(cr, &dst, (1i128 << src_bits) - 1);
+        let clear = cr.create_or_fold(OpData::build("spirv.ShiftLeftLogical").operands(&[mask, offset]), dst.clone());
+        let clear = cr.create_or_fold(OpData::build("spirv.Not").operands(&[clear]), dst.clone());
+        // `shiftValue`.
+        let mut v = ops[0];
+        let vbits = cr.rw.body[v].ty.bit_width().unwrap_or(32);
+        if vbits == 1 {
+            v = Self::bool_to_int(cr, v, dst.clone());
+        } else {
+            if vbits < dst_bits {
+                v = cr.build(OpData::build("spirv.UConvert").operands(&[v]), Type::int(dst_bits));
+            }
+            v = cr.create_or_fold(OpData::build("spirv.BitwiseAnd").operands(&[v, mask]), dst.clone());
+        }
+        let v = cr.create_or_fold(OpData::build("spirv.ShiftLeftLogical").operands(&[v, offset]), dst.clone());
+        let adjusted = Self::adjust_chain(cr, chain, src_bits, dst_bits);
+        let scope = match SpirvTypes::storage_class(&s).as_deref() {
+            Some("StorageBuffer") => "Device",
+            Some("Workgroup") => "Workgroup",
+            _ => return false,
+        };
+        for (name, val) in [("spirv.AtomicAnd", clear), ("spirv.AtomicOr", v)] {
+            let data = OpData::build(name).operands(&[adjusted, val]).with("memory_scope", Cr::spirv_enum("scope", scope)).with("semantics", Cr::spirv_enum("memory_semantics", "AcquireRelease"));
+            cr.build(data, dst.clone());
+        }
+        cr.erase(op);
+        cr.erase(chain);
+        true
+    }
+}
+
+impl MemrefToSpirv {
+    fn with_req<'a>(mut data: OpData<'a>, req: Vec<(&str, Attribute<'a>)>) -> OpData<'a> {
         for (k, v) in req {
             data.set(k, v);
         }
-        cr.replace_new(op, data, &[]);
-        true
+        data
+    }
+
+    /// `createOrFold<spirv::ConstantOp>` of an integer.
+    fn int_const<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>, v: i128) -> ValueId {
+        cr.spirv_const(ty.clone(), Attribute::integer(v, ty.clone()))
+    }
+
+    /// `getOffsetForBitwidth`: `(index % (dst / src)) * src`.
+    fn bit_offset<'a>(cr: &mut Cr<'_, 'a, '_>, index: ValueId, src: u32, dst: u32) -> ValueId {
+        let ty = cr.rw.body[index].ty.clone();
+        let per = Self::int_const(cr, &ty, i128::from(dst / src));
+        let bits = Self::int_const(cr, &ty, i128::from(src));
+        let m = cr.create_or_fold(OpData::build("spirv.UMod").operands(&[index, per]), ty.clone());
+        cr.create_or_fold(OpData::build("spirv.IMul").operands(&[m, bits]), ty)
+    }
+
+    /// `adjustAccessChainForBitwidth`: the chain's last index divided by `dst / src`.
+    fn adjust_chain<'a>(cr: &mut Cr<'_, 'a, '_>, chain: OpId, src: u32, dst: u32) -> ValueId {
+        let mut indices = cr.rw.body[chain].operands.clone();
+        let base = indices.remove(0);
+        let last = *indices.last().expect("indices");
+        let ty = cr.rw.body[last].ty.clone();
+        let per = Self::int_const(cr, &ty, i128::from(dst / src));
+        *indices.last_mut().expect("indices") = cr.create_or_fold(OpData::build("spirv.SDiv").operands(&[last, per]), ty);
+        let t = cr.rw.body[cr.rw.body[chain].results[0]].ty.clone();
+        let mut all = vec![base];
+        all.extend(indices);
+        cr.build(OpData::build("spirv.AccessChain").operands(&all), t)
     }
 }

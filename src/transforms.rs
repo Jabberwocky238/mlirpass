@@ -22,7 +22,7 @@ pub use cse::Cse;
 pub use expand_strided_metadata::ExpandStridedMetadata;
 pub use licm::LoopInvariantCodeMotion;
 pub use mem2reg::Mem2Reg;
-pub use memslot::{Deletion, Destructurable, DestructurableMemorySlot, LlvmSlots, MemorySlot, Promotable, Slots};
+pub use memslot::{Deletion, Destructurable, DestructurableMemorySlot, MemorySlot, Promotable, Slots};
 pub use promote_buffers::PromoteBuffersToStack;
 pub use remove_dead_values::RemoveDeadValues;
 pub use sccp::Sccp;
