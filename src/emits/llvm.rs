@@ -672,11 +672,12 @@ impl Run for ConvertComplexToLlvm {
 // ---- LLVM functions, globals and calls ----------------------------------------------------
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
-    /// The `builtin.module` around `op`.
+    /// The symbol table around `op` (`getParentWithTrait<SymbolTable>`): runtime functions
+    /// are declared there.
     pub fn module_of(&self, op: OpId) -> Option<OpId> {
         let mut at = self.rw.body.parent_op(op);
         while let Some(o) = at {
-            if self.rw.body[o].name == "builtin.module" {
+            if self.rw.body.is_symbol_table(o) {
                 return Some(o);
             }
             at = self.rw.body.parent_op(o);
