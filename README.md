@@ -167,6 +167,13 @@ python3 scripts/fixtures.py --llvm $LLVM --mlir-opt $LLVM_BUILD/bin/mlir-opt
 `mlir-opt` 22.1.8 side by side, every non-exact case saved; it also times both on big modules
 (`fuzz/README.md`).
 
+## Performance
+
+Against `mlir-opt` 22.1.8 on a 54 MB module (`BENCHMARK.md`), counting the whole run:
+- canonicalize and cse are 1.3× faster, and LICM and mem2reg 1.1× faster.
+- convert-scf-to-cf takes about the same time.
+- The `-to-llvm` pipeline is 1.7× slower, and **sccp is 10.5× slower**.
+
 ## License
 
 MIT
