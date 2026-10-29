@@ -48,8 +48,10 @@ compare with. On the small modules of `fuzz diff` (seeds 0..100) it also fails, 
   `mlir-opt`. canonicalize gains the most from threads: 3.7× on 16 cores, against 1.2× for `mlir-opt`.
 - **About the same**: convert-scf-to-cf takes 2.6 s against 2.3 s.
 - **Slower**:
-  - **sccp is 10.5× slower** (39 s against 4 s). The time is spent in the pass itself, which runs on
-    the whole module and so gets nothing from threads.
+  - **sccp was 10.5× slower in 0.3.5** (39 s against 4 s). The time was spent in the pass itself,
+    which runs on the whole module and so gets nothing from threads. **0.4.0 is on par**: the
+    same run takes 3.8 s against `mlir-opt`'s 3.8 s (parse 929, run 2,080 / 2,093, print 780 ms),
+    same output.
   - The `-to-llvm` pipeline is 1.7× slower.
   - remove-dead-values cannot be compared: `mlir-opt`'s 7.8 s is the time until it crashes.
 - **Parsing a generic module takes about 0.9 s.** That is the floor under every row and the largest
