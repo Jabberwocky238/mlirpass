@@ -71,7 +71,7 @@ impl Body<'_> {
 
     /// Whether `op` is registered: known to the op table.
     pub fn registered(&self, op: OpId) -> bool {
-        self.ctx.opt.op_info(&self[op].name).is_some()
+        self[op].info.is_some()
     }
 
     /// `mightHaveTrait`: an unregistered op might have any.

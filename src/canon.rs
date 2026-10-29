@@ -345,7 +345,7 @@ impl<'a> Body<'a> {
 
     /// The traits' folds, in trait order: the first that succeeds wins.
     fn fold_traits(&mut self, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold<'a> {
-        let traits = self.ctx.opt.op_info(&self[op].name).map_or(&[][..], |i| i.traits);
+        let traits = self[op].info.map_or(&[][..], |i| i.traits);
         for t in traits {
             let f = match t {
                 Trait::IsCommutative => self.fold_commutative(op, consts),

@@ -1,6 +1,7 @@
 //! `sccp`, as `SCCP.cpp`: the rewrite walks blocks in upstream's order, as constants are
 //! materialized in it.
 
+use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -13,8 +14,8 @@ use crate::{Body, BlockId, OpId, RegionId, ValueId};
 /// The rewrite: constants replace what the analysis proved constant.
 struct Rewrite<'s, 'b, 'a> {
     s: &'s mut Solver<'b, 'a>,
-    /// `OperationFolder`'s table: (insertion region, dialect, value, type) ⇒ the constant.
-    folder: Vec<(RegionId, String, Attribute<'a>, Type<'a>, ValueId)>,
+    /// `OperationFolder`'s table: per insertion region, (dialect, value, type) ⇒ the constant.
+    folder: BTreeMap<RegionId, Vec<(String, Attribute<'a>, Type<'a>, ValueId)>>,
 }
 
 impl Rewrite<'_, '_, '_> {
@@ -23,14 +24,15 @@ impl Rewrite<'_, '_, '_> {
         let body = &mut *self.s.body;
         let ty = body[v].ty.clone();
         let region = body.insertion_region(block);
-        let c = match self.folder.iter().find(|k| k.0 == region && k.1 == dialect && k.2 == attr && k.3 == ty) {
-            Some(k) => k.4,
+        let table = self.folder.entry(region).or_default();
+        let c = match table.iter().find(|k| k.0 == dialect && k.1 == attr && k.2 == ty) {
+            Some(k) => k.3,
             None => {
                 let Some(data) = body.materialize(&dialect, &attr, &ty) else { return false };
                 let made: String = data.name.split_once('.').map_or(&*data.name, |(ns, _)| ns).into();
                 // `tryGetOrCreateConstant`: a constant one dialect materializes as another's
                 // (`math` ⇒ `arith.constant`) is that dialect's too: one it already has wins.
-                let existing = (made != dialect).then(|| self.folder.iter().find(|k| k.0 == region && k.1 == made && k.2 == attr && k.3 == ty).map(|k| k.4)).flatten();
+                let existing = (made != dialect).then(|| table.iter().find(|k| k.0 == made && k.1 == attr && k.2 == ty).map(|k| k.3)).flatten();
                 let r = match existing {
                     Some(r) => r,
                     None => {
@@ -39,12 +41,12 @@ impl Rewrite<'_, '_, '_> {
                         body.insert(op, entry, Some(0));
                         let r = body[op].results[0];
                         if made != dialect {
-                            self.folder.push((region, made, attr.clone(), ty.clone(), r));
+                            table.push((made, attr.clone(), ty.clone(), r));
                         }
                         r
                     }
                 };
-                self.folder.push((region, dialect, attr, ty, r));
+                table.push((dialect, attr, ty, r));
                 r
             }
         };
@@ -84,6 +86,6 @@ impl Rewrite<'_, '_, '_> {
 pub fn sccp<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let mut s = Solver::new(body, op);
     s.run();
-    Rewrite { s: &mut s, folder: Vec::new() }.run(op);
+    Rewrite { s: &mut s, folder: BTreeMap::new() }.run(op);
     Ok(())
 }

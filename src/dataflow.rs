@@ -66,27 +66,50 @@ pub struct Solver<'b, 'a> {
     live: BTreeSet<BlockId>,
     edges: BTreeSet<(BlockId, BlockId)>,
     preds: BTreeMap<Pt, Preds>,
-    lat: BTreeMap<ValueId, Cv<'a>>,
+    /// Per value (by id); past the end: `Uninit`.
+    lat: Vec<Cv<'a>>,
     changed: bool,
     /// `Liveness`: the values found live.
     pub alive: BTreeSet<ValueId>,
+    /// The sweep under way, from 1.
+    round: u32,
+    /// Per value, the sweep its lattice last changed in.
+    changed_in: Vec<u32>,
+    /// Per op, the sweep `sparse_op` last folded it in (0: never, or it must fold every time):
+    /// it need not fold again until one of its operands changes.
+    folded_in: Vec<u32>,
+    /// Each call's [`resolve`](Self::resolve): the IR does not change while solving.
+    callees: BTreeMap<OpId, Option<OpId>>,
+}
+
+/// `v[i]`, grown with zeros as ids are made.
+fn at(v: &mut Vec<u32>, i: usize) -> &mut u32 {
+    if v.len() <= i {
+        v.resize(i + 1, 0);
+    }
+    &mut v[i]
 }
 
 impl<'b, 'a> Solver<'b, 'a> {
     pub fn new(body: &'b mut Body<'a>, top: OpId) -> Self {
-        Self { body, top, live: BTreeSet::new(), edges: BTreeSet::new(), preds: BTreeMap::new(), lat: BTreeMap::new(), changed: false, alive: BTreeSet::new() }
+        Self { body, top, live: BTreeSet::new(), edges: BTreeSet::new(), preds: BTreeMap::new(), lat: Vec::new(), changed: false, alive: BTreeSet::new(), round: 0, changed_in: Vec::new(), folded_in: Vec::new(), callees: BTreeMap::new() }
     }
 
     pub fn get(&self, v: ValueId) -> Cv<'a> {
-        self.lat.get(&v).cloned().unwrap_or(Cv::Uninit)
+        self.lat.get(usize::from(v)).cloned().unwrap_or(Cv::Uninit)
     }
 
     fn join(&mut self, v: ValueId, c: &Cv<'a>) {
         let old = self.get(v);
         let new = old.join(c);
         if new != old {
-            self.lat.insert(v, new);
+            let i = usize::from(v);
+            if self.lat.len() <= i {
+                self.lat.resize(i + 1, Cv::Uninit);
+            }
+            self.lat[i] = new;
             self.changed = true;
+            *at(&mut self.changed_in, usize::from(v)) = self.round;
         }
     }
 
@@ -166,6 +189,16 @@ impl<'b, 'a> Solver<'b, 'a> {
             t = b.parent_op(o);
         }
         None
+    }
+
+    /// [`resolve`](Self::resolve), once per call.
+    fn callee(&mut self, call: OpId) -> Option<OpId> {
+        if let Some(c) = self.callees.get(&call) {
+            return *c;
+        }
+        let c = self.resolve(call);
+        self.callees.insert(call, c);
+        c
     }
 
     fn call_args(&self, call: OpId) -> Vec<ValueId> {
@@ -254,7 +287,7 @@ impl<'b, 'a> Solver<'b, 'a> {
             return;
         }
         if self.body.has(op, Trait::CallOpInterface) {
-            let callee = self.resolve(op);
+            let callee = self.callee(op);
             let external = |s: &Self, c: OpId| !s.is_ancestor(s.top, c) || (s.is_callable(c) && s.callable_region(c).is_none());
             match callee {
                 Some(c) if self.body.has(c, Trait::SymbolOpInterface) && !external(self, c) => self.join_pred(Pt::After(c), op, &[]),
@@ -355,7 +388,7 @@ impl<'b, 'a> Solver<'b, 'a> {
             return self.region_successors(Pt::After(op), op, &results);
         }
         if self.body.has(op, Trait::CallOpInterface) {
-            let callee = self.resolve(op);
+            let callee = self.callee(op);
             if callee.is_some_and(|c| self.is_callable(c) && self.callable_region(c).is_none()) {
                 return self.unknown(&results);
             }
@@ -374,6 +407,12 @@ impl<'b, 'a> Solver<'b, 'a> {
         if !self.body[op].regions.is_empty() {
             return self.unknown(&results);
         }
+        // Folded before, and no operand has changed since: folding again gives the same.
+        let last = self.folded_in.get(usize::from(op)).copied().unwrap_or(0);
+        if last != 0 && self.body[op].operands.iter().all(|v| self.changed_in.get(usize::from(*v)).copied().unwrap_or(0) < last) {
+            return;
+        }
+        *at(&mut self.folded_in, usize::from(op)) = self.round;
         let Some(consts) = self.operand_values(op) else { return };
         let dialect: String = self.body[op].name.split_once('.').map_or("", |(d, _)| d).into();
         if self.body.has(op, Trait::ConstantLike)
@@ -387,7 +426,11 @@ impl<'b, 'a> Solver<'b, 'a> {
                 for (r, f) in results.iter().zip(rs) {
                     let c = match f {
                         Folded::Attr(a) => Cv::Known(a, dialect.clone()),
-                        Folded::Value(v) => self.get(v),
+                        Folded::Value(v) => {
+                            // A value of its own: the op depends on more than its operands.
+                            self.folded_in[usize::from(op)] = 0;
+                            self.get(v)
+                        }
                     };
                     self.join(*r, &c);
                 }
@@ -525,6 +568,7 @@ impl<'b, 'a> Solver<'b, 'a> {
         let visible = self.body[top].parent.is_none();
         self.symbol_callables(top, visible);
         loop {
+            self.round += 1;
             self.changed = false;
             self.sweep(top);
             if !self.changed {
@@ -635,7 +679,7 @@ impl Solver<'_, '_> {
             return;
         }
         if self.body.has(op, Trait::CallOpInterface)
-            && let Some(c) = self.resolve(op).filter(|c| self.is_callable(*c))
+            && let Some(c) = self.callee(op).filter(|c| self.is_callable(*c))
         {
             let Some(region) = self.callable_region(c) else {
                 return operands.iter().for_each(|v| self.mark_alive(*v));

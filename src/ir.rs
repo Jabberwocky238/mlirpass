@@ -258,6 +258,9 @@ pub struct OpData<'a> {
     /// Built by [`OpData::build`]: the defaults that depend on what the context knows of the
     /// op are added when it is created in a [`Body`].
     pub defaults: bool,
+    /// What the context knows of the op ([`MlirOpt::op_info`] of `name`): looked up once, when
+    /// the op enters a [`Body`], not on every trait query.
+    pub info: Option<&'a mlirformat::OpInfo>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -482,7 +485,7 @@ impl<'a> OpData<'a> {
 impl<'a> OpData<'a> {
     /// A detached op with nothing but its name.
     pub fn named(name: impl Into<Str<'a>>) -> Self {
-        Self { name: name.into(), operands: Vec::new(), results: Vec::new(), successors: Vec::new(), properties: None, regions: Vec::new(), attributes: Vec::new(), loc: None, parent: None, defaults: false }
+        Self { name: name.into(), operands: Vec::new(), results: Vec::new(), successors: Vec::new(), properties: None, regions: Vec::new(), attributes: Vec::new(), loc: None, parent: None, defaults: false, info: None }
     }
 
     fn dict(&self, inherent: bool) -> &[NamedAttr<'a>] {
@@ -596,7 +599,8 @@ impl<'a> Body<'a> {
         for (index, v) in data.operands.iter().enumerate() {
             self[*v].uses.push(Use { op: id, index: index as u32 });
         }
-        self.ops.push(OpData { results: Vec::new(), ..data });
+        let info = self.ctx.opt.op_info(&data.name);
+        self.ops.push(OpData { results: Vec::new(), info, ..data });
         let results = types.iter().enumerate().map(|(i, ty)| self.value(ty.clone(), Def::Result(id, i as u32), None)).collect();
         self[id].results = results;
         id
@@ -608,7 +612,12 @@ impl<'a> Body<'a> {
     /// ([`crate::parallel`]). `from`'s root and its block come along, detached and unused.
     pub fn absorb(&mut self, from: Body<'a>) -> Offsets {
         let o = Offsets { op: self.ops.len() as u32, block: self.blocks.len() as u32, region: self.regions.len() as u32, value: self.values.len() as u32 };
-        self.ops.extend(from.ops.into_iter().map(|d| d.shift(&o)));
+        let same = core::ptr::eq(self.ctx.opt, from.ctx.opt);
+        let opt = self.ctx.opt;
+        self.ops.extend(from.ops.into_iter().map(|d| {
+            let info = if same { d.info } else { opt.op_info(&d.name) };
+            OpData { info, ..d.shift(&o) }
+        }));
         self.blocks.extend(from.blocks.into_iter().map(|d| d.shift(&o)));
         self.regions.extend(from.regions.into_iter().map(|d| d.shift(&o)));
         self.values.extend(from.values.into_iter().map(|d| d.shift(&o)));
