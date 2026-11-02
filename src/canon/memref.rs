@@ -594,7 +594,7 @@ rewrites! {
         if ty == rt {
             rw.modify(op, |b| b.set_operand(op, 0, from));
         } else {
-            let data = OpData { operands: alloc::vec![from], properties: b[op].properties.clone(), ..OpData::build("memref.collapse_shape") };
+            let data = OpData { operands: smallvec::smallvec![from], properties: b[op].properties.clone(), ..OpData::build("memref.collapse_shape") };
             rw.set_before(op);
             let new = rw.create(data, &[ty]);
             let new = rw.body[new].results[0];

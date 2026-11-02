@@ -47,14 +47,14 @@ impl ScfToSpirv {
     fn br<'a>(cr: &mut Cr<'_, 'a, '_>, at: BlockId, to: BlockId, args: &[ValueId]) {
         cr.rw.set_end(at);
         let mut data = OpData::build("spirv.Branch").operands(args);
-        data.successors = vec![to];
+        data.successors = smallvec::smallvec![to];
         cr.rw.create(data, &[]);
     }
 
     fn cond_br<'a>(cr: &mut Cr<'_, 'a, '_>, at: BlockId, cond: ValueId, t: BlockId, f: BlockId) {
         cr.rw.set_end(at);
         let mut data = OpData::build("spirv.BranchConditional").operands(&[cond]).with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec!["1".into(), "0".into(), "0".into()] });
-        data.successors = vec![t, f];
+        data.successors = smallvec::smallvec![t, f];
         cr.rw.create(data, &[]);
     }
 
@@ -177,7 +177,7 @@ impl ScfToSpirv {
                 let target = cr.rw.body[br].successors[0];
                 cr.rw.set_before(br);
                 let mut data = OpData::build("spirv.Branch").operands(&args);
-                data.successors = vec![target];
+                data.successors = smallvec::smallvec![target];
                 cr.rw.create(data, &[]);
                 cr.erase(br);
             }
@@ -223,12 +223,12 @@ impl ScfToSpirv {
         let mut ops = vec![cond_v];
         ops.extend(cond_args.iter().copied());
         let mut data = OpData::build("spirv.BranchConditional").operands(&ops).with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec!["1".into(), alloc::format!("{}", cond_args.len()).into(), "0".into()] });
-        data.successors = vec![after, merge];
+        data.successors = smallvec::smallvec![after, merge];
         cr.rw.create(data, &[]);
         cr.erase(cond);
         cr.rw.set_before(yield_);
         let mut data = OpData::build("spirv.Branch").operands(&yield_ops);
-        data.successors = vec![before];
+        data.successors = smallvec::smallvec![before];
         cr.rw.create(data, &[]);
         cr.erase(yield_);
         cr.replace_values(op, &results);

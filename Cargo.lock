@@ -10,9 +10,8 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "mlirformat"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc4b45c63fd2a113122d7c5f31608c5f0fe032a269e3942b3ae2fc75192edd8a"
+version = "0.5.1"
+source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.5.1#05a979831481f5b84349b1019b5463c4cf253340"
 dependencies = [
  "mlirformat-macros",
  "serde",
@@ -21,9 +20,8 @@ dependencies = [
 
 [[package]]
 name = "mlirformat-macros"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8434a2fb8a9f047917b9973c001896e4784817918e73807d1438d9b02308403e"
+version = "0.5.1"
+source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.5.1#05a979831481f5b84349b1019b5463c4cf253340"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -32,12 +30,13 @@ dependencies = [
 
 [[package]]
 name = "mlirpass"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "libm",
  "mlirformat",
  "mlirpass-macros",
  "serde",
+ "smallvec",
  "thiserror",
 ]
 
@@ -97,6 +96,12 @@ dependencies = [
  "quote",
  "syn 3.0.9",
 ]
+
+[[package]]
+name = "smallvec"
+version = "1.16.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8"
 
 [[package]]
 name = "syn"

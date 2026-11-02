@@ -1459,7 +1459,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
     }
 
     fn successors(&self, b: BlockId) -> Vec<BlockId> {
-        self.body[b].ops.last().map(|t| self.body[*t].successors.clone()).unwrap_or_default()
+        self.body[b].ops.last().map(|t| self.body[*t].successors.clone()).unwrap_or_default().to_vec()
     }
 
     /// `processBlock`.

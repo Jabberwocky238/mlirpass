@@ -9,7 +9,7 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-`0.3.3`: 4556 of the 5063 fixture cases match `mlir-opt` 22.1.8 byte for byte
+`0.4.1`: 4556 of the 5063 fixture cases match `mlir-opt` 22.1.8 byte for byte
 (`cargo test --test passes -- --nocapture` counts them per group), MLIR's own `Dialect/SPIRV`,
 `Dialect/GPU` and `*ToSPIRV` tests included. All 13 of MLIR's `Integration/GPU/Vulkan` tests
 produce the numbers their checks expect, run on Vulkan (lavapipe) both as SPIR-V and as GLSL
@@ -19,7 +19,7 @@ own target env (`tests/support/vkinfo.c`) is checked against the host's product 
 
 | part | what it is | upstream |
 |---|---|---|
-| `ir` | arena IR with use-def chains; `Module` ⇄ IR | `mlir/IR` |
+| `ir` | arena IR with use-def chains (an op's operands, results, successors and regions inline up to four, `Ids`); `Module` ⇄ IR; printed straight from the IR (`Body::show`, read through mlirformat's `Source`) | `mlir/IR` |
 | `pass` | pass manager, `--pass-pipeline` syntax, registry | `mlir/Pass` |
 | `parallel` | `Executor` (`Serial`, `ThreadPool`): nested pipelines over isolated ops (functions) as parallel tasks | `OpToOpPassAdaptor`, `llvm::ThreadPool` |
 | `rewrite`, `greedy` | patterns, rewriter, greedy driver | `PatternMatch`, `GreedyPatternRewriteDriver` |
@@ -169,10 +169,9 @@ python3 scripts/fixtures.py --llvm $LLVM --mlir-opt $LLVM_BUILD/bin/mlir-opt
 
 ## Performance
 
-Against `mlir-opt` 22.1.8 on a 54 MB module (`BENCHMARK.md`), counting the whole run:
-- canonicalize and cse are 1.3× faster, and LICM and mem2reg 1.1× faster.
-- convert-scf-to-cf takes about the same time.
-- The `-to-llvm` pipeline is 1.7× slower, and **sccp is 10.5× slower**.
+Against `mlir-opt` 22.1.8 on a 54 MB module (`BENCHMARK.md`), counting the whole run, every
+pipeline compared is faster: canonicalize, cse, LICM and mem2reg 1.5–1.6×, convert-scf-to-cf 1.4×,
+sccp 1.3×, and the `-to-llvm` pipeline 1.2×.
 
 ## License
 

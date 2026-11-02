@@ -14,9 +14,11 @@
 //! materializations; unresolved ones are reconciled, the rest handed to the type converter.
 //! Rollback undoes every change since the attempt began: the body's and the conversion state's
 //! undo logs ([`crate::Checkpoint`], [`StateMark`]) restore what was there, at the cost of what
-//! changed — not a copy of the whole body per attempt.
+//! changed — not a copy of the whole body per attempt, nor per conversion: a conversion that
+//! fails is rolled back the same way, from one checkpoint around the whole run.
 
 
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::string::String;
@@ -290,11 +292,14 @@ enum Rewrite {
 /// the body is ([`crate::Checkpoint`]): cloning it per pattern attempt was quadratic.
 #[derive(Debug, Clone, Default)]
 pub struct ConvState<'a> {
-    mapping: BTreeMap<Vec<ValueId>, Vec<ValueId>>,
-    mapped_to: BTreeSet<ValueId>,
-    replaced_ops: BTreeSet<OpId>,
-    replaced_values: BTreeSet<ValueId>,
-    ignored_ops: BTreeSet<OpId>,
+    /// What one value maps to: by value id, 1 + its index in `targets` (0: nothing).
+    one: Vec<u32>,
+    targets: Vec<Vec<ValueId>>,
+    /// What several values map to together (rare).
+    many: BTreeMap<Vec<ValueId>, Vec<ValueId>>,
+    mapped_to: Bits,
+    replaced_ops: Bits,
+    ignored_ops: Bits,
     unresolved: BTreeMap<OpId, MatInfo<'a>>,
     rewrites: Vec<Rewrite>,
     new_ops: Vec<OpId>,
@@ -308,10 +313,10 @@ pub struct ConvState<'a> {
 /// One change to [`ConvState`] to undo on rollback.
 #[derive(Debug, Clone)]
 enum Undo<'a> {
-    Mapping(Vec<ValueId>, Option<Vec<ValueId>>),
+    One(ValueId, u32),
+    Many(Vec<ValueId>, Option<Vec<ValueId>>),
     MappedTo(ValueId),
     ReplacedOp(OpId),
-    ReplacedValue(ValueId),
     Ignored(OpId),
     Unresolved(OpId, Option<MatInfo<'a>>),
 }
@@ -323,6 +328,7 @@ enum Undo<'a> {
 struct StateMark {
     undo: usize,
     rewrites: usize,
+    targets: usize,
     new_ops: Vec<OpId>,
     modified_ops: Vec<OpId>,
 }
@@ -343,6 +349,36 @@ impl<'a> Listener<'a> for ConvState<'a> {
     }
 }
 
+/// A set of arena ids, one bit each.
+#[derive(Debug, Clone, Default)]
+struct Bits(Vec<u64>);
+
+impl Bits {
+    /// Whether `i` was not in yet.
+    fn insert(&mut self, i: impl Into<usize>) -> bool {
+        let i = i.into();
+        if self.0.len() <= i / 64 {
+            self.0.resize(i / 64 + 1, 0);
+        }
+        let (w, b) = (&mut self.0[i / 64], 1u64 << (i % 64));
+        let new = *w & b == 0;
+        *w |= b;
+        new
+    }
+
+    fn remove(&mut self, i: impl Into<usize>) {
+        let i = i.into();
+        if let Some(w) = self.0.get_mut(i / 64) {
+            *w &= !(1u64 << (i % 64));
+        }
+    }
+
+    fn contains(&self, i: impl Into<usize>) -> bool {
+        let i = i.into();
+        self.0.get(i / 64).is_some_and(|w| w & (1u64 << (i % 64)) != 0)
+    }
+}
+
 impl<'a> ConvState<'a> {
     fn map(&mut self, from: Vec<ValueId>, to: Vec<ValueId>) {
         for v in &to {
@@ -350,9 +386,32 @@ impl<'a> ConvState<'a> {
                 self.undo.push(Undo::MappedTo(*v));
             }
         }
-        let old = self.mapping.insert(from.clone(), to);
+        if let [v] = from[..] {
+            let i = usize::from(v);
+            if self.one.len() <= i {
+                self.one.resize(i + 1, 0);
+            }
+            self.targets.push(to);
+            let old = core::mem::replace(&mut self.one[i], self.targets.len() as u32);
+            if self.depth > 0 {
+                self.undo.push(Undo::One(v, old));
+            }
+            return;
+        }
+        let old = self.many.insert(from.clone(), to);
         if self.depth > 0 {
-            self.undo.push(Undo::Mapping(from, old));
+            self.undo.push(Undo::Many(from, old));
+        }
+    }
+
+    /// What `vs` map to (empty: nothing).
+    fn mapped(&self, vs: &[ValueId]) -> &[ValueId] {
+        match vs {
+            [v] => match self.one.get(usize::from(*v)).copied().unwrap_or(0) {
+                0 => &[],
+                i => &self.targets[i as usize - 1],
+            },
+            _ => self.many.get(vs).map_or(&[][..], Vec::as_slice),
         }
     }
 
@@ -361,12 +420,6 @@ impl<'a> ConvState<'a> {
             if self.replaced_ops.insert(o) && self.depth > 0 {
                 self.undo.push(Undo::ReplacedOp(o));
             }
-        }
-    }
-
-    fn replace_value(&mut self, v: ValueId) {
-        if self.replaced_values.insert(v) && self.depth > 0 {
-            self.undo.push(Undo::ReplacedValue(v));
         }
     }
 
@@ -391,30 +444,29 @@ impl<'a> ConvState<'a> {
     /// Opens a mark (with the body's [`crate::Checkpoint`]).
     fn mark(&mut self) -> StateMark {
         self.depth += 1;
-        StateMark { undo: self.undo.len(), rewrites: self.rewrites.len(), new_ops: self.new_ops.clone(), modified_ops: self.modified_ops.clone() }
+        // The attempt starts with none of its own; a rollback hands these back
+        StateMark { undo: self.undo.len(), rewrites: self.rewrites.len(), targets: self.targets.len(), new_ops: core::mem::take(&mut self.new_ops), modified_ops: core::mem::take(&mut self.modified_ops) }
     }
 
     /// Brings the state back to `m` and closes it.
     fn rollback(&mut self, m: StateMark) {
         while self.undo.len() > m.undo {
             match self.undo.pop().expect("longer than the mark") {
-                Undo::Mapping(from, Some(old)) => {
-                    self.mapping.insert(from, old);
+                Undo::One(v, old) => self.one[usize::from(v)] = old,
+                Undo::Many(from, Some(old)) => {
+                    self.many.insert(from, old);
                 }
-                Undo::Mapping(from, None) => {
-                    self.mapping.remove(&from);
+                Undo::Many(from, None) => {
+                    self.many.remove(&from);
                 }
                 Undo::MappedTo(v) => {
-                    self.mapped_to.remove(&v);
+                    self.mapped_to.remove(v);
                 }
                 Undo::ReplacedOp(o) => {
-                    self.replaced_ops.remove(&o);
-                }
-                Undo::ReplacedValue(v) => {
-                    self.replaced_values.remove(&v);
+                    self.replaced_ops.remove(o);
                 }
                 Undo::Ignored(o) => {
-                    self.ignored_ops.remove(&o);
+                    self.ignored_ops.remove(o);
                 }
                 Undo::Unresolved(o, Some(info)) => {
                     self.unresolved.insert(o, info);
@@ -425,6 +477,7 @@ impl<'a> ConvState<'a> {
             }
         }
         self.rewrites.truncate(m.rewrites);
+        self.targets.truncate(m.targets);
         self.new_ops = m.new_ops;
         self.modified_ops = m.modified_ops;
         self.close();
@@ -442,29 +495,34 @@ impl<'a> ConvState<'a> {
         }
     }
 
-    /// `lookupOrDefault`.
+    /// `lookupOrDefault`. The chain is walked on the mapping's own vectors: a copy is made only
+    /// where several values compose into a new one, and for the answer.
     fn lookup_or_default(&self, b: &Body<'a>, from: ValueId, desired: &[Type<'a>], skip_pure: bool) -> Vec<ValueId> {
-        let lookup = |vs: &Vec<ValueId>| self.mapping.get(vs).cloned().unwrap_or_default();
-        let composed = |vs: &Vec<ValueId>| -> Vec<ValueId> {
-            let mut next = Vec::new();
+        let lookup = |vs: &[ValueId]| self.mapped(vs);
+        let composed = |vs: &[ValueId]| -> Cow<'_, [ValueId]> {
+            // One value: its own mapping is the composition
+            if let [v] = vs {
+                return Cow::Borrowed(lookup(core::slice::from_ref(v)));
+            }
+            let mut next = Vec::with_capacity(vs.len());
             for v in vs {
-                let r = lookup(&vec![*v]);
-                if r.is_empty() { next.push(*v) } else { next.extend(r) }
+                match lookup(core::slice::from_ref(v)) {
+                    [] => next.push(*v),
+                    r => next.extend_from_slice(r),
+                }
             }
-            if next != *vs {
-                return next;
-            }
-            lookup(vs)
+            if next != vs { Cow::Owned(next) } else { Cow::Borrowed(lookup(vs)) }
         };
-        let pure = |vs: &Vec<ValueId>| {
+        let pure = |vs: &[ValueId]| {
             let op = b.def_op(vs[0]);
             op.is_some() && vs.iter().all(|v| b.def_op(*v) == op) && b[op.expect("def")].get(PURE).is_some()
         };
-        let mut desired_value = Vec::new();
-        let mut current = vec![from];
-        let mut last_non_mat = vec![from];
+        let from = [from];
+        let mut desired_value = Cow::Borrowed(&[][..]);
+        let mut current = Cow::Borrowed(&from[..]);
+        let mut last_non_mat = current.clone();
         loop {
-            let mut matched = b.types(&current) == desired;
+            let mut matched = b.types_are(&current, desired);
             if skip_pure {
                 let p = pure(&current);
                 matched &= !p;
@@ -482,28 +540,28 @@ impl<'a> ConvState<'a> {
             current = next;
         }
         if !desired.is_empty() {
-            return desired_value;
+            return desired_value.into_owned();
         }
         if skip_pure {
-            return last_non_mat;
+            return last_non_mat.into_owned();
         }
-        current
+        current.into_owned()
     }
 
     fn lookup_or_null(&self, b: &Body<'a>, from: ValueId, desired: &[Type<'a>]) -> Vec<ValueId> {
         let r = self.lookup_or_default(b, from, desired, false);
-        if r == vec![from] || (!desired.is_empty() && b.types(&r) != desired) {
+        if r == [from] || (!desired.is_empty() && !b.types_are(&r, desired)) {
             return Vec::new();
         }
         r
     }
 
     fn was_replaced(&self, op: OpId) -> bool {
-        self.replaced_ops.contains(&op)
+        self.replaced_ops.contains(op)
     }
 
     fn is_ignored(&self, op: OpId) -> bool {
-        self.was_replaced(op) || self.ignored_ops.contains(&op)
+        self.was_replaced(op) || self.ignored_ops.contains(op)
     }
 }
 
@@ -646,16 +704,15 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         let st = self.state();
         st.set_unresolved(op, Some(MatInfo { kind, original, converter }));
         if !to_map.is_empty() {
-            st.map(to_map, results.clone());
+            st.map(to_map, results.clone().to_vec());
         }
-        results
+        results.to_vec()
     }
 
     /// `remapValues`: each operand as the current converter wants it, casting where needed.
     pub fn remap(&mut self, values: &[ValueId], loc: Option<Str<'a>>) -> Option<Vec<Vec<ValueId>>> {
         let mut out = Vec::new();
         for v in values {
-            let operand_loc = loc.clone().or_else(|| self.rw.body.value_loc(*v));
             let Some(tc) = self.type_converter() else {
                 out.push(self.state_ref().lookup_or_default(self.rw.body, *v, &[], true));
                 continue;
@@ -667,13 +724,14 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
                 continue;
             }
             let repl = self.state_ref().lookup_or_default(self.rw.body, *v, &legal, false);
-            if !repl.is_empty() && self.rw.body.types(&repl) == legal {
+            if !repl.is_empty() && self.rw.body.types_are(&repl, &legal) {
                 out.push(repl);
                 continue;
             }
             let repl = self.state_ref().lookup_or_default(self.rw.body, *v, &[], true);
             let ip = self.rw.body.insert_point_after_all(&repl);
             let current = self.current;
+            let operand_loc = loc.clone().or_else(|| self.rw.body.value_loc(*v));
             out.push(self.materialization(MatKind::Target, ip, operand_loc, repl.clone(), &repl, &legal, Some(orig), current, false));
         }
         Some(out)
@@ -735,7 +793,6 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
     pub fn replace_value(&mut self, from: ValueId, to: Vec<ValueId>) {
         let current = self.current;
         let st = self.state();
-        st.replace_value(from);
         st.map(vec![from], to);
         st.rewrites.push(Rewrite::ReplaceValue(from, current));
     }
@@ -808,7 +865,6 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
 
     fn replace_value_with(&mut self, from: ValueId, to: Vec<ValueId>, converter: Option<usize>) {
         let st = self.state();
-        st.replace_value(from);
         st.map(vec![from], to);
         st.rewrites.push(Rewrite::ReplaceValue(from, converter));
     }
@@ -850,7 +906,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         self.inline_block_before(source, dest, None, args);
     }
 
-    /// `inlineRegionBefore` (moves blocks; nothing to record with snapshot rollback).
+    /// `inlineRegionBefore` (moves blocks; the body's undo log records it).
     pub fn inline_region(&mut self, region: RegionId, into: RegionId, before: Option<BlockId>) {
         self.rw.inline_region_before(region, into, before);
     }
@@ -1121,13 +1177,16 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         for r in roots {
             self.collect(body, *r, &mut ops);
         }
-        let snapshot = body.clone();
+        // A failure leaves the IR as it was: rolled back from the undo log, which keeps one save
+        // per entry touched (`Journal`), not a copy of the whole body
+        let cp = body.checkpoint();
         for op in ops {
             if let Err(e) = self.convert_op(body, &mut state, op, mode) {
-                *body = snapshot;
+                body.rollback(cp);
                 return Err(e);
             }
         }
+        body.release(cp);
         self.commit(body, &mut state);
         self.finish(body, &mut state)
     }
@@ -1139,7 +1198,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         if let Some(r) = repl.first() {
             return Some(*r);
         }
-        if body[v].uses.iter().all(|u| state.replaced_ops.contains(&u.op)) && !state.mapped_to.contains(&v) {
+        if body[v].uses.iter().all(|u| state.replaced_ops.contains(u.op)) && !state.mapped_to.contains(v) {
             return None;
         }
         let repl = state.lookup_or_null(body, v, &[]);
@@ -1190,9 +1249,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         // Out of their blocks in one pass per block (one by one is a scan of the block each)
         body.detach_all(&erase);
         for op in erase {
-            for o in body.ops_in(op) {
-                state.set_unresolved(o, None);
-            }
+            body.walk(op, &mut |o| state.set_unresolved(o, None));
             body.drop_result_uses(op);
             body.erase(op);
         }

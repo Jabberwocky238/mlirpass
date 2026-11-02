@@ -33,22 +33,22 @@ impl OpInterfaces for ScfDialect {
     fn region_successors(&self, b: &Body<'_>, op: OpId, point: Point) -> Vec<(Succ, Vec<ValueId>)> {
         let results = b[op].results.clone();
         match &*b[op].name {
-            "scf.for" => vec![(Succ::Region(0), b.region_args(op, 0, 1)), (Succ::Parent, results)],
+            "scf.for" => vec![(Succ::Region(0), b.region_args(op, 0, 1)), (Succ::Parent, results.to_vec())],
             "scf.if" => match point {
                 Point::Parent => {
                     let else_empty = b[b[op].regions[1]].blocks.is_empty();
-                    vec![(Succ::Region(0), Vec::new()), if else_empty { (Succ::Parent, results) } else { (Succ::Region(1), Vec::new()) }]
+                    vec![(Succ::Region(0), Vec::new()), if else_empty { (Succ::Parent, results.to_vec()) } else { (Succ::Region(1), Vec::new()) }]
                 }
-                Point::Terminator(_) => vec![(Succ::Parent, results)],
+                Point::Terminator(_) => vec![(Succ::Parent, results.to_vec())],
             },
             "scf.while" => match point {
                 Point::Parent => vec![(Succ::Region(0), b.region_args(op, 0, 0))],
-                Point::Terminator(t) if b[t].name == "scf.condition" => vec![(Succ::Region(1), b.region_args(op, 1, 0)), (Succ::Parent, results)],
+                Point::Terminator(t) if b[t].name == "scf.condition" => vec![(Succ::Region(1), b.region_args(op, 1, 0)), (Succ::Parent, results.to_vec())],
                 Point::Terminator(_) => vec![(Succ::Region(0), b.region_args(op, 0, 0))],
             },
             "scf.execute_region" | "scf.index_switch" => match point {
                 Point::Parent => (0..b[op].regions.len()).map(|r| (Succ::Region(r), Vec::new())).collect(),
-                Point::Terminator(_) => vec![(Succ::Parent, results)],
+                Point::Terminator(_) => vec![(Succ::Parent, results.to_vec())],
             },
             _ => Vec::new(),
         }

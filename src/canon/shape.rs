@@ -444,7 +444,7 @@ rewrites! {
         if cstrs.len() <= 1 {
             return false;
         }
-        let mut shapes: Vec<(OpId, Vec<ValueId>)> = cstrs.iter().map(|c| (*c, b[*c].operands.clone())).collect();
+        let mut shapes: Vec<(OpId, Vec<ValueId>)> = cstrs.iter().map(|c| (*c, b[*c].operands.to_vec())).collect();
         shapes.sort_by(|x, y| b[y.0].operands.len().cmp(&b[x.0].operands.len()));
         let mut erased = Vec::new();
         let mut i = 0;

@@ -82,7 +82,7 @@ impl Body<'_> {
     pub fn append_successor_operands(&mut self, op: OpId, i: usize, values: &[crate::ValueId]) {
         let Some(range) = self.successor_operands(op, i) else { return };
         let mut operands = self[op].operands.clone();
-        operands.splice(range.end..range.end, values.iter().copied());
+        operands.insert_many(range.end, values.iter().copied());
         self.set_operands(op, operands);
         self.resize_successor_group(op, i, values.len() as isize);
     }
@@ -121,18 +121,21 @@ impl Body<'_> {
     /// `BranchOpInterface`'s verifier over everything in `root`: forwarded operands have the
     /// types of their successor's arguments.
     pub fn verify_branches(&self, root: OpId) -> Result<(), mlirformat::Error> {
-        for op in self.ops_in(root) {
+        let mut out = Ok(());
+        self.walk(root, &mut |op| {
+            if out.is_err() {
+                return;
+            }
             for (i, succ) in self[op].successors.iter().enumerate() {
                 let Some(range) = self.successor_operands(op, i) else { continue };
                 let args = &self[*succ].args;
-                for (j, (v, a)) in self[op].operands[range].iter().zip(args).enumerate() {
-                    if self[*v].ty != self[*a].ty {
-                        return Err(mlirformat::Error(format!("'{}' op type mismatch for bb argument #{j} of successor #{i}", self[op].name)));
-                    }
+                if let Some(j) = self[op].operands[range].iter().zip(args).position(|(v, a)| self[*v].ty != self[*a].ty) {
+                    out = Err(mlirformat::Error(format!("'{}' op type mismatch for bb argument #{j} of successor #{i}", self[op].name)));
+                    return;
                 }
             }
-        }
-        Ok(())
+        });
+        out
     }
 }
 
@@ -234,7 +237,7 @@ impl<'a> Body<'a> {
 
     /// `eraseOperands` on `op`, keeping the uses right.
     pub fn erase_operands(&mut self, op: OpId, which: &[usize]) {
-        let kept = self[op].operands.iter().enumerate().filter(|(i, _)| !which.contains(i)).map(|(_, v)| *v).collect();
+        let kept: crate::Ids<_> = self[op].operands.iter().enumerate().filter(|(i, _)| !which.contains(i)).map(|(_, v)| *v).collect();
         self.set_operands(op, kept);
     }
 }
@@ -261,7 +264,7 @@ impl<'a> Body<'a> {
     pub fn clone_op(&mut self, op: OpId, map: &mut Mapping) -> OpId {
         let d = self[op].clone();
         let types = self.types(&d.results);
-        let data = OpData { operands: d.operands.iter().map(|v| map.get(*v)).collect(), successors: d.successors.iter().map(|b| map.blocks.get(b).copied().unwrap_or(*b)).collect(), regions: Vec::new(), parent: None, ..d };
+        let data = OpData { operands: d.operands.iter().map(|v| map.get(*v)).collect(), successors: d.successors.iter().map(|b| map.blocks.get(b).copied().unwrap_or(*b)).collect(), regions: crate::Ids::new(), parent: None, ..d };
         let new = self.create(data, &types);
         for (a, b) in self[op].results.clone().into_iter().zip(self[new].results.clone()) {
             map.map(a, b);
@@ -352,7 +355,7 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
     pub fn erase_op_results(&mut self, op: OpId, erase: &[usize]) -> OpId {
         let d = &self.body[op];
         let types: Vec<_> = d.results.iter().enumerate().filter(|(i, _)| !erase.contains(i)).map(|(_, r)| self.body[*r].ty.clone()).collect();
-        let data = OpData { regions: Vec::new(), results: Vec::new(), parent: None, ..d.clone() };
+        let data = OpData { regions: crate::Ids::new(), results: crate::Ids::new(), parent: None, ..d.clone() };
         let n_regions = d.regions.len();
         let old_regions = d.regions.clone();
         self.set_before(op);

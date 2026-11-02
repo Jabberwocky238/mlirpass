@@ -328,7 +328,7 @@ impl FuncToLlvm {
         cr.rw.set_start(entry);
         let idx = opts.index();
         let mut args = Vec::new();
-        let mut rest: Vec<ValueId> = cr.rw.body[entry].args.clone();
+        let mut rest: Vec<ValueId> = cr.rw.body[entry].args.clone().to_vec();
         if let Some(st) = &structured {
             let one = cr.index_const(&idx, 1);
             let r = Self::alloca(cr, st.clone(), one);

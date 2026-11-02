@@ -1261,7 +1261,7 @@ impl TosaToLinalg {
         let re = elem(&rt);
         let rshape = [batch, if ih == 1 { 1 } else { oh }, if iw == 1 { 1 } else { ow }, channels];
         let o = &cr.rw.body[op];
-        let data = OpData { results: Vec::new(), successors: Vec::new(), regions: Vec::new(), parent: None, ..o.clone() };
+        let data = OpData { results: crate::Ids::new(), successors: crate::Ids::new(), regions: crate::Ids::new(), parent: None, ..o.clone() };
         let resize = cr.build(data, Type::tensor(&rshape, re.clone()));
         let mut reassoc = vec![vec![0], vec![1]];
         if ih != 1 {

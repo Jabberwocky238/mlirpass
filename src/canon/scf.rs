@@ -387,7 +387,7 @@ rewrites! {
             return false;
         }
         let tr = b[op].regions[0];
-        let data = OpData { regions: Vec::new(), results: Vec::new(), parent: None, ..b[op].clone() };
+        let data = OpData { regions: crate::Ids::new(), results: crate::Ids::new(), parent: None, ..b[op].clone() };
         rw.set_before(op);
         let new = rw.create_with(data, &[], |body, n| {
             body.add_region(n);
@@ -560,7 +560,7 @@ fn combine_ifs(rw: &mut Rewriter<'_, '_>, next: OpId) -> bool {
     }
     let then_yield = b.region_terminator(prev, 0).expect("yield");
     let prev_then_vals = b[then_yield].operands.clone();
-    let prev_else_vals = if has_else(prev) { b[b.region_terminator(prev, 1).expect("yield")].operands.clone() } else { Vec::new() };
+    let prev_else_vals = if has_else(prev) { b[b.region_terminator(prev, 1).expect("yield")].operands.clone() } else { crate::Ids::new() };
     let then_region = next_then.and_then(|blk| b[blk].parent);
     let else_region = next_else.and_then(|blk| b[blk].parent);
     for (i, r) in b[prev].results.clone().into_iter().enumerate() {
@@ -641,7 +641,7 @@ fn combine_nested_ifs(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         return false;
     }
     let mut then_yield = b[b.region_terminator(op, 0).expect("yield")].operands.clone();
-    let else_yield = if else_blk.is_some() { b[b.region_terminator(op, 1).expect("yield")].operands.clone() } else { Vec::new() };
+    let else_yield = if else_blk.is_some() { b[b.region_terminator(op, 1).expect("yield")].operands.clone() } else { crate::Ids::new() };
     let then_region = b[op].regions[0];
     let mut upgrade = Vec::new();
     for i in 0..then_yield.len() {
@@ -702,7 +702,7 @@ fn align_before_args(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let term = b.region_terminator(op, 0).expect("condition");
     let before_args = b[before].args.clone();
     let term_args: Vec<ValueId> = b[term].operands[1..].to_vec();
-    if before_args == term_args {
+    if before_args[..] == term_args[..] {
         return false;
     }
     let unique: BTreeSet<_> = term_args.iter().collect();
@@ -813,7 +813,7 @@ fn while_move_if_down(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let new_after = rw.body[n1].blocks[0];
     let added: Vec<ValueId> = extra_types.into_iter().map(|t| rw.body.add_arg(new_after, t)).collect();
     let mut cops = rw.body[cond_op].operands.clone();
-    cops.extend(&extra);
+    cops.extend(extra.iter().copied());
     rw.modify(cond_op, |body| body.set_operands(cond_op, cops));
     for (v, a) in extra.iter().zip(&added) {
         rw.replace_uses_if(*v, *a, |body, u| body.op_region(u.op).is_some_and(|r| body.region_encloses(then_r, r)));

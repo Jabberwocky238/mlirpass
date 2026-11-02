@@ -11,7 +11,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use mlirformat::{Error, Item, MlirOpt, Module};
+use mlirformat::{Error, Item};
 
 use crate::{Body, Ctx, PassManager};
 
@@ -125,27 +125,24 @@ impl Invocation {
         if !self.debuginfo {
             body.set_locs(body.root, None);
         }
-        let mut m = Module::from(&*body);
-        if !self.debuginfo {
-            m.items.retain(|i| !matches!(i, Item::AttrAlias { value: mlirformat::Attribute::Builtin { name, .. }, .. } if name == "loc"));
+        let loc = |i: &Item<'_>| matches!(i, Item::AttrAlias { value: mlirformat::Attribute::Builtin { name, .. }, .. } if name == "loc");
+        let kept = |i: &Item<'_>| self.debuginfo || !loc(i);
+        let alias = |i: &Item<'_>| matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. });
+        let show = |keep: &dyn Fn(&Item<'_>) -> bool| body.show(opt, self.generic, |i| kept(i) && keep(i));
+        if !body.items.iter().any(|i| kept(i) && alias(i)) {
+            return show(&|_| true);
         }
         // Aliases are inlined on import; keep only those raw dialect text still names.
-        let show = |m: &Module<'_>| if self.generic { format!("{}", MlirOpt::new().show(m)) } else { format!("{}", opt.show(m)) };
-        if !m.items.iter().any(|i| matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. })) {
-            return show(&m);
-        }
-        let bare = Module { items: m.items.iter().filter(|i| !matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. })).cloned().collect() };
-        let text = show(&bare);
+        let text = show(&|i| !alias(i));
         let named = |sigil: char, name: &str| {
             let pat = format!("{sigil}{name}");
             text.match_indices(&pat).any(|(i, _)| !text[i + pat.len()..].starts_with(|c: char| c.is_ascii_alphanumeric() || "_$.-".contains(c)))
         };
-        m.items.retain(|i| match i {
+        show(&|i| match i {
             Item::AttrAlias { name, .. } => named('#', name),
             Item::TypeAlias { name, .. } => named('!', name),
             _ => true,
-        });
-        show(&m)
+        })
     }
 
     /// The whole input, chunk by chunk, joined as `mlir-opt` joins them.

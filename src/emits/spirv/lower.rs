@@ -88,10 +88,10 @@ impl ClientApi {
                     }
                 }
             }
-            if let Some(p) = body[o].properties.clone() {
-                match self.map_attr(&p) {
-                    Some(p) => body[o].properties = Some(p),
-                    None => ok = false,
+            if !body[o].properties.is_empty() {
+                match self.map_attr(&Attribute::Dict(body[o].properties.clone())) {
+                    Some(Attribute::Dict(p)) => body[o].properties = p,
+                    _ => ok = false,
                 }
             }
             for i in 0..body[o].attributes.len() {

@@ -262,7 +262,7 @@ impl<'a> Rewriter<'_, 'a> {
             .iter()
             .map(|e| {
                 let mut m = AffineMap { dims: map.dims, syms: map.syms, results: vec![e.clone()] };
-                let mut ops = vals.to_vec();
+                let mut ops: crate::Ids<ValueId> = vals.into();
                 self.body.canonicalize_map_or_set(&mut m, &mut ops);
                 let a = self.create(OpData::build("affine.apply").operands(&ops).with("map", Attribute::from(&m)), &[Type::Index]);
                 self.body[a].results[0]

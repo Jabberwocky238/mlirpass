@@ -175,7 +175,7 @@ impl Run for PromoteBuffersToStack {
             }
             let Some(alloc) = body.def_op(v) else { continue };
             let d = body[alloc].clone();
-            let data = OpData { name: "memref.alloca".into(), results: Vec::new(), regions: Vec::new(), parent: None, ..d };
+            let data = OpData { name: "memref.alloca".into(), results: crate::Ids::new(), regions: crate::Ids::new(), parent: None, ..d };
             let new = body.create(data, core::slice::from_ref(&body[v].ty.clone()));
             body.insert_before(new, alloc);
             let r = body[new].results[0];

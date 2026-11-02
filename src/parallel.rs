@@ -114,7 +114,7 @@ impl<'a> Body<'a> {
         blocks.sort_unstable();
         let value = |v: ValueId| values.binary_search_by_key(&v, |p| p.0).map(|i| values[i].1).expect("an isolated op uses only its own values");
         for (old, new) in made {
-            let operands = from[old].operands.iter().map(|v| value(*v)).collect();
+            let operands: crate::Ids<_> = from[old].operands.iter().map(|v| value(*v)).collect();
             self.set_operands(new, operands);
             self[new].successors = from[old].successors.iter().map(|b| blocks[blocks.binary_search_by_key(b, |p| p.0).expect("a successor in the op")].1).collect();
         }
@@ -124,7 +124,7 @@ impl<'a> Body<'a> {
     /// `from`'s `op` without its operands, its regions filled the same way; records what maps where.
     fn shell(&mut self, from: &Body<'a>, op: OpId, values: &mut Vec<(ValueId, ValueId)>, blocks: &mut Vec<(crate::BlockId, crate::BlockId)>, made: &mut Vec<(OpId, OpId)>) -> OpId {
         let d = &from[op];
-        let data = OpData { operands: Vec::new(), results: Vec::new(), successors: Vec::new(), regions: Vec::new(), parent: None, defaults: false, ..d.clone() };
+        let data = OpData { operands: crate::Ids::new(), results: crate::Ids::new(), successors: crate::Ids::new(), regions: crate::Ids::new(), parent: None, defaults: false, ..d.clone() };
         let new = self.push_op(data, &from.types(&d.results));
         for (a, b) in d.results.iter().zip(self[new].results.clone()) {
             self[b].loc = from[*a].loc.clone();

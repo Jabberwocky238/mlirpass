@@ -91,14 +91,14 @@ impl<'a> Body<'a> {
     /// The symbol references `op` itself holds, inherent and discardable alike.
     fn own_refs(&self, op: OpId, out: &mut Vec<SymbolUse<'a>>) {
         let d = &self[op];
-        d.properties.iter().for_each(|p| Self::refs_in(p, op, out));
+        d.properties.iter().filter_map(|n| n.value.as_ref()).for_each(|x| Self::refs_in(x, op, out));
         d.attributes.iter().filter_map(|n| n.value.as_ref()).for_each(|x| Self::refs_in(x, op, out));
     }
 
     /// Uses nested in `regions` of `op`, not entering nested symbol tables; `None` on a
     /// potentially unknown symbol table.
     fn region_refs(&self, op: OpId, out: &mut Vec<SymbolUse<'a>>) -> Option<()> {
-        let mut work: Vec<_> = self[op].regions.clone();
+        let mut work: Vec<_> = self[op].regions.clone().to_vec();
         while let Some(r) = work.pop() {
             for o in self[r].blocks.iter().flat_map(|b| &self[*b].ops) {
                 if self.maybe_unknown_symbol_table(*o) {

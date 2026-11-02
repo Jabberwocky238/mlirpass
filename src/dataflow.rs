@@ -336,10 +336,10 @@ impl<'b, 'a> Solver<'b, 'a> {
                 let Some(c) = self.operand_values(op) else { return };
                 match self.successor_for(op, &c) {
                     Some(s) => vec![s],
-                    None => self.body[op].successors.clone(),
+                    None => self.body[op].successors.clone().to_vec(),
                 }
             } else {
-                self.body[op].successors.clone()
+                self.body[op].successors.clone().to_vec()
             };
             for t in targets {
                 self.mark_live(t);

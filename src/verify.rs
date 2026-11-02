@@ -13,10 +13,13 @@ impl Body<'_> {
     /// ⭐ The verifiers over everything in `root`.
     pub fn verify(&self, root: OpId) -> Result<(), Error> {
         self.verify_branches(root)?;
-        for op in self.ops_in(root) {
-            self.verify_affine(op)?;
-        }
-        Ok(())
+        let mut out = Ok(());
+        self.walk(root, &mut |op| {
+            if out.is_ok() {
+                out = self.verify_affine(op);
+            }
+        });
+        out
     }
 
     /// `verifyDimAndSymbolIdentifiers`.

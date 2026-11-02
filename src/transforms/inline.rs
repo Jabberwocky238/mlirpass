@@ -668,7 +668,7 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
             body[*b].parent = Some(region);
             body[region].blocks.insert(at + k, *b);
         }
-        blocks
+        blocks.to_vec()
     };
     if let Some(call_loc) = loc.as_deref().filter(|l| *l != "unknown") {
         let mut seen: BTreeMap<String, String> = BTreeMap::new();

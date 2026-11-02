@@ -192,7 +192,7 @@ impl<'a> Body<'a> {
     fn symbol_uses_of(&self, op: OpId) -> Vec<Vec<mlirformat::Str<'a>>> {
         let mut out = Vec::new();
         let mut visit = |a: &Attribute<'a>| Self::symbol_refs(a, &mut out);
-        self[op].properties.iter().for_each(&mut visit);
+        self[op].properties.iter().filter_map(|n| n.value.as_ref()).for_each(&mut visit);
         self[op].attributes.iter().filter_map(|n| n.value.as_ref()).for_each(visit);
         out
     }
@@ -235,7 +235,7 @@ impl<'a> Body<'a> {
         for (k, r) in kept.iter().enumerate() {
             self[*r].def = crate::Def::Result(op, k as u32);
         }
-        self[op].results = kept;
+        self[op].results = kept.into();
     }
 
     /// Removes the flagged entries of array attribute `name`; an array left all empty goes.
@@ -281,7 +281,7 @@ impl<'a> Body<'a> {
             }).collect();
             self.set_segments(op, "operandSegmentSizes", &new);
         }
-        let kept = self[op].operands.iter().zip(dead).filter(|(_, d)| !**d).map(|(v, _)| *v).collect();
+        let kept: crate::Ids<_> = self[op].operands.iter().zip(dead).filter(|(_, d)| !**d).map(|(v, _)| *v).collect();
         self.set_operands(op, kept);
     }
 }
@@ -315,7 +315,6 @@ impl Cleanup {
                 erased_args.push((*f, args.clone()));
             }
         }
-        let mut poisons = Vec::new();
         for (op, mut dead, callee, poison) in self.operands {
             let mut handled = false;
             if let Some(c) = callee
@@ -343,7 +342,6 @@ impl Cleanup {
                     let ty = body[body[op].operands[i]].ty.clone();
                     let p = body.create(OpData::build("ub.poison").with("value", Attribute::Extended { ext: mlirformat::Extended { name: "ub.poison".into(), body: None, params: Vec::new() }, ty: None }), &[ty]);
                     body.insert_before(p, op);
-                    poisons.push(p);
                     let r = body[p].results[0];
                     body.set_operand(op, i, r);
                 }
@@ -367,11 +365,6 @@ impl Cleanup {
             }
             body.erase(op);
         }
-        for p in poisons {
-            if body[p].parent.is_some() && body[body[p].results[0]].uses.is_empty() {
-                body.erase(p);
-            }
-        }
     }
 }
 
@@ -390,7 +383,13 @@ impl Run for RemoveDeadValues {
         let cl = r.cl;
         cl.apply(body);
         if self.canonicalize {
-            let ops: Vec<OpId> = body.ops_in(op).into_iter().filter(|o| body.is_region_branch(*o)).collect();
+            // In `Operation::walk`'s order (postorder): the worklist pops the last first
+            let mut ops = Vec::new();
+            body.walk_post(op, &mut |o| {
+                if body.is_region_branch(o) {
+                    ops.push(o);
+                }
+            });
             body.apply_op_patterns_greedily(&ops, &crate::canon::patterns());
         }
         Ok(())

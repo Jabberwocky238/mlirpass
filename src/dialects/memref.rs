@@ -32,7 +32,7 @@ impl OpInterfaces for MemrefDialect {
         }
         match point {
             Point::Parent => (0..b[op].regions.len()).map(|r| (Succ::Region(r), Vec::new())).collect(),
-            Point::Terminator(_) => vec![(Succ::Parent, b[op].results.clone())],
+            Point::Terminator(_) => vec![(Succ::Parent, b[op].results.clone().to_vec())],
         }
     }
 

@@ -19,7 +19,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::ops::{Index, IndexMut};
 
-use mlirformat::{Attribute, Block, BlockArg, Error, Extended, FunctionType, Item, MlirOpt, Module, NamedAttr, Operation, Region, ResultDef, Shaped, Str, Type, Value};
+use mlirformat::{Attribute, Block, BlockArg, Error, Extended, FunctionType, IntoStatic, Item, MlirOpt, Module, NamedAttr, Operation, Reborrow, Region, ResultDef, Shaped, Source, Str, Type, Value};
 
 /// Index newtypes into the arena, each with `Index` / `IndexMut` on [`Body`]; `IndexMut` saves the
 /// entry's old value first while a [`Checkpoint`] is open (see [`Journal`]).
@@ -46,7 +46,7 @@ macro_rules! ids {
             fn index_mut(&mut self, id: $id) -> &mut Self::Output {
                 let i = usize::from(id);
                 if self.journal.saves(Kind::$kind, i) {
-                    self.journal.undo.push(Undo::Saved(Saved::$kind(i, self.$field[i].clone())));
+                    self.journal.undo.push(Undo::Saved(alloc::boxed::Box::new(Saved::$kind(i, self.$field[i].clone()))));
                 }
                 &mut self.$field[i]
             }
@@ -64,6 +64,15 @@ macro_rules! ids {
         #[derive(Debug, Clone)]
         enum Saved<'a> {
             $($kind(usize, $data $(<$lt>)?)),*
+        }
+
+        impl Saved<'_> {
+            /// The arena and the entry.
+            fn slot(&self) -> (Kind, usize) {
+                match self {
+                    $(Saved::$kind(i, _) => (Kind::$kind, *i)),*
+                }
+            }
         }
 
         impl<'a> Body<'a> {
@@ -128,6 +137,12 @@ impl<T: Shift> Shift for Vec<T> {
     }
 }
 
+impl<T: Shift, const N: usize> Shift for smallvec::SmallVec<[T; N]> {
+    fn shift(self, o: &Offsets) -> Self {
+        self.into_iter().map(|x| x.shift(o)).collect()
+    }
+}
+
 impl<T: Shift> Shift for Option<T> {
     fn shift(self, o: &Offsets) -> Self {
         self.map(|x| x.shift(o))
@@ -173,8 +188,9 @@ ids! {
 /// One entry of the undo log.
 #[derive(Debug, Clone)]
 enum Undo<'a> {
-    /// An arena entry's value before the first write after a checkpoint.
-    Saved(Saved<'a>),
+    /// An arena entry's value before the first write after a checkpoint (boxed: an op is
+    /// hundreds of bytes, the other entries a few words).
+    Saved(alloc::boxed::Box<Saved<'a>>),
     /// An op went into block `block` at `at`.
     Inserted { block: usize, at: usize },
     /// `op` came out of block `block` at `at`.
@@ -192,7 +208,9 @@ enum Undo<'a> {
 /// ([`Body::insert`], [`Body::detach`], [`Body::splice`]) — saving the whole list on the first
 /// edit of every pattern attempt made a conversion over one long block quadratic in its length.
 ///
-/// Checkpoints nest: each one is an epoch, and an entry is saved at most once per epoch.
+/// Checkpoints nest: each one is an epoch, and an entry is saved at most once per epoch. A
+/// checkpoint released into the outermost one leaves only the saves the outermost one lacks
+/// ([`Journal::compact`]): a conversion's whole-run checkpoint holds one save per entry touched.
 #[derive(Debug, Clone, Default)]
 pub struct Journal<'a> {
     undo: Vec<Undo<'a>>,
@@ -204,6 +222,11 @@ pub struct Journal<'a> {
     lens: [usize; 4],
     /// Per arena and entry, the epoch it was last saved in.
     saved: [Vec<u32>; 4],
+    /// Per arena and entry, the outermost epoch it was saved in: what an inner checkpoint's
+    /// saves are checked against when it is released into the outermost one.
+    outer: [Vec<u32>; 4],
+    /// The outermost open checkpoint's epoch.
+    outer_epoch: u32,
 }
 
 /// A journal compares equal to any other: bodies compare by their IR.
@@ -220,13 +243,47 @@ impl Journal<'_> {
         if self.depth == 0 || i >= self.lens[k] {
             return false;
         }
-        let saved = &mut self.saved[k];
+        let (saved, epoch) = if self.depth == 1 { (&mut self.outer[k], self.outer_epoch) } else { (&mut self.saved[k], self.epoch) };
         if saved.len() <= i {
             saved.resize(i + 1, u32::MAX);
         }
-        let fresh = saved[i] != self.epoch;
-        saved[i] = self.epoch;
+        let fresh = saved[i] != epoch;
+        saved[i] = epoch;
         fresh
+    }
+
+    /// An inner checkpoint taken at `from` in the log was released into the outermost one: of
+    /// its saves, those of entries the outermost one saved already, or that did not exist when
+    /// it was taken (its rollback truncates them), go. Every entry then has one save, however
+    /// many attempts touched it. A block's save stays: its op list is also undone edit by
+    /// edit, and those edits need every list they were made on.
+    fn compact(&mut self, from: usize) {
+        let (lens, epoch) = (self.lens, self.outer_epoch);
+        let mut kept = from;
+        for r in from..self.undo.len() {
+            let keep = match &self.undo[r] {
+                Undo::Saved(saved) => match saved.slot() {
+                    (Kind::Block, _) => true,
+                    (kind, i) => {
+                        let outer = &mut self.outer[kind as usize];
+                        if outer.len() <= i {
+                            outer.resize(i + 1, u32::MAX);
+                        }
+                        let fresh = i < lens[kind as usize] && outer[i] != epoch;
+                        if fresh {
+                            outer[i] = epoch;
+                        }
+                        fresh
+                    }
+                },
+                _ => true,
+            };
+            if keep {
+                self.undo.swap(kept, r);
+                kept += 1;
+            }
+        }
+        self.undo.truncate(kept);
     }
 }
 
@@ -241,15 +298,23 @@ pub struct Checkpoint {
     outer_lens: [usize; 4],
 }
 
+/// The ids an op or a block holds (operands, results, successors, regions, arguments, blocks):
+/// up to four inline, as big as a `Vec` and no allocation for the usual handful.
+pub type Ids<T> = smallvec::SmallVec<[T; 4]>;
+
+/// A value's uses: two inline.
+pub type Uses = smallvec::SmallVec<[Use; 2]>;
+
 /// One operation. Operand and result types live on the values.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OpData<'a> {
     pub name: Str<'a>,
-    pub operands: Vec<ValueId>,
-    pub results: Vec<ValueId>,
-    pub successors: Vec<BlockId>,
-    pub properties: Option<Attribute<'a>>,
-    pub regions: Vec<RegionId>,
+    pub operands: Ids<ValueId>,
+    pub results: Ids<ValueId>,
+    pub successors: Ids<BlockId>,
+    /// The inherent attributes (`<{...}>`), sorted; empty: none.
+    pub properties: Vec<NamedAttr<'a>>,
+    pub regions: Ids<RegionId>,
     pub attributes: Vec<NamedAttr<'a>>,
     /// Raw contents of `loc(...)`.
     pub loc: Option<Str<'a>>,
@@ -265,14 +330,14 @@ pub struct OpData<'a> {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BlockData {
-    pub args: Vec<ValueId>,
+    pub args: Ids<ValueId>,
     pub ops: Vec<OpId>,
     pub parent: Option<RegionId>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegionData {
-    pub blocks: Vec<BlockId>,
+    pub blocks: Ids<BlockId>,
     pub parent: OpId,
 }
 
@@ -294,7 +359,7 @@ pub struct Use {
 pub struct ValueData<'a> {
     pub ty: Type<'a>,
     pub def: Def,
-    pub uses: Vec<Use>,
+    pub uses: Uses,
     /// A block argument's `loc(...)`.
     pub loc: Option<Str<'a>>,
 }
@@ -400,6 +465,9 @@ impl Body<'_> {
         j.next_epoch += 1;
         j.epoch = j.next_epoch;
         j.lens = lens;
+        if j.depth == 1 {
+            j.outer_epoch = j.epoch;
+        }
         Checkpoint { lens, ..cp }
     }
 
@@ -407,7 +475,7 @@ impl Body<'_> {
     pub fn rollback(&mut self, cp: Checkpoint) {
         while self.journal.undo.len() > cp.undo {
             match self.journal.undo.pop().expect("longer than the mark") {
-                Undo::Saved(saved) => self.restore(saved),
+                Undo::Saved(saved) => self.restore(*saved),
                 Undo::Inserted { block, at } => {
                     self.blocks[block].ops.remove(at);
                 }
@@ -432,8 +500,10 @@ impl Body<'_> {
         j.depth -= 1;
         j.epoch = cp.outer_epoch;
         j.lens = cp.outer_lens;
-        if j.depth == 0 {
-            j.undo.clear();
+        match j.depth {
+            0 => j.undo.clear(),
+            1 => j.compact(cp.undo),
+            _ => {}
         }
     }
 }
@@ -485,44 +555,29 @@ impl<'a> OpData<'a> {
 impl<'a> OpData<'a> {
     /// A detached op with nothing but its name.
     pub fn named(name: impl Into<Str<'a>>) -> Self {
-        Self { name: name.into(), operands: Vec::new(), results: Vec::new(), successors: Vec::new(), properties: None, regions: Vec::new(), attributes: Vec::new(), loc: None, parent: None, defaults: false, info: None }
+        Self { name: name.into(), operands: crate::Ids::new(), results: crate::Ids::new(), successors: crate::Ids::new(), properties: Vec::new(), regions: crate::Ids::new(), attributes: Vec::new(), loc: None, parent: None, defaults: false, info: None }
     }
 
     fn dict(&self, inherent: bool) -> &[NamedAttr<'a>] {
-        match (inherent, &self.properties) {
-            (true, Some(Attribute::Dict(d))) => d,
-            (true, _) => &[],
-            (false, _) => &self.attributes,
-        }
+        if inherent { &self.properties } else { &self.attributes }
     }
 
     fn dict_mut(&mut self, inherent: bool) -> &mut Vec<NamedAttr<'a>> {
-        if !inherent {
-            return &mut self.attributes;
-        }
-        if !matches!(self.properties, Some(Attribute::Dict(_))) {
-            self.properties = Some(Attribute::Dict(Vec::new()));
-        }
-        let Some(Attribute::Dict(d)) = &mut self.properties else { unreachable!() };
-        d
+        if inherent { &mut self.properties } else { &mut self.attributes }
     }
 
     /// Attribute `name`, inherent or discardable.
     /// The op's attributes, inherent and discardable, sorted (`getAttrs()`).
     pub fn all_attrs(&self) -> Vec<NamedAttr<'a>> {
-        let mut out: Vec<NamedAttr<'a>> = match &self.properties {
-            Some(Attribute::Dict(p)) => p.clone(),
-            _ => Vec::new(),
-        };
+        let mut out = self.properties.clone();
         out.extend(self.attributes.iter().cloned());
         out.sort_by(|a, b| a.name.cmp(&b.name));
         out
     }
 
-    pub fn get(&self, name: &str) -> Option<&Attribute<'a>> {
-        let find = |d: &[NamedAttr<'a>]| d.iter().position(|a| a.name == name);
-        let d = if find(self.dict(true)).is_some() { self.dict(true) } else { self.dict(false) };
-        let a = &d[find(d)?];
+    pub fn get<'s>(&'s self, name: &str) -> Option<&'s Attribute<'a>> {
+        let find = |d: &'s [NamedAttr<'a>]| d.iter().find(|a| a.name == name);
+        let a = find(self.dict(true)).or_else(|| find(self.dict(false)))?;
         Some(a.value.as_ref().unwrap_or(&Attribute::Unit))
     }
 
@@ -550,9 +605,6 @@ impl<'a> OpData<'a> {
             let before = d.len();
             d.retain(|a| a.name != name);
             gone |= d.len() != before;
-        }
-        if matches!(&self.properties, Some(Attribute::Dict(d)) if d.is_empty()) {
-            self.properties = None;
         }
         gone
     }
@@ -588,19 +640,26 @@ impl<'a> Body<'a> {
             }
             data.defaults = false;
         }
+        // Looked up once: placing and pushing both read it
+        data.info = self.ctx.opt.op_info(&data.name);
         self.place(&mut data);
-        self.push_op(data, types)
+        self.push_known(data, types)
     }
 
     /// [`create`](Self::create) for an op already placed (a copy of one in a body): no
     /// defaults to add, no attributes to sort.
-    pub fn push_op(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
+    pub fn push_op(&mut self, mut data: OpData<'a>, types: &[Type<'a>]) -> OpId {
+        data.info = self.ctx.opt.op_info(&data.name);
+        self.push_known(data, types)
+    }
+
+    /// [`push_op`](Self::push_op) with `data.info` already this context's.
+    fn push_known(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
         let id = OpId(self.ops.len() as u32);
         for (index, v) in data.operands.iter().enumerate() {
             self[*v].uses.push(Use { op: id, index: index as u32 });
         }
-        let info = self.ctx.opt.op_info(&data.name);
-        self.ops.push(OpData { results: Vec::new(), info, ..data });
+        self.ops.push(OpData { results: crate::Ids::new(), ..data });
         let results = types.iter().enumerate().map(|(i, ty)| self.value(ty.clone(), Def::Result(id, i as u32), None)).collect();
         self[id].results = results;
         id
@@ -653,17 +712,28 @@ impl<'a> Body<'a> {
     /// Puts each attribute of `data` among its properties or its discardable attributes, as
     /// the context says; an op the context does not know keeps what it has.
     pub fn place(&self, data: &mut OpData<'a>) {
-        // One lookup for the op, not one per attribute (`inherent`).
-        let Some(info) = self.ctx.opt.op_info(&data.name) else { return };
-        let mut all: Vec<NamedAttr<'a>> = match data.properties.take() {
-            Some(Attribute::Dict(d)) => d,
-            _ => Vec::new(),
-        };
+        // One lookup for the op (none once it is in a body), not one per attribute (`inherent`).
+        let Some(info) = data.info.or_else(|| self.ctx.opt.op_info(&data.name)) else { return };
+        let mut all = core::mem::take(&mut data.properties);
         all.append(&mut data.attributes);
         all.sort_by(|a, b| a.name.cmp(&b.name));
         let (props, attrs): (Vec<_>, Vec<_>) = all.into_iter().partition(|a| info.inherent.contains(&&*a.name) || matches!(&*a.name, "operandSegmentSizes" | "resultSegmentSizes"));
-        data.properties = (!props.is_empty()).then_some(Attribute::Dict(props));
+        data.properties = props;
         data.attributes = attrs;
+    }
+
+    /// [`place`](Self::place) read off `data` without copying it: its properties and its
+    /// discardable attributes, borrowing their text.
+    pub fn placed<'s>(&self, data: &'s OpData<'a>) -> (Option<Attribute<'s>>, Vec<NamedAttr<'s>>) {
+        let dict = |props: Vec<NamedAttr<'s>>| (!props.is_empty()).then_some(Attribute::Dict(props));
+        let Some(info) = data.info.or_else(|| self.ctx.opt.op_info(&data.name)) else {
+            return (dict(data.properties.reborrow()), data.attributes.reborrow());
+        };
+        let mut all: Vec<&NamedAttr<'a>> = data.properties.iter().collect();
+        all.extend(&data.attributes);
+        all.sort_by(|a, b| a.name.cmp(&b.name));
+        let (props, attrs): (Vec<_>, Vec<_>) = all.into_iter().map(|a| a.reborrow()).partition(|a| info.inherent.contains(&&*a.name) || matches!(&*a.name, "operandSegmentSizes" | "resultSegmentSizes"));
+        (dict(props), attrs)
     }
 
     /// The discardable attributes of `op` (the `{...}` dictionary).
@@ -674,13 +744,13 @@ impl<'a> Body<'a> {
     }
 
     fn value(&mut self, ty: Type<'a>, def: Def, loc: Option<Str<'a>>) -> ValueId {
-        self.values.push(ValueData { ty, def, uses: Vec::new(), loc });
+        self.values.push(ValueData { ty, def, uses: Uses::new(), loc });
         ValueId(self.values.len() as u32 - 1)
     }
 
     /// Appends an empty region to `op`.
     pub fn add_region(&mut self, op: OpId) -> RegionId {
-        self.regions.push(RegionData { blocks: Vec::new(), parent: op });
+        self.regions.push(RegionData { blocks: crate::Ids::new(), parent: op });
         let id = RegionId(self.regions.len() as u32 - 1);
         self[op].regions.push(id);
         id
@@ -815,7 +885,8 @@ impl<'a> Body<'a> {
     }
 
     /// Replaces every operand list of `op` at once.
-    pub fn set_operands(&mut self, op: OpId, operands: Vec<ValueId>) {
+    pub fn set_operands(&mut self, op: OpId, operands: impl Into<Ids<ValueId>>) {
+        let operands = operands.into();
         self.drop_uses(op);
         for (index, v) in operands.iter().enumerate() {
             self[*v].uses.push(Use { op, index: index as u32 });
@@ -892,6 +963,11 @@ impl<'a> Body<'a> {
     /// The types of `values`.
     pub fn types(&self, values: &[ValueId]) -> Vec<Type<'a>> {
         values.iter().map(|v| self[*v].ty.clone()).collect()
+    }
+
+    /// Whether `values` have exactly the types `types` (without collecting them).
+    pub fn types_are(&self, values: &[ValueId], types: &[Type<'a>]) -> bool {
+        values.len() == types.len() && values.iter().zip(types).all(|(v, t)| self[*v].ty == *t)
     }
 
     /// The root's single block.
@@ -1069,7 +1145,11 @@ impl<'m, 'a> Import<'m, 'a> {
         }
         let a = &self.aliases;
         let data = OpData {
-            properties: op.properties.as_ref().map(|p| a.attr(p)),
+            // `<{...}>` is a dictionary; anything else is not a property
+            properties: match &op.properties {
+                Some(Attribute::Dict(d)) => a.dict(d),
+                _ => Vec::new(),
+            },
             attributes: a.dict(&op.attributes),
             loc: a.loc(&op.loc),
             ..OpData::named(op.name.clone())
@@ -1196,110 +1276,198 @@ struct Counters {
     arg: u32,
 }
 
-/// The state of one export.
-struct Export<'b, 'a> {
-    body: &'b Body<'a>,
-    names: BTreeMap<ValueId, Value<'static>>,
-    labels: BTreeMap<BlockId, String>,
-    next: Counters,
+/// A value's name on the way out: the `n`th value of its scope (and which result, when its op
+/// has several), or the `n`th entry block argument.
+#[derive(Clone, Copy)]
+enum Name {
+    Value(u32, Option<u32>),
+    Arg(u32),
 }
 
-impl<'b, 'a> Export<'b, 'a> {
-    /// Ops whose regions start numbering afresh.
-    fn isolated(&self, op: OpId) -> bool {
-        op == self.body.root || self.body.has(op, crate::Trait::IsIsolatedFromAbove)
+/// ⭐ How a body is named on the way out ([`Body::names`]): every value and block by id, each
+/// spelling (`%7`, `%arg2`, `^bb1`) written once, for [`Body::export`] to borrow.
+pub struct Names {
+    values: Vec<Option<Name>>,
+    labels: Vec<Option<u32>>,
+    nums: Vec<String>,
+    args: Vec<String>,
+    bbs: Vec<String>,
+}
+
+impl Names {
+    fn of(body: &Body<'_>) -> Self {
+        let mut n = Names { values: alloc::vec![None; body.values.len()], labels: alloc::vec![None; body.blocks.len()], nums: Vec::new(), args: Vec::new(), bbs: Vec::new() };
+        let (mut max, mut next) = (Counters::default(), Counters::default());
+        let mut bbs = 0;
+        n.name_op(body, body.root, &mut next, &mut max, &mut bbs);
+        n.nums = (0..max.value).map(|i| format!("{i}")).collect();
+        n.args = (0..max.arg).map(|i| format!("arg{i}")).collect();
+        n.bbs = (0..bbs).map(|i| format!("bb{i}")).collect();
+        n
     }
 
-    fn name_op(&mut self, op: OpId) {
-        let results = &self.body[op].results;
+    fn name_op(&mut self, body: &Body<'_>, op: OpId, next: &mut Counters, max: &mut Counters, bbs: &mut u32) {
+        let results = &body[op].results;
         if !results.is_empty() {
-            let n = format!("{}", self.next.value);
-            self.next.value += 1;
             let multi = results.len() > 1;
             for (i, r) in results.iter().enumerate() {
-                self.names.insert(*r, Value { name: Cow::Owned(n.clone()), index: multi.then_some(i as u32) });
+                self.values[usize::from(*r)] = Some(Name::Value(next.value, multi.then_some(i as u32)));
             }
+            next.value += 1;
+            max.value = max.value.max(next.value);
         }
         // Whatever the regions number is forgotten on the way out; the results above are not.
-        let after = self.next;
-        if self.isolated(op) {
-            self.next = Counters::default();
+        let after = *next;
+        if op == body.root || body.has(op, crate::Trait::IsIsolatedFromAbove) {
+            *next = Counters::default();
         }
-        for r in &self.body[op].regions {
-            let outer = self.next;
-            for (i, b) in self.body[*r].blocks.iter().enumerate() {
-                self.labels.insert(*b, format!("bb{i}"));
-                for v in &self.body[*b].args {
-                    let counter = if i == 0 { &mut self.next.arg } else { &mut self.next.value };
-                    let name = if i == 0 { format!("arg{counter}") } else { format!("{counter}") };
+        for r in &body[op].regions {
+            let outer = *next;
+            for (i, b) in body[*r].blocks.iter().enumerate() {
+                self.labels[usize::from(*b)] = Some(i as u32);
+                *bbs = (*bbs).max(i as u32 + 1);
+                for v in &body[*b].args {
+                    self.values[usize::from(*v)] = Some(if i == 0 { Name::Arg(next.arg) } else { Name::Value(next.value, None) });
+                    let counter = if i == 0 { &mut next.arg } else { &mut next.value };
                     *counter += 1;
-                    self.names.insert(*v, Value { name: Cow::Owned(name), index: None });
                 }
-                for o in &self.body[*b].ops {
-                    self.name_op(*o);
+                max.value = max.value.max(next.value);
+                max.arg = max.arg.max(next.arg);
+                for o in &body[*b].ops {
+                    self.name_op(body, *o, next, max, bbs);
                 }
             }
-            self.next = outer;
+            *next = outer;
         }
-        self.next = after;
+        *next = after;
+    }
+}
+
+/// The state of one export: the body, read in place, and its names. Shallow, an op holds its
+/// regions by reference and the printer reads them from here ([`Source`]); deep, it holds them.
+struct Export<'n, 'a> {
+    body: &'n Body<'a>,
+    names: &'n Names,
+    deep: bool,
+}
+
+impl Source for Export<'_, '_> {
+    fn region(&self, id: u32) -> Region<'_> {
+        self.region(RegionId(id))
     }
 
+    fn blocks(&self, id: u32) -> Vec<Block<'_>> {
+        self.body[RegionId(id)].blocks.iter().enumerate().map(|(i, b)| self.block(i, *b, Vec::new())).collect()
+    }
+
+    fn len(&self, id: u32, b: usize) -> usize {
+        self.body[self.body[RegionId(id)].blocks[b]].ops.len()
+    }
+
+    fn op(&self, id: u32, b: usize, k: usize) -> Operation<'_> {
+        self.op(self.body[self.body[RegionId(id)].blocks[b]].ops[k])
+    }
+}
+
+impl<'n, 'a> Export<'n, 'a> {
     /// The name of `v`; a value outside the IR (a dangling use, which is a bug) prints as
     /// `%INVALIDn` so that it shows.
-    fn value(&self, v: ValueId) -> Value<'a> {
-        self.names.get(&v).cloned().unwrap_or_else(|| Value { name: Cow::Owned(format!("INVALID{}", v.0)), index: None })
+    fn value(&self, v: ValueId) -> Value<'n> {
+        match self.names.values.get(usize::from(v)).copied().flatten() {
+            Some(Name::Value(n, index)) => Value { name: Cow::Borrowed(&self.names.nums[n as usize]), index },
+            Some(Name::Arg(n)) => Value { name: Cow::Borrowed(&self.names.args[n as usize]), index: None },
+            None => Value { name: Cow::Owned(format!("INVALID{}", v.0)), index: None },
+        }
     }
 
-    fn op(&self, op: OpId) -> Operation<'a> {
-        let mut placed = self.body[op].clone();
-        self.body.place(&mut placed);
-        let d = &placed;
+    fn label(&self, b: BlockId) -> Str<'n> {
+        Cow::Borrowed(&self.names.bbs[self.names.labels[usize::from(b)].expect("placed block") as usize])
+    }
+
+    fn types(&self, vs: &[ValueId]) -> Vec<Type<'n>> {
+        vs.iter().map(|v| self.body[*v].ty.reborrow()).collect()
+    }
+
+    fn op(&self, op: OpId) -> Operation<'n> {
+        let d = &self.body[op];
+        let (properties, attributes) = self.body.placed(d);
         let results = match d.results.as_slice() {
             [] => Vec::new(),
-            [r, rest @ ..] => alloc::vec![ResultDef { name: self.names[r].name.clone(), count: (!rest.is_empty()).then_some(d.results.len() as u32) }],
+            [r, rest @ ..] => alloc::vec![ResultDef { name: self.value(*r).name, count: (!rest.is_empty()).then_some(d.results.len() as u32) }],
         };
         Operation {
             results,
-            name: d.name.clone(),
+            name: d.name.reborrow(),
             operands: d.operands.iter().map(|v| self.value(*v)).collect(),
-            successors: d.successors.iter().map(|b| Cow::Owned(self.labels[b].clone())).collect(),
-            properties: d.properties.clone(),
-            regions: d.regions.iter().map(|r| self.region(*r)).collect(),
-            attributes: d.attributes.clone(),
-            ty: FunctionType { inputs: self.body.types(&d.operands), results: self.body.types(&d.results) },
-            loc: d.loc.clone(),
+            successors: d.successors.iter().map(|b| self.label(*b)).collect(),
+            properties,
+            regions: d.regions.iter().map(|r| if self.deep || self.body[*r].blocks.is_empty() { self.region(*r) } else { Region::sourced(r.0) }).collect(),
+            attributes,
+            ty: FunctionType { inputs: self.types(&d.operands), results: self.types(&d.results) },
+            loc: d.loc.reborrow(),
             raw: None,
         }
     }
 
-    fn region(&self, r: RegionId) -> Region<'a> {
-        let blocks = self.body[r].blocks.iter().enumerate().map(|(i, b)| {
-            let data = &self.body[*b];
-            Block {
-                // An entry block without arguments needs no label, unless it is empty too: the
-                // region would read back as having no block at all.
-                label: (i > 0 || !data.args.is_empty() || data.ops.is_empty()).then(|| Cow::Owned(self.labels[b].clone())),
-                args: data.args.iter().map(|v| BlockArg { name: self.names[v].name.clone(), ty: self.body[*v].ty.clone(), loc: self.body[*v].loc.clone() }).collect(),
-                ops: data.ops.iter().map(|o| self.op(*o)).collect(),
-            }
-        });
-        Region { blocks: blocks.collect() }
+    fn region(&self, r: RegionId) -> Region<'n> {
+        Region { blocks: self.body[r].blocks.iter().enumerate().map(|(i, b)| self.block(i, *b, self.body[*b].ops.iter().map(|o| self.op(*o)).collect())).collect() }
+    }
+
+    /// Block `b`, the `i`th of its region, holding `ops`.
+    fn block(&self, i: usize, b: BlockId, ops: Vec<Operation<'n>>) -> Block<'n> {
+        let data = &self.body[b];
+        Block {
+            // An entry block without arguments needs no label, unless it is empty too: the
+            // region would read back as having no block at all.
+            label: (i > 0 || !data.args.is_empty() || data.ops.is_empty()).then(|| self.label(b)),
+            args: data.args.iter().map(|v| BlockArg { name: self.value(*v).name, ty: self.body[*v].ty.reborrow(), loc: self.body[*v].loc.reborrow() }).collect(),
+            ops,
+        }
     }
 }
 
-impl<'a> From<&Body<'a>> for Module<'a> {
-    /// Aliases, the root, then `{-# ... #-}` metadata, as `mlir-opt` prints them.
-    fn from(body: &Body<'a>) -> Self {
-        let mut ex = Export { body, names: BTreeMap::new(), labels: BTreeMap::new(), next: Counters::default() };
-        ex.name_op(body.root);
-        let (meta, mut items): (Vec<_>, Vec<_>) = body.items.iter().cloned().partition(|i| matches!(i, Item::Metadata { .. }));
-        items.push(Item::Op(ex.op(body.root)));
-        let used = body.used_resources();
+impl<'a> Body<'a> {
+    /// Aliases, the root (`root`, the body's root exported), then `{-# ... #-}` metadata, as
+    /// `mlir-opt` prints them.
+    fn module<'o>(&self, root: Operation<'o>) -> Module<'o>
+    where
+        'a: 'o,
+    {
+        let (meta, mut items): (Vec<_>, Vec<_>) = self.items.iter().cloned().partition(|i| matches!(i, Item::Metadata { .. }));
+        items.push(Item::Op(root));
+        let used = self.used_resources();
         items.extend(meta.into_iter().filter_map(|m| match m {
             Item::Metadata { body: text } => Body::keep_resources(&text, &used).map(|t| Item::Metadata { body: t.into() }),
             m => Some(m),
         }));
         Module { items }
+    }
+}
+
+impl<'a> From<&Body<'a>> for Module<'a> {
+    /// [`Body::export`], copied: a module that borrows nothing of the body.
+    fn from(body: &Body<'a>) -> Self {
+        let names = body.names();
+        body.module(Export { body, names: &names, deep: true }.op(body.root).into_static())
+    }
+}
+
+impl<'a> Body<'a> {
+    /// How [`export`](Self::export) names things.
+    pub fn names(&self) -> Names {
+        Names::of(self)
+    }
+
+    /// ⭐ The body as text: what [`Module::from`] gives, shown with `opt` (`generic`: every op
+    /// in generic form), without building it. The printer reads each op from the body as it
+    /// reaches it; `keep` says which of the body's module items to print (the root always).
+    pub fn show(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
+        let names = self.names();
+        let ex = Export { body: self, names: &names, deep: false };
+        let mut m = self.module(ex.op(self.root));
+        m.items.retain(|i| matches!(i, Item::Op(_)) || keep(i));
+        let bare = MlirOpt::new();
+        if generic { &bare } else { opt }.show_from(&m, &ex).text().expect("printing into a string")
     }
 }
 
@@ -1351,9 +1519,8 @@ impl Body<'_> {
 impl<'a> Body<'a> {
     /// The op at `id` as a free-standing mlirformat [`Operation`], named as in [`Module::from`].
     pub fn operation(&self, id: OpId) -> Operation<'a> {
-        let mut ex = Export { body: self, names: BTreeMap::new(), labels: BTreeMap::new(), next: Counters::default() };
-        ex.name_op(self.root);
-        ex.op(id)
+        let names = self.names();
+        Export { body: self, names: &names, deep: true }.op(id).into_static()
     }
 
     /// Text → body, with the context's dialects for custom forms.

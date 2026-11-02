@@ -73,7 +73,7 @@ impl<'a> OpData<'a> {
     }
 
     pub fn operands(mut self, v: &[ValueId]) -> Self {
-        self.operands = v.to_vec();
+        self.operands = v.to_vec().into();
         self
     }
 
@@ -373,7 +373,7 @@ impl<'a> Body<'a> {
         let mut moved: Vec<ValueId> = head.to_vec();
         moved.extend(tail.iter().zip(tail_consts).filter(|(_, c)| c.is_none()).map(|(v, _)| *v));
         moved.extend(tail.iter().zip(tail_consts).filter(|(_, c)| c.is_some()).map(|(v, _)| *v));
-        if moved == operands {
+        if moved[..] == operands[..] {
             return Fold::Failed;
         }
         self.set_operands(op, moved);

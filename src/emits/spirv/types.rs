@@ -332,7 +332,7 @@ impl<'t> SpirvTypes<'t> {
         // `addTargetMaterialization`: an `unrealized_conversion_cast`.
         tc.target(|rw, types, inputs, _| {
             let o = rw.create(OpData::build("builtin.unrealized_conversion_cast").operands(inputs), types);
-            Some(rw.body[o].results.clone())
+            Some(rw.body[o].results.clone().to_vec())
         });
         tc
     }

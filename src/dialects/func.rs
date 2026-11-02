@@ -46,7 +46,7 @@ impl DialectInliner for FuncDialect {
             return;
         }
         let mut data = OpData::build("cf.br").operands(&b[op].operands.clone());
-        data.successors = alloc::vec![dest];
+        data.successors = smallvec::smallvec![dest];
         data.loc = b[op].loc.clone();
         let br = b.create(data, &[]);
         b.insert_before(br, op);

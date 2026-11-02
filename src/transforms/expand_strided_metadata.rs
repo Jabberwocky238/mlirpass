@@ -68,7 +68,7 @@ impl<'a> Rewriter<'_, 'a> {
     /// `makeComposedFoldedAffineApply`.
     pub fn composed_folded_apply(&mut self, map: AffineMap, operands: &[Ofr]) -> Ofr {
         // `foldAttributesIntoMap`.
-        let mut values = Vec::new();
+        let mut values = crate::Ids::new();
         let (mut nd, mut ns) = (0, 0);
         let dims: Vec<AffineExpr> = operands[..map.dims as usize]
             .iter()
@@ -118,7 +118,7 @@ impl<'a> Rewriter<'_, 'a> {
 
     /// `makeComposedAffineApply`: the composed `affine.apply`, not folded.
     pub fn composed_apply(&mut self, map: AffineMap, operands: &[Ofr]) -> ValueId {
-        let mut values = Vec::new();
+        let mut values = crate::Ids::new();
         let (mut nd, mut ns) = (0, 0);
         let mut fold = |o: &Ofr, sym: bool| match o {
             Ofr::C(c) => AffineExpr::Const(*c),

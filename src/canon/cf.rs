@@ -9,7 +9,7 @@ use crate::{ApInt, Body, BlockId, Const, OpData, OpId, PatternSet, Rewriter, Val
 
 impl<'a> OpData<'a> {
     pub fn successors(mut self, s: &[BlockId]) -> Self {
-        self.successors = s.to_vec();
+        self.successors = s.to_vec().into();
         self
     }
 
@@ -66,7 +66,7 @@ impl<'a> Body<'a> {
         }
         let fwd = &self[br].operands;
         if self[succ].args.is_empty() {
-            return Some((dest, fwd.clone()));
+            return Some((dest, fwd.clone().to_vec()));
         }
         let mapped = fwd.iter().map(|v| match self[*v].def {
             crate::Def::Arg(b, i) if b == succ => operands[i as usize],

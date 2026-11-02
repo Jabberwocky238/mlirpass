@@ -518,9 +518,7 @@ impl<'a> Tf<'_, '_, 'a> {
         let mut data = OpData::build(&b[op].name);
         data.operands = b[op].operands.clone();
         data.operands[0] = b[pad].operands[0];
-        if let Some(Attribute::Dict(props)) = &b[op].properties {
-            props.iter().for_each(|a| data.set(&a.name, a.value.clone().unwrap_or(Attribute::Unit)));
-        }
+        b[op].properties.iter().for_each(|a| data.set(&a.name, a.value.clone().unwrap_or(Attribute::Unit)));
         // The conv builders spell `local_bound` (`DefaultValuedOptionalAttr`) out.
         if !pool && data.get("local_bound").is_none() {
             data.set("local_bound", Attribute::Bool(false));

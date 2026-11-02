@@ -44,7 +44,7 @@ impl<'a> Body<'a> {
         }
         let r = &self[op].regions;
         Some(match &*self[op].name {
-            "scf.while" => r.clone(),
+            "scf.while" => r.clone().to_vec(),
             _ => r.first().map(|x| alloc::vec![*x]).unwrap_or_default(),
         })
     }

@@ -43,10 +43,10 @@ impl OpInterfaces for AffineDialect {
         let results = b[op].results.clone();
         let body = (Succ::Region(0), b.region_args(op, 0, 1));
         match (Self::trip_count(b, op), point) {
-            (Some(1), Point::Terminator(_)) | (Some(0), Point::Parent) => vec![(Succ::Parent, results)],
+            (Some(1), Point::Terminator(_)) | (Some(0), Point::Parent) => vec![(Succ::Parent, results.to_vec())],
             (Some(0), Point::Terminator(_)) => Vec::new(),
             (Some(_), Point::Parent) => vec![body],
-            _ => vec![body, (Succ::Parent, results)],
+            _ => vec![body, (Succ::Parent, results.to_vec())],
         }
     }
 

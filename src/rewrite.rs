@@ -206,7 +206,7 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
             }
         }
         self.listener.inserted(self.body, op);
-        self.body[op].results.clone()
+        self.body[op].results.clone().to_vec()
     }
 
     /// Builds an op with regions: `regions` fills them (on the body) before it is inserted, so

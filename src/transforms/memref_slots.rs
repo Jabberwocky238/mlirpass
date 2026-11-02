@@ -214,7 +214,7 @@ impl Destructurable for MemrefSlots {
         let index = rw.body.memref_index(op).expect("canRewire checked the index");
         let ptr = subslots.iter().find(|(i, _)| *i == index).expect("a used index").1.ptr;
         let keep = usize::from(rw.body[op].name == "memref.store");
-        let operands = rw.body[op].operands[..keep].iter().copied().chain([ptr]).collect();
+        let operands: crate::Ids<_> = rw.body[op].operands[..keep].iter().copied().chain([ptr]).collect();
         rw.modify(op, |b| b.set_operands(op, operands));
         Deletion::Keep
     }

@@ -416,7 +416,7 @@ impl<'a> Rewriter<'_, 'a> {
             let y = b.create(OpData::build("linalg.yield").operands(&[a]), &[]);
             b.insert(y, blk, None);
         });
-        self.body[op].results.clone()
+        self.body[op].results.clone().to_vec()
     }
 
     fn fill(&mut self, value: ValueId, init: ValueId) -> Vec<ValueId> {
@@ -667,7 +667,7 @@ rewrites! {
         types[n] = rt.clone();
         rw.set_before(l);
         operands[inits.start + n] = rw.tensor_cast(operands[inits.start + n], rt);
-        let new = rw.clone_linalg(l, operands, &types);
+        let new = rw.clone_linalg(l, operands.to_vec(), &types);
         let mut results = rw.body[new].results.clone();
         let result = results[n];
         results[n] = rw.tensor_cast(result, old);

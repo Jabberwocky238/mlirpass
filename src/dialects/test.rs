@@ -51,7 +51,7 @@ impl OpInterfaces for TestDialect {
         }
         match point {
             Point::Parent => vec![(Succ::Region(0), b.region_args(op, 0, 0)), (Succ::Region(1), b.region_args(op, 1, 0))],
-            Point::Terminator(t) if b[t].parent.and_then(|blk| b[blk].parent) == Some(b[op].regions[2]) => vec![(Succ::Parent, b[op].results.clone())],
+            Point::Terminator(t) if b[t].parent.and_then(|blk| b[blk].parent) == Some(b[op].regions[2]) => vec![(Succ::Parent, b[op].results.clone().to_vec())],
             Point::Terminator(_) => vec![(Succ::Region(2), b.region_args(op, 2, 0))],
         }
     }

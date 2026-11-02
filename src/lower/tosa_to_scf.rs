@@ -78,7 +78,7 @@ impl TosaToScf {
                 let acc_ty = rw.body[acc[0]].ty.clone();
                 vec![Self::result(rw, &tensor::InsertSliceOp::new(slice.into(), acc[0].into(), Self::values(&[i, cast, zero]), sizes, strides, dyn3.clone(), dyn3.clone(), dyn3.clone(), slice_ty, Type::Index, Type::Index, Type::Index, acc_ty))]
             });
-            rw.body[inner].results.clone()
+            rw.body[inner].results.clone().to_vec()
         });
         let results = cr.rw.body[lp].results.clone();
         cr.replace_values(op, &results);

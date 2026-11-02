@@ -278,7 +278,7 @@ impl ScfToCf {
             iter_args = cr.rw.body[fb].args[1..].to_vec();
             let fr = cr.rw.body[f].results.clone();
             if d == 0 {
-                results = fr;
+                results = fr.to_vec();
             } else if !fr.is_empty() {
                 let blk = cr.rw.ip.expect("inside a loop").block;
                 cr.rw.set_end(blk);

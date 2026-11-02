@@ -224,11 +224,11 @@ impl<'a> Body<'a> {
         let pos = shape[..index as usize].iter().filter(|d| !matches!(d, mlirformat::Dim::Static(_))).count();
         let sizes = match &*self[op].name {
             "memref.alloc" => self[op].operands.clone(),
-            "memref.view" => self[op].operands[2..].to_vec(),
+            "memref.view" => self[op].operands[2..].to_vec().into(),
             _ => {
                 let segs = self.segments(op, "operandSegmentSizes").unwrap_or_default();
                 let start: usize = segs.iter().take(2).sum();
-                self[op].operands[start..start + segs.get(2).copied().unwrap_or(0)].to_vec()
+                self[op].operands[start..start + segs.get(2).copied().unwrap_or(0)].to_vec().into()
             }
         };
         sizes.get(pos).is_some_and(|s| self.is_valid_symbol_in(*s, region))
@@ -243,7 +243,7 @@ impl<'a> Body<'a> {
     // ---- map and operand canonicalization ---------------------------------------------
 
     /// `canonicalizePromotedSymbols`: dims that are valid symbols become symbols.
-    fn promote_symbols<M: MapOrSet>(&self, m: &mut M, ops: &mut Vec<ValueId>) {
+    fn promote_symbols<M: MapOrSet>(&self, m: &mut M, ops: &mut crate::Ids<ValueId>) {
         if ops.is_empty() {
             return;
         }
@@ -268,12 +268,12 @@ impl<'a> Body<'a> {
         }
         let n = promoted.len() as u32;
         result.extend(promoted);
-        *ops = result;
+        *ops = result.into();
         *m = m.replace(&remap, &[], next_dim, ns + n);
     }
 
     /// `legalizeDemotedDims`: symbols that are only valid dims become dims.
-    fn demote_dims<M: MapOrSet>(&self, m: &mut M, ops: &mut Vec<ValueId>) {
+    fn demote_dims<M: MapOrSet>(&self, m: &mut M, ops: &mut crate::Ids<ValueId>) {
         if ops.is_empty() {
             return;
         }
@@ -294,12 +294,12 @@ impl<'a> Body<'a> {
         let (a, b) = (dims.len() as u32, syms.len() as u32);
         result.extend(dims);
         result.extend(syms);
-        *ops = result;
+        *ops = result.into();
         *m = m.replace(&[], &remap, nd + a, b);
     }
 
     /// `canonicalizeMapOrSetAndOperands`.
-    pub fn canonicalize_map_or_set<M: MapOrSet>(&self, m: &mut M, ops: &mut Vec<ValueId>) {
+    pub fn canonicalize_map_or_set<M: MapOrSet>(&self, m: &mut M, ops: &mut crate::Ids<ValueId>) {
         if ops.is_empty() {
             return;
         }
@@ -356,7 +356,7 @@ impl<'a> Body<'a> {
             }
         }
         *m = m.replace(&dim_remap, &sym_remap, next, next_sym);
-        *ops = result;
+        *ops = result.into();
     }
 
     /// `m_Constant(&IntegerAttr)`: an integer constant op's value.
@@ -454,7 +454,7 @@ impl<'a> Body<'a> {
     }
 
     /// `composeAffineMapAndOperands`.
-    pub fn compose_map(&self, map: &mut AffineMap, ops: &mut Vec<ValueId>) {
+    pub fn compose_map(&self, map: &mut AffineMap, ops: &mut crate::Ids<ValueId>) {
         if map.results.is_empty() {
             self.canonicalize_map_or_set(map, ops);
             *map = map.simplified();
@@ -506,7 +506,7 @@ impl<'a> Body<'a> {
     }
 
     /// `fullyComposeAffineMapAndOperands`.
-    pub fn fully_compose_map(&self, map: &mut AffineMap, ops: &mut Vec<ValueId>) {
+    pub fn fully_compose_map(&self, map: &mut AffineMap, ops: &mut crate::Ids<ValueId>) {
         while ops.iter().any(|v| self.def_named(*v, "affine.apply").is_some()) {
             self.compose_map(map, ops);
         }
@@ -796,19 +796,19 @@ fn fold_min_max<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
 
 impl<'a> Body<'a> {
     /// An `affine.for`'s (lower bound, upper bound, inits) operands.
-    fn for_operands(&self, f: OpId) -> (Vec<ValueId>, Vec<ValueId>, Vec<ValueId>) {
+    fn for_operands(&self, f: OpId) -> (crate::Ids<ValueId>, crate::Ids<ValueId>, crate::Ids<ValueId>) {
         let s = self.segments(f, "operandSegmentSizes").unwrap_or_default();
         let o = &self[f].operands;
-        (o[..s[0]].to_vec(), o[s[0]..s[0] + s[1]].to_vec(), o[s[0] + s[1]..].to_vec())
+        (o[..s[0]].to_vec().into(), o[s[0]..s[0] + s[1]].to_vec().into(), o[s[0] + s[1]..].to_vec().into())
     }
 
     /// `setLowerBound` / `setUpperBound`.
     fn set_for_bound(&mut self, f: OpId, lower: bool, ops: Vec<ValueId>, map: &AffineMap) {
         let (mut lb, mut ub, inits) = self.for_operands(f);
         if lower {
-            lb = ops;
+            lb = ops.into();
         } else {
-            ub = ops;
+            ub = ops.into();
         }
         let segs = [lb.len(), ub.len(), inits.len()];
         let mut all = lb;
@@ -875,18 +875,18 @@ fn fold_for<'a>(b: &mut Body<'a>, f: OpId) -> Fold<'a> {
         b.canonicalize_map_or_set(&mut ubm, &mut ubo);
         ubm = dedup_consecutive(ubm);
         if lbm != plb {
-            b.set_for_bound(f, true, lbo, &lbm);
+            b.set_for_bound(f, true, lbo.to_vec(), &lbm);
             folded = true;
         }
         if ubm != pub_ {
-            b.set_for_bound(f, false, ubo, &ubm);
+            b.set_for_bound(f, false, ubo.to_vec(), &ubm);
             folded = true;
         }
     }
     let (_, _, inits) = b.for_operands(f);
     let mut results: Option<Vec<ValueId>> = None;
     if b.trivial_trip_count(f) == Some(0) && !b[f].results.is_empty() {
-        results = Some(inits.clone());
+        results = Some(inits.clone().to_vec());
     }
     if let Some(r) = empty_loop_folder(b, f) {
         results = Some(r);
@@ -907,7 +907,7 @@ fn empty_loop_folder(b: &Body<'_>, f: OpId) -> Option<Vec<ValueId>> {
     let (_, _, inits) = b.for_operands(f);
     let trip = b.trivial_trip_count(f);
     if trip == Some(0) {
-        return Some(inits);
+        return Some(inits.to_vec());
     }
     let y = b[body].ops[0];
     let iter_args = &b[body].args[1..];
@@ -1191,7 +1191,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
         ops.extend(dynamic);
         let d = OpData::build("affine.delinearize_index").operands(&ops).with("static_basis", Attribute::dense_i64(&statics));
         let o = self.create(d, &vec![ty; n]);
-        self.body[o].results.clone()
+        self.body[o].results.clone().to_vec()
     }
 
     /// `AffineLinearizeIndexOp::create(multiIndex, basis, disjoint)` (a leading `None` dropped).
@@ -1278,11 +1278,11 @@ fn simplify_affine_op(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     let Some(old) = b.affine_map(op, attr) else { return false };
     let old_ops = b[op].operands[start..].to_vec();
     let mut map = old.clone();
-    let mut ops = old_ops.clone();
+    let mut ops: crate::Ids<ValueId> = old_ops[..].into();
     b.compose_map(&mut map, &mut ops);
     b.canonicalize_map_or_set(&mut map, &mut ops);
     let map = b.simplify_map_with(&map, &ops);
-    if map == old && ops == old_ops {
+    if map == old && ops[..] == old_ops[..] {
         return false;
     }
     let mut operands = b[op].operands[..start].to_vec();
