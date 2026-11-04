@@ -140,6 +140,13 @@ impl crate::Rewriter<'_, '_> {
         (0..self.body[v].ty.dims().unwrap_or_default().len()).map(|i| self.mixed_size(v, i)).collect()
     }
 
+    /// `reifyResultShapes` of `op`, through its dialect's
+    /// [`OpInterfaces::reify`](crate::OpInterfaces::reify).
+    pub fn reify(&mut self, op: OpId) -> Option<Vec<Vec<Ofr>>> {
+        let i = self.body.ctx.interfaces.of(&self.body[op].name)?;
+        i.reify(self, op)
+    }
+
     /// `reifyDimOfResult` of `op`, through its dialect's
     /// [`OpInterfaces::reify_dim`](crate::OpInterfaces::reify_dim).
     pub fn reify_dim(&mut self, op: OpId, result: usize, dim: usize) -> Option<Ofr> {

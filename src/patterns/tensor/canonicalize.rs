@@ -168,7 +168,12 @@ impl<'a> Body<'a> {
         for (k, name) in ["static_low", "static_high"].iter().enumerate() {
             let n = segs.get(k + 1).copied().unwrap_or(0);
             let mut d = self[op].operands[at..at + n].iter();
-            out[k] = self.dense_i64(op, name).into_iter().map(|s| if s == Dim::DYNAMIC { Ofr::V(*d.next().expect("dynamic")) } else { Ofr::C(s) }).collect();
+            // `getMixedPadImpl`: a dynamic pad that is a constant is static (`getAsOpFoldResult`).
+            out[k] = self
+                .dense_i64(op, name)
+                .into_iter()
+                .map(|s| if s == Dim::DYNAMIC { let v = *d.next().expect("dynamic"); self.const_index(v).map_or(Ofr::V(v), Ofr::C) } else { Ofr::C(s) })
+                .collect();
             at += n;
         }
         out

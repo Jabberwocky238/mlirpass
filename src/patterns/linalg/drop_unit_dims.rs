@@ -64,11 +64,11 @@ impl Rules {
 
     /// `FoldEmptyTensorWithReshapeOp<tensor::ExpandShapeOp>`.
     #[rewrite("tensor.expand_shape")]
-    fn fold_empty_tensor_with_expand_shape_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::empty_of_reshape(rw, op, true) }
+    fn fold_empty_tensor_with_expand_shape_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::empty_of_reshape(rw, op) }
 
     /// `FoldEmptyTensorWithReshapeOp<tensor::CollapseShapeOp>`.
     #[rewrite("tensor.collapse_shape")]
-    fn fold_empty_tensor_with_collapse_shape_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::empty_of_reshape(rw, op, false) }
+    fn fold_empty_tensor_with_collapse_shape_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::empty_of_reshape(rw, op) }
 
     /// `FoldEmptyTensorWithExtractSliceOp`.
     #[rewrite("tensor.extract_slice")]
@@ -445,13 +445,6 @@ impl Unit {
         }
     }
 
-    fn pad_mixed(b: &Body<'_>, op: OpId, name: &str, segment: usize) -> Vec<Ofr> {
-        let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
-        let start: usize = segs.iter().take(segment).sum();
-        let mut dynamic = b[op].operands[start..].iter();
-        b.dense_i64(op, name).into_iter().map(|v| if v == Dim::DYNAMIC { Ofr::V(*dynamic.next().expect("dynamic")) } else { Ofr::C(v) }).collect()
-    }
-
     /// `DropPadUnitDims`.
     fn pad(rw: &mut Rewriter<'_, '_>, op: OpId, s: Strategy) -> bool {
         let b = &*rw.body;
@@ -462,7 +455,7 @@ impl Unit {
         }
         let Some(value) = Self::padding_value(b, op) else { return false };
         let (ss, rs) = (b[src].ty.dims().unwrap_or_default(), b[res].ty.dims().unwrap_or_default());
-        let (low, high) = (Self::pad_mixed(b, op, "static_low", 1), Self::pad_mixed(b, op, "static_high", 2));
+        let [low, high] = b.pad_lists(op);
         let zero = |o: &Ofr| b.ofr_int(*o) == Some(0);
         let mut unit = BTreeSet::new();
         let (mut ns, mut nr, mut nl, mut nh) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -581,7 +574,12 @@ impl Unit {
             .with("indexing_maps", Attribute::Array(new_maps.iter().map(Attribute::from).collect()))
             .with("iterator_types", Attribute::Array(iters))
             .segments(&[ins.len(), outs.len()]);
-        d.attributes.clone_from(&rw.body[op].attributes);
+        // `getPrunedAttributeList`: the old op's discardable attributes besides the new ones.
+        for a in &rw.body[op].attributes {
+            if !d.attributes.iter().any(|x| x.name == a.name) {
+                d.attributes.push(a.clone());
+            }
+        }
         let rts: Vec<Type<'_>> = rw.body[op].results.iter().map(|r| rw.body[*r].ty.clone()).collect();
         let body_ops = rw.body[blk].ops.clone();
         let loc = rw.body[op].loc.clone();
@@ -682,21 +680,19 @@ impl Unit {
 
     /// `FoldEmptyTensorWithReshapeOp`: the result shape reified (an expand's output shape; a
     /// collapse's static groups).
-    fn empty_of_reshape(rw: &mut Rewriter<'_, '_>, op: OpId, expand: bool) -> bool {
+    fn empty_of_reshape(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         if rw.body.def_named(rw.body[op].operands[0], "tensor.empty").is_none() {
             return false;
         }
-        let rt = rw.body[rw.body[op].results[0]].ty.clone();
-        let dynamic = if expand {
-            rw.body[op].operands[1..].to_vec()
-        } else if rt.dims().unwrap_or_default().contains(&Dim::DYNAMIC) {
-            return false;
-        } else {
-            Vec::new()
-        };
         rw.set_before(op);
-        let e = Self::empty(rw, &dynamic, rt);
-        rw.replace_op(op, &[e]);
+        let Some(shapes) = rw.reify(op) else { return false };
+        let [sizes] = shapes.as_slice() else { return false };
+        let rt = rw.body[rw.body[op].results[0]].ty.clone();
+        let dynamic: Vec<ValueId> = sizes.iter().filter_map(Self::value).collect();
+        let ty = Type::tensor(&Self::statics(sizes), rt.element_type().clone());
+        let e = Self::empty(rw, &dynamic, ty.clone());
+        let r = if ty == rt { e } else { let c = rw.create(OpData::build("tensor.cast").operands(&[e]), &[rt]); rw.body[c].results[0] };
+        rw.replace_op(op, &[r]);
         true
     }
 }
