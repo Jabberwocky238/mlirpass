@@ -82,7 +82,8 @@ impl crate::Run for ConvertGpuToNvvm {
         if self.index_bitwidth != 0 {
             llvm.index_bitwidth = self.index_bitwidth;
         }
-        let tc = LlvmConverter::build(llvm);
+        let mut tc = LlvmConverter::build(llvm);
+        crate::convert_mma_types(&mut tc);
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         if self.has_redux {
@@ -101,6 +102,7 @@ impl crate::Run for ConvertGpuToNvvm {
             return Err(Error(format!("dialect does not implement ConvertToLLVMPatternInterface: {d}")));
         }
         configure_nvvm(&mut patterns, i, llvm, &mut target);
+        crate::WmmaToNvvm::populate(&mut patterns, i, llvm);
         Converter::new(&target, &patterns, ConversionConfig { rollback: self.rollback, ..ConversionConfig::default() }).apply(body, &[op], Mode::Partial)
     }
 }

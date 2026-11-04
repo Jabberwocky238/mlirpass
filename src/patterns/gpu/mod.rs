@@ -40,3 +40,11 @@ pub use to_nvvm::{AssertToNvvm, GpuReduxToNvvm, GpuToNvvm};
 
 mod rewrite;
 pub use rewrite::GpuRewrite;
+
+#[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
+#[path = "wmma_nvvm.gen.rs"]
+mod wmma_nvvm_gen;
+#[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
+mod wmma_to_nvvm;
+#[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
+pub use wmma_to_nvvm::{convert_mma_types, WmmaToNvvm};
