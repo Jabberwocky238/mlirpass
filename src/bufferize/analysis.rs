@@ -83,11 +83,12 @@ impl Body<'_> {
 
     /// `DominanceInfo::properlyDominates(a, x)`.
     fn properly_dominates(&self, a: OpId, x: OpId) -> bool {
-        if a == x {
-            return false;
-        }
         let Some(blk) = self[a].parent else { return false };
         let Some(region) = self[blk].parent else { return false };
+        // An op properly dominates itself only in a graph region.
+        if a == x {
+            return !self.has_ssa_dominance(region);
+        }
         // `x`, or its ancestor, in `a`'s region.
         let mut xa = x;
         let xb = loop {
