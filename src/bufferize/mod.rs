@@ -594,6 +594,11 @@ impl<'o> AnalysisState<'o> {
         self.one_shot.as_ref().is_none_or(|o| o.alias.same(a, b))
     }
 
+    /// `applyOnAliases`: the alias set of `v` (itself alone without an analysis).
+    pub fn alias_set(&self, v: ValueId) -> Vec<ValueId> {
+        self.one_shot.as_ref().map_or_else(|| vec![v], |o| o.alias.of(v))
+    }
+
     /// `hasUndefinedContents`.
     pub fn undefined_contents(&self, u: Operand) -> bool {
         self.one_shot.as_ref().is_some_and(|o| o.undefined.contains(&u))
