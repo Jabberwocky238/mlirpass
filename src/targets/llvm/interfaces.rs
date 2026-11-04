@@ -22,6 +22,8 @@ use crate::{MemrefOptions, MemrefToLlvm};
 use crate::UbToLlvm;
 #[cfg(feature = "dialect.vector")]
 use crate::{VectorOptions, VectorToLlvm};
+#[cfg(feature = "dialect.nvvm")]
+use crate::NvvmToLlvm;
 #[cfg(feature = "dialect.xevm")]
 use crate::XevmToLlvm;
 
@@ -107,6 +109,10 @@ impl Default for ToLlvmInterfaces {
         fn vector<'p>(p: &mut ConversionPatterns<'p>, i: usize, e: &LlvmEnv<'p>) {
             VectorToLlvm::populate(p, i, VectorOptions { llvm: e.llvm, reassociate_fp_reductions: false, force_32bit_indices: true, use_vector_alignment: false, counter: e.counter });
         }
+        #[cfg(feature = "dialect.nvvm")]
+        fn nvvm<'p>(p: &mut ConversionPatterns<'p>, _: usize, _: &LlvmEnv<'p>) {
+            NvvmToLlvm::populate(p);
+        }
         #[cfg(feature = "dialect.xevm")]
         fn xevm<'p>(p: &mut ConversionPatterns<'p>, _: usize, _: &LlvmEnv<'p>) {
             XevmToLlvm::populate(p);
@@ -132,6 +138,8 @@ impl Default for ToLlvmInterfaces {
         s.register("ub", ub);
         #[cfg(feature = "dialect.vector")]
         s.register("vector", vector);
+        #[cfg(feature = "dialect.nvvm")]
+        s.register("nvvm", nvvm);
         #[cfg(feature = "dialect.xevm")]
         s.register("xevm", xevm).register_target("xevm", XevmToLlvm::target);
         s

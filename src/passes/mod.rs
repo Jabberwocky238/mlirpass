@@ -42,6 +42,8 @@ mod transforms;
 mod ub;
 #[cfg(feature = "dialect.vector")]
 mod vector;
+#[cfg(all(feature = "dialect.nvvm", feature = "target.llvm"))]
+mod nvvm;
 #[cfg(all(feature = "dialect.xegpu", feature = "target.llvm"))]
 mod xegpu;
 #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
@@ -88,6 +90,8 @@ pub use transforms::*;
 pub use ub::*;
 #[cfg(feature = "dialect.vector")]
 pub use vector::*;
+#[cfg(all(feature = "dialect.nvvm", feature = "target.llvm"))]
+pub use nvvm::*;
 #[cfg(all(feature = "dialect.xegpu", feature = "target.llvm"))]
 pub use xegpu::*;
 #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
