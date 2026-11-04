@@ -2,8 +2,10 @@
 
 mod canonicalize;
 mod expand_strided_metadata;
+mod fold_alias;
 mod resolve_dims;
 
+pub use fold_alias::FoldAlias;
 pub use expand_strided_metadata::StridedMetadata;
 pub use resolve_dims::ResolveDims;
 pub use canonicalize::MemrefCanon;

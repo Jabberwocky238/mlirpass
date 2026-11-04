@@ -42,7 +42,7 @@ impl<'a> Rewriter<'_, 'a> {
     }
 
     /// `memref.extract_strided_metadata %src`, its result types inferred.
-    fn extract_metadata(&mut self, src: ValueId) -> OpId {
+    pub(crate) fn extract_metadata(&mut self, src: ValueId) -> OpId {
         let s = memref(&self.body[src].ty).expect("a ranked memref").clone();
         let rank = s.shape.as_ref().map_or(0, Vec::len);
         let space: Vec<Attribute> = s.extras.iter().filter(|a| !a.is_layout()).cloned().collect();

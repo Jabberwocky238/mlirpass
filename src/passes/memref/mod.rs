@@ -1,9 +1,11 @@
 //! `memref` passes.
 
 mod expand_strided_metadata;
+mod fold_memref_alias_ops;
 mod resolve_ranked_shaped_type_result_dims;
 mod resolve_shaped_type_result_dims;
 
+pub use fold_memref_alias_ops::FoldMemrefAliasOps;
 pub use expand_strided_metadata::ExpandStridedMetadata;
 pub use resolve_ranked_shaped_type_result_dims::ResolveRankedShapedTypeResultDims;
 pub use resolve_shaped_type_result_dims::ResolveShapedTypeResultDims;

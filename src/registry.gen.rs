@@ -95,6 +95,8 @@ impl crate::Passes {
         p.register::<crate::ExpandStridedMetadata>(); // expand-strided-metadata
         #[cfg(all(feature = "dialect.memref", feature = "target.llvm"))]
         p.register::<crate::FinalizeMemrefToLlvm>(); // finalize-memref-to-llvm
+        #[cfg(feature = "dialect.memref")]
+        p.register::<crate::FoldMemrefAliasOps>(); // fold-memref-alias-ops
         #[cfg(all(feature = "dialect.memref", feature = "target.spirv"))]
         p.register::<crate::MapMemrefSpirvStorageClass>(); // map-memref-spirv-storage-class
         #[cfg(feature = "dialect.memref")]
