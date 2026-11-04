@@ -174,27 +174,29 @@ impl BufferizationOptions {
 
 /// `foldToBufferToTensorPair`: a `to_buffer` of a `to_tensor` is the latter's buffer (cast or
 /// copied to the type asked).
-pub(crate) fn fold_to_buffer_to_tensor(rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) {
-    let Some(tt) = rw.body.def_named(rw.body[op].operands[0], "bufferization.to_tensor") else { return };
+pub(crate) fn fold_to_buffer_to_tensor(rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> bool {
+    let Some(tt) = rw.body.def_named(rw.body[op].operands[0], "bufferization.to_tensor") else { return false };
     let src = rw.body[tt].operands[0];
     let dest = rw.body[rw.body[op].results[0]].ty.clone();
     if rw.body[src].ty == dest {
         rw.replace_op(op, &[src]);
-        return;
+        return true;
     }
     let ranked = |t: &Type<'_>| matches!(t, Type::Shaped(s) if s.shape.is_some());
     if ranked(&rw.body[src].ty) && ranked(&dest) {
         rw.set_before(op);
         if let Some(r) = cast_or_realloc(rw, o, src, &dest) {
             rw.replace_op(op, &[r]);
+            return true;
         }
-        return;
+        return false;
     }
     if !ranked(&rw.body[src].ty) && ranked(&dest) {
-        return;
+        return false;
     }
     rw.set_before(op);
     rw.replace_with(op, OpData::build("memref.cast").operands(&[src]), &[dest]);
+    true
 }
 
 /// What `bufferizeOp`'s rewriter hears (`BufferizationRewriter`): erased ops, new `to_buffer`s,
@@ -294,7 +296,7 @@ pub(crate) fn bufferize_op(body: &mut Body<'_>, o: &BufferizationOptions, root: 
         for op in to_buffers {
             rw.set_before(op);
             rw.loc = rw.body[op].loc.clone();
-            fold_to_buffer_to_tensor(&mut rw, o, op);
+            let _ = fold_to_buffer_to_tensor(&mut rw, o, op);
         }
         let mut to_tensors = Vec::new();
         rw.body.walk_post(root, &mut |op| to_tensors.push(op));

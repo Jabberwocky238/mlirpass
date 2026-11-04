@@ -211,6 +211,11 @@ impl BufferizationOptions {
             Attribute::Int { lit, ty: Some(t) } if t == Type::int(64) => Attribute::Int { lit, ty: None },
             s => s,
         });
+        // `MemRefType::get` drops an identity affine map (its symbols aside).
+        let layout = layout.filter(|l| match l {
+            Attribute::Builtin { name, body, .. } if name == "affine_map" => crate::AffineMap::parse(body).is_none_or(|m| m.results.len() != m.dims as usize || m.results.iter().enumerate().any(|(i, e)| *e != crate::AffineExpr::Dim(i as u32))),
+            _ => true,
+        });
         let extras = layout.into_iter().chain(space).collect();
         Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: tensor.shape.clone(), elem: tensor.elem.clone(), extras })
     }

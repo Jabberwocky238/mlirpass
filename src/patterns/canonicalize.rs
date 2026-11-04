@@ -108,6 +108,8 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("math") => crate::ArithFolder { b: body, op, c: consts }.math(),
         #[cfg(feature = "dialect.scf")]
         Some("scf") => crate::ScfCanon::fold(body, op),
+        #[cfg(feature = "dialect.bufferization")]
+        Some("bufferization") => crate::BufferizationCanon::fold(body, op),
         #[cfg(feature = "dialect.gpu")]
         Some("gpu") => crate::GpuCanon::fold(body, op),
         Some("builtin") => body.fold_unrealized_cast(op),
@@ -199,6 +201,8 @@ pub fn patterns() -> PatternSet {
     crate::AffineCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.arith")]
     crate::ArithCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.bufferization")]
+    crate::BufferizationCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.cf")]
     crate::CfCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.func")]

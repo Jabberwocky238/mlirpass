@@ -171,7 +171,7 @@ mod bufferizable {
         }
 
         fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
-            crate::fold_to_buffer_to_tensor(rw, o, op);
+            let _ = crate::fold_to_buffer_to_tensor(rw, o, op);
             Ok(())
         }
     }
