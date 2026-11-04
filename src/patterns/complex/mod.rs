@@ -15,3 +15,8 @@ pub use to_llvm::ComplexToLlvm;
 mod to_spirv;
 #[cfg(feature = "target.spirv")]
 pub use to_spirv::ComplexToSpirv;
+
+#[cfg(all(feature = "dialect.func", feature = "dialect.arith"))]
+mod to_rocdl_libcalls;
+#[cfg(all(feature = "dialect.func", feature = "dialect.arith"))]
+pub use to_rocdl_libcalls::ComplexToRocdlLibCalls;

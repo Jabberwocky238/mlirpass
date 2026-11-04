@@ -37,6 +37,8 @@ impl crate::Passes {
         p.register::<crate::ConvertComplexToLibm>(); // convert-complex-to-libm
         #[cfg(all(feature = "dialect.complex", feature = "target.llvm"))]
         p.register::<crate::ConvertComplexToLlvm>(); // convert-complex-to-llvm
+        #[cfg(all(feature = "dialect.complex", all(feature = "dialect.func", feature = "dialect.arith")))]
+        p.register::<crate::ConvertComplexToRocdlLibraryCalls>(); // convert-complex-to-rocdl-library-calls
         #[cfg(all(feature = "dialect.complex", feature = "target.spirv"))]
         p.register::<crate::ConvertComplexToSpirv>(); // convert-complex-to-spirv
         #[cfg(feature = "dialect.complex")]

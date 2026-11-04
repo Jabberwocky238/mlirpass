@@ -15,3 +15,8 @@ pub use convert_complex_to_llvm::*;
 mod convert_complex_to_spirv;
 #[cfg(feature = "target.spirv")]
 pub use convert_complex_to_spirv::*;
+
+#[cfg(all(feature = "dialect.func", feature = "dialect.arith"))]
+mod convert_complex_to_rocdl_library_calls;
+#[cfg(all(feature = "dialect.func", feature = "dialect.arith"))]
+pub use convert_complex_to_rocdl_library_calls::*;
