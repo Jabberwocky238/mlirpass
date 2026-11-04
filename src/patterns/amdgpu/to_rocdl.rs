@@ -67,6 +67,7 @@ impl AmdgpuToRocdl {
         super::cvt_to_rocdl::AmdgpuCvtToRocdl::populate(patterns, tc, o);
         super::mem_to_rocdl::AmdgpuMemToRocdl::populate(patterns, tc, o);
         super::buffer_to_rocdl::AmdgpuBufferToRocdl::populate(patterns, tc, o);
+        super::mma_to_rocdl::AmdgpuMmaToRocdl::populate(patterns, tc, o);
     }
 
     fn int_attr(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> Option<i64> {

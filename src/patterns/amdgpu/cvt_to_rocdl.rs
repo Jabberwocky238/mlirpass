@@ -21,7 +21,7 @@ const GFX950: AmdChipset = AmdChipset::new(9, 5, 0);
 
 /// The small float formats of the conversion intrinsics, by their intrinsic spelling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Small {
+pub(super) enum Small {
     Fp8,
     Bf8,
     Fp4,
@@ -37,7 +37,7 @@ impl Small {
     }
 
     /// `typeIsExpected{Fp8,Bf8}ForChipset`: FNUZ on gfx942, OCP from gfx950 / gfx12.
-    fn of_chipset(chipset: AmdChipset, t: &Type<'_>) -> Option<Self> {
+    pub(super) fn of_chipset(chipset: AmdChipset, t: &Type<'_>) -> Option<Self> {
         let ocp = (chipset.major == 9 && chipset.minor >= 5) || chipset.major >= 12;
         match t {
             Type::Float(FloatKind::F8E5M2FNUZ) if chipset == GFX942 => Some(Small::Bf8),

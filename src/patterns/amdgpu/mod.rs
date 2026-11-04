@@ -7,6 +7,8 @@ mod cvt_to_rocdl;
 #[cfg(feature = "target.llvm")]
 mod mem_to_rocdl;
 #[cfg(feature = "target.llvm")]
+mod mma_to_rocdl;
+#[cfg(feature = "target.llvm")]
 mod to_rocdl;
 #[cfg(feature = "target.llvm")]
 pub use to_rocdl::AmdgpuToRocdl;
