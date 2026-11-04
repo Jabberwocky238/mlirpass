@@ -79,7 +79,7 @@ impl crate::Run for ConvertGpuToRocdl {
             body[f].set("llvm.emit_c_interface", Attribute::Unit);
         }
         let chipset = AmdChipset::try_from(&*self.chipset).map_err(|_| Error(format!("Invalid chipset name: {}", self.chipset)))?;
-        let mut llvm = LlvmOptions { bare_ptr: self.bare_ptr, gpu_spaces: Some(ROCDL_SPACES), ..LlvmOptions::derived() }.at(body, op);
+        let mut llvm = LlvmOptions { bare_ptr: self.bare_ptr, gpu_spaces: Some(ROCDL_SPACES), amdgpu_spaces: true, ..LlvmOptions::derived() }.at(body, op);
         if self.index_bitwidth != 0 {
             llvm.index_bitwidth = self.index_bitwidth;
         }

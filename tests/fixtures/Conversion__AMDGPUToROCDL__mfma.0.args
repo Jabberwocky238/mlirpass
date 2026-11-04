@@ -1,0 +1,2 @@
+-convert-amdgpu-to-rocdl=chipset=gfx942
+-cse

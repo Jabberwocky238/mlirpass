@@ -1,0 +1,2 @@
+--verify-diagnostics
+--convert-amdgpu-to-rocdl=chipset=gfx1030

@@ -29,11 +29,13 @@ pub struct LlvmOptions {
     pub bare_ptr: bool,
     /// `populateGpuMemorySpaceAttributeConversions`: `#gpu.address_space`s as these.
     pub gpu_spaces: Option<GpuSpaces>,
+    /// `populateAMDGPUTypeAndAttributeConversions`: `#amdgpu.address_space`s as 7 / 8 / 9.
+    pub amdgpu_spaces: bool,
 }
 
 impl Default for LlvmOptions {
     fn default() -> Self {
-        Self { index_bitwidth: 64, bare_ptr: false, gpu_spaces: None }
+        Self { index_bitwidth: 64, bare_ptr: false, gpu_spaces: None, amdgpu_spaces: false }
     }
 }
 
@@ -54,6 +56,28 @@ impl TryFrom<&Attribute<'_>> for GpuAddressSpace {
     fn try_from(a: &Attribute<'_>) -> Result<Self, ()> {
         let Attribute::Extended { ext, .. } = a else { return Err(()) };
         let body = ext.body.as_deref().filter(|_| ext.name == "gpu.address_space").ok_or(())?;
+        let body = body.strip_prefix('<').and_then(|b| b.strip_suffix('>')).ok_or(())?.trim();
+        Self::NAMES.iter().find(|(n, _)| *n == body).map(|(_, v)| *v).ok_or(())
+    }
+}
+
+/// `amdgpu::AddressSpace` (`#amdgpu.address_space<..>`), with its LLVM address space.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AmdgpuAddressSpace {
+    FatRawBuffer = 7,
+    BufferRsrc = 8,
+    FatStructuredBuffer = 9,
+}
+
+impl AmdgpuAddressSpace {
+    const NAMES: [(&'static str, Self); 3] = [("fat_raw_buffer", Self::FatRawBuffer), ("buffer_rsrc", Self::BufferRsrc), ("fat_structured_buffer", Self::FatStructuredBuffer)];
+}
+
+impl TryFrom<&Attribute<'_>> for AmdgpuAddressSpace {
+    type Error = ();
+    fn try_from(a: &Attribute<'_>) -> Result<Self, ()> {
+        let Attribute::Extended { ext, .. } = a else { return Err(()) };
+        let body = ext.body.as_deref().filter(|_| ext.name == "amdgpu.address_space").ok_or(())?;
         let body = body.strip_prefix('<').and_then(|b| b.strip_suffix('>')).ok_or(())?.trim();
         Self::NAMES.iter().find(|(n, _)| *n == body).map(|(_, v)| *v).ok_or(())
     }
@@ -140,6 +164,7 @@ impl LlvmOptions {
             None => Some(0),
             // `getMemRefAddressSpace`: a signless or index integer.
             Some(Attribute::Int { lit, ty: None | Some(Type::Index | Type::Integer { signedness: Signedness::Signless, .. }) }) => lit.parse().ok(),
+            Some(a) if self.amdgpu_spaces && AmdgpuAddressSpace::try_from(a).is_ok() => AmdgpuAddressSpace::try_from(a).ok().map(|s| s as u32),
             Some(a) => Some(self.gpu_spaces?.of(GpuAddressSpace::try_from(a).ok()?)),
         }
     }

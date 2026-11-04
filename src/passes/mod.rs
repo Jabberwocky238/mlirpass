@@ -3,6 +3,8 @@
 
 #[cfg(feature = "dialect.affine")]
 mod affine;
+#[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
+mod amdgpu;
 #[cfg(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")))]
 mod arith;
 #[cfg(feature = "dialect.bufferization")]
@@ -51,6 +53,8 @@ mod xevm;
 
 #[cfg(feature = "dialect.affine")]
 pub use affine::*;
+#[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
+pub use amdgpu::*;
 #[cfg(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")))]
 pub use arith::*;
 #[cfg(feature = "dialect.bufferization")]
