@@ -125,8 +125,8 @@ mod bufferizable {
             i.iter().chain(&r).any(is_tensor) || b[op].regions.iter().any(|r| b[*r].blocks.iter().any(|blk| b[*blk].args.iter().any(|a| is_tensor(&b[*a].ty))))
         }
 
-        fn aliasing_operands(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: ValueId) -> Vec<crate::AliasingOperand> {
-            Vec::new()
+        fn aliasing_operands(&self, _: &AnalysisState<'_>, b: &Body<'_>, v: ValueId) -> Vec<crate::AliasingOperand> {
+            AnalysisState::branch_aliasing_operands(b, v)
         }
 
         fn unstructured_control_flow(&self, _: &Body<'_>, _: OpId) -> bool {

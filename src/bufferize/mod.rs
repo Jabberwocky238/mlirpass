@@ -750,6 +750,16 @@ impl<'o> AnalysisState<'o> {
         }
     }
 
+    /// `getAliasingBranchOpOperands`: a block argument may alias (equivalent) each operand
+    /// its predecessors forward to it.
+    pub fn branch_aliasing_operands(b: &Body<'_>, v: ValueId) -> Vec<AliasingOperand> {
+        let Def::Arg(blk, i) = b[v].def else { return Vec::new() };
+        b.predecessors(blk)
+            .into_iter()
+            .filter_map(|(br, succ)| b.successor_operands(br, succ).and_then(|r| r.clone().nth(i as usize)).map(|k| AliasingOperand { operand: (br, k), relation: BufferRelation::Equivalent, definite: false }))
+            .collect()
+    }
+
     /// `OpWithUnstructuredControlFlowBufferizableOpInterfaceExternalModel::getBufferType`: a
     /// block argument takes the buffer type its predecessors forward, a fully dynamic layout
     /// when they differ.

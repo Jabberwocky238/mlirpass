@@ -473,10 +473,10 @@ mod bufferizable {
         }
 
         /// A result aliases (is equivalent to) the operand the unique yield gives it.
-        fn aliasing_operands(&self, s: &AnalysisState<'_>, b: &Body<'_>, v: ValueId) -> Vec<AliasingOperand> {
+        fn aliasing_operands(&self, _: &AnalysisState<'_>, b: &Body<'_>, v: ValueId) -> Vec<AliasingOperand> {
             match b[v].def {
                 Def::Result(op, k) => Self::unique_yield(b, op).map_or_else(Vec::new, |y| vec![AliasingOperand { operand: (y, k as usize), relation: BufferRelation::Equivalent, definite: true }]),
-                Def::Arg(..) => s.default_aliasing_operands(b, v),
+                Def::Arg(..) => AnalysisState::branch_aliasing_operands(b, v),
             }
         }
 

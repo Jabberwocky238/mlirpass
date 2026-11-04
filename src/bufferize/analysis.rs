@@ -153,6 +153,10 @@ impl Body<'_> {
     /// `Block::isReachable(other, except)`: `other` is reached from `from`'s successors, not
     /// through `except`.
     fn block_reachable(&self, from: crate::BlockId, to: crate::BlockId, except: crate::BlockId) -> bool {
+        // No path to `except` that avoids it.
+        if to == except {
+            return false;
+        }
         let succs = |blk: crate::BlockId| self[blk].ops.last().map(|t| self[*t].successors.to_vec()).unwrap_or_default();
         let mut work = succs(from);
         let mut seen = BTreeSet::new();

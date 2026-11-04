@@ -15,6 +15,11 @@ impl OpInterfaces for CfDialect {
         "cf"
     }
 
+    #[cfg(feature = "dialect.bufferization")]
+    fn bufferizable(&self, name: &str) -> Option<&dyn crate::Bufferizable> {
+        matches!(name, "cf.br" | "cf.cond_br").then_some(&bufferizable::Branch as &dyn crate::Bufferizable)
+    }
+
     /// Calls and ops inline; `cf` has no regions (`ControlFlowInlinerInterface`).
     fn inliner(&self) -> Option<&dyn DialectInliner> {
         Some(&InlineAll { calls: true, regions: false })
@@ -45,6 +50,45 @@ impl OpInterfaces for CfDialect {
                 Some((0..n).find(|i| cases.at(*i).int().is_some_and(|x| x.signed() == v)).map_or(succ[0], |i| succ[i + 1]))
             }
             _ => None,
+        }
+    }
+}
+
+#[cfg(feature = "dialect.bufferization")]
+mod bufferizable {
+    use alloc::vec::Vec;
+
+    use mlirformat::Error;
+
+    use crate::{AliasingValue, AnalysisState, Body, BufferRelation, Bufferizable, BufferizationOptions, OpId, Operand, Rewriter};
+
+    /// `cf.br`, `cf.cond_br` (`BranchOpBufferizableOpInterfaceExternalModel`): an operand may
+    /// alias the successor argument it is forwarded to; bufferized with the block signatures.
+    pub(super) struct Branch;
+
+    impl Bufferizable for Branch {
+        fn reads(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
+            false
+        }
+
+        fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
+            false
+        }
+
+        fn aliasing_values(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> Vec<AliasingValue> {
+            b[op]
+                .successors
+                .iter()
+                .enumerate()
+                .filter_map(|(k, blk)| {
+                    let r = b.successor_operands(op, k)?;
+                    r.contains(&i).then(|| AliasingValue { value: b[*blk].args[i - r.start], relation: BufferRelation::Equivalent, definite: false })
+                })
+                .collect()
+        }
+
+        fn bufferize(&self, _: &mut Rewriter<'_, '_>, _: &BufferizationOptions, _: OpId) -> Result<(), Error> {
+            Ok(())
         }
     }
 }
