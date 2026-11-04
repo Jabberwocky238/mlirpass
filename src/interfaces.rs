@@ -57,6 +57,12 @@ pub trait OpInterfaces: Sync {
     /// (`canonicalize`).
     fn canonicalization_patterns(&self, _: &mut crate::PatternSet) {}
 
+    /// `BufferizableOpInterface` of op `name` of this dialect, when it implements it.
+    #[cfg(feature = "dialect.bufferization")]
+    fn bufferizable(&self, _name: &str) -> Option<&dyn crate::Bufferizable> {
+        None
+    }
+
     /// `ReifyRankedShapedTypeOpInterface::reifyResultShapes`: the sizes of each result of `op`,
     /// from its operands, built at `rw`'s insertion point; `None`: `op` does not implement it.
     fn reify<'a>(&self, _: &mut crate::Rewriter<'_, 'a>, _: OpId) -> Option<Vec<Vec<crate::MemrefOfr>>> {
@@ -597,6 +603,74 @@ impl<'a> Body<'a> {
     /// `getSuccessorRegions(point)`: each successor with its inputs.
     pub fn region_successors(&self, op: OpId, point: Point) -> Vec<(Succ, Vec<ValueId>)> {
         self.interfaces(op).map(|i| i.region_successors(self, op, point)).unwrap_or_default()
+    }
+
+    /// `isRegionReachable` (`traverseRegionGraph`): whether region `to` of region-branch `op` is
+    /// reached from region `from` through its regions' terminators.
+    pub fn region_reachable(&self, op: OpId, from: usize, to: usize) -> bool {
+        let regions = &self[op].regions;
+        let mut visited = alloc::vec![false; regions.len()];
+        visited[from] = true;
+        let mut work = Vec::new();
+        let enqueue = |r: usize, work: &mut Vec<usize>| {
+            for blk in self[regions[r]].blocks.iter() {
+                let Some(&t) = self[*blk].ops.last() else { continue };
+                if !self.interfaces(t).is_some_and(|i| i.is_region_terminator(self, t)) {
+                    continue;
+                }
+                work.extend(self.region_successors(op, Point::Terminator(t)).into_iter().filter_map(|(s, _)| if let Succ::Region(i) = s { Some(i) } else { None }));
+            }
+        };
+        enqueue(from, &mut work);
+        while let Some(next) = work.pop() {
+            if next == to {
+                return true;
+            }
+            if visited[next] {
+                continue;
+            }
+            visited[next] = true;
+            enqueue(next, &mut work);
+        }
+        false
+    }
+
+    /// `RegionBranchOpInterface::isRepetitiveRegion`: region `index` of `op` reaches itself.
+    pub fn repetitive_region(&self, op: OpId, index: usize) -> bool {
+        self.is_region_branch(op) && self.region_reachable(op, index, index)
+    }
+
+    /// `insideMutuallyExclusiveRegions`: `a` and `b` sit in regions of a region-branch op neither
+    /// of which reaches the other.
+    pub fn mutually_exclusive(&self, a: OpId, b: OpId) -> bool {
+        let mut at = self.parent_op(a);
+        while let Some(br) = at {
+            if !self.is_region_branch(br) {
+                at = self.parent_op(br);
+                continue;
+            }
+            if br == b || !self.is_ancestor(br, b) {
+                at = self.parent_op(br);
+                continue;
+            }
+            let region_of = |x: OpId| self[br].regions.iter().position(|r| self[*r].blocks.iter().any(|blk| self.ops_of_block_contain(*blk, x)));
+            let (Some(ra), Some(rb)) = (region_of(a), region_of(b)) else { return false };
+            return !self.region_reachable(br, ra, rb) && !self.region_reachable(br, rb, ra);
+        }
+        false
+    }
+
+    /// Whether `x` is, or is nested in, an op of `block` (`findAncestorOpInBlock`).
+    pub fn ops_of_block_contain(&self, block: BlockId, mut x: OpId) -> bool {
+        loop {
+            if self[x].parent == Some(block) {
+                return true;
+            }
+            match self.parent_op(x) {
+                Some(p) => x = p,
+                None => return false,
+            }
+        }
     }
 
     /// The operands flowing from `point` to its successors.

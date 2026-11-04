@@ -85,11 +85,15 @@ fn passes() {
         inv.generic = true;
         // `SERIAL=1`: nested pipelines one op after the other (else a thread pool, as mlir-opt).
         inv.threading = std::env::var_os("SERIAL").is_none();
-        let (ins, outs) = (inv.chunks(&input), inv.chunks(&expected));
+        // `-o /dev/null`: mlir-opt only had to succeed on each chunk.
+        let discard = run.args.windows(2).any(|w| w[0] == "-o" && w[1] == "/dev/null");
+        let ins = inv.chunks(&input);
+        let outs = if discard { vec![""; ins.len()] } else { inv.chunks(&expected) };
         assert_eq!(ins.len(), outs.len(), "{}: chunk counts differ", run.stem);
         for (i, (chunk, want)) in ins.into_iter().zip(outs).enumerate() {
             let want = if want.trim().is_empty() { String::new() } else { inv.print(&mut Body::parse(ctx, want).unwrap()) };
             match inv.run_chunk(ctx, chunk) {
+                Ok(_) if discard => t.exact += 1,
                 Ok(got) if got == want => t.exact += 1,
                 Err(_) if want.is_empty() => t.exact += 1,
                 Ok(got) => {

@@ -26,6 +26,8 @@ impl crate::Passes {
         #[cfg(feature = "dialect.bufferization")]
         p.register::<crate::ConvertBufferizationToMemref>(); // convert-bufferization-to-memref
         #[cfg(feature = "dialect.bufferization")]
+        p.register::<crate::OneShotBufferize>(); // one-shot-bufferize
+        #[cfg(feature = "dialect.bufferization")]
         p.register::<crate::PromoteBuffersToStack>(); // promote-buffers-to-stack
         #[cfg(all(all(feature = "dialect.cf", any(feature = "target.llvm", feature = "target.spirv")), feature = "target.llvm"))]
         p.register::<crate::ConvertCfToLlvm>(); // convert-cf-to-llvm

@@ -22,6 +22,92 @@ pub trait MemrefLayout {
     fn contiguous_row_major(&self) -> bool;
 }
 
+/// A memref reshaped (`memref.collapse_shape` / `memref.expand_shape`), its layout computed.
+pub trait MemrefReshape<'a> {
+    /// `CollapseShapeOp::isGuaranteedCollapsible`: the identity, or a strict collapsed layout.
+    fn guaranteed_collapsible(&self, groups: &[Vec<i64>]) -> bool;
+
+    /// `CollapseShapeOp::computeCollapsedType`.
+    fn collapsed(&self, groups: &[Vec<i64>]) -> Option<Type<'a>>;
+
+    /// `ExpandShapeOp::computeExpandedType` to `shape`.
+    fn expanded(&self, shape: &[i64], groups: &[Vec<i64>]) -> Option<Type<'a>>;
+}
+
+/// `SaturatedInteger`: a size or stride, dynamic ones saturating (but times 0 is 0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Saturated(Option<i64>);
+
+impl From<i64> for Saturated {
+    fn from(v: i64) -> Self {
+        Self((v != Dim::DYNAMIC).then_some(v))
+    }
+}
+
+impl From<Saturated> for i64 {
+    fn from(s: Saturated) -> i64 {
+        s.0.unwrap_or(Dim::DYNAMIC)
+    }
+}
+
+impl core::ops::Mul for Saturated {
+    type Output = Self;
+
+    fn mul(self, o: Self) -> Self {
+        match (self.0, o.0) {
+            (Some(0), _) | (_, Some(0)) => Self(Some(0)),
+            (Some(a), Some(b)) => Self(Some(a * b)),
+            _ => Self(None),
+        }
+    }
+}
+
+/// The layout computations of [`MemrefReshape`].
+struct Reshaped;
+
+impl Reshaped {
+    /// The memref of `shape` and `layout` (`None`: the identity) with `src`'s element and memory
+    /// space.
+    fn memref<'a>(src: &Shaped<'a>, shape: &[i64], layout: Option<StridedLayout>) -> Type<'a> {
+        let space = src.extras.iter().find(|a| !a.is_layout()).cloned();
+        let extras = layout.map(Attribute::from).into_iter().chain(space).collect();
+        Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(shape.iter().map(|d| Dim::from(*d)).collect()), elem: src.elem.clone(), extras })
+    }
+
+    /// `computeCollapsedLayoutMap` (`strict`: a dynamic stride cannot be checked, so fails).
+    fn collapsed_layout(src: &Shaped<'_>, groups: &[Vec<i64>], strict: bool) -> Option<StridedLayout> {
+        let shape = src.dims()?;
+        let (strides, offset) = src.strides_and_offset()?;
+        let mut out = Vec::with_capacity(groups.len());
+        for g in groups {
+            let mut r = g.as_slice();
+            while shape[*r.last()? as usize] == 1 && r.len() > 1 {
+                r = &r[..r.len() - 1];
+            }
+            let last = *r.last()? as usize;
+            out.push(if shape[last] != Dim::DYNAMIC || r.len() == 1 { strides[last] } else { Dim::DYNAMIC });
+        }
+        for (k, g) in groups.iter().enumerate().rev() {
+            let mut stride = Saturated::from(out[k]);
+            for idx in g.iter().skip(1).rev() {
+                let idx = *idx as usize;
+                stride = stride * Saturated::from(shape[idx]);
+                if shape[idx - 1] == 1 {
+                    continue;
+                }
+                let src = Saturated::from(strides[idx - 1]);
+                if strict && (stride.0.is_none() || src.0.is_none()) {
+                    return None;
+                }
+                if stride.0.is_some() && src.0.is_some() && stride != src {
+                    return None;
+                }
+            }
+        }
+        Some(StridedLayout { strides: out, offset })
+    }
+}
+
 impl MemrefLayout for Shaped<'_> {
     fn strides_and_offset(&self) -> Option<(Vec<i64>, i64)> {
         let layout = self.layout();
@@ -400,5 +486,41 @@ impl DataLayout {
             Type::Complex(et) => self.try_preferred_align(et),
             _ => self.try_abi_align(ty),
         }
+    }
+}
+
+impl<'a> MemrefReshape<'a> for Shaped<'a> {
+    fn guaranteed_collapsible(&self, groups: &[Vec<i64>]) -> bool {
+        self.identity_layout() || Reshaped::collapsed_layout(self, groups, true).is_some()
+    }
+
+    fn collapsed(&self, groups: &[Vec<i64>]) -> Option<Type<'a>> {
+        let dims = self.dims()?;
+        let shape: Vec<i64> = groups.iter().map(|g| g.iter().fold(Saturated::from(1), |acc, d| acc * Saturated::from(dims[*d as usize])).into()).collect();
+        if self.identity_layout() {
+            return Some(Reshaped::memref(self, &shape, None));
+        }
+        Some(Reshaped::memref(self, &shape, Some(Reshaped::collapsed_layout(self, groups, false)?)))
+    }
+
+    fn expanded(&self, shape: &[i64], groups: &[Vec<i64>]) -> Option<Type<'a>> {
+        if self.identity_layout() {
+            return Some(Reshaped::memref(self, shape, None));
+        }
+        // `computeExpandedLayoutMap`.
+        let (strides, offset) = self.strides_and_offset()?;
+        let mut reversed = Vec::with_capacity(shape.len());
+        let mut at = shape.len();
+        for (g, stride) in groups.iter().zip(&strides).rev() {
+            let mut current = *stride;
+            for _ in 0..g.len() {
+                reversed.push(current);
+                at -= 1;
+                current = (Saturated::from(current) * Saturated::from(shape[at])).into();
+            }
+        }
+        let mut out: Vec<i64> = reversed.into_iter().rev().collect();
+        out.resize(shape.len(), 1);
+        Some(Reshaped::memref(self, shape, Some(StridedLayout { strides: out, offset })))
     }
 }

@@ -12,6 +12,8 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(feature = "dialect.bufferization")]
+mod bufferize;
 mod conversion;
 mod dialects;
 mod interfaces;
@@ -26,6 +28,8 @@ mod region;
 mod rewrite;
 mod targets;
 
+#[cfg(feature = "dialect.bufferization")]
+pub use bufferize::*;
 pub use conversion::*;
 // (nothing without a dialect feature)
 #[allow(unused_imports)]
