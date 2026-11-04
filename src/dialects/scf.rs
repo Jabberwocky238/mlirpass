@@ -146,6 +146,7 @@ mod bufferizable {
     struct Condition;
     struct Forall;
     struct InParallel;
+    struct IndexSwitch;
 
     impl ScfDialect {
         pub(crate) fn bufferizable_op(name: &str) -> Option<&'static dyn Bufferizable> {
@@ -158,6 +159,7 @@ mod bufferizable {
                 "scf.condition" => &Condition,
                 "scf.forall" => &Forall,
                 "scf.forall.in_parallel" => &InParallel,
+                "scf.index_switch" => &IndexSwitch,
                 _ => return None,
             })
         }
@@ -775,6 +777,61 @@ mod bufferizable {
 
     /// `scf.forall.in_parallel`: no tensor operands or results; its ops bufferize themselves.
     impl Bufferizable for InParallel {}
+
+    /// `scf.index_switch`: region 0 is the default, the others the cases.
+    impl Bufferizable for IndexSwitch {
+        /// Every case's yield, then the default's.
+        fn aliasing_operands(&self, _: &AnalysisState<'_>, b: &Body<'_>, v: ValueId) -> Vec<AliasingOperand> {
+            let Def::Result(op, k) = b[v].def else { return Vec::new() };
+            let n = b[op].regions.len();
+            (1..n).chain([0]).map(|r| AliasingOperand { operand: (yield_of(b, op, r), k as usize), relation: BufferRelation::Equivalent, definite: false }).collect()
+        }
+
+        /// The yielded buffer types (the default's first), fully dynamic when they differ.
+        fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
+            let Def::Result(op, k) = b[v].def else { return Err(Error("expected a result".into())) };
+            let mut ty: Option<Type<'a>> = None;
+            for r in [0].into_iter().chain(1..b[op].regions.len()) {
+                let yv = b[yield_of(b, op, r)].operands[k as usize];
+                let t = if is_tensor(&b[yv].ty) { crate::buffer_type_in(o, b, yv, stack)? } else { b[yv].ty.clone() };
+                ty = Some(match ty {
+                    None => t,
+                    Some(prev) if prev == t => prev,
+                    Some(prev) if memory_space(&prev) != memory_space(&t) => return Err(Error(format!("'{}' op inconsistent memory space on switch cases", b[op].name))),
+                    Some(prev) => {
+                        let Type::Shaped(s) = &b[v].ty else { return Err(Error("expected a tensor".into())) };
+                        BufferizationOptions::fully_dynamic(s, memory_space(&prev))
+                    }
+                });
+            }
+            ty.ok_or_else(|| Error("a switch without regions".into()))
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let results = rw.body[op].results.to_vec();
+            let mut types = Vec::new();
+            for r in &results {
+                types.push(if is_tensor(&rw.body[*r].ty) { buffer_type(o, rw.body, *r)? } else { rw.body[*r].ty.clone() });
+            }
+            let old = rw.body[op].clone();
+            let mut data = OpData::named(old.name.clone()).operands(&old.operands);
+            data.properties.clone_from(&old.properties);
+            data.attributes.clone_from(&old.attributes);
+            let n_regions = old.regions.len();
+            let n = rw.create_with(data, &types, |b, o| {
+                for _ in 0..n_regions {
+                    b.add_region(o);
+                }
+            });
+            for r in 0..n_regions {
+                let (from, to) = (rw.body[op].regions[r], rw.body[n].regions[r]);
+                rw.inline_region_before(from, to, None);
+            }
+            let new_results = rw.body[n].results.to_vec();
+            replace_with_buffers(rw, op, &new_results);
+            Ok(())
+        }
+    }
 
     impl Bufferizable for Yield {
         fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {

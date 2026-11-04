@@ -23,7 +23,6 @@ Conversion__GPUToSPIRV__entry-point.4	test-only pass -test-spirv-entry-point-abi
 Conversion__MemRefToLLVM__memref-to-llvm-with-transforms.0	test-only pass -test-memref-to-llvm-with-transforms
 Conversion__MemRefToLLVM__type-conversion.0	test-only pass -test-llvm-legalize-patterns
 Conversion__MemRefToLLVM__type-conversion.1	test-only pass -test-llvm-legalize-patterns=allow-pattern-rollback=0
-Conversion__ShapeToStandard__convert-shape-constraints.0	lit substitution <%s
 Conversion__TosaToLinalg__tosa-to-linalg-invalid.0	mlir-opt failed (reading the input)
 Conversion__TosaToLinalg__tosa-to-linalg-pipeline.0	mlir-opt failed (reading the input)
 Conversion__VectorToLLVM__pass-option-serialization.0	prints logs, not IR: --dump-pass-pipeline
@@ -155,7 +154,6 @@ Conversion__MathToXeVM__native-spirv-builtins.1	not mlir-opt: ['FileCheck']
 Conversion__NVVMToLLVM__invalid.0	mlir-opt failed (reading the input)
 Dialect__SCF__one-shot-bufferize-tensor-copy-insertion.0	test-only pass -test-tensor-copy-insertion=allow-return-allocs-from-loops
 Dialect__SCF__one-shot-bufferize-tensor-copy-insertion.1	test-only pass -test-tensor-copy-insertion=allow-return-allocs-from-loops bufferize-function-boundaries
-Dialect__Shape__bufferize.0	lit substitution <%s
 Dialect__Tensor__one-shot-bufferize-tensor-copy-insertion.0	test-only pass -test-tensor-copy-insertion
 Dialect__Tensor__one-shot-bufferize-tensor-copy-insertion.1	test-only pass -test-tensor-copy-insertion=bufferize-function-boundaries
 Conversion__AMDGPUToROCDL__gfx1250.0	mlir-opt failed (reading the input)

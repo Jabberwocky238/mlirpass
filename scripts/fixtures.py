@@ -86,7 +86,8 @@ def args_of(cmd: str):
             continue
         if tool != "FileCheck":
             return None, f"pipes into {tool}"
-    args = [a for a in first[1:] if a != "%s"]
+    # `<%s` reads the input from stdin: the same as naming it.
+    args = [a for a in first[1:] if a not in ("%s", "<%s")]
     for a in args:
         if a.lstrip("-").startswith("test-") or "-test-" in a:
             return None, f"test-only pass {a}"
