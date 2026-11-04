@@ -92,4 +92,78 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
             cr.build(data, ty)
         })
     }
+
+    /// `getBitWidth` of an int, float or vector type.
+    fn value_bits(t: &Type<'_>) -> u32 {
+        match t {
+            Type::Shaped(s) => s.dims().unwrap_or_default().iter().product::<i64>() as u32 * s.elem.bit_width().unwrap_or(0),
+            t => t.bit_width().unwrap_or(0),
+        }
+    }
+
+    fn i32_const(&mut self, v: i64) -> ValueId {
+        self.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(32))
+    }
+
+    /// `LLVM::decomposeValue`: `src` as values of `dst` (bitcast, zero-extended, or split
+    /// through a vector).
+    pub fn decompose(&mut self, src: ValueId, dst: Type<'a>) -> Vec<ValueId> {
+        let st = self.rw.body[src].ty.clone();
+        if st == dst {
+            return vec![src];
+        }
+        let (sb, db) = (Self::value_bits(&st), Self::value_bits(&dst));
+        if sb == db {
+            return vec![self.build(OpData::build("llvm.bitcast").operands(&[src]), dst)];
+        }
+        if db > sb {
+            let mut v = src;
+            if st != Type::int(sb) {
+                v = self.build(OpData::build("llvm.bitcast").operands(&[v]), Type::int(sb));
+            }
+            return vec![self.build(OpData::build("llvm.zext").operands(&[v]), Type::int(db))];
+        }
+        let n = i64::from(sb / db);
+        let vt = Type::vector(&[n], &[], dst.clone());
+        let v = self.build(OpData::build("llvm.bitcast").operands(&[src]), vt);
+        (0..n)
+            .map(|i| {
+                let idx = self.i32_const(i);
+                self.build(OpData::build("llvm.extractelement").operands(&[v, idx]), dst.clone())
+            })
+            .collect()
+    }
+
+    /// `LLVM::composeValue`: the inverse of [`decompose`](Self::decompose).
+    pub fn compose(&mut self, src: &[ValueId], dst: Type<'a>) -> ValueId {
+        if let [one] = src {
+            let mut r = *one;
+            let rt = self.rw.body[r].ty.clone();
+            if rt == dst {
+                return r;
+            }
+            let (sb, db) = (Self::value_bits(&rt), Self::value_bits(&dst));
+            if db < sb {
+                if rt != Type::int(sb) {
+                    r = self.build(OpData::build("llvm.bitcast").operands(&[r]), Type::int(sb));
+                }
+                r = self.build(OpData::build("llvm.trunc").operands(&[r]), Type::int(db));
+            }
+            if self.rw.body[r].ty != dst {
+                r = self.build(OpData::build("llvm.bitcast").operands(&[r]), dst);
+            }
+            return r;
+        }
+        let et = self.rw.body[src[0]].ty.clone();
+        let vt = Type::vector(&[src.len() as i64], &[], et);
+        let mut r = self.poison(vt.clone());
+        for (i, v) in src.iter().enumerate() {
+            let idx = self.i32_const(i as i64);
+            r = self.build(OpData::build("llvm.insertelement").operands(&[r, *v, idx]), vt.clone());
+        }
+        if vt != dst {
+            r = self.build(OpData::build("llvm.bitcast").operands(&[r]), dst);
+        }
+        r
+    }
 }

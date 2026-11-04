@@ -98,3 +98,22 @@ impl TryFrom<&Attribute<'_>> for AllReduceOp {
         case_of(a, "all_reduce_op", &Self::NAMES).ok_or(())
     }
 }
+
+/// `gpu::BroadcastType`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BroadcastType {
+    FirstActiveLane,
+    AnyLane,
+    SpecificLane,
+}
+
+impl BroadcastType {
+    const NAMES: [(&'static str, Self); 3] = [("first_active_lane", Self::FirstActiveLane), ("any_lane", Self::AnyLane), ("specific_lane", Self::SpecificLane)];
+}
+
+impl TryFrom<&Attribute<'_>> for BroadcastType {
+    type Error = ();
+    fn try_from(a: &Attribute<'_>) -> Result<Self, ()> {
+        case_of(a, "broadcast", &Self::NAMES).ok_or(())
+    }
+}

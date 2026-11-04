@@ -24,3 +24,8 @@ pub use xevm_attach_target::XevmAttachTarget;
 mod convert_gpu_to_nvvm;
 #[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
 pub use convert_gpu_to_nvvm::{configure_nvvm, ConvertGpuToNvvm, NVVM_GPU_SPACES};
+
+#[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
+mod convert_gpu_to_rocdl;
+#[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
+pub use convert_gpu_to_rocdl::{AmdRuntime, ConvertGpuToRocdl};

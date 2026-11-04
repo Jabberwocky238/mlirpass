@@ -1,0 +1,2 @@
+-convert-gpu-to-rocdl=allowed-dialects=test
+-verify-diagnostics

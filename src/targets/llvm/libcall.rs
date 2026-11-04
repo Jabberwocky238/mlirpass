@@ -58,7 +58,7 @@ impl<'a> Cr<'_, 'a, '_> {
         let b = &*self.rw.body;
         let mut at = b.parent_op(op);
         while let Some(o) = at {
-            if matches!(&*b[o].name, "func.func" | "llvm.func" | "gpu.func") {
+            if b.has(o, crate::Trait::FunctionOpInterface) {
                 return Some(o);
             }
             at = b.parent_op(o);

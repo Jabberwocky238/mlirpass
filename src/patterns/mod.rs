@@ -3,6 +3,8 @@
 
 #[cfg(feature = "dialect.affine")]
 mod affine;
+#[cfg(feature = "dialect.amdgpu")]
+mod amdgpu;
 #[cfg(feature = "dialect.arith")]
 mod arith;
 #[cfg(feature = "dialect.bufferization")]
@@ -70,6 +72,8 @@ pub use fastmath::Fmf;
 pub use reshape::{Ofr as MemrefOfr, Reshape, ComposeCollapseOfExpand, ComposeExpandOfCollapse, ComposeReassociative, Reassoc};
 #[cfg(feature = "dialect.affine")]
 pub use affine::*;
+#[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
+pub use amdgpu::*;
 #[cfg(feature = "dialect.arith")]
 pub use arith::*;
 #[cfg(feature = "dialect.bufferization")]

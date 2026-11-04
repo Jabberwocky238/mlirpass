@@ -1,0 +1,2 @@
+-convert-gpu-to-rocdl=chipset=gfx950 allowed-dialects=func,arith,math
+-split-input-file

@@ -31,6 +31,8 @@ pub enum Printf {
     Call(PrintfCall),
     /// `GPUPrintfOpToVPrintfLowering`: `vprintf(format, args)`, the arguments packed on the stack.
     VPrintf,
+    /// `GPUPrintfOpToHIPLowering`: the `__ockl_printf_*` hostcalls.
+    Hip,
 }
 
 /// `GPUFuncOpLoweringOptions` with the converter's options and the printf lowering in use.
@@ -310,6 +312,7 @@ impl GpuToLlvm {
         let p = match o.printf {
             Some(Printf::Call(p)) => p,
             Some(Printf::VPrintf) => return Self::vprintf(cr, op, operands),
+            Some(Printf::Hip) => return Self::hip_printf(cr, op, operands),
             None => return false,
         };
         let Some(module) = cr.module_of(op) else { return false };
@@ -346,6 +349,84 @@ impl GpuToLlvm {
             b[call].set("CConv", p.cconv.into());
             b[call].set("var_callee_type", Attribute::Type(callee_ty));
         });
+        cr.erase(op);
+        true
+    }
+
+    /// `GPUPrintfOpToHIPLowering`: `__ockl_printf_begin`, the format string, then the arguments
+    /// seven at a time, as `i64`s.
+    fn hip_printf<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        let Some(module) = cr.module_of(op) else { return false };
+        let Some(Attribute::Str { lit, .. }) = cr.rw.body[op].get("format") else { return false };
+        let bytes = crate::unescape(lit);
+        let args: Vec<ValueId> = operands.iter().flatten().copied().collect();
+        let (i32t, i64t, ptr) = (Type::int(32), Type::int(64), LlvmType::ptr());
+        let loc = cr.rw.body[op].loc.clone();
+        let define = |cr: &mut Cr<'_, 'a, '_>, name: &str, params: Vec<Type<'a>>| -> bool {
+            if cr.rw.body.lookup(module, name).is_some() {
+                return true;
+            }
+            match cr.llvm_func(module, name, params, Type::int(64), false) {
+                Some(f) => {
+                    cr.rw.body[f].loc = loc.clone();
+                    true
+                }
+                None => false,
+            }
+        };
+        if !define(cr, "__ockl_printf_begin", vec![i64t.clone()]) {
+            return false;
+        }
+        if !args.is_empty() {
+            let mut p = vec![i64t.clone(), i32t.clone()];
+            p.extend(core::iter::repeat_n(i64t.clone(), 7));
+            p.push(i32t.clone());
+            if !define(cr, "__ockl_printf_append_args", p) {
+                return false;
+            }
+        }
+        if !define(cr, "__ockl_printf_append_string_n", vec![i64t.clone(), ptr.clone(), i64t.clone(), i32t.clone()]) {
+            return false;
+        }
+        cr.rw.set_before(op);
+        fn c<'a>(cr: &mut Cr<'_, 'a, '_>, v: i64, t: &Type<'a>) -> ValueId {
+            cr.llvm_constant(Attribute::of_int(v.into(), Type::int(t.bit_width().unwrap_or(64))), t.clone())
+        }
+        let zero64 = c(cr, 0, &i64t);
+        let begin = cr.llvm_call("__ockl_printf_begin", &[zero64], &[i64t.clone()]);
+        let mut desc = cr.rw.body[begin].results[0];
+        let (global, arr) = Self::string_constant(cr, module, "printfFormat_", &bytes, 0, loc.clone());
+        cr.rw.set_before(op);
+        let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![Cow::Owned(global)])), ptr.clone());
+        let start = cr.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::dense_i32(&[0, 0])), ptr);
+        let len = c(cr, bytes.len() as i64 + 1, &i64t);
+        let one = c(cr, 1, &i32t);
+        let zero = c(cr, 0, &i32t);
+        let last = if args.is_empty() { one } else { zero };
+        let call = cr.llvm_call("__ockl_printf_append_string_n", &[desc, start, len, last], &[i64t.clone()]);
+        desc = cr.rw.body[call].results[0];
+        for (g, chunk) in args.chunks(7).enumerate() {
+            let n = c(cr, chunk.len() as i64, &i32t);
+            let mut call_args = vec![desc, n];
+            for a in chunk {
+                let mut v = *a;
+                let t = cr.rw.body[v].ty.clone();
+                if let Type::Float(k) = t {
+                    if k != mlirformat::FloatKind::F64 {
+                        v = cr.build(OpData::build("llvm.fpext").operands(&[v]), Type::Float(mlirformat::FloatKind::F64));
+                    }
+                    v = cr.build(OpData::build("llvm.bitcast").operands(&[v]), i64t.clone());
+                }
+                if cr.rw.body[v].ty.bit_width() != Some(64) {
+                    v = cr.build(OpData::build("llvm.zext").operands(&[v]), i64t.clone());
+                }
+                call_args.push(v);
+            }
+            call_args.extend(core::iter::repeat_n(zero64, 7 - chunk.len()));
+            call_args.push(if (g + 1) * 7 >= args.len() { one } else { zero });
+            let call = cr.llvm_call("__ockl_printf_append_args", &call_args, &[i64t.clone()]);
+            desc = cr.rw.body[call].results[0];
+        }
         cr.erase(op);
         true
     }

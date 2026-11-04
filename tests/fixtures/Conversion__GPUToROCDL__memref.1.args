@@ -1,0 +1,2 @@
+-convert-gpu-to-rocdl=use-bare-ptr-memref-call-conv=true
+-split-input-file

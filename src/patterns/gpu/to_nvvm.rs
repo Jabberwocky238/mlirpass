@@ -9,7 +9,8 @@ use alloc::vec::Vec;
 use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, Type};
 
-use super::attrs::{AllReduceOp, Dimension, ShuffleMode};
+use super::attrs::{AllReduceOp, ShuffleMode};
+use super::index::IndexKind;
 use crate::LibFns;
 use crate::patterns;
 use crate::{ConversionRewriter, LlvmOptions, OpData, OpId, ValueId};
@@ -18,27 +19,6 @@ type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
 /// `kWarpSize`.
 const WARP: i64 = 32;
-
-/// `IndexKind`: which known size bounds an index op.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum IndexKind {
-    Other,
-    Block,
-    Grid,
-    Cluster,
-}
-
-impl IndexKind {
-    /// The function attribute (`gpu.known_*_size`) and the `gpu.func` property.
-    const fn known(self) -> Option<(&'static str, &'static str)> {
-        match self {
-            IndexKind::Block => Some(("gpu.known_block_size", "known_block_size")),
-            IndexKind::Grid => Some(("gpu.known_grid_size", "known_grid_size")),
-            IndexKind::Cluster => Some(("gpu.known_cluster_size", "known_cluster_size")),
-            IndexKind::Other => None,
-        }
-    }
-}
 
 /// The libdevice functions of each op (`populateLibDeviceConversionPatterns`).
 const LIBDEVICE: [(&str, LibFns); 41] = [
@@ -91,87 +71,44 @@ pub struct GpuToNvvm;
 
 #[patterns(converter, options = LlvmOptions)]
 impl GpuToNvvm {
-    /// The index type's width: the result sign-extended or truncated from `i32`.
-    fn fit(cr: &mut Cr<'_, '_, '_>, v: ValueId, o: LlvmOptions) -> ValueId {
-        match o.index_bitwidth {
-            32 => v,
-            w if w > 32 => cr.build(OpData::build("llvm.sext").operands(&[v]), Type::int(w)),
-            w => cr.build(OpData::build("llvm.trunc").operands(&[v]), Type::int(w)),
-        }
-    }
-
-    fn range<'a>(lo: i64, hi: i64) -> Attribute<'a> {
-        Attribute::dialect("llvm.constant_range", &format!("<i32, {lo}, {hi}>"))
-    }
-
-    /// The known size bound of `kind` on the function around `op`, in dimension `d`.
-    fn known_bound(cr: &Cr<'_, '_, '_>, op: OpId, kind: IndexKind, d: Dimension) -> Option<i64> {
-        let (attr, prop) = kind.known()?;
-        let f = cr.parent_function(op)?;
-        let b = &*cr.rw.body;
-        let a = if b[f].name == "gpu.func" { b[f].get(prop) } else { b[f].get(attr) }?;
-        a.dense_values()?.get(d as usize).copied()
-    }
-
-    /// `gpu::index_lowering::OpLowering`: `nvvm.read.ptx.sreg.<reg>.<dim>`, ranged by a known
-    /// bound.
-    fn index(cr: &mut Cr<'_, '_, '_>, op: OpId, o: LlvmOptions, reg: &str, kind: IndexKind, dim: bool) -> bool {
-        let Some(d) = cr.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok()) else { return false };
-        let axis = ["x", "y", "z"][d as usize];
-        let mut bound = Self::known_bound(cr, op, kind, d);
-        if let Some(Attribute::Int { lit, .. }) = cr.rw.body[op].get("upper_bound") {
-            bound = lit.parse().ok();
-        }
-        let mut data = OpData::build(&format!("nvvm.read.ptx.sreg.{reg}.{axis}"));
-        if let Some(ub) = bound {
-            let hi = if ub == i64::from(i32::MAX) { ub } else { ub + i64::from(dim) };
-            data.set("range", Self::range(i64::from(dim), hi));
-        }
-        cr.rw.set_before(op);
-        let r = cr.build(data, Type::int(32));
-        let r = Self::fit(cr, r, o);
-        cr.replace(op, vec![vec![r]]);
-        true
-    }
-
     #[convert("gpu.thread_id", benefit = 10)]
     fn thread_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: LlvmOptions) -> bool {
-        Self::index(cr, op, o, "tid", IndexKind::Block, false)
+        cr.gpu_index(op, o, "nvvm.read.ptx.sreg.tid", IndexKind::Block, false)
     }
 
     #[convert("gpu.block_dim", benefit = 10)]
     fn block_dim(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: LlvmOptions) -> bool {
-        Self::index(cr, op, o, "ntid", IndexKind::Block, true)
+        cr.gpu_index(op, o, "nvvm.read.ptx.sreg.ntid", IndexKind::Block, true)
     }
 
     #[convert("gpu.cluster_id", benefit = 10)]
     fn cluster_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: LlvmOptions) -> bool {
-        Self::index(cr, op, o, "clusterid", IndexKind::Other, false)
+        cr.gpu_index(op, o, "nvvm.read.ptx.sreg.clusterid", IndexKind::Other, false)
     }
 
     #[convert("gpu.cluster_dim", benefit = 10)]
     fn cluster_dim(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: LlvmOptions) -> bool {
-        Self::index(cr, op, o, "nclusterid", IndexKind::Other, true)
+        cr.gpu_index(op, o, "nvvm.read.ptx.sreg.nclusterid", IndexKind::Other, true)
     }
 
     #[convert("gpu.cluster_block_id", benefit = 10)]
     fn cluster_block_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: LlvmOptions) -> bool {
-        Self::index(cr, op, o, "cluster.ctaid", IndexKind::Cluster, false)
+        cr.gpu_index(op, o, "nvvm.read.ptx.sreg.cluster.ctaid", IndexKind::Cluster, false)
     }
 
     #[convert("gpu.cluster_dim_blocks", benefit = 10)]
     fn cluster_dim_blocks(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: LlvmOptions) -> bool {
-        Self::index(cr, op, o, "cluster.nctaid", IndexKind::Cluster, true)
+        cr.gpu_index(op, o, "nvvm.read.ptx.sreg.cluster.nctaid", IndexKind::Cluster, true)
     }
 
     #[convert("gpu.block_id", benefit = 10)]
     fn block_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: LlvmOptions) -> bool {
-        Self::index(cr, op, o, "ctaid", IndexKind::Grid, false)
+        cr.gpu_index(op, o, "nvvm.read.ptx.sreg.ctaid", IndexKind::Grid, false)
     }
 
     #[convert("gpu.grid_dim", benefit = 10)]
     fn grid_dim(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: LlvmOptions) -> bool {
-        Self::index(cr, op, o, "nctaid", IndexKind::Grid, true)
+        cr.gpu_index(op, o, "nvvm.read.ptx.sreg.nctaid", IndexKind::Grid, true)
     }
 
     /// `GPULaneIdOpToNVVM`.
@@ -182,8 +119,8 @@ impl GpuToNvvm {
             _ => WARP,
         };
         cr.rw.set_before(op);
-        let r = cr.build(OpData::build("nvvm.read.ptx.sreg.laneid").with("range", Self::range(0, ub)), Type::int(32));
-        let r = Self::fit(cr, r, o);
+        let r = cr.build(OpData::build("nvvm.read.ptx.sreg.laneid").with("range", crate::constant_range(0, ub)), Type::int(32));
+        let r = cr.fit_index(r, o);
         cr.replace(op, vec![vec![r]]);
         true
     }

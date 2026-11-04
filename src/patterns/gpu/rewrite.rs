@@ -380,3 +380,53 @@ impl GpuRewrite {
         true
     }
 }
+
+/// `populateGpuPromoteShuffleToAMDGPUPatterns`: a 64-wide constant xor shuffle as an
+/// `amdgpu.swizzle_bitmode` (offset below 32) ...
+pub struct GpuPromoteShuffleToSwizzle;
+
+/// ... or, on gfx950 and later, an `amdgpu.permlane_swap` (offset 16 or 32).
+pub struct GpuPromoteShuffleToPermlane;
+
+/// The constant offset of a 64-wide xor shuffle.
+fn xor64_offset(rw: &Rw<'_, '_>, op: OpId) -> Option<i64> {
+    let b = &*rw.body;
+    let mode = b[op].get("mode").and_then(|a| super::attrs::ShuffleMode::try_from(a).ok())?;
+    if mode != super::attrs::ShuffleMode::Xor || b.int_constant(b[op].operands[2]) != Some(64) {
+        return None;
+    }
+    b.int_constant(b[op].operands[1]).map(|o| o as i64)
+}
+
+fn promoted<'a>(rw: &mut Rw<'_, 'a>, op: OpId, data: OpData<'a>) {
+    let ty = rw.body[rw.body[op].results[0]].ty.clone();
+    rw.set_before(op);
+    let r = mk(rw, data, ty);
+    let valid = mk(rw, OpData::build("arith.constant").with("value", Attribute::Bool(true)), Type::int(1));
+    rw.replace_op(op, &[r, valid]);
+}
+
+#[crate::patterns]
+impl GpuPromoteShuffleToSwizzle {
+    /// `PromoteShuffleToSwizzlePattern`.
+    #[rewrite("gpu.shuffle")]
+    fn promote_shuffle_to_swizzle_pattern(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
+        let Some(offset) = xor64_offset(rw, op).filter(|o| (0..32).contains(o)) else { return false };
+        let v = rw.body[op].operands[0];
+        let i32a = |n: i64| Attribute::of_int(n.into(), Type::int(32));
+        promoted(rw, op, OpData::build("amdgpu.swizzle_bitmode").operands(&[v]).with("and_mask", i32a(31)).with("or_mask", i32a(0)).with("xor_mask", i32a(offset)));
+        true
+    }
+}
+
+#[crate::patterns]
+impl GpuPromoteShuffleToPermlane {
+    /// `PromoteShuffleToPermlanePattern`.
+    #[rewrite("gpu.shuffle", benefit = 2)]
+    fn promote_shuffle_to_permlane_pattern(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
+        let Some(offset) = xor64_offset(rw, op).filter(|o| matches!(o, 16 | 32)) else { return false };
+        let v = rw.body[op].operands[0];
+        promoted(rw, op, OpData::build("amdgpu.permlane_swap").operands(&[v]).with("row_length", Attribute::of_int(offset.into(), Type::int(32))));
+        true
+    }
+}

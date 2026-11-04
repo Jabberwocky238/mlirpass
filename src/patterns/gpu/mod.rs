@@ -16,7 +16,7 @@ pub use wmma_to_spirv::WmmaToSpirv;
 
 mod attrs;
 
-pub use attrs::{AllReduceOp, Dimension, ShuffleMode};
+pub use attrs::{AllReduceOp, BroadcastType, Dimension, ShuffleMode};
 
 #[cfg(feature = "target.llvm")]
 mod to_llvm;
@@ -28,13 +28,18 @@ mod to_llvm_spv;
 #[cfg(feature = "target.llvm")]
 pub use to_llvm_spv::GpuToLlvmSpv;
 
+#[cfg(feature = "target.llvm")]
+mod index;
+#[cfg(feature = "target.llvm")]
+pub use index::constant_range;
+
 #[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
 mod to_nvvm;
 #[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
 pub use to_nvvm::{AssertToNvvm, GpuReduxToNvvm, GpuToNvvm};
 
 mod rewrite;
-pub use rewrite::GpuRewrite;
+pub use rewrite::{GpuPromoteShuffleToPermlane, GpuPromoteShuffleToSwizzle, GpuRewrite};
 
 #[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
 #[path = "wmma_nvvm.gen.rs"]
@@ -43,3 +48,8 @@ mod wmma_nvvm_gen;
 mod wmma_to_nvvm;
 #[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
 pub use wmma_to_nvvm::{convert_mma_types, WmmaToNvvm};
+
+#[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
+mod to_rocdl;
+#[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
+pub use to_rocdl::{GpuRocdlOptions, GpuToRocdl};

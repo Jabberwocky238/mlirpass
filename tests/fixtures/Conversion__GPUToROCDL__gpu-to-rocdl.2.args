@@ -1,0 +1,2 @@
+-convert-gpu-to-rocdl=chipset=gfx950 index-bitwidth=32
+-split-input-file
