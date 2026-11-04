@@ -221,6 +221,18 @@ impl BufferizationOptions {
     }
 
     /// `getMemRefTypeWithFullyDynamicLayout`.
+    /// `BaseMemRefType::isValidElementType`: builtin scalars, complex, vector and memref, and
+    /// the dialect types with `MemRefElementTypeInterface`.
+    pub fn valid_element(t: &Type<'_>) -> bool {
+        const ELEMENT_TYPES: &[&str] = &["ptr.ptr", "test.memref_element"];
+        match t {
+            Type::Integer { .. } | Type::Index | Type::Float(_) | Type::Complex(_) => true,
+            Type::Shaped(s) => s.kind != ShapedKind::Tensor,
+            Type::Extended(e) => ELEMENT_TYPES.contains(&&*e.name),
+            _ => false,
+        }
+    }
+
     pub fn fully_dynamic<'a>(tensor: &Shaped<'a>, space: Option<Attribute<'a>>) -> Type<'a> {
         let Some(shape) = &tensor.shape else { return Self::memref(tensor, None, space) };
         let layout = StridedLayout { strides: vec![mlirformat::Dim::DYNAMIC; shape.len()], offset: mlirformat::Dim::DYNAMIC };
@@ -704,6 +716,9 @@ impl<'o> AnalysisState<'o> {
     /// to an operand has its buffer type, else a new buffer's in the default memory space.
     pub fn default_buffer_type<'a>(o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
         let Type::Shaped(t) = &b[v].ty else { return Err(Error("expected a tensor".into())) };
+        if !BufferizationOptions::valid_element(&t.elem) {
+            return Err(Error(alloc::format!("'{}' op cannot bufferize value of type '{}': element type '{}' is not a valid memref element type", b[b.owner_of(v)].name, b[v].ty, t.elem)));
+        }
         if let Def::Arg(..) = b[v].def {
             return Ok(o.memref_type(t, None, None));
         }
@@ -716,6 +731,36 @@ impl<'o> AnalysisState<'o> {
             Some(space) => Ok(o.memref_type(t, None, space)),
             None => Err(Error(alloc::format!("'{}' op could not infer memory space", b[b.owner_of(v)].name))),
         }
+    }
+
+    /// `OpWithUnstructuredControlFlowBufferizableOpInterfaceExternalModel::getBufferType`: a
+    /// block argument takes the buffer type its predecessors forward, a fully dynamic layout
+    /// when they differ.
+    pub fn unstructured_buffer_type<'a>(o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
+        let Def::Arg(blk, i) = b[v].def else { return Self::default_buffer_type(o, b, v, stack) };
+        let op = b.owner_of(v);
+        let Type::Shaped(t) = &b[v].ty else { return Err(Error("expected a tensor".into())) };
+        let space = |t: &Type<'a>| match t {
+            Type::Shaped(m) => m.extras.iter().find(|a| !a.is_layout()).cloned(),
+            _ => None,
+        };
+        let mut found: Option<Type<'a>> = None;
+        for (br, succ) in b.predecessors(blk) {
+            let Some(range) = b.successor_operands(br, succ) else { continue };
+            let Some(k) = range.clone().nth(i as usize) else { continue };
+            let fv = b[br].operands[k];
+            if stack.contains(&fv) {
+                continue;
+            }
+            let caller = if is_tensor(&b[fv].ty) { driver::buffer_type_in(o, b, fv, stack)? } else { b[fv].ty.clone() };
+            found = Some(match found {
+                None => caller,
+                Some(f) if f == caller => f,
+                Some(f) if space(&f) != space(&caller) => return Err(Error(alloc::format!("'{}' op incoming operands of block argument have inconsistent memory spaces", b[op].name))),
+                Some(f) => BufferizationOptions::fully_dynamic(t, space(&f)),
+            });
+        }
+        found.ok_or_else(|| Error(alloc::format!("'{}' op could not infer buffer type of block argument", b[op].name)))
     }
 
     /// `resolveTensorOpOperandConflicts`: an operand that does not bufferize in place gets a

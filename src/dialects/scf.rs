@@ -426,6 +426,10 @@ mod bufferizable {
             true
         }
 
+        fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
+            AnalysisState::unstructured_buffer_type(o, b, v, stack)
+        }
+
         fn verify(&self, _: &AnalysisState<'_>, b: &Body<'_>, op: OpId) -> Result<(), Error> {
             match Self::unique_yield(b, op) {
                 Some(_) => Ok(()),

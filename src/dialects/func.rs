@@ -137,7 +137,7 @@ mod bufferizable {
             let f = b.owner_of(v);
             match b[v].def {
                 Def::Arg(blk, i) if b[b[f].regions[0]].blocks.first() == Some(&blk) => Ok(o.bufferized_arg_type(b, f, i as usize)),
-                _ => AnalysisState::default_buffer_type(o, b, v, stack),
+                _ => AnalysisState::unstructured_buffer_type(o, b, v, stack),
             }
         }
 
