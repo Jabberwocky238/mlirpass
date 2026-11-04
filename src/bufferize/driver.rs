@@ -233,8 +233,9 @@ impl<'a> Listener<'a> for Tracker<'_> {
 
 /// ⭐ `insertTensorCopies`: every allowed op resolves its conflicts (`resolveConflicts`).
 pub(crate) fn insert_copies(body: &mut Body<'_>, s: &AnalysisState<'_>, root: OpId) -> Result<(), Error> {
+    // `Operation::walk`: post order, as upstream.
     let mut ops = Vec::new();
-    body.walk(root, &mut |op| ops.push(op));
+    body.walk_post(root, &mut |op| ops.push(op));
     let symbol_table = body.is_symbol_table(root);
     let mut listener = Tracker { options: s.options, erased: Vec::new(), to_buffers: Vec::new(), worklist: Vec::new() };
     let mut rw = Rewriter::new(body, &mut listener);

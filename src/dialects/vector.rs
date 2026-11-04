@@ -47,17 +47,26 @@ mod bufferizable {
     use mlirformat::{Dim, Error, Type};
 
     use super::VectorDialect;
-    use crate::{buffer_of, replace_with_buffers, AliasingValue, AnalysisState, Body, Bufferizable, BufferizationOptions, OpData, OpId, Operand, Rewriter, ValueId};
+    use crate::{buffer_of, is_tensor, replace_with_buffers, AliasingOperand, AliasingValue, AnalysisState, Body, BufferRelation, Bufferizable, BufferizationOptions, Def, OpData, OpId, Operand, Rewriter, ValueId};
 
     /// `vector.transfer_read`, `vector.transfer_write`.
     struct TransferRead;
     struct TransferWrite;
+    /// `vector.scatter`, `vector.gather`, `vector.mask` and its `vector.yield`.
+    struct Scatter;
+    struct Gather;
+    struct Mask;
+    struct Yield;
 
     impl VectorDialect {
         pub(crate) fn bufferizable_op(name: &str) -> Option<&'static dyn Bufferizable> {
             Some(match name {
                 "vector.transfer_read" => &TransferRead,
                 "vector.transfer_write" => &TransferWrite,
+                "vector.scatter" => &Scatter,
+                "vector.gather" => &Gather,
+                "vector.mask" => &Mask,
+                "vector.yield" => &Yield,
                 _ => return None,
             })
         }
@@ -123,6 +132,120 @@ mod bufferizable {
             let buffer = buffer_of(rw, o, base)?;
             rebuilt(rw, op, 1, buffer, &[]);
             replace_with_buffers(rw, op, &[buffer]);
+            Ok(())
+        }
+    }
+
+    impl Bufferizable for Scatter {
+        fn aliasing_values(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> Vec<AliasingValue> {
+            if i == 0 { vec![AliasingValue::equivalent(b[op].results[0])] } else { Vec::new() }
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let buffer = buffer_of(rw, o, rw.body[op].operands[0])?;
+            rebuilt(rw, op, 0, buffer, &[]);
+            replace_with_buffers(rw, op, &[buffer]);
+            Ok(())
+        }
+    }
+
+    impl Bufferizable for Gather {
+        fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
+            false
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let buffer = buffer_of(rw, o, rw.body[op].operands[0])?;
+            let ty = rw.body[rw.body[op].results[0]].ty.clone();
+            let n = rebuilt(rw, op, 0, buffer, &[ty]);
+            let v = rw.body[n].results[0];
+            replace_with_buffers(rw, op, &[v]);
+            Ok(())
+        }
+    }
+
+    impl Mask {
+        /// The body's terminator.
+        fn yield_of(b: &Body<'_>, op: OpId) -> OpId {
+            *b[b[b[op].regions[0]].blocks[0]].ops.last().expect("a terminator")
+        }
+
+        /// `getMaskableOp`: the body's op, if any.
+        fn masked(b: &Body<'_>, op: OpId) -> Option<OpId> {
+            let ops = &b[b[b[op].regions[0]].blocks[0]].ops;
+            (ops.len() > 1).then(|| ops[0])
+        }
+    }
+
+    impl Bufferizable for Mask {
+        fn aliasing_operands(&self, _: &AnalysisState<'_>, b: &Body<'_>, v: ValueId) -> Vec<AliasingOperand> {
+            let Def::Result(op, k) = b[v].def else { return Vec::new() };
+            vec![AliasingOperand { operand: (Self::yield_of(b, op), k as usize), relation: BufferRelation::Equivalent, definite: true }]
+        }
+
+        fn resolve_conflicts(&self, rw: &mut Rewriter<'_, '_>, s: &AnalysisState<'_>, op: OpId) -> Result<(), Error> {
+            s.resolve_tensor_conflicts(rw, op)?;
+            let blk = rw.body[rw.body[op].regions[0]].blocks[0];
+            if rw.body[blk].ops.iter().any(|o| rw.body[*o].name == "bufferization.alloc_tensor") {
+                return Err(Error(alloc::format!("'{}' op body must bufferize in-place", rw.body[op].name)));
+            }
+            Ok(())
+        }
+
+        /// A new mask yielding only the masked op's results; the others are their buffers.
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let Some(masked) = Self::masked(rw.body, op).filter(|m| o.bufferizable(rw.body, *m).is_some()) else { return Ok(()) };
+            let y = Self::yield_of(rw.body, op);
+            let mut returns: Vec<Option<ValueId>> = vec![None; rw.body[op].results.len()];
+            let mut yielded = Vec::new();
+            for (k, v) in rw.body[y].operands.to_vec().into_iter().enumerate() {
+                if matches!(rw.body[v].def, Def::Result(d, _) if d == masked) {
+                    yielded.push(v);
+                } else {
+                    returns[k] = Some(v);
+                }
+            }
+            rw.modify(y, |b| b.set_operands(y, yielded.clone()));
+            let types: Vec<_> = yielded.iter().map(|v| rw.body[*v].ty.clone()).collect();
+            let old = rw.body[op].clone();
+            let mut data = OpData::named(old.name.clone()).operands(&old.operands);
+            data.properties.clone_from(&old.properties);
+            data.attributes.clone_from(&old.attributes);
+            let n = rw.create_with(data, &types, |b, o| {
+                b.add_region(o);
+            });
+            let (from, to) = (rw.body[op].regions[0], rw.body[n].regions[0]);
+            rw.inline_region_before(from, to, None);
+            let mut fresh = rw.body[n].results.to_vec().into_iter();
+            let values: Vec<ValueId> = returns.into_iter().map(|r| r.unwrap_or_else(|| fresh.next().expect("a result"))).collect();
+            replace_with_buffers(rw, op, &values);
+            Ok(())
+        }
+    }
+
+    impl Bufferizable for Yield {
+        fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
+            false
+        }
+
+        fn aliasing_values(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> Vec<AliasingValue> {
+            b.parent_op(op).map_or_else(Vec::new, |p| vec![AliasingValue::equivalent(b[p].results[i])])
+        }
+
+        fn must_in_place(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
+            true
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let Some(p) = rw.body.parent_op(op).filter(|p| rw.body[*p].name == "vector.mask") else { return Err(Error("unsupported vector::YieldOp parent".into())) };
+            if Mask::masked(rw.body, p).filter(|m| o.bufferizable(rw.body, *m).is_some()).is_none() {
+                return Ok(());
+            }
+            let mut new = Vec::new();
+            for v in rw.body[op].operands.to_vec() {
+                new.push(if is_tensor(&rw.body[v].ty) { buffer_of(rw, o, v)? } else { v });
+            }
+            rw.replace_with(op, OpData::named(rw.body[op].name.clone()).operands(&new), &[]);
             Ok(())
         }
     }
