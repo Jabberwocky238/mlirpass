@@ -8,12 +8,12 @@ pub use to_cf::{ScfToCf};
 pub use to_gpu::ScfToGpu;
 pub use canonicalize::ScfCanon;
 
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 mod to_spirv;
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 pub use to_spirv::ScfToSpirv;
 
-#[cfg(feature = "emitc")]
+#[cfg(feature = "target.emitc")]
 mod to_emitc;
-#[cfg(feature = "emitc")]
+#[cfg(feature = "target.emitc")]
 pub use to_emitc::ScfToEmitc;

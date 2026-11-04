@@ -28,33 +28,61 @@ libm = "0.2"
 smallvec = { version = "1.15", default-features = false, features = ["union", "const_generics"] }
 
 [features]
-default = ["std", "cli", "llvm", "emitc", "spirv"]
+default = ["std", "cli", "all-dialects", "all-targets"]
 std = ["mlirformat/std", "serde/std", "thiserror/std"]
 # The `mlirpass` command line (`cargo install mlirpass`).
 cli = ["std"]
-# The backends under `src/targets`.
-llvm = []
-emitc = []
-spirv = []
+# One feature per dialect: its op interfaces, folds, canonicalization patterns, its own
+# transforms and its lowerings to other dialects (`dialect.scf`). A lowering into a backend
+# also needs that `target.*`.
+all-dialects = ["dialect.affine", "dialect.arith", "dialect.bufferization", "dialect.cf", "dialect.complex", "dialect.func", "dialect.gpu", "dialect.index", "dialect.linalg", "dialect.llvm", "dialect.math", "dialect.memref", "dialect.scf", "dialect.shape", "dialect.spirv", "dialect.tensor", "dialect.test", "dialect.tosa", "dialect.ub", "dialect.vector", "dialect.x86vector", "dialect.xevm"]
+"dialect.affine" = []
+"dialect.arith" = []
+"dialect.bufferization" = []
+"dialect.cf" = []
+"dialect.complex" = []
+"dialect.func" = []
+"dialect.gpu" = []
+"dialect.index" = []
+"dialect.linalg" = ["dialect.arith"]
+"dialect.llvm" = []
+"dialect.math" = ["dialect.arith"]
+"dialect.memref" = []
+"dialect.scf" = []
+"dialect.shape" = []
+"dialect.spirv" = []
+"dialect.tensor" = ["dialect.arith"]
+"dialect.test" = []
+"dialect.tosa" = []
+"dialect.ub" = []
+"dialect.vector" = []
+"dialect.x86vector" = []
+"dialect.xevm" = []
+# One feature per backend (`src/targets`): its type converter, `convert-to-*`, the lowerings
+# into it, and what it emits.
+all-targets = ["target.llvm", "target.emitc", "target.spirv"]
+"target.llvm" = ["dialect.llvm"]
+"target.emitc" = []
+"target.spirv" = ["dialect.spirv"]
 
 [[bin]]
 name = "mlirpass"
 path = "src/main.rs"
 required-features = ["cli"]
 
-# The fixtures run every backend's passes.
+# The fixtures run every dialect's and backend's passes.
 [[test]]
 name = "passes"
-required-features = ["llvm", "emitc", "spirv"]
+required-features = ["all-dialects", "all-targets"]
 
 [[test]]
 name = "spirv"
-required-features = ["spirv"]
+required-features = ["all-dialects", "target.spirv"]
 
 [[test]]
 name = "spirv_glsl"
-required-features = ["spirv"]
+required-features = ["all-dialects", "target.spirv"]
 
 [[test]]
 name = "vulkan"
-required-features = ["spirv"]
+required-features = ["all-dialects", "target.spirv"]

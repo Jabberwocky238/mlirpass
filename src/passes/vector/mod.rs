@@ -4,12 +4,16 @@ mod convert_vector_to_scf;
 
 pub use convert_vector_to_scf::{ConvertVectorToScf};
 
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 mod convert_vector_to_llvm;
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 pub use convert_vector_to_llvm::*;
 
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 mod convert_vector_to_spirv;
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 pub use convert_vector_to_spirv::*;
+
+/// The `vector` passes.
+#[crate::pass_set(ConvertVectorToScf, #[cfg(feature = "target.llvm")] ConvertVectorToLlvm, #[cfg(feature = "target.spirv")] ConvertVectorToSpirv)]
+pub struct VectorPasses;

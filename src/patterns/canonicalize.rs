@@ -102,20 +102,32 @@ impl<'a> Body<'a> {
 /// The fold hook of `op`, by its dialect.
 pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold<'a> {
     match body[op].name.split_once('.').map(|(ns, _)| ns) {
+        #[cfg(feature = "dialect.arith")]
         Some("arith") => crate::ArithFolder { b: body, op, c: consts }.fold(),
+        #[cfg(feature = "dialect.math")]
         Some("math") => crate::ArithFolder { b: body, op, c: consts }.math(),
+        #[cfg(feature = "dialect.scf")]
         Some("scf") => crate::ScfCanon::fold(body, op),
+        #[cfg(feature = "dialect.gpu")]
         Some("gpu") => crate::GpuCanon::fold(body, op),
         Some("builtin") => body.fold_unrealized_cast(op),
+        #[cfg(feature = "dialect.affine")]
         Some("affine") => crate::AffineCanon::fold(body, op),
+        #[cfg(feature = "dialect.memref")]
         Some("memref") => crate::MemrefCanon::fold(body, op),
-        #[cfg(feature = "llvm")]
+        #[cfg(feature = "dialect.llvm")]
         Some("llvm") => crate::LlvmCanon::fold(body, op, consts),
+        #[cfg(feature = "dialect.vector")]
         Some("vector") => crate::VectorFolder { b: body, op, c: consts }.fold(),
+        #[cfg(feature = "dialect.shape")]
         Some("shape") => crate::ShapeCanon::fold(body, op, consts),
+        #[cfg(feature = "dialect.tensor")]
         Some("tensor") => crate::TensorCanon::fold(body, op, consts),
+        #[cfg(feature = "dialect.tosa")]
         Some("tosa") => crate::TosaCanon::fold(body, op, consts),
+        #[cfg(feature = "dialect.linalg")]
         Some("linalg") => crate::LinalgCanon::fold(body, op, consts),
+        #[cfg(feature = "dialect.spirv")]
         Some("spirv") => crate::SpirvFolder { b: body, op, c: consts }.fold(),
         // An out-of-tree dialect folds through its interfaces.
         _ => match body.ctx.interfaces.of(&body[op].name) {
@@ -148,19 +160,30 @@ impl<'a> Body<'a> {
 /// `Dialect::materializeConstant` of dialect `ns`.
 pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
     match ns {
+        #[cfg(feature = "dialect.arith")]
         "arith" => crate::ArithCanon::materialize(value, ty),
         // `MathDialect::materializeConstant`: poison as `ub.poison`, the rest as arith does.
+        #[cfg(feature = "dialect.math")]
         "math" if value.is_poison() => Some(OpData::build("ub.poison").with("value", value.clone())),
+        #[cfg(feature = "dialect.math")]
         "math" => crate::ArithCanon::materialize(value, ty),
+        #[cfg(feature = "dialect.affine")]
         "affine" => crate::AffineCanon::materialize(value, ty),
+        #[cfg(feature = "dialect.memref")]
         "memref" => crate::MemrefCanon::materialize(value, ty),
-        #[cfg(feature = "llvm")]
+        #[cfg(feature = "dialect.llvm")]
         "llvm" => crate::LlvmCanon::materialize(value, ty),
+        #[cfg(feature = "dialect.vector")]
         "vector" => crate::VectorCanon::materialize(value, ty),
+        #[cfg(feature = "dialect.shape")]
         "shape" => crate::ShapeCanon::materialize(value, ty),
+        #[cfg(any(feature = "dialect.tensor", feature = "dialect.linalg"))]
         "tensor" | "linalg" => crate::ArithCanon::materialize(value, ty),
+        #[cfg(feature = "dialect.tosa")]
         "tosa" => crate::TosaCanon::materialize(value, ty),
+        #[cfg(feature = "dialect.spirv")]
         "spirv" => crate::SpirvCanon::materialize(value, ty),
+        #[cfg(feature = "dialect.ub")]
         "ub" => value.is_poison().then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,
     }
@@ -170,19 +193,33 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
 /// Every dialect's and op's canonicalization patterns, in registration order.
 pub fn patterns() -> PatternSet {
     let mut set = PatternSet::default();
+    #[cfg(feature = "dialect.affine")]
     crate::AffineCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.arith")]
     crate::ArithCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.cf")]
     crate::CfCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.func")]
     crate::FuncCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.gpu")]
     crate::GpuCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.linalg")]
     crate::LinalgCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.memref")]
     crate::MemrefCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.scf")]
     crate::ScfCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.shape")]
     crate::ShapeCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.spirv")]
     crate::SpirvCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.tensor")]
     crate::TensorCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.test")]
     crate::TestCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.tosa")]
     crate::TosaCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.vector")]
     crate::VectorCanon::canonicalization(&mut set);
     set
 }

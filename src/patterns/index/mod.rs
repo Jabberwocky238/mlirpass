@@ -1,11 +1,11 @@
 //! `index` rule sets.
 
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 mod to_llvm;
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 pub use to_llvm::{IndexToLlvm, UbToLlvm};
 
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 mod to_spirv;
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 pub use to_spirv::IndexToSpirv;

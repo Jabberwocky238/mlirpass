@@ -157,10 +157,46 @@ impl crate::Interfaces<'_> {
     pub fn upstream() -> Self {
         use crate::*;
         let mut i = Self::new();
-        i.register(&AffineDialect).register(&ArithDialect).register(&BufferizationDialect).register(&CfDialect).register(&ComplexDialect).register(&FuncDialect).register(&GpuDialect).register(&IndexDialect).register(&LinalgDialect).register(&MathDialect).register(&MemrefDialect);
-        i.register(&ScfDialect).register(&ShapeDialect).register(&SpirvDialect).register(&TensorDialect).register(&TestDialect).register(&TosaDialect).register(&UbDialect).register(&VectorDialect);
-        #[cfg(feature = "llvm")]
+        #[cfg(feature = "dialect.affine")]
+        i.register(&AffineDialect);
+        #[cfg(feature = "dialect.arith")]
+        i.register(&ArithDialect);
+        #[cfg(feature = "dialect.bufferization")]
+        i.register(&BufferizationDialect);
+        #[cfg(feature = "dialect.cf")]
+        i.register(&CfDialect);
+        #[cfg(feature = "dialect.complex")]
+        i.register(&ComplexDialect);
+        #[cfg(feature = "dialect.func")]
+        i.register(&FuncDialect);
+        #[cfg(feature = "dialect.gpu")]
+        i.register(&GpuDialect);
+        #[cfg(feature = "dialect.index")]
+        i.register(&IndexDialect);
+        #[cfg(feature = "dialect.linalg")]
+        i.register(&LinalgDialect);
+        #[cfg(feature = "dialect.llvm")]
         i.register(&LlvmDialect);
+        #[cfg(feature = "dialect.math")]
+        i.register(&MathDialect);
+        #[cfg(feature = "dialect.memref")]
+        i.register(&MemrefDialect);
+        #[cfg(feature = "dialect.scf")]
+        i.register(&ScfDialect);
+        #[cfg(feature = "dialect.shape")]
+        i.register(&ShapeDialect);
+        #[cfg(feature = "dialect.spirv")]
+        i.register(&SpirvDialect);
+        #[cfg(feature = "dialect.tensor")]
+        i.register(&TensorDialect);
+        #[cfg(feature = "dialect.test")]
+        i.register(&TestDialect);
+        #[cfg(feature = "dialect.tosa")]
+        i.register(&TosaDialect);
+        #[cfg(feature = "dialect.ub")]
+        i.register(&UbDialect);
+        #[cfg(feature = "dialect.vector")]
+        i.register(&VectorDialect);
         i
     }
 }
@@ -170,14 +206,47 @@ impl crate::Passes {
     pub fn upstream() -> Self {
         let mut p = Self::new();
         p.with::<crate::ConversionPasses>();
-        p.with::<crate::TransformPasses>();
-        p.with::<crate::DialectPasses>();
-        #[cfg(feature = "llvm")]
-        p.with::<crate::LlvmPasses>();
-        #[cfg(feature = "emitc")]
+        #[cfg(feature = "dialect.affine")]
+        p.with::<crate::AffinePasses>();
+        #[cfg(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")))]
+        p.with::<crate::ArithPasses>();
+        #[cfg(feature = "dialect.bufferization")]
+        p.with::<crate::BufferizationPasses>();
+        #[cfg(all(feature = "dialect.cf", any(feature = "target.llvm", feature = "target.spirv")))]
+        p.with::<crate::CfPasses>();
+        #[cfg(feature = "dialect.complex")]
+        p.with::<crate::ComplexPasses>();
+        #[cfg(feature = "target.emitc")]
         p.with::<crate::EmitcPasses>();
-        #[cfg(feature = "spirv")]
+        #[cfg(all(feature = "dialect.func", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")))]
+        p.with::<crate::FuncPasses>();
+        #[cfg(feature = "dialect.gpu")]
+        p.with::<crate::GpuPasses>();
+        #[cfg(all(feature = "dialect.index", any(feature = "target.llvm", feature = "target.spirv")))]
+        p.with::<crate::IndexPasses>();
+        #[cfg(feature = "dialect.linalg")]
+        p.with::<crate::LinalgPasses>();
+        #[cfg(feature = "target.llvm")]
+        p.with::<crate::LlvmPasses>();
+        #[cfg(feature = "dialect.math")]
+        p.with::<crate::MathPasses>();
+        #[cfg(feature = "dialect.memref")]
+        p.with::<crate::MemrefPasses>();
+        #[cfg(feature = "dialect.scf")]
+        p.with::<crate::ScfPasses>();
+        #[cfg(feature = "dialect.shape")]
+        p.with::<crate::ShapePasses>();
+        #[cfg(feature = "target.spirv")]
         p.with::<crate::SpirvPasses>();
+        #[cfg(feature = "dialect.tensor")]
+        p.with::<crate::TensorPasses>();
+        #[cfg(feature = "dialect.tosa")]
+        p.with::<crate::TosaPasses>();
+        p.with::<crate::TransformPasses>();
+        #[cfg(all(feature = "dialect.ub", any(feature = "target.llvm", feature = "target.spirv")))]
+        p.with::<crate::UbPasses>();
+        #[cfg(feature = "dialect.vector")]
+        p.with::<crate::VectorPasses>();
         p
     }
 }

@@ -7,3 +7,7 @@ mod promote_buffers;
 pub use convert_bufferization_to_memref::{ConvertBufferizationToMemref};
 pub use buffer_results_to_out_params::{BufferResultsToOutParams};
 pub use promote_buffers::{PromoteBuffersToStack};
+
+/// The `bufferization` passes.
+#[crate::pass_set(ConvertBufferizationToMemref, BufferResultsToOutParams, PromoteBuffersToStack)]
+pub struct BufferizationPasses;

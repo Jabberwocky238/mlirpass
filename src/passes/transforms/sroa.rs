@@ -12,8 +12,7 @@ use alloc::vec::Vec;
 use crate::pass;
 use mlirformat::{Attribute, Error};
 
-use super::memref_slots::TestSlots;
-use super::memslot::{Deletion, Destructurable, DestructurableMemorySlot, MemrefSlots, Promotable, Slots};
+use super::memslot::{Deletion, Destructurable, DestructurableMemorySlot, Promotable, Slots};
 use crate::{Body, DataLayout, OpId, Quiet, Rewriter, Use};
 
 /// `MemorySlotDestructuringInfo`.
@@ -153,8 +152,8 @@ impl<'s> Destructurer<'s> {
 
 #[pass("sroa", ty = Sroa)]
 pub fn sroa<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-    let dialects: &[&dyn Destructurable] = &[#[cfg(feature = "llvm")] &crate::LlvmSlots, &MemrefSlots, &TestSlots];
-    let promotable: &[&dyn Promotable] = &[#[cfg(feature = "llvm")] &crate::LlvmSlots, &MemrefSlots, &TestSlots];
+    let dialects: &[&dyn Destructurable] = &[#[cfg(feature = "dialect.llvm")] &crate::LlvmSlots, #[cfg(feature = "dialect.memref")] &crate::MemrefSlots, #[cfg(all(feature = "dialect.memref", feature = "dialect.test"))] &crate::TestSlots];
+    let promotable: &[&dyn Promotable] = &[#[cfg(feature = "dialect.llvm")] &crate::LlvmSlots, #[cfg(feature = "dialect.memref")] &crate::MemrefSlots, #[cfg(all(feature = "dialect.memref", feature = "dialect.test"))] &crate::TestSlots];
     let layout = DataLayout::closest(body, op);
     let sroa = Destructurer { cx: Slots { dialects, layout: &layout }, promotable };
     for region in body[op].regions.clone() {

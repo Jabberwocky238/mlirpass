@@ -10,12 +10,12 @@ pub(crate) use transforms::{VectorBuild, elem, vshape, zeros};
 pub use canonicalize::VectorCanon;
 pub(crate) use canonicalize::Folder as VectorFolder;
 
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 mod to_llvm;
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 pub use to_llvm::{VectorOptions, VectorToLlvm};
 
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 mod to_spirv;
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 pub use to_spirv::{VectorSpirvOptions, VectorToSpirv};

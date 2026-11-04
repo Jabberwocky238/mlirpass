@@ -1,15 +1,11 @@
 //! The `LLVMTypeConverter` and its options; the LLVM types themselves are mlirformat's
 //! [`LlvmType`].
 
-mod dialect;
 mod interfaces;
-mod memslot;
 mod memref_desc;
 mod pattern;
 
-pub use dialect::LlvmDialect;
 pub use interfaces::{LlvmEnv, ToLlvmInterfaces};
-pub use memslot::LlvmSlots;
 
 use alloc::borrow::Cow;
 use alloc::format;

@@ -6,19 +6,19 @@ mod expand_strided_metadata;
 pub use expand_strided_metadata::StridedMetadata;
 pub use canonicalize::{MemrefCanon, Ofr as MemrefOfr};
 
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 mod to_llvm;
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 pub use to_llvm::{MemrefOptions, MemrefToLlvm};
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 pub(crate) use to_llvm::Gep as LlvmGep;
 
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 mod to_spirv;
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 pub use to_spirv::{MemrefSpirvOptions, MemrefToSpirv};
 
-#[cfg(feature = "emitc")]
+#[cfg(feature = "target.emitc")]
 mod to_emitc;
-#[cfg(feature = "emitc")]
+#[cfg(feature = "target.emitc")]
 pub use to_emitc::MemrefToEmitc;

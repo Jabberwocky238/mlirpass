@@ -4,11 +4,11 @@
 //! The backends, one cargo feature each: `llvm` (the LLVM dialect lowerings and its folds),
 //! `emitc` (the EmitC lowerings) and `spirv` (the SPIR-V lowerings, binary and GLSL emit).
 
-#[cfg(feature = "emitc")]
+#[cfg(feature = "target.emitc")]
 mod emitc;
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 mod llvm;
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 mod spirv;
 
 use alloc::vec::Vec;
@@ -17,11 +17,11 @@ use mlirformat::Error;
 
 use crate::{Body, OpId};
 
-#[cfg(feature = "emitc")]
+#[cfg(feature = "target.emitc")]
 pub use emitc::*;
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 pub use llvm::*;
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 pub use spirv::*;
 
 /// ⭐ A target `op` translates into.

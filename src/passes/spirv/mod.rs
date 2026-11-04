@@ -1,6 +1,5 @@
 //! `spirv` passes.
 
-use crate::{ConvertArithToSpirv, ConvertCfToSpirv, ConvertComplexToSpirv, ConvertFuncToSpirv, ConvertGpuToSpirv, ConvertIndexToSpirv, ConvertMathToSpirv, ConvertMemrefToSpirv, ConvertScfToSpirv, ConvertTensorToSpirv, ConvertUbToSpirv, ConvertVectorToSpirv, MapMemrefSpirvStorageClass};
 mod spirv_canonicalize_gl;
 pub use spirv_canonicalize_gl::*;
 
@@ -28,6 +27,6 @@ pub use spirv_update_vce::*;
 mod spirv_unify_aliased_resource;
 pub use spirv_unify_aliased_resource::*;
 
-/// Every lowering to `spirv`.
-#[crate::pass_set(SpirvAttachTarget, SpirvWebgpuPrepare, SpirvUnifyAliasedResource, SpirvPromoteToReplicatedConstants, SpirvRewriteInserts, DecorateSpirvCompositeTypeLayout, SpirvCanonicalizeGl, ConvertCfToSpirv, ConvertComplexToSpirv, ConvertIndexToSpirv, ConvertMathToSpirv, ConvertTensorToSpirv, ConvertVectorToSpirv, ConvertUbToSpirv, SpirvLowerAbiAttrs, SpirvUpdateVce, ConvertScfToSpirv, ConvertArithToSpirv, ConvertFuncToSpirv, ConvertGpuToSpirv, ConvertMemrefToSpirv, MapMemrefSpirvStorageClass)]
+/// The `spirv` passes.
+#[crate::pass_set(SpirvCanonicalizeGl, DecorateSpirvCompositeTypeLayout, SpirvRewriteInserts, SpirvPromoteToReplicatedConstants, SpirvWebgpuPrepare, SpirvAttachTarget, SpirvLowerAbiAttrs, SpirvUpdateVce, SpirvUnifyAliasedResource)]
 pub struct SpirvPasses;

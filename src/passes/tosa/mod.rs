@@ -11,3 +11,7 @@ pub use tosa_to_linalg::{TosaToLinalgPass};
 pub use tosa_to_linalg_named::{TosaToLinalgNamedPass};
 pub use tosa_to_scf::{TosaToScfPass};
 pub use tosa_to_tensor::{TosaToTensorPass};
+
+/// The `tosa` passes.
+#[crate::pass_set(TosaToArithPass, TosaToLinalgPass, TosaToLinalgNamedPass, TosaToScfPass, TosaToTensorPass)]
+pub struct TosaPasses;

@@ -7,7 +7,11 @@ mod outlining;
 pub use gpu_kernel_outlining::{GpuKernelOutlining};
 pub use gpu_launch_sink_index_computations::{GpuLaunchSinkIndexComputations};
 
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 mod convert_gpu_to_spirv;
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 pub use convert_gpu_to_spirv::*;
+
+/// The `gpu` passes.
+#[crate::pass_set(GpuKernelOutlining, GpuLaunchSinkIndexComputations, #[cfg(feature = "target.spirv")] ConvertGpuToSpirv)]
+pub struct GpuPasses;

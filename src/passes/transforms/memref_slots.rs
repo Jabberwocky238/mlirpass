@@ -7,7 +7,8 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Shaped, ShapedKind, Type};
 
-use super::memslot::{Deletion, Destructurable, DestructurableMemorySlot, MemorySlot, MemrefSlots, Promotable, Slots};
+use crate::MemrefSlots;
+use super::memslot::{Deletion, Destructurable, DestructurableMemorySlot, MemorySlot, Promotable, Slots};
 use crate::{Body, Const, OpData, OpId, Rewriter, Use, ValueId};
 
 /// `memref.load` / `memref.store` taken apart: the memref, its indices, and the value stored.
@@ -221,8 +222,10 @@ impl Destructurable for MemrefSlots {
 }
 
 /// `test.multi_slot_alloca`'s interfaces (`TestOpDefs.cpp`): one slot per result.
+#[cfg(feature = "dialect.test")]
 pub struct TestSlots;
 
+#[cfg(feature = "dialect.test")]
 impl TestSlots {
     const ALLOCA: &str = "test.multi_slot_alloca";
 
@@ -245,6 +248,7 @@ impl TestSlots {
     }
 }
 
+#[cfg(feature = "dialect.test")]
 impl Promotable for TestSlots {
     fn dialect(&self) -> &str {
         "test"
@@ -268,6 +272,7 @@ impl Promotable for TestSlots {
     }
 }
 
+#[cfg(feature = "dialect.test")]
 impl Destructurable for TestSlots {
     fn dialect(&self) -> &str {
         "test"

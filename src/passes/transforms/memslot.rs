@@ -309,4 +309,5 @@ impl Body<'_> {
 
 /// `memref`'s memory slot interfaces: [`Promotable`] in `mem2reg/memref.rs`, [`Destructurable`]
 /// in `sroa/memref.rs` (`MemRefMemorySlot.cpp`).
+#[cfg(feature = "dialect.memref")]
 pub struct MemrefSlots;

@@ -31,16 +31,27 @@ own target env (`tests/support/vkinfo.c`) is checked against the host's product 
 | `dialects` | each upstream dialect's `OpInterfaces`, one unit struct each (`ScfDialect`, ...) | `mlir/lib/Dialect/*/IR` |
 | `targets` | the `Emit` trait, and what each backend below shares (type converters, `convert-to-*` interfaces, serializers) | `mlir-translate` |
 
-The backends are one cargo feature each (all on by default); their rules and passes sit in
-`patterns/` / `passes/` like any other, gated by the feature, and `src/targets` keeps what they share:
+Two kinds of cargo features, all on by default (`all-dialects`, `all-targets`), so a user builds
+only what it runs (`default-features = false, features = ["std", "dialect.scf", "dialect.arith",
+"target.llvm"]`):
+
+- `dialect.<name>` (`dialect.scf`, `dialect.linalg`, ...): one dialect's op interfaces, folds,
+  canonicalization patterns, its own transforms and its lowerings to other dialects
+  (`dialects/<name>.rs`, `patterns/<name>/`, `passes/<name>/`). A dialect whose code uses another's
+  turns that one on (`dialect.math` = `dialect.arith`). Without a dialect's feature its ops still
+  parse and print (mlirformat knows them all); they are just opaque to folds and patterns.
+- `target.<backend>`: a backend, below. Its rules and passes sit in `patterns/` / `passes/` like
+  any other (`arith/to_llvm.rs` needs `dialect.arith` and `target.llvm`); `src/targets` keeps what
+  they share.
 
 | feature | what it is | upstream |
 |---|---|---|
-| `llvm` | the type converter, dialect → `llvm` (the CPU's `x86vector` / `amx` too: `convert-vector-to-llvm=enable-x86vector,enable-amx`), the llvm folds, the llvm memory-slot interfaces | `mlir/lib/Conversion/*ToLLVM`, `Dialect/LLVMIR` |
-| `emitc` | dialect → `emitc`: the EmitC type converter, `convert-to-emitc` | `mlir/lib/Conversion/*ToEmitC` |
-| `spirv` | target env, type converter, `gpu` / `func` / `arith` / `cf` / `complex` / `index` / `math` / `memref` / `scf` / `tensor` / `vector` / `ub` → `spirv`, `spirv-lower-abi-attrs`, `spirv-update-vce`, the spirv dialect's own transforms (`spirv-canonicalize-gl`, `spirv-unify-aliased-resource`, `spirv-rewrite-inserts`, `spirv-promote-to-replicated-constants`, `spirv-webgpu-prepare`, `decorate-spirv-composite-type-layout`); `SpirvBinary` (the serializer) and `SpirvGlsl` (GLSL 4.50) emit | `mlir/lib/Conversion/*ToSPIRV`, `Target/SPIRV` |
+| `target.llvm` | the type converter, dialect → `llvm` (the CPU's `x86vector` / `amx` too: `convert-vector-to-llvm=enable-x86vector,enable-amx`); `dialect.llvm` (the llvm folds, the llvm memory-slot interfaces) | `mlir/lib/Conversion/*ToLLVM`, `Dialect/LLVMIR` |
+| `target.emitc` | dialect → `emitc`: the EmitC type converter, `convert-to-emitc` | `mlir/lib/Conversion/*ToEmitC` |
+| `target.spirv` | target env, type converter, `gpu` / `func` / `arith` / `cf` / `complex` / `index` / `math` / `memref` / `scf` / `tensor` / `vector` / `ub` → `spirv`, `spirv-lower-abi-attrs`, `spirv-update-vce`, the spirv dialect's own transforms (`spirv-canonicalize-gl`, `spirv-unify-aliased-resource`, `spirv-rewrite-inserts`, `spirv-promote-to-replicated-constants`, `spirv-webgpu-prepare`, `decorate-spirv-composite-type-layout`); `SpirvBinary` (the serializer) and `SpirvGlsl` (GLSL 4.50) emit | `mlir/lib/Conversion/*ToSPIRV`, `Target/SPIRV` |
 
-Dialects: every dialect mlirformat describes.
+Dialects: every dialect mlirformat describes parses and prints; those with a `dialect.*` feature
+also fold, canonicalize and lower.
 
 ## Declaring passes and lowerings
 
@@ -147,8 +158,8 @@ a body of its own and runs them as the pool's tasks; the result is the same as w
 (`run`, `-mlir-disable-threading`). The command line threads by default, as `mlir-opt`.
 
 Nothing is global. Pipelines name passes through a `PassRegistry` (`Invocation::parse(&passes, args)`);
-passes are grouped into `PassSet`s (`#[pass_set(ConvertArithToLlvm, ...)] pub struct LlvmPasses;`):
-`Passes::new().with::<LlvmPasses>()` registers just those, `Passes::upstream()` every set. A `Body`
+passes are grouped into `PassSet`s (`#[pass_set(ConvertScfToCf, #[cfg(feature = "target.spirv")] ConvertScfToSpirv, ...)] pub struct ScfPasses;`, one per `passes/<dir>`, each entry under its module's `cfg`):
+`Passes::new().with::<ScfPasses>()` registers just those, `Passes::upstream()` every set compiled in. A `Body`
 asks its `Ctx` what it knows of ops: mlirformat's `MlirOpt` (the loaded dialects, ODS's table) and
 the `Interfaces` holding each dialect's `OpInterfaces` (what upstream computes in C++: effects,
 speculatability, branch and region-branch successors, calls), so core names no dialect's op

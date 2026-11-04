@@ -25,7 +25,8 @@
 //!   not `cr` is declared by its signature: it takes the builder `ctor(cr, op)`, the
 //!   operands as `ValueId`s in order and anything else `FromOp` gives, and returns what
 //!   replaces the op (`Replacement`).
-//! - `#[pass_set(PassA, PassB, ..)]` on a unit struct: a `PassSet` registering those passes.
+//! - `#[pass_set(PassA, #[cfg(..)] PassB, ..)]` on a unit struct: a `PassSet` registering those
+//!   passes, each under its own attributes.
 
 use proc_macro::TokenStream;
 use syn::Error;

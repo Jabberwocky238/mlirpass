@@ -6,12 +6,16 @@ mod convert_complex_to_standard;
 pub use convert_complex_to_libm::{ConvertComplexToLibm};
 pub use convert_complex_to_standard::{ConvertComplexToStandard, ComplexRange};
 
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 mod convert_complex_to_llvm;
-#[cfg(feature = "llvm")]
+#[cfg(feature = "target.llvm")]
 pub use convert_complex_to_llvm::*;
 
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 mod convert_complex_to_spirv;
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 pub use convert_complex_to_spirv::*;
+
+/// The `complex` passes.
+#[crate::pass_set(ConvertComplexToLibm, ConvertComplexToStandard, #[cfg(feature = "target.llvm")] ConvertComplexToLlvm, #[cfg(feature = "target.spirv")] ConvertComplexToSpirv)]
+pub struct ComplexPasses;

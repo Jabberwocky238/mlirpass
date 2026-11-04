@@ -4,7 +4,7 @@ mod canonicalize;
 
 pub use canonicalize::SpirvCanon;
 pub(crate) use canonicalize::Folder as SpirvFolder;
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 mod webgpu_prepare;
-#[cfg(feature = "spirv")]
+#[cfg(feature = "target.spirv")]
 pub use webgpu_prepare::WebgpuPrepare;
