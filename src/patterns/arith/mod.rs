@@ -21,3 +21,8 @@ pub use to_spirv::{ArithSpirvOptions, ArithToSpirv};
 mod to_emitc;
 #[cfg(feature = "target.emitc")]
 pub use to_emitc::ArithToEmitc;
+
+#[cfg(all(feature = "dialect.amdgpu", feature = "dialect.vector"))]
+mod to_amdgpu;
+#[cfg(all(feature = "dialect.amdgpu", feature = "dialect.vector"))]
+pub use to_amdgpu::ArithToAmdgpu;

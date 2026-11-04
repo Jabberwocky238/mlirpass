@@ -15,6 +15,8 @@ impl crate::Passes {
         p.register::<crate::ConvertAffineForToGpu>(); // convert-affine-for-to-gpu
         #[cfg(feature = "dialect.affine")]
         p.register::<crate::LowerAffine>(); // lower-affine
+        #[cfg(all(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")), all(feature = "dialect.amdgpu", feature = "dialect.vector")))]
+        p.register::<crate::ConvertArithToAmdgpu>(); // convert-arith-to-amdgpu
         #[cfg(all(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")), feature = "target.emitc"))]
         p.register::<crate::ConvertArithToEmitc>(); // convert-arith-to-emitc
         #[cfg(all(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")), feature = "target.llvm"))]

@@ -690,7 +690,16 @@ impl<'a> Folder<'_, 'a> {
         if a.is_poison() {
             return Self::poison();
         }
-        let Ok(c) = Const::try_from(a) else { return Fold::Failed };
+        let Ok(c) = Const::try_from(a) else {
+            // A float of a format `Const` cannot hold (`f8E4M3FN`, `f4E2M1FN`, ..): its literal splat.
+            if let Attribute::Float { lit, ty: Some(t) } = a
+                && *t == *elem(&rt)
+                && let Ok(d) = mlirformat::Parser::read(&alloc::format!("dense<{lit}> : {rt}"), |p| p.attr())
+            {
+                return Self::attr(d.owned());
+            }
+            return Fold::Failed;
+        };
         if !c.is_splat() || (!c.elements && c.ty != *elem(&rt)) {
             return Fold::Failed;
         }

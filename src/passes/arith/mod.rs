@@ -14,3 +14,8 @@ pub use convert_arith_to_spirv::*;
 mod convert_arith_to_emitc;
 #[cfg(feature = "target.emitc")]
 pub use convert_arith_to_emitc::*;
+
+#[cfg(all(feature = "dialect.amdgpu", feature = "dialect.vector"))]
+mod convert_arith_to_amdgpu;
+#[cfg(all(feature = "dialect.amdgpu", feature = "dialect.vector"))]
+pub use convert_arith_to_amdgpu::ConvertArithToAmdgpu;

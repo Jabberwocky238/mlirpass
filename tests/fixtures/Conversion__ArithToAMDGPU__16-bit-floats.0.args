@@ -1,0 +1,2 @@
+--split-input-file
+-convert-arith-to-amdgpu=allow-packed-f16-round-to-zero=true
