@@ -158,6 +158,7 @@ mod bufferizable {
                 "tensor.from_elements" => &FromElements,
                 "tensor.insert" => &Insert,
                 "tensor.insert_slice" => &InsertSlice,
+                "tensor.parallel_insert_slice" => &ParallelInsertSlice,
                 _ => return None,
             })
         }
@@ -476,6 +477,40 @@ mod bufferizable {
             let indices = rw.body[op].operands[2..].to_vec();
             store(rw, scalar, buffer, &indices);
             replace_with_buffers(rw, op, &[buffer]);
+            Ok(())
+        }
+    }
+
+    /// `tensor.parallel_insert_slice`: a copy into a subview of its destination, before the
+    /// `scf.forall.in_parallel` it sits in; always in place.
+    struct ParallelInsertSlice;
+
+    impl Bufferizable for ParallelInsertSlice {
+        fn reads(&self, _: &AnalysisState<'_>, _: &Body<'_>, (_, i): Operand) -> bool {
+            i == 0
+        }
+
+        fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, (_, i): Operand) -> bool {
+            i == 1
+        }
+
+        fn resolve_conflicts(&self, _: &mut Rewriter<'_, '_>, _: &AnalysisState<'_>, _: OpId) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let parent = rw.body.parent_op(op).ok_or_else(|| Error("expected a parallel combining parent".into()))?;
+            rw.set_before(parent);
+            let lists = rw.body.slice_lists(op);
+            let (src, dest) = (rw.body[op].operands[0], rw.body[op].operands[1]);
+            let dst = buffer_of(rw, o, dest)?;
+            let sb = buffer_of(rw, o, src)?;
+            let shape = rw.body[src].ty.dims().unwrap_or_default();
+            let ty = rank_reduced_subview(rw.body, &rw.body[dst].ty.clone(), &shape, &lists);
+            let s = rw.create(OpData::sliced("memref.subview", &[dst], &lists), &[ty]);
+            let sv = rw.body[s].results[0];
+            rw.mem_cpy(sb, sv);
+            rw.erase_op(op);
             Ok(())
         }
     }

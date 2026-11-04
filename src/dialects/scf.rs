@@ -144,6 +144,8 @@ mod bufferizable {
     struct ExecuteRegion;
     struct While;
     struct Condition;
+    struct Forall;
+    struct InParallel;
 
     impl ScfDialect {
         pub(crate) fn bufferizable_op(name: &str) -> Option<&'static dyn Bufferizable> {
@@ -154,6 +156,8 @@ mod bufferizable {
                 "scf.execute_region" => &ExecuteRegion,
                 "scf.while" => &While,
                 "scf.condition" => &Condition,
+                "scf.forall" => &Forall,
+                "scf.forall.in_parallel" => &InParallel,
                 _ => return None,
             })
         }
@@ -661,6 +665,116 @@ mod bufferizable {
             Ok(())
         }
     }
+
+    impl Forall {
+        /// Where the `shared_outs` start among the operands.
+        fn outputs_at(b: &Body<'_>, op: OpId) -> usize {
+            let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
+            segs.iter().take(3).sum()
+        }
+
+        /// The number of induction variables.
+        fn rank(b: &Body<'_>, op: OpId) -> usize {
+            b[body_of(b, op, 0)].args.len() - (b[op].operands.len() - Self::outputs_at(b, op))
+        }
+
+        /// `isRepetitiveRegion`: a dynamic bound or step, or a dimension of two iterations.
+        fn repetitive(b: &Body<'_>, op: OpId) -> bool {
+            let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
+            let mut at = 0;
+            let mut lists = Vec::new();
+            for (k, name) in ["staticLowerBound", "staticUpperBound", "staticStep"].iter().enumerate() {
+                let statics = b.dense_i64(op, name);
+                let dynamic = &b[op].operands[at..at + segs.get(k).copied().unwrap_or(0)];
+                at += dynamic.len();
+                let mut d = dynamic.iter();
+                lists.push(statics.iter().map(|s| if *s == i64::MIN { d.next().and_then(|v| b.const_index(*v)) } else { Some(*s) }).collect::<Vec<_>>());
+            }
+            lists[0].iter().zip(&lists[1]).zip(&lists[2]).any(|((lb, ub), step)| match (lb, ub, step) {
+                (Some(lb), Some(ub), Some(step)) => lb + step < *ub,
+                _ => true,
+            })
+        }
+    }
+
+    impl Bufferizable for Forall {
+        fn aliasing_values(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> Vec<AliasingValue> {
+            match i.checked_sub(Self::outputs_at(b, op)) {
+                Some(k) => vec![AliasingValue::equivalent(b[op].results[k])],
+                None => Vec::new(),
+            }
+        }
+
+        fn writable(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: ValueId) -> bool {
+            true
+        }
+
+        fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
+            let op = b.owner_of(v);
+            let k = match b[v].def {
+                Def::Arg(_, a) => a as usize - Self::rank(b, op),
+                Def::Result(_, k) => k as usize,
+            };
+            crate::buffer_type_in(o, b, b[op].operands[Self::outputs_at(b, op) + k], stack)
+        }
+
+        fn repetitive_region(&self, b: &Body<'_>, op: OpId, _: usize) -> bool {
+            Self::repetitive(b, op)
+        }
+
+        fn parallel_region(&self, b: &Body<'_>, op: OpId, _: usize) -> bool {
+            Self::repetitive(b, op)
+        }
+
+        /// The shared outputs' buffers stand for the block's arguments; a new loop without
+        /// outputs takes the body.
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let at = Self::outputs_at(rw.body, op);
+            let rank = Self::rank(rw.body, op);
+            let outputs = rw.body[op].operands[at..].to_vec();
+            let mut buffers = Vec::new();
+            for v in &outputs {
+                buffers.push(buffer_of(rw, o, *v)?);
+            }
+            let old_body = body_of(rw.body, op, 0);
+            let old_args = rw.body[old_body].args.to_vec();
+            rw.set_start(old_body);
+            for (a, buf) in old_args[rank..].iter().zip(&buffers) {
+                let ty = rw.body[*a].ty.clone();
+                let t = rw.create(OpData::build("bufferization.to_tensor").operands(&[*buf]), &[ty]);
+                let tv = rw.body[t].results[0];
+                for (user, k) in rw.body.uses_of(*a) {
+                    if user != rw.body.owner_of(tv) {
+                        rw.modify(user, |b| b.set_operand(user, k, tv));
+                    }
+                }
+            }
+            let old = rw.body[op].clone();
+            let mut data = OpData::named(old.name.clone()).operands(&old.operands[..at]);
+            data.properties.clone_from(&old.properties);
+            data.attributes.clone_from(&old.attributes);
+            let mut segs = rw.body.segments(op, "operandSegmentSizes").unwrap_or_default();
+            if let Some(last) = segs.get_mut(3) {
+                *last = 0;
+            }
+            let ivs: Vec<_> = old_args[..rank].iter().map(|a| (rw.body[*a].ty.clone(), rw.body[*a].loc.clone())).collect();
+            rw.set_before(op);
+            let n = rw.create_with(data, &[], |b, o| {
+                let r = b.add_region(o);
+                b.add_block(r, &ivs);
+            });
+            rw.body.set_segments(n, "operandSegmentSizes", &segs);
+            let new_body = body_of(rw.body, n, 0);
+            let mut repl = rw.body[new_body].args.to_vec();
+            repl.extend(old_args[rank..].iter().copied());
+            rw.merge_blocks(old_body, new_body, &repl);
+            replace_with_buffers(rw, op, &buffers);
+            Ok(())
+        }
+    }
+
+    /// `scf.forall.in_parallel`: no tensor operands or results; its ops bufferize themselves.
+    impl Bufferizable for InParallel {}
 
     impl Bufferizable for Yield {
         fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
