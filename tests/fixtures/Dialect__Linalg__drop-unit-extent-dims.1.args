@@ -1,0 +1,3 @@
+-linalg-fold-unit-extent-dims=use-rank-reducing-slices
+-cse
+-split-input-file

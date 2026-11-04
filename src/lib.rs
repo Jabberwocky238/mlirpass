@@ -13,8 +13,6 @@ extern crate alloc;
 extern crate std;
 
 mod branch;
-#[macro_use]
-mod canon;
 mod conversion;
 mod dataflow;
 mod dialects;
@@ -27,17 +25,18 @@ mod interfaces;
 mod invocation;
 mod layout;
 mod ir;
-mod lower;
+mod passes;
+mod patterns;
 mod parallel;
 mod pass;
 mod region;
 mod rewrite;
 mod symbol;
-mod transforms;
 mod verify;
 
 pub use branch::*;
-pub use canon::{Fold, Folded};
+
+/// Every dialect's canonicalization patterns (`getCanonicalizationPatterns` of all ops), for passes that run a named subset of them greedily (`PatternSet::retain`).
 pub use conversion::*;
 pub use dialects::*;
 pub use dominance::*;
@@ -46,15 +45,15 @@ pub use emits::*;
 pub use greedy::*;
 pub use interfaces::*;
 pub use ir::*;
-pub use lower::*;
+pub use passes::*;
+pub use patterns::*;
 pub use invocation::*;
 pub use layout::*;
 pub use parallel::*;
 pub use pass::*;
 pub use rewrite::*;
 pub use symbol::*;
-pub use transforms::*;
 /// The proc macros (`mlirpass-macros`): `#[pass]`, `#[patterns]`, `#[ops]`, `blocks!`.
-pub use mlirpass_macros::{blocks, ops, pass, patterns};
+pub use mlirpass_macros::{blocks, ops, pass, pass_set, patterns};
 pub use mlirformat;
 pub use mlirformat::{AffineBin, AffineExpr, AffineMap, ApFloat, ApInt, Const, IntegerSet, Scalar};

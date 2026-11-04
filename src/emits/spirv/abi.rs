@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 use mlirformat::spirv_types::{SpirvMember, SpirvType};
 use mlirformat::{Attribute, Error, FunctionType, ShapedKind, Type};
 
-use super::{EnumSpec, Needs, OpSpec, TargetEnv};
+use super::{EnumSpec, TargetEnv};
 use crate::{Body, OpData, OpId};
 
 /// `VulkanLayoutUtils`: explicit offsets and strides, as Vulkan lays buffers out.
@@ -93,7 +93,7 @@ impl EntryAbi {
     }
 }
 
-struct Abi;
+pub(crate) struct Abi;
 
 impl Abi {
     fn int_attr<'a>(v: i64) -> Attribute<'a> {
@@ -138,7 +138,7 @@ impl Abi {
     }
 
     /// `ProcessInterfaceVarABI`: entry function arguments as global variables.
-    fn interface_vars(body: &mut Body<'_>, f: OpId) -> Result<(), Error> {
+    pub(crate) fn interface_vars(body: &mut Body<'_>, f: OpId) -> Result<(), Error> {
         let Some(Attribute::Type(Type::Function(fty))) = body[f].get("function_type").cloned() else { return Err(Error(String::from("spirv.func without a type"))) };
         let abis: Vec<_> = (0..fty.inputs.len()).map(|i| Self::arg_abi(body, f, i)).collect();
         if abis.iter().any(Option::is_none) {
@@ -189,7 +189,7 @@ impl Abi {
 
     /// `ProcessGraphInterfaceVarABI`: an entry graph's arguments and results as
     /// `<name>_arg_<i>` / `<name>_res_<i>` globals, named by a `spirv.ARM.GraphEntryPoint`.
-    fn graph_vars(body: &mut Body<'_>, g: OpId) -> Result<(), Error> {
+    pub(crate) fn graph_vars(body: &mut Body<'_>, g: OpId) -> Result<(), Error> {
         let failed = || Error(String::from("failed to legalize operation 'spirv.ARM.Graph'"));
         fn abis<'a>(body: &Body<'a>, g: OpId, key: &str) -> Vec<Option<Attribute<'a>>> {
             match body[g].get(key) {
@@ -230,7 +230,7 @@ impl Abi {
     }
 
     /// `lowerEntryPointABIAttr`.
-    fn entry_point(body: &mut Body<'_>, module: OpId, f: OpId, env: &TargetEnv) -> Result<(), Error> {
+    pub(crate) fn entry_point(body: &mut Body<'_>, module: OpId, f: OpId, env: &TargetEnv) -> Result<(), Error> {
         let Some(attr) = body[f].get("spirv.entry_point_abi").cloned() else { return Ok(()) };
         let mut abi = EntryAbi::parse(&attr);
         let name = super::lower::symbol_text(body[f].get("sym_name").expect("named")).expect("a name");
@@ -296,100 +296,5 @@ impl Abi {
     }
 }
 
-/// `spirv-lower-abi-attrs`.
-#[crate::pass("spirv-lower-abi-attrs", on = "spirv.module")]
-pub fn spirv_lower_abi_attrs<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
-    let env = TargetEnv::find(body, module).ok_or_else(|| Error(String::from("'spirv.module' op missing SPIR-V target env attribute")))?;
-    let ops = body[body.top_block(module)].ops.clone();
-    let funcs: Vec<OpId> = ops.iter().copied().filter(|o| body[*o].name == "spirv.func" && body[*o].get("spirv.entry_point_abi").is_some()).collect();
-    for o in ops {
-        match &*body[o].name {
-            "spirv.func" if funcs.contains(&o) => Abi::interface_vars(body, o)?,
-            "spirv.ARM.Graph" => Abi::graph_vars(body, o)?,
-            _ => {}
-        }
-    }
-    for f in funcs {
-        Abi::entry_point(body, module, f, &env)?;
-    }
-    Ok(())
-}
 
-/// `spirv-update-vce`: the minimal version, capabilities and extensions the module needs.
-#[crate::pass("spirv-update-vce", on = "spirv.module")]
-pub fn spirv_update_vce<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
-    let env = TargetEnv::find(body, module).ok_or_else(|| Error(String::from("missing 'spirv.target_env' attribute")))?;
-    let mut version = 0u8;
-    let (mut caps, mut exts): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
-    let mut order = Vec::new();
-    body.walk_post(module, &mut |o| order.push(o));
-    let pick = |name: &str, needs: &Needs, caps: bool, out: &mut Vec<String>| -> Result<(), Error> {
-        for ors in needs {
-            let chosen = if caps { env.first_cap(ors) } else { env.first_ext(ors) };
-            let Some(c) = chosen else {
-                return Err(Error(format!("'{name}' requires at least one {} in [{}] but none allowed in target environment", if caps { "capability" } else { "extension" }, ors.join(", "))));
-            };
-            if !out.contains(c) {
-                out.push(c.clone());
-            }
-        }
-        Ok(())
-    };
-    for o in order {
-        let name = String::from(&*body[o].name);
-        if let Some(spec) = OpSpec::of(&name) {
-            let (lo, _, c, e) = TargetEnv::op_needs(body, o, spec);
-            if let Some(v) = lo {
-                version = version.max(v);
-                if version > env.version {
-                    return Err(Error(format!("'{name}' requires min version v1.{version} but target environment allows up to v1.{}", env.version)));
-                }
-            }
-            pick(&name, &e, false, &mut exts)?;
-            pick(&name, &c, true, &mut caps)?;
-        }
-        let d = &body[o];
-        let mut types: Vec<Type<'_>> = d.operands.iter().chain(&d.results).map(|v| body[*v].ty.clone()).collect();
-        if name == "spirv.GlobalVariable"
-            && let Some(Attribute::Type(t)) = d.get("type")
-        {
-            types.push(t.clone());
-        }
-        // `FunctionOpInterface` ops (`spirv.func`, `spirv.ARM.Graph`): their signature.
-        if let Some(Attribute::Type(Type::Function(f))) = d.get("function_type")
-        {
-            types.extend(f.inputs.iter().chain(&f.results).cloned());
-        }
-        for t in &types {
-            let (mut c, mut e) = (Needs::new(), Needs::new());
-            TargetEnv::type_needs(t, None, &mut c, &mut e);
-            pick(&name, &e, false, &mut exts)?;
-            pick(&name, &c, true, &mut caps)?;
-        }
-    }
-    let mut implied = Vec::new();
-    for c in &caps {
-        for i in TargetEnv::implied(c) {
-            if !implied.contains(&i) {
-                implied.push(i);
-            }
-        }
-    }
-    for i in implied {
-        if !caps.contains(&i) {
-            caps.push(i);
-        }
-    }
-    for c in &caps {
-        if let Some(v) = EnumSpec::of("Capability").and_then(|e| e.case(c)).and_then(|c| c.avail.min) {
-            version = version.max(v);
-            if version > env.version {
-                return Err(Error(format!("Capability '{c}' requires min version v1.{version} but target environment allows up to v1.{}", env.version)));
-            }
-        }
-    }
-    let vce = Attribute::dialect("spirv.vce", &format!("<v1.{version}, [{}], [{}]>", caps.join(", "), exts.join(", ")));
-    body[module].set("vce_triple", vce);
-    Ok(())
-}
 

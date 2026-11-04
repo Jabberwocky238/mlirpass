@@ -1,0 +1,3 @@
+-one-shot-bufferize=allow-unknown-ops analysis-heuristic=top-down
+-verify-diagnostics
+-split-input-file

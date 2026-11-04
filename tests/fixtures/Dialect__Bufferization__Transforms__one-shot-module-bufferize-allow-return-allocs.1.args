@@ -1,0 +1,2 @@
+-one-shot-bufferize=bufferize-function-boundaries=1 
+-split-input-file

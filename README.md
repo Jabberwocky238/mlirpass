@@ -23,16 +23,16 @@ own target env (`tests/support/vkinfo.c`) is checked against the host's product 
 | `pass` | pass manager, `--pass-pipeline` syntax, registry | `mlir/Pass` |
 | `parallel` | `Executor` (`Serial`, `ThreadPool`): nested pipelines over isolated ops (functions) as parallel tasks | `OpToOpPassAdaptor`, `llvm::ThreadPool` |
 | `rewrite`, `greedy` | patterns, rewriter, greedy driver | `PatternMatch`, `GreedyPatternRewriteDriver` |
-| `canon` | folding (`Fold`) and each dialect's folds and canonicalization patterns | `Operation::fold`, `*Ops.cpp` |
-| `conversion` | conversion target, type converter, dialect conversion, `#[lowering]`s as patterns, the `DialectInterfaces` trait `convert-to-*` asks | `DialectConversion` |
+| `conversion` | conversion target, type converter, dialect conversion, `#[convert]`s as patterns, the `DialectInterfaces` trait `convert-to-*` asks | `DialectConversion` |
 | `interfaces`, `branch`, `effects` | op traits, op interfaces, `BranchOpInterface` / `RegionBranchOpInterface`, memory effects | `mlir/Interfaces` |
 | `layout` | `MemrefLayout` (strides, offset), `DataLayout` (type sizes, alignments, index bitwidth) | `BuiltinTypes`, `DataLayoutInterfaces` |
-| `lower` | between dialects (no llvm, no emitc, no spirv) | `mlir/lib/Conversion` |
+| `patterns` | ⭐ rule sets, one directory per source dialect: `<d>/canonicalize.rs` (its folds, constant materialization and canonicalization patterns, `<D>Canon`), `<d>/to_<target>.rs` (`scf/to_cf.rs`, `arith/to_llvm.rs`), and its own transforms' rules | `*Ops.cpp`, `mlir/lib/Conversion`, `Dialect/*/Transforms` |
+| `passes` | ⭐ pipeline units, one directory per source dialect, one file per pass (`scf/convert_scf_to_cf.rs`, `linalg/linalg_fold_unit_extent_dims.rs`); `transforms/` the dialect-independent ones | `mlir/lib/Conversion`, `Dialect/*/Transforms`, `mlir/lib/Transforms` |
 | `dialects` | each upstream dialect's `OpInterfaces`, one unit struct each (`ScfDialect`, ...) | `mlir/lib/Dialect/*/IR` |
-| `transforms` | `canonicalize`, `cse`, `sccp`, `inline`, `symbol-dce`, `mem2reg`, `sroa`, ... (dialect-independent) | `mlir/lib/Transforms` |
-| `emits` | the `Emit` trait, and the backends below | `mlir-translate` |
+| `emits` | the `Emit` trait, and what each backend below shares (type converters, `convert-to-*` interfaces, serializers) | `mlir-translate` |
 
-The backends live under `src/emits`, one cargo feature each (all on by default):
+The backends are one cargo feature each (all on by default); their rules and passes sit in
+`patterns/` / `passes/` like any other, gated by the feature, and `src/emits` keeps what they share:
 
 | feature | what it is | upstream |
 |---|---|---|
@@ -45,7 +45,7 @@ Dialects: every dialect mlirformat describes.
 ## Declaring passes and lowerings
 
 Passes and pattern sets are declared with the proc macros of `mlirpass-macros` (`macros/`),
-re-exported by mlirpass (`use mlirpass::{pass, patterns, ops, blocks};`, inside the crate
+re-exported by mlirpass (`use mlirpass::{pass, pass_set, patterns, ops, blocks};`, inside the crate
 `use crate::pass;`), not written out by hand:
 
 ```rust
@@ -64,13 +64,13 @@ impl Run for ConvertComplexToLlvm {
 #[pass("sccp")]
 pub fn sccp<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> { /* ... */ }
 
-/// Lowerings: each `#[lowering]` method goes into the generated `populate`.
+/// Conversion patterns: each `#[convert]` method goes into the generated `populate`.
 #[patterns(converter, improved: bool)]
 impl ComplexToLlvm {
-    #[lowering("complex.add", "complex.sub")]
+    #[convert("complex.add", "complex.sub")]
     fn arith(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool { /* ... */ }
 
-    #[lowering("complex.div", when = improved)]
+    #[convert("complex.div", when = improved)]
     fn div_improved(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool { /* ... */ }
 }
 ```
@@ -81,16 +81,16 @@ Rows that differ only in their target are generated whole with `#[map]` on the s
 #[patterns(converter)]
 #[map("arith.addf" => "llvm.fadd", fastmath, fp)]            // the one-to-one rewrite itself
 #[map("arith.shli" => "emitc.bitwise_left_shift", via = Self::shift(true))] // a family template
-impl ArithToLlvm { /* the special cases, as #[lowering] methods */ }
+impl ArithToLlvm { /* the special cases, as #[convert] methods */ }
 ```
 
 Arithmetic is written as arithmetic: `#[ops(b, fmf = f)]` turns `+ - * / & | ^ << >>`, unary
 `-` and float literals into ops built through `b`, in C++'s creation order; with
-`#[patterns(builder = ctor)]` a `#[lowering]` is declared by its signature (operands, attributes
+`#[patterns(builder = ctor)]` a `#[convert]` is declared by its signature (operands, attributes
 read off the op, the replacement as the return value):
 
 ```rust
-#[lowering("complex.mul")]
+#[convert("complex.mul")]
 #[ops(b, fmf = fmf)]
 fn mul(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId, fmf: Fmf) -> ValueId {
     let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
@@ -114,17 +114,21 @@ blocks!(f;
 op, options accepted but unused, and a validation hook; on a `fn` pass, `ty = Name` names the
 generated struct (default: the name in CamelCase). `#[patterns]` takes `converter` (a type
 converter index), `options = T` (methods also take the options), `extra = path` (non-method
-patterns) and `flag: T` parameters; `#[lowering]` takes the roots, `benefit`, `when`, `untyped`
+patterns) and `flag: T` parameters; `#[convert]` takes the roots (`_`: any op), `benefit`, `when`, `untyped`
 and `plain`.
 
-Inside the crate, canonicalization patterns (`src/canon/*.rs`) are declared with the
-`rewrites!` macro: one unit struct per pattern, its root op (`_`: any op, for interface
-patterns such as `EraseDeadLinalgOp`), its benefit, and a body that matches and rewrites:
+Rewrite patterns (same-dialect rewrites: canonicalization, a transform's rules) are `#[rewrite]`
+methods of a `#[patterns]` impl: each becomes a unit struct implementing `Pattern` (named after
+the method in CamelCase, or `name = ".."`), with its root op (`_`: any op, for interface patterns
+such as `EraseDeadLinalgOp`) and benefit; the generated `patterns(set)` adds them all in order,
+and `populate` adds them as conversion patterns too:
 
 ```rust
-rewrites! {
+#[patterns]
+impl TensorCanon {
     /// `FoldFillWithTensorExtract`: an element of a fill is the fill value.
-    FoldFillWithTensorExtract("tensor.extract", 1) |rw, op| {
+    #[rewrite("tensor.extract")]
+    fn fold_fill_with_tensor_extract(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let Some(f) = rw.body.def_named(rw.body[op].operands[0], "linalg.fill") else { return false };
         let v = rw.body[f].operands[0];
         rw.replace_op(op, &[v]);
@@ -133,7 +137,7 @@ rewrites! {
 }
 ```
 
-`mem2reg` / `sroa` ask the memory-slot interfaces (`src/transforms/memslot.rs`) as traits a
+`mem2reg` / `sroa` ask the memory-slot interfaces (`src/passes/transforms/memslot.rs`) as traits a
 dialect implements once for its ops by name: `Promotable` and `Destructurable`, on the unit
 structs `LlvmSlots` and `MemrefSlots`.
 
@@ -143,7 +147,7 @@ a body of its own and runs them as the pool's tasks; the result is the same as w
 (`run`, `-mlir-disable-threading`). The command line threads by default, as `mlir-opt`.
 
 Nothing is global. Pipelines name passes through a `PassRegistry` (`Invocation::parse(&passes, args)`);
-each module declares its passes as a `PassSet` (`pass_set!(LlvmPasses: ConvertArithToLlvm, ...)`):
+passes are grouped into `PassSet`s (`#[pass_set(ConvertArithToLlvm, ...)] pub struct LlvmPasses;`):
 `Passes::new().with::<LlvmPasses>()` registers just those, `Passes::upstream()` every set. A `Body`
 asks its `Ctx` what it knows of ops: mlirformat's `MlirOpt` (the loaded dialects, ODS's table) and
 the `Interfaces` holding each dialect's `OpInterfaces` (what upstream computes in C++: effects,

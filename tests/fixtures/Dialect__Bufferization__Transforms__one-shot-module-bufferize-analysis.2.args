@@ -1,0 +1,4 @@
+-one-shot-bufferize=bufferize-function-boundaries test-analysis-only analysis-heuristic=fuzzer analysis-fuzzer-seed=23
+-split-input-file
+-o
+/dev/null

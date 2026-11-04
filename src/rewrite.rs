@@ -27,6 +27,11 @@ pub trait Listener<'a> {
     fn replaced(&mut self, _body: &Body<'a>, _op: OpId, _with: &[ValueId]) {}
     fn erased(&mut self, _body: &Body<'a>, _op: OpId) {}
     fn block_erased(&mut self, _body: &Body<'a>, _block: BlockId) {}
+    /// Whether replacing `op` by `with` (erasing it: `with` empty) is recorded rather than
+    /// done; the conversion driver records them while a rewrite pattern runs.
+    fn record_replacement(&mut self, _body: &Body<'a>, _op: OpId, _with: &[ValueId]) -> bool {
+        false
+    }
 }
 
 /// A listener that ignores everything.
@@ -46,18 +51,21 @@ pub struct Rewriter<'r, 'a, L: Listener<'a> + ?Sized = dyn Listener<'a> + 'r> {
     pub body: &'r mut Body<'a>,
     pub listener: &'r mut L,
     pub ip: Option<InsertPoint>,
+    /// The location new ops get when built without one (`op->getLoc()` of the op a pattern
+    /// rewrites): the drivers set it to the root op's before calling a pattern.
+    pub loc: Option<mlirformat::Str<'a>>,
 }
 
 impl<'r, 'a> Rewriter<'r, 'a> {
     pub fn new(body: &'r mut Body<'a>, listener: &'r mut dyn Listener<'a>) -> Self {
-        Self { body, listener, ip: None }
+        Self { body, listener, ip: None, loc: None }
     }
 }
 
 impl<'r, 'a, L: Listener<'a>> Rewriter<'r, 'a, L> {
     /// A rewriter whose listener keeps its concrete type.
     pub fn typed(body: &'r mut Body<'a>, listener: &'r mut L) -> Self {
-        Self { body, listener, ip: None }
+        Self { body, listener, ip: None, loc: None }
     }
 }
 
@@ -143,6 +151,9 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
     /// Places detached `op` at the insertion point and tells the listener.
     pub fn insert(&mut self, op: OpId) -> OpId {
         let ip = self.ip.expect("no insertion point");
+        if self.body[op].loc.is_none() {
+            self.body[op].loc.clone_from(&self.loc);
+        }
         match ip.before {
             Some(b) => self.body.insert_before(op, b),
             None => self.body.insert(op, ip.block, None),
@@ -168,6 +179,9 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
     pub fn create_or_fold(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> Vec<ValueId> {
         let op = self.body.create(data, types);
         let ip = self.ip.expect("no insertion point");
+        if self.body[op].loc.is_none() {
+            self.body[op].loc.clone_from(&self.loc);
+        }
         match ip.before {
             Some(b) => self.body.insert_before(op, b),
             None => self.body.insert(op, ip.block, None),
@@ -252,6 +266,12 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
 
     /// ⭐ Replaces `op`'s results by `with` and erases it.
     pub fn replace_op(&mut self, op: OpId, with: &[ValueId]) {
+        if self.listener.record_replacement(self.body, op, with) {
+            if self.ip.is_some_and(|ip| ip.before == Some(op)) {
+                self.set_after(op);
+            }
+            return;
+        }
         self.replace_op_uses(op, with);
         self.erase_op(op);
     }
@@ -275,6 +295,9 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
     pub fn erase_op(&mut self, op: OpId) {
         if self.ip.is_some_and(|ip| ip.before == Some(op)) {
             self.set_after(op);
+        }
+        if self.listener.record_replacement(self.body, op, &[]) {
+            return;
         }
         self.erase_tree(op);
     }

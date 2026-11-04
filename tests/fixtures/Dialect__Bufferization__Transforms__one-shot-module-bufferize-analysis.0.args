@@ -1,0 +1,2 @@
+-one-shot-bufferize=bufferize-function-boundaries test-analysis-only
+-split-input-file

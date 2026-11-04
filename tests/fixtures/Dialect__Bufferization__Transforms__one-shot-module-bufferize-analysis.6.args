@@ -1,0 +1,4 @@
+-one-shot-bufferize=bufferize-function-boundaries test-analysis-only analysis-heuristic=top-down
+-split-input-file
+-o
+/dev/null

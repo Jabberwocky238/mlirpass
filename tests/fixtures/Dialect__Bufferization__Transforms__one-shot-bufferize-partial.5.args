@@ -1,0 +1,4 @@
+-allow-unregistered-dialect
+-one-shot-bufferize=dialect-filter=tensor,bufferization allow-unknown-ops
+-canonicalize
+-split-input-file

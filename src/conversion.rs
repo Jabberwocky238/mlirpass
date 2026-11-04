@@ -308,6 +308,8 @@ pub struct ConvState<'a> {
     undo: Vec<Undo<'a>>,
     /// Open marks.
     depth: u32,
+    /// A rewrite pattern is running ([`Plain`]): its replacements are recorded, not done.
+    recording: bool,
 }
 
 /// One change to [`ConvState`] to undo on rollback.
@@ -346,6 +348,51 @@ impl<'a> Listener<'a> for ConvState<'a> {
         if !self.modified_ops.contains(&op) {
             self.modified_ops.push(op);
         }
+    }
+
+    /// While a rewrite pattern runs, `replaceOp` / `eraseOp` are the conversion's: the results
+    /// stand for `with` (nothing, when erased) from now on and `op` goes at the end.
+    fn record_replacement(&mut self, body: &Body<'a>, op: OpId, with: &[ValueId]) -> bool {
+        if !self.recording {
+            return false;
+        }
+        for (i, r) in body[op].results.iter().enumerate() {
+            self.map(vec![*r], with.get(i).map_or_else(Vec::new, |w| vec![*w]));
+        }
+        self.rewrites.push(Rewrite::ReplaceOp(op, None));
+        self.replace_ops(body.ops_in(op));
+        true
+    }
+}
+
+/// A rewrite pattern among conversion patterns (upstream, a `RewritePattern` in a conversion):
+/// it reads the op's own operands, and its replacements are recorded as a conversion's.
+pub struct Plain<P>(pub P);
+
+impl<P: crate::Pattern> ConversionPattern for Plain<P> {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn root(&self) -> Option<&str> {
+        self.0.root()
+    }
+
+    fn benefit(&self) -> u16 {
+        self.0.benefit()
+    }
+
+    fn rewrite(&self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        cr.rw.listener.recording = true;
+        let (ip, loc) = (cr.rw.ip, cr.rw.loc.clone());
+        let matched = {
+            let mut rw = Rewriter::new(&mut *cr.rw.body, &mut *cr.rw.listener);
+            rw.ip = ip;
+            rw.loc = loc;
+            self.0.rewrite(&mut rw, op)
+        };
+        cr.rw.listener.recording = false;
+        matched
     }
 }
 
@@ -1115,6 +1162,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
                 cr.current = tc;
                 cr.rw.set_before(op);
                 let loc = cr.rw.body[op].loc.clone();
+                cr.rw.loc.clone_from(&loc);
                 let operands = cr.rw.body[op].operands.clone();
                 match cr.remap(&operands, loc) {
                     Some(remapped) => self.patterns.patterns[i].0.rewrite(&mut cr, op, &remapped),
@@ -1395,15 +1443,15 @@ pub trait DialectInterfaces {
     fn populate<'p>(&self, ns: &str, patterns: &mut ConversionPatterns<'p>, tc: usize, env: &Self::Env<'p>);
 }
 
-// Lowerings given as functions: what `#[patterns]` / `#[lowering]` generate, and the
+// Lowerings given as functions: what `#[patterns]` / `#[convert]` generate, and the
 // [`ConversionRewriter`] builders they are written with.
 
-/// Something a typed `#[lowering]` reads off the op it lowers (its fast-math flags, ..).
+/// Something a typed `#[convert]` reads off the op it lowers (its fast-math flags, ..).
 pub(crate) trait FromOp {
     fn from_op(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Self;
 }
 
-/// What a typed `#[lowering]` returns: the op's replacement, or failure.
+/// What a typed `#[convert]` returns: the op's replacement, or failure.
 pub trait Replacement {
     fn replace(self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId) -> bool;
 }
@@ -1442,7 +1490,7 @@ impl<O: Copy> ConversionPattern for OptLowering<O> {
     }
 
     fn root(&self) -> Option<&str> {
-        Some(self.root)
+        (self.root != Lowering::ANY).then_some(self.root)
     }
 
     fn benefit(&self) -> u16 {
@@ -1478,7 +1526,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     }
 }
 
-/// A conversion pattern given as a root, a benefit and a function.
+/// A conversion pattern given as a root (`_`: any op), a benefit and a function.
 pub struct Lowering {
     pub root: &'static str,
     pub benefit: u16,
@@ -1488,13 +1536,18 @@ pub struct Lowering {
 /// What a [`Lowering`] runs.
 pub type LowerFn = for<'r, 'a, 'p> fn(&mut ConversionRewriter<'r, 'a, 'p>, OpId, &[Vec<ValueId>]) -> bool;
 
+impl Lowering {
+    /// The root of a pattern on any op (`#[convert(_)]`, `MatchAnyOpTypeTag`).
+    pub const ANY: &'static str = "_";
+}
+
 impl ConversionPattern for Lowering {
     fn name(&self) -> &str {
         self.root
     }
 
     fn root(&self) -> Option<&str> {
-        Some(self.root)
+        (self.root != Self::ANY).then_some(self.root)
     }
 
     fn benefit(&self) -> u16 {
@@ -1514,7 +1567,6 @@ pub fn reconcile_unrealized_casts<'a>(body: &mut Body<'a>, op: OpId) -> Result<(
     Ok(())
 }
 
-crate::pass_set! {
-    /// The dialect conversion framework's own passes.
-    ConversionPasses: ReconcileUnrealizedCasts
-}
+/// The dialect conversion framework's own passes.
+#[crate::pass_set(ReconcileUnrealizedCasts)]
+pub struct ConversionPasses;

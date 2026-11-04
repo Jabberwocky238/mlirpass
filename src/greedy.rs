@@ -250,6 +250,30 @@ impl<'a> Body<'a> {
         self.process(&mut tracker, patterns, &GreedyConfig::default());
     }
 
+    /// `walkAndApplyPatterns(op, patterns)`: one post-order walk of the ops nested in `op`,
+    /// each tried once against `patterns` (highest benefit first, the first that matches
+    /// wins); no folding, no dead-code erasure, and ops a rewrite creates are not visited.
+    pub fn walk_and_apply(&mut self, op: OpId, patterns: &PatternSet) {
+        let mut ops = Vec::new();
+        self.walk_post(op, &mut |o| ops.push(o));
+        ops.pop();
+        let mut quiet = crate::Quiet;
+        for o in ops {
+            if self[o].parent.is_none() {
+                continue;
+            }
+            let name = self[o].name.clone();
+            let loc = self[o].loc.clone();
+            let mut rw = Rewriter::new(self, &mut quiet);
+            rw.loc = loc;
+            for p in patterns.for_op(&name) {
+                if p.rewrite(&mut rw, o) {
+                    break;
+                }
+            }
+        }
+    }
+
     /// ⭐ `applyPatternsGreedily(region, patterns, config)`; whether it converged.
     pub fn apply_greedily(&mut self, region: RegionId, patterns: &PatternSet, config: &GreedyConfig) -> bool {
         let mut tracker = Tracker { worklist: Worklist::default(), scope: region };
@@ -336,7 +360,9 @@ impl<'a> Body<'a> {
                 }
             }
             let name = self[op].name.clone();
+            let loc = self[op].loc.clone();
             let mut rw = Rewriter::new(self, tracker);
+            rw.loc = loc;
             for p in patterns.for_op(&name) {
                 if p.rewrite(&mut rw, op) {
                     changed = true;

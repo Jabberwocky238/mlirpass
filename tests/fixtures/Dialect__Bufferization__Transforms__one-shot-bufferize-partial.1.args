@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+-one-shot-bufferize=allow-unknown-ops unknown-type-conversion=identity-layout-map
+-split-input-file

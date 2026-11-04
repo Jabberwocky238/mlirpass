@@ -1,0 +1,6 @@
+-eliminate-empty-tensors
+-empty-tensor-to-alloc-tensor
+-one-shot-bufferize=bufferize-function-boundaries
+-cse
+-canonicalize
+-split-input-file

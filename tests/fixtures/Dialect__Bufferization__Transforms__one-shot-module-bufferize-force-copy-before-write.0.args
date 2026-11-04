@@ -1,0 +1,3 @@
+-one-shot-bufferize=bufferize-function-boundaries=1 no-analysis-func-filter=contains_to_buffer_op
+-drop-equivalent-buffer-results
+--split-input-file

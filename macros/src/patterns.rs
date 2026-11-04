@@ -1,18 +1,19 @@
-//! `#[patterns]`: a pattern set's `populate`, from its `#[lowering]` methods and `#[map]` rows.
+//! `#[patterns]`: a rule set's `patterns` / `populate`, from its `#[rewrite]` (rewrite pattern)
+//! and `#[convert]` (conversion pattern) methods and `#[map]` rows.
 
 use proc_macro2::TokenStream as Tokens;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::{Expr, Ident, ImplItem, ItemImpl, LitStr, Token, Type};
 
-mod lowering;
 mod map;
+mod rule;
 
-use lowering::LoweringArgs;
 use map::MapArgs;
+pub use rule::RuleArgs;
 
-/// `#[patterns(..)]`'s arguments: `converter`, `options = Type`, `extra = path`, and
-/// `flag: Type` populate parameters.
+/// `#[patterns(..)]`'s arguments: `converter`, `options = Type`, `extra = path`,
+/// `builder = ctor`, and `flag: Type` populate parameters.
 pub struct PatternsArgs {
     converter: bool,
     options: Option<Type>,
@@ -48,21 +49,23 @@ impl Parse for PatternsArgs {
     }
 }
 
-/// What the rows of a `#[patterns]` impl add to it: their generated items, the roots they
-/// lower, and their statements of `populate`.
-struct Populate {
+/// What the rows of a `#[patterns]` impl add: items inside the impl, items beside it (the
+/// rewrite-pattern structs), the roots lowered, and the statements of `patterns` / `populate`.
+pub struct Populate {
     items: Vec<ImplItem>,
+    beside: Vec<Tokens>,
     roots: Vec<LitStr>,
+    /// `populate`'s statements (conversion patterns, and rewrite patterns through `Plain`).
     adds: Vec<Tokens>,
+    /// `patterns`' statements (rewrite patterns).
+    plain: Vec<Tokens>,
 }
 
 impl Populate {
-    /// A row's pattern: `f` lowering `root`, added when `when` holds; `opts` when it takes
+    /// A conversion rule: `f` lowering `root`, added when `when` holds; `opts` when it takes
     /// the options, `typed` when it goes through the type converter.
     fn add(&mut self, root: &LitStr, benefit: Tokens, when: Tokens, f: &Ident, opts: bool, typed: bool) {
-        if !self.roots.iter().any(|r| r.value() == root.value()) {
-            self.roots.push(root.clone());
-        }
+        self.root(root);
         let make = if opts {
             quote!(crate::OptLowering { root: #root, benefit: #benefit, opts, f: Self::#f })
         } else {
@@ -75,6 +78,21 @@ impl Populate {
                 #add;
             }
         });
+    }
+
+    /// A rewrite rule `s` (its struct), added to `patterns` and, through `Plain`, to `populate`.
+    fn add_plain(&mut self, root: Option<&LitStr>, s: &Ident, when: Tokens) {
+        if let Some(r) = root {
+            self.root(r);
+        }
+        self.plain.push(quote!(if #when { set.add(#s); }));
+        self.adds.push(quote!(if #when { patterns.add(crate::Plain(#s)); }));
+    }
+
+    fn root(&mut self, root: &LitStr) {
+        if root.value() != "_" && !self.roots.iter().any(|r| r.value() == root.value()) {
+            self.roots.push(root.clone());
+        }
     }
 }
 
@@ -93,20 +111,23 @@ impl PatternsArgs {
             }
         }
         imp.attrs = kept;
-        let mut out = Populate { items: Vec::new(), roots: Vec::new(), adds: Vec::new() };
+        let self_ty = imp.self_ty.clone();
+        let mut out = Populate { items: Vec::new(), beside: Vec::new(), roots: Vec::new(), adds: Vec::new(), plain: Vec::new() };
         for it in imp.items.iter_mut() {
             let ImplItem::Fn(m) = it else { continue };
-            let Some(pos) = m.attrs.iter().position(|a| a.path().is_ident("lowering")) else { continue };
-            let l: LoweringArgs = m.attrs.remove(pos).parse_args()?;
-            l.declare(&args, m, &mut out)?;
+            let Some(pos) = m.attrs.iter().position(|a| a.path().is_ident("rewrite") || a.path().is_ident("convert")) else { continue };
+            let a = m.attrs.remove(pos);
+            let mut r: RuleArgs = a.parse_args()?;
+            r.convert = a.path().is_ident("convert");
+            r.declare(&args, &self_ty, m, &mut out)?;
         }
         for (i, m) in maps.iter().enumerate() {
             m.declare(&args, i, &mut out);
         }
-        let Populate { items, roots, adds } = out;
+        let Populate { items, beside, roots, adds, plain } = out;
         imp.items.extend(items);
         imp.items.push(syn::parse_quote! {
-            /// Every root the patterns above lower.
+            /// Every root the rules above rewrite.
             pub const ROOTS: &'static [&'static str] = &[#(#roots),*];
         });
         let tc = args.converter.then(|| quote!(tc: usize,));
@@ -121,7 +142,7 @@ impl PatternsArgs {
         let unused = [args.converter.then(|| quote!(let _ = tc;)), args.options.as_ref().map(|_| quote!(let _ = &opts;))];
         let populate = format_ident!("populate");
         imp.items.push(syn::parse_quote! {
-            /// The patterns declared by `#[lowering]` above, in order.
+            /// The rules above as conversion patterns (rewrite patterns through `Plain`), in order.
             pub fn #populate<'p>(patterns: &mut crate::ConversionPatterns<'p>, #tc #opts #(#params),*) {
                 #(#unused)*
                 #(let _ = &#names;)*
@@ -129,6 +150,15 @@ impl PatternsArgs {
                 #extra
             }
         });
-        Ok(quote!(#imp))
+        if !plain.is_empty() {
+            imp.items.push(syn::parse_quote! {
+                /// The rewrite patterns above, for the greedy and walk drivers.
+                pub fn patterns(set: &mut crate::PatternSet, #(#params),*) {
+                    #(let _ = &#names;)*
+                    #(#plain)*
+                }
+            });
+        }
+        Ok(quote!(#imp #(#beside)*))
     }
 }

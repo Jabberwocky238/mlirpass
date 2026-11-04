@@ -1,0 +1,5 @@
+-allow-unregistered-dialect
+-one-shot-bufferize=test-analysis-only analysis-heuristic=fuzzer analysis-fuzzer-seed=59
+-split-input-file
+-o
+/dev/null

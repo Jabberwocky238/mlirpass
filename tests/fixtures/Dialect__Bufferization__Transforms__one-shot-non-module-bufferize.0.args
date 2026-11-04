@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+-pass-pipeline=builtin.module(test.symbol_scope_isolated(test-one-shot-module-bufferize))
+-split-input-file

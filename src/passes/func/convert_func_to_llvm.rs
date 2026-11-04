@@ -1,0 +1,28 @@
+//! `convert-func-to-llvm`.
+
+use crate::{llvm_target};
+use crate::{FuncToLlvm, LlvmConverter, LlvmOptions};
+use crate::pass;
+use mlirformat::Error;
+use crate::{Body, ConversionConfig, ConversionPatterns, Converter, Mode, OpId, Run};
+
+/// `convert-func-to-llvm`.
+#[pass("convert-func-to-llvm", on = "builtin.module")]
+pub struct ConvertFuncToLlvm {
+    #[opt("use-bare-ptr-memref-call-conv")]
+    bare_ptr: bool,
+    #[opt("index-bitwidth")]
+    index_bitwidth: u32,
+}
+
+impl Run for ConvertFuncToLlvm {
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        let options = LlvmOptions { index_bitwidth: self.index_bitwidth, bare_ptr: self.bare_ptr }.at(body, op);
+        let tc = LlvmConverter::build(options);
+        let mut patterns = ConversionPatterns::default();
+        let i = patterns.converter(&tc);
+        FuncToLlvm::populate(&mut patterns, i, options);
+        let target = llvm_target();
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
+    }
+}

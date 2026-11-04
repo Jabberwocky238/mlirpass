@@ -39,6 +39,23 @@ pub trait OpInterfaces: Sync {
         None
     }
 
+    /// ⭐ `Op::fold` of an op of a dialect mlirpass does not describe itself (an out-of-tree
+    /// dialect): what the greedy driver and `Operation::fold` ask after the built-in folds of
+    /// the upstream dialects. [`Fold::Failed`](crate::Fold) by default.
+    fn fold<'a>(&self, _: &mut Body<'a>, _: OpId, _: &[Option<Attribute<'a>>]) -> crate::Fold<'a> {
+        crate::Fold::Failed
+    }
+
+    /// `Dialect::materializeConstant` of such a dialect: the op that makes constant `value` of
+    /// type `ty`; `None`: it cannot.
+    fn materialize<'a>(&self, _: &Attribute<'a>, _: &mlirformat::Type<'a>) -> Option<crate::OpData<'a>> {
+        None
+    }
+
+    /// `getCanonicalizationPatterns` of such a dialect's ops, added after the upstream ones
+    /// (`canonicalize`).
+    fn canonicalization_patterns(&self, _: &mut crate::PatternSet) {}
+
     /// `ConditionallySpeculatable::getSpeculatability`: `None` not speculatable, `Some(false)`
     /// speculatable, `Some(true)` recursively.
     fn speculatability(&self, _: &Body<'_>, _: OpId) -> Option<bool> {
@@ -197,6 +214,11 @@ impl<'i> Interfaces<'i> {
     pub fn register(&mut self, d: &'i dyn OpInterfaces) -> &mut Self {
         self.dialects.push(d);
         self
+    }
+
+    /// Every registered dialect's interfaces, in registration order.
+    pub fn iter(&self) -> impl Iterator<Item = &'i dyn OpInterfaces> + '_ {
+        self.dialects.iter().copied()
     }
 
     /// The interfaces of the dialect op `name` belongs to.

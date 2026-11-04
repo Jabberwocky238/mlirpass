@@ -1,0 +1,3 @@
+-one-shot-bufferize=test-analysis-only dump-alias-sets
+-allow-unregistered-dialect
+-split-input-file

@@ -171,7 +171,7 @@ impl crate::Passes {
         let mut p = Self::new();
         p.with::<crate::ConversionPasses>();
         p.with::<crate::TransformPasses>();
-        p.with::<crate::LowerPasses>();
+        p.with::<crate::DialectPasses>();
         #[cfg(feature = "llvm")]
         p.with::<crate::LlvmPasses>();
         #[cfg(feature = "emitc")]

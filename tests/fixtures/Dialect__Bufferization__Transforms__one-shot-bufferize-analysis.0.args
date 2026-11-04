@@ -1,0 +1,3 @@
+-one-shot-bufferize=test-analysis-only
+-allow-unregistered-dialect
+-split-input-file

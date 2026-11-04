@@ -38,6 +38,11 @@ def tests(root: Path):
     # The x86 CPU dialects: their LLVM lowering (`convert-vector-to-llvm` `enable-x86vector` /
     # `enable-amx`) and the rest of their tests.
     found += list(root.glob("Dialect/X86Vector/*.mlir")) + list(root.glob("Dialect/AMX/*.mlir"))
+    # Bufferization and the linalg / memref transforms before it: one-shot-bufferize,
+    # linalg-fold-unit-extent-dims, convert-elementwise-to-linalg, fold-memref-alias-ops.
+    found += list(root.glob("Dialect/Bufferization/Transforms/one-shot-*.mlir"))
+    found += [root / "Dialect/Linalg/drop-unit-extent-dims.mlir", root / "Dialect/Linalg/convert-elementwise-to-linalg.mlir"]
+    found += [root / "Dialect/MemRef/fold-memref-alias-ops.mlir"]
     for path in sorted(set(found)):
         rel = path.relative_to(root)
         if rel.parts[0] == "Conversion" and any(s in part for part in rel.parts[1:-1] for s in OUT_OF_SCOPE):

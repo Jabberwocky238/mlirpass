@@ -10,7 +10,7 @@ use mlirformat::llvm::{AllocaOp, ConstantOp, GEPOp, MemcpyInlineOp, MemcpyOp, Me
 use mlirformat::llvm_types::LlvmType;
 use mlirformat::{llvm, Attribute, ShapedKind, Type, Value};
 
-use crate::transforms::{Deletion, Destructurable, DestructurableMemorySlot, MemorySlot, Promotable, Slots};
+use crate::{Deletion, Destructurable, DestructurableMemorySlot, MemorySlot, Promotable, Slots};
 use crate::{Body, Const, DataLayout, OpData, OpId, Rewriter, TypedOp, Use, ValueId};
 
 /// `llvm`'s memory slot interfaces (`LLVMMemorySlot.cpp`): [`Promotable`] for `mem2reg`,

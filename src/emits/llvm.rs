@@ -1,37 +1,15 @@
 //! The `LLVMTypeConverter` and its options; the LLVM types themselves are mlirformat's
 //! [`LlvmType`].
 
-mod arith_to_llvm;
-mod canon;
-mod cf_to_llvm;
-mod complex_to_llvm;
 mod dialect;
-mod func_to_llvm;
-mod index_to_llvm;
 mod interfaces;
-mod math_to_llvm;
 mod memslot;
 mod memref_desc;
-mod memref_to_llvm;
 mod pattern;
-mod request_c_wrappers;
-mod vector_to_llvm;
-mod x86_to_llvm;
 
-pub use arith_to_llvm::ArithToLlvm;
-pub use canon::{fold as llvm_fold, materialize as llvm_materialize};
-pub use cf_to_llvm::{AssertLowering, CfToLlvm};
-pub use complex_to_llvm::ComplexToLlvm;
 pub use dialect::LlvmDialect;
-pub use func_to_llvm::FuncToLlvm;
-pub use index_to_llvm::{IndexToLlvm, UbToLlvm};
 pub use interfaces::{LlvmEnv, ToLlvmInterfaces};
 pub use memslot::LlvmSlots;
-pub use math_to_llvm::MathToLlvm;
-pub use memref_to_llvm::{MemrefOptions, MemrefToLlvm};
-pub use request_c_wrappers::RequestCWrappers;
-pub use vector_to_llvm::{VectorOptions, VectorToLlvm};
-pub use x86_to_llvm::X86ToLlvm;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -39,11 +17,10 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::pass;
 use mlirformat::llvm_types::LlvmType;
-use mlirformat::{Attribute, Dim, Error, FloatKind, NamedAttr, Shaped, ShapedKind, Signedness, Type};
+use mlirformat::{Attribute, Dim, FloatKind, NamedAttr, Shaped, ShapedKind, Signedness, Type};
 
-use crate::{Action, Body, ComplexRange, ConversionConfig, ConversionPatterns, ConversionRewriter, ConversionTarget, Converter, DialectInterfaces, Lowering, MemrefLayout, Mode, OpData, OpId, Run, TypeConverter, ValueId, transfer_read_to_load, transfer_write_to_store};
+use crate::{Action, ConversionRewriter, ConversionTarget, MemrefLayout, OpData, OpId, TypeConverter, ValueId};
 
 /// `LowerToLLVMOptions`.
 #[derive(Debug, Clone, Copy)]
@@ -396,291 +373,16 @@ impl<'a> crate::ConversionRewriter<'_, 'a, '_> {
 
 // ---- the passes ---------------------------------------------------------------------------
 
-/// `convert-arith-to-llvm`.
-#[pass("convert-arith-to-llvm")]
-pub struct ConvertArithToLlvm {
-    #[opt("index-bitwidth")]
-    index_bitwidth: u32,
-}
 
-impl Run for ConvertArithToLlvm {
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(LlvmOptions::bitwidth(self.index_bitwidth).at(body, op));
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        ArithToLlvm::populate(&mut patterns, i);
-        let target = llvm_target();
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
-}
 
-/// A `convert-X-to-llvm` pass: an `index-bitwidth` option, a pattern population and a target.
-macro_rules! to_llvm_pass {
-    ($($(#[$m:meta])* $ty:ident = $name:literal: $populate:path, |$t:ident| $target:block;)*) => {$(
-        $(#[$m])*
-        #[pass($name)]
-        pub struct $ty {
-            #[opt("index-bitwidth")]
-            index_bitwidth: u32,
-        }
 
-        impl Run for $ty {
-            fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-                let tc = LlvmConverter::build(LlvmOptions::bitwidth(self.index_bitwidth).at(body, op));
-                let mut patterns = ConversionPatterns::default();
-                let i = patterns.converter(&tc);
-                $populate(&mut patterns, i);
-                let mut $t = ConversionTarget::default();
-                $target
-                Converter::new(&$t, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-            }
-        }
-    )*};
-}
 
-to_llvm_pass! {
-    /// `convert-index-to-llvm`.
-    ConvertIndexToLlvm = "convert-index-to-llvm": IndexToLlvm::populate, |t| {
-        t.illegal_dialect("index").legal_dialect("llvm");
-    };
-    /// `convert-ub-to-llvm`.
-    ConvertUbToLlvm = "convert-ub-to-llvm": UbToLlvm::populate, |t| {
-        t.legal_dialect("llvm").op("builtin.unrealized_conversion_cast", Action::Legal);
-    };
-}
 
-/// `convert-math-to-llvm`.
-#[pass("convert-math-to-llvm")]
-pub struct ConvertMathToLlvm {
-    #[opt("approximate-log1p", default = true)]
-    approximate_log1p: bool,
-}
 
-impl Run for ConvertMathToLlvm {
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(LlvmOptions::derived().at(body, op));
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        MathToLlvm::populate(&mut patterns, i, self.approximate_log1p);
-        let target = llvm_target();
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
-}
 
-/// `convert-cf-to-llvm`.
-#[pass("convert-cf-to-llvm")]
-pub struct ConvertCfToLlvm {
-    #[opt("index-bitwidth")]
-    index_bitwidth: u32,
-    counter: core::sync::atomic::AtomicU32,
-}
 
-impl Run for ConvertCfToLlvm {
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(LlvmOptions::bitwidth(self.index_bitwidth).at(body, op));
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        CfToLlvm::populate(&mut patterns, i);
-        patterns.add_with(i, AssertLowering(&self.counter));
-        let mut target = llvm_target();
-        target.unknown(Action::Dynamic(alloc::boxed::Box::new(|b: &Body<'_>, o: OpId| Some(!b[o].name.starts_with("cf.")))));
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
-}
 
-/// `convert-func-to-llvm`.
-#[pass("convert-func-to-llvm", on = "builtin.module")]
-pub struct ConvertFuncToLlvm {
-    #[opt("use-bare-ptr-memref-call-conv")]
-    bare_ptr: bool,
-    #[opt("index-bitwidth")]
-    index_bitwidth: u32,
-}
 
-impl Run for ConvertFuncToLlvm {
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let options = LlvmOptions { index_bitwidth: self.index_bitwidth, bare_ptr: self.bare_ptr }.at(body, op);
-        let tc = LlvmConverter::build(options);
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        FuncToLlvm::populate(&mut patterns, i, options);
-        let target = llvm_target();
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
-}
-
-/// `finalize-memref-to-llvm`.
-#[pass("finalize-memref-to-llvm")]
-pub struct FinalizeMemrefToLlvm {
-    #[opt("use-aligned-alloc")]
-    aligned_alloc: bool,
-    #[opt("index-bitwidth")]
-    index_bitwidth: u32,
-    #[opt("use-generic-functions")]
-    generic: bool,
-}
-
-impl Run for FinalizeMemrefToLlvm {
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let options = MemrefOptions { llvm: LlvmOptions::bitwidth(self.index_bitwidth).at(body, op), aligned_alloc: self.aligned_alloc, generic: self.generic };
-        let tc = LlvmConverter::build(options.llvm);
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        MemrefToLlvm::populate(&mut patterns, i, options);
-        let mut target = llvm_target();
-        target.legal_op("func.func");
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
-}
-
-/// `convert-to-llvm`: every dialect's `ConvertToLLVMPatternInterface` patterns (or those of
-/// `filter-dialects`), against a target where the llvm dialect is legal.
-#[pass("convert-to-llvm", extra = ["dynamic"], check = Self::check)]
-pub struct ConvertToLlvm {
-    #[opt("filter-dialects")]
-    filter: Vec<String>,
-    #[opt("allow-pattern-rollback", default = true)]
-    rollback: bool,
-    counter: core::sync::atomic::AtomicU32,
-    /// The dialects' `ConvertToLLVMPatternInterface`s.
-    interfaces: ToLlvmInterfaces,
-}
-
-impl ConvertToLlvm {
-    /// A dialect whose lowering is not ported yet makes the pass unsupported, not wrong.
-    fn check(&self) -> Result<(), Error> {
-        match self.filter.iter().find(|d| !self.interfaces.knows(d)) {
-            Some(d) => Err(Error(format!("convert-to-llvm: the {d} lowering is not ported"))),
-            None => Ok(()),
-        }
-    }
-}
-
-impl Run for ConvertToLlvm {
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(LlvmOptions::derived().at(body, op));
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        let dialects: Vec<&str> = if self.filter.is_empty() { self.interfaces.dialects() } else { self.filter.iter().map(String::as_str).collect() };
-        let env = LlvmEnv { llvm: LlvmOptions::derived().at(body, op), counter: &self.counter };
-        for d in dialects {
-            if !self.interfaces.knows(d) {
-                return Err(Error(format!("dialect does not implement ConvertToLLVMPatternInterface: {d}")));
-            }
-            self.interfaces.populate(d, &mut patterns, i, &env);
-        }
-        let mut target = ConversionTarget::default();
-        target.legal_dialect("llvm");
-        Converter::new(&target, &patterns, ConversionConfig { rollback: self.rollback, ..ConversionConfig::default() }).apply(body, &[op], Mode::Partial)
-    }
-}
-
-/// `set-llvm-module-datalayout`.
-#[pass("set-llvm-module-datalayout")]
-pub struct SetLlvmModuleDataLayout {
-    #[opt("data-layout")]
-    layout: String,
-}
-
-impl Run for SetLlvmModuleDataLayout {
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        body[op].set("llvm.data_layout", Attribute::str(&self.layout));
-        Ok(())
-    }
-}
-
-/// `convert-vector-to-llvm`: the vector-to-vector lowerings greedily, then the conversion.
-#[pass("convert-vector-to-llvm", check = Self::check)]
-pub struct ConvertVectorToLlvm {
-    #[opt("reassociate-fp-reductions")]
-    reassociate: bool,
-    #[opt("force-32bit-vector-indices", default = true)]
-    force32: bool,
-    #[opt("use-vector-alignment")]
-    vector_alignment: bool,
-    #[opt("vector-contract-lowering", default = "dot".into())]
-    contract_lowering: String,
-    #[opt("vector-transpose-lowering", default = "eltwise".into())]
-    transpose_lowering: String,
-    #[opt("enable-amx")]
-    amx: bool,
-    #[opt("enable-arm-neon")]
-    arm_neon: bool,
-    #[opt("enable-arm-sve")]
-    arm_sve: bool,
-    #[opt("enable-arm-i8mm")]
-    arm_i8mm: bool,
-    #[opt("enable-arm-bf16")]
-    arm_bf16: bool,
-    #[opt("enable-x86vector")]
-    x86vector: bool,
-    counter: core::sync::atomic::AtomicU32,
-}
-
-impl ConvertVectorToLlvm {
-    /// What is not ported makes the pass unsupported, not wrong.
-    fn check(&self) -> Result<(), Error> {
-        let flags = [("enable-arm-neon", self.arm_neon), ("enable-arm-sve", self.arm_sve), ("enable-arm-i8mm", self.arm_i8mm), ("enable-arm-bf16", self.arm_bf16)];
-        if let Some((f, _)) = flags.iter().find(|f| f.1) {
-            return Err(Error(format!("convert-vector-to-llvm: {f} is not ported")));
-        }
-        for (k, v, default) in [("vector-contract-lowering", &self.contract_lowering, "dot"), ("vector-transpose-lowering", &self.transpose_lowering, "eltwise")] {
-            if v != default {
-                return Err(Error(format!("convert-vector-to-llvm: {k} is not ported")));
-            }
-        }
-        Ok(())
-    }
-}
-
-impl Run for ConvertVectorToLlvm {
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let pre = crate::vector_pre_patterns(self.force32);
-        for r in body[op].regions.clone() {
-            body.apply_greedily(r, &pre, &crate::GreedyConfig::default());
-        }
-        let opts = LlvmOptions::default();
-        let mut tc = LlvmConverter::build(opts);
-        if self.amx {
-            X86ToLlvm::convert_tiles(&mut tc);
-        }
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        patterns.add(Lowering { root: "vector.transfer_read", benefit: 1, f: |cr, op, _| transfer_read_to_load(cr, op, None) });
-        patterns.add(Lowering { root: "vector.transfer_write", benefit: 1, f: |cr, op, _| transfer_write_to_store(cr, op, None) });
-        VectorToLlvm::populate(&mut patterns, i, VectorOptions { llvm: opts, reassociate_fp_reductions: self.reassociate, force_32bit_indices: self.force32, use_vector_alignment: self.vector_alignment, counter: &self.counter });
-        // The CPU dialects (`enable-x86vector`, `enable-amx`) lower to intrinsic calls.
-        X86ToLlvm::populate(&mut patterns, i, opts, self.x86vector, self.amx);
-        let mut target = llvm_target();
-        target.legal_dialect("arith").legal_dialect("memref");
-        if self.x86vector {
-            target.illegal_dialect("x86vector");
-        }
-        if self.amx {
-            target.illegal_dialect("amx");
-        }
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
-}
-
-/// `convert-complex-to-llvm`.
-#[pass("convert-complex-to-llvm")]
-pub struct ConvertComplexToLlvm {
-    #[opt("complex-range", default = ComplexRange::Basic, from_str)]
-    range: ComplexRange,
-}
-
-impl Run for ConvertComplexToLlvm {
-    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let tc = LlvmConverter::build(LlvmOptions::derived().at(body, op));
-        let mut patterns = ConversionPatterns::default();
-        let i = patterns.converter(&tc);
-        ComplexToLlvm::populate(&mut patterns, i, self.range == ComplexRange::Improved);
-        let mut target = ConversionTarget::default();
-        target.legal_dialect("llvm").illegal_dialect("complex");
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
-    }
-}
 
 // ---- LLVM functions, globals and calls ----------------------------------------------------
 
@@ -756,9 +458,4 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         self.llvm_call(runtime, &[gep], &[]);
         Some(())
     }
-}
-
-crate::pass_set! {
-    /// Every lowering to `llvm`.
-    LlvmPasses: ConvertArithToLlvm, ConvertCfToLlvm, ConvertComplexToLlvm, ConvertFuncToLlvm, ConvertIndexToLlvm, ConvertMathToLlvm, ConvertToLlvm, ConvertUbToLlvm, ConvertVectorToLlvm, FinalizeMemrefToLlvm, RequestCWrappers, SetLlvmModuleDataLayout
 }

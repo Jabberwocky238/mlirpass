@@ -1,0 +1,3 @@
+-one-shot-bufferize=bufferize-function-boundaries=1 
+-drop-equivalent-buffer-results
+-split-input-file

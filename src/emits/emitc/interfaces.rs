@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use crate::{ConversionPatterns, DialectInterfaces, TypeConverter};
 
-use super::{ArithToEmitc, Emitc, FuncToEmitc, MemrefToEmitc, ScfToEmitc};
+use crate::{ArithToEmitc, Emitc, FuncToEmitc, MemrefToEmitc, ScfToEmitc};
 
 /// One dialect's `ConvertToEmitCPatternInterface`: the types it adds to the converter (told
 /// whether `size_t` is in use), and its patterns.

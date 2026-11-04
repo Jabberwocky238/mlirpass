@@ -1,0 +1,3 @@
+-one-shot-bufferize=allow-unknown-ops
+-canonicalize
+-split-input-file

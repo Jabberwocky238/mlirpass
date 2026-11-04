@@ -7,20 +7,25 @@
 //!   the struct implements `Run`, and is a `Pass` through it.
 //! - The same on a `fn(body, op) -> Result<(), Error>`: a unit pass struct (the name in
 //!   CamelCase, or `ty = Name`) whose `Run` is that body.
-//! - `#[patterns(converter, flag: bool, ..)]` on an `impl` block: each method marked
-//!   `#[lowering("root", .., benefit = n, when = expr, untyped)]` goes into a generated
-//!   `populate(patterns, [tc,] [opts,] flags..)`, in declaration order. `options = Type`: the
-//!   methods also take `opts` (`OptLowering`; `plain` opts one out); `extra = path` is called
-//!   last with the same arguments, for patterns that are not methods.
+//! - `#[patterns(converter, flag: bool, ..)]` on an `impl` block: its rules, each a method marked
+//!   `#[rewrite("root", benefit = n, when = expr, name = "Name")]` (a rewrite pattern: a unit
+//!   struct `Name`, by default the method's name in CamelCase, implementing `Pattern`, for the
+//!   greedy and walk drivers) or `#[convert("root", .., benefit = n, when = expr, untyped)]` (a
+//!   conversion pattern); a root `_` matches any op. Generates `patterns(set, flags..)` (the
+//!   rewrite patterns) and `populate(patterns, [tc,] [opts,] flags..)` (the conversion patterns,
+//!   and the rewrite patterns through `Plain`), in declaration order. `options = Type`: the
+//!   `#[convert]` methods also take `opts` (`OptLowering`; `plain` opts one out); `extra = path`
+//!   is called last with the same arguments, for patterns that are not methods.
 //! - `#[map("from" => "to", ..)]` on that `impl` block: a lowering generated whole. Without
 //!   `via`, the one-to-one rewrite (`fastmath` / `overflow` attributes converted for llvm, `fp`
 //!   failing on unsupported floats, `unconstrained` without a rounding mode, `scalar` not
 //!   unrolling vectors); with `via = template(args..)`, a call of the family's template
 //!   `template(cr, op, operands, "to", [opts,] args..)`. The impl also gets `ROOTS`.
-//! - With `builder = ctor` on `#[patterns]`, a `#[lowering]` method whose first parameter is
+//! - With `builder = ctor` on `#[patterns]`, a `#[convert]` method whose first parameter is
 //!   not `cr` is declared by its signature: it takes the builder `ctor(cr, op)`, the
 //!   operands as `ValueId`s in order and anything else `FromOp` gives, and returns what
 //!   replaces the op (`Replacement`).
+//! - `#[pass_set(PassA, PassB, ..)]` on a unit struct: a `PassSet` registering those passes.
 
 use proc_macro::TokenStream;
 use syn::Error;
@@ -28,6 +33,7 @@ use syn::Error;
 mod blocks;
 mod ops;
 mod pass;
+mod pass_set;
 mod patterns;
 
 /// `#[pass("name", on = "op", extra = [..])]`: see the crate docs.
@@ -40,6 +46,12 @@ pub fn pass(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn patterns(attr: TokenStream, item: TokenStream) -> TokenStream {
     patterns::PatternsArgs::expand(attr.into(), item.into()).unwrap_or_else(Error::into_compile_error).into()
+}
+
+/// `#[pass_set(PassA, PassB, ..)]`: see the crate docs.
+#[proc_macro_attribute]
+pub fn pass_set(attr: TokenStream, item: TokenStream) -> TokenStream {
+    pass_set::expand(attr.into(), item.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
 /// `#[ops(b, fmf = f)]` on a fn: its arithmetic builds ops through `b` (see `OpsRewrite`):

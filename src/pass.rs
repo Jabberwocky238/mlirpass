@@ -525,20 +525,6 @@ pub trait PassSet {
     fn register(passes: &mut Passes);
 }
 
-/// `pass_set!(Name: PassA, PassB, ...)`: the unit struct `Name`, a [`PassSet`] of those passes.
-#[macro_export]
-macro_rules! pass_set {
-    ($(#[$m:meta])* $name:ident: $($p:ty),* $(,)?) => {
-        $(#[$m])*
-        pub struct $name;
-
-        impl $crate::PassSet for $name {
-            fn register(passes: &mut $crate::Passes) {
-                $(passes.register::<$p>();)*
-            }
-        }
-    };
-}
 
 impl PassRegistry for Passes {
     fn pass(&self, name: &str) -> Option<&PassInfo> {

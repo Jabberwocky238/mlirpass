@@ -1,0 +1,4 @@
+-allow-unregistered-dialect
+-one-shot-bufferize=dialect-filter=scf,bufferization allow-unknown-ops
+-canonicalize
+-split-input-file

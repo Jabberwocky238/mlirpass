@@ -5,7 +5,7 @@ use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::{Expr, Ident, LitInt, LitStr, Token};
 
-use super::{PatternsArgs, Populate};
+use super::{Populate, PatternsArgs};
 
 /// An impl's `#[map("from" => "to", flags.., benefit = n, when = expr, via = template)]`.
 pub struct MapArgs {
