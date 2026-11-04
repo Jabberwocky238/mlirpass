@@ -2,9 +2,11 @@
 
 mod canonicalize;
 mod to_cf;
+#[cfg(all(feature = "dialect.gpu", feature = "dialect.affine"))]
 mod to_gpu;
 
 pub use to_cf::{ScfToCf};
+#[cfg(all(feature = "dialect.gpu", feature = "dialect.affine"))]
 pub use to_gpu::ScfToGpu;
 pub use canonicalize::ScfCanon;
 

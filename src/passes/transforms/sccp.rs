@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use crate::pass;
 use mlirformat::{Attribute, Error, Type};
 
-use crate::dataflow::{Cv, Solver};
+use super::dataflow::{Cv, Solver};
 use crate::{Body, BlockId, OpId, RegionId, ValueId};
 
 /// The rewrite: constants replace what the analysis proved constant.

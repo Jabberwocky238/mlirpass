@@ -1,6 +1,6 @@
-//! Builders of `linalg` structured ops for the lowerings that create them: the ops with their
-//! regions (`RegionBuilderHelper` and the OpDSL bodies of the named ops), `linalg.generic`,
-//! and the tensor ops around them.
+//! Builders the lowerings create ops with, whichever dialects they lower (scf, tensor, tosa, linalg): arith and index
+//! ops, the `linalg` structured ops with their regions (`RegionBuilderHelper` and the OpDSL bodies of the named ops),
+//! `linalg.generic`, and the tensor ops around them. By name only: no dialect's feature.
 
 use alloc::vec;
 use alloc::vec::Vec;

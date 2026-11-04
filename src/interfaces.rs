@@ -2,12 +2,13 @@
 //! asks of an op that ODS's table cannot answer. Each dialect implements [`OpInterfaces`] once
 //! for its ops; nothing is global: a [`Ctx`](crate::Ctx) holds the [`Interfaces`] it asks.
 
+use alloc::{vec, format};
+use alloc::borrow::Cow;
 use alloc::vec::Vec;
 use core::ops::Range;
+use mlirformat::{Attribute, Type, ShapedKind, Str};
+use crate::{BlockId, Body, InsertPoint, OpId, RegionId, ValueId, BranchLayout as Layout};
 
-use mlirformat::{Attribute, Type};
-
-use crate::{BlockId, Body, EffectInstance, InsertPoint, OpId, Operand, Point, RegionId, Succ, ValueId};
 pub use mlirformat::{Effect, EffectKind, EffectOn, Effects, OpInfo, Trait};
 
 /// How a branch lays out its successor operands (`BranchOpInterface::getSuccessorOperands`).
@@ -247,5 +248,537 @@ impl Body<'_> {
     /// `op`'s own memory effects (not its regions').
     pub fn effects(&self, op: OpId) -> Effects {
         self[op].info.map_or(Effects::Unknown, |i| i.effects)
+    }
+}
+
+// ============================================================================================
+// Memory effects of ops, as `mlir/Interfaces/SideEffectInterfaces.cpp`.
+//
+// What ODS declares comes from the generated table; the ops that compute their effects in C++
+// (`DeclareOpInterfaceMethods<MemoryEffectOpInterface>`) answer through their dialect's
+// [`OpInterfaces`](crate::OpInterfaces).
+
+/// One effect, on a value when it names one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectInstance {
+    pub kind: EffectKind,
+    pub value: Option<ValueId>,
+    pub resource: &'static str,
+}
+
+impl EffectInstance {
+    pub const fn on(kind: EffectKind, value: Option<ValueId>) -> Self {
+        Self { kind, value, resource: "DefaultResource" }
+    }
+}
+
+impl Body<'_> {
+    /// Whether `v` is a memref.
+    pub fn is_memref(&self, v: ValueId) -> bool {
+        matches!(&self[v].ty, Type::Shaped(s) if s.kind == ShapedKind::MemRef)
+    }
+
+    /// The `i`th group of `op`'s operands, by `operandSegmentSizes` when it has one.
+    pub fn operand_group(&self, op: OpId, i: usize) -> &[ValueId] {
+        let operands = &self[op].operands;
+        match self.segments(op, "operandSegmentSizes") {
+            Some(sizes) => {
+                let start: usize = sizes.iter().take(i).sum();
+                operands.get(start..start + sizes.get(i).copied().unwrap_or(0)).unwrap_or(&[])
+            }
+            None => operands.get(i..=i).unwrap_or(&[]),
+        }
+    }
+
+    /// ⭐ `MemoryEffectOpInterface::getEffects`; `None`: the op does not implement it.
+    pub fn effects_of(&self, op: OpId) -> Option<Vec<EffectInstance>> {
+        match self.effects(op) {
+            Effects::Unknown => None,
+            Effects::Known(list) => Some(
+                list.iter()
+                    .flat_map(|e| {
+                        let values: Vec<Option<ValueId>> = match e.on {
+                            EffectOn::Op => vec![None],
+                            EffectOn::Operand(i) => self.operand_group(op, i as usize).iter().map(|v| Some(*v)).collect(),
+                            EffectOn::Result(i) => vec![self[op].results.get(i as usize).copied()],
+                        };
+                        values.into_iter().map(|value| EffectInstance { kind: e.kind, value, resource: e.resource })
+                    })
+                    .collect(),
+            ),
+            Effects::Custom => Some(self.custom_effects(op)),
+        }
+    }
+
+    /// The effects of the ops whose `getEffects` is C++, from their dialect's interfaces.
+    fn custom_effects(&self, op: OpId) -> Vec<EffectInstance> {
+        self.interfaces(op).and_then(|i| i.effects(self, op)).unwrap_or_else(|| vec![EffectInstance::on(EffectKind::Write, None), EffectInstance::on(EffectKind::Read, None)])
+    }
+
+    /// Whether `op` is registered: known to the op table.
+    pub fn registered(&self, op: OpId) -> bool {
+        self[op].info.is_some()
+    }
+
+    /// `mightHaveTrait`: an unregistered op might have any.
+    pub fn might_have(&self, op: OpId, t: Trait) -> bool {
+        !self.registered(op) || self.has(op, t)
+    }
+
+    fn recursive_effects(&self, op: OpId) -> bool {
+        self.has(op, Trait::HasRecursiveMemoryEffects)
+    }
+
+    fn nested_ops(&self, op: OpId) -> Vec<OpId> {
+        self[op].regions.iter().flat_map(|r| &self[*r].blocks).flat_map(|b| self[*b].ops.iter().copied()).collect()
+    }
+
+    /// `isMemoryEffectFree`.
+    pub fn is_memory_effect_free(&self, op: OpId) -> bool {
+        match self.effects_of(op) {
+            Some(e) if !e.is_empty() => return false,
+            Some(_) if !self.recursive_effects(op) => return true,
+            None if !self.recursive_effects(op) => return false,
+            _ => {}
+        }
+        self.nested_ops(op).into_iter().all(|o| self.is_memory_effect_free(o))
+    }
+
+    /// `getSpeculatability`: `None` not speculatable, `Some(false)` speculatable, `Some(true)`
+    /// recursively (as far as its regions are).
+    fn speculatability(&self, op: OpId) -> Option<bool> {
+        if self.has(op, Trait::AlwaysSpeculatableImplTrait) {
+            return Some(false);
+        }
+        if self.has(op, Trait::RecursivelySpeculatableImplTrait) {
+            return Some(true);
+        }
+        if !self.has(op, Trait::ConditionallySpeculatable) {
+            return None;
+        }
+        self.interfaces(op).and_then(|i| i.speculatability(self, op))
+    }
+
+    /// `isSpeculatable`.
+    pub fn is_speculatable(&self, op: OpId) -> bool {
+        match self.speculatability(op) {
+            None => false,
+            Some(false) => true,
+            Some(true) => self.nested_ops(op).into_iter().all(|o| self.is_speculatable(o)),
+        }
+    }
+
+    /// `isPure`: speculatable and free of memory effects.
+    pub fn is_pure(&self, op: OpId) -> bool {
+        self.is_speculatable(op) && self.is_memory_effect_free(op)
+    }
+
+    /// `hasSingleEffect<kind>(op)`: it has effects, and all of them are `kind`.
+    pub fn has_only_effect(&self, op: OpId, kind: EffectKind) -> bool {
+        self.effects_of(op).is_some_and(|e| !e.is_empty() && e.iter().all(|x| x.kind == kind))
+    }
+
+    /// `hasEffect<kind>(op)`.
+    pub fn has_effect(&self, op: OpId, kind: EffectKind) -> bool {
+        self.effects_of(op).is_some_and(|e| e.iter().any(|x| x.kind == kind))
+    }
+
+    /// `getEffectsRecursively`; `None` when some op's effects are unknown.
+    pub fn effects_recursively(&self, op: OpId) -> Option<Vec<EffectInstance>> {
+        let mut out = Vec::new();
+        let mut work = vec![op];
+        while let Some(o) = work.pop() {
+            let recursive = self.recursive_effects(o);
+            if recursive {
+                work.extend(self.nested_ops(o));
+            }
+            match self.effects_of(o) {
+                Some(e) => out.extend(e),
+                None if !recursive => return None,
+                None => {}
+            }
+        }
+        Some(out)
+    }
+
+    /// `wouldOpBeTriviallyDead`: erasable if its results were unused.
+    pub fn would_be_trivially_dead(&self, op: OpId) -> bool {
+        if self.might_have(op, Trait::IsTerminator) || self.has(op, Trait::SymbolOpInterface) {
+            return false;
+        }
+        let mut work = vec![op];
+        while let Some(o) = work.pop() {
+            let recursive = self.recursive_effects(o);
+            if recursive {
+                // Upstream walks nested ops last-in first-out too; only the verdict matters.
+                work.extend(self.nested_ops(o));
+            }
+            match self.effects_of(o) {
+                Some(effects) => {
+                    // Allocating its own results is fine, and so is reading.
+                    let own = |v: Option<ValueId>| v.is_some_and(|v| self.def_op(v) == Some(o));
+                    let allocs: Vec<_> = effects.iter().filter(|e| e.kind == EffectKind::Allocate && own(e.value)).map(|e| e.value).collect();
+                    if !effects.iter().all(|e| (e.value.is_some() && allocs.contains(&e.value)) || e.kind == EffectKind::Read) {
+                        return false;
+                    }
+                }
+                None if recursive => {}
+                None => return false,
+            }
+        }
+        true
+    }
+
+    /// `isOpTriviallyDead`: no result is used, and nothing else would notice it gone.
+    pub fn is_trivially_dead(&self, op: OpId) -> bool {
+        self[op].results.iter().all(|r| self[*r].uses.is_empty()) && self.would_be_trivially_dead(op)
+    }
+}
+
+// ============================================================================================
+// `BranchOpInterface`: which operands of a branch go to which successor's arguments.
+
+impl Body<'_> {
+    fn layout(&self, op: OpId) -> Option<Layout> {
+        self.interfaces(op)?.branch_layout(self, op)
+    }
+
+    /// The sizes in dense array `name` of `op` (`operandSegmentSizes` and the like).
+    pub fn segments(&self, op: OpId, name: &str) -> Option<Vec<usize>> {
+        match self[op].get(name)? {
+            Attribute::DenseArray { values, .. } => Some(values.iter().map(|v| v.parse().unwrap_or(0)).collect()),
+            _ => None,
+        }
+    }
+
+    pub fn set_segments(&mut self, op: OpId, name: &str, sizes: &[usize]) {
+        let Some(Attribute::DenseArray { ty, .. }) = self[op].get(name).cloned() else { return };
+        let values = sizes.iter().map(|s| Cow::Owned(format!("{s}"))).collect();
+        self[op].set(name, Attribute::DenseArray { ty, values });
+    }
+
+    /// Start of operand group `g`.
+    fn group_start(&self, op: OpId, g: usize) -> usize {
+        self.segments(op, "operandSegmentSizes").map_or(g, |s| s.iter().take(g).sum())
+    }
+
+    /// ⭐ `getSuccessorOperands(i)`: the flat operand range forwarded to successor `i`'s
+    /// arguments; `None` when `op` is not a branch this crate knows.
+    pub fn successor_operands(&self, op: OpId, i: usize) -> Option<core::ops::Range<usize>> {
+        let n = self[op].operands.len();
+        match self.layout(op)? {
+            Layout::All => Some(0..n),
+            Layout::Groups { first } => {
+                let sizes = self.segments(op, "operandSegmentSizes")?;
+                let start = self.group_start(op, first + i);
+                Some(start..start + sizes.get(first + i).copied().unwrap_or(0))
+            }
+            Layout::Cases { default, cases, split } => {
+                if let (Some(d), 0) = (default, i) {
+                    let sizes = self.segments(op, "operandSegmentSizes")?;
+                    let start = self.group_start(op, d);
+                    return Some(start..start + sizes[d]);
+                }
+                let k = i - usize::from(default.is_some());
+                let parts = self.segments(op, split)?;
+                let start = self.group_start(op, cases) + parts.iter().take(k).sum::<usize>();
+                Some(start..start + parts.get(k).copied().unwrap_or(0))
+            }
+        }
+    }
+
+    /// Whether `op` implements `BranchOpInterface` (as far as this crate knows).
+    pub fn is_branch(&self, op: OpId) -> bool {
+        self.layout(op).is_some()
+    }
+
+    /// `SuccessorOperands` of successor `i`: the produced arguments, then the range of the
+    /// forwarded operands.
+    pub fn successor_layout(&self, op: OpId, i: usize) -> Option<(usize, core::ops::Range<usize>)> {
+        match self.interfaces(op).and_then(|f| f.produced_successor_operands(self, op, i)) {
+            Some(l) => Some(l),
+            None => self.successor_operands(op, i).map(|r| (0, r)),
+        }
+    }
+
+    /// Whether `op` forwards operands to its successors: a branch, or a terminator whose
+    /// successor operands also produce arguments.
+    pub fn forwards_to_successors(&self, op: OpId) -> bool {
+        self.is_branch(op) || self.interfaces(op).is_some_and(|f| f.produced_successor_operands(self, op, 0).is_some())
+    }
+
+    /// Appends `values` to the operands forwarded to successor `i`.
+    pub fn append_successor_operands(&mut self, op: OpId, i: usize, values: &[crate::ValueId]) {
+        let Some(range) = self.successor_operands(op, i) else { return };
+        let mut operands = self[op].operands.clone();
+        operands.insert_many(range.end, values.iter().copied());
+        self.set_operands(op, operands);
+        self.resize_successor_group(op, i, values.len() as isize);
+    }
+
+    /// Grows (or shrinks) the segment sizes of successor `i`'s operand group by `by`.
+    fn resize_successor_group(&mut self, op: OpId, i: usize, by: isize) {
+        let group = match self.layout(op) {
+            Some(Layout::Groups { first }) => Some(first + i),
+            Some(Layout::Cases { default: Some(d), .. }) if i == 0 => Some(d),
+            Some(Layout::Cases { default, cases, split }) => {
+                let k = i - usize::from(default.is_some());
+                if let Some(mut parts) = self.segments(op, split) {
+                    parts[k] = parts[k].saturating_add_signed(by);
+                    self.set_segments(op, split, &parts);
+                }
+                Some(cases)
+            }
+            _ => None,
+        };
+        if let (Some(g), Some(mut sizes)) = (group, self.segments(op, "operandSegmentSizes")) {
+            sizes[g] = sizes[g].saturating_add_signed(by);
+            self.set_segments(op, "operandSegmentSizes", &sizes);
+        }
+    }
+
+    /// Drops the `j`th operand forwarded to successor `i`, keeping the segment sizes right.
+    pub fn erase_successor_operand(&mut self, op: OpId, i: usize, j: usize) {
+        let Some(range) = self.successor_operands(op, i) else { return };
+        let at = range.start + j;
+        let mut operands = self[op].operands.clone();
+        operands.remove(at);
+        self.set_operands(op, operands);
+        self.resize_successor_group(op, i, -1);
+    }
+}
+
+// `RegionBranchOpInterface`: where control goes between an op and its regions, and which
+// values flow along: each dialect's [`OpInterfaces`](crate::OpInterfaces) answer
+// `getSuccessorRegions`, `getEntrySuccessorOperands` and
+// `RegionBranchTerminatorOpInterface::getSuccessorOperands` for its ops.
+
+/// Where control is: entering from the parent op, or at a region's terminator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Point {
+    Parent,
+    Terminator(OpId),
+}
+
+/// Where control goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Succ {
+    Parent,
+    Region(usize),
+}
+
+/// One operand by its owner and index.
+pub type Operand = (OpId, usize);
+
+impl<'a> Body<'a> {
+    /// Whether `op` implements the interface, as far as this crate describes it.
+    pub fn is_region_branch(&self, op: OpId) -> bool {
+        self.interfaces(op).is_some_and(|i| i.is_region_branch(self, op))
+    }
+
+    /// The entry block's arguments of region `r` of `op`, from `skip` on.
+    pub fn region_args(&self, op: OpId, r: usize, skip: usize) -> Vec<ValueId> {
+        let region = self[op].regions[r];
+        self[region].blocks.first().map(|b| self[*b].args.iter().skip(skip).copied().collect()).unwrap_or_default()
+    }
+
+    /// `getSuccessorRegions(point)`: each successor with its inputs.
+    pub fn region_successors(&self, op: OpId, point: Point) -> Vec<(Succ, Vec<ValueId>)> {
+        self.interfaces(op).map(|i| i.region_successors(self, op, point)).unwrap_or_default()
+    }
+
+    /// The operands flowing from `point` to its successors.
+    pub fn forwarded(&self, op: OpId, point: Point) -> Vec<Operand> {
+        match point {
+            Point::Parent => self.interfaces(op).map(|i| i.entry_operands(self, op)).unwrap_or_default(),
+            Point::Terminator(t) => {
+                let skip = self.interfaces(t).map_or(0, |i| i.terminator_skip(self, t));
+                (skip..self[t].operands.len()).map(|i| (t, i)).collect()
+            }
+        }
+    }
+
+    /// `getAllRegionBranchPoints`: the parent, then each region terminator in order.
+    pub fn branch_points(&self, op: OpId) -> Vec<Point> {
+        let mut out = vec![Point::Parent];
+        for r in &self[op].regions {
+            for b in &self[*r].blocks {
+                if let Some(&t) = self[*b].ops.last()
+                    && self.interfaces(t).is_some_and(|i| i.is_region_terminator(self, t))
+                {
+                    out.push(Point::Terminator(t));
+                }
+            }
+        }
+        out
+    }
+
+    /// `getSuccessorOperandInputMapping`: each forwarded operand with the inputs it reaches.
+    pub fn operand_inputs(&self, op: OpId) -> Vec<(Operand, Vec<ValueId>)> {
+        let mut out: Vec<(Operand, Vec<ValueId>)> = Vec::new();
+        for p in self.branch_points(op) {
+            let operands = self.forwarded(op, p);
+            for (_, inputs) in self.region_successors(op, p) {
+                for (o, i) in operands.iter().zip(inputs) {
+                    match out.iter_mut().find(|e| e.0 == *o) {
+                        Some(e) => e.1.push(i),
+                        None => out.push((*o, vec![i])),
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// The inverse: each input with the operands that reach it, inputs in first-seen order.
+    pub fn input_operands(&self, op: OpId) -> Vec<(ValueId, Vec<Operand>)> {
+        let mut out: Vec<(ValueId, Vec<Operand>)> = Vec::new();
+        for (o, inputs) in self.operand_inputs(op) {
+            for i in inputs {
+                match out.iter_mut().find(|e| e.0 == i) {
+                    Some(e) => e.1.push(o),
+                    None => out.push((i, vec![o])),
+                }
+            }
+        }
+        out
+    }
+
+    /// `eraseOperands` on `op`, keeping the uses right.
+    pub fn erase_operands(&mut self, op: OpId, which: &[usize]) {
+        let kept: crate::Ids<_> = self[op].operands.iter().enumerate().filter(|(i, _)| !which.contains(i)).map(|(_, v)| *v).collect();
+        self.set_operands(op, kept);
+    }
+}
+
+// ============================================================================================
+// Symbols and symbol tables, as `mlir/IR/SymbolTable.cpp`.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    Public,
+    Private,
+    Nested,
+}
+
+/// One symbol reference held by an op: `@a::@b` as `["@a", "@b"]` segments without the `@`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SymbolUse<'a> {
+    pub user: OpId,
+    pub path: Vec<Str<'a>>,
+}
+
+impl<'a> Body<'a> {
+    /// `op`'s symbol name, when it is a symbol (and has one: a module may not).
+    pub fn sym_name(&self, op: OpId) -> Option<&str> {
+        self.has(op, Trait::SymbolOpInterface).then(|| self[op].get_str("sym_name")).flatten()
+    }
+
+    pub fn visibility(&self, op: OpId) -> Visibility {
+        match self[op].get_str("sym_visibility") {
+            Some("private") => Visibility::Private,
+            Some("nested") => Visibility::Nested,
+            _ => Visibility::Public,
+        }
+    }
+
+    pub fn set_visibility(&mut self, op: OpId, v: Visibility) {
+        let lit = match v {
+            Visibility::Public => {
+                self[op].remove("sym_visibility");
+                return;
+            }
+            Visibility::Private => "private",
+            Visibility::Nested => "nested",
+        };
+        self[op].set("sym_visibility", Attribute::Str { lit: lit.into(), ty: None });
+    }
+
+    /// Whether `op` defines a symbol table.
+    pub fn is_symbol_table(&self, op: OpId) -> bool {
+        self.has(op, Trait::SymbolTable)
+    }
+
+    /// An op that may be a symbol table nobody can tell about: one region, dialect unknown.
+    pub fn maybe_unknown_symbol_table(&self, op: OpId) -> bool {
+        self[op].regions.len() == 1 && !self.ctx.opt.knows_dialect_of(&self[op].name)
+    }
+
+    /// The symbol named `name` directly in symbol table `table`.
+    pub fn lookup(&self, table: OpId, name: &str) -> Option<OpId> {
+        let region = *self[table].regions.first()?;
+        self[region].blocks.iter().flat_map(|b| &self[*b].ops).copied().find(|o| self.sym_name(*o) == Some(name))
+    }
+
+    /// Every symbol along `path` from `table` (`@a::@b`: `a`, then `b` inside it); `None` when
+    /// a segment is missing.
+    pub fn lookup_path(&self, table: OpId, path: &[Str<'_>]) -> Option<Vec<OpId>> {
+        let mut out = Vec::new();
+        let mut at = table;
+        for seg in path {
+            at = self.lookup(at, Self::unquote(seg))?;
+            out.push(at);
+        }
+        Some(out)
+    }
+
+    /// `"name"` ⇒ `name`; symbol references keep their quotes when they need them.
+    fn unquote(s: &str) -> &str {
+        s.strip_prefix('"').and_then(|s| s.strip_suffix('"')).unwrap_or(s)
+    }
+
+    fn refs_in(a: &Attribute<'a>, user: OpId, out: &mut Vec<SymbolUse<'a>>) {
+        match a {
+            Attribute::SymbolRef(path) => out.push(SymbolUse { user, path: path.clone() }),
+            Attribute::Array(xs) => xs.iter().for_each(|x| Self::refs_in(x, user, out)),
+            Attribute::Dict(d) => d.iter().filter_map(|n| n.value.as_ref()).for_each(|x| Self::refs_in(x, user, out)),
+            _ => {}
+        }
+    }
+
+    /// The symbol references `op` itself holds, inherent and discardable alike.
+    fn own_refs(&self, op: OpId, out: &mut Vec<SymbolUse<'a>>) {
+        let d = &self[op];
+        d.properties.iter().filter_map(|n| n.value.as_ref()).for_each(|x| Self::refs_in(x, op, out));
+        d.attributes.iter().filter_map(|n| n.value.as_ref()).for_each(|x| Self::refs_in(x, op, out));
+    }
+
+    /// Uses nested in `regions` of `op`, not entering nested symbol tables; `None` on a
+    /// potentially unknown symbol table.
+    fn region_refs(&self, op: OpId, out: &mut Vec<SymbolUse<'a>>) -> Option<()> {
+        let mut work: Vec<_> = self[op].regions.clone().to_vec();
+        while let Some(r) = work.pop() {
+            for o in self[r].blocks.iter().flat_map(|b| &self[*b].ops) {
+                if self.maybe_unknown_symbol_table(*o) {
+                    return None;
+                }
+                self.own_refs(*o, out);
+                if !self.is_symbol_table(*o) {
+                    work.extend(self[*o].regions.iter().copied());
+                }
+            }
+        }
+        Some(())
+    }
+
+    /// `SymbolTable::getSymbolUses(region)` over the regions of `op`.
+    pub fn region_symbol_uses(&self, op: OpId) -> Option<Vec<SymbolUse<'a>>> {
+        let mut out = Vec::new();
+        self.region_refs(op, &mut out)?;
+        Some(out)
+    }
+
+    /// ⭐ `SymbolTable::getSymbolUses(op)`: the references on `op` and nested in it, not entering
+    /// nested symbol tables; `None` when an op might be an unknown symbol table.
+    pub fn symbol_uses(&self, op: OpId) -> Option<Vec<SymbolUse<'a>>> {
+        if self.maybe_unknown_symbol_table(op) {
+            return None;
+        }
+        let mut out = Vec::new();
+        self.own_refs(op, &mut out);
+        if !self.is_symbol_table(op) {
+            self.region_refs(op, &mut out)?;
+        }
+        Some(out)
     }
 }

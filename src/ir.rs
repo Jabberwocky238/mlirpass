@@ -1568,3 +1568,88 @@ impl<'a> Body<'a> {
         Body::import(ctx, &m)
     }
 }
+
+/// Value and block correspondences for cloning (`IRMapping`).
+#[derive(Debug, Default, Clone)]
+pub struct Mapping {
+    pub values: BTreeMap<ValueId, ValueId>,
+    pub blocks: BTreeMap<crate::BlockId, crate::BlockId>,
+}
+
+impl Mapping {
+    pub fn map(&mut self, from: ValueId, to: ValueId) {
+        self.values.insert(from, to);
+    }
+
+    pub fn get(&self, v: ValueId) -> ValueId {
+        self.values.get(&v).copied().unwrap_or(v)
+    }
+}
+
+impl<'a> Body<'a> {
+    /// `Operation::clone`: a detached deep copy of `op`, operands through `map`.
+    pub fn clone_op(&mut self, op: OpId, map: &mut Mapping) -> OpId {
+        let d = self[op].clone();
+        let types = self.types(&d.results);
+        let data = OpData { operands: d.operands.iter().map(|v| map.get(*v)).collect(), successors: d.successors.iter().map(|b| map.blocks.get(b).copied().unwrap_or(*b)).collect(), regions: crate::Ids::new(), parent: None, ..d };
+        let new = self.create(data, &types);
+        for (a, b) in self[op].results.clone().into_iter().zip(self[new].results.clone()) {
+            map.map(a, b);
+        }
+        for r in self[op].regions.clone() {
+            let nr = self.add_region(new);
+            self.clone_region_into(r, nr, None, map);
+        }
+        new
+    }
+
+    /// `Region::cloneInto`: `from`'s blocks copied into `into` before `before` (`None`: the
+    /// end); operands referring forward are remapped once everything is copied.
+    pub fn clone_region_into(&mut self, from: crate::RegionId, into: crate::RegionId, before: Option<crate::BlockId>, map: &mut Mapping) -> Vec<crate::BlockId> {
+        let blocks = self[from].blocks.clone();
+        let mut made = Vec::new();
+        for b in &blocks {
+            // An argument the mapping already has is not created again.
+            let fresh: Vec<ValueId> = self[*b].args.iter().copied().filter(|a| !map.values.contains_key(a)).collect();
+            let args: Vec<_> = fresh.iter().map(|a| (self[*a].ty.clone(), self[*a].loc.clone())).collect();
+            let nb = self.add_block(into, &args);
+            // `add_block` appends; move into place.
+            if let Some(at) = before {
+                self[into].blocks.pop();
+                let pos = self[into].blocks.iter().position(|x| *x == at).expect("block not in region");
+                self[into].blocks.insert(pos, nb);
+            }
+            for (x, y) in fresh.into_iter().zip(self[nb].args.clone()) {
+                map.map(x, y);
+            }
+            map.blocks.insert(*b, nb);
+            made.push(nb);
+        }
+        let mut cloned = Vec::new();
+        for (b, nb) in blocks.iter().zip(&made) {
+            for o in self[*b].ops.clone() {
+                let c = self.clone_op(o, map);
+                self.insert(c, *nb, None);
+                cloned.push(c);
+            }
+        }
+        // Remap what was cloned before its definition (forward references, successors).
+        for c in cloned {
+            for o in self.ops_in(c) {
+                for i in 0..self[o].operands.len() {
+                    let v = self[o].operands[i];
+                    let m = map.get(v);
+                    if m != v {
+                        self.set_operand(o, i, m);
+                    }
+                }
+                for s in self[o].successors.iter_mut() {
+                    if let Some(n) = map.blocks.get(s) {
+                        *s = *n;
+                    }
+                }
+            }
+        }
+        made
+    }
+}

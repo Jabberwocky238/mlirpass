@@ -2,8 +2,10 @@
 
 mod canonicalize;
 mod cse;
+mod dataflow;
 mod inline;
 mod licm;
+mod reconcile_unrealized_casts;
 mod mem2reg;
 #[cfg(feature = "dialect.llvm")]
 mod llvm_slots;
@@ -20,6 +22,7 @@ mod symbol_privatize;
 pub use canonicalize::Canonicalize;
 pub use cse::Cse;
 pub use inline::Inline;
+pub use reconcile_unrealized_casts::ReconcileUnrealizedCasts;
 pub use licm::LoopInvariantCodeMotion;
 pub use mem2reg::Mem2Reg;
 #[cfg(feature = "dialect.llvm")]

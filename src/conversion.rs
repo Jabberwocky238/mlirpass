@@ -27,7 +27,7 @@ use alloc::{format, vec};
 
 use mlirformat::{Error, NamedAttr, Str, Type};
 
-use crate::{pass, BlockId, Body, InsertPoint, Listener, OpData, OpId, RegionId, Rewriter, TypedOp, ValueId};
+use crate::{BlockId, Body, InsertPoint, Listener, OpData, OpId, RegionId, Rewriter, TypedOp, ValueId};
 
 
 /// The marker a pure type conversion's cast carries until the end.
@@ -1562,12 +1562,4 @@ impl ConversionPattern for Lowering {
     fn rewrite(&self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         (self.f)(cr, op, operands)
     }
-}
-
-/// `reconcile-unrealized-casts`.
-#[pass("reconcile-unrealized-casts")]
-pub fn reconcile_unrealized_casts<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-    let casts: Vec<OpId> = body.ops_in(op).into_iter().filter(|o| body[*o].name == "builtin.unrealized_conversion_cast").collect();
-    body.reconcile_casts(&casts);
-    Ok(())
 }

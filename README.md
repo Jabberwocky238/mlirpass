@@ -19,12 +19,12 @@ own target env (`tests/support/vkinfo.c`) is checked against the host's product 
 
 | part | what it is | upstream |
 |---|---|---|
-| `ir` | arena IR with use-def chains (an op's operands, results, successors and regions inline up to four, `Ids`); `Module` ⇄ IR; printed straight from the IR (`Body::show`, read through mlirformat's `Source`) | `mlir/IR` |
-| `pass` | pass manager, `--pass-pipeline` syntax, registry | `mlir/Pass` |
-| `parallel` | `Executor` (`Serial`, `ThreadPool`): nested pipelines over isolated ops (functions) as parallel tasks | `OpToOpPassAdaptor`, `llvm::ThreadPool` |
-| `rewrite`, `greedy` | patterns, rewriter, greedy driver | `PatternMatch`, `GreedyPatternRewriteDriver` |
+| `ir` | arena IR with use-def chains (an op's operands, results, successors and regions inline up to four, `Ids`); `Module` ⇄ IR; printed straight from the IR (`Body::show`, read through mlirformat's `Source`); cloning (`Mapping`) | `mlir/IR` |
+| `pass` | pass manager, `--pass-pipeline` syntax, the registry (`registry.gen.rs`), the `mlir-opt` command line (`Invocation`), the verifiers run after each pass, and `Executor` (`Serial`, `ThreadPool`): nested pipelines over isolated ops (functions) as parallel tasks | `mlir/Pass`, `OpToOpPassAdaptor`, `MlirOptMain` |
+| `rewrite` | patterns, rewriter, greedy and walk drivers | `PatternMatch`, `GreedyPatternRewriteDriver`, `WalkPatternRewriteDriver` |
+| `region` | region simplification (unreachable blocks, region DCE, block merging) and dominance | `RegionUtils`, `Dominance` |
 | `conversion` | conversion target, type converter, dialect conversion, `#[convert]`s as patterns, the `DialectInterfaces` trait `convert-to-*` asks | `DialectConversion` |
-| `interfaces`, `branch`, `effects` | op traits, op interfaces, `BranchOpInterface` / `RegionBranchOpInterface`, memory effects | `mlir/Interfaces` |
+| `interfaces` | op traits, op interfaces (`OpInterfaces`), `BranchOpInterface` / `RegionBranchOpInterface`, memory effects, symbols and symbol tables | `mlir/Interfaces`, `SymbolTable` |
 | `layout` | `MemrefLayout` (strides, offset), `DataLayout` (type sizes, alignments, index bitwidth) | `BuiltinTypes`, `DataLayoutInterfaces` |
 | `patterns` | ⭐ rule sets, one directory per source dialect: `<d>/canonicalize.rs` (its folds, constant materialization and canonicalization patterns, `<D>Canon`), `<d>/to_<target>.rs` (`scf/to_cf.rs`, `arith/to_llvm.rs`), and its own transforms' rules | `*Ops.cpp`, `mlir/lib/Conversion`, `Dialect/*/Transforms` |
 | `passes` | ⭐ pipeline units, one directory per source dialect, one file per pass (`scf/convert_scf_to_cf.rs`, `linalg/linalg_fold_unit_extent_dims.rs`); `transforms/` the dialect-independent ones | `mlir/lib/Conversion`, `Dialect/*/Transforms`, `mlir/lib/Transforms` |

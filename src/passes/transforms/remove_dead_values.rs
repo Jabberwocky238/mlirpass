@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use crate::pass;
 use mlirformat::{Attribute, Error, Type};
 
-use crate::dataflow::Solver;
+use super::dataflow::Solver;
 use crate::{Body, BlockId, OpData, OpId, Run, Trait, ValueId, Visibility};
 
 /// `RDVFinalCleanupList`.

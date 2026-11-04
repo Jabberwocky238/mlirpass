@@ -11,7 +11,6 @@ impl crate::Passes {
     /// Registers every pass this crate implements and its features compile in.
     pub fn add_upstream(&mut self) {
         let p = self;
-        p.register::<crate::ReconcileUnrealizedCasts>(); // reconcile-unrealized-casts
         #[cfg(feature = "dialect.affine")]
         p.register::<crate::ConvertAffineForToGpu>(); // convert-affine-for-to-gpu
         #[cfg(feature = "dialect.affine")]
@@ -94,7 +93,7 @@ impl crate::Passes {
         p.register::<crate::FinalizeMemrefToLlvm>(); // finalize-memref-to-llvm
         #[cfg(all(feature = "dialect.memref", feature = "target.spirv"))]
         p.register::<crate::MapMemrefSpirvStorageClass>(); // map-memref-spirv-storage-class
-        #[cfg(feature = "dialect.scf")]
+        #[cfg(all(feature = "dialect.scf", all(feature = "dialect.gpu", feature = "dialect.affine")))]
         p.register::<crate::ConvertParallelLoopsToGpu>(); // convert-parallel-loops-to-gpu
         #[cfg(feature = "dialect.scf")]
         p.register::<crate::ConvertScfToCf>(); // convert-scf-to-cf
@@ -102,7 +101,7 @@ impl crate::Passes {
         p.register::<crate::ConvertScfToEmitc>(); // convert-scf-to-emitc
         #[cfg(all(feature = "dialect.scf", feature = "target.spirv"))]
         p.register::<crate::ConvertScfToSpirv>(); // convert-scf-to-spirv
-        #[cfg(feature = "dialect.scf")]
+        #[cfg(all(feature = "dialect.scf", all(feature = "dialect.gpu", feature = "dialect.affine")))]
         p.register::<crate::GpuMapParallelLoops>(); // gpu-map-parallel-loops
         #[cfg(feature = "dialect.shape")]
         p.register::<crate::ConvertShapeToStd>(); // convert-shape-to-std
@@ -143,6 +142,7 @@ impl crate::Passes {
         p.register::<crate::Inline>(); // inline
         p.register::<crate::LoopInvariantCodeMotion>(); // loop-invariant-code-motion
         p.register::<crate::Mem2Reg>(); // mem2reg
+        p.register::<crate::ReconcileUnrealizedCasts>(); // reconcile-unrealized-casts
         p.register::<crate::RemoveDeadValues>(); // remove-dead-values
         p.register::<crate::Sccp>(); // sccp
         p.register::<crate::Sroa>(); // sroa

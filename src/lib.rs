@@ -12,51 +12,33 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-mod branch;
 mod conversion;
-mod dataflow;
 mod dialects;
-mod dominance;
-mod effects;
-mod targets;
-mod equivalence;
-mod greedy;
 mod interfaces;
-mod invocation;
-mod layout;
 mod ir;
-mod passes;
-mod patterns;
-mod parallel;
+mod layout;
 mod pass;
 #[path = "registry.gen.rs"]
 mod registry;
+mod passes;
+mod patterns;
 mod region;
 mod rewrite;
-mod symbol;
-mod verify;
+mod targets;
 
-pub use branch::*;
-
-/// Every dialect's canonicalization patterns (`getCanonicalizationPatterns` of all ops), for passes that run a named subset of them greedily (`PatternSet::retain`).
 pub use conversion::*;
 // (nothing without a dialect feature)
 #[allow(unused_imports)]
 pub use dialects::*;
-pub use dominance::*;
-pub use effects::*;
-pub use targets::*;
-pub use greedy::*;
 pub use interfaces::*;
 pub use ir::*;
+pub use layout::*;
+pub use pass::*;
 pub use passes::*;
 pub use patterns::*;
-pub use invocation::*;
-pub use layout::*;
-pub use parallel::*;
-pub use pass::*;
+pub use region::*;
 pub use rewrite::*;
-pub use symbol::*;
+pub use targets::*;
 /// The proc macros (`mlirpass-macros`): `#[pass]`, `#[patterns]`, `#[ops]`, `blocks!`.
 pub use mlirpass_macros::{blocks, ops, pass, patterns};
 pub use mlirformat;

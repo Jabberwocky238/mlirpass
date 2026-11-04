@@ -12,17 +12,25 @@
 //! adaptors merge (managers for the same op name concatenate), exactly as `OpPassManager` does:
 //! `func.func(a), func.func(b)` runs `a` then `b` on each function, not `a` on all of them first.
 
-
+use alloc::format;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
-use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
+use mlirformat::{Error, Item};
+use crate::{Body, OpId, OpData, Shift, Trait, ValueId, Ctx};
+#[cfg(feature = "dialect.affine")]
 
-use mlirformat::Error;
+#[cfg(feature = "dialect.affine")]
 
-use crate::{Body, OpId};
+#[cfg(feature = "std")]
+use core::num::NonZeroUsize;
+#[cfg(feature = "std")]
+use core::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(feature = "std")]
+use std::sync::Mutex;
+#[cfg(feature = "dialect.affine")]
 
 
 /// A pass's `mlir-opt` name and anchor op (`Passes.td`'s `Pass<"name", "op">`); `#[pass]`
@@ -525,5 +533,478 @@ impl Passes {
 impl PassRegistry for Passes {
     fn pass(&self, name: &str) -> Option<&PassInfo> {
         self.by_name.get(name)
+    }
+}
+
+// ============================================================================================
+// ⭐ Running passes in parallel, as MLIR's `OpToOpPassAdaptor` over a thread pool: the ops a nested
+// pipeline runs on that are `IsolatedFromAbove` (functions) are independent, so each is moved into
+// a body of its own, run as a [`Task`] by an [`Executor`], and moved back in its place.
+//
+// ```text
+// Task       one unit of work: a closure, run once, on any thread
+// Executor   runs a batch of tasks to completion: [`Serial`] (in order, this thread),
+// [`ThreadPool`] (a fixed number of workers taking the next task as they finish)
+// ```
+//
+// ```text
+// calibrate  the first ops' pipelines run in place, timed; the rest go to the threads only when
+// running an op costs more than moving it out and back (`PassManager::calibrate`)
+// split_off  in each task: the op copied out of the shared body (read only, in parallel)
+// graft      after the batch: each body's arenas appended whole (`Body::absorb`, ids shifted),
+// the op swapped into its old slot; nothing is looked up or copied op by op
+// ```
+//
+// Results do not depend on the executor: a task only sees its own body, and bodies go back in
+// their original order.
+
+/// ⭐ A unit of work: run once, on whichever thread the executor picks.
+pub type Task<'s> = Box<dyn FnOnce() + Send + 's>;
+
+/// ⭐ What runs a batch of independent tasks, each to completion.
+pub trait Executor: Sync {
+    /// Runs every task; returns once all have run.
+    fn execute<'s>(&self, tasks: Vec<Task<'s>>);
+
+    /// How many tasks may run at once (1: no point splitting work up).
+    fn width(&self) -> usize;
+}
+
+/// One task after the other, on the calling thread (`--mlir-disable-threading`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Serial;
+
+impl Executor for Serial {
+    fn execute<'s>(&self, tasks: Vec<Task<'s>>) {
+        tasks.into_iter().for_each(|t| t());
+    }
+
+    fn width(&self) -> usize {
+        1
+    }
+}
+
+impl<'a> Body<'a> {
+    /// Whether `op` can be run on alone: `IsolatedFromAbove` (no value from outside used in it).
+    pub fn isolated(&self, op: OpId) -> bool {
+        self.has(op, Trait::IsIsolatedFromAbove)
+    }
+
+    /// `op` (isolated) moved into a body of its own, under a module carrying the discardable
+    /// attributes of `op`'s ancestors (the nearest wins: what `DataLayout::closest` reads); the
+    /// body and the op there.
+    pub fn split_off(&self, op: OpId) -> (Self, OpId) {
+        let mut sub = Body::new(self.ctx);
+        let mut ancestors = Vec::new();
+        let mut at = self.parent_op(op);
+        while let Some(a) = at {
+            ancestors.push(a);
+            at = self.parent_op(a);
+        }
+        for a in ancestors.into_iter().rev() {
+            for n in &self[a].attributes {
+                let root = sub.root;
+                sub[root].set(&n.name, n.value.clone().unwrap_or(mlirformat::Attribute::Unit));
+            }
+        }
+        let moved = sub.transplant(self, op);
+        let block = sub.top_block(sub.root);
+        sub.insert(moved, block, None);
+        (sub, moved)
+    }
+
+    /// `op` (at `at` in its block) replaced by `from`'s `with`, moved over whole
+    /// (`split_off`'s inverse): `from`'s arenas join this body's, nothing is copied.
+    pub fn graft(&mut self, op: OpId, at: usize, from: Body<'a>, with: OpId) {
+        let new = with.shift(&self.absorb(from));
+        self.detach(new);
+        let results = self[new].results.clone();
+        self.swap_in(op, at, new);
+        // What `op` used and defined is now `new`'s.
+        if !self[op].operands.is_empty() {
+            self.set_operands(op, Vec::new());
+        }
+        if !results.is_empty() {
+            for (r, w) in self[op].results.clone().into_iter().zip(&results) {
+                self.replace_all_uses(r, *w);
+            }
+        }
+    }
+
+    /// A detached copy of `from`'s `op` (and everything in it) in this body. Operands are set once
+    /// every value exists, so forward references (graph regions, successors) need no care.
+    fn transplant(&mut self, from: &Body<'a>, op: OpId) -> OpId {
+        let mut values: Vec<(ValueId, ValueId)> = Vec::new();
+        let mut blocks = Vec::new();
+        let mut made = Vec::new();
+        let new = self.shell(from, op, &mut values, &mut blocks, &mut made);
+        values.sort_unstable();
+        blocks.sort_unstable();
+        let value = |v: ValueId| values.binary_search_by_key(&v, |p| p.0).map(|i| values[i].1).expect("an isolated op uses only its own values");
+        for (old, new) in made {
+            let operands: crate::Ids<_> = from[old].operands.iter().map(|v| value(*v)).collect();
+            self.set_operands(new, operands);
+            self[new].successors = from[old].successors.iter().map(|b| blocks[blocks.binary_search_by_key(b, |p| p.0).expect("a successor in the op")].1).collect();
+        }
+        new
+    }
+
+    /// `from`'s `op` without its operands, its regions filled the same way; records what maps where.
+    fn shell(&mut self, from: &Body<'a>, op: OpId, values: &mut Vec<(ValueId, ValueId)>, blocks: &mut Vec<(crate::BlockId, crate::BlockId)>, made: &mut Vec<(OpId, OpId)>) -> OpId {
+        let d = &from[op];
+        let data = OpData { operands: crate::Ids::new(), results: crate::Ids::new(), successors: crate::Ids::new(), regions: crate::Ids::new(), parent: None, defaults: false, ..d.clone() };
+        let new = self.push_op(data, &from.types(&d.results));
+        for (a, b) in d.results.iter().zip(self[new].results.clone()) {
+            self[b].loc = from[*a].loc.clone();
+            values.push((*a, b));
+        }
+        made.push((op, new));
+        for r in &d.regions {
+            let nr = self.add_region(new);
+            for b in &from[*r].blocks {
+                let args: Vec<_> = from[*b].args.iter().map(|a| (from[*a].ty.clone(), from[*a].loc.clone())).collect();
+                let nb = self.add_block(nr, &args);
+                values.extend(from[*b].args.iter().copied().zip(self[nb].args.clone()));
+                blocks.push((*b, nb));
+                for o in &from[*b].ops {
+                    let c = self.shell(from, *o, values, blocks, made);
+                    self.insert(c, nb, None);
+                }
+            }
+        }
+        new
+    }
+}
+
+// The thread-pool [`Executor`]: a fixed number of workers, each taking the next
+// task as it finishes one (`llvm::ThreadPool` with `parallelForEach`'s work sharing). Workers are
+// scoped to a batch, so tasks may borrow what outlives the call.
+
+#[cfg(feature = "std")]
+/// ⭐ Runs tasks on `threads` workers.
+#[derive(Debug, Clone, Copy)]
+pub struct ThreadPool {
+    threads: NonZeroUsize,
+}
+
+#[cfg(feature = "std")]
+impl ThreadPool {
+    pub fn new(threads: NonZeroUsize) -> Self {
+        Self { threads }
+    }
+}
+
+#[cfg(feature = "std")]
+impl Default for ThreadPool {
+    /// As many workers as the machine runs threads.
+    fn default() -> Self {
+        Self::new(std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN))
+    }
+}
+
+#[cfg(feature = "std")]
+impl Executor for ThreadPool {
+    fn execute<'s>(&self, tasks: Vec<Task<'s>>) {
+        let workers = self.threads.get().min(tasks.len());
+        if workers <= 1 {
+            return tasks.into_iter().for_each(|t| t());
+        }
+        let slots: Vec<Mutex<Option<Task<'s>>>> = tasks.into_iter().map(|t| Mutex::new(Some(t))).collect();
+        let next = AtomicUsize::new(0);
+        std::thread::scope(|s| {
+            for _ in 0..workers {
+                s.spawn(|| {
+                    while let Some(slot) = slots.get(next.fetch_add(1, Ordering::Relaxed)) {
+                        if let Some(t) = slot.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                            t();
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    fn width(&self) -> usize {
+        self.threads.get()
+    }
+}
+
+// ============================================================================================
+// ⭐ One `mlir-opt` command line: which passes, how the input is split, how the output prints.
+//
+// ```text
+// mlirpass in.mlir -allow-unregistered-dialect -split-input-file -cse --convert-to-llvm="filter-dialects=arith" -o -
+// ```
+//
+// Pass flags build the pipeline on the root `builtin.module`, nesting implicitly as `mlir-opt`
+// does; `--pass-pipeline=` (or `-p`) gives it as text instead.
+
+/// The marker `-split-input-file` splits on by default.
+pub const SPLIT_MARKER: &str = "// -----";
+
+pub struct Invocation {
+    pub pipeline: PassManager,
+    /// `-split-input-file[=marker]`.
+    pub split: Option<String>,
+    /// `-mlir-print-op-generic`.
+    pub generic: bool,
+    /// `-mlir-print-debuginfo`: locations are printed (else dropped).
+    pub debuginfo: bool,
+    /// `-verify-diagnostics`: a chunk that expects an error may fail, and then prints nothing.
+    pub verify_diagnostics: bool,
+    pub input: Option<String>,
+    pub output: Option<String>,
+    /// Not `-mlir-disable-threading`: nested pipelines run on [`Invocation::pool`].
+    pub threading: bool,
+    /// Made once: sizing it asks the OS (cgroups, affinity), too slow to repeat per chunk.
+    #[cfg(feature = "std")]
+    pub pool: crate::ThreadPool,
+}
+
+/// Flags that change nothing this crate does.
+const IGNORED: &[&str] = &["allow-unregistered-dialect", "verify-each", "mlir-print-local-scope", "mlir-print-value-users", "mlir-print-elementsattrs-with-hex-if-larger", "mlir-elide-elementsattrs-if-larger", "mlir-print-unique-ssa-ids", "mlir-very-unsafe-disable-verifier-on-parsing", "mlir-print-assume-verified", "mlir-print-skip-regions"];
+
+impl Invocation {
+    /// The `mlir-opt` arguments `args`, the passes named from `reg`.
+    pub fn parse<S: AsRef<str>>(reg: &dyn crate::PassRegistry, args: &[S]) -> Result<Self, Error> {
+        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, verify_diagnostics: false, input: None, output: None, threading: true, #[cfg(feature = "std")] pool: crate::ThreadPool::default() };
+        let mut it = args.iter().map(AsRef::as_ref);
+        while let Some(arg) = it.next() {
+            let Some(flag) = arg.strip_prefix('-').filter(|f| !f.is_empty()) else {
+                inv.input = Some(arg.into());
+                continue;
+            };
+            let flag = flag.strip_prefix('-').unwrap_or(flag);
+            let (name, value) = flag.split_once('=').map_or((flag, None), |(n, v)| (n, Some(v)));
+            match name {
+                "o" => inv.output = Some(value.or_else(|| it.next()).ok_or("`-o` needs a file")?.into()),
+                "split-input-file" => inv.split = Some(value.unwrap_or(SPLIT_MARKER).into()),
+                "mlir-print-op-generic" => inv.generic = true,
+                "mlir-print-debuginfo" => inv.debuginfo = true,
+                "verify-diagnostics" => inv.verify_diagnostics = true,
+                "mlir-disable-threading" => inv.threading = false,
+                "pass-pipeline" | "p" => {
+                    let text = value.or_else(|| it.next()).ok_or("`--pass-pipeline` needs a pipeline")?;
+                    inv.pipeline = PassManager::parse(reg, text)?;
+                }
+                n if IGNORED.contains(&n) => {}
+                n => {
+                    inv.pipeline.add_named(reg, n, value.unwrap_or(""))?;
+                }
+            }
+        }
+        Ok(inv)
+    }
+}
+
+impl Invocation {
+    /// The input's chunks: split on the marker lines when `-split-input-file`, else whole.
+    pub fn chunks<'s>(&self, src: &'s str) -> Vec<&'s str> {
+        let Some(marker) = &self.split else { return alloc::vec![src] };
+        let mut out = Vec::new();
+        let mut start = 0;
+        for (at, line) in Self::lines(src) {
+            if line.trim_end() == marker {
+                out.push(&src[start..at]);
+                start = at + line.len();
+            }
+        }
+        out.push(&src[start..]);
+        out
+    }
+
+    /// Lines with their offsets, line ends included.
+    fn lines(src: &str) -> impl Iterator<Item = (usize, &str)> {
+        src.split_inclusive('\n').scan(0, |at, l| {
+            let here = *at;
+            *at += l.len();
+            Some((here, l))
+        })
+    }
+
+    /// ⭐ One chunk: parse, run the pipeline, and print as the flags say. `Ok("")`: the chunk
+    /// failed as `-verify-diagnostics` expected it to.
+    pub fn run_chunk(&self, ctx: Ctx<'_>, chunk: &str) -> Result<String, Error> {
+        let mut body = Body::parse(ctx, chunk)?;
+        let root = body.root;
+        match self.pipeline.run_on(&mut body, root, self.executor()) {
+            Ok(()) => Ok(self.print(&mut body)),
+            Err(_) if self.verify_diagnostics && chunk.contains("expected-error") => Ok(String::new()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// What runs nested pipelines: a thread pool unless threading is off (or there is no `std`).
+    pub fn executor(&self) -> &dyn crate::Executor {
+        #[cfg(feature = "std")]
+        if self.threading {
+            return &self.pool;
+        }
+        &crate::Serial
+    }
+
+    /// The body as `mlir-opt` prints it under these flags.
+    pub fn print(&self, body: &mut Body<'_>) -> String {
+        let opt = body.ctx.opt;
+        if !self.debuginfo {
+            body.set_locs(body.root, None);
+        }
+        let loc = |i: &Item<'_>| matches!(i, Item::AttrAlias { value: mlirformat::Attribute::Builtin { name, .. }, .. } if name == "loc");
+        let kept = |i: &Item<'_>| self.debuginfo || !loc(i);
+        let alias = |i: &Item<'_>| matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. });
+        let show = |keep: &dyn Fn(&Item<'_>) -> bool| body.show(opt, self.generic, |i| kept(i) && keep(i));
+        if !body.items.iter().any(|i| kept(i) && alias(i)) {
+            return show(&|_| true);
+        }
+        // Aliases are inlined on import; keep only those raw dialect text still names.
+        let text = show(&|i| !alias(i));
+        let named = |sigil: char, name: &str| {
+            let pat = format!("{sigil}{name}");
+            text.match_indices(&pat).any(|(i, _)| !text[i + pat.len()..].starts_with(|c: char| c.is_ascii_alphanumeric() || "_$.-".contains(c)))
+        };
+        show(&|i| match i {
+            Item::AttrAlias { name, .. } => named('#', name),
+            Item::TypeAlias { name, .. } => named('!', name),
+            _ => true,
+        })
+    }
+
+    /// The whole input, chunk by chunk, joined as `mlir-opt` joins them.
+    pub fn run(&self, ctx: Ctx<'_>, src: &str) -> Result<String, Error> {
+        let outs = self.chunks(src).into_iter().map(|c| self.run_chunk(ctx, c)).collect::<Result<Vec<_>, _>>()?;
+        Ok(outs.join(&format!("{SPLIT_MARKER}\n")))
+    }
+}
+
+impl crate::Interfaces<'_> {
+    /// The op interfaces of every dialect this crate describes (none without a dialect feature).
+    #[allow(unused_imports, unused_mut)]
+    pub fn upstream() -> Self {
+        use crate::*;
+        let mut i = Self::new();
+        #[cfg(feature = "dialect.affine")]
+        i.register(&AffineDialect);
+        #[cfg(feature = "dialect.arith")]
+        i.register(&ArithDialect);
+        #[cfg(feature = "dialect.bufferization")]
+        i.register(&BufferizationDialect);
+        #[cfg(feature = "dialect.cf")]
+        i.register(&CfDialect);
+        #[cfg(feature = "dialect.complex")]
+        i.register(&ComplexDialect);
+        #[cfg(feature = "dialect.func")]
+        i.register(&FuncDialect);
+        #[cfg(feature = "dialect.gpu")]
+        i.register(&GpuDialect);
+        #[cfg(feature = "dialect.index")]
+        i.register(&IndexDialect);
+        #[cfg(feature = "dialect.linalg")]
+        i.register(&LinalgDialect);
+        #[cfg(feature = "dialect.llvm")]
+        i.register(&LlvmDialect);
+        #[cfg(feature = "dialect.math")]
+        i.register(&MathDialect);
+        #[cfg(feature = "dialect.memref")]
+        i.register(&MemrefDialect);
+        #[cfg(feature = "dialect.scf")]
+        i.register(&ScfDialect);
+        #[cfg(feature = "dialect.shape")]
+        i.register(&ShapeDialect);
+        #[cfg(feature = "dialect.spirv")]
+        i.register(&SpirvDialect);
+        #[cfg(feature = "dialect.tensor")]
+        i.register(&TensorDialect);
+        #[cfg(feature = "dialect.test")]
+        i.register(&TestDialect);
+        #[cfg(feature = "dialect.tosa")]
+        i.register(&TosaDialect);
+        #[cfg(feature = "dialect.ub")]
+        i.register(&UbDialect);
+        #[cfg(feature = "dialect.vector")]
+        i.register(&VectorDialect);
+        i
+    }
+}
+
+// ============================================================================================
+// ⭐ What `mlir-opt` verifies after each pass, as far as passes can break it: branch operand
+// types (`BranchOpInterface`) and affine dimension / symbol identifiers (whose validity
+// depends on the enclosing `AffineScope`, which a lowering may change).
+
+impl Body<'_> {
+    /// `BranchOpInterface`'s verifier over everything in `root`: forwarded operands have the
+    /// types of their successor's arguments.
+    pub fn verify_branches(&self, root: OpId) -> Result<(), mlirformat::Error> {
+        let mut out = Ok(());
+        self.walk(root, &mut |op| {
+            if out.is_err() {
+                return;
+            }
+            for (i, succ) in self[op].successors.iter().enumerate() {
+                let Some(range) = self.successor_operands(op, i) else { continue };
+                let args = &self[*succ].args;
+                if let Some(j) = self[op].operands[range].iter().zip(args).position(|(v, a)| self[*v].ty != self[*a].ty) {
+                    out = Err(mlirformat::Error(format!("'{}' op type mismatch for bb argument #{j} of successor #{i}", self[op].name)));
+                    return;
+                }
+            }
+        });
+        out
+    }
+
+    /// ⭐ The verifiers over everything in `root`.
+    pub fn verify(&self, root: OpId) -> Result<(), Error> {
+        self.verify_branches(root)?;
+        #[cfg(feature = "dialect.affine")]
+        {
+            let mut out = Ok(());
+            self.walk(root, &mut |op| {
+                if out.is_ok() {
+                    out = self.verify_affine(op);
+                }
+            });
+            out?;
+        }
+        Ok(())
+    }
+
+    /// `verifyDimAndSymbolIdentifiers`.
+    #[cfg(feature = "dialect.affine")]
+    fn verify_identifiers(&self, op: OpId, operands: &[ValueId], dims: usize) -> Result<(), Error> {
+        let scope = self.affine_scope(op);
+        for (i, v) in operands.iter().enumerate() {
+            if i < dims && !self.is_valid_dim_in(*v, scope) {
+                return Err(Error(format!("'{}' op operand cannot be used as a dimension id", self[op].name)));
+            }
+            if i >= dims && !self.is_valid_symbol_in(*v, scope) {
+                return Err(Error(format!("'{}' op operand cannot be used as a symbol", self[op].name)));
+            }
+        }
+        Ok(())
+    }
+
+    /// The affine ops' identifier checks (`verifyMemoryOpIndexing`, `AffineForOp::verify`,
+    /// `AffineIfOp::verify`, `AffineApplyOp::verify`).
+    #[cfg(feature = "dialect.affine")]
+    fn verify_affine(&self, op: OpId) -> Result<(), Error> {
+        let d = &self[op];
+        let dims = |name: &str| self.affine_map(op, name).map_or(0, |m| m.dims as usize);
+        match &*d.name {
+            "affine.load" | "affine.vector_load" => self.verify_identifiers(op, &d.operands[1..], dims("map")),
+            "affine.store" | "affine.vector_store" => self.verify_identifiers(op, &d.operands[2..], dims("map")),
+            "affine.if" => self.verify_identifiers(op, &d.operands, self.integer_set(op, "condition").map_or(0, |s| s.dims as usize)),
+            "affine.for" => {
+                let Some(sizes) = self.segments(op, "operandSegmentSizes") else { return Ok(()) };
+                let (lb, ub) = (&d.operands[..sizes[0]], &d.operands[sizes[0]..sizes[0] + sizes[1]]);
+                self.verify_identifiers(op, lb, dims("lowerBoundMap"))?;
+                self.verify_identifiers(op, ub, dims("upperBoundMap"))
+            }
+            "affine.apply" => {
+                let scope = self.affine_scope(op);
+                let misplaced = d.operands.iter().skip(dims("map")).any(|v| self.is_valid_dim_in(*v, scope) && !self.is_valid_symbol_in(*v, scope));
+                if misplaced { Err(Error(String::from("'affine.apply' op dimensional operand cannot be used as a symbol"))) } else { Ok(()) }
+            }
+            _ => Ok(()),
+        }
     }
 }
