@@ -5,7 +5,7 @@ use alloc::string::String;
 
 use mlirformat::Error;
 
-use crate::{AmdChipset, AmdgpuToRocdl, Body, ConversionConfig, ConversionPatterns, Converter, GpuSpaces, LlvmConverter, LlvmOptions, Mode, OpId};
+use crate::{AmdChipset, AmdgpuRocdlOptions, AmdgpuToRocdl, Body, ConversionConfig, ConversionPatterns, Converter, GpuSpaces, LlvmConverter, LlvmOptions, Mode, OpId};
 
 /// `amdgpu::populateCommonGPUTypeAndAttributeConversions`: global 1, shared 3, private 5.
 const ROCDL_SPACES: GpuSpaces = GpuSpaces { global: 1, workgroup: 3, private: 5 };
@@ -24,7 +24,7 @@ impl crate::Run for ConvertAmdgpuToRocdl {
         let tc = LlvmConverter::build(llvm);
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
-        AmdgpuToRocdl::populate(&mut patterns, i, chipset);
+        AmdgpuToRocdl::populate(&mut patterns, i, AmdgpuRocdlOptions { llvm, chipset });
         let mut target = crate::llvm_target();
         target.dialect("amdgpu", crate::Action::Illegal).legal_dialect("llvm").legal_dialect("rocdl");
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)

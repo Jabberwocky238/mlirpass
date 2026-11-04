@@ -3,11 +3,22 @@
 #[cfg(feature = "target.llvm")]
 mod cvt_to_rocdl;
 #[cfg(feature = "target.llvm")]
+mod mem_to_rocdl;
+#[cfg(feature = "target.llvm")]
 mod to_rocdl;
 #[cfg(feature = "target.llvm")]
 pub use to_rocdl::AmdgpuToRocdl;
 
-/// `amdgpu` ops' adaptor: the converted operands by `operandSegmentSizes` group.
+/// What the amdgpu ⇒ rocdl patterns need: the converter's options and the chipset.
+#[cfg(feature = "target.llvm")]
+#[derive(Debug, Clone, Copy)]
+pub struct AmdgpuRocdlOptions {
+    pub llvm: crate::LlvmOptions,
+    pub chipset: crate::AmdChipset,
+}
+
+/// `amdgpu` ops' adaptor: the converted operands by `operandSegmentSizes` group (an op without
+/// them: its first operand, then the rest).
 #[cfg(feature = "target.llvm")]
 struct AmdgpuOperands<'o> {
     groups: alloc::vec::Vec<&'o [alloc::vec::Vec<crate::ValueId>]>,
@@ -16,7 +27,8 @@ struct AmdgpuOperands<'o> {
 #[cfg(feature = "target.llvm")]
 impl<'o> AmdgpuOperands<'o> {
     fn new(cr: &crate::ConversionRewriter<'_, '_, '_>, op: crate::OpId, operands: &'o [alloc::vec::Vec<crate::ValueId>]) -> Self {
-        let Some(sizes) = cr.rw.body.segments(op, "operandSegmentSizes") else { return Self { groups: operands.chunks(1).collect() } };
+        // Without segment sizes: one operand, then the variadic rest.
+        let Some(sizes) = cr.rw.body.segments(op, "operandSegmentSizes") else { return Self { groups: alloc::vec![&operands[..1.min(operands.len())], &operands[1.min(operands.len())..]] } };
         let mut rest = operands;
         let groups = sizes.into_iter().map(|n| {
             let (g, r) = rest.split_at(n.min(rest.len()));

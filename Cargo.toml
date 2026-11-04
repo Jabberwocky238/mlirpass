@@ -37,7 +37,7 @@ cli = ["std"]
 # also needs that `target.*`.
 all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bufferization", "dialect.cf", "dialect.complex", "dialect.func", "dialect.gpu", "dialect.index", "dialect.linalg", "dialect.llvm", "dialect.math", "dialect.memref", "dialect.ml_program", "dialect.nvvm", "dialect.scf", "dialect.shape", "dialect.spirv", "dialect.tensor", "dialect.test", "dialect.tosa", "dialect.ub", "dialect.vector", "dialect.x86vector", "dialect.xegpu", "dialect.xevm"]
 "dialect.affine" = ["dialect.arith"]
-"dialect.amdgpu" = []
+"dialect.amdgpu" = ["dialect.memref"]
 "dialect.arith" = []
 "dialect.bufferization" = ["dialect.memref"]
 "dialect.cf" = []

@@ -10,7 +10,7 @@ use mlirformat::{Attribute, FloatKind, ShapedKind, Type};
 
 use super::AmdgpuOperands;
 use crate::patterns;
-use crate::{AmdChipset, ConversionRewriter, OpData, OpId, ValueId};
+use crate::{AmdChipset, AmdgpuRocdlOptions, ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -81,7 +81,7 @@ fn wide(t: &Type<'_>) -> Option<&'static str> {
 /// The packed small-float conversions.
 pub struct AmdgpuCvtToRocdl;
 
-#[patterns(converter, options = AmdChipset)]
+#[patterns(converter, options = AmdgpuRocdlOptions)]
 impl AmdgpuCvtToRocdl {
     fn c32(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
         cr.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(32))
@@ -121,7 +121,8 @@ impl AmdgpuCvtToRocdl {
 
     /// `ExtPackedFp8OpLowering`.
     #[convert("amdgpu.ext_packed_fp8")]
-    fn ext_packed_fp8(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], chipset: AmdChipset) -> bool {
+    fn ext_packed_fp8(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
+        let chipset = o.chipset;
         let body = &cr.rw.body;
         let (src_ty, res_ty) = (body[body[op].operands[0]].ty.clone(), body[body[op].results[0]].ty.clone());
         let Some(kind) = Small::of_chipset(chipset, src_ty.element_type()) else { return false };
@@ -146,7 +147,8 @@ impl AmdgpuCvtToRocdl {
 
     /// `ScaledExtPackedOpLowering` (gfx950).
     #[convert("amdgpu.scaled_ext_packed")]
-    fn scaled_ext_packed(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], chipset: AmdChipset) -> bool {
+    fn scaled_ext_packed(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
+        let chipset = o.chipset;
         if chipset != GFX950 {
             return false;
         }
@@ -174,7 +176,8 @@ impl AmdgpuCvtToRocdl {
 
     /// `PackedScaledTruncOpLowering` (gfx950).
     #[convert("amdgpu.packed_scaled_trunc")]
-    fn packed_scaled_trunc(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], chipset: AmdChipset) -> bool {
+    fn packed_scaled_trunc(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
+        let chipset = o.chipset;
         if chipset != GFX950 {
             return false;
         }
@@ -226,7 +229,8 @@ impl AmdgpuCvtToRocdl {
 
     /// `PackedTrunc2xFp8OpLowering`.
     #[convert("amdgpu.packed_trunc_2xfp8")]
-    fn packed_trunc_2xfp8(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], chipset: AmdChipset) -> bool {
+    fn packed_trunc_2xfp8(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
+        let chipset = o.chipset;
         let res_ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
         let Some(kind) = Small::of_chipset(chipset, res_ty.element_type()) else { return false };
         let (Some(word), Some(res)) = (AmdgpuOperands::int(cr, op, "wordIndex"), cr.converted(&res_ty)) else { return false };
@@ -251,7 +255,8 @@ impl AmdgpuCvtToRocdl {
 
     /// `PackedStochRoundFp8OpLowering`.
     #[convert("amdgpu.packed_stoch_round_fp8")]
-    fn packed_stoch_round_fp8(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], chipset: AmdChipset) -> bool {
+    fn packed_stoch_round_fp8(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
+        let chipset = o.chipset;
         let res_ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
         let Some(kind) = Small::of_chipset(chipset, res_ty.element_type()) else { return false };
         let (Some(store), Some(res)) = (AmdgpuOperands::int(cr, op, "storeIndex"), cr.converted(&res_ty)) else { return false };

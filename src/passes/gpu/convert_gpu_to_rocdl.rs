@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Error, FloatKind, Type};
 
-use crate::{AmdChipset, AmdgpuToRocdl, Body, CConv, ConversionConfig, ConversionPatterns, Converter, DialectInterfaces, GpuLlvmOptions, GpuRocdlOptions, GpuSpaces, GpuToLlvm, GpuToRocdl, LlvmConverter, LlvmEnv, LlvmOptions, MathRocdlOptions, MathToRocdl, Mode, OpId, Printf, PrintfCall, ToLlvmInterfaces};
+use crate::{AmdChipset, AmdgpuRocdlOptions, AmdgpuToRocdl, Body, CConv, ConversionConfig, ConversionPatterns, Converter, DialectInterfaces, GpuLlvmOptions, GpuRocdlOptions, GpuSpaces, GpuToLlvm, GpuToRocdl, LlvmConverter, LlvmEnv, LlvmOptions, MathRocdlOptions, MathToRocdl, Mode, OpId, Printf, PrintfCall, ToLlvmInterfaces};
 
 /// `amdgpu::populateCommonGPUTypeAndAttributeConversions`: global 1, shared 3, private 5.
 const ROCDL_SPACES: GpuSpaces = GpuSpaces { global: 1, workgroup: 3, private: 5 };
@@ -113,7 +113,7 @@ impl crate::Run for ConvertGpuToRocdl {
         if let Some(d) = self.allowed.iter().find(|d| !self.interfaces.knows(d)) {
             return Err(Error(format!("dialect does not implement ConvertToLLVMPatternInterface: {d}")));
         }
-        AmdgpuToRocdl::populate(&mut patterns, i, chipset);
+        AmdgpuToRocdl::populate(&mut patterns, i, AmdgpuRocdlOptions { llvm, chipset });
         GpuToRocdl::populate(&mut patterns, i, GpuRocdlOptions { llvm, chipset });
         let printf = match self.runtime {
             AmdRuntime::Hip => Some(Printf::Hip),

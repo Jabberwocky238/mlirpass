@@ -6,7 +6,7 @@ use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, Type};
 
 use crate::patterns;
-use crate::{AmdChipset, ConversionRewriter, OpData, OpId, ValueId};
+use crate::{AmdChipset, AmdgpuRocdlOptions, ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -31,6 +31,22 @@ const SCHED_BARRIER_OPTS: [(&str, u32); 12] = [
     ("transcendental", 1024),
 ];
 
+/// `amdgpu::DPPPerm` with its `DppCtrl` base (`SIDefines.h`); the row ops add their argument.
+const DPP_PERMS: [(&str, u32); 12] = [
+    ("quad_perm", 0),
+    ("row_shl", 0x100),
+    ("row_shr", 0x110),
+    ("row_ror", 0x120),
+    ("wave_shl", 0x130),
+    ("wave_shr", 0x138),
+    ("wave_ror", 0x13C),
+    ("wave_rol", 0x134),
+    ("row_mirror", 0x140),
+    ("row_half_mirror", 0x141),
+    ("row_bcast_15", 0x142),
+    ("row_bcast_31", 0x143),
+];
+
 /// `LLVM::AtomicOrdering` of the LDS barrier fences.
 #[derive(Debug, Clone, Copy)]
 enum Ordering {
@@ -44,8 +60,14 @@ const WAIT_COUNTERS: [(&str, &str); 5] = [("ds", "rocdl.s.wait.dscnt"), ("load",
 /// The amdgpu ⇒ rocdl patterns (`populateAMDGPUToROCDLConversionPatterns`).
 pub struct AmdgpuToRocdl;
 
-#[patterns(converter, options = AmdChipset, extra = super::cvt_to_rocdl::AmdgpuCvtToRocdl::populate)]
+#[patterns(converter, options = AmdgpuRocdlOptions, extra = Self::others)]
 impl AmdgpuToRocdl {
+    /// The rule sets of the other files.
+    fn others(patterns: &mut crate::ConversionPatterns<'_>, tc: usize, o: AmdgpuRocdlOptions) {
+        super::cvt_to_rocdl::AmdgpuCvtToRocdl::populate(patterns, tc, o);
+        super::mem_to_rocdl::AmdgpuMemToRocdl::populate(patterns, tc, o);
+    }
+
     fn int_attr(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> Option<i64> {
         match cr.rw.body[op].get(name)? {
             Attribute::Int { lit, .. } => lit.parse().ok(),
@@ -63,7 +85,7 @@ impl AmdgpuToRocdl {
 
     /// `SchedBarrierOpLowering`: the option bits as the mask.
     #[convert("amdgpu.sched_barrier")]
-    fn sched_barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: AmdChipset) -> bool {
+    fn sched_barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: AmdgpuRocdlOptions) -> bool {
         let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("opts") else { return false };
         let Some(body) = ext.body.as_deref().and_then(|b| b.strip_prefix('<')?.strip_suffix('>')) else { return false };
         let mut mask = 0;
@@ -85,7 +107,8 @@ impl AmdgpuToRocdl {
 
     /// `LDSBarrierOpLowering`: an LDS-only release / barrier / acquire.
     #[convert("amdgpu.lds_barrier")]
-    fn lds_barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], chipset: AmdChipset) -> bool {
+    fn lds_barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
+        let chipset = o.chipset;
         cr.rw.set_before(op);
         Self::fence(cr, Ordering::Release);
         if chipset < GFX90A {
@@ -120,7 +143,8 @@ impl AmdgpuToRocdl {
 
     /// `MemoryCounterWaitOpLowering`: the gfx12 per-counter waits, else one `s_waitcnt`.
     #[convert("amdgpu.memory_counter_wait")]
-    fn memory_counter_wait(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], chipset: AmdChipset) -> bool {
+    fn memory_counter_wait(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
+        let chipset = o.chipset;
         let count = |cr: &Cr<'_, '_, '_>, n: &str| Self::int_attr(cr, op, n);
         if chipset.major >= 12 {
             cr.rw.set_before(op);
@@ -145,9 +169,78 @@ impl AmdgpuToRocdl {
         true
     }
 
+    /// `dpp_ctrl` of `amdgpu.dpp`'s `kind` and `permArgument`.
+    fn dpp_ctrl(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<u32> {
+        let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("kind") else { return None };
+        let body = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?.trim();
+        let kind = body.strip_prefix("dpp_perm").map_or(body, str::trim);
+        let &(name, base) = DPP_PERMS.iter().find(|(n, _)| *n == kind)?;
+        let arg = cr.rw.body[op].get("permArgument");
+        Some(match (name, arg) {
+            ("quad_perm", Some(Attribute::Array(lanes))) => lanes.iter().enumerate().try_fold(0, |acc, (i, l)| match l {
+                Attribute::Int { lit, .. } => Some(acc | (lit.parse::<u32>().ok()? << (i * 2))),
+                _ => None,
+            })?,
+            ("row_shl" | "row_shr" | "row_ror", Some(Attribute::Int { lit, .. })) => base + lit.parse::<u32>().ok()?,
+            ("quad_perm" | "row_shl" | "row_shr" | "row_ror", _) => return None,
+            _ => base,
+        })
+    }
+
+    /// `convertOperand`: a value of `w` ≤ 16 bits as the low lanes of `wide` (an i32).
+    fn dword<'a>(cr: &mut Cr<'_, 'a, '_>, mut v: ValueId, w: u32, float: bool, wide: Type<'a>) -> ValueId {
+        if w > 16 {
+            return v;
+        }
+        let int = Type::int(w);
+        if float {
+            v = cr.build(OpData::build("llvm.bitcast").operands(&[v]), int.clone());
+        }
+        let vt = Type::vector(&[i64::from(32 / w)], &[false], int);
+        let u = cr.build(OpData::build("llvm.mlir.undef"), vt.clone());
+        let c = cr.llvm_constant(Self::i32(0), Type::int(32));
+        let v = cr.build(OpData::build("llvm.insertelement").operands(&[u, v, c]), vt);
+        cr.build(OpData::build("llvm.bitcast").operands(&[v]), wide)
+    }
+
+    /// `AMDGPUDPPLowering`: `rocdl.update.dpp`, sub-dword values widened to an i32.
+    #[convert("amdgpu.dpp")]
+    fn dpp(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: AmdgpuRocdlOptions) -> bool {
+        let (old, src) = (operands[0][0], operands[1][0]);
+        let src_ty = cr.rw.body[cr.rw.body[op].operands[1]].ty.clone();
+        let Some(w) = src_ty.bit_width() else { return false };
+        let float = matches!(src_ty, Type::Float(_));
+        let wide = match (w < 32, float) {
+            (true, _) => Type::int(32),
+            (false, true) => src_ty.clone(),
+            (false, false) => Type::int(w),
+        };
+        let int = Type::int(w);
+        let (Some(ctrl), Some(row), Some(bank)) = (Self::dpp_ctrl(cr, op), Self::int_attr(cr, op, "row_mask"), Self::int_attr(cr, op, "bank_mask")) else { return false };
+        let bound = Self::flag(cr, op, "bound_ctrl");
+        cr.rw.set_before(op);
+        let src = Self::dword(cr, src, w, float, wide.clone());
+        let old = Self::dword(cr, old, w, float, wide.clone());
+        let data = OpData::build("rocdl.update.dpp")
+            .operands(&[old, src])
+            .with("dppCtrl", Self::i32(ctrl.into()))
+            .with("rowMask", Self::i32(row))
+            .with("bankMask", Self::i32(bank))
+            .with("boundCtrl", Attribute::Bool(bound));
+        let mut r = cr.build(data, wide.clone());
+        if w < 32 {
+            r = cr.build(OpData::build("llvm.trunc").operands(&[r]), int);
+            if float {
+                r = cr.build(OpData::build("llvm.bitcast").operands(&[r]), src_ty);
+            }
+        }
+        cr.replace(op, alloc::vec![alloc::vec![r]]);
+        true
+    }
+
     /// `AMDGPUSwizzleBitModeLowering`: `rocdl.ds_swizzle` of each dword.
     #[convert("amdgpu.swizzle_bitmode")]
-    fn swizzle_bitmode(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: AmdChipset) -> bool {
+    fn swizzle_bitmode(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: AmdgpuRocdlOptions) -> bool {
         let src = operands[0][0];
         let (Some(and), Some(or), Some(xor)) = (Self::int_attr(cr, op, "and_mask"), Self::int_attr(cr, op, "or_mask"), Self::int_attr(cr, op, "xor_mask")) else { return false };
         cr.rw.set_before(op);
@@ -165,7 +258,8 @@ impl AmdgpuToRocdl {
 
     /// `AMDGPUPermlaneLowering`: `rocdl.permlane{16,32}.swap` of each dword (gfx950+).
     #[convert("amdgpu.permlane_swap")]
-    fn permlane_swap(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], chipset: AmdChipset) -> bool {
+    fn permlane_swap(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
+        let chipset = o.chipset;
         if chipset < GFX950 {
             return false;
         }
