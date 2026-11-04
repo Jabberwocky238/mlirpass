@@ -1,0 +1,3 @@
+--convert-nvvm-to-llvm
+--convert-arith-to-llvm
+--split-input-file

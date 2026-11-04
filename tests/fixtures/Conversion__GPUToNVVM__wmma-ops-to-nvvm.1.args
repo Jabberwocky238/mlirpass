@@ -1,0 +1,2 @@
+--convert-gpu-to-nvvm=allow-pattern-rollback=0
+--split-input-file

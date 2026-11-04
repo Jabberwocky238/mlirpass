@@ -1,0 +1,2 @@
+--convert-to-llvm=allow-pattern-rollback=0
+--split-input-file

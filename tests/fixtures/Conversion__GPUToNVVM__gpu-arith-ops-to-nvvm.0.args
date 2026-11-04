@@ -1,0 +1,2 @@
+-convert-gpu-to-nvvm
+-split-input-file

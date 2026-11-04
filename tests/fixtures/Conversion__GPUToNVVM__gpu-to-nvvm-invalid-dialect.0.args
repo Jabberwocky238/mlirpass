@@ -1,0 +1,2 @@
+-convert-gpu-to-nvvm=allowed-dialects=test
+-verify-diagnostics

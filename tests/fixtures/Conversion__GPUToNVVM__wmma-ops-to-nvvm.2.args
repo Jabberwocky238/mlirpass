@@ -1,0 +1,2 @@
+--convert-gpu-to-nvvm=index-bitwidth=32
+--split-input-file
