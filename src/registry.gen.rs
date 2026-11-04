@@ -57,6 +57,8 @@ impl crate::Passes {
         p.register::<crate::GpuKernelOutlining>(); // gpu-kernel-outlining
         #[cfg(feature = "dialect.gpu")]
         p.register::<crate::GpuLaunchSinkIndexComputations>(); // gpu-launch-sink-index-computations
+        #[cfg(feature = "dialect.gpu")]
+        p.register::<crate::XevmAttachTarget>(); // xevm-attach-target
         #[cfg(all(all(feature = "dialect.index", any(feature = "target.llvm", feature = "target.spirv")), feature = "target.llvm"))]
         p.register::<crate::ConvertIndexToLlvm>(); // convert-index-to-llvm
         #[cfg(all(all(feature = "dialect.index", any(feature = "target.llvm", feature = "target.spirv")), feature = "target.spirv"))]
@@ -171,6 +173,8 @@ impl crate::Passes {
         p.register::<crate::ConvertVectorToScf>(); // convert-vector-to-scf
         #[cfg(all(feature = "dialect.vector", feature = "target.spirv"))]
         p.register::<crate::ConvertVectorToSpirv>(); // convert-vector-to-spirv
+        #[cfg(all(feature = "dialect.vector", feature = "dialect.xegpu"))]
+        p.register::<crate::ConvertVectorToXegpu>(); // convert-vector-to-xegpu
         #[cfg(all(feature = "dialect.xegpu", feature = "target.llvm"))]
         p.register::<crate::ConvertXegpuToXevm>(); // convert-xegpu-to-xevm
         #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]

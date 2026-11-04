@@ -13,3 +13,8 @@ pub use convert_vector_to_llvm::*;
 mod convert_vector_to_spirv;
 #[cfg(feature = "target.spirv")]
 pub use convert_vector_to_spirv::*;
+
+#[cfg(feature = "dialect.xegpu")]
+mod convert_vector_to_xegpu;
+#[cfg(feature = "dialect.xegpu")]
+pub use convert_vector_to_xegpu::ConvertVectorToXegpu;

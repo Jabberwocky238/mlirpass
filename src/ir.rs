@@ -1663,3 +1663,33 @@ impl<'a> Body<'a> {
         made
     }
 }
+
+/// The `llvm::Regex` subset module matchers use: literals, `.`, `*`, `+`, `?`, `^`, `$`;
+/// [`Regex::search`] matches anywhere, as `Regex::match` does.
+pub struct Regex<'p>(pub &'p [u8]);
+
+impl Regex<'_> {
+    pub fn search(&self, s: &str) -> bool {
+        let s = s.as_bytes();
+        if let Some(p) = self.0.strip_prefix(b"^") {
+            return Regex(p).here(s);
+        }
+        (0..=s.len()).any(|i| self.here(&s[i..]))
+    }
+
+    /// Whether the pattern matches a prefix of `s`.
+    fn here(&self, s: &[u8]) -> bool {
+        let p = self.0;
+        let Some(&c) = p.first() else { return true };
+        if c == b'$' && p.len() == 1 {
+            return s.is_empty();
+        }
+        let one = |x: Option<&u8>| x.is_some_and(|x| c == b'.' || *x == c);
+        match p.get(1) {
+            Some(b'*') => (0..=s.len()).take_while(|n| *n == 0 || one(s.get(n - 1))).any(|n| s[..n].iter().all(|x| one(Some(x))) && Regex(&p[2..]).here(&s[n..])),
+            Some(b'+') => one(s.first()) && Regex(&[&[c, b'*'][..], &p[2..]].concat()).here(&s[1..]),
+            Some(b'?') => (one(s.first()) && Regex(&p[2..]).here(&s[1..])) || Regex(&p[2..]).here(s),
+            _ => one(s.first()) && Regex(&p[1..]).here(&s[1..]),
+        }
+    }
+}

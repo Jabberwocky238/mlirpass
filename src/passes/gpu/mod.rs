@@ -16,3 +16,6 @@ pub use convert_gpu_to_spirv::*;
 mod convert_gpu_to_llvm_spv;
 #[cfg(feature = "target.llvm")]
 pub use convert_gpu_to_llvm_spv::ConvertGpuToLlvmSpv;
+
+mod xevm_attach_target;
+pub use xevm_attach_target::XevmAttachTarget;

@@ -19,7 +19,7 @@ pub use abi::VulkanLayout;
 pub use glsl::SpirvGlsl;
 pub use lower::ClientApi;
 pub(crate) use lower::symbol_text as spirv_symbol_text;
-pub(crate) use transforms::{Regex, insertion_chain, is_composite, splat};
+pub(crate) use transforms::{insertion_chain, is_composite, splat};
 pub(crate) use abi::Abi;
 pub use serialize::SpirvBinary;
 pub use target::{Needs, TargetEnv};

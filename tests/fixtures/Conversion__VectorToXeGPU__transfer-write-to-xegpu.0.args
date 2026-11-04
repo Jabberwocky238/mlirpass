@@ -1,0 +1,3 @@
+--xevm-attach-target=module=xevm_* O=3 chip=pvc
+-convert-vector-to-xegpu
+-split-input-file
