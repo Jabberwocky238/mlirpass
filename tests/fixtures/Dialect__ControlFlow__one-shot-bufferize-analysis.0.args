@@ -1,0 +1,2 @@
+-one-shot-bufferize=test-analysis-only dump-alias-sets bufferize-function-boundaries
+-split-input-file

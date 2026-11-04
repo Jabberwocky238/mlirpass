@@ -1,0 +1,5 @@
+-allow-unregistered-dialect
+-one-shot-bufferize=allow-return-allocs-from-loops unknown-type-conversion=identity-layout-map function-boundary-type-conversion=identity-layout-map bufferize-function-boundaries
+-split-input-file
+-o
+/dev/null

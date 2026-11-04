@@ -1,0 +1,2 @@
+-one-shot-bufferize=dialect-filter=scf,bufferization copy-before-write unknown-type-conversion=identity-layout-map
+-split-input-file

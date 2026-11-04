@@ -41,6 +41,8 @@ def tests(root: Path):
     # Bufferization and the linalg / memref transforms before it: one-shot-bufferize,
     # linalg-fold-unit-extent-dims, convert-elementwise-to-linalg, fold-memref-alias-ops.
     found += list(root.glob("Dialect/Bufferization/Transforms/one-shot-*.mlir"))
+    # The other dialects' `BufferizableOpInterface` models.
+    found += list(root.glob("Dialect/*/one-shot-bufferize*.mlir")) + list(root.glob("Dialect/*/bufferize*.mlir"))
     found += [root / "Dialect/Linalg/drop-unit-extent-dims.mlir", root / "Dialect/Linalg/convert-elementwise-to-linalg.mlir"]
     found += [root / "Dialect/MemRef/fold-memref-alias-ops.mlir"]
     # resolve-(ranked-)shaped-type-result-dims: `ReifyRankedShapedTypeOpInterface`.

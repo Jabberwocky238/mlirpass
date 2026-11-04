@@ -1,0 +1,2 @@
+-one-shot-bufferize=allow-return-allocs-from-loops
+-split-input-file

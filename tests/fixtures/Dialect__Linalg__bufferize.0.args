@@ -1,0 +1,4 @@
+--one-shot-bufferize=dialect-filter=linalg,bufferization copy-before-write unknown-type-conversion=identity-layout-map
+-canonicalize
+-cse
+-split-input-file

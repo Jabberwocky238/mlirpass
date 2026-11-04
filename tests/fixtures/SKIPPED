@@ -153,3 +153,8 @@ Dialect__Bufferization__Transforms__one-shot-bufferize-pass-statistics.0	prints 
 Conversion__MathToXeVM__native-spirv-builtins.0	prints logs, not IR: -debug-only=serialize-to-isa
 Conversion__MathToXeVM__native-spirv-builtins.1	not mlir-opt: ['FileCheck']
 Conversion__NVVMToLLVM__invalid.0	mlir-opt failed (reading the input)
+Dialect__SCF__one-shot-bufferize-tensor-copy-insertion.0	test-only pass -test-tensor-copy-insertion=allow-return-allocs-from-loops
+Dialect__SCF__one-shot-bufferize-tensor-copy-insertion.1	test-only pass -test-tensor-copy-insertion=allow-return-allocs-from-loops bufferize-function-boundaries
+Dialect__Shape__bufferize.0	lit substitution <%s
+Dialect__Tensor__one-shot-bufferize-tensor-copy-insertion.0	test-only pass -test-tensor-copy-insertion
+Dialect__Tensor__one-shot-bufferize-tensor-copy-insertion.1	test-only pass -test-tensor-copy-insertion=bufferize-function-boundaries

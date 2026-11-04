@@ -1,0 +1,3 @@
+-one-shot-bufferize=bufferize-function-boundaries
+-split-input-file
+-verify-diagnostics

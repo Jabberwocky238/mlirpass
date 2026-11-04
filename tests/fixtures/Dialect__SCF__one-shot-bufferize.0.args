@@ -1,0 +1,6 @@
+-allow-unregistered-dialect
+-one-shot-bufferize=allow-return-allocs-from-loops bufferize-function-boundaries
+-cse
+-canonicalize
+-drop-equivalent-buffer-results
+-split-input-file

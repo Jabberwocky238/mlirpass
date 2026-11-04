@@ -1,0 +1,5 @@
+-allow-unregistered-dialect
+-one-shot-bufferize=allow-return-allocs-from-loops analysis-heuristic=fuzzer test-analysis-only analysis-fuzzer-seed=59 bufferize-function-boundaries
+-split-input-file
+-o
+/dev/null

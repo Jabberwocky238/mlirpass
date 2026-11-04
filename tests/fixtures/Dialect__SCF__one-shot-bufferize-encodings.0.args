@@ -1,0 +1,3 @@
+-one-shot-bufferize=use-encoding-for-memory-space allow-return-allocs-from-loops allow-unknown-ops
+-allow-unregistered-dialect
+-split-input-file

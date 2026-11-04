@@ -1,0 +1,2 @@
+-one-shot-bufferize=allow-return-allocs-from-loops bufferize-function-boundaries test-analysis-only
+-split-input-file

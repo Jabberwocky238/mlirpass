@@ -1,0 +1,3 @@
+--one-shot-bufferize=dialect-filter=tensor,bufferization copy-before-write unknown-type-conversion=identity-layout-map
+-cse
+-split-input-file

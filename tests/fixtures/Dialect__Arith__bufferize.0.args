@@ -1,0 +1,3 @@
+--one-shot-bufferize=dialect-filter=arith,bufferization copy-before-write unknown-type-conversion=identity-layout-map
+-split-input-file
+-verify-diagnostics

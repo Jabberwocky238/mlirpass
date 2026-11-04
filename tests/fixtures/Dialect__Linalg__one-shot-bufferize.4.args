@@ -1,0 +1,3 @@
+-one-shot-bufferize=unknown-type-conversion=identity-layout-map function-boundary-type-conversion=identity-layout-map bufferize-function-boundaries
+-drop-equivalent-buffer-results
+-split-input-file
