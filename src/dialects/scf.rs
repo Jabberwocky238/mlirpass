@@ -137,10 +137,11 @@ mod bufferizable {
     use super::ScfDialect;
     use crate::{buffer_of, buffer_type, is_tensor, replace_with_buffers, AliasingOperand, AliasingValue, AnalysisState, Body, BufferRelation, Bufferizable, BufferizationOptions, Def, OpData, OpId, Operand, RegionId, Rewriter, ValueId};
 
-    /// `scf.for`, `scf.if`, `scf.yield`.
+    /// `scf.for`, `scf.if`, `scf.yield`, `scf.execute_region`.
     struct For;
     struct If;
     struct Yield;
+    struct ExecuteRegion;
 
     impl ScfDialect {
         pub(crate) fn bufferizable_op(name: &str) -> Option<&'static dyn Bufferizable> {
@@ -148,6 +149,7 @@ mod bufferizable {
                 "scf.for" => &For,
                 "scf.if" => &If,
                 "scf.yield" => &Yield,
+                "scf.execute_region" => &ExecuteRegion,
                 _ => return None,
             })
         }
@@ -399,6 +401,64 @@ mod bufferizable {
             for r in 0..2 {
                 let (from, to) = (body_of(rw.body, op, r), body_of(rw.body, n, r));
                 rw.merge_blocks(from, to, &[]);
+            }
+            let new_results = rw.body[n].results.to_vec();
+            replace_with_buffers(rw, op, &new_results);
+            Ok(())
+        }
+    }
+
+    impl ExecuteRegion {
+        /// `getUniqueYieldOp`: the only `scf.yield` terminating a block of the region.
+        fn unique_yield(b: &Body<'_>, op: OpId) -> Option<OpId> {
+            let mut yields = b[b[op].regions[0]].blocks.iter().filter_map(|blk| b[*blk].ops.last().copied().filter(|t| &*b[*t].name == "scf.yield"));
+            let y = yields.next()?;
+            yields.next().is_none().then_some(y)
+        }
+    }
+
+    impl Bufferizable for ExecuteRegion {
+        fn unstructured_control_flow(&self, _: &Body<'_>, _: OpId) -> bool {
+            true
+        }
+
+        fn writable(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: ValueId) -> bool {
+            true
+        }
+
+        fn verify(&self, _: &AnalysisState<'_>, b: &Body<'_>, op: OpId) -> Result<(), Error> {
+            match Self::unique_yield(b, op) {
+                Some(_) => Ok(()),
+                None => Err(Error(format!("'{}' op op without unique scf.yield is not supported", b[op].name))),
+            }
+        }
+
+        /// A result aliases (is equivalent to) the operand the unique yield gives it.
+        fn aliasing_operands(&self, s: &AnalysisState<'_>, b: &Body<'_>, v: ValueId) -> Vec<AliasingOperand> {
+            match b[v].def {
+                Def::Result(op, k) => Self::unique_yield(b, op).map_or_else(Vec::new, |y| vec![AliasingOperand { operand: (y, k as usize), relation: BufferRelation::Equivalent, definite: true }]),
+                Def::Arg(..) => s.default_aliasing_operands(b, v),
+            }
+        }
+
+        /// The region moved into a new op whose results take the yielded buffers' types.
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let y = Self::unique_yield(rw.body, op).ok_or_else(|| Error("op without unique scf.yield is not supported".into()))?;
+            let mut types = Vec::new();
+            for v in rw.body[y].operands.to_vec() {
+                types.push(if is_tensor(&rw.body[v].ty) { buffer_type(o, rw.body, v)? } else { rw.body[v].ty.clone() });
+            }
+            let old = rw.body[op].clone();
+            let mut data = OpData::named(old.name.clone());
+            data.properties.clone_from(&old.properties);
+            data.attributes.clone_from(&old.attributes);
+            let n = rw.create_with(data, &types, |b, o| {
+                b.add_region(o);
+            });
+            let (from, to) = (rw.body[op].regions[0], rw.body[n].regions[0]);
+            rw.inline_region_before(from, to, None);
+            for blk in rw.body[to].blocks.to_vec() {
+                crate::bufferize_block_signature(rw, o, blk)?;
             }
             let new_results = rw.body[n].results.to_vec();
             replace_with_buffers(rw, op, &new_results);
