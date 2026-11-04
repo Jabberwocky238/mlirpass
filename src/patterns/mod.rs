@@ -50,6 +50,8 @@ mod ub;
 mod vector;
 #[cfg(all(feature = "dialect.x86vector", feature = "target.llvm"))]
 mod x86vector;
+#[cfg(feature = "dialect.xegpu")]
+mod xegpu;
 #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
 mod xevm;
 
@@ -104,5 +106,7 @@ pub use ub::*;
 pub use vector::*;
 #[cfg(all(feature = "dialect.x86vector", feature = "target.llvm"))]
 pub use x86vector::*;
+#[cfg(feature = "dialect.xegpu")]
+pub use xegpu::*;
 #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
 pub use xevm::*;

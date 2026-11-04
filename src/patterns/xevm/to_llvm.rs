@@ -135,6 +135,20 @@ impl StoreCacheControl {
     }
 }
 
+impl From<LoadCacheControl> for Attribute<'static> {
+    fn from(c: LoadCacheControl) -> Self {
+        let name = LoadCacheControl::NAMES.iter().find(|(_, v)| *v == c).map_or("", |(n, _)| n);
+        Attribute::dialect("xevm.load_cache_control", &format!("<{name}>"))
+    }
+}
+
+impl From<StoreCacheControl> for Attribute<'static> {
+    fn from(c: StoreCacheControl) -> Self {
+        let name = StoreCacheControl::NAMES.iter().find(|(_, v)| *v == c).map_or("", |(n, _)| n);
+        Attribute::dialect("xevm.store_cache_control", &format!("<{name}>"))
+    }
+}
+
 /// A case of an enum attribute `#dialect.name<case>` among `names`.
 fn case_of<T: Copy>(a: &Attribute<'_>, names: &[(&'static str, T)]) -> Option<T> {
     let Attribute::Extended { ext, .. } = a else { return None };

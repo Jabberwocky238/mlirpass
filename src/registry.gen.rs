@@ -169,6 +169,8 @@ impl crate::Passes {
         p.register::<crate::ConvertVectorToScf>(); // convert-vector-to-scf
         #[cfg(all(feature = "dialect.vector", feature = "target.spirv"))]
         p.register::<crate::ConvertVectorToSpirv>(); // convert-vector-to-spirv
+        #[cfg(all(feature = "dialect.xegpu", feature = "target.llvm"))]
+        p.register::<crate::ConvertXegpuToXevm>(); // convert-xegpu-to-xevm
         #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
         p.register::<crate::ConvertXevmToLlvm>(); // convert-xevm-to-llvm
     }
