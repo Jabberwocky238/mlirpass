@@ -3,9 +3,9 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::Dim;
+use mlirformat::{Dim, Type};
 
-use crate::{AffineExpr, AffineMap, Body, DialectInliner, InlineAll, MemrefOfr as Ofr, OpId, OpInterfaces, Rewriter};
+use crate::{AffineExpr, AffineMap, Body, DialectInliner, InlineAll, MemrefOfr as Ofr, OpData, OpId, OpInterfaces, Rewriter};
 
 /// The `tensor` dialect.
 pub struct TensorDialect;
@@ -46,6 +46,7 @@ impl OpInterfaces for TensorDialect {
             }
             "tensor.pad" => Self::pad(rw, op, &dims),
             "tensor.collapse_shape" => Self::collapse(rw, op, &dims),
+            "tensor.concat" => Self::concat(rw, op, &dims),
             _ => return None,
         };
         Some(vec![sizes])
@@ -81,6 +82,37 @@ impl TensorDialect {
                 }
                 let d = rw.fold_dim(src, i);
                 rw.composed_folded_apply(sum.clone(), &[Ofr::V(d), low[i], high[i]])
+            })
+            .collect()
+    }
+
+    /// `ConcatOp::reifyResultShapes`: the concatenated size is the sum of the inputs' (composed
+    /// and folded); another dynamic size is an input's static one, else the first input's dim.
+    fn concat(rw: &mut Rewriter<'_, '_>, op: OpId, result: &[i64]) -> Vec<Ofr> {
+        let dim = match rw.body[op].get("dim") {
+            Some(mlirformat::Attribute::Int { lit, .. }) => lit.trim().parse::<usize>().unwrap_or(0),
+            _ => 0,
+        };
+        let inputs = rw.body[op].operands.to_vec();
+        let shapes: Vec<Vec<i64>> = inputs.iter().map(|v| rw.body[*v].ty.dims().unwrap_or_default()).collect();
+        (0..result.len())
+            .map(|i| {
+                if result[i] != Dim::DYNAMIC {
+                    return Ofr::C(result[i]);
+                }
+                if i == dim {
+                    let sum = (1..inputs.len()).fold(AffineExpr::Dim(0), |e, k| e.add(AffineExpr::Dim(k as u32)));
+                    let sizes: Vec<Ofr> = inputs.iter().map(|v| Ofr::V(rw.fold_dim(*v, i))).collect();
+                    let map = AffineMap { dims: inputs.len() as u32, syms: 0, results: vec![sum] };
+                    let r = rw.composed_folded_apply(map, &sizes);
+                    return Ofr::V(rw.value_of(r));
+                }
+                if let Some(c) = shapes.iter().map(|s| s[i]).find(|d| *d != Dim::DYNAMIC) {
+                    return Ofr::V(rw.value_of(Ofr::C(c)));
+                }
+                let k = rw.value_of(Ofr::C(i as i64));
+                let d = rw.create(OpData::build("tensor.dim").operands(&[inputs[0], k]), &[Type::Index]);
+                Ofr::V(rw.body[d].results[0])
             })
             .collect()
     }
@@ -122,7 +154,7 @@ mod bufferizable {
     use mlirformat::{Dim, Error, Type};
 
     use super::TensorDialect;
-    use crate::{buffer_of, buffer_type, replace_with_buffers, AliasingValue, AnalysisState, Body, Bufferizable, BufferizationOptions, MemrefLayout, MemrefOfr as Ofr, MemrefReshape, OpData, OpId, Operand, Rewriter, ValueId};
+    use crate::{buffer_of, buffer_type, replace_with_buffers, AffineExpr, AffineMap, AliasingValue, AnalysisState, Body, Bufferizable, BufferizationOptions, MemrefLayout, MemrefOfr as Ofr, MemrefReshape, OpData, OpId, Operand, RegionId, Rewriter, ValueId};
 
     /// `tensor.cast`.
     struct Cast;
@@ -159,6 +191,11 @@ mod bufferizable {
                 "tensor.insert" => &Insert,
                 "tensor.insert_slice" => &InsertSlice,
                 "tensor.parallel_insert_slice" => &ParallelInsertSlice,
+                "tensor.generate" => &Generate,
+                "tensor.splat" => &Splat,
+                "tensor.concat" => &Concat,
+                "tensor.pad" => &Pad,
+                "tensor.reshape" => &Reshape,
                 _ => return None,
             })
         }
@@ -424,7 +461,7 @@ mod bufferizable {
             let elements = rw.body[op].operands.to_vec();
             if !elements.is_empty() {
                 if shape.is_empty() {
-                    store(rw, elements[0], buffer, &[]);
+                    rw.create(OpData::named("memref.store").operands(&[elements[0], buffer]), &[]);
                 } else {
                     let max = *shape.iter().max().expect("a shape");
                     let constants: Vec<ValueId> = (0..max).map(|i| rw.value_of(Ofr::C(i))).collect();
@@ -511,6 +548,237 @@ mod bufferizable {
             let sv = rw.body[s].results[0];
             rw.mem_cpy(sb, sv);
             rw.erase_op(op);
+            Ok(())
+        }
+    }
+
+    /// `tensor.generate`, `tensor.splat`, `tensor.concat`, `tensor.pad`: new allocations;
+    /// `tensor.reshape`: a `memref.reshape`.
+    struct Generate;
+    struct Splat;
+    struct Concat;
+    struct Pad;
+    struct Reshape;
+
+    impl Rewriter<'_, '_> {
+        /// A `linalg.map` into `dest` with no inputs and an element-typed block argument.
+        fn map_into(&mut self, dest: ValueId) -> (OpId, crate::BlockId) {
+            let ty = self.body[dest].ty.clone();
+            let elem = match &ty {
+                Type::Shaped(t) => (*t.elem).clone(),
+                _ => ty.clone(),
+            };
+            let loc = self.body[dest].loc.clone();
+            let m = self.create_with(OpData::build("linalg.map").operands(&[dest]), &[ty], |b, o| {
+                let r = b.add_region(o);
+                b.add_block(r, &[(elem, loc)]);
+            });
+            let blk = self.body[self.body[m].regions[0]].blocks[0];
+            (m, blk)
+        }
+
+        /// `lowerGenerateLikeOpBody`: `body` (one index argument per dimension, ending in
+        /// `tensor.yield`) moved into a `linalg.map` into `dest`, on `linalg.index`es.
+        fn lower_generate_like(&mut self, dest: ValueId, body: RegionId) -> ValueId {
+            let (m, blk) = self.map_into(dest);
+            let rank = self.body[dest].ty.dims().unwrap_or_default().len();
+            self.set_start(blk);
+            let indices: Vec<ValueId> = (0..rank)
+                .map(|d| {
+                    let i = self.create(OpData::build("linalg.index").with("dim", mlirformat::Attribute::integer(d as i128, Type::int(64))), &[Type::Index]);
+                    self.body[i].results[0]
+                })
+                .collect();
+            let from = self.body[body].blocks[0];
+            self.merge_blocks(from, blk, &indices);
+            let y = *self.body[blk].ops.last().expect("a terminator");
+            let v = self.body[y].operands[0];
+            self.replace_with(y, OpData::build("linalg.yield").operands(&[v]), &[]);
+            self.body[m].results[0]
+        }
+    }
+
+    /// `memory space not implemented yet`, when the options give one.
+    fn no_memory_space(o: &BufferizationOptions, b: &Body<'_>, op: OpId) -> Result<(), Error> {
+        match &b[b[op].results[0]].ty {
+            Type::Shaped(t) if o.default_memory_space(t).flatten().is_some() => Err(Error(alloc::format!("'{}' op memory space not implemented yet", b[op].name))),
+            _ => Ok(()),
+        }
+    }
+
+    impl Bufferizable for Generate {
+        fn to_allocation(&self, _: &Body<'_>, _: ValueId) -> bool {
+            true
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            no_memory_space(o, rw.body, op)?;
+            let t = AnalysisState::new(o).allocate_tensor_for(rw, rw.body[op].results[0], false)?;
+            let r = rw.lower_generate_like(t, rw.body[op].regions[0]);
+            rw.replace_op(op, &[r]);
+            Ok(())
+        }
+    }
+
+    impl Bufferizable for Splat {
+        fn to_allocation(&self, _: &Body<'_>, _: ValueId) -> bool {
+            true
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let t = AnalysisState::new(o).allocate_tensor_for(rw, rw.body[op].results[0], false)?;
+            no_memory_space(o, rw.body, op)?;
+            let saved = rw.ip;
+            let (m, blk) = rw.map_into(t);
+            rw.set_start(blk);
+            let v = rw.body[op].operands[0];
+            rw.create(OpData::build("linalg.yield").operands(&[v]), &[]);
+            rw.ip = saved;
+            let r = rw.body[m].results[0];
+            rw.replace_op(op, &[r]);
+            Ok(())
+        }
+    }
+
+    impl Bufferizable for Concat {
+        fn to_allocation(&self, _: &Body<'_>, _: ValueId) -> bool {
+            true
+        }
+
+        fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
+            false
+        }
+
+        /// Each input copied into its subview of a new buffer, along the concatenated dim.
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let t = AnalysisState::new(o).allocate_tensor_for(rw, rw.body[op].results[0], false)?;
+            no_memory_space(o, rw.body, op)?;
+            let Type::Shaped(rt) = rw.body[rw.body[op].results[0]].ty.clone() else { return Err(Error("expected a tensor".into())) };
+            let mty = BufferizationOptions::memref(&rt, None, None);
+            let m = rw.create(OpData::build("bufferization.to_buffer").operands(&[t]), &[mty.clone()]);
+            let dst = rw.body[m].results[0];
+            let dim = match rw.body[op].get("dim") {
+                Some(mlirformat::Attribute::Int { lit, .. }) => lit.trim().parse::<usize>().unwrap_or(0),
+                _ => 0,
+            };
+            let rank = rt.dims().unwrap_or_default().len();
+            let mut offsets = vec![Ofr::C(0); rank];
+            let strides = vec![Ofr::C(1); rank];
+            let mut sizes = rw.mixed_sizes(dst);
+            let sum = AffineMap { dims: 0, syms: 2, results: vec![AffineExpr::Sym(0).add(AffineExpr::Sym(1))] };
+            let mut at = Ofr::C(0);
+            for input in rw.body[op].operands.to_vec() {
+                let src = buffer_of(rw, o, input)?;
+                offsets[dim] = at;
+                let size = rw.mixed_size(src, dim);
+                sizes[dim] = size;
+                let lists = [offsets.clone(), sizes.clone(), strides.clone()];
+                let shape = rw.body[input].ty.dims().unwrap_or_default();
+                let ty = rank_reduced_subview(rw.body, &mty, &shape, &lists);
+                let s = rw.create(OpData::sliced("memref.subview", &[dst], &lists), &[ty]);
+                let sv = rw.body[s].results[0];
+                rw.mem_cpy(src, sv);
+                at = rw.composed_folded_apply(sum.clone(), &[at, size]);
+            }
+            replace_with_buffers(rw, op, &[dst]);
+            Ok(())
+        }
+    }
+
+    impl Bufferizable for Pad {
+        fn to_allocation(&self, _: &Body<'_>, _: ValueId) -> bool {
+            true
+        }
+
+        fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
+            false
+        }
+
+        /// The source's memory space, an identity layout.
+        fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
+            let op = b.owner_of(v);
+            let src = crate::buffer_type_in(o, b, b[op].operands[0], stack)?;
+            let space = match &src {
+                Type::Shaped(m) => m.extras.iter().find(|a| !a.is_layout()).cloned(),
+                _ => None,
+            };
+            let Type::Shaped(t) = &b[v].ty else { return Err(Error("expected a tensor".into())) };
+            Ok(BufferizationOptions::memref(t, None, space))
+        }
+
+        /// A `linalg.map` of the padding body into a new tensor, the source inserted at the low
+        /// pads.
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let src = rw.body[op].operands[0];
+            let r = rw.body[op].results[0];
+            let shape = rw.body[r].ty.dims().unwrap_or_default();
+            let [low, high] = rw.body.pad_lists(op);
+            let sum = AffineMap { dims: 0, syms: 3, results: vec![AffineExpr::Sym(0).add(AffineExpr::Sym(1)).add(AffineExpr::Sym(2))] };
+            for (i, d) in shape.iter().enumerate() {
+                if *d != Dim::DYNAMIC {
+                    continue;
+                }
+                let k = rw.value_of(Ofr::C(i as i64));
+                let dim = rw.create(OpData::build("tensor.dim").operands(&[src, k]), &[Type::Index]);
+                let sd = rw.body[dim].results[0];
+                let (l, h) = (rw.value_of(low[i]), rw.value_of(high[i]));
+                rw.create(OpData::build("affine.apply").operands(&[sd, l, h]).with("map", mlirformat::Attribute::from(&sum)), &[Type::Index]);
+            }
+            let t = AnalysisState::new(o).allocate_tensor_for(rw, r, false)?;
+            let filled = rw.lower_generate_like(t, rw.body[op].regions[0]);
+            let sizes = rw.mixed_sizes(src);
+            let strides = vec![Ofr::C(1); sizes.len()];
+            let lists = [low, sizes, strides];
+            let ty = rw.body[r].ty.clone();
+            rw.replace_with(op, OpData::sliced("tensor.insert_slice", &[src, filled], &lists), &[ty]);
+            Ok(())
+        }
+    }
+
+    impl Bufferizable for Reshape {
+        fn reads(&self, _: &AnalysisState<'_>, _: &Body<'_>, (_, i): Operand) -> bool {
+            i == 1
+        }
+
+        fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
+            false
+        }
+
+        fn aliasing_values(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> Vec<AliasingValue> {
+            if i == 0 { vec![AliasingValue::equivalent(b[op].results[0])] } else { Vec::new() }
+        }
+
+        /// A static identity layout in the source's memory space.
+        fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
+            let op = b.owner_of(v);
+            let src = crate::buffer_type_in(o, b, b[op].operands[0], stack)?;
+            let space = match &src {
+                Type::Shaped(m) => m.extras.iter().find(|a| !a.is_layout()).cloned(),
+                _ => None,
+            };
+            let Type::Shaped(t) = &b[v].ty else { return Err(Error("expected a tensor".into())) };
+            Ok(BufferizationOptions::identity(t, space))
+        }
+
+        /// A `memref.reshape`, of a copy when the source's layout is not the identity.
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let (source, shape) = (rw.body[op].operands[0], rw.body[op].operands[1]);
+            let mut src = buffer_of(rw, o, source)?;
+            let sh = buffer_of(rw, o, shape)?;
+            let ty = buffer_type(o, rw.body, rw.body[op].results[0])?;
+            if let Type::Shaped(m) = rw.body[src].ty.clone()
+                && m.shape.is_some()
+                && m.extras.iter().any(|a| a.is_layout())
+            {
+                let t = AnalysisState::new(o).allocate_tensor_for(rw, source, true)?;
+                let space = m.extras.iter().find(|a| !a.is_layout()).cloned();
+                let mty = BufferizationOptions::memref(&m, None, space);
+                let c = rw.create(OpData::build("bufferization.to_buffer").operands(&[t]), &[mty]);
+                src = rw.body[c].results[0];
+            }
+            let n = rw.create(OpData::build("memref.reshape").operands(&[src, sh]), &[ty]);
+            let v = rw.body[n].results[0];
+            replace_with_buffers(rw, op, &[v]);
             Ok(())
         }
     }
