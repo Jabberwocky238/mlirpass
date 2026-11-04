@@ -11,3 +11,8 @@ pub use gpu_launch_sink_index_computations::{GpuLaunchSinkIndexComputations};
 mod convert_gpu_to_spirv;
 #[cfg(all(feature = "target.spirv", feature = "dialect.func", feature = "dialect.scf", feature = "dialect.vector"))]
 pub use convert_gpu_to_spirv::*;
+
+#[cfg(feature = "target.llvm")]
+mod convert_gpu_to_llvm_spv;
+#[cfg(feature = "target.llvm")]
+pub use convert_gpu_to_llvm_spv::ConvertGpuToLlvmSpv;

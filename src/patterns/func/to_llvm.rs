@@ -6,19 +6,13 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::patterns;
-use mlirformat::{Attribute, Dim, NamedAttr, Shaped, ShapedKind, Type};
+use mlirformat::{Attribute, NamedAttr, Shaped, ShapedKind, Type};
 
-use crate::{ConversionRewriter, LlvmConverter, LlvmOptions, MemrefLayout, OpData, OpId, SignatureConversion, ValueId, Visibility};
+use crate::{ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, ValueId, Visibility};
 use mlirformat::llvm_types::LlvmType;
 
 /// The func ⇒ llvm patterns.
 pub struct FuncToLlvm;
-
-/// What a function's arguments and results turn into.
-struct Signature<'a> {
-    llvm: Type<'a>,
-    conversion: SignatureConversion<'a>,
-}
 
 #[patterns(converter, options = LlvmOptions)]
 impl FuncToLlvm {
@@ -27,70 +21,6 @@ impl FuncToLlvm {
             Type::Shaped(s) if s.kind == ShapedKind::MemRef => Some(s),
             _ => None,
         }
-    }
-
-    /// `structFuncArgTypeConverter` / `barePtrFuncArgTypeConverter`.
-    fn arg_types<'a>(cr: &ConversionRewriter<'_, 'a, '_>, opts: LlvmOptions, t: &Type<'a>, bare: bool) -> Option<Vec<Type<'a>>> {
-        let tc = cr.type_converter()?;
-        if let Some(s) = Self::memref(t) {
-            if bare {
-                return Self::bare_ptr(cr, opts, s).map(|p| vec![p]);
-            }
-            if s.shape.is_none() {
-                tc.convert(&s.elem)?;
-                return Some(vec![opts.index(), LlvmType::ptr()]);
-            }
-            let ok = tc.convert(&s.elem).is_some();
-            return opts.descriptor_fields(s, ok, true);
-        }
-        tc.convert_types(t)
-    }
-
-    /// `convertMemRefToBarePtr`: static shape, static strides and offset.
-    fn bare_ptr<'a>(cr: &ConversionRewriter<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>) -> Option<Type<'a>> {
-        cr.type_converter()?.convert(&s.elem)?;
-        let shape = s.shape.as_ref()?;
-        if shape.iter().any(|d| !matches!(d, mlirformat::Dim::Static(_))) {
-            return None;
-        }
-        let (strides, offset) = s.strides_and_offset()?;
-        if strides.contains(&Dim::DYNAMIC) || offset == Dim::DYNAMIC {
-            return None;
-        }
-        Some(LlvmType::Ptr(opts.address_space(s)?).into())
-    }
-
-    /// `packFunctionResults` with the calling convention's memref rule; also each result's
-    /// converted types.
-    fn pack_results<'a>(cr: &ConversionRewriter<'_, 'a, '_>, opts: LlvmOptions, types: &[Type<'a>], bare: bool) -> Option<(Type<'a>, Vec<Vec<Type<'a>>>)> {
-        let tc = cr.type_converter()?;
-        let mut groups = Vec::new();
-        for t in types {
-            let g = match Self::memref(t) {
-                Some(s) if bare => vec![Self::bare_ptr(cr, opts, s)?],
-                _ => tc.convert_types(t)?,
-            };
-            groups.push(g);
-        }
-        let flat: Vec<Type<'a>> = groups.iter().flatten().cloned().collect();
-        let packed = match flat.len() {
-            0 => return None,
-            1 => flat[0].clone(),
-            _ => LlvmType::literal(flat),
-        };
-        Some((packed, groups))
-    }
-
-    /// `convertFunctionSignature`.
-    fn signature<'a>(cr: &ConversionRewriter<'_, 'a, '_>, opts: LlvmOptions, inputs: &[Type<'a>], results: &[Type<'a>], vararg: bool, bare: bool) -> Option<Signature<'a>> {
-        let mut conversion = SignatureConversion::new(inputs.len());
-        for (i, t) in inputs.iter().enumerate() {
-            let conv = Self::arg_types(cr, opts, t, bare)?;
-            conversion.add_inputs(i, conv);
-        }
-        let ret = if results.is_empty() { LlvmType::void() } else { Self::pack_results(cr, opts, results, bare)?.0 };
-        let llvm = LlvmType::Func { ret: ret.into(), params: conversion.converted_types().to_vec(), vararg }.into();
-        Some(Signature { llvm, conversion })
     }
 
     fn function_type<'a>(cr: &ConversionRewriter<'_, 'a, '_>, op: OpId) -> Option<mlirformat::FunctionType<'a>> {
@@ -121,7 +51,7 @@ impl FuncToLlvm {
         let b = &*cr.rw.body;
         let vararg = matches!(b[op].get("func.varargs"), Some(Attribute::Bool(true)));
         let bare = opts.bare_ptr || b[op].get("llvm.bareptr").is_some();
-        let Some(sig) = Self::signature(cr, opts, &fty.inputs, &fty.results, vararg, bare) else { return false };
+        let Some(sig) = cr.llvm_signature(opts, &fty.inputs, &fty.results, vararg, bare) else { return false };
         let b = &*cr.rw.body;
         let c_iface = !bare && b[op].get("llvm.emit_c_interface").is_some();
         if c_iface && vararg {
@@ -206,7 +136,7 @@ impl FuncToLlvm {
     /// leading pointer argument.
     fn c_wrapper_type<'a>(cr: &ConversionRewriter<'_, 'a, '_>, opts: LlvmOptions, fty: &mlirformat::FunctionType<'a>) -> Option<(Type<'a>, Option<Type<'a>>)> {
         let tc = cr.type_converter()?;
-        let mut ret = if fty.results.is_empty() { LlvmType::void() } else { Self::pack_results(cr, opts, &fty.results, false)?.0 };
+        let mut ret = if fty.results.is_empty() { LlvmType::void() } else { cr.llvm_pack_results(opts, &fty.results, false)?.0 };
         let mut params = Vec::new();
         let structured = matches!(LlvmType::try_from(&ret), Ok(LlvmType::Struct { .. })).then(|| ret.clone());
         if structured.is_some() {
@@ -363,46 +293,6 @@ impl FuncToLlvm {
         cr.rw.ip = saved;
     }
 
-    /// `copyUnrankedDescriptor`: the ranked descriptor behind `desc` copied to `malloc`'d
-    /// (`to_dynamic`) or `alloca`'d memory, the source then freed.
-    fn copy_unranked<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId, to_dynamic: bool, at: OpId) -> Option<ValueId> {
-        opts.address_space(s)?;
-        let idx = opts.index();
-        let module = cr.module_of(at)?;
-        match to_dynamic {
-            true => cr.llvm_func(module, "malloc", vec![idx.clone()], LlvmType::ptr(), false)?,
-            false => cr.llvm_func(module, "free", vec![LlvmType::ptr()], LlvmType::void(), false)?,
-        };
-        // `UnrankedMemRefDescriptor::computeSize`: 2 * sizeof(ptr) + (1 + 2 * rank) * sizeof(index).
-        let one = cr.index_const(&idx, 1);
-        let two = cr.index_const(&idx, 2);
-        let index_size = cr.index_const(&idx, i64::from(opts.index_bitwidth.div_ceil(8)));
-        let ptr_size = cr.index_const(&idx, 8);
-        let arith = |cr: &mut ConversionRewriter<'_, 'a, '_>, name: &str, a: ValueId, b: ValueId| cr.build(OpData::build(name).operands(&[a, b]), idx.clone());
-        let double_ptr = arith(cr, "llvm.mul", two, ptr_size);
-        let rank = cr.extract(desc, &[0]);
-        let double_rank = arith(cr, "llvm.mul", two, rank);
-        let inc = arith(cr, "llvm.add", double_rank, one);
-        let rank_size = arith(cr, "llvm.mul", inc, index_size);
-        let size = arith(cr, "llvm.add", double_ptr, rank_size);
-        let memory = if to_dynamic {
-            let c = cr.llvm_call("malloc", &[size], &[LlvmType::ptr()]);
-            cr.rw.body[c].results[0]
-        } else {
-            cr.build(OpData::build("llvm.alloca").operands(&[size]).with("elem_type", Attribute::Type(Type::int(8))), LlvmType::ptr())
-        };
-        let source = cr.extract(desc, &[1]);
-        cr.rw.create(OpData::build("llvm.intr.memcpy").operands(&[memory, source, size]).with("isVolatile", Attribute::Bool(false)), &[]);
-        if !to_dynamic {
-            cr.llvm_call("free", &[source], &[]);
-        }
-        let ty = LlvmConverter::convert_memref(opts, s)?;
-        let p = cr.poison(ty);
-        let rank = cr.extract(desc, &[0]);
-        let p = cr.insert_value(p, rank, &[0]);
-        Some(cr.insert_value(p, memory, &[1]))
-    }
-
     #[convert("func.constant", plain)]
     fn constant(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(tc) = cr.type_converter() else { return false };
@@ -450,7 +340,7 @@ impl FuncToLlvm {
         let packed = if result_types.is_empty() {
             None
         } else {
-            match Self::pack_results(cr, opts, &result_types, bare) {
+            match cr.llvm_pack_results(opts, &result_types, bare) {
                 Some(p) => Some(p),
                 None => return false,
             }
@@ -487,7 +377,7 @@ impl FuncToLlvm {
                         *group = vec![d];
                     }
                     Some(s) if s.shape.is_none() => {
-                        let Some(d) = Self::copy_unranked(cr, opts, s, group[0], false, op) else { return false };
+                        let Some(d) = cr.copy_unranked(opts, s, group[0], false, op) else { return false };
                         *group = vec![d];
                     }
                     _ => {}
@@ -519,39 +409,7 @@ impl FuncToLlvm {
             at
         };
         let bare = opts.bare_ptr || func.is_some_and(|f| cr.rw.body[f].get("llvm.bareptr").is_some());
-        let originals = cr.rw.body[op].operands.clone();
-        let mut updated = Vec::new();
-        for (o, adapted) in originals.iter().zip(operands) {
-            let ty = cr.rw.body[*o].ty.clone();
-            match Self::memref(&ty) {
-                Some(_) if bare && ty_unranked(&ty) => return false,
-                Some(s) if s.shape.is_none() => match Self::copy_unranked(cr, opts, s, adapted[0], true, op) {
-                    Some(d) => updated.push(d),
-                    None => return false,
-                },
-                Some(s) if bare && s.strides_and_offset().is_some_and(|(st, o)| !st.contains(&Dim::DYNAMIC) && o != Dim::DYNAMIC) && s.shape.as_ref().is_some_and(|sh| sh.iter().all(|d| matches!(d, mlirformat::Dim::Static(_)))) => updated.push(cr.extract(adapted[0], &[0])),
-                _ => updated.extend(adapted.iter().copied()),
-            }
-        }
-        let attrs = cr.all_attrs(op);
-        let with_attrs = |mut d: OpData<'a>| -> OpData<'a> {
-            for a in &attrs {
-                d.set(&a.name, a.value.clone().unwrap_or(Attribute::Unit));
-            }
-            d
-        };
-        if updated.len() <= 1 {
-            cr.replace_new(op, with_attrs(OpData::build("llvm.return").operands(&updated)), &[]);
-            return true;
-        }
-        let types = cr.rw.body.types(&originals);
-        let Some((packed, _)) = Self::pack_results(cr, opts, &types, bare) else { return false };
-        let mut p = cr.poison(packed);
-        for (i, v) in updated.into_iter().enumerate() {
-            p = cr.insert_value(p, v, &[i as i64]);
-        }
-        cr.replace_new(op, with_attrs(OpData::build("llvm.return").operands(&[p])), &[]);
-        true
+        cr.llvm_return(op, operands, opts, bare)
     }
 
     /// `populateFuncToLLVMConversionPatterns`.
@@ -561,8 +419,4 @@ impl FuncToLlvm {
         Self::call_impl(cr, op, o, opts, false, true)
     }
 
-}
-
-fn ty_unranked(t: &Type<'_>) -> bool {
-    matches!(t, Type::Shaped(s) if s.kind == ShapedKind::MemRef && s.shape.is_none())
 }

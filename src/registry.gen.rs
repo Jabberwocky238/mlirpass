@@ -47,6 +47,8 @@ impl crate::Passes {
         p.register::<crate::ConvertFuncToLlvm>(); // convert-func-to-llvm
         #[cfg(all(all(feature = "dialect.func", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")), feature = "target.spirv"))]
         p.register::<crate::ConvertFuncToSpirv>(); // convert-func-to-spirv
+        #[cfg(all(feature = "dialect.gpu", feature = "target.llvm"))]
+        p.register::<crate::ConvertGpuToLlvmSpv>(); // convert-gpu-to-llvm-spv
         #[cfg(all(feature = "dialect.gpu", all(feature = "target.spirv", feature = "dialect.func", feature = "dialect.scf", feature = "dialect.vector")))]
         p.register::<crate::ConvertGpuToSpirv>(); // convert-gpu-to-spirv
         #[cfg(feature = "dialect.gpu")]

@@ -812,6 +812,16 @@ impl<'a> Body<'a> {
         v
     }
 
+    /// Inserts a block argument at position `at` (`Block::insertArgument`); the later ones shift.
+    pub fn insert_arg(&mut self, block: BlockId, at: usize, ty: Type<'a>, loc: Option<Str<'a>>) -> ValueId {
+        let v = self.value(ty, Def::Arg(block, at as u32), loc);
+        self[block].args.insert(at, v);
+        for (i, a) in self[block].args.clone().into_iter().enumerate().skip(at + 1) {
+            self[a].def = Def::Arg(block, i as u32);
+        }
+        v
+    }
+
     // ---- placement ---------------------------------------------------------------------
 
     /// Whether an edit of `block`'s op list goes into the undo log (a checkpoint is open and the

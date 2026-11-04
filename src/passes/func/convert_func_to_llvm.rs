@@ -17,7 +17,7 @@ pub struct ConvertFuncToLlvm {
 
 impl Run for ConvertFuncToLlvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let options = LlvmOptions { index_bitwidth: self.index_bitwidth, bare_ptr: self.bare_ptr }.at(body, op);
+        let options = LlvmOptions { index_bitwidth: self.index_bitwidth, bare_ptr: self.bare_ptr, ..LlvmOptions::default() }.at(body, op);
         let tc = LlvmConverter::build(options);
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);

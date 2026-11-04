@@ -4,8 +4,10 @@
 mod interfaces;
 mod memref_desc;
 mod pattern;
+mod signature;
 
 pub use interfaces::{LlvmEnv, ToLlvmInterfaces};
+pub use signature::LlvmSignature;
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -23,11 +25,84 @@ use crate::{Action, ConversionRewriter, ConversionTarget, MemrefLayout, OpData, 
 pub struct LlvmOptions {
     pub index_bitwidth: u32,
     pub bare_ptr: bool,
+    /// `populateGpuMemorySpaceAttributeConversions`: `#gpu.address_space`s as these.
+    pub gpu_spaces: Option<GpuSpaces>,
 }
 
 impl Default for LlvmOptions {
     fn default() -> Self {
-        Self { index_bitwidth: 64, bare_ptr: false }
+        Self { index_bitwidth: 64, bare_ptr: false, gpu_spaces: None }
+    }
+}
+
+/// `gpu::AddressSpace` (`#gpu.address_space<..>`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuAddressSpace {
+    Global,
+    Workgroup,
+    Private,
+}
+
+impl GpuAddressSpace {
+    const NAMES: [(&'static str, Self); 3] = [("global", Self::Global), ("workgroup", Self::Workgroup), ("private", Self::Private)];
+}
+
+impl TryFrom<&Attribute<'_>> for GpuAddressSpace {
+    type Error = ();
+    fn try_from(a: &Attribute<'_>) -> Result<Self, ()> {
+        let Attribute::Extended { ext, .. } = a else { return Err(()) };
+        let body = ext.body.as_deref().filter(|_| ext.name == "gpu.address_space").ok_or(())?;
+        let body = body.strip_prefix('<').and_then(|b| b.strip_suffix('>')).ok_or(())?.trim();
+        Self::NAMES.iter().find(|(n, _)| *n == body).map(|(_, v)| *v).ok_or(())
+    }
+}
+
+/// `LLVM::cconv::CConv`, the calling conventions lowerings pick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CConv {
+    C,
+    SpirFunc,
+    SpirKernel,
+    AmdgpuKernel,
+    PtxKernel,
+}
+
+impl CConv {
+    pub const fn name(self) -> &'static str {
+        match self {
+            CConv::C => "ccc",
+            CConv::SpirFunc => "spir_funccc",
+            CConv::SpirKernel => "spir_kernelcc",
+            CConv::AmdgpuKernel => "amdgpu_kernelcc",
+            CConv::PtxKernel => "ptx_kernelcc",
+        }
+    }
+}
+
+impl From<CConv> for Attribute<'static> {
+    fn from(c: CConv) -> Self {
+        Attribute::dialect("llvm.cconv", &format!("<{}>", c.name()))
+    }
+}
+
+/// The LLVM address space of each `gpu::AddressSpace`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GpuSpaces {
+    pub global: u32,
+    pub workgroup: u32,
+    pub private: u32,
+}
+
+impl GpuSpaces {
+    /// `gpuAddressSpaceToOCLAddressSpace`: CrossWorkgroup, Workgroup, Function in OpenCL.
+    pub const OPENCL: Self = Self { global: 1, workgroup: 3, private: 0 };
+
+    pub fn of(self, s: GpuAddressSpace) -> u32 {
+        match s {
+            GpuAddressSpace::Global => self.global,
+            GpuAddressSpace::Workgroup => self.workgroup,
+            GpuAddressSpace::Private => self.private,
+        }
     }
 }
 
@@ -63,7 +138,7 @@ impl LlvmOptions {
             None => Some(0),
             // `getMemRefAddressSpace`: a signless or index integer.
             Some(Attribute::Int { lit, ty: None | Some(Type::Index | Type::Integer { signedness: Signedness::Signless, .. }) }) => lit.parse().ok(),
-            Some(_) => None,
+            Some(a) => Some(self.gpu_spaces?.of(GpuAddressSpace::try_from(a).ok()?)),
         }
     }
 

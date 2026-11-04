@@ -24,7 +24,7 @@ from pathlib import Path
 # Conversion targets outside this crate's scope (vendor / runtime specific, see README).
 OUT_OF_SCOPE = (
     "AMDGPU", "ROCDL", "NVVM", "NVGPU", "ArmSME", "ArmNeon", "AMX", "XeGPU", "MPI",
-    "OpenMP", "OpenACC", "Shard", "Calculet", "VCIX", "GPUToLLVMSPV",
+    "OpenMP", "OpenACC", "Shard", "Calculet", "VCIX",
 )
 
 def tests(root: Path):

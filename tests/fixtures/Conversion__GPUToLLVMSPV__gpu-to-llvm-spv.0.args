@@ -1,0 +1,3 @@
+-pass-pipeline=builtin.module(gpu.module(convert-gpu-to-llvm-spv{use-64bit-index=true}))
+-split-input-file
+-verify-diagnostics
