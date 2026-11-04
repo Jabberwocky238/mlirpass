@@ -1,0 +1,3 @@
+-allow-unregistered-dialect
+-split-input-file
+-pass-pipeline=builtin.module(convert-math-to-rocdl{chipset=gfx803})
