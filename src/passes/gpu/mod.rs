@@ -23,4 +23,4 @@ pub use xevm_attach_target::XevmAttachTarget;
 #[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
 mod convert_gpu_to_nvvm;
 #[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
-pub use convert_gpu_to_nvvm::ConvertGpuToNvvm;
+pub use convert_gpu_to_nvvm::{configure_nvvm, ConvertGpuToNvvm, NVVM_GPU_SPACES};
