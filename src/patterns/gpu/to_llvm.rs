@@ -24,6 +24,15 @@ pub struct PrintfCall {
     pub name: &'static str,
 }
 
+/// Which `gpu.printf` lowering a vendor uses.
+#[derive(Debug, Clone, Copy)]
+pub enum Printf {
+    /// `GPUPrintfOpToLLVMCallLowering`.
+    Call(PrintfCall),
+    /// `GPUPrintfOpToVPrintfLowering`: `vprintf(format, args)`, the arguments packed on the stack.
+    VPrintf,
+}
+
 /// `GPUFuncOpLoweringOptions` with the converter's options and the printf lowering in use.
 #[derive(Debug, Clone, Copy)]
 pub struct GpuLlvmOptions {
@@ -42,7 +51,7 @@ pub struct GpuLlvmOptions {
     pub func_cconv: CConv,
     /// `encodeWorkgroupAttributionsAsArguments`: `llvm.ptr` arguments instead of globals.
     pub workgroup_args: bool,
-    pub printf: Option<PrintfCall>,
+    pub printf: Option<Printf>,
 }
 
 /// The gpu ⇒ llvm patterns every vendor shares.
@@ -268,7 +277,7 @@ impl GpuToLlvm {
 
     /// `getOrCreateStringConstant`: a constant internal global of `bytes` and a NUL in
     /// address space `space`, reused when one holds them already.
-    fn string_constant<'a>(cr: &mut Cr<'_, 'a, '_>, module: OpId, prefix: &str, bytes: &[u8], space: u32) -> (String, Type<'a>) {
+    fn string_constant<'a>(cr: &mut Cr<'_, 'a, '_>, module: OpId, prefix: &str, bytes: &[u8], space: u32, loc: Option<mlirformat::Str<'a>>) -> (String, Type<'a>) {
         let mut data = bytes.to_vec();
         data.push(0);
         let ty = LlvmType::array(data.len() as u64, Type::int(8));
@@ -286,7 +295,6 @@ impl GpuToLlvm {
         let name = (0..).map(|i| format!("{prefix}{i}")).find(|n| cr.rw.body.lookup(module, n).is_none()).unwrap_or_default();
         let saved = cr.rw.ip;
         cr.rw.set_start(block);
-        let loc = saved.and_then(|ip| ip.before).and_then(|o| cr.rw.body[o].loc.clone());
         let g = OpData { loc, ..OpData::build("llvm.mlir.global").flag("constant").with("global_type", Attribute::Type(ty.clone())).with("linkage", Attribute::dialect("llvm.linkage", "<internal>")).with("sym_name", Attribute::str(&name)).with("value", value).with("addr_space", space_attr) };
         cr.rw.create_with(g, &[], |b, g| {
             b.add_region(g);
@@ -299,7 +307,11 @@ impl GpuToLlvm {
     /// string's global and the arguments.
     #[convert("gpu.printf")]
     fn printf<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: GpuLlvmOptions) -> bool {
-        let Some(p) = o.printf else { return false };
+        let p = match o.printf {
+            Some(Printf::Call(p)) => p,
+            Some(Printf::VPrintf) => return Self::vprintf(cr, op, operands),
+            None => return false,
+        };
         let Some(module) = cr.module_of(op) else { return false };
         let Some(Attribute::Str { lit, .. }) = cr.rw.body[op].get("format") else { return false };
         let bytes = crate::unescape(lit);
@@ -318,7 +330,8 @@ impl GpuToLlvm {
             _ => fty,
         };
         cr.modify(f, |b| b[f].set("CConv", p.cconv.into()));
-        let (global, arr) = Self::string_constant(cr, module, "printfFormat_", &bytes, p.space);
+        let loc = cr.rw.body[op].loc.clone();
+        let (global, arr) = Self::string_constant(cr, module, "printfFormat_", &bytes, p.space, loc);
         cr.rw.set_before(op);
         let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![Cow::Owned(global)])), ptr.clone());
         let start = cr.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::dense_i32(&[0, 0])), ptr);
@@ -336,4 +349,71 @@ impl GpuToLlvm {
         cr.erase(op);
         true
     }
+
+    /// `GPUPrintfOpToVPrintfLowering`.
+    fn vprintf<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        let Some(module) = cr.module_of(op) else { return false };
+        let Some(Attribute::Str { lit, .. }) = cr.rw.body[op].get("format") else { return false };
+        let bytes = crate::unescape(lit);
+        let ptr: Type<'a> = LlvmType::ptr();
+        // `findInstanceOfOrUnknown<FileLineColLoc>`: debug info inside a function cannot be used outside it.
+        let gloc: Option<mlirformat::Str<'a>> = Some(cr.rw.body[op].loc.as_deref().and_then(file_line_col).unwrap_or_else(|| String::from("unknown")).into());
+        if cr.rw.body.lookup(module, "vprintf").is_none() {
+            let Some(f) = cr.llvm_func(module, "vprintf", vec![ptr.clone(), ptr.clone()], Type::int(32), false) else { return false };
+            cr.rw.body[f].loc = gloc.clone();
+        }
+        let (global, arr) = Self::string_constant(cr, module, "printfFormat_", &bytes, 0, gloc);
+        cr.rw.set_before(op);
+        let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![Cow::Owned(global)])), ptr.clone());
+        let start = cr.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::dense_i32(&[0, 0])), ptr.clone());
+        let mut types = Vec::new();
+        let mut args = Vec::new();
+        for v in operands.iter().flatten().copied() {
+            let ty = cr.rw.body[v].ty.clone();
+            if matches!(ty, Type::Float(_)) {
+                let f64t = Type::Float(mlirformat::FloatKind::F64);
+                args.push(cr.build(OpData::build("llvm.fpext").operands(&[v]), f64t.clone()));
+                types.push(f64t);
+            } else {
+                args.push(v);
+                types.push(ty);
+            }
+        }
+        let st = LlvmType::literal(types);
+        let one = cr.llvm_constant(Attribute::index(1), Type::int(64));
+        let alloc = cr.build(OpData::build("llvm.alloca").operands(&[one]).with("elem_type", Attribute::Type(st.clone())), ptr.clone());
+        for (i, a) in args.into_iter().enumerate() {
+            let p = cr.build(OpData::build("llvm.getelementptr").operands(&[alloc]).with("elem_type", Attribute::Type(st.clone())).with("rawConstantIndices", Attribute::dense_i32(&[0, i as i32])), ptr.clone());
+            cr.rw.create(OpData::build("llvm.store").operands(&[a, p]).with("ordering", Attribute::i64(0)), &[]);
+        }
+        cr.llvm_call("vprintf", &[start, alloc], &[Type::int(32)]);
+        cr.erase(op);
+        true
+    }
+}
+
+/// The first `"file":line:col` in raw location text (`findInstanceOfOrUnknown<FileLineColLoc>`).
+pub fn file_line_col(loc: &str) -> Option<String> {
+    let b = loc.as_bytes();
+    let mut i = 0;
+    while let Some(q) = loc[i..].find('"').map(|q| q + i) {
+        let mut j = q + 1;
+        while j < b.len() && b[j] != b'"' {
+            j += if b[j] == b'\\' { 2 } else { 1 };
+        }
+        let rest = &loc[(j + 1).min(loc.len())..];
+        let nums: Vec<&str> = rest.splitn(3, ':').skip(1).take(2).collect();
+        if nums.len() == 2 {
+            let line = nums[0];
+            let col: String = nums[1].chars().take_while(char::is_ascii_digit).collect();
+            if !line.is_empty() && line.chars().all(|c| c.is_ascii_digit()) && !col.is_empty() {
+                return Some(alloc::format!("{}:{line}:{col}", &loc[q..=j]));
+            }
+        }
+        i = j + 1;
+        if i >= loc.len() {
+            break;
+        }
+    }
+    None
 }

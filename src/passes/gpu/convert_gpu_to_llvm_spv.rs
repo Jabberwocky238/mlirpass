@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, NamedAttr, Shaped, ShapedKind, Type};
 
-use crate::{Body, CConv, ConversionConfig, ConversionPatterns, Converter, GpuLlvmOptions, GpuSpaces, GpuToLlvm, GpuToLlvmSpv, LlvmConverter, LlvmOptions, Mode, OpId, PrintfCall};
+use crate::{Body, CConv, ConversionConfig, ConversionPatterns, Converter, GpuLlvmOptions, GpuSpaces, GpuToLlvm, GpuToLlvmSpv, LlvmConverter, LlvmOptions, Mode, OpId, Printf, PrintfCall};
 
 /// `MemorySpaceToOpenCLMemorySpaceConverter` with the `AttrTypeReplacer` around it: memrefs
 /// without a memory space get OpenCL's global one (CrossWorkgroup, 1), everywhere under an op.
@@ -86,7 +86,7 @@ impl crate::Run for ConvertGpuToLlvmSpv {
             kernel_cconv: CConv::SpirKernel,
             func_cconv: CConv::SpirFunc,
             workgroup_args: true,
-            printf: Some(PrintfCall { space: 2, cconv: CConv::SpirFunc, name: "_Z6printfPU3AS2Kcz" }),
+            printf: Some(Printf::Call(PrintfCall { space: 2, cconv: CConv::SpirFunc, name: "_Z6printfPU3AS2Kcz" })),
         };
         GpuToLlvmSpv::populate(&mut patterns, i, llvm);
         GpuToLlvm::populate(&mut patterns, i, gpu);
