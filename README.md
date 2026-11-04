@@ -9,9 +9,13 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-`0.4.1`: 4556 of the 5063 fixture cases match `mlir-opt` 22.1.8 byte for byte
+`0.5.0`: 6715 of the 7333 fixture cases match `mlir-opt` 22.1.8 byte for byte
 (`cargo test --test passes -- --nocapture` counts them per group), MLIR's own `Dialect/SPIRV`,
-`Dialect/GPU` and `*ToSPIRV` tests included. All 13 of MLIR's `Integration/GPU/Vulkan` tests
+`Dialect/GPU` and `*ToSPIRV` tests included, and the three GPU vendors' lowerings: Intel
+(`convert-xegpu-to-xevm`, `convert-vector-to-xegpu`, `convert-gpu-to-llvm-spv`,
+`convert-math-to-xevm`, xevm ⇒ llvm), NVIDIA (`convert-gpu-to-nvvm`, `convert-nvgpu-to-nvvm`,
+`convert-nvvm-to-llvm`) and AMD (`convert-gpu-to-rocdl`, `convert-amdgpu-to-rocdl`,
+`convert-arith-to-amdgpu`, `convert-math-to-rocdl`, `convert-complex-to-rocdl-library-calls`). All 13 of MLIR's `Integration/GPU/Vulkan` tests
 produce the numbers their checks expect, run on Vulkan (lavapipe) both as SPIR-V and as GLSL
 (`cargo test --test vulkan`); with `VULKAN_ICD=/usr/share/vulkan/icd.d/intel_icd.json` they run on an Intel GPU
 (checked on Panther Lake graphics), where a KHR cooperative matrix kernel lowered with the device's
