@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Error, Type};
 
-use super::{is_tensor, BufferizationOptions, AnalysisState};
+use super::{is_tensor, AnalysisState, BufferizationOptions};
 use crate::{BlockId, Body, Def, Listener, OpData, OpId, Rewriter, ValueId};
 
 /// `getBufferType(value, options, state, invocationStack)`: through the owner's interface,
@@ -362,4 +362,78 @@ impl Body<'_> {
         }
         None
     }
+}
+
+/// `foldMemRefCasts`: a result every return yields through a `memref.cast` of one same type
+/// gets that type, the casts dropped.
+fn fold_memref_casts(body: &mut Body<'_>, f: OpId) {
+    if body[f].regions.first().is_none_or(|r| body[*r].blocks.is_empty()) {
+        return;
+    }
+    let returns = super::return_ops(body, f);
+    let Some(&first) = returns.first() else { return };
+    let unpack = |b: &Body<'_>, v: ValueId| match b[v].def {
+        Def::Result(c, _) if b[c].name == "memref.cast" => b[c].operands[0],
+        _ => v,
+    };
+    let n = body[first].operands.len();
+    let mut types: Vec<Option<Type<'_>>> = Vec::new();
+    for k in 0..n {
+        let t = body[unpack(body, body[first].operands[k])].ty.clone();
+        let same = returns.iter().all(|r| body[unpack(body, body[*r].operands[k])].ty == t);
+        types.push(same.then_some(t));
+    }
+    for r in &returns {
+        for k in 0..n {
+            if types[k].is_some() {
+                let v = unpack(body, body[*r].operands[k]);
+                body.set_operand(*r, k, v);
+            }
+        }
+    }
+    let (inputs, results) = super::func_signature(body, f);
+    let results = results.into_iter().zip(types).map(|(old, t)| t.unwrap_or(old)).collect();
+    body[f].set("function_type", mlirformat::Attribute::Type(Type::Function(mlirformat::FunctionType { inputs, results })));
+}
+
+/// ⭐ `runOneShotModuleBufferize`: the module analysis, the copies, then each function callees
+/// first (and the module's other ops) bufferized, the bufferization argument attributes dropped.
+pub fn one_shot_module_bufferize(body: &mut Body<'_>, o: &BufferizationOptions, module: OpId) -> Result<(), Error> {
+    if !o.copy_before_write {
+        let mut ao = o.clone();
+        ao.deny_funcs.clone_from(&o.no_analysis_func_filter);
+        let s = AnalysisState::analyze_module(&ao, body, module)?;
+        if o.test_analysis_only {
+            s.annotate_module(body, module);
+            return Ok(());
+        }
+        insert_copies(body, &s, module)?;
+    }
+    let (mut ordered, remaining) = super::analysis::funcs_by_calls(body, module);
+    ordered.extend(remaining);
+    for f in ordered {
+        let skip = body.sym_name(f).is_some_and(|n| o.no_analysis_func_filter.iter().any(|d| d == n));
+        if skip {
+            let copy = BufferizationOptions { copy_before_write: true, ..o.clone() };
+            bufferize_op(body, &copy, f)?;
+        } else {
+            bufferize_op(body, o, f)?;
+        }
+        if o.function_boundary_layout == super::LayoutMapOption::Infer {
+            fold_memref_casts(body, f);
+        }
+    }
+    let tops: Vec<OpId> = body[module].regions.iter().flat_map(|r| body[*r].blocks.iter()).flat_map(|blk| body[*blk].ops.iter().copied()).collect();
+    for op in tops {
+        if body[op].parent.is_none() || body[op].name == "func.func" || body.is_symbol_table(op) {
+            continue;
+        }
+        bufferize_op(body, o, op)?;
+    }
+    let funcs: Vec<OpId> = body[module].regions.iter().flat_map(|r| body[*r].blocks.iter()).flat_map(|blk| body[*blk].ops.iter().copied()).filter(|x| body[*x].name == "func.func").collect();
+    for f in funcs {
+        super::analysis::remove_func_arg_attr(body, f, "bufferization.buffer_layout");
+        super::analysis::remove_func_arg_attr(body, f, "bufferization.writable");
+    }
+    Ok(())
 }

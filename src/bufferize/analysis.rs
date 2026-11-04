@@ -3,9 +3,10 @@
 //! read-after-write conflict; then which values are equivalent, which uses read undefined
 //! contents.
 
-use alloc::collections::BTreeSet;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Error};
@@ -654,8 +655,9 @@ impl<'o> AnalysisState<'o> {
         Ok(())
     }
 
-    /// ⭐ `OneShotAnalysisState(op, options)` and `analyzeOp`: the One-Shot analysis of `root`.
-    pub fn analyze(options: &'o BufferizationOptions, b: &Body<'_>, root: OpId) -> Result<Self, Error> {
+    /// `OneShotAnalysisState(op, options)`: every tensor in `root` in its own alias and
+    /// equivalence set, the operands that must bufferize in place in place.
+    pub(crate) fn one_shot(options: &'o BufferizationOptions, b: &Body<'_>, root: OpId) -> Self {
         let mut s = Self { options, one_shot: Some(OneShot::default()) };
         b.walk_post(root, &mut |op| {
             let shot = s.one_shot.as_mut().expect("one-shot");
@@ -682,22 +684,200 @@ impl<'o> AnalysisState<'o> {
                 }
             }
         }
-        s.check_assumptions(b, root)?;
-        s.analyze_ops(b, root);
-        s.gather_undefined(b, root);
+        s
+    }
+
+    /// `analyzeOp(root, state)`: the checks, the in-place decisions, equivalence, undefined uses
+    /// and each op's `verifyAnalysis`.
+    pub(crate) fn analyze_root(&mut self, b: &Body<'_>, root: OpId) -> Result<(), Error> {
+        self.check_assumptions(b, root)?;
+        self.analyze_ops(b, root);
+        self.gather_undefined(b, root);
         let mut ops = Vec::new();
         b.walk_post(root, &mut |op| ops.push(op));
         let mut failed = None;
         for op in ops {
-            if let Some(i) = options.bufferizable(b, op)
-                && let Err(e) = i.verify(&s, b, op)
+            if let Some(i) = self.options.bufferizable(b, op)
+                && let Err(e) = i.verify(self, b, op)
             {
                 failed.get_or_insert(e);
             }
         }
-        match failed {
-            Some(e) => Err(e),
-            None => Ok(s),
+        failed.map_or(Ok(()), Err)
+    }
+
+    /// ⭐ The One-Shot analysis of `root`.
+    pub fn analyze(options: &'o BufferizationOptions, b: &Body<'_>, root: OpId) -> Result<Self, Error> {
+        let mut s = Self::one_shot(options, b, root);
+        s.analyze_root(b, root)?;
+        Ok(s)
+    }
+
+    /// `isValueWritten`: an alias is written by an in-place use.
+    fn value_written(&self, b: &Body<'_>, v: ValueId) -> bool {
+        self.shot().alias.of(v).into_iter().any(|a| b.uses_of(a).into_iter().any(|u| self.in_place(b, u) && self.writes(b, u)))
+    }
+
+    /// `aliasingFuncOpBBArgsAnalysis` and `funcOpBbArgReadWriteAnalysis` of `f`.
+    fn func_summary(&mut self, b: &Body<'_>, f: OpId) -> Result<(), Error> {
+        let (inputs, results) = func_signature(b, f);
+        let mut info_aliasing: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        let mut info_equiv: BTreeMap<usize, usize> = BTreeMap::new();
+        let returns = return_ops(b, f);
+        let entry = b[f].regions.first().and_then(|r| b[*r].blocks.first()).copied();
+        match entry {
+            None => {
+                for (i, t) in inputs.iter().enumerate() {
+                    if !is_tensor(t) {
+                        continue;
+                    }
+                    for (r, rt) in results.iter().enumerate() {
+                        if is_tensor(rt) {
+                            info_aliasing.entry(i).or_default().push(r);
+                        }
+                    }
+                }
+            }
+            Some(blk) => {
+                if returns.is_empty() {
+                    return Err(Error(format!("'{}' op cannot bufferize func.func without func.return", b[f].name)));
+                }
+                let args = b[blk].args.to_vec();
+                let ranked = |v: ValueId| matches!(&b[v].ty, mlirformat::Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Tensor && s.shape.is_some());
+                for (i, a) in args.iter().enumerate() {
+                    if !ranked(*a) {
+                        continue;
+                    }
+                    let mut aliases: Vec<usize> = Vec::new();
+                    for r in &returns {
+                        for (k, v) in b[*r].operands.iter().enumerate() {
+                            if ranked(*v) && self.aliasing(*v, *a) && !aliases.contains(&k) {
+                                aliases.push(k);
+                            }
+                        }
+                    }
+                    info_aliasing.entry(i).or_default().extend(aliases);
+                }
+                let equivalent_arg = |s: &Self, v: ValueId| -> Option<usize> {
+                    if !is_tensor(&b[v].ty) {
+                        return None;
+                    }
+                    args.iter().position(|a| ranked(*a) && s.equivalent(v, *a))
+                };
+                for k in 0..b[returns[0]].operands.len() {
+                    let Some(arg) = equivalent_arg(self, b[returns[0]].operands[k]) else { continue };
+                    if returns[1..].iter().all(|r| equivalent_arg(self, b[*r].operands[k]) == Some(arg)) {
+                        info_equiv.insert(k, arg);
+                    }
+                }
+            }
+        }
+        let mut read = BTreeSet::new();
+        let mut written = BTreeSet::new();
+        for (i, t) in inputs.iter().enumerate() {
+            if !is_tensor(t) {
+                continue;
+            }
+            let (r, w) = match func_arg_attr(b, f, i, "bufferization.access") {
+                Some(Attribute::Str { lit, .. }) => {
+                    let v = lit.trim_matches('"');
+                    (matches!(v, "read" | "read-write"), matches!(v, "write" | "read-write"))
+                }
+                _ => match entry {
+                    None => (true, true),
+                    Some(blk) => {
+                        let a = b[blk].args[i];
+                        (self.value_read(b, a), self.value_written(b, a))
+                    }
+                },
+            };
+            if r {
+                read.insert(i);
+            }
+            if w {
+                written.insert(i);
+            }
+        }
+        let funcs = self.shot_mut().funcs.get_or_insert_with(Default::default);
+        funcs.aliasing.insert(f, info_aliasing);
+        funcs.equivalent.insert(f, info_equiv);
+        funcs.read.insert(f, read);
+        funcs.written.insert(f, written);
+        Ok(())
+    }
+
+    /// ⭐ `analyzeModuleOp`: the functions callees first, each analyzed and summarized for its
+    /// callers; then those in call cycles.
+    pub fn analyze_module(options: &'o BufferizationOptions, b: &Body<'_>, module: OpId) -> Result<Self, Error> {
+        let mut s = Self::one_shot(options, b, module);
+        s.shot_mut().funcs = Some(Default::default());
+        let (ordered, remaining) = funcs_by_calls(b, module);
+        for f in ordered {
+            if !options.allowed(b, f) {
+                continue;
+            }
+            s.shot_mut().funcs.as_mut().expect("funcs").analyzed.insert(f, false);
+            s.analyze_root(b, f)?;
+            s.func_summary(b, f)?;
+            s.shot_mut().funcs.as_mut().expect("funcs").analyzed.insert(f, true);
+        }
+        for f in remaining {
+            if options.allowed(b, f) {
+                s.analyze_root(b, f)?;
+            }
+        }
+        Ok(s)
+    }
+
+    /// The `test-analysis-only` marks of the module analysis: each analyzed function's ops,
+    /// its returns' `__equivalent_func_args__` and its arguments' `bufferization.access`.
+    pub fn annotate_module(&self, b: &mut Body<'_>, module: OpId) {
+        let (ordered, remaining) = funcs_by_calls(b, module);
+        for f in ordered.iter().chain(&remaining) {
+            if self.options.allowed(b, *f) {
+                self.annotate(b, *f);
+            }
+        }
+        for f in ordered {
+            if !self.func_analyzed(f) {
+                continue;
+            }
+            let returns = return_ops(b, f);
+            if let Some(blk) = b[f].regions.first().and_then(|r| b[*r].blocks.first()).copied() {
+                let args = b[blk].args.to_vec();
+                let ranked = |b: &Body<'_>, v: ValueId| matches!(&b[v].ty, mlirformat::Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Tensor && s.shape.is_some());
+                if let Some(&first) = returns.first() {
+                    for k in 0..b[first].operands.len() {
+                        for (n, r) in returns.iter().enumerate() {
+                            let v = b[*r].operands[k];
+                            let arg = if is_tensor(&b[v].ty) { args.iter().position(|a| ranked(b, *a) && self.equivalent(v, *a)) } else { None };
+                            let Some(arg) = arg else { break };
+                            let mut marks: Vec<i64> = match b[*r].get("__equivalent_func_args__") {
+                                Some(Attribute::Array(xs)) => xs.iter().map(|x| if let Attribute::Int { lit, .. } = x { lit.parse().unwrap_or(-1) } else { -1 }).collect(),
+                                _ => vec![-1; b[*r].operands.len()],
+                            };
+                            marks[k] = arg as i64;
+                            b[*r].set("__equivalent_func_args__", Attribute::Array(marks.iter().map(|m| Attribute::Int { lit: format!("{m}").into(), ty: None }).collect()));
+                            if n == 0 && returns.len() == 1 {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            let (inputs, _) = func_signature(b, f);
+            for (i, t) in inputs.iter().enumerate() {
+                if !is_tensor(t) {
+                    continue;
+                }
+                let access = match (self.func_reads(f, i), self.func_writes(f, i)) {
+                    (true, true) => "read-write",
+                    (true, false) => "read",
+                    (false, true) => "write",
+                    (false, false) => "none",
+                };
+                set_func_arg_attr(b, f, i, "bufferization.access", Attribute::str(&String::from(access)));
+            }
         }
     }
 
@@ -720,4 +900,123 @@ impl<'o> AnalysisState<'o> {
             b[op].set("__inplace_operands_attr__", Attribute::Array(marks));
         }
     }
+}
+
+/// The inputs and results of `func.func` `f` (`getFunctionType`).
+pub(crate) fn func_signature<'a>(b: &Body<'a>, f: OpId) -> (Vec<mlirformat::Type<'a>>, Vec<mlirformat::Type<'a>>) {
+    match b[f].get("function_type") {
+        Some(Attribute::Type(mlirformat::Type::Function(t))) => (t.inputs.clone(), t.results.clone()),
+        _ => (Vec::new(), Vec::new()),
+    }
+}
+
+/// `getReturnOps`: the `func.return`s ending `f`'s blocks.
+pub(crate) fn return_ops(b: &Body<'_>, f: OpId) -> Vec<OpId> {
+    let Some(r) = b[f].regions.first() else { return Vec::new() };
+    b[*r].blocks.iter().filter_map(|blk| b[*blk].ops.last().copied()).filter(|t| b[*t].name == "func.return").collect()
+}
+
+/// Argument attribute `name` of argument `i` of `f`.
+pub(crate) fn func_arg_attr<'b, 'a>(b: &'b Body<'a>, f: OpId, i: usize, name: &str) -> Option<&'b Attribute<'a>> {
+    match b[f].get("arg_attrs")? {
+        Attribute::Array(ds) => match ds.get(i)? {
+            Attribute::Dict(d) => d.iter().find(|a| a.name == name)?.value.as_ref(),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// `setArgAttr`: argument attribute `name` of argument `i` of `f` set to `value`.
+pub(crate) fn set_func_arg_attr<'a>(b: &mut Body<'a>, f: OpId, i: usize, name: &str, value: Attribute<'a>) {
+    let n = func_signature(b, f).0.len();
+    let mut dicts: Vec<Vec<mlirformat::NamedAttr<'a>>> = match b[f].get("arg_attrs") {
+        Some(Attribute::Array(ds)) => ds.iter().map(|d| if let Attribute::Dict(d) = d { d.clone() } else { Vec::new() }).collect(),
+        _ => vec![Vec::new(); n],
+    };
+    dicts.resize(n, Vec::new());
+    match dicts[i].iter_mut().find(|a| a.name == name) {
+        Some(a) => a.value = Some(value),
+        // A `DictionaryAttr` keeps its entries sorted by name.
+        None => {
+            let at = dicts[i].iter().position(|a| &*a.name > name).unwrap_or(dicts[i].len());
+            dicts[i].insert(at, mlirformat::NamedAttr { name: String::from(name).into(), value: Some(value) });
+        }
+    }
+    b[f].set("arg_attrs", Attribute::Array(dicts.into_iter().map(Attribute::Dict).collect()));
+}
+
+/// `removeArgAttr` of `name` from every argument of `f` (the attribute gone when all empty).
+pub(crate) fn remove_func_arg_attr(b: &mut Body<'_>, f: OpId, name: &str) {
+    let Some(Attribute::Array(ds)) = b[f].get("arg_attrs").cloned() else { return };
+    let dicts: Vec<Attribute<'_>> = ds.into_iter().map(|d| match d {
+        Attribute::Dict(mut d) => {
+            d.retain(|a| a.name != name);
+            Attribute::Dict(d)
+        }
+        d => d,
+    }).collect();
+    if dicts.iter().all(|d| matches!(d, Attribute::Dict(x) if x.is_empty())) {
+        b[f].remove("arg_attrs");
+    } else {
+        b[f].set("arg_attrs", Attribute::Array(dicts));
+    }
+}
+
+/// The callee `func.func` of `func.call` `call`.
+pub(crate) fn callee(b: &Body<'_>, call: OpId) -> Option<OpId> {
+    let Some(Attribute::SymbolRef(path)) = b[call].get("callee") else { return None };
+    let mut table = b.parent_op(call)?;
+    while !b.is_symbol_table(table) {
+        table = b.parent_op(table)?;
+    }
+    b.lookup_path(table, path)?.last().copied().filter(|f| b[*f].name == "func.func")
+}
+
+/// `getFuncOpsOrderedByCalls`: the module's functions, each after the functions with tensor
+/// signatures it calls; those in cycles apart.
+pub(crate) fn funcs_by_calls(b: &Body<'_>, module: OpId) -> (Vec<OpId>, Vec<OpId>) {
+    let funcs: Vec<OpId> = b[module].regions.iter().flat_map(|r| b[*r].blocks.iter()).flat_map(|blk| b[*blk].ops.iter().copied()).filter(|o| b[*o].name == "func.func").collect();
+    let tensor_signature = |f: OpId| {
+        let (i, r) = func_signature(b, f);
+        i.iter().chain(&r).any(is_tensor)
+    };
+    let mut called_by: BTreeMap<OpId, Vec<OpId>> = BTreeMap::new();
+    let mut count: BTreeMap<OpId, usize> = BTreeMap::new();
+    for &f in &funcs {
+        count.insert(f, 0);
+        let mut calls = Vec::new();
+        b.walk(f, &mut |o| {
+            if b[o].name == "func.call" {
+                calls.push(o);
+            }
+        });
+        for c in calls {
+            let Some(g) = callee(b, c) else { continue };
+            if !tensor_signature(g) {
+                continue;
+            }
+            let by = called_by.entry(g).or_default();
+            if !by.contains(&f) {
+                by.push(f);
+                *count.get_mut(&f).expect("counted") += 1;
+            }
+        }
+    }
+    let mut work: Vec<OpId> = funcs.iter().copied().filter(|f| count[f] == 0).collect();
+    let mut ordered = Vec::new();
+    while let Some(f) = work.pop() {
+        ordered.push(f);
+        for caller in called_by.get(&f).cloned().unwrap_or_default() {
+            if let Some(c) = count.get_mut(&caller) {
+                *c -= 1;
+                if *c == 0 {
+                    work.push(caller);
+                }
+            }
+        }
+        count.remove(&f);
+    }
+    let remaining = funcs.into_iter().filter(|f| count.contains_key(f)).collect();
+    (ordered, remaining)
 }

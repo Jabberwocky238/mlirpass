@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use mlirformat::Error;
 
-use crate::{one_shot_bufferize, pass, AnalysisHeuristic, Body, BufferizationOptions, LayoutMapOption, MemorySpaceOption, OpId, Run};
+use crate::{one_shot_bufferize, one_shot_module_bufferize, pass, AnalysisHeuristic, Body, BufferizationOptions, LayoutMapOption, MemorySpaceOption, OpId, Run};
 
 /// `one-shot-bufferize`.
 #[pass("one-shot-bufferize", on = "builtin.module")]
@@ -99,6 +99,7 @@ impl OneShotBufferize {
             check_parallel_regions: self.check_parallel_regions,
             no_analysis_func_filter: self.no_analysis_func_filter.clone(),
             dialect_filter: self.dialect_filter.clone(),
+            ..BufferizationOptions::default()
         })
     }
 }
@@ -107,7 +108,7 @@ impl Run for OneShotBufferize {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let o = self.options()?;
         if o.function_boundaries {
-            return Err(Error("one-shot-bufferize: bufferize-function-boundaries is not ported yet".into()));
+            return one_shot_module_bufferize(body, &o, op);
         }
         one_shot_bufferize(body, &o, op)
     }

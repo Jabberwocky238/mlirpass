@@ -10,6 +10,8 @@
 //! ```
 
 mod analysis;
+
+pub(crate) use analysis::{callee, func_arg_attr, func_signature, return_ops};
 mod driver;
 
 use alloc::collections::{BTreeMap, BTreeSet};
@@ -22,7 +24,7 @@ use mlirformat::{Attribute, Error, Shaped, ShapedKind, StridedLayout, Type};
 use crate::{Body, Def, MemrefOfr as Ofr, OpData, OpId, Operand, Rewriter, Trait, ValueId};
 
 pub(crate) use driver::{buffer_type_in, fold_to_buffer_to_tensor};
-pub use driver::{bufferize_block_signature, buffer_of, buffer_type, cast_or_realloc, one_shot_bufferize, replace_with_buffers};
+pub use driver::{bufferize_block_signature, buffer_of, buffer_type, cast_or_realloc, one_shot_bufferize, one_shot_module_bufferize, replace_with_buffers};
 
 /// `BufferRelation`: what the buffer of an aliasing value is to the operand's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,6 +130,8 @@ pub struct BufferizationOptions {
     pub no_analysis_func_filter: Vec<String>,
     /// `dialect-filter`: only these dialects' ops bufferize (all when empty).
     pub dialect_filter: Vec<String>,
+    /// The functions whose ops the analysis skips (`no-analysis-func-filter`'s deny rule).
+    pub(crate) deny_funcs: Vec<String>,
 }
 
 impl Default for BufferizationOptions {
@@ -148,6 +152,7 @@ impl Default for BufferizationOptions {
             check_parallel_regions: true,
             no_analysis_func_filter: Vec::new(),
             dialect_filter: Vec::new(),
+            deny_funcs: Vec::new(),
         }
     }
 }
@@ -158,6 +163,15 @@ impl BufferizationOptions {
         let ns = b[op].name.split_once('.').map_or(&*b[op].name, |(ns, _)| ns);
         if !self.function_boundaries && ns == "func" {
             return false;
+        }
+        if !self.deny_funcs.is_empty() {
+            let mut f = Some(op);
+            while let Some(x) = f.filter(|x| b[*x].name != "func.func") {
+                f = b.parent_op(x);
+            }
+            if f.and_then(|f| b.sym_name(f)).is_some_and(|n| self.deny_funcs.iter().any(|d| d == n)) {
+                return false;
+            }
         }
         self.dialect_filter.is_empty() || self.dialect_filter.iter().any(|d| d == ns)
     }
@@ -398,9 +412,23 @@ impl Classes {
     }
 }
 
+/// What the module analysis found of each function (`FuncAnalysisState`), by `func.func`.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct Funcs {
+    /// Analyzed (`true`) or in progress (`false`).
+    pub(crate) analyzed: BTreeMap<OpId, bool>,
+    /// Return value index ⇒ the argument it is equivalent to.
+    pub(crate) equivalent: BTreeMap<OpId, BTreeMap<usize, usize>>,
+    /// Argument index ⇒ the return values that may alias it.
+    pub(crate) aliasing: BTreeMap<OpId, BTreeMap<usize, Vec<usize>>>,
+    pub(crate) read: BTreeMap<OpId, BTreeSet<usize>>,
+    pub(crate) written: BTreeMap<OpId, BTreeSet<usize>>,
+}
+
 /// What the One-Shot analysis decided (`OneShotAnalysisState`'s own data).
 #[derive(Debug, Default, Clone)]
 pub(crate) struct OneShot {
+    pub(crate) funcs: Option<Funcs>,
     pub(crate) alias: Classes,
     pub(crate) equiv: Classes,
     pub(crate) inplace: BTreeSet<Operand>,
@@ -597,6 +625,35 @@ impl<'o> AnalysisState<'o> {
     /// `applyOnAliases`: the alias set of `v` (itself alone without an analysis).
     pub fn alias_set(&self, v: ValueId) -> Vec<ValueId> {
         self.one_shot.as_ref().map_or_else(|| vec![v], |o| o.alias.of(v))
+    }
+
+    /// Whether the module analysis has analyzed function `f` (`FuncOpAnalysisState::Analyzed`).
+    pub fn func_analyzed(&self, f: OpId) -> bool {
+        self.funcs().is_some_and(|x| x.analyzed.get(&f) == Some(&true))
+    }
+
+    /// Argument `i` of analyzed function `f` is read.
+    pub fn func_reads(&self, f: OpId, i: usize) -> bool {
+        self.funcs().is_some_and(|x| x.read.get(&f).is_some_and(|r| r.contains(&i)))
+    }
+
+    /// Argument `i` of analyzed function `f` is written.
+    pub fn func_writes(&self, f: OpId, i: usize) -> bool {
+        self.funcs().is_some_and(|x| x.written.get(&f).is_some_and(|r| r.contains(&i)))
+    }
+
+    /// The return values of `f` that may alias its argument `i`.
+    pub fn func_aliasing(&self, f: OpId, i: usize) -> Vec<usize> {
+        self.funcs().and_then(|x| x.aliasing.get(&f)?.get(&i).cloned()).unwrap_or_default()
+    }
+
+    /// The argument of `f` its return value `r` is equivalent to.
+    pub fn func_equivalent(&self, f: OpId, r: usize) -> Option<usize> {
+        self.funcs().and_then(|x| x.equivalent.get(&f)?.get(&r).copied())
+    }
+
+    fn funcs(&self) -> Option<&Funcs> {
+        self.one_shot.as_ref()?.funcs.as_ref()
     }
 
     /// `hasUndefinedContents`.
