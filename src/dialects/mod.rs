@@ -25,6 +25,8 @@ mod llvm;
 mod math;
 #[cfg(feature = "dialect.memref")]
 mod memref;
+#[cfg(feature = "dialect.ml_program")]
+mod ml_program;
 #[cfg(feature = "dialect.scf")]
 mod scf;
 #[cfg(feature = "dialect.shape")]
@@ -66,6 +68,8 @@ pub use llvm::LlvmDialect;
 pub use math::MathDialect;
 #[cfg(feature = "dialect.memref")]
 pub use memref::MemrefDialect;
+#[cfg(feature = "dialect.ml_program")]
+pub use ml_program::MlProgramDialect;
 #[cfg(feature = "dialect.scf")]
 pub use scf::ScfDialect;
 #[cfg(feature = "dialect.shape")]

@@ -901,6 +901,8 @@ impl crate::Interfaces<'_> {
         i.register(&MathDialect);
         #[cfg(feature = "dialect.memref")]
         i.register(&MemrefDialect);
+        #[cfg(feature = "dialect.ml_program")]
+        i.register(&MlProgramDialect);
         #[cfg(feature = "dialect.scf")]
         i.register(&ScfDialect);
         #[cfg(feature = "dialect.shape")]

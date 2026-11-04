@@ -11,7 +11,9 @@
 
 mod analysis;
 
-pub(crate) use analysis::{callee, func_arg_attr, func_signature, return_ops};
+#[cfg(feature = "dialect.func")]
+pub(crate) use analysis::{callee, func_arg_attr};
+pub(crate) use analysis::{func_signature, return_ops};
 mod driver;
 
 use alloc::collections::{BTreeMap, BTreeSet};
