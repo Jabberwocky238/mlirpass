@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use crate::patterns;
 use mlirformat::Type;
 
-use crate::{ComplexCx as Cx, ComplexFmf as Fmf, ConversionRewriter, OpData, OpId, ValueId};
+use crate::{ComplexCx as Cx, Fmf, ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 

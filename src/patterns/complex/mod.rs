@@ -4,7 +4,7 @@ mod to_libm;
 mod to_std;
 
 pub use to_libm::ComplexToLibm;
-pub use to_std::{ComplexToStd, Cx as ComplexCx, Fmf as ComplexFmf};
+pub use to_std::{ComplexToStd, Cx as ComplexCx};
 
 #[cfg(feature = "target.llvm")]
 mod to_llvm;

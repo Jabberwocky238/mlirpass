@@ -85,6 +85,8 @@ impl crate::Passes {
         p.register::<crate::ConvertMathToLlvm>(); // convert-math-to-llvm
         #[cfg(all(feature = "dialect.math", feature = "target.spirv"))]
         p.register::<crate::ConvertMathToSpirv>(); // convert-math-to-spirv
+        #[cfg(all(feature = "dialect.math", feature = "target.llvm"))]
+        p.register::<crate::ConvertMathToXevm>(); // convert-math-to-xevm
         #[cfg(all(feature = "dialect.memref", feature = "target.emitc"))]
         p.register::<crate::ConvertMemrefToEmitc>(); // convert-memref-to-emitc
         #[cfg(all(feature = "dialect.memref", feature = "target.spirv"))]

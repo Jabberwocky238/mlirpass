@@ -29,6 +29,7 @@ mod memref;
 mod build;
 #[cfg(any(feature = "dialect.math", feature = "dialect.complex"))]
 mod libm;
+mod fastmath;
 mod reshape;
 mod slice;
 #[cfg(feature = "dialect.scf")]
@@ -59,6 +60,7 @@ pub(crate) use build::Named;
 pub(crate) use build::i64_elements;
 #[cfg(any(feature = "dialect.math", feature = "dialect.complex"))]
 pub(crate) use libm::Libm;
+pub use fastmath::Fmf;
 pub use reshape::{Ofr as MemrefOfr, Reshape, ComposeCollapseOfExpand, ComposeExpandOfCollapse, ComposeReassociative, Reassoc};
 #[cfg(feature = "dialect.affine")]
 pub use affine::*;

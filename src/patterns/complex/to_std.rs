@@ -1,57 +1,12 @@
 //! `complex` ⇒ `arith` + `math`, as `ComplexToStandard.cpp` (and the division algorithms of
 //! `ComplexCommon/DivisionConverter.cpp`).
 
-use alloc::vec::Vec;
-
 use crate::{ops, patterns};
 use mlirformat::arith::CmpFPredicate as P;
 use mlirformat::{Attribute, FloatKind, Type};
 
 use crate::FromOp;
-use crate::{ApFloat, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
-
-/// `arith::FastMathFlags`, as bits in their enum order.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Fmf(u8);
-
-impl Fmf {
-    const NAMES: [&'static str; 7] = ["reassoc", "nnan", "ninf", "nsz", "arcp", "contract", "afn"];
-    const NONE: Fmf = Fmf(0);
-    const NNAN_NINF: u8 = 0b110;
-
-    pub fn of(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Self {
-        let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("fastmath") else { return Self::NONE };
-        let body = ext.body.as_deref().unwrap_or("<none>");
-        let mut bits = 0u8;
-        for f in body.trim_matches(|c| c == '<' || c == '>').split(',').map(str::trim) {
-            if f == "fast" {
-                bits = 0x7f;
-            } else if let Some(i) = Self::NAMES.iter().position(|n| *n == f) {
-                bits |= 1 << i;
-            }
-        }
-        Self(bits)
-    }
-
-    /// `bitEnumClear(fmf, nnan | ninf)`.
-    fn without_nan_inf(self) -> Self {
-        Self(self.0 & !Self::NNAN_NINF)
-    }
-
-    /// `bitEnumContainsAll(fmf, nnan | ninf)`.
-    fn finite(self) -> bool {
-        self.0 & Self::NNAN_NINF == Self::NNAN_NINF
-    }
-
-    fn attr<'a>(self) -> Attribute<'a> {
-        let body = match self.0 {
-            0 => alloc::string::String::from("<none>"),
-            0x7f => alloc::string::String::from("<fast>"),
-            b => alloc::format!("<{}>", Self::NAMES.iter().enumerate().filter(|(i, _)| b & (1 << i) != 0).map(|(_, n)| *n).collect::<Vec<_>>().join(",")),
-        };
-        Attribute::dialect("arith.fastmath", &body)
-    }
-}
+use crate::{ApFloat, Const, ConversionRewriter, Fmf, OpData, OpId, Scalar, ValueId};
 
 /// An `ImplicitLocOpBuilder` over complex values of element type `et`.
 pub struct Cx<'c, 'r, 'a, 'p> {

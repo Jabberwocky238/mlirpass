@@ -21,3 +21,8 @@ pub use to_spirv::MathToSpirv;
 mod to_emitc;
 #[cfg(feature = "target.emitc")]
 pub use to_emitc::MathToEmitc;
+
+#[cfg(feature = "target.llvm")]
+mod to_xevm;
+#[cfg(feature = "target.llvm")]
+pub use to_xevm::{MathToXevm, MathXevmOptions};

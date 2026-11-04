@@ -20,3 +20,8 @@ pub use convert_math_to_spirv::*;
 mod convert_math_to_emitc;
 #[cfg(feature = "target.emitc")]
 pub use convert_math_to_emitc::*;
+
+#[cfg(feature = "target.llvm")]
+mod convert_math_to_xevm;
+#[cfg(feature = "target.llvm")]
+pub use convert_math_to_xevm::ConvertMathToXevm;

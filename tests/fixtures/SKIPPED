@@ -150,3 +150,5 @@ Dialect__AMX__invalid.0	mlir-opt failed (reading the input)
 Dialect__X86Vector__cvt-packed-f32-to-bf16.0	pipes into mlir-translate
 Dialect__X86Vector__dot-bf16.0	pipes into mlir-translate
 Dialect__Bufferization__Transforms__one-shot-bufferize-pass-statistics.0	prints logs, not IR: -mlir-pass-statistics
+Conversion__MathToXeVM__native-spirv-builtins.0	prints logs, not IR: -debug-only=serialize-to-isa
+Conversion__MathToXeVM__native-spirv-builtins.1	not mlir-opt: ['FileCheck']
