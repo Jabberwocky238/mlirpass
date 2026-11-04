@@ -104,6 +104,10 @@ impl Body<'_> {
             return true;
         }
         if xb == blk {
+            // In a graph region every op of a block dominates the others.
+            if !self.has_ssa_dominance(region) {
+                return true;
+            }
             let ops = &self[blk].ops;
             return ops.iter().position(|o| *o == a) < ops.iter().position(|o| *o == xa);
         }
