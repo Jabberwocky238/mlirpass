@@ -32,7 +32,7 @@ default = ["std", "cli", "llvm", "emitc", "spirv"]
 std = ["mlirformat/std", "serde/std", "thiserror/std"]
 # The `mlirpass` command line (`cargo install mlirpass`).
 cli = ["std"]
-# The backends under `src/emits`.
+# The backends under `src/targets`.
 llvm = []
 emitc = []
 spirv = []

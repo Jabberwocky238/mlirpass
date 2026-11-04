@@ -29,10 +29,10 @@ own target env (`tests/support/vkinfo.c`) is checked against the host's product 
 | `patterns` | ⭐ rule sets, one directory per source dialect: `<d>/canonicalize.rs` (its folds, constant materialization and canonicalization patterns, `<D>Canon`), `<d>/to_<target>.rs` (`scf/to_cf.rs`, `arith/to_llvm.rs`), and its own transforms' rules | `*Ops.cpp`, `mlir/lib/Conversion`, `Dialect/*/Transforms` |
 | `passes` | ⭐ pipeline units, one directory per source dialect, one file per pass (`scf/convert_scf_to_cf.rs`, `linalg/linalg_fold_unit_extent_dims.rs`); `transforms/` the dialect-independent ones | `mlir/lib/Conversion`, `Dialect/*/Transforms`, `mlir/lib/Transforms` |
 | `dialects` | each upstream dialect's `OpInterfaces`, one unit struct each (`ScfDialect`, ...) | `mlir/lib/Dialect/*/IR` |
-| `emits` | the `Emit` trait, and what each backend below shares (type converters, `convert-to-*` interfaces, serializers) | `mlir-translate` |
+| `targets` | the `Emit` trait, and what each backend below shares (type converters, `convert-to-*` interfaces, serializers) | `mlir-translate` |
 
 The backends are one cargo feature each (all on by default); their rules and passes sit in
-`patterns/` / `passes/` like any other, gated by the feature, and `src/emits` keeps what they share:
+`patterns/` / `passes/` like any other, gated by the feature, and `src/targets` keeps what they share:
 
 | feature | what it is | upstream |
 |---|---|---|
