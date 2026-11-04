@@ -19,6 +19,7 @@ pub(crate) fn buffer_type_in<'a>(o: &BufferizationOptions, b: &Body<'a>, v: Valu
     let r = match o.bufferizable(b, owner) {
         Some(i) => i.buffer_type(o, b, v, stack),
         None => match &b[v].ty {
+            t if BufferizationOptions::tensor_like(t).is_some() => Ok(BufferizationOptions::tensor_like(t).expect("tensor-like")),
             Type::Shaped(t) => match o.default_memory_space(t) {
                 Some(space) => Ok(o.memref_type(t, None, space)),
                 None => Err(Error(format!("'{}' op could not infer memory space", b[owner].name))),

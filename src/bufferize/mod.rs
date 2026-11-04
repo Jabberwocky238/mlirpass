@@ -221,6 +221,15 @@ impl BufferizationOptions {
     }
 
     /// `getMemRefTypeWithFullyDynamicLayout`.
+    /// `TensorLikeType::getBufferType` of a dialect tensor type: `!test.test_tensor<..>` ⇒
+    /// `!test.test_memref<..>`.
+    pub fn tensor_like<'a>(t: &Type<'a>) -> Option<Type<'a>> {
+        const TENSOR_LIKE: &[(&str, &str)] = &[("test.test_tensor", "test.test_memref")];
+        let Type::Extended(e) = t else { return None };
+        let (_, memref) = TENSOR_LIKE.iter().find(|(tensor, _)| *tensor == &*e.name)?;
+        Some(Type::Extended(mlirformat::Extended { name: (*memref).into(), body: e.body.clone(), params: e.params.clone() }))
+    }
+
     /// `BaseMemRefType::isValidElementType`: builtin scalars, complex, vector and memref, and
     /// the dialect types with `MemRefElementTypeInterface`.
     pub fn valid_element(t: &Type<'_>) -> bool {
@@ -339,9 +348,14 @@ pub trait Bufferizable: Sync {
     }
 }
 
-/// A tensor type (`TensorType`), ranked or not.
+/// A tensor type (`TensorLikeType`): a builtin tensor, ranked or not, or a dialect type with
+/// `TensorLikeTypeInterface`.
 pub fn is_tensor(t: &Type<'_>) -> bool {
-    matches!(t, Type::Shaped(s) if s.kind == ShapedKind::Tensor)
+    match t {
+        Type::Shaped(s) => s.kind == ShapedKind::Tensor,
+        Type::Extended(_) => BufferizationOptions::tensor_like(t).is_some(),
+        _ => false,
+    }
 }
 
 impl Body<'_> {
@@ -715,6 +729,9 @@ impl<'o> AnalysisState<'o> {
     /// `detail::defaultGetBufferType`: a block argument's from the options; a result equivalent
     /// to an operand has its buffer type, else a new buffer's in the default memory space.
     pub fn default_buffer_type<'a>(o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
+        if let Some(m) = BufferizationOptions::tensor_like(&b[v].ty) {
+            return Ok(m);
+        }
         let Type::Shaped(t) = &b[v].ty else { return Err(Error("expected a tensor".into())) };
         if !BufferizationOptions::valid_element(&t.elem) {
             return Err(Error(alloc::format!("'{}' op cannot bufferize value of type '{}': element type '{}' is not a valid memref element type", b[b.owner_of(v)].name, b[v].ty, t.elem)));
@@ -772,7 +789,8 @@ impl<'o> AnalysisState<'o> {
         let mut out_of_place_values: Vec<(ValueId, bool)> = Vec::new();
         for i in 0..b[op].operands.len() {
             let u = (op, i);
-            if !b.tensor_operand(u) || self.in_place(b, u) {
+            // Only builtin tensors (`TensorType`) are copied.
+            if !matches!(&b[b[op].operands[i]].ty, Type::Shaped(s) if s.kind == ShapedKind::Tensor) || self.in_place(b, u) {
                 continue;
             }
             if matches!(&b[b[op].operands[i]].ty, Type::Shaped(s) if s.shape.is_none()) {

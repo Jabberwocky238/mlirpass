@@ -94,7 +94,7 @@ mod bufferizable {
         /// `functionArgTypeConverterFn`: identity or fully dynamic, per
         /// `function-boundary-type-conversion` (inference starts fully dynamic).
         pub(crate) fn function_arg_type<'a>(&self, t: &Type<'a>) -> Type<'a> {
-            let Type::Shaped(s) = t else { return t.clone() };
+            let Type::Shaped(s) = t else { return Self::tensor_like(t).unwrap_or_else(|| t.clone()) };
             let space = self.default_memory_space(s).flatten();
             match self.function_boundary_layout {
                 LayoutMapOption::Identity => Self::identity(s, space),

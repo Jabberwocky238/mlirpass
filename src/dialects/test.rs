@@ -25,6 +25,11 @@ impl OpInterfaces for TestDialect {
         }
     }
 
+    #[cfg(feature = "dialect.bufferization")]
+    fn bufferizable(&self, name: &str) -> Option<&dyn crate::Bufferizable> {
+        Self::bufferizable_op(name)
+    }
+
     fn branch_layout(&self, b: &Body<'_>, op: OpId) -> Option<BranchLayout> {
         (b[op].name == "test.br").then_some(BranchLayout::All)
     }
@@ -145,6 +150,56 @@ impl DialectInliner for TestDialect {
         }
         for o in ops {
             b[o].set("inlined_conversion", mlirformat::Attribute::Unit);
+        }
+    }
+}
+
+#[cfg(feature = "dialect.bufferization")]
+mod bufferizable {
+    use alloc::vec::Vec;
+
+    use mlirformat::{Error, Type};
+
+    use super::TestDialect;
+    use crate::{buffer_of, buffer_type, replace_with_buffers, Body, Bufferizable, BufferizationOptions, OpData, OpId, Rewriter, ValueId};
+
+    /// `test.dummy_tensor_op` (reads and writes its input, aliases nothing) and
+    /// `test.create_tensor_op`: their memref analogies on buffers.
+    struct DummyTensor;
+    struct CreateTensor;
+
+    impl TestDialect {
+        pub(crate) fn bufferizable_op(name: &str) -> Option<&'static dyn Bufferizable> {
+            Some(match name {
+                "test.dummy_tensor_op" => &DummyTensor,
+                "test.create_tensor_op" => &CreateTensor,
+                _ => return None,
+            })
+        }
+    }
+
+    impl Bufferizable for DummyTensor {
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let input = buffer_of(rw, o, rw.body[op].operands[0])?;
+            let out = buffer_type(o, rw.body, rw.body[op].results[0])?;
+            let n = rw.create(OpData::build("test.dummy_memref_op").operands(&[input]), &[out]);
+            let r = rw.body[n].results.to_vec();
+            replace_with_buffers(rw, op, &r);
+            Ok(())
+        }
+    }
+
+    impl Bufferizable for CreateTensor {
+        fn buffer_type<'a>(&self, _: &BufferizationOptions, b: &Body<'a>, v: ValueId, _: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
+            BufferizationOptions::tensor_like(&b[v].ty).ok_or_else(|| Error("expected a tensor-like type".into()))
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let out = buffer_type(o, rw.body, rw.body[op].results[0])?;
+            let n = rw.create(OpData::build("test.create_memref_op"), &[out]);
+            let r = rw.body[n].results.to_vec();
+            replace_with_buffers(rw, op, &r);
+            Ok(())
         }
     }
 }
