@@ -43,6 +43,8 @@ def tests(root: Path):
     found += list(root.glob("Dialect/Bufferization/Transforms/one-shot-*.mlir"))
     found += [root / "Dialect/Linalg/drop-unit-extent-dims.mlir", root / "Dialect/Linalg/convert-elementwise-to-linalg.mlir"]
     found += [root / "Dialect/MemRef/fold-memref-alias-ops.mlir"]
+    # resolve-(ranked-)shaped-type-result-dims: `ReifyRankedShapedTypeOpInterface`.
+    found += [root / "Dialect/MemRef/resolve-dim-ops.mlir", root / "Dialect/Linalg/resolve-shaped-type-result-dims.mlir", root / "Dialect/Tensor/resolve-shaped-type-result-dims.mlir"]
     for path in sorted(set(found)):
         rel = path.relative_to(root)
         if rel.parts[0] == "Conversion" and any(s in part for part in rel.parts[1:-1] for s in OUT_OF_SCOPE):

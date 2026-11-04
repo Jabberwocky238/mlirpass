@@ -93,6 +93,10 @@ impl crate::Passes {
         p.register::<crate::FinalizeMemrefToLlvm>(); // finalize-memref-to-llvm
         #[cfg(all(feature = "dialect.memref", feature = "target.spirv"))]
         p.register::<crate::MapMemrefSpirvStorageClass>(); // map-memref-spirv-storage-class
+        #[cfg(feature = "dialect.memref")]
+        p.register::<crate::ResolveRankedShapedTypeResultDims>(); // resolve-ranked-shaped-type-result-dims
+        #[cfg(feature = "dialect.memref")]
+        p.register::<crate::ResolveShapedTypeResultDims>(); // resolve-shaped-type-result-dims
         #[cfg(all(feature = "dialect.scf", all(feature = "dialect.gpu", feature = "dialect.affine")))]
         p.register::<crate::ConvertParallelLoopsToGpu>(); // convert-parallel-loops-to-gpu
         #[cfg(feature = "dialect.scf")]

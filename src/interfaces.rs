@@ -57,6 +57,18 @@ pub trait OpInterfaces: Sync {
     /// (`canonicalize`).
     fn canonicalization_patterns(&self, _: &mut crate::PatternSet) {}
 
+    /// `ReifyRankedShapedTypeOpInterface::reifyResultShapes`: the sizes of each result of `op`,
+    /// from its operands, built at `rw`'s insertion point; `None`: `op` does not implement it.
+    fn reify<'a>(&self, _: &mut crate::Rewriter<'_, 'a>, _: OpId) -> Option<Vec<Vec<crate::MemrefOfr>>> {
+        None
+    }
+
+    /// `reifyDimOfResult`: size `dim` of result `result`; by default through [`reify`](Self::reify)
+    /// of every result, as upstream's default does.
+    fn reify_dim<'a>(&self, rw: &mut crate::Rewriter<'_, 'a>, op: OpId, result: usize, dim: usize) -> Option<crate::MemrefOfr> {
+        self.reify(rw, op)?.get(result)?.get(dim).copied()
+    }
+
     /// `ConditionallySpeculatable::getSpeculatability`: `None` not speculatable, `Some(false)`
     /// speculatable, `Some(true)` recursively.
     fn speculatability(&self, _: &Body<'_>, _: OpId) -> Option<bool> {

@@ -62,6 +62,14 @@ impl Ofr {
     }
 }
 
+impl Ofr {
+    /// `getMixedValues`: `statics`, each dynamic one taken in turn from `dynamic`.
+    pub fn mixed(statics: &[i64], dynamic: &[ValueId]) -> Vec<Ofr> {
+        let mut d = dynamic.iter();
+        statics.iter().map(|s| if *s == Dim::DYNAMIC { d.next().map_or(Ofr::C(Dim::DYNAMIC), |v| Ofr::V(*v)) } else { Ofr::C(*s) }).collect()
+    }
+}
+
 impl<'a> OpData<'a> {
     /// An op with leading operands and mixed lists stored as `names`.
     pub(crate) fn mixed(name: &str, lead: &[ValueId], lists: &[&[Ofr]], names: &[&str]) -> Self {
@@ -109,5 +117,33 @@ impl crate::Rewriter<'_, '_> {
                 self.body[k].results[0]
             }
         }
+    }
+
+    /// `createOrFoldDimOp`: `tensor.dim` (`memref.dim` of a memref) of `v` at `i`, its index a
+    /// constant built first (`DimOp::build`), folded.
+    pub fn fold_dim(&mut self, v: ValueId, i: usize) -> ValueId {
+        let k = self.value_of(Ofr::C(i as i64));
+        let name = if self.body.is_memref(v) { "memref.dim" } else { "tensor.dim" };
+        self.create_or_fold(OpData::build(name).operands(&[v, k]), &[Type::Index])[0]
+    }
+
+    /// `getMixedSize` (`createFoldedDimOp`): size `i` of `v`, static or its folded dim.
+    pub fn mixed_size(&mut self, v: ValueId, i: usize) -> Ofr {
+        match self.body[v].ty.dims().unwrap_or_default().get(i) {
+            Some(d) if *d != Dim::DYNAMIC => Ofr::C(*d),
+            _ => Ofr::V(self.fold_dim(v, i)),
+        }
+    }
+
+    /// `getMixedSizes`.
+    pub fn mixed_sizes(&mut self, v: ValueId) -> Vec<Ofr> {
+        (0..self.body[v].ty.dims().unwrap_or_default().len()).map(|i| self.mixed_size(v, i)).collect()
+    }
+
+    /// `reifyDimOfResult` of `op`, through its dialect's
+    /// [`OpInterfaces::reify_dim`](crate::OpInterfaces::reify_dim).
+    pub fn reify_dim(&mut self, op: OpId, result: usize, dim: usize) -> Option<Ofr> {
+        let i = self.body.ctx.interfaces.of(&self.body[op].name)?;
+        i.reify_dim(self, op, result, dim)
     }
 }

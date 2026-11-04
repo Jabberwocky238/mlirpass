@@ -91,6 +91,15 @@ impl OpInterfaces for LinalgDialect {
         "linalg"
     }
 
+    fn reify<'a>(&self, rw: &mut crate::Rewriter<'_, 'a>, op: OpId) -> Option<Vec<Vec<crate::MemrefOfr>>> {
+        match &*rw.body[op].name {
+            "linalg.softmax" => Self::reify_softmax(rw, op),
+            // Their own `reifyResultShapes`, not ported.
+            "linalg.pack" | "linalg.unpack" => None,
+            _ => Self::reify_structured(rw, op),
+        }
+    }
+
     /// `getGenericEffectsImpl` of a structured op: memref inputs are read, memref inits
     /// written (and read when the payload uses them).
     fn effects(&self, b: &Body<'_>, op: OpId) -> Option<Vec<EffectInstance>> {
@@ -113,5 +122,79 @@ impl OpInterfaces for LinalgDialect {
             "linalg.pack" | "linalg.unpack" => Self::pack_speculatability(b, op),
             _ => b[op].operands.iter().all(|v| !b.is_memref(*v)).then_some(true),
         }
+    }
+}
+
+impl LinalgDialect {
+    /// `SoftmaxOp::reifyResultShapes`, as upstream writes it: a static size of the output is the
+    /// input's (static or not), a dynamic one the input's dim.
+    fn reify_softmax(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> Option<Vec<Vec<crate::MemrefOfr>>> {
+        use crate::MemrefOfr as Ofr;
+        let (input, output) = (rw.body[op].operands[0], *rw.body[op].operands.get(1)?);
+        let (ins, outs) = (rw.body[input].ty.dims()?, rw.body[output].ty.dims()?);
+        let sizes = (0..outs.len())
+            .map(|d| {
+                if outs[d] != Dim::DYNAMIC {
+                    Ofr::C(ins[d])
+                } else {
+                    Ofr::V(rw.fold_dim(input, d))
+                }
+            })
+            .collect();
+        Some(alloc::vec![sizes])
+    }
+
+    /// `LinalgOp::reifyResultShapes`: each init's sizes from the operands' (all of them built
+    /// first, `createFlatListOfOperandDims`) through `loopsToShapes ∘ shapesToLoops`, composed and
+    /// folded result by result; a size depending on the inits' own is the init's dim.
+    fn reify_structured(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> Option<Vec<Vec<crate::MemrefOfr>>> {
+        use crate::MemrefOfr as Ofr;
+        let maps = rw.body.indexing_maps(op)?;
+        let inits = rw.body.dps_inits(op)?;
+        let operands = rw.body[op].operands.to_vec();
+        let ranks: Vec<usize> = operands.iter().map(|v| rw.body[*v].ty.dims().map_or(0, |d| d.len())).collect();
+        // `getLoopsToShapesMap`: every operand's map, concatenated.
+        let loops = maps.first()?.dims;
+        let all: Vec<AffineExpr> = maps.iter().flat_map(|m| m.results.iter().cloned()).collect();
+        let flat = all.len() as u32;
+        // `inversePermutation`: each loop at the first shape position that is just it.
+        let mut inv: Vec<Option<AffineExpr>> = alloc::vec![None; loops as usize];
+        for (i, e) in all.iter().enumerate() {
+            if let AffineExpr::Dim(d) = e
+                && inv[*d as usize].is_none()
+            {
+                inv[*d as usize] = Some(AffineExpr::Dim(i as u32));
+            }
+        }
+        let shapes_to_loops = AffineMap { dims: flat, syms: 0, results: inv.into_iter().collect::<Option<Vec<_>>>()? };
+        // `getResultsPositionInLoopsToShapeMap`: the inits' positions.
+        let first: usize = ranks[..inits.start].iter().sum();
+        let last = first + ranks[inits.clone()].iter().sum::<usize>();
+        let results = AffineMap { dims: loops, syms: 0, results: all[first..last].to_vec() }.compose(&shapes_to_loops);
+        let on_inits = |e: &AffineExpr| {
+            let mut hit = false;
+            e.walk(&mut |x| hit |= matches!(x, AffineExpr::Dim(d) if (first..last).contains(&(*d as usize))));
+            hit
+        };
+        let dims: Vec<Ofr> = operands.iter().zip(&ranks).flat_map(|(v, r)| (0..*r).map(move |i| (*v, i))).collect::<Vec<_>>().into_iter().map(|(v, i)| rw.mixed_size(v, i)).collect();
+        // `makeComposedFoldedMultiResultAffineApply`.
+        let values: Vec<Ofr> = results.results.iter().map(|e| rw.composed_folded_apply(AffineMap { dims: flat, syms: 0, results: alloc::vec![e.clone()] }, &dims)).collect();
+        let mut pos = 0;
+        let mut out = Vec::new();
+        for init in operands[inits].iter().copied() {
+            let shape = rw.body[init].ty.dims().unwrap_or_default();
+            let mut sizes = Vec::new();
+            for (d, s) in shape.iter().enumerate() {
+                sizes.push(if *s != Dim::DYNAMIC {
+                    Ofr::C(*s)
+                } else {
+                    let size = if on_inits(&results.results[pos]) { Ofr::V(rw.fold_dim(init, d)) } else { values[pos] };
+                    Ofr::V(rw.value_of(size))
+                });
+                pos += 1;
+            }
+            out.push(sizes);
+        }
+        Some(out)
     }
 }

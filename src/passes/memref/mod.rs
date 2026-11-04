@@ -1,8 +1,12 @@
 //! `memref` passes.
 
 mod expand_strided_metadata;
+mod resolve_ranked_shaped_type_result_dims;
+mod resolve_shaped_type_result_dims;
 
 pub use expand_strided_metadata::ExpandStridedMetadata;
+pub use resolve_ranked_shaped_type_result_dims::ResolveRankedShapedTypeResultDims;
+pub use resolve_shaped_type_result_dims::ResolveShapedTypeResultDims;
 
 #[cfg(feature = "target.llvm")]
 mod finalize_memref_to_llvm;

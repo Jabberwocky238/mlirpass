@@ -83,14 +83,6 @@ impl Rules {
         rw.replace_op(op, &[e]);
         true
     }
-
-    /// `ResolveRankedShapedTypeResultDims` (tensor): the `dim` of a linalg result is its init's.
-    #[rewrite("tensor.dim")]
-    fn resolve_ranked_shaped_type_result_dims(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::resolve_dim(rw, op, false) }
-
-    /// `ResolveRankedShapedTypeResultDims` (memref).
-    #[rewrite("memref.dim")]
-    fn resolve_ranked_shaped_type_result_dims_memref(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::resolve_dim(rw, op, true) }
 }
 
 /// `UnitExtentReplacementInfo`.
@@ -146,7 +138,8 @@ impl Strategy {
             set.add(RankReducedExtractSliceOp).add(RankReducedInsertSliceOp).add(RankReducedParallelInsertSliceOp);
         }
         set.add(FoldEmptyTensorWithExpandShapeOp).add(FoldEmptyTensorWithCollapseShapeOp).add(FoldEmptyTensorWithExtractSliceOp);
-        set.add(ResolveRankedShapedTypeResultDims).add(ResolveRankedShapedTypeResultDimsMemref);
+        // `memref::populateResolveRankedShapedTypeResultDimsPatterns`.
+        crate::ResolveDims::patterns(&mut set);
         set
     }
 }
@@ -704,26 +697,6 @@ impl Unit {
         rw.set_before(op);
         let e = Self::empty(rw, &dynamic, rt);
         rw.replace_op(op, &[e]);
-        true
-    }
-
-    /// `ResolveRankedShapedTypeResultDims` for destination-style ops: their init's `dim`.
-    fn resolve_dim(rw: &mut Rewriter<'_, '_>, op: OpId, is_memref: bool) -> bool {
-        let (src, idx) = (rw.body[op].operands[0], rw.body[op].operands[1]);
-        let Def::Result(d, k) = rw.body[src].def else { return false };
-        if !rw.body[d].name.starts_with("linalg.") {
-            return false;
-        }
-        let init = rw.body[d].operands[Self::ninputs(rw.body, d) + k as usize];
-        let source_ty = rw.body[init].ty.clone();
-        rw.set_before(op);
-        let n = if is_memref {
-            rw.emit(&memref::DimOp::new(init.into(), idx.into(), source_ty, Type::Index, Type::Index))
-        } else {
-            rw.emit(&tensor::DimOp::new(init.into(), idx.into(), source_ty, Type::Index, Type::Index))
-        };
-        let v = rw.body[n].results[0];
-        rw.replace_op(op, &[v]);
         true
     }
 }
