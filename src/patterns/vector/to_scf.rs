@@ -6,7 +6,8 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, ShapedKind, Shaped, Type};
 
-use crate::patterns::{Build, VectorBuild, elem, vshape};
+use crate::Build;
+use crate::patterns::{VectorBuild, elem, vshape};
 use crate::MemrefOfr as Ofr;
 use crate::{AffineExpr, AffineMap, Body, MemrefLayout, OpData, OpId, Pattern, PatternSet, Rewriter, Trait, ValueId};
 

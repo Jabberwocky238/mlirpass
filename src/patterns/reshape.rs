@@ -8,8 +8,33 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
-use crate::MemrefOfr as Ofr;
 use crate::{Body, Const, Fold, Folded, MemrefLayout, OpData, OpId, Pattern, Rewriter, ValueId};
+
+/// An `OpFoldResult` of offsets, sizes and strides: a constant or a value (shared by the shaped dialects: memref,
+/// tensor, linalg, tosa).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ofr {
+    C(i64),
+    V(ValueId),
+}
+
+impl<'a> Body<'a> {
+    /// A dense i64 array attribute's values (none when absent).
+    pub fn dense_i64(&self, op: OpId, name: &str) -> Vec<i64> {
+        self[op].get(name).and_then(Attribute::dense_values).unwrap_or_default()
+    }
+
+    /// An `OpFoldResult`'s constant, if it has one.
+    pub fn ofr_int(&self, o: Ofr) -> Option<i64> {
+        match o {
+            Ofr::C(c) => Some(c),
+            Ofr::V(v) => {
+                let c = Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?;
+                Some(c.as_int()?.signed() as i64)
+            }
+        }
+    }
+}
 
 /// `ReassociationIndices` of each result (collapse) or source (expand) dimension.
 pub type Reassoc = Vec<Vec<i64>>;

@@ -4,7 +4,16 @@ use alloc::vec::Vec;
 
 use crate::{ConversionPatterns, DialectInterfaces, TypeConverter};
 
-use crate::{ArithToEmitc, Emitc, FuncToEmitc, MemrefToEmitc, ScfToEmitc};
+#[cfg(any(feature = "dialect.arith", feature = "dialect.memref", feature = "dialect.scf"))]
+use crate::Emitc;
+#[cfg(feature = "dialect.arith")]
+use crate::ArithToEmitc;
+#[cfg(feature = "dialect.func")]
+use crate::FuncToEmitc;
+#[cfg(feature = "dialect.memref")]
+use crate::MemrefToEmitc;
+#[cfg(feature = "dialect.scf")]
+use crate::ScfToEmitc;
 
 /// One dialect's `ConvertToEmitCPatternInterface`: the types it adds to the converter (told
 /// whether `size_t` is in use), and its patterns.
@@ -46,11 +55,17 @@ impl ToEmitcInterfaces {
 
 impl Default for ToEmitcInterfaces {
     fn default() -> Self {
+        // (none without a dialect feature)
+        #[allow(unused_mut)]
         let mut s = Self::new();
-        s.register("arith", true, Some(|tc, _| Emitc::size_t_conversions(tc)), |p, i| ArithToEmitc::populate(p, i))
-            .register("func", false, None, |p, i| FuncToEmitc::populate(p, i))
-            .register("memref", false, Some(|tc, size_t| Emitc::memref_conversions(tc, size_t)), |p, i| MemrefToEmitc::populate(p, i))
-            .register("scf", true, Some(|tc, _| Emitc::size_t_conversions(tc)), |p, i| ScfToEmitc::populate(p, i));
+        #[cfg(feature = "dialect.arith")]
+        s.register("arith", true, Some(|tc, _| Emitc::size_t_conversions(tc)), |p, i| ArithToEmitc::populate(p, i));
+        #[cfg(feature = "dialect.func")]
+        s.register("func", false, None, |p, i| FuncToEmitc::populate(p, i));
+        #[cfg(feature = "dialect.memref")]
+        s.register("memref", false, Some(|tc, size_t| Emitc::memref_conversions(tc, size_t)), |p, i| MemrefToEmitc::populate(p, i));
+        #[cfg(feature = "dialect.scf")]
+        s.register("scf", true, Some(|tc, _| Emitc::size_t_conversions(tc)), |p, i| ScfToEmitc::populate(p, i));
         s
     }
 }

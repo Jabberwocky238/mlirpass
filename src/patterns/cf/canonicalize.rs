@@ -7,18 +7,6 @@ use mlirformat::{arith, Attribute, Type};
 
 use crate::{ApInt, Body, BlockId, Const, OpData, OpId, Rewriter, ValueId};
 
-impl<'a> OpData<'a> {
-    pub fn successors(mut self, s: &[BlockId]) -> Self {
-        self.successors = s.to_vec().into();
-        self
-    }
-
-    /// `operandSegmentSizes` for operand groups of `sizes`.
-    pub fn segments(self, sizes: &[usize]) -> Self {
-        self.with("operandSegmentSizes", Attribute::dense_i32(sizes))
-    }
-}
-
 impl<'a> Body<'a> {
     /// `getSinglePredecessor`: the one edge into `b`.
     pub fn single_predecessor(&self, b: BlockId) -> Option<BlockId> {

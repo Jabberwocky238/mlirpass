@@ -157,7 +157,8 @@ impl<'a> Body<'a> {
     }
 }
 
-/// `Dialect::materializeConstant` of dialect `ns`.
+/// `Dialect::materializeConstant` of dialect `ns` (none without a dialect feature).
+#[allow(unused_variables)]
 pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
     match ns {
         #[cfg(feature = "dialect.arith")]
@@ -190,7 +191,8 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
 }
 
 
-/// Every dialect's and op's canonicalization patterns, in registration order.
+/// Every dialect's and op's canonicalization patterns, in registration order (none without a dialect feature).
+#[allow(unused_mut)]
 pub fn patterns() -> PatternSet {
     let mut set = PatternSet::default();
     #[cfg(feature = "dialect.affine")]

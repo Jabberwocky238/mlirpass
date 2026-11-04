@@ -83,8 +83,10 @@ pub use ub::UbDialect;
 #[cfg(feature = "dialect.vector")]
 pub use vector::VectorDialect;
 
+#[cfg(any(feature = "dialect.tensor", feature = "dialect.memref"))]
 use crate::{Body, OpId};
 
+#[cfg(any(feature = "dialect.tensor", feature = "dialect.memref"))]
 impl Body<'_> {
     /// `tensor.dim` / `memref.dim`: speculatable when the index is a constant in range.
     fn dim_speculatability(&self, op: OpId) -> Option<bool> {

@@ -704,8 +704,6 @@ pub struct ConversionRewriter<'r, 'a, 'p> {
     converters: &'r [&'p TypeConverter<'p>],
     /// The current pattern's type converter.
     pub current: Option<usize>,
-    /// `allowPatternRollback`.
-    rollback: bool,
 }
 
 impl<'r, 'a, 'p> core::ops::Deref for ConversionRewriter<'r, 'a, 'p> {
@@ -1060,7 +1058,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
     }
 
     fn rewriter<'r, 'a>(&'r self, body: &'r mut Body<'a>, state: &'r mut ConvState<'a>) -> ConversionRewriter<'r, 'a, 'p> {
-        ConversionRewriter { rw: Rewriter::typed(body, state), converters: &self.patterns.converters, current: None, rollback: self.config.rollback }
+        ConversionRewriter { rw: Rewriter::typed(body, state), converters: &self.patterns.converters, current: None }
     }
 
     /// `OperationLegalizer::legalize`.
@@ -1446,7 +1444,9 @@ pub trait DialectInterfaces {
 // Lowerings given as functions: what `#[patterns]` / `#[convert]` generate, and the
 // [`ConversionRewriter`] builders they are written with.
 
-/// Something a typed `#[convert]` reads off the op it lowers (its fast-math flags, ..).
+/// Something a typed `#[convert]` reads off the op it lowers (its fast-math flags, ..). (Unused without a
+/// dialect feature.)
+#[allow(dead_code)]
 pub(crate) trait FromOp {
     fn from_op(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Self;
 }
@@ -1503,6 +1503,11 @@ impl<O: Copy> ConversionPattern for OptLowering<O> {
 }
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
+    /// The converted type of `t`.
+    pub fn converted(&self, t: &Type<'a>) -> Option<Type<'a>> {
+        self.type_converter()?.convert(t)
+    }
+
     /// Builds `data` with one result of type `ty` at the insertion point; the result.
     pub fn build(&mut self, data: OpData<'a>, ty: Type<'a>) -> ValueId {
         let o = self.rw.create(data, &[ty]);

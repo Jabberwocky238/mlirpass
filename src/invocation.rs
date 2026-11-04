@@ -153,7 +153,8 @@ impl Invocation {
 }
 
 impl crate::Interfaces<'_> {
-    /// The op interfaces of every dialect this crate describes.
+    /// The op interfaces of every dialect this crate describes (none without a dialect feature).
+    #[allow(unused_imports, unused_mut)]
     pub fn upstream() -> Self {
         use crate::*;
         let mut i = Self::new();
@@ -247,6 +248,8 @@ impl crate::Passes {
         p.with::<crate::UbPasses>();
         #[cfg(feature = "dialect.vector")]
         p.with::<crate::VectorPasses>();
+        #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
+        p.with::<crate::XevmPasses>();
         p
     }
 }

@@ -4,42 +4,13 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, ShapedKind, StridedLayout, Type};
 
-use crate::{Body, Const, Def, Fold, Folded, MemrefLayout, OpData, OpId, ValueId};
-
-/// An `OpFoldResult` of offsets, sizes and strides.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Ofr {
-    C(i64),
-    V(ValueId),
-}
+use crate::MemrefOfr as Ofr;
+use crate::{Body, Def, Fold, Folded, MemrefLayout, OpData, OpId, ValueId};
 
 impl<'a> Body<'a> {
-    pub fn is_ranked_memref(&self, v: ValueId) -> bool {
-        matches!(&self[v].ty, Type::Shaped(s) if s.kind == ShapedKind::MemRef && s.shape.is_some())
-    }
-
-    /// `memref::foldMemRefCast(op, inner)`: casts from ranked memrefs fold into `op`.
-    pub fn fold_memref_cast(&mut self, op: OpId, inner: Option<ValueId>) -> bool {
-        let mut folded = false;
-        for i in 0..self[op].operands.len() {
-            let v = self[op].operands[i];
-            let Some(c) = self.def_named(v, "memref.cast") else { continue };
-            let src = self[c].operands[0];
-            if Some(v) != inner && self.is_ranked_memref(src) {
-                self.set_operand(op, i, src);
-                folded = true;
-            }
-        }
-        folded
-    }
-
     /// A shaped type's dims, `Dim::DYNAMIC` for `?`.
     pub fn dims_of(&self, v: ValueId) -> Option<Vec<i64>> {
         self[v].ty.dims()
-    }
-
-    pub fn dense_i64(&self, op: OpId, name: &str) -> Vec<i64> {
-        self[op].get(name).and_then(Attribute::dense_values).unwrap_or_default()
     }
 
     /// The mixed `offsets`, `sizes` and `strides` of a subview / reinterpret_cast: operand
@@ -56,16 +27,6 @@ impl<'a> Body<'a> {
             at += n;
         }
         out
-    }
-
-    pub fn ofr_int(&self, o: Ofr) -> Option<i64> {
-        match o {
-            Ofr::C(c) => Some(c),
-            Ofr::V(v) => {
-                let c = Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?;
-                Some(c.as_int()?.signed() as i64)
-            }
-        }
     }
 
     /// `getDroppedDims` of a subview, as `computeRankReductionMask` over its sizes.

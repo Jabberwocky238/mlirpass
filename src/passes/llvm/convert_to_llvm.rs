@@ -38,14 +38,15 @@ impl Run for ConvertToLlvm {
         let i = patterns.converter(&tc);
         let dialects: Vec<&str> = if self.filter.is_empty() { self.interfaces.dialects() } else { self.filter.iter().map(String::as_str).collect() };
         let env = LlvmEnv { llvm: LlvmOptions::derived().at(body, op), counter: &self.counter };
+        let mut target = ConversionTarget::default();
+        target.legal_dialect("llvm");
         for d in dialects {
             if !self.interfaces.knows(d) {
                 return Err(Error(format!("dialect does not implement ConvertToLLVMPatternInterface: {d}")));
             }
             self.interfaces.populate(d, &mut patterns, i, &env);
+            self.interfaces.target(d, &mut target);
         }
-        let mut target = ConversionTarget::default();
-        target.legal_dialect("llvm");
         Converter::new(&target, &patterns, ConversionConfig { rollback: self.rollback, ..ConversionConfig::default() }).apply(body, &[op], Mode::Partial)
     }
 }

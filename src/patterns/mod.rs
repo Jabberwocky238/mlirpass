@@ -26,6 +26,7 @@ mod llvm;
 mod math;
 #[cfg(feature = "dialect.memref")]
 mod memref;
+mod libm;
 mod reshape;
 #[cfg(feature = "dialect.scf")]
 mod scf;
@@ -45,9 +46,12 @@ mod ub;
 mod vector;
 #[cfg(feature = "dialect.x86vector")]
 mod x86vector;
+#[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
+mod xevm;
 
 pub use canonicalize::{fold, materialize, memref_cast_compatible, memref_cast_foldable, patterns as canonicalization_patterns, Fold, Folded};
-pub use reshape::{Reshape, ComposeCollapseOfExpand, ComposeExpandOfCollapse, ComposeReassociative, Reassoc};
+pub(crate) use libm::Libm;
+pub use reshape::{Ofr as MemrefOfr, Reshape, ComposeCollapseOfExpand, ComposeExpandOfCollapse, ComposeReassociative, Reassoc};
 #[cfg(feature = "dialect.affine")]
 pub use affine::*;
 #[cfg(feature = "dialect.arith")]
@@ -90,3 +94,5 @@ pub use ub::*;
 pub use vector::*;
 #[cfg(feature = "dialect.x86vector")]
 pub use x86vector::*;
+#[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
+pub use xevm::*;

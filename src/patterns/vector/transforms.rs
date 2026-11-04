@@ -8,58 +8,8 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
-use crate::{ApInt, Body, Const, ConversionRewriter, MemrefLayout, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId};
+use crate::{ApInt, Body, Build, Const, MemrefLayout, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId};
 
-/// What a lowering needs of its rewriter: the greedy one and the conversion one both do.
-pub trait Build<'a> {
-    fn body(&self) -> &Body<'a>;
-    /// A new op at the insertion point.
-    fn make(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId;
-    fn replace(&mut self, op: OpId, values: &[ValueId]);
-    fn remove(&mut self, op: OpId);
-    fn before(&mut self, op: OpId);
-
-    fn make1(&mut self, data: OpData<'a>, ty: Type<'a>) -> ValueId {
-        let o = self.make(data, &[ty]);
-        self.body()[o].results[0]
-    }
-}
-
-impl<'a> Build<'a> for Rewriter<'_, 'a> {
-    fn body(&self) -> &Body<'a> {
-        self.body
-    }
-    fn make(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
-        self.create(data, types)
-    }
-    fn replace(&mut self, op: OpId, values: &[ValueId]) {
-        self.replace_op(op, values);
-    }
-    fn remove(&mut self, op: OpId) {
-        self.erase_op(op);
-    }
-    fn before(&mut self, op: OpId) {
-        self.set_before(op);
-    }
-}
-
-impl<'a> Build<'a> for ConversionRewriter<'_, 'a, '_> {
-    fn body(&self) -> &Body<'a> {
-        self.rw.body
-    }
-    fn make(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
-        self.rw.create(data, types)
-    }
-    fn replace(&mut self, op: OpId, values: &[ValueId]) {
-        self.replace_values(op, values);
-    }
-    fn remove(&mut self, op: OpId) {
-        self.erase(op);
-    }
-    fn before(&mut self, op: OpId) {
-        self.rw.set_before(op);
-    }
-}
 
 pub fn vshape(t: &Type<'_>) -> Option<(Vec<i64>, Vec<bool>)> {
     match t {

@@ -23,11 +23,6 @@ pub struct ArithSpirvOptions {
 pub struct ArithToSpirv;
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
-    /// The converted type of `t`.
-    pub fn converted(&self, t: &Type<'a>) -> Option<Type<'a>> {
-        self.type_converter()?.convert(t)
-    }
-
     /// `spirv::ConstantOp::getZero` / `getOne` (`v`: 0 or 1) of a scalar or vector type.
     pub fn spirv_int_like(&mut self, ty: &Type<'a>, v: i64) -> ValueId {
         let attr = ArithToSpirv::splat(ty, |e| match e {

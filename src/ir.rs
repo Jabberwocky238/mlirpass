@@ -532,6 +532,45 @@ where
 }
 
 impl<'a> OpData<'a> {
+    pub fn successors(mut self, s: &[BlockId]) -> Self {
+        self.successors = s.to_vec().into();
+        self
+    }
+
+    /// `operandSegmentSizes` for operand groups of `sizes`.
+    pub fn segments(self, sizes: &[usize]) -> Self {
+        self.with("operandSegmentSizes", Attribute::dense_i32(sizes))
+    }
+}
+
+impl Body<'_> {
+    pub fn is_ranked_memref(&self, v: ValueId) -> bool {
+        matches!(&self[v].ty, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::MemRef && s.shape.is_some())
+    }
+
+    /// `memref::foldMemRefCast(op, inner)`: casts from ranked memrefs fold into `op`.
+    pub fn fold_memref_cast(&mut self, op: OpId, inner: Option<ValueId>) -> bool {
+        let mut folded = false;
+        for i in 0..self[op].operands.len() {
+            let v = self[op].operands[i];
+            let Some(c) = self.def_named(v, "memref.cast") else { continue };
+            let src = self[c].operands[0];
+            if Some(v) != inner && self.is_ranked_memref(src) {
+                self.set_operand(op, i, src);
+                folded = true;
+            }
+        }
+        folded
+    }
+
+    /// `getConstantIntValue` of an index or integer.
+    pub fn const_index(&self, v: ValueId) -> Option<i64> {
+        let c = crate::Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?;
+        Some(c.as_int()?.signed() as i64)
+    }
+}
+
+impl<'a> OpData<'a> {
     /// ⭐ mlirformat's typed op `op` (operands are [`ValueId`]s turned [`Value`]s), detached,
     /// with its default-valued properties as [`OpData::build`] gives them; and its result types.
     pub fn of<O>(op: &O) -> Result<(Self, Vec<Type<'a>>), Error>

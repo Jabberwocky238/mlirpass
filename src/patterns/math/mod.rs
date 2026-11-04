@@ -5,7 +5,7 @@ mod to_funcs;
 mod to_libm;
 
 pub use to_funcs::{MathToFuncs};
-pub use to_libm::{ComplexToLibm, MathToLibm};
+pub use to_libm::MathToLibm;
 
 #[cfg(feature = "target.llvm")]
 mod to_llvm;

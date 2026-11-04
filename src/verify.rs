@@ -2,27 +2,36 @@
 //! types (`BranchOpInterface`) and affine dimension / symbol identifiers (whose validity
 //! depends on the enclosing `AffineScope`, which a lowering may change).
 
+#[cfg(feature = "dialect.affine")]
 use alloc::format;
+#[cfg(feature = "dialect.affine")]
 use alloc::string::String;
 
 use mlirformat::Error;
 
-use crate::{Body, OpId, ValueId};
+#[cfg(feature = "dialect.affine")]
+use crate::ValueId;
+use crate::{Body, OpId};
 
 impl Body<'_> {
     /// ⭐ The verifiers over everything in `root`.
     pub fn verify(&self, root: OpId) -> Result<(), Error> {
         self.verify_branches(root)?;
-        let mut out = Ok(());
-        self.walk(root, &mut |op| {
-            if out.is_ok() {
-                out = self.verify_affine(op);
-            }
-        });
-        out
+        #[cfg(feature = "dialect.affine")]
+        {
+            let mut out = Ok(());
+            self.walk(root, &mut |op| {
+                if out.is_ok() {
+                    out = self.verify_affine(op);
+                }
+            });
+            out?;
+        }
+        Ok(())
     }
 
     /// `verifyDimAndSymbolIdentifiers`.
+    #[cfg(feature = "dialect.affine")]
     fn verify_identifiers(&self, op: OpId, operands: &[ValueId], dims: usize) -> Result<(), Error> {
         let scope = self.affine_scope(op);
         for (i, v) in operands.iter().enumerate() {
@@ -38,6 +47,7 @@ impl Body<'_> {
 
     /// The affine ops' identifier checks (`verifyMemoryOpIndexing`, `AffineForOp::verify`,
     /// `AffineIfOp::verify`, `AffineApplyOp::verify`).
+    #[cfg(feature = "dialect.affine")]
     fn verify_affine(&self, op: OpId) -> Result<(), Error> {
         let d = &self[op];
         let dims = |name: &str| self.affine_map(op, name).map_or(0, |m| m.dims as usize);

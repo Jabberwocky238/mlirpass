@@ -38,6 +38,8 @@ pub use branch::*;
 
 /// Every dialect's canonicalization patterns (`getCanonicalizationPatterns` of all ops), for passes that run a named subset of them greedily (`PatternSet::retain`).
 pub use conversion::*;
+// (nothing without a dialect feature)
+#[allow(unused_imports)]
 pub use dialects::*;
 pub use dominance::*;
 pub use effects::*;

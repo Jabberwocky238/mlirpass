@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Type};
 
-use crate::{AffineExpr, AffineMap, Body, Const, Def, Fold, Folded, IntegerSet, OpData, OpId, RegionId, Trait, ValueId};
+use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, IntegerSet, OpData, OpId, RegionId, Trait, ValueId};
 
 /// An `affine_map<...>` attribute.
 
@@ -227,12 +227,6 @@ impl<'a> Body<'a> {
             }
         };
         sizes.get(pos).is_some_and(|s| self.is_valid_symbol_in(*s, region))
-    }
-
-    /// `getConstantIntValue` of an index or integer.
-    pub fn const_index(&self, v: ValueId) -> Option<i64> {
-        let c = Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?;
-        Some(c.as_int()?.signed() as i64)
     }
 
     // ---- map and operand canonicalization ---------------------------------------------

@@ -4,7 +4,7 @@ mod canonicalize;
 mod expand_strided_metadata;
 
 pub use expand_strided_metadata::StridedMetadata;
-pub use canonicalize::{MemrefCanon, Ofr as MemrefOfr};
+pub use canonicalize::MemrefCanon;
 
 #[cfg(feature = "target.llvm")]
 mod to_llvm;
