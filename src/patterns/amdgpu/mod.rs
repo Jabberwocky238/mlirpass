@@ -1,6 +1,8 @@
 //! `amdgpu` rule sets.
 
 #[cfg(feature = "target.llvm")]
+mod buffer_to_rocdl;
+#[cfg(feature = "target.llvm")]
 mod cvt_to_rocdl;
 #[cfg(feature = "target.llvm")]
 mod mem_to_rocdl;
