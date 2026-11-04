@@ -25,3 +25,8 @@ pub use convert_math_to_emitc::*;
 mod convert_math_to_xevm;
 #[cfg(feature = "target.llvm")]
 pub use convert_math_to_xevm::ConvertMathToXevm;
+
+#[cfg(feature = "target.llvm")]
+mod convert_math_to_rocdl;
+#[cfg(feature = "target.llvm")]
+pub use convert_math_to_rocdl::ConvertMathToRocdl;

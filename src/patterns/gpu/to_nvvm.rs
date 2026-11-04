@@ -10,7 +10,7 @@ use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, Type};
 
 use super::attrs::{AllReduceOp, Dimension, ShuffleMode};
-use super::libcall::LibFns;
+use crate::LibFns;
 use crate::patterns;
 use crate::{ConversionRewriter, LlvmOptions, OpData, OpId, ValueId};
 

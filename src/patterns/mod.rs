@@ -31,6 +31,7 @@ mod nvvm;
 mod build;
 #[cfg(any(feature = "dialect.math", feature = "dialect.complex"))]
 mod libm;
+mod chipset;
 mod fastmath;
 mod reshape;
 mod slice;
@@ -64,6 +65,7 @@ pub(crate) use build::Named;
 pub(crate) use build::i64_elements;
 #[cfg(any(feature = "dialect.math", feature = "dialect.complex"))]
 pub(crate) use libm::Libm;
+pub use chipset::Chipset as AmdChipset;
 pub use fastmath::Fmf;
 pub use reshape::{Ofr as MemrefOfr, Reshape, ComposeCollapseOfExpand, ComposeExpandOfCollapse, ComposeReassociative, Reassoc};
 #[cfg(feature = "dialect.affine")]

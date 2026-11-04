@@ -2,11 +2,13 @@
 //! [`LlvmType`].
 
 mod interfaces;
+mod libcall;
 mod memref_desc;
 mod pattern;
 mod signature;
 
 pub use interfaces::{LlvmEnv, ToLlvmInterfaces};
+pub use libcall::{file_line_col, LibFns};
 pub use signature::LlvmSignature;
 
 use alloc::borrow::Cow;

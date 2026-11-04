@@ -158,3 +158,8 @@ Dialect__SCF__one-shot-bufferize-tensor-copy-insertion.1	test-only pass -test-te
 Dialect__Shape__bufferize.0	lit substitution <%s
 Dialect__Tensor__one-shot-bufferize-tensor-copy-insertion.0	test-only pass -test-tensor-copy-insertion
 Dialect__Tensor__one-shot-bufferize-tensor-copy-insertion.1	test-only pass -test-tensor-copy-insertion=bufferize-function-boundaries
+Conversion__AMDGPUToROCDL__gfx1250.0	mlir-opt failed (reading the input)
+Conversion__AMDGPUToROCDL__load_lds-gfx950.0	not mlir-opt: ['not']
+Conversion__AMDGPUToROCDL__transpose_load.1	not mlir-opt: ['not']
+Conversion__AMDGPUToROCDL__transpose_load_reject.0	not mlir-opt: ['not']
+Conversion__AMDGPUToROCDL__wmma-gfx1250.0	mlir-opt failed (reading the input)

@@ -1,6 +1,7 @@
 //! Math as device library calls, as `OpToFuncCallLowering.h` with `ScalarizeVectorOpLowering`:
 //! shared by the NVVM (`__nv_*`) and ROCDL (`__ocml_*`) lowerings.
 
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use mlirformat::llvm_types::LlvmType;
@@ -27,6 +28,11 @@ impl LibFns {
 
     pub const fn approx(f32: &'static str, f64: &'static str, f32_approx: &'static str) -> Self {
         Self { f32, f64, f32_approx, f16: "", i32: "" }
+    }
+
+    /// f32, f64 and f16 functions (`populateOpPatterns` of MathToROCDL).
+    pub const fn half(f32: &'static str, f64: &'static str, f16: &'static str) -> Self {
+        Self { f32, f64, f32_approx: "", f16, i32: "" }
     }
 
     pub const fn int(i32: &'static str) -> Self {
@@ -81,7 +87,7 @@ impl<'a> Cr<'_, 'a, '_> {
         let parent = self.parent_function(op)?;
         let saved = self.rw.ip;
         self.rw.set_before(parent);
-        let loc = self.rw.body[op].loc.as_deref().and_then(super::to_llvm::file_line_col).map(Into::into);
+        let loc = self.rw.body[op].loc.as_deref().and_then(crate::file_line_col).map(Into::into);
         let mut data = OpData::build("llvm.func").with("sym_name", Attribute::str(name)).with("function_type", Attribute::Type(ty)).with("linkage", Attribute::dialect("llvm.linkage", "<external>"));
         data.loc = Some(loc.unwrap_or_else(|| "unknown".into()));
         self.rw.create_with(data, &[], |b, f| {
@@ -176,4 +182,30 @@ impl<'a> Cr<'_, 'a, '_> {
         self.replace_values(op, &[out]);
         true
     }
+}
+
+/// The first `"file":line:col` in raw location text (`findInstanceOfOrUnknown<FileLineColLoc>`).
+pub fn file_line_col(loc: &str) -> Option<String> {
+    let b = loc.as_bytes();
+    let mut i = 0;
+    while let Some(q) = loc[i..].find('"').map(|q| q + i) {
+        let mut j = q + 1;
+        while j < b.len() && b[j] != b'"' {
+            j += if b[j] == b'\\' { 2 } else { 1 };
+        }
+        let rest = &loc[(j + 1).min(loc.len())..];
+        let nums: Vec<&str> = rest.splitn(3, ':').skip(1).take(2).collect();
+        if nums.len() == 2 {
+            let line = nums[0];
+            let col: String = nums[1].chars().take_while(char::is_ascii_digit).collect();
+            if !line.is_empty() && line.chars().all(|c| c.is_ascii_digit()) && !col.is_empty() {
+                return Some(alloc::format!("{}:{line}:{col}", &loc[q..=j]));
+            }
+        }
+        i = j + 1;
+        if i >= loc.len() {
+            break;
+        }
+    }
+    None
 }

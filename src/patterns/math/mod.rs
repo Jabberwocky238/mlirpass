@@ -26,3 +26,8 @@ pub use to_emitc::MathToEmitc;
 mod to_xevm;
 #[cfg(feature = "target.llvm")]
 pub use to_xevm::{MathToXevm, MathXevmOptions};
+
+#[cfg(feature = "target.llvm")]
+mod to_rocdl;
+#[cfg(feature = "target.llvm")]
+pub use to_rocdl::{MathRocdlOptions, MathToRocdl};

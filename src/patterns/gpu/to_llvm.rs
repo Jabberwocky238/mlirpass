@@ -357,7 +357,7 @@ impl GpuToLlvm {
         let bytes = crate::unescape(lit);
         let ptr: Type<'a> = LlvmType::ptr();
         // `findInstanceOfOrUnknown<FileLineColLoc>`: debug info inside a function cannot be used outside it.
-        let gloc: Option<mlirformat::Str<'a>> = Some(cr.rw.body[op].loc.as_deref().and_then(file_line_col).unwrap_or_else(|| String::from("unknown")).into());
+        let gloc: Option<mlirformat::Str<'a>> = Some(cr.rw.body[op].loc.as_deref().and_then(crate::file_line_col).unwrap_or_else(|| String::from("unknown")).into());
         if cr.rw.body.lookup(module, "vprintf").is_none() {
             let Some(f) = cr.llvm_func(module, "vprintf", vec![ptr.clone(), ptr.clone()], Type::int(32), false) else { return false };
             cr.rw.body[f].loc = gloc.clone();
@@ -390,30 +390,4 @@ impl GpuToLlvm {
         cr.erase(op);
         true
     }
-}
-
-/// The first `"file":line:col` in raw location text (`findInstanceOfOrUnknown<FileLineColLoc>`).
-pub fn file_line_col(loc: &str) -> Option<String> {
-    let b = loc.as_bytes();
-    let mut i = 0;
-    while let Some(q) = loc[i..].find('"').map(|q| q + i) {
-        let mut j = q + 1;
-        while j < b.len() && b[j] != b'"' {
-            j += if b[j] == b'\\' { 2 } else { 1 };
-        }
-        let rest = &loc[(j + 1).min(loc.len())..];
-        let nums: Vec<&str> = rest.splitn(3, ':').skip(1).take(2).collect();
-        if nums.len() == 2 {
-            let line = nums[0];
-            let col: String = nums[1].chars().take_while(char::is_ascii_digit).collect();
-            if !line.is_empty() && line.chars().all(|c| c.is_ascii_digit()) && !col.is_empty() {
-                return Some(alloc::format!("{}:{line}:{col}", &loc[q..=j]));
-            }
-        }
-        i = j + 1;
-        if i >= loc.len() {
-            break;
-        }
-    }
-    None
 }

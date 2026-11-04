@@ -89,6 +89,8 @@ impl crate::Passes {
         p.register::<crate::ConvertMathToLibm>(); // convert-math-to-libm
         #[cfg(all(feature = "dialect.math", feature = "target.llvm"))]
         p.register::<crate::ConvertMathToLlvm>(); // convert-math-to-llvm
+        #[cfg(all(feature = "dialect.math", feature = "target.llvm"))]
+        p.register::<crate::ConvertMathToRocdl>(); // convert-math-to-rocdl
         #[cfg(all(feature = "dialect.math", feature = "target.spirv"))]
         p.register::<crate::ConvertMathToSpirv>(); // convert-math-to-spirv
         #[cfg(all(feature = "dialect.math", feature = "target.llvm"))]

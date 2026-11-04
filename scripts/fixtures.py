@@ -23,7 +23,7 @@ from pathlib import Path
 
 # Conversion targets outside this crate's scope (vendor / runtime specific, see README).
 OUT_OF_SCOPE = (
-    "AMDGPU", "ROCDL", "ArmSME", "ArmNeon", "AMX", "MPI",
+    "ArmSME", "ArmNeon", "AMX", "MPI",
     "OpenMP", "OpenACC", "Shard", "Calculet", "VCIX",
 )
 
