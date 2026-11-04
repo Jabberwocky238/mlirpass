@@ -337,6 +337,10 @@ impl MemrefCanon {
     #[rewrite("memref.alloca")]
     fn simplify_dead_alloca(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_dead_alloc(rw, op) }
 
+    /// `SimplifyDeadAlloc<ReallocOp>`.
+    #[rewrite("memref.realloc")]
+    fn simplify_dead_realloc(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_dead_alloc(rw, op) }
+
     /// `FoldEmptyCopy`: a copy of or into a memref with a zero dimension goes.
     #[rewrite("memref.copy")]
     fn fold_empty_copy(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
@@ -762,7 +766,7 @@ impl MemrefCanon {
     }
 
     pub fn canonicalization(set: &mut crate::PatternSet) {
-        set.add(SimplifyAllocConst).add(SimplifyDeadAlloc).add(SimplifyAllocaConst).add(SimplifyDeadAlloca);
+        set.add(SimplifyAllocConst).add(SimplifyDeadAlloc).add(SimplifyAllocaConst).add(SimplifyDeadAlloca).add(SimplifyDeadRealloc);
         set.add_boxed(alloc::boxed::Box::new(crate::ComposeReassociative { name: "ComposeExpandOfExpand", dialect: "memref", root: "memref.expand_shape", expand: true }));
         set.add_boxed(alloc::boxed::Box::new(crate::ComposeExpandOfCollapse { name: "ComposeExpandOfCollapseOp", dialect: "memref" }));
         set.add(ExpandShapeOpMemRefCastFolder);

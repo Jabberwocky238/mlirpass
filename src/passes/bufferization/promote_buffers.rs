@@ -79,21 +79,6 @@ impl ViewFlow {
 }
 
 impl Body<'_> {
-    /// `memref::findDealloc`: `None` when several ops free `v`.
-    fn find_dealloc(&self, v: ValueId) -> Option<Option<OpId>> {
-        let mut found = None;
-        for u in &self[v].uses {
-            let frees = self.effects_of(u.op).is_some_and(|es| es.iter().any(|e| e.kind == EffectKind::Free && e.value == Some(v)));
-            if frees {
-                if found.is_some_and(|f| f != u.op) {
-                    return None;
-                }
-                found = Some(u.op);
-            }
-        }
-        Some(found)
-    }
-
     /// `isLoop`.
     fn is_loop(&self, op: OpId) -> bool {
         self.has(op, Trait::LoopLikeOpInterface) || self[op].name == "scf.while"
