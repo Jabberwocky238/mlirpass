@@ -640,8 +640,8 @@ impl<'a> Body<'a> {
         self.is_region_branch(op) && self.region_reachable(op, index, index)
     }
 
-    /// `insideMutuallyExclusiveRegions`: `a` and `b` sit in regions of a region-branch op neither
-    /// of which reaches the other.
+    /// `insideMutuallyExclusiveRegions`: `a` and `b` sit in distinct regions of a region-branch
+    /// op neither of which reaches the other.
     pub fn mutually_exclusive(&self, a: OpId, b: OpId) -> bool {
         let mut at = self.parent_op(a);
         while let Some(br) = at {
@@ -655,7 +655,7 @@ impl<'a> Body<'a> {
             }
             let region_of = |x: OpId| self[br].regions.iter().position(|r| self[*r].blocks.iter().any(|blk| self.ops_of_block_contain(*blk, x)));
             let (Some(ra), Some(rb)) = (region_of(a), region_of(b)) else { return false };
-            return !self.region_reachable(br, ra, rb) && !self.region_reachable(br, rb, ra);
+            return ra != rb && !self.region_reachable(br, ra, rb) && !self.region_reachable(br, rb, ra);
         }
         false
     }

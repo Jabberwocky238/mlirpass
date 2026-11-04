@@ -137,11 +137,13 @@ mod bufferizable {
     use super::ScfDialect;
     use crate::{buffer_of, buffer_type, is_tensor, replace_with_buffers, AliasingOperand, AliasingValue, AnalysisState, Body, BufferRelation, Bufferizable, BufferizationOptions, Def, OpData, OpId, Operand, RegionId, Rewriter, ValueId};
 
-    /// `scf.for`, `scf.if`, `scf.yield`, `scf.execute_region`.
+    /// `scf.for`, `scf.if`, `scf.yield`, `scf.execute_region`, `scf.while`, `scf.condition`.
     struct For;
     struct If;
     struct Yield;
     struct ExecuteRegion;
+    struct While;
+    struct Condition;
 
     impl ScfDialect {
         pub(crate) fn bufferizable_op(name: &str) -> Option<&'static dyn Bufferizable> {
@@ -150,6 +152,8 @@ mod bufferizable {
                 "scf.if" => &If,
                 "scf.yield" => &Yield,
                 "scf.execute_region" => &ExecuteRegion,
+                "scf.while" => &While,
+                "scf.condition" => &Condition,
                 _ => return None,
             })
         }
@@ -197,6 +201,50 @@ mod bufferizable {
         })
     }
 
+    /// `computeLoopRegionIterArgBufferType`: the init's buffer type when the yielded one is the
+    /// same (or `arg` is twice on the stack), else fully dynamic in their memory space.
+    fn loop_iter_arg_type<'a>(o: &BufferizationOptions, b: &Body<'a>, op: OpId, arg: ValueId, init: ValueId, yv: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
+        let init = crate::buffer_type_in(o, b, init, stack)?;
+        if stack.iter().filter(|v| **v == arg).count() >= 2 {
+            return Ok(init);
+        }
+        let yielded = if is_tensor(&b[yv].ty) { crate::buffer_type_in(o, b, yv, stack)? } else { b[yv].ty.clone() };
+        if init == yielded {
+            return Ok(yielded);
+        }
+        if memory_space(&init) != memory_space(&yielded) {
+            return Err(Error(format!("'{}' op init_arg and yielded value bufferize to inconsistent memory spaces", b[op].name)));
+        }
+        let Type::Shaped(t) = &b[arg].ty else { return Err(Error("expected a tensor".into())) };
+        Ok(BufferizationOptions::fully_dynamic(t, memory_space(&yielded)))
+    }
+
+    /// A buffer type's memory space.
+    fn memory_space<'a>(t: &Type<'a>) -> Option<mlirformat::Attribute<'a>> {
+        match t {
+            Type::Shaped(m) => m.extras.iter().find(|a| !a.is_layout()).cloned(),
+            _ => None,
+        }
+    }
+
+    /// `getBbArgReplacements`: the new block's arguments, tensor ones through a `to_tensor` of
+    /// the old argument's type, at the start of `block`.
+    fn bb_arg_replacements(rw: &mut Rewriter<'_, '_>, block: crate::BlockId, old: &[ValueId]) -> Vec<ValueId> {
+        rw.set_start(block);
+        let new = rw.body[block].args.to_vec();
+        new.iter()
+            .zip(old)
+            .map(|(n, o)| {
+                if !is_tensor(&rw.body[*o].ty) {
+                    return *n;
+                }
+                let ty = rw.body[*o].ty.clone();
+                let t = rw.create(OpData::build("bufferization.to_tensor").operands(&[*n]), &[ty]);
+                rw.body[t].results[0]
+            })
+            .collect()
+    }
+
     /// `mayHaveZeroIterations`.
     fn may_have_zero_iterations(b: &Body<'_>, op: OpId) -> bool {
         match (b.const_index(b[op].operands[0]), b.const_index(b[op].operands[1])) {
@@ -218,27 +266,10 @@ mod bufferizable {
             if s.equivalent(arg, yielded) { BufferRelation::Equivalent } else { BufferRelation::Unknown }
         }
 
-        /// `computeLoopRegionIterArgBufferType`.
+        /// `computeLoopRegionIterArgBufferType` of iteration argument `k`.
         fn iter_arg_type<'a>(o: &BufferizationOptions, b: &Body<'a>, op: OpId, k: usize, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
             let arg = b[body_of(b, op, 0)].args[k + 1];
-            let init = crate::buffer_type_in(o, b, b[op].operands[3 + k], stack)?;
-            if stack.iter().filter(|v| **v == arg).count() >= 2 {
-                return Ok(init);
-            }
-            let yv = b[yield_of(b, op, 0)].operands[k];
-            let yielded = if is_tensor(&b[yv].ty) { crate::buffer_type_in(o, b, yv, stack)? } else { b[yv].ty.clone() };
-            if init == yielded {
-                return Ok(yielded);
-            }
-            let space = |t: &Type<'a>| match t {
-                Type::Shaped(m) => m.extras.iter().find(|a| !a.is_layout()).cloned(),
-                _ => None,
-            };
-            if space(&init) != space(&yielded) {
-                return Err(Error(format!("'{}' op init_arg and yielded value bufferize to inconsistent memory spaces", b[op].name)));
-            }
-            let Type::Shaped(t) = &b[arg].ty else { return Err(Error("expected a tensor".into())) };
-            Ok(BufferizationOptions::fully_dynamic(t, space(&yielded)))
+            loop_iter_arg_type(o, b, op, arg, b[op].operands[3 + k], b[yield_of(b, op, 0)].operands[k], stack)
         }
     }
 
@@ -466,6 +497,167 @@ mod bufferizable {
             }
             let new_results = rw.body[n].results.to_vec();
             replace_with_buffers(rw, op, &new_results);
+            Ok(())
+        }
+    }
+
+    impl While {
+        /// The `before` (0) or `after` (1) block's arguments.
+        fn args(b: &Body<'_>, op: OpId, r: usize) -> Vec<ValueId> {
+            b[body_of(b, op, r)].args.to_vec()
+        }
+
+        /// `bufferRelation`: equivalent when both regions pass their argument `k` on.
+        fn relation(s: &AnalysisState<'_>, b: &Body<'_>, op: OpId, k: usize) -> BufferRelation {
+            let (before, after) = (Self::args(b, op, 0), Self::args(b, op, 1));
+            let Some(cond_arg) = before.get(k).filter(|a| b[**a].ty == b[b[op].results[k]].ty) else { return BufferRelation::Unknown };
+            let cond = b[yield_of(b, op, 0)].operands[1 + k];
+            let y = b[yield_of(b, op, 1)].operands[k];
+            if s.equivalent(*cond_arg, cond) && s.equivalent(after[k], y) { BufferRelation::Equivalent } else { BufferRelation::Unknown }
+        }
+
+        /// `getEquivalentBuffers`: the indices whose argument and passed-on value are equivalent.
+        fn equivalent(s: &AnalysisState<'_>, b: &Body<'_>, args: &[ValueId], values: &[ValueId]) -> Vec<usize> {
+            args.iter().zip(values).enumerate().filter(|(_, (a, v))| is_tensor(&b[**a].ty) && is_tensor(&b[**v].ty) && s.equivalent(**a, **v)).map(|(k, _)| k).collect()
+        }
+    }
+
+    impl Bufferizable for While {
+        fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
+            true
+        }
+
+        fn aliasing_values(&self, s: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> Vec<AliasingValue> {
+            let Some(r) = b[op].results.get(i).filter(|r| b[**r].ty == b[b[op].operands[i]].ty) else { return Vec::new() };
+            let relation = Self::relation(s, b, op, i);
+            vec![AliasingValue { value: *r, relation, definite: relation == BufferRelation::Equivalent }]
+        }
+
+        fn writable(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: ValueId) -> bool {
+            true
+        }
+
+        /// The operands' conflicts, then the condition's values not equivalent in both
+        /// regions replaced by new tensors.
+        fn resolve_conflicts(&self, rw: &mut Rewriter<'_, '_>, s: &AnalysisState<'_>, op: OpId) -> Result<(), Error> {
+            s.resolve_tensor_conflicts(rw, op)?;
+            if s.options.copy_before_write {
+                return Ok(());
+            }
+            let b = &*rw.body;
+            let c = yield_of(b, op, 0);
+            let y = yield_of(b, op, 1);
+            let cond_args = b[c].operands[1..].to_vec();
+            let before = Self::equivalent(s, b, &Self::args(b, op, 0), &cond_args);
+            let after = Self::equivalent(s, b, &Self::args(b, op, 1), &b[y].operands);
+            rw.set_before(c);
+            for (k, v) in cond_args.iter().enumerate() {
+                if !is_tensor(&rw.body[*v].ty) || (after.contains(&k) && before.contains(&k)) {
+                    continue;
+                }
+                let t = s.allocate_tensor_for(rw, *v, true)?;
+                rw.modify(c, |b| b.set_operand(c, k + 1, t));
+            }
+            Ok(())
+        }
+
+        fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
+            let op = b.owner_of(v);
+            let k = match b[v].def {
+                Def::Arg(blk, a) if b[blk].parent == Some(b[op].regions[0]) => {
+                    let y = b[yield_of(b, op, 1)].operands[a as usize];
+                    return loop_iter_arg_type(o, b, op, v, b[op].operands[a as usize], y, stack);
+                }
+                Def::Arg(_, a) | Def::Result(_, a) => a as usize,
+            };
+            let cv = b[yield_of(b, op, 0)].operands[1 + k];
+            if is_tensor(&b[cv].ty) { crate::buffer_type_in(o, b, cv, stack) } else { Ok(b[cv].ty.clone()) }
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let (old_before, old_after) = (Self::args(rw.body, op, 0), Self::args(rw.body, op, 1));
+            let operands = rw.body[op].operands.to_vec();
+            let mut inits = Vec::new();
+            for (k, v) in operands.iter().enumerate() {
+                let init = if is_tensor(&rw.body[*v].ty) { buffer_of(rw, o, *v)? } else { *v };
+                if !is_tensor(&rw.body[old_before[k]].ty) {
+                    inits.push(init);
+                    continue;
+                }
+                let ty = buffer_type(o, rw.body, old_before[k])?;
+                inits.push(cast_buffer(rw, init, &ty));
+            }
+            let mut after_types = Vec::new();
+            for a in &old_after {
+                after_types.push(if is_tensor(&rw.body[*a].ty) { buffer_type(o, rw.body, *a)? } else { rw.body[*a].ty.clone() });
+            }
+            let before_types: Vec<Type<'_>> = inits.iter().map(|v| rw.body[*v].ty.clone()).collect();
+            let loc = rw.body[op].loc.clone();
+            let old = rw.body[op].clone();
+            let mut data = OpData::named(old.name.clone()).operands(&inits);
+            data.properties.clone_from(&old.properties);
+            data.attributes.clone_from(&old.attributes);
+            let before_args: Vec<_> = before_types.iter().map(|t| (t.clone(), loc.clone())).collect();
+            let after_args: Vec<_> = after_types.iter().map(|t| (t.clone(), loc.clone())).collect();
+            let n = rw.create_with(data, &after_types, |b, o| {
+                let r = b.add_region(o);
+                b.add_block(r, &before_args);
+                let r = b.add_region(o);
+                b.add_block(r, &after_args);
+            });
+            for (r, old_args) in [(0, &old_before), (1, &old_after)] {
+                let (from, to) = (body_of(rw.body, op, r), body_of(rw.body, n, r));
+                let repl = bb_arg_replacements(rw, to, old_args);
+                rw.merge_blocks(from, to, &repl);
+            }
+            let new_results = rw.body[n].results.to_vec();
+            replace_with_buffers(rw, op, &new_results);
+            Ok(())
+        }
+
+        /// `verifyAnalysis`: without `allow-return-allocs-from-loops`, the condition's and the
+        /// yield's values equivalent to their block's arguments.
+        fn verify(&self, s: &AnalysisState<'_>, b: &Body<'_>, op: OpId) -> Result<(), Error> {
+            if s.options.allow_return_allocs_from_loops {
+                return Ok(());
+            }
+            for (r, skip, what) in [(0, 1, "Condition arg"), (1, 0, "Yield operand")] {
+                let t = yield_of(b, op, r);
+                let args = Self::args(b, op, r);
+                for (k, v) in b[t].operands[skip..].iter().enumerate() {
+                    if is_tensor(&b[*v].ty) && !args.get(k).is_some_and(|a| s.equivalent(*v, *a)) {
+                        return Err(Error(format!("{what} #{k} is not equivalent to the corresponding iter bbArg")));
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    impl Bufferizable for Condition {
+        fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
+            false
+        }
+
+        fn must_in_place(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
+            true
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let w = rw.body.parent_op(op).ok_or_else(|| Error("expected an scf.while".into()))?;
+            let operands = rw.body[op].operands.to_vec();
+            let mut new = vec![operands[0]];
+            for (k, v) in operands[1..].iter().enumerate() {
+                if !is_tensor(&rw.body[*v].ty) {
+                    new.push(*v);
+                    continue;
+                }
+                let buffer = buffer_of(rw, o, *v)?;
+                let arg = rw.body[body_of(rw.body, w, 1)].args[k];
+                let ty = buffer_type(o, rw.body, arg)?;
+                new.push(cast_buffer(rw, buffer, &ty));
+            }
+            rw.replace_with(op, OpData::named(rw.body[op].name.clone()).operands(&new), &[]);
             Ok(())
         }
     }
