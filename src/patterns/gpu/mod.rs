@@ -16,7 +16,7 @@ pub use wmma_to_spirv::WmmaToSpirv;
 
 mod attrs;
 
-pub use attrs::{Dimension, ShuffleMode};
+pub use attrs::{AllReduceOp, Dimension, ShuffleMode};
 
 #[cfg(feature = "target.llvm")]
 mod to_llvm;
@@ -36,4 +36,7 @@ pub use libcall::LibFns;
 #[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
 mod to_nvvm;
 #[cfg(all(feature = "target.llvm", feature = "dialect.nvvm"))]
-pub use to_nvvm::GpuToNvvm;
+pub use to_nvvm::{AssertToNvvm, GpuReduxToNvvm, GpuToNvvm};
+
+mod rewrite;
+pub use rewrite::GpuRewrite;

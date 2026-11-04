@@ -50,3 +50,51 @@ impl TryFrom<&Attribute<'_>> for ShuffleMode {
         case_of(a, "shuffle_mode", &Self::NAMES).ok_or(())
     }
 }
+
+/// `gpu::AllReduceOperation`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AllReduceOp {
+    Add,
+    Mul,
+    MinUi,
+    MinSi,
+    MinNumF,
+    MaxUi,
+    MaxSi,
+    MaxNumF,
+    And,
+    Or,
+    Xor,
+    MinimumF,
+    MaximumF,
+}
+
+impl AllReduceOp {
+    const NAMES: [(&'static str, Self); 13] = [
+        ("add", Self::Add),
+        ("mul", Self::Mul),
+        ("minui", Self::MinUi),
+        ("minsi", Self::MinSi),
+        ("minnumf", Self::MinNumF),
+        ("maxui", Self::MaxUi),
+        ("maxsi", Self::MaxSi),
+        ("maxnumf", Self::MaxNumF),
+        ("and", Self::And),
+        ("or", Self::Or),
+        ("xor", Self::Xor),
+        ("minimumf", Self::MinimumF),
+        ("maximumf", Self::MaximumF),
+    ];
+
+    /// The case's name, as `vector::CombiningKind` spells it too.
+    pub fn name(self) -> &'static str {
+        Self::NAMES.iter().find(|(_, v)| *v == self).map_or("", |(n, _)| n)
+    }
+}
+
+impl TryFrom<&Attribute<'_>> for AllReduceOp {
+    type Error = ();
+    fn try_from(a: &Attribute<'_>) -> Result<Self, ()> {
+        case_of(a, "all_reduce_op", &Self::NAMES).ok_or(())
+    }
+}

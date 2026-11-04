@@ -41,15 +41,26 @@ impl crate::Run for ConvertGpuToNvvm {
         for f in funcs {
             body[f].set("llvm.emit_c_interface", Attribute::Unit);
         }
+        // In-dialect lowering first: what needs lowering further than one conversion goes.
+        let mut set = crate::PatternSet::default();
+        crate::GpuRewrite::patterns(&mut set);
+        // `applyPatternsGreedily`'s default config: aggressive region simplification.
+        let config = crate::GreedyConfig { region_simplify: crate::RegionSimplify::Aggressive, ..crate::GreedyConfig::default() };
+        for r in body[op].regions.clone() {
+            body.apply_greedily(r, &set, &config);
+        }
         let mut llvm = LlvmOptions { bare_ptr: self.bare_ptr, gpu_spaces: Some(NVVM_SPACES), ..LlvmOptions::derived() }.at(body, op);
         if self.index_bitwidth != 0 {
             llvm.index_bitwidth = self.index_bitwidth;
         }
-        let _ = self.has_redux;
         let tc = LlvmConverter::build(llvm);
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         GpuToNvvm::populate(&mut patterns, i, llvm);
+        crate::AssertToNvvm::populate(&mut patterns, i);
+        if self.has_redux {
+            crate::GpuReduxToNvvm::populate(&mut patterns, i);
+        }
         let gpu = GpuLlvmOptions {
             llvm,
             alloca_space: 0,

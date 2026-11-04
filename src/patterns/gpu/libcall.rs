@@ -135,12 +135,9 @@ impl<'a> Cr<'_, 'a, '_> {
         false
     }
 
-    /// `OpToFuncCallLowering`: `op` as a call of the function `fns` names for its operand
+    /// `OpToFuncCallLowering` (after [`scalarize`](Self::scalarize), a pattern of its own): `op` as a call of the function `fns` names for its operand
     /// type, f16 / bf16 through f32, an `i1` result through an `i32` one.
     pub fn lib_call(&mut self, op: OpId, operands: &[ValueId], fns: &LibFns) -> bool {
-        if self.scalarize(op, operands) {
-            return true;
-        }
         let res = self.rw.body[self.rw.body[op].results[0]].ty.clone();
         let boolean = matches!(res, Type::Integer { width: 1, .. });
         if self.parent_function(op).is_none() {

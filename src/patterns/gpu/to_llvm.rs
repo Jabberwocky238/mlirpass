@@ -277,7 +277,7 @@ impl GpuToLlvm {
 
     /// `getOrCreateStringConstant`: a constant internal global of `bytes` and a NUL in
     /// address space `space`, reused when one holds them already.
-    fn string_constant<'a>(cr: &mut Cr<'_, 'a, '_>, module: OpId, prefix: &str, bytes: &[u8], space: u32, loc: Option<mlirformat::Str<'a>>) -> (String, Type<'a>) {
+    pub(crate) fn string_constant<'a>(cr: &mut Cr<'_, 'a, '_>, module: OpId, prefix: &str, bytes: &[u8], space: u32, loc: Option<mlirformat::Str<'a>>) -> (String, Type<'a>) {
         let mut data = bytes.to_vec();
         data.push(0);
         let ty = LlvmType::array(data.len() as u64, Type::int(8));
