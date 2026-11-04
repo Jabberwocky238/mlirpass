@@ -836,6 +836,9 @@ impl<'o> AnalysisState<'o> {
         for f in ordered.iter().chain(&remaining) {
             if self.options.allowed(b, *f) {
                 self.annotate(b, *f);
+                if self.options.dump_alias_sets {
+                    self.annotate_alias_sets(b, *f);
+                }
             }
         }
         for f in ordered {
@@ -1019,4 +1022,177 @@ pub(crate) fn funcs_by_calls(b: &Body<'_>, module: OpId) -> (Vec<OpId>, Vec<OpId
     }
     let remaining = funcs.into_iter().filter(|f| count.contains_key(f)).collect();
     (ordered, remaining)
+}
+
+/// The SSA names `printAsOperand` gives under an `AsmState` of a root op (`SSANameState`):
+/// results numbered (generic form), entry block arguments `%argN` uniqued per region scope.
+struct AsmNames {
+    names: BTreeMap<ValueId, String>,
+    ids: BTreeMap<ValueId, usize>,
+    used: Vec<BTreeSet<String>>,
+    next_value: usize,
+    next_arg: usize,
+    next_conflict: usize,
+}
+
+impl AsmNames {
+    /// `sanitizeIdentifier`.
+    fn sanitize(name: &str) -> String {
+        let valid = |c: char| c.is_ascii_alphanumeric() || "$._-".contains(c);
+        let copy = |out: &mut String| {
+            for c in name.chars() {
+                if valid(c) {
+                    out.push(c);
+                } else if c == ' ' {
+                    out.push('_');
+                } else {
+                    out.push_str(&format!("{:X}", c as u32));
+                }
+            }
+        };
+        let first = name.chars().next().unwrap_or('_');
+        let mut out = String::new();
+        if first.is_ascii_digit() || (!valid(first) && first != ' ') {
+            out.push('_');
+            copy(&mut out);
+            return out;
+        }
+        if name.chars().all(valid) {
+            return name.into();
+        }
+        copy(&mut out);
+        out
+    }
+
+    /// `setValueName`: numbered when unnamed, else uniqued in the scopes open.
+    fn set(&mut self, v: ValueId, name: &str) {
+        if name.is_empty() {
+            self.ids.insert(v, self.next_value);
+            self.next_value += 1;
+            return;
+        }
+        let name = Self::sanitize(name);
+        let taken = |s: &Self, n: &str| s.used.iter().any(|u| u.contains(n));
+        let unique = if !taken(self, &name) {
+            name
+        } else {
+            loop {
+                let probe = format!("{name}_{}", self.next_conflict);
+                self.next_conflict += 1;
+                if !taken(self, &probe) {
+                    break probe;
+                }
+            }
+        };
+        self.used.last_mut().expect("a scope").insert(unique.clone());
+        self.names.insert(v, unique);
+    }
+
+    /// `numberValuesInOp`.
+    fn number_op(&mut self, b: &Body<'_>, op: OpId) {
+        // The fixtures print generic: `getAsmResultNames` is not asked.
+        if let Some(r) = b[op].results.first()
+            && !self.names.contains_key(r)
+            && !self.ids.contains_key(r)
+        {
+            self.ids.insert(*r, self.next_value);
+            self.next_value += 1;
+        }
+    }
+
+    /// `numberValuesInRegion` / `numberValuesInBlock`.
+    fn number_region(&mut self, b: &Body<'_>, r: RegionId) {
+        for (k, blk) in b[r].blocks.iter().enumerate() {
+            for a in b[*blk].args.iter() {
+                if self.names.contains_key(a) || self.ids.contains_key(a) {
+                    continue;
+                }
+                if k == 0 {
+                    let n = format!("arg{}", self.next_arg);
+                    self.next_arg += 1;
+                    self.set(*a, &n);
+                } else {
+                    self.set(*a, "");
+                }
+            }
+            for op in b[*blk].ops.iter() {
+                self.number_op(b, *op);
+            }
+        }
+    }
+
+    /// `SSANameState(op)`: the names under an `AsmState` of `root`.
+    fn of(b: &Body<'_>, root: OpId) -> Self {
+        let mut s = Self { names: BTreeMap::new(), ids: BTreeMap::new(), used: vec![BTreeSet::new()], next_value: 0, next_arg: 0, next_conflict: 0 };
+        // Generic form prints unique SSA ids: the counters carry across sibling regions.
+        let mut stack: Vec<(RegionId, usize)> = b[root].regions.iter().map(|r| (*r, 1)).collect();
+        s.number_op(b, root);
+        while let Some((r, depth)) = stack.pop() {
+            s.used.truncate(depth);
+            s.used.push(BTreeSet::new());
+            s.number_region(b, r);
+            let d = s.used.len();
+            for blk in b[r].blocks.iter() {
+                for op in b[*blk].ops.iter() {
+                    for nr in b[*op].regions.iter() {
+                        stack.push((*nr, d));
+                    }
+                }
+            }
+        }
+        s
+    }
+
+    /// `printAsOperand`: `%name`, `%N`, or `%N#k` for result `k` of a multi-result op.
+    fn print(&self, b: &Body<'_>, v: ValueId) -> String {
+        if let Some(n) = self.names.get(&v) {
+            return format!("%{n}");
+        }
+        match b[v].def {
+            Def::Result(op, k) => {
+                let first = b[op].results[0];
+                match self.ids.get(&first) {
+                    Some(i) if b[op].results.len() > 1 => format!("%{i}#{k}"),
+                    Some(i) => format!("%{i}"),
+                    None => format!("%{}#{k}", self.names.get(&first).cloned().unwrap_or_default()),
+                }
+            }
+            Def::Arg(..) => self.ids.get(&v).map_or_else(|| String::from("%<<UNKNOWN SSA VALUE>>"), |i| format!("%{i}")),
+        }
+    }
+}
+
+impl AnalysisState<'_> {
+    /// `annotateOpsWithAliasSets` (`dump-alias-sets`): each op's tensor results' and block
+    /// arguments' alias sets, by their SSA names under `root`.
+    pub fn annotate_alias_sets(&self, b: &mut Body<'_>, root: OpId) {
+        let names = AsmNames::of(b, root);
+        let set = |b: &Body<'_>, v: ValueId| Attribute::Array(self.shot().alias.of(v).into_iter().map(|a| Attribute::str(&names.print(b, a))).collect());
+        let mut ops = Vec::new();
+        b.walk_post(root, &mut |op| ops.push(op));
+        for op in ops {
+            let results: Vec<Attribute<'_>> = b[op].results.iter().filter(|r| is_tensor(&b[**r].ty)).map(|r| set(b, *r)).collect();
+            if !results.is_empty() {
+                b[op].set("__opresult_alias_set_attr__", Attribute::Array(results));
+            }
+            let mut any = false;
+            let regions: Vec<Attribute<'_>> = b[op]
+                .regions
+                .iter()
+                .map(|r| {
+                    Attribute::Array(
+                        b[*r].blocks.iter().map(|blk| {
+                            Attribute::Array(b[*blk].args.iter().filter(|a| is_tensor(&b[**a].ty)).map(|a| {
+                                any = true;
+                                set(b, *a)
+                            }).collect())
+                        }).collect(),
+                    )
+                })
+                .collect();
+            if any {
+                b[op].set("__bbarg_alias_set_attr__", Attribute::Array(regions));
+            }
+        }
+    }
 }

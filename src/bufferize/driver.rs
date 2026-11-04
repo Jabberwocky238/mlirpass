@@ -345,6 +345,9 @@ pub fn one_shot_bufferize(body: &mut Body<'_>, o: &BufferizationOptions, root: O
         let s = AnalysisState::analyze(o, body, root)?;
         if o.test_analysis_only {
             s.annotate(body, root);
+            if o.dump_alias_sets {
+                s.annotate_alias_sets(body, root);
+            }
             return Ok(());
         }
         insert_copies(body, &s, root)?;
