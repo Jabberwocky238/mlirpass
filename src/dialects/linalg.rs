@@ -91,6 +91,11 @@ impl OpInterfaces for LinalgDialect {
         "linalg"
     }
 
+    #[cfg(feature = "dialect.bufferization")]
+    fn bufferizable(&self, name: &str) -> Option<&dyn crate::Bufferizable> {
+        Self::bufferizable_op(name)
+    }
+
     fn reify<'a>(&self, rw: &mut crate::Rewriter<'_, 'a>, op: OpId) -> Option<Vec<Vec<crate::MemrefOfr>>> {
         match &*rw.body[op].name {
             "linalg.softmax" => Self::reify_softmax(rw, op),
@@ -196,5 +201,127 @@ impl LinalgDialect {
             out.push(sizes);
         }
         Some(out)
+    }
+}
+
+#[cfg(feature = "dialect.bufferization")]
+mod bufferizable {
+    use alloc::vec;
+    use alloc::vec::Vec;
+
+    use mlirformat::{AffineMap, Attribute, Error};
+
+    use super::LinalgDialect;
+    use crate::{buffer_of, replace_with_buffers, AliasingValue, AnalysisState, Body, Bufferizable, BufferizationOptions, OpData, OpId, Operand, Rewriter};
+
+    /// A structured op (`LinalgOpInterface`), and `linalg.softmax`.
+    struct Structured;
+    struct Softmax;
+
+    impl LinalgDialect {
+        pub(crate) fn bufferizable_op(name: &str) -> Option<&'static dyn Bufferizable> {
+            match name {
+                "linalg.softmax" => Some(&Softmax),
+                "linalg.yield" | "linalg.index" | "linalg.pack" | "linalg.unpack" => None,
+                _ => Some(&Structured),
+            }
+        }
+    }
+
+    /// The init operands of destination-style `op`.
+    fn inits(b: &Body<'_>, op: OpId) -> core::ops::Range<usize> {
+        b.dps_inits(op).unwrap_or(b[op].operands.len()..b[op].operands.len())
+    }
+
+    impl Bufferizable for Structured {
+        /// `payloadUsesValueFromOperand`.
+        fn reads(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> bool {
+            let Some(blk) = b[op].regions.first().and_then(|r| b[*r].blocks.first()) else { return true };
+            b[*blk].args.get(i).is_some_and(|a| !b[*a].uses.is_empty())
+        }
+
+        fn writes(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> bool {
+            inits(b, op).contains(&i)
+        }
+
+        fn aliasing_values(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> Vec<AliasingValue> {
+            let r = inits(b, op);
+            if r.contains(&i) { b[op].results.get(i - r.start).map(|v| vec![AliasingValue::equivalent(*v)]).unwrap_or_default() } else { Vec::new() }
+        }
+
+        /// All loops parallel, and the operands asked indexed by the identity.
+        fn elementwise(&self, _: &AnalysisState<'_>, b: &Body<'_>, operands: &[Operand]) -> bool {
+            let Some(&(op, _)) = operands.first() else { return false };
+            let parallel = match b[op].get("iterator_types") {
+                Some(Attribute::Array(xs)) => xs.iter().all(|a| *a == Attribute::dialect("linalg.iterator_type", "<parallel>")),
+                _ => matches!(&*b[op].name, "linalg.fill" | "linalg.copy" | "linalg.map" | "linalg.elementwise" | "linalg.add" | "linalg.sub" | "linalg.mul" | "linalg.div" | "linalg.div_unsigned" | "linalg.max" | "linalg.min" | "linalg.powf" | "linalg.exp" | "linalg.log" | "linalg.abs" | "linalg.ceil" | "linalg.floor" | "linalg.negf" | "linalg.reciprocal" | "linalg.round" | "linalg.sqrt" | "linalg.rsqrt" | "linalg.square" | "linalg.tanh" | "linalg.erf" | "linalg.select"),
+            };
+            if !parallel {
+                return false;
+            }
+            let Some(maps) = b.indexing_maps(op) else { return false };
+            operands.iter().all(|(_, i)| !matches!(&b[b[op].operands[*i]].ty, mlirformat::Type::Shaped(s) if s.shape.is_some()) || maps.get(*i).is_some_and(AffineMap::is_identity))
+        }
+
+        /// `bufferizeDestinationStyleOpInterface`: the same op on the buffers, results
+        /// replaced by the inits' buffers.
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let operands = rw.body[op].operands.to_vec();
+            let tensor = |b: &Body<'_>, v: crate::ValueId| crate::is_tensor(&b[v].ty);
+            if !operands.iter().any(|v| tensor(rw.body, *v)) && !rw.body[op].results.iter().any(|v| tensor(rw.body, *v)) {
+                return Ok(());
+            }
+            let r = inits(rw.body, op);
+            let mut new = Vec::new();
+            for (i, v) in operands.iter().enumerate() {
+                if i >= r.start {
+                    break;
+                }
+                new.push(if tensor(rw.body, *v) { buffer_of(rw, o, *v)? } else { *v });
+            }
+            let mut outs = Vec::new();
+            for k in 0..rw.body[op].results.len() {
+                outs.push(buffer_of(rw, o, operands[r.start + k])?);
+            }
+            new.extend(&outs);
+            rw.set_before(op);
+            let old = rw.body[op].clone();
+            let mut data = OpData::named(old.name.clone()).operands(&new);
+            data.properties.clone_from(&old.properties);
+            data.attributes.clone_from(&old.attributes);
+            let region = old.regions[0];
+            let n = rw.create_with(data, &[], |b, o| {
+                b.add_region(o);
+            });
+            let into = rw.body[n].regions[0];
+            rw.inline_region_before(region, into, None);
+            replace_with_buffers(rw, op, &outs);
+            Ok(())
+        }
+    }
+
+    impl Bufferizable for Softmax {
+        fn reads(&self, _: &AnalysisState<'_>, _: &Body<'_>, (_, i): Operand) -> bool {
+            i == 0
+        }
+
+        fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, (_, i): Operand) -> bool {
+            i == 1
+        }
+
+        fn aliasing_values(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> Vec<AliasingValue> {
+            if i == 1 { vec![AliasingValue::equivalent(b[op].results[0])] } else { Vec::new() }
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let (input, output) = (rw.body[op].operands[0], rw.body[op].operands[1]);
+            let ib = buffer_of(rw, o, input)?;
+            let ob = buffer_of(rw, o, output)?;
+            let mut data = OpData::named(rw.body[op].name.clone()).operands(&[ib, ob]);
+            data.properties.clone_from(&rw.body[op].properties);
+            rw.create(data, &[]);
+            replace_with_buffers(rw, op, &[ob]);
+            Ok(())
+        }
     }
 }

@@ -192,6 +192,11 @@ impl BufferizationOptions {
 
     /// A memref of `tensor`'s shape and element type, its `layout` and memory `space`.
     pub fn memref<'a>(tensor: &Shaped<'a>, layout: Option<Attribute<'a>>, space: Option<Attribute<'a>>) -> Type<'a> {
+        // An `i64` memory space is written without its type inside a memref type.
+        let space = space.map(|s| match s {
+            Attribute::Int { lit, ty: Some(t) } if t == Type::int(64) => Attribute::Int { lit, ty: None },
+            s => s,
+        });
         let extras = layout.into_iter().chain(space).collect();
         Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: tensor.shape.clone(), elem: tensor.elem.clone(), extras })
     }
