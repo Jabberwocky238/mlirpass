@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Error};
 
-use super::{is_tensor, OneShot, BufferizationOptions, BufferRelation, AnalysisState, TraversalConfig};
+use super::{is_tensor_type as is_tensor, OneShot, BufferizationOptions, BufferRelation, AnalysisState, TraversalConfig};
 use crate::{Body, Def, OpId, Operand, RegionId, ValueId};
 
 /// `std::mt19937`, the fuzzer heuristic's shuffle.

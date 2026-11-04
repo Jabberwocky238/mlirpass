@@ -350,6 +350,12 @@ pub trait Bufferizable: Sync {
     }
 }
 
+/// A builtin tensor type (`TensorType`), ranked or not: what the analysis and its annotations
+/// look at.
+pub fn is_tensor_type(t: &Type<'_>) -> bool {
+    matches!(t, Type::Shaped(s) if s.kind == ShapedKind::Tensor)
+}
+
 /// A tensor type (`TensorLikeType`): a builtin tensor, ranked or not, or a dialect type with
 /// `TensorLikeTypeInterface`.
 pub fn is_tensor(t: &Type<'_>) -> bool {
@@ -376,7 +382,7 @@ impl Body<'_> {
 
     /// Operand `u` is a tensor.
     pub fn tensor_operand(&self, (op, i): Operand) -> bool {
-        is_tensor(&self[self[op].operands[i]].ty)
+        is_tensor_type(&self[self[op].operands[i]].ty)
     }
 
     /// `detail::defaultHasTensorSemantics`: a tensor block argument, result or operand.
