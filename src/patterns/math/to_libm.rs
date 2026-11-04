@@ -3,7 +3,7 @@
 
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, FloatKind, FunctionType, Type};
+use mlirformat::{FloatKind, Type};
 use crate::patterns;
 
 use crate::patterns::{vshape, zeros, VectorBuild};

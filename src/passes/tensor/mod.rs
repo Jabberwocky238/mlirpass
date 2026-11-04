@@ -8,7 +8,3 @@ pub use convert_tensor_to_linalg::{ConvertTensorToLinalg};
 mod convert_tensor_to_spirv;
 #[cfg(feature = "target.spirv")]
 pub use convert_tensor_to_spirv::*;
-
-/// The `tensor` passes.
-#[crate::pass_set(ConvertTensorToLinalg, #[cfg(feature = "target.spirv")] ConvertTensorToSpirv)]
-pub struct TensorPasses;

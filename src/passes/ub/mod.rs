@@ -9,7 +9,3 @@ pub use convert_ub_to_llvm::*;
 mod convert_ub_to_spirv;
 #[cfg(feature = "target.spirv")]
 pub use convert_ub_to_spirv::*;
-
-/// The `ub` passes.
-#[crate::pass_set(#[cfg(feature = "target.llvm")] ConvertUbToLlvm, #[cfg(feature = "target.spirv")] ConvertUbToSpirv)]
-pub struct UbPasses;

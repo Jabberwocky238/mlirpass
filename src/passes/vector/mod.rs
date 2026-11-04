@@ -13,7 +13,3 @@ pub use convert_vector_to_llvm::*;
 mod convert_vector_to_spirv;
 #[cfg(feature = "target.spirv")]
 pub use convert_vector_to_spirv::*;
-
-/// The `vector` passes.
-#[crate::pass_set(ConvertVectorToScf, #[cfg(feature = "target.llvm")] ConvertVectorToLlvm, #[cfg(feature = "target.spirv")] ConvertVectorToSpirv)]
-pub struct VectorPasses;

@@ -14,7 +14,3 @@ pub use convert_arith_to_spirv::*;
 mod convert_arith_to_emitc;
 #[cfg(feature = "target.emitc")]
 pub use convert_arith_to_emitc::*;
-
-/// The `arith` passes.
-#[crate::pass_set(#[cfg(feature = "target.llvm")] ConvertArithToLlvm, #[cfg(feature = "target.spirv")] ConvertArithToSpirv, #[cfg(feature = "target.emitc")] ConvertArithToEmitc)]
-pub struct ArithPasses;

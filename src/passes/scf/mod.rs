@@ -17,7 +17,3 @@ pub use convert_scf_to_spirv::*;
 mod convert_scf_to_emitc;
 #[cfg(feature = "target.emitc")]
 pub use convert_scf_to_emitc::*;
-
-/// The `scf` passes.
-#[crate::pass_set(ConvertScfToCf, ConvertParallelLoopsToGpu, GpuMapParallelLoops, #[cfg(feature = "target.spirv")] ConvertScfToSpirv, #[cfg(feature = "target.emitc")] ConvertScfToEmitc)]
-pub struct ScfPasses;

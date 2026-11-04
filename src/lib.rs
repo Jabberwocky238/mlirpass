@@ -29,6 +29,8 @@ mod passes;
 mod patterns;
 mod parallel;
 mod pass;
+#[path = "registry.gen.rs"]
+mod registry;
 mod region;
 mod rewrite;
 mod symbol;
@@ -56,6 +58,6 @@ pub use pass::*;
 pub use rewrite::*;
 pub use symbol::*;
 /// The proc macros (`mlirpass-macros`): `#[pass]`, `#[patterns]`, `#[ops]`, `blocks!`.
-pub use mlirpass_macros::{blocks, ops, pass, pass_set, patterns};
+pub use mlirpass_macros::{blocks, ops, pass, patterns};
 pub use mlirformat;
 pub use mlirformat::{AffineBin, AffineExpr, AffineMap, ApFloat, ApInt, Const, IntegerSet, Scalar};

@@ -1,4 +1,4 @@
-//! `index` ⇒ `llvm`, as `IndexToLLVM.cpp`; and `ub` ⇒ `llvm`, as `UBToLLVM.cpp`.
+//! `index` ⇒ `llvm`, as `IndexToLLVM.cpp`.
 
 use alloc::borrow::Cow;
 use alloc::format;
@@ -192,30 +192,6 @@ impl IndexToLlvm {
         let Some(v) = cr.rw.body[op].get("value").and_then(|a| crate::Const::try_from(a).ok()).and_then(|c| c.as_int()) else { return false };
         let value: Attribute = crate::Const::int(v.trunc(w), ty.clone()).into();
         cr.replace_new(op, OpData::build("llvm.mlir.constant").with("value", value), &[ty]);
-        true
-    }
-
-}
-
-/// The ub ⇒ llvm patterns.
-pub struct UbToLlvm;
-
-#[patterns(converter)]
-impl UbToLlvm {
-    #[convert("ub.poison")]
-    fn poison(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
-        if !cr.rw.body[op].get("value").is_some_and(Attribute::is_poison) {
-            return false;
-        }
-        let Some(tc) = cr.type_converter() else { return false };
-        let Some(ty) = tc.convert(&cr.rw.body[cr.rw.body[op].results[0]].ty.clone()) else { return false };
-        cr.replace_new(op, OpData::build("llvm.mlir.poison"), &[ty]);
-        true
-    }
-
-    #[convert("ub.unreachable")]
-    fn unreachable(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
-        cr.replace_new(op, OpData::build("llvm.unreachable"), &[]);
         true
     }
 

@@ -14,7 +14,3 @@ pub use convert_func_to_spirv::*;
 mod convert_func_to_emitc;
 #[cfg(feature = "target.emitc")]
 pub use convert_func_to_emitc::*;
-
-/// The `func` passes.
-#[crate::pass_set(#[cfg(feature = "target.llvm")] ConvertFuncToLlvm, #[cfg(feature = "target.spirv")] ConvertFuncToSpirv, #[cfg(feature = "target.emitc")] ConvertFuncToEmitc)]
-pub struct FuncPasses;

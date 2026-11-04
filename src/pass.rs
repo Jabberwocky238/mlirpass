@@ -473,7 +473,8 @@ impl Body<'_> {
 
 // The passes a pipeline can name, with the op each is anchored on (`Passes.td`'s
 // `Pass<"name", "op">`). Nothing is global: a [`PassRegistry`] is handed to whoever parses a
-// pipeline; [`Passes`] is the default one, filled from [`PassSet`]s.
+// pipeline; [`Passes`] is the default one, filled by registration functions cascaded with [`Passes::with`]
+// (`Passes::upstream()`: every pass compiled in, `src/registry.gen.rs`).
 
 /// A registered pass.
 pub struct PassInfo {
@@ -513,16 +514,11 @@ impl Passes {
         self
     }
 
-    /// Registers every pass of set `S`.
-    pub fn with<S: PassSet>(&mut self) -> &mut Self {
-        S::register(self);
+    /// Registers what `add` registers, cascading: `Passes::new().with(Passes::add_upstream).with(my_passes)`.
+    pub fn with(&mut self, add: impl FnOnce(&mut Self)) -> &mut Self {
+        add(self);
         self
     }
-}
-
-/// ⭐ Passes registered together: a module's, a target's.
-pub trait PassSet {
-    fn register(passes: &mut Passes);
 }
 
 

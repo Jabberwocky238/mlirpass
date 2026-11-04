@@ -20,7 +20,3 @@ pub use convert_math_to_spirv::*;
 mod convert_math_to_emitc;
 #[cfg(feature = "target.emitc")]
 pub use convert_math_to_emitc::*;
-
-/// The `math` passes.
-#[crate::pass_set(ConvertMathToFuncs, ConvertMathToLibm, #[cfg(feature = "target.llvm")] ConvertMathToLlvm, #[cfg(feature = "target.spirv")] ConvertMathToSpirv, #[cfg(feature = "target.emitc")] ConvertMathToEmitc)]
-pub struct MathPasses;

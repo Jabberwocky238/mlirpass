@@ -23,7 +23,3 @@ pub use map_memref_spirv_storage_class::*;
 mod convert_memref_to_emitc;
 #[cfg(feature = "target.emitc")]
 pub use convert_memref_to_emitc::*;
-
-/// The `memref` passes.
-#[crate::pass_set(ExpandStridedMetadata, #[cfg(feature = "target.llvm")] FinalizeMemrefToLlvm, #[cfg(feature = "target.spirv")] ConvertMemrefToSpirv, #[cfg(feature = "target.spirv")] MapMemrefSpirvStorageClass, #[cfg(feature = "target.emitc")] ConvertMemrefToEmitc)]
-pub struct MemrefPasses;

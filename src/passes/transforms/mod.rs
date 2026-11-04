@@ -35,7 +35,3 @@ pub use sroa::Sroa;
 pub use strip_debuginfo::StripDebugInfo;
 pub use symbol_dce::SymbolDce;
 pub use symbol_privatize::SymbolPrivatize;
-
-/// The `transforms` passes.
-#[crate::pass_set(Mem2Reg, Canonicalize, Cse, Inline, LoopInvariantCodeMotion, RemoveDeadValues, Sccp, Sroa, StripDebugInfo, SymbolDce, SymbolPrivatize)]
-pub struct TransformPasses;

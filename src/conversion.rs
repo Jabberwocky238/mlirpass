@@ -1571,7 +1571,3 @@ pub fn reconcile_unrealized_casts<'a>(body: &mut Body<'a>, op: OpId) -> Result<(
     body.reconcile_casts(&casts);
     Ok(())
 }
-
-/// The dialect conversion framework's own passes.
-#[crate::pass_set(ReconcileUnrealizedCasts)]
-pub struct ConversionPasses;

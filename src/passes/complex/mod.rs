@@ -15,7 +15,3 @@ pub use convert_complex_to_llvm::*;
 mod convert_complex_to_spirv;
 #[cfg(feature = "target.spirv")]
 pub use convert_complex_to_spirv::*;
-
-/// The `complex` passes.
-#[crate::pass_set(ConvertComplexToLibm, ConvertComplexToStandard, #[cfg(feature = "target.llvm")] ConvertComplexToLlvm, #[cfg(feature = "target.spirv")] ConvertComplexToSpirv)]
-pub struct ComplexPasses;

@@ -9,7 +9,3 @@ pub use convert_index_to_llvm::*;
 mod convert_index_to_spirv;
 #[cfg(feature = "target.spirv")]
 pub use convert_index_to_spirv::*;
-
-/// The `index` passes.
-#[crate::pass_set(#[cfg(feature = "target.llvm")] ConvertIndexToLlvm, #[cfg(feature = "target.spirv")] ConvertIndexToSpirv)]
-pub struct IndexPasses;

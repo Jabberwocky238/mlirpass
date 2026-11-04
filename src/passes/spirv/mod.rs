@@ -26,7 +26,3 @@ pub use spirv_update_vce::*;
 
 mod spirv_unify_aliased_resource;
 pub use spirv_unify_aliased_resource::*;
-
-/// The `spirv` passes.
-#[crate::pass_set(SpirvCanonicalizeGl, DecorateSpirvCompositeTypeLayout, SpirvRewriteInserts, SpirvPromoteToReplicatedConstants, SpirvWebgpuPrepare, SpirvAttachTarget, SpirvLowerAbiAttrs, SpirvUpdateVce, SpirvUnifyAliasedResource)]
-pub struct SpirvPasses;

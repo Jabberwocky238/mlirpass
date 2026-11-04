@@ -40,7 +40,7 @@ mod tensor;
 mod test;
 #[cfg(feature = "dialect.tosa")]
 mod tosa;
-#[cfg(all(feature = "dialect.ub", feature = "target.spirv"))]
+#[cfg(all(feature = "dialect.ub", any(feature = "target.llvm", feature = "target.spirv")))]
 mod ub;
 #[cfg(feature = "dialect.vector")]
 mod vector;
@@ -88,7 +88,7 @@ pub use tensor::*;
 pub use test::*;
 #[cfg(feature = "dialect.tosa")]
 pub use tosa::*;
-#[cfg(all(feature = "dialect.ub", feature = "target.spirv"))]
+#[cfg(all(feature = "dialect.ub", any(feature = "target.llvm", feature = "target.spirv")))]
 pub use ub::*;
 #[cfg(feature = "dialect.vector")]
 pub use vector::*;

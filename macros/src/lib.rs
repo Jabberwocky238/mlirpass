@@ -25,8 +25,6 @@
 //!   not `cr` is declared by its signature: it takes the builder `ctor(cr, op)`, the
 //!   operands as `ValueId`s in order and anything else `FromOp` gives, and returns what
 //!   replaces the op (`Replacement`).
-//! - `#[pass_set(PassA, #[cfg(..)] PassB, ..)]` on a unit struct: a `PassSet` registering those
-//!   passes, each under its own attributes.
 
 use proc_macro::TokenStream;
 use syn::Error;
@@ -34,7 +32,6 @@ use syn::Error;
 mod blocks;
 mod ops;
 mod pass;
-mod pass_set;
 mod patterns;
 
 /// `#[pass("name", on = "op", extra = [..])]`: see the crate docs.
@@ -47,12 +44,6 @@ pub fn pass(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn patterns(attr: TokenStream, item: TokenStream) -> TokenStream {
     patterns::PatternsArgs::expand(attr.into(), item.into()).unwrap_or_else(Error::into_compile_error).into()
-}
-
-/// `#[pass_set(PassA, PassB, ..)]`: see the crate docs.
-#[proc_macro_attribute]
-pub fn pass_set(attr: TokenStream, item: TokenStream) -> TokenStream {
-    pass_set::expand(attr.into(), item.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
 /// `#[ops(b, fmf = f)]` on a fn: its arithmetic builds ops through `b` (see `OpsRewrite`):
