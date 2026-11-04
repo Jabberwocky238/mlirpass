@@ -5,7 +5,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{arith, Attribute, Dim, Shaped, ShapedKind, Type};
+use mlirformat::{arith, Attribute, Dim, Type};
 
 use crate::MemrefOfr as Ofr;
 use crate::{AffineMap, ConversionRewriter, OpData, OpId, ValueId};
@@ -47,7 +47,9 @@ pub fn iterators<'a>(kinds: &[bool]) -> Attribute<'a> {
 }
 
 /// `dense<v> : tensor<Nxi64>` (`getI64TensorAttr`) or `vector<Nxi64>` (`getI64VectorAttr`).
+#[cfg(feature = "dialect.tosa")]
 pub fn i64_elements<'a>(v: &[i64], vector: bool) -> Attribute<'a> {
+    use mlirformat::{Shaped, ShapedKind};
     let kind = if vector { ShapedKind::Vector } else { ShapedKind::Tensor };
     let ty = Type::Shaped(Shaped { kind, shape: Some(vec![Dim::Static(v.len() as i64)]), elem: Type::int(64).into(), extras: Vec::new() });
     let values = v.iter().map(|x| crate::Scalar::Int(crate::ApInt::new(64, i128::from(*x)))).collect();

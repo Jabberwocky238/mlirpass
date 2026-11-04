@@ -47,7 +47,7 @@ impl crate::Passes {
         p.register::<crate::ConvertFuncToLlvm>(); // convert-func-to-llvm
         #[cfg(all(all(feature = "dialect.func", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")), feature = "target.spirv"))]
         p.register::<crate::ConvertFuncToSpirv>(); // convert-func-to-spirv
-        #[cfg(all(feature = "dialect.gpu", feature = "target.spirv"))]
+        #[cfg(all(feature = "dialect.gpu", all(feature = "target.spirv", feature = "dialect.func", feature = "dialect.scf", feature = "dialect.vector")))]
         p.register::<crate::ConvertGpuToSpirv>(); // convert-gpu-to-spirv
         #[cfg(feature = "dialect.gpu")]
         p.register::<crate::GpuKernelOutlining>(); // gpu-kernel-outlining
@@ -99,7 +99,7 @@ impl crate::Passes {
         p.register::<crate::ConvertScfToCf>(); // convert-scf-to-cf
         #[cfg(all(feature = "dialect.scf", feature = "target.emitc"))]
         p.register::<crate::ConvertScfToEmitc>(); // convert-scf-to-emitc
-        #[cfg(all(feature = "dialect.scf", feature = "target.spirv"))]
+        #[cfg(all(feature = "dialect.scf", all(feature = "target.spirv", feature = "dialect.arith", feature = "dialect.func", feature = "dialect.index", feature = "dialect.memref")))]
         p.register::<crate::ConvertScfToSpirv>(); // convert-scf-to-spirv
         #[cfg(all(feature = "dialect.scf", all(feature = "dialect.gpu", feature = "dialect.affine")))]
         p.register::<crate::GpuMapParallelLoops>(); // gpu-map-parallel-loops
@@ -123,9 +123,9 @@ impl crate::Passes {
         p.register::<crate::SpirvUpdateVce>(); // spirv-update-vce
         #[cfg(feature = "target.spirv")]
         p.register::<crate::SpirvWebgpuPrepare>(); // spirv-webgpu-prepare
-        #[cfg(feature = "dialect.tensor")]
+        #[cfg(all(all(feature = "dialect.tensor", any(feature = "dialect.linalg", all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func"))), feature = "dialect.linalg"))]
         p.register::<crate::ConvertTensorToLinalg>(); // convert-tensor-to-linalg
-        #[cfg(all(feature = "dialect.tensor", feature = "target.spirv"))]
+        #[cfg(all(all(feature = "dialect.tensor", any(feature = "dialect.linalg", all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func"))), all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func")))]
         p.register::<crate::ConvertTensorToSpirv>(); // convert-tensor-to-spirv
         #[cfg(feature = "dialect.tosa")]
         p.register::<crate::TosaToArithPass>(); // tosa-to-arith

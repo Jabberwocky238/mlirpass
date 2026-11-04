@@ -3,7 +3,9 @@
 mod canonicalize;
 
 pub use canonicalize::ArithCanon;
-pub(crate) use canonicalize::{Folder as ArithFolder, float_layout};
+pub(crate) use canonicalize::Folder as ArithFolder;
+#[cfg(feature = "dialect.math")]
+pub(crate) use canonicalize::float_layout;
 
 #[cfg(feature = "target.llvm")]
 mod to_llvm;

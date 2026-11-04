@@ -20,9 +20,6 @@ use alloc::vec::Vec;
 use core::fmt;
 use mlirformat::{Error, Item};
 use crate::{Body, OpId, OpData, Shift, Trait, ValueId, Ctx};
-#[cfg(feature = "dialect.affine")]
-
-#[cfg(feature = "dialect.affine")]
 
 #[cfg(feature = "std")]
 use core::num::NonZeroUsize;
@@ -30,8 +27,6 @@ use core::num::NonZeroUsize;
 use core::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(feature = "std")]
 use std::sync::Mutex;
-#[cfg(feature = "dialect.affine")]
-
 
 /// A pass's `mlir-opt` name and anchor op (`Passes.td`'s `Pass<"name", "op">`); `#[pass]`
 /// declares it.

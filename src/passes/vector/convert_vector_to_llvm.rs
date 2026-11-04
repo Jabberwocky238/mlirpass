@@ -1,7 +1,9 @@
 //! `convert-vector-to-llvm`.
 
 use crate::{llvm_target};
-use crate::{LlvmConverter, LlvmOptions, VectorOptions, VectorToLlvm, X86ToLlvm};
+use crate::{LlvmConverter, LlvmOptions, VectorOptions, VectorToLlvm};
+#[cfg(feature = "dialect.x86vector")]
+use crate::X86ToLlvm;
 use alloc::format;
 use alloc::string::String;
 use crate::pass;
@@ -59,7 +61,14 @@ impl Run for ConvertVectorToLlvm {
             body.apply_greedily(r, &pre, &crate::GreedyConfig::default());
         }
         let opts = LlvmOptions::default();
+        // (the CPU dialects' lowerings are x86vector's: without it, asking for them is an error)
+        #[cfg(not(feature = "dialect.x86vector"))]
+        if self.x86vector || self.amx {
+            return Err(Error(alloc::string::String::from("convert-vector-to-llvm: enable-x86vector / enable-amx need the dialect.x86vector feature")));
+        }
+        #[allow(unused_mut)]
         let mut tc = LlvmConverter::build(opts);
+        #[cfg(feature = "dialect.x86vector")]
         if self.amx {
             X86ToLlvm::convert_tiles(&mut tc);
         }
@@ -69,6 +78,7 @@ impl Run for ConvertVectorToLlvm {
         patterns.add(Lowering { root: "vector.transfer_write", benefit: 1, f: |cr, op, _| transfer_write_to_store(cr, op, None) });
         VectorToLlvm::populate(&mut patterns, i, VectorOptions { llvm: opts, reassociate_fp_reductions: self.reassociate, force_32bit_indices: self.force32, use_vector_alignment: self.vector_alignment, counter: &self.counter });
         // The CPU dialects (`enable-x86vector`, `enable-amx`) lower to intrinsic calls.
+        #[cfg(feature = "dialect.x86vector")]
         X86ToLlvm::populate(&mut patterns, i, opts, self.x86vector, self.amx);
         let mut target = llvm_target();
         target.legal_dialect("arith").legal_dialect("memref");

@@ -13,5 +13,5 @@ for c in $combos; do
   e=$(echo -n "$log" | grep -c "error")
   w=$(echo -n "$log" | grep -c "warning")
   echo "$c: $e errors, $w warnings" | tee -a "$out/summary.txt"
-  [ -n "$log" ] && echo "$log" > "$out/$c.txt"
+  if [ -n "$log" ]; then echo "$log" > "$out/$c.txt"; fi
 done

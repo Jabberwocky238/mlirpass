@@ -33,7 +33,7 @@ mod scf;
 mod shape;
 #[cfg(feature = "target.spirv")]
 mod spirv;
-#[cfg(feature = "dialect.tensor")]
+#[cfg(all(feature = "dialect.tensor", any(feature = "dialect.linalg", all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func"))))]
 mod tensor;
 #[cfg(feature = "dialect.tosa")]
 mod tosa;
@@ -77,7 +77,7 @@ pub use scf::*;
 pub use shape::*;
 #[cfg(feature = "target.spirv")]
 pub use spirv::*;
-#[cfg(feature = "dialect.tensor")]
+#[cfg(all(feature = "dialect.tensor", any(feature = "dialect.linalg", all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func"))))]
 pub use tensor::*;
 #[cfg(feature = "dialect.tosa")]
 pub use tosa::*;

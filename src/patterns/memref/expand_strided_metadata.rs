@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type, arith};
 
 use crate::MemrefOfr as Ofr;
-use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, MemrefLayout, OpData, OpId, PatternSet, Rewriter, ValueId};
+use crate::{AffineExpr, AffineMap, Body, Def, MemrefLayout, OpData, OpId, PatternSet, Rewriter, ValueId};
 
 fn memref<'t, 'a>(t: &'t Type<'a>) -> Option<&'t Shaped<'a>> {
     match t {
@@ -37,95 +37,8 @@ struct Metadata {
 }
 
 impl<'a> Rewriter<'_, 'a> {
-    /// `makeComposedFoldedAffineApply`.
-    pub fn composed_folded_apply(&mut self, map: AffineMap, operands: &[Ofr]) -> Ofr {
-        // `foldAttributesIntoMap`.
-        let mut values = crate::Ids::new();
-        let (mut nd, mut ns) = (0, 0);
-        let dims: Vec<AffineExpr> = operands[..map.dims as usize]
-            .iter()
-            .map(|o| match o {
-                Ofr::C(c) => AffineExpr::Const(*c),
-                Ofr::V(v) => {
-                    values.push(*v);
-                    nd += 1;
-                    AffineExpr::Dim(nd - 1)
-                }
-            })
-            .collect();
-        let syms: Vec<AffineExpr> = operands[map.dims as usize..]
-            .iter()
-            .map(|o| match o {
-                Ofr::C(c) => AffineExpr::Const(*c),
-                Ofr::V(v) => {
-                    values.push(*v);
-                    ns += 1;
-                    AffineExpr::Sym(ns - 1)
-                }
-            })
-            .collect();
-        let mut map = map.replace(&dims, &syms, nd, ns);
-        self.body.compose_map(&mut map, &mut values);
-        let op = self.body.create(OpData::build("affine.apply").operands(&values).with("map", Attribute::from(&map)), &[Type::Index]);
-        let ip = self.ip.expect("insertion point");
-        match ip.before {
-            Some(b) => self.body.insert_before(op, b),
-            None => self.body.insert(op, ip.block, None),
-        }
-        match self.body.fold(op) {
-            Fold::Results(r) if !r.is_empty() => {
-                self.body.erase(op);
-                match &r[0] {
-                    Folded::Value(v) => Ofr::V(*v),
-                    Folded::Attr(Attribute::Int { lit, .. }) => Ofr::C(lit.parse().unwrap_or(0)),
-                    Folded::Attr(_) => unreachable!("affine.apply folds to an index"),
-                }
-            }
-            _ => {
-                self.notify_inserted(op);
-                Ofr::V(self.body[op].results[0])
-            }
-        }
-    }
-
-    /// `makeComposedAffineApply`: the composed `affine.apply`, not folded.
-    pub fn composed_apply(&mut self, map: AffineMap, operands: &[Ofr]) -> ValueId {
-        let mut values = crate::Ids::new();
-        let (mut nd, mut ns) = (0, 0);
-        let mut fold = |o: &Ofr, sym: bool| match o {
-            Ofr::C(c) => AffineExpr::Const(*c),
-            Ofr::V(v) => {
-                values.push(*v);
-                if sym {
-                    ns += 1;
-                    AffineExpr::Sym(ns - 1)
-                } else {
-                    nd += 1;
-                    AffineExpr::Dim(nd - 1)
-                }
-            }
-        };
-        let dims: Vec<AffineExpr> = operands[..map.dims as usize].iter().map(|o| fold(o, false)).collect();
-        let syms: Vec<AffineExpr> = operands[map.dims as usize..].iter().map(|o| fold(o, true)).collect();
-        let mut map = map.replace(&dims, &syms, nd, ns);
-        self.body.compose_map(&mut map, &mut values);
-        let op = self.create(OpData::build("affine.apply").operands(&values).with("map", Attribute::from(&map)), &[Type::Index]);
-        self.body[op].results[0]
-    }
-
     fn apply_expr(&mut self, e: AffineExpr, operands: &[Ofr]) -> Ofr {
         self.composed_folded_apply(infer_map(e), operands)
-    }
-
-    /// `getValueOrCreateConstantIndexOp`.
-    pub fn value_of(&mut self, o: Ofr) -> ValueId {
-        match o {
-            Ofr::V(v) => v,
-            Ofr::C(c) => {
-                let k = self.emit(&arith::Constant::new(Attribute::index(c), Type::Index));
-                self.body[k].results[0]
-            }
-        }
     }
 
     /// `memref.extract_strided_metadata %src`, its result types inferred.

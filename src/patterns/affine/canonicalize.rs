@@ -1715,3 +1715,81 @@ impl AffineCanon {
         set.add(SimplifyAffinePrefetch);
     }
 }
+
+impl crate::Rewriter<'_, '_> {
+    /// `makeComposedFoldedAffineApply`.
+    pub fn composed_folded_apply(&mut self, map: AffineMap, operands: &[crate::MemrefOfr]) -> crate::MemrefOfr {
+        // `foldAttributesIntoMap`.
+        let mut values = crate::Ids::new();
+        let (mut nd, mut ns) = (0, 0);
+        let dims: Vec<AffineExpr> = operands[..map.dims as usize]
+            .iter()
+            .map(|o| match o {
+                crate::MemrefOfr::C(c) => AffineExpr::Const(*c),
+                crate::MemrefOfr::V(v) => {
+                    values.push(*v);
+                    nd += 1;
+                    AffineExpr::Dim(nd - 1)
+                }
+            })
+            .collect();
+        let syms: Vec<AffineExpr> = operands[map.dims as usize..]
+            .iter()
+            .map(|o| match o {
+                crate::MemrefOfr::C(c) => AffineExpr::Const(*c),
+                crate::MemrefOfr::V(v) => {
+                    values.push(*v);
+                    ns += 1;
+                    AffineExpr::Sym(ns - 1)
+                }
+            })
+            .collect();
+        let mut map = map.replace(&dims, &syms, nd, ns);
+        self.body.compose_map(&mut map, &mut values);
+        let op = self.body.create(OpData::build("affine.apply").operands(&values).with("map", Attribute::from(&map)), &[Type::Index]);
+        let ip = self.ip.expect("insertion point");
+        match ip.before {
+            Some(b) => self.body.insert_before(op, b),
+            None => self.body.insert(op, ip.block, None),
+        }
+        match self.body.fold(op) {
+            Fold::Results(r) if !r.is_empty() => {
+                self.body.erase(op);
+                match &r[0] {
+                    Folded::Value(v) => crate::MemrefOfr::V(*v),
+                    Folded::Attr(Attribute::Int { lit, .. }) => crate::MemrefOfr::C(lit.parse().unwrap_or(0)),
+                    Folded::Attr(_) => unreachable!("affine.apply folds to an index"),
+                }
+            }
+            _ => {
+                self.notify_inserted(op);
+                crate::MemrefOfr::V(self.body[op].results[0])
+            }
+        }
+    }
+
+    /// `makeComposedAffineApply`: the composed `affine.apply`, not folded.
+    pub fn composed_apply(&mut self, map: AffineMap, operands: &[crate::MemrefOfr]) -> ValueId {
+        let mut values = crate::Ids::new();
+        let (mut nd, mut ns) = (0, 0);
+        let mut fold = |o: &crate::MemrefOfr, sym: bool| match o {
+            crate::MemrefOfr::C(c) => AffineExpr::Const(*c),
+            crate::MemrefOfr::V(v) => {
+                values.push(*v);
+                if sym {
+                    ns += 1;
+                    AffineExpr::Sym(ns - 1)
+                } else {
+                    nd += 1;
+                    AffineExpr::Dim(nd - 1)
+                }
+            }
+        };
+        let dims: Vec<AffineExpr> = operands[..map.dims as usize].iter().map(|o| fold(o, false)).collect();
+        let syms: Vec<AffineExpr> = operands[map.dims as usize..].iter().map(|o| fold(o, true)).collect();
+        let mut map = map.replace(&dims, &syms, nd, ns);
+        self.body.compose_map(&mut map, &mut values);
+        let op = self.create(OpData::build("affine.apply").operands(&values).with("map", Attribute::from(&map)), &[Type::Index]);
+        self.body[op].results[0]
+    }
+}

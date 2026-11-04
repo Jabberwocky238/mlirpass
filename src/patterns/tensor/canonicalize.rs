@@ -118,26 +118,6 @@ impl Tn {
         Self::tensor(&kept, (*src.elem).clone(), Vec::new())
     }
 
-    /// `verifyInBoundsSlice`.
-    fn in_bounds(shape: &[i64], offsets: &[Ofr], sizes: &[Ofr], strides: &[Ofr]) -> bool {
-        let st = |o: &Ofr| if let Ofr::C(c) = o { *c } else { Dim::DYNAMIC };
-        for (i, s) in shape.iter().enumerate() {
-            let (Some(o), Some(z), Some(t)) = (offsets.get(i).map(st), sizes.get(i).map(st), strides.get(i).map(st)) else { continue };
-            if *s == Dim::DYNAMIC || o == Dim::DYNAMIC {
-                continue;
-            }
-            if o >= *s {
-                return false;
-            }
-            if z == Dim::DYNAMIC || t == Dim::DYNAMIC {
-                continue;
-            }
-            if o + (z - 1) * t >= *s {
-                return false;
-            }
-        }
-        true
-    }
 
     /// `PadOp::inferResultType`.
     fn pad_type<'a>(src: &Shaped<'a>, low: &[i64], high: &[i64], result: &[i64]) -> Option<Type<'a>> {
@@ -168,75 +148,9 @@ impl Tn {
         Attribute::index(v)
     }
 
-    /// Mixed values as static values and the dynamic ones.
-    fn split(list: &[Ofr]) -> (Vec<i64>, Vec<ValueId>) {
-        let mut st = Vec::new();
-        let mut dy = Vec::new();
-        for o in list {
-            match o {
-                Ofr::C(c) => st.push(*c),
-                Ofr::V(v) => {
-                    st.push(Dim::DYNAMIC);
-                    dy.push(*v);
-                }
-            }
-        }
-        (st, dy)
-    }
 
-    /// An op with leading operands and mixed lists stored as `names`.
-    fn mixed_op<'a>(name: &str, lead: &[ValueId], lists: &[&[Ofr]], names: &[&str]) -> OpData<'a> {
-        let mut ops = lead.to_vec();
-        let mut segs = vec![1usize; lead.len()];
-        let mut data = OpData::build(name);
-        for (l, n) in lists.iter().zip(names) {
-            let (st, dy) = Self::split(l);
-            segs.push(dy.len());
-            ops.extend(dy);
-            data.set(n, Attribute::dense_i64(&st));
-        }
-        data.operands(&ops).segments(&segs)
-    }
 
-    fn slice_op<'a>(name: &str, lead: &[ValueId], l: &[Vec<Ofr>; 3]) -> OpData<'a> {
-        Self::mixed_op(name, lead, &[&l[0], &l[1], &l[2]], &["static_offsets", "static_sizes", "static_strides"])
-    }
 
-    /// `foldDynamicIndexList`.
-    fn fold_list(b: &Body<'_>, list: &mut [Ofr], non_negative: bool, non_zero: bool) -> bool {
-        let mut changed = false;
-        for o in list.iter_mut() {
-            let Ofr::V(v) = *o else { continue };
-            let Some(c) = b.const_index(v) else { continue };
-            if (non_negative && c < 0) || (non_zero && c == 0) {
-                continue;
-            }
-            *o = Ofr::C(c);
-            changed = true;
-        }
-        changed
-    }
-}
-
-impl Ofr {
-    /// `foldDynamicIndexList`: constant values made static (unless negative / zero when
-    /// `non_negative` / `non_zero`); whether any was.
-    pub fn fold_list(b: &Body<'_>, list: &mut [Ofr], non_negative: bool, non_zero: bool) -> bool {
-        Tn::fold_list(b, list, non_negative, non_zero)
-    }
-
-    /// `verifyInBoundsSlice`.
-    pub fn in_bounds(shape: &[i64], offsets: &[Ofr], sizes: &[Ofr], strides: &[Ofr]) -> bool {
-        Tn::in_bounds(shape, offsets, sizes, strides)
-    }
-}
-
-impl<'a> OpData<'a> {
-    /// A `tensor` slice op (`extract_slice`, `insert_slice`) with leading operands `lead` and
-    /// mixed offsets, sizes and strides.
-    pub fn sliced(name: &str, lead: &[ValueId], lists: &[Vec<Ofr>; 3]) -> Self {
-        Tn::slice_op(name, lead, lists)
-    }
 }
 
 impl<'a> Body<'a> {
@@ -245,20 +159,6 @@ impl<'a> Body<'a> {
         matches!(self.constant_of(v), Some(Attribute::Int { ty: Some(Type::Index), .. }))
     }
 
-    /// The offsets, sizes and strides of a slice op, after its leading operands.
-    pub fn slice_lists(&self, op: OpId) -> [Vec<Ofr>; 3] {
-        let segs = self.segments(op, "operandSegmentSizes").unwrap_or_default();
-        let lead = segs.len().saturating_sub(3);
-        let mut at: usize = segs[..lead].iter().sum();
-        let mut out: [Vec<Ofr>; 3] = Default::default();
-        for (k, name) in ["static_offsets", "static_sizes", "static_strides"].iter().enumerate() {
-            let n = segs.get(lead + k).copied().unwrap_or(0);
-            let mut d = self[op].operands[at..at + n].iter();
-            out[k] = self.dense_i64(op, name).into_iter().map(|s| if s == Dim::DYNAMIC { Ofr::V(*d.next().expect("dynamic")) } else { Ofr::C(s) }).collect();
-            at += n;
-        }
-        out
-    }
 
     /// The `low` and `high` pads of a `tensor.pad`.
     pub fn pad_lists(&self, op: OpId) -> [Vec<Ofr>; 2] {
@@ -378,7 +278,7 @@ impl<'a> Rewriter<'_, 'a> {
     /// A `tensor.pad` like `pad` (its discardable attributes kept), without its region.
     fn pad_data(&self, pad: OpId, src: ValueId, low: &[Ofr], high: &[Ofr]) -> OpData<'a> {
         let b = &*self.body;
-        let mut d = Tn::mixed_op("tensor.pad", &[src], &[low, high], &["static_low", "static_high"]);
+        let mut d = OpData::mixed("tensor.pad", &[src], &[low, high], &["static_low", "static_high"]);
         if b[pad].get("nofold").is_some() {
             d.set("nofold", Attribute::Unit);
         }
@@ -414,14 +314,14 @@ fn constant_slice_arguments(rw: &mut Rewriter<'_, '_>, op: OpId, insert: bool) -
     let b = &*rw.body;
     let [mut o, mut s, mut t] = b.slice_lists(op);
     let changed = if insert {
-        let a = Tn::fold_list(b, &mut o, true, false);
-        let bb = Tn::fold_list(b, &mut s, true, false);
-        let c = Tn::fold_list(b, &mut t, false, true);
+        let a = Ofr::fold_list(b, &mut o, true, false);
+        let bb = Ofr::fold_list(b, &mut s, true, false);
+        let c = Ofr::fold_list(b, &mut t, false, true);
         a || bb || c
     } else {
-        let a = Tn::fold_list(b, &mut o, true, false);
-        let bb = Tn::fold_list(b, &mut s, true, false);
-        let c = Tn::fold_list(b, &mut t, false, false);
+        let a = Ofr::fold_list(b, &mut o, true, false);
+        let bb = Ofr::fold_list(b, &mut s, true, false);
+        let c = Ofr::fold_list(b, &mut t, false, false);
         a || bb || c
     };
     if !changed {
@@ -429,7 +329,7 @@ fn constant_slice_arguments(rw: &mut Rewriter<'_, '_>, op: OpId, insert: bool) -
     }
     let base = b[op].operands[usize::from(insert)];
     let Some(bt) = Tn::ranked(&b[base].ty).cloned() else { return false };
-    if !Tn::in_bounds(&b[base].ty.dims().unwrap_or_default(), &o, &s, &t) {
+    if !Ofr::in_bounds(&b[base].ty.dims().unwrap_or_default(), &o, &s, &t) {
         return false;
     }
     let name = b[op].name.clone();
@@ -447,13 +347,13 @@ fn constant_slice_arguments(rw: &mut Rewriter<'_, '_>, op: OpId, insert: bool) -
             rw.ip = saved;
         }
         let dst = rw.body[op].operands[1];
-        rw.replace_with(op, Tn::slice_op(&name, &[to_insert, dst], &lists), &result_types);
+        rw.replace_with(op, OpData::sliced(&name, &[to_insert, dst], &lists), &result_types);
     } else {
         let rt = b[b[op].results[0]].ty.clone();
         let rank = rt.dims().map_or(0, |d| d.len());
         let ty = Tn::rank_reduced_slice_type(rank, &bt, &lists[1]);
         rw.set_before(op);
-        let mut v = rw.single(Tn::slice_op(&name, &[base], &lists), ty.clone());
+        let mut v = rw.single(OpData::sliced(&name, &[base], &lists), ty.clone());
         if ty != rt {
             v = rw.tensor_cast(v, rt);
         }
@@ -491,7 +391,7 @@ fn insert_slice_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     if !Tn::rank_reduced(&expected, &Type::Shaped(st)) {
         return false;
     }
-    if !Tn::in_bounds(&b[dst].ty.dims().unwrap_or_default(), &o, &s, &t) {
+    if !Ofr::in_bounds(&b[dst].ty.dims().unwrap_or_default(), &o, &s, &t) {
         return false;
     }
     let parallel = b[op].name == "tensor.parallel_insert_slice";
@@ -500,7 +400,7 @@ fn insert_slice_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let new_dst_ty = b[dst].ty.clone();
     rw.set_before(op);
     let lists = [o, s, t];
-    let data = Tn::slice_op(&name, &[src, dst], &lists);
+    let data = OpData::sliced(&name, &[src, dst], &lists);
     if parallel {
         rw.create(data, &[]);
         rw.erase_op(op);
@@ -543,7 +443,7 @@ fn insert_slice_source_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     rw.before_parallel_parent(op);
     let cast = rw.tensor_cast(src, new_ty);
     rw.ip = saved;
-    rw.replace_with(op, Tn::slice_op(&name, &[cast, dst], &lists), &types);
+    rw.replace_with(op, OpData::sliced(&name, &[cast, dst], &lists), &types);
     true
 }
 
@@ -601,7 +501,7 @@ impl TensorCanon {
             }
         }
         let src = b[ext].operands[0];
-        rw.replace_with(op, Tn::slice_op("tensor.extract_slice", &[src], &[o, s, t]), &[rt]);
+        rw.replace_with(op, OpData::sliced("tensor.extract_slice", &[src], &[o, s, t]), &[rt]);
         true
     }
 
@@ -903,11 +803,11 @@ impl TensorCanon {
         let Some(cast) = b.foldable_cast(b[op].operands[0]) else { return false };
         let src = b[cast].operands[0];
         let lists = b.slice_lists(op);
-        if !Tn::in_bounds(&b[src].ty.dims().unwrap_or_default(), &lists[0], &lists[1], &lists[2]) {
+        if !Ofr::in_bounds(&b[src].ty.dims().unwrap_or_default(), &lists[0], &lists[1], &lists[2]) {
             return false;
         }
         let ty = b[b[op].results[0]].ty.clone();
-        rw.replace_with(op, Tn::slice_op("tensor.extract_slice", &[src], &lists), &[ty]);
+        rw.replace_with(op, OpData::sliced("tensor.extract_slice", &[src], &lists), &[ty]);
         true
     }
 
@@ -1106,7 +1006,7 @@ impl TensorCanon {
         let Some(bt) = Tn::ranked(&b[base].ty).cloned() else { return false };
         rw.set_before(op);
         let slice_ty = Tn::slice_type(&bt, &sizes);
-        let s = rw.single(Tn::slice_op("tensor.extract_slice", &[base], &[offsets, sizes, strides]), slice_ty);
+        let s = rw.single(OpData::sliced("tensor.extract_slice", &[base], &[offsets, sizes, strides]), slice_ty);
         let data = rw.pad_data(op, s, &pl, &high);
         let new = rw.new_pad(data, rt, op, true);
         let v = rw.body[new].results[0];
@@ -1302,7 +1202,7 @@ impl<'a> Body<'a> {
 
 /// A `tensor.expand_shape` to `shape`.
 fn expand_data<'a>(src: ValueId, r: &Reassoc, shape: &[Ofr]) -> OpData<'a> {
-    let (st, dy) = Tn::split(shape);
+    let (st, dy) = Ofr::split(shape);
     let mut ops = vec![src];
     ops.extend(dy);
     OpData::build("tensor.expand_shape").operands(&ops).with("reassociation", Reshape::attr(r)).with("static_output_shape", Attribute::dense_i64(&st))

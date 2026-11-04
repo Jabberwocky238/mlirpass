@@ -10,7 +10,7 @@ pub use canonicalize::MemrefCanon;
 mod to_llvm;
 #[cfg(feature = "target.llvm")]
 pub use to_llvm::{MemrefOptions, MemrefToLlvm};
-#[cfg(feature = "target.llvm")]
+#[cfg(all(feature = "target.llvm", feature = "dialect.vector"))]
 pub(crate) use to_llvm::Gep as LlvmGep;
 
 #[cfg(feature = "target.spirv")]

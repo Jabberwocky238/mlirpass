@@ -27,8 +27,10 @@ mod math;
 #[cfg(feature = "dialect.memref")]
 mod memref;
 mod build;
+#[cfg(any(feature = "dialect.math", feature = "dialect.complex"))]
 mod libm;
 mod reshape;
+mod slice;
 #[cfg(feature = "dialect.scf")]
 mod scf;
 #[cfg(feature = "dialect.shape")]
@@ -45,13 +47,17 @@ mod tosa;
 mod ub;
 #[cfg(feature = "dialect.vector")]
 mod vector;
-#[cfg(feature = "dialect.x86vector")]
+#[cfg(all(feature = "dialect.x86vector", feature = "target.llvm"))]
 mod x86vector;
 #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
 mod xevm;
 
 pub use canonicalize::{fold, materialize, memref_cast_compatible, memref_cast_foldable, patterns as canonicalization_patterns, Fold, Folded};
-pub(crate) use build::{Named, i64_elements};
+#[cfg(any(all(feature = "dialect.tensor", feature = "dialect.linalg"), feature = "dialect.tosa"))]
+pub(crate) use build::Named;
+#[cfg(feature = "dialect.tosa")]
+pub(crate) use build::i64_elements;
+#[cfg(any(feature = "dialect.math", feature = "dialect.complex"))]
 pub(crate) use libm::Libm;
 pub use reshape::{Ofr as MemrefOfr, Reshape, ComposeCollapseOfExpand, ComposeExpandOfCollapse, ComposeReassociative, Reassoc};
 #[cfg(feature = "dialect.affine")]
@@ -94,7 +100,7 @@ pub use tosa::*;
 pub use ub::*;
 #[cfg(feature = "dialect.vector")]
 pub use vector::*;
-#[cfg(feature = "dialect.x86vector")]
+#[cfg(all(feature = "dialect.x86vector", feature = "target.llvm"))]
 pub use x86vector::*;
 #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
 pub use xevm::*;
