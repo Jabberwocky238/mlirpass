@@ -119,6 +119,8 @@ impl crate::Passes {
         p.register::<crate::ResolveRankedShapedTypeResultDims>(); // resolve-ranked-shaped-type-result-dims
         #[cfg(feature = "dialect.memref")]
         p.register::<crate::ResolveShapedTypeResultDims>(); // resolve-shaped-type-result-dims
+        #[cfg(all(feature = "dialect.nvgpu", feature = "target.llvm"))]
+        p.register::<crate::ConvertNvgpuToNvvm>(); // convert-nvgpu-to-nvvm
         #[cfg(all(feature = "dialect.nvvm", feature = "target.llvm"))]
         p.register::<crate::ConvertNvvmToLlvm>(); // convert-nvvm-to-llvm
         #[cfg(all(feature = "dialect.scf", all(feature = "dialect.gpu", feature = "dialect.affine")))]

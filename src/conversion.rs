@@ -195,6 +195,19 @@ impl<'c> TypeConverter<'c> {
         b[op].operands.iter().chain(&b[op].results).all(|v| self.is_legal(&b[*v].ty))
     }
 
+    /// `populateSCFStructuralTypeConversionTarget`'s legality of scf op `op`: `for` / `if` /
+    /// `index_switch` by their results, a `yield` of those (or `while`) by its operands,
+    /// `while` / `condition` by everything; other scf ops legal.
+    pub fn scf_structural_legal(&self, b: &Body<'_>, op: OpId) -> bool {
+        let all = |vs: &[ValueId]| vs.iter().all(|v| self.is_legal(&b[*v].ty));
+        match &*b[op].name {
+            "scf.for" | "scf.if" | "scf.index_switch" => all(&b[op].results),
+            "scf.yield" => !b.parent_op(op).is_some_and(|p| matches!(&*b[p].name, "scf.for" | "scf.if" | "scf.while" | "scf.index_switch")) || all(&b[op].operands),
+            "scf.while" | "scf.condition" => self.is_legal_op(b, op),
+            _ => true,
+        }
+    }
+
     /// `isSignatureLegal`.
     pub fn is_signature_legal(&self, inputs: &[Type<'_>], results: &[Type<'_>]) -> bool {
         inputs.iter().chain(results).all(|t| self.is_legal(t))

@@ -28,6 +28,8 @@ mod llvm;
 mod math;
 #[cfg(feature = "dialect.memref")]
 mod memref;
+#[cfg(all(feature = "dialect.nvgpu", feature = "target.llvm"))]
+mod nvgpu;
 #[cfg(all(feature = "dialect.nvvm", feature = "target.llvm"))]
 mod nvvm;
 mod build;
@@ -114,6 +116,8 @@ pub use ub::*;
 pub use vector::*;
 #[cfg(all(feature = "dialect.x86vector", feature = "target.llvm"))]
 pub use x86vector::*;
+#[cfg(all(feature = "dialect.nvgpu", feature = "target.llvm"))]
+pub use nvgpu::*;
 #[cfg(all(feature = "dialect.nvvm", feature = "target.llvm"))]
 pub use nvvm::*;
 #[cfg(feature = "dialect.xegpu")]

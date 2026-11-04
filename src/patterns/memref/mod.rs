@@ -14,7 +14,7 @@ pub use canonicalize::MemrefCanon;
 mod to_llvm;
 #[cfg(feature = "target.llvm")]
 pub use to_llvm::{MemrefOptions, MemrefToLlvm};
-#[cfg(all(feature = "target.llvm", feature = "dialect.vector"))]
+#[cfg(all(feature = "target.llvm", any(feature = "dialect.vector", feature = "dialect.nvgpu")))]
 pub(crate) use to_llvm::Gep as LlvmGep;
 
 #[cfg(feature = "target.spirv")]

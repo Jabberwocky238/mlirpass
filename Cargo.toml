@@ -35,7 +35,7 @@ cli = ["std"]
 # One feature per dialect: its op interfaces, folds, canonicalization patterns, its own
 # transforms and its lowerings to other dialects (`dialect.scf`). A lowering into a backend
 # also needs that `target.*`.
-all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bufferization", "dialect.cf", "dialect.complex", "dialect.func", "dialect.gpu", "dialect.index", "dialect.linalg", "dialect.llvm", "dialect.math", "dialect.memref", "dialect.ml_program", "dialect.nvvm", "dialect.scf", "dialect.shape", "dialect.spirv", "dialect.tensor", "dialect.test", "dialect.tosa", "dialect.ub", "dialect.vector", "dialect.x86vector", "dialect.xegpu", "dialect.xevm"]
+all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bufferization", "dialect.cf", "dialect.complex", "dialect.func", "dialect.gpu", "dialect.index", "dialect.linalg", "dialect.llvm", "dialect.math", "dialect.memref", "dialect.ml_program", "dialect.nvgpu", "dialect.nvvm", "dialect.scf", "dialect.shape", "dialect.spirv", "dialect.tensor", "dialect.test", "dialect.tosa", "dialect.ub", "dialect.vector", "dialect.x86vector", "dialect.xegpu", "dialect.xevm"]
 "dialect.affine" = ["dialect.arith"]
 "dialect.amdgpu" = ["dialect.memref"]
 "dialect.arith" = []
@@ -50,6 +50,7 @@ all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bu
 "dialect.math" = ["dialect.arith", "dialect.vector"]
 "dialect.memref" = ["dialect.arith", "dialect.affine"]
 "dialect.ml_program" = []
+"dialect.nvgpu" = ["dialect.nvvm", "dialect.memref", "dialect.scf", "dialect.arith"]
 "dialect.nvvm" = []
 "dialect.scf" = []
 "dialect.shape" = ["dialect.arith"]
