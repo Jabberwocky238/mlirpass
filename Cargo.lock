@@ -10,18 +10,19 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "mlirformat"
-version = "0.5.3"
-source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.5.3#155bba2da8b2b76602f7f0982cc9456b4d016fe5"
+version = "0.5.5"
+source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.5.5#b7dc982481bfcdd65f00cd27982e83f01c1eb402"
 dependencies = [
  "mlirformat-macros",
  "serde",
+ "smallvec",
  "thiserror",
 ]
 
 [[package]]
 name = "mlirformat-macros"
-version = "0.5.3"
-source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.5.3#155bba2da8b2b76602f7f0982cc9456b4d016fe5"
+version = "0.5.5"
+source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.5.5#b7dc982481bfcdd65f00cd27982e83f01c1eb402"
 dependencies = [
  "proc-macro2",
  "quote",
