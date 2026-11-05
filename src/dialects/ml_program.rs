@@ -10,6 +10,21 @@ impl OpInterfaces for MlProgramDialect {
         "ml_program"
     }
 
+    /// `OpAsmOpInterface::getAsmResultNames`.
+    fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
+        match &*b[op].name {
+            // The global's leaf name.
+            "ml_program.global_load" | "ml_program.global_load_const" => match b[op].get("global") {
+                Some(mlirformat::Attribute::SymbolRef(path)) => match path.last() {
+                    Some(leaf) => b.result_named(op, alloc::string::String::from(leaf.trim_matches('"'))),
+                    None => alloc::vec::Vec::new(),
+                },
+                _ => alloc::vec::Vec::new(),
+            },
+            _ => b.ods_result_names(op),
+        }
+    }
+
     #[cfg(feature = "dialect.bufferization")]
     fn bufferizable(&self, name: &str) -> Option<&dyn crate::Bufferizable> {
         Self::bufferizable_op(name)

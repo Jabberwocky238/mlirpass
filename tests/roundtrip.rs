@@ -7,14 +7,14 @@ mod common;
 
 use common::Fixtures;
 use mlirpass::{Body, Ctx, Interfaces};
-use mlirpass::mlirformat::{Item, MlirOpt, Module};
+use mlirpass::mlirformat::{Item, MlirOpt};
 
 /// Text → body → text, generic.
 fn trip(ctx: Ctx<'_>, src: &str) -> Result<(String, bool), String> {
     let m = ctx.opt.parse(src).map_err(|e| format!("mlirformat: {e}"))?;
     let aliased = m.items.iter().any(|i| matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. }));
     let body = Body::import(ctx, &m).map_err(|e| format!("import: {e}"))?;
-    Ok((ctx.opt.show(&Module::from(&body)).to_string(), aliased))
+    Ok((body.show(ctx.opt, true, |_| true), aliased))
 }
 
 #[test]

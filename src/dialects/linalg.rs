@@ -91,6 +91,37 @@ impl OpInterfaces for LinalgDialect {
         "linalg"
     }
 
+    /// `OpAsmOpInterface::getAsmResultNames`.
+    fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
+        let name = match &*b[op].name {
+            "linalg.map" => "mapped",
+            "linalg.reduce" => "reduced",
+            "linalg.transpose" => "transposed",
+            "linalg.broadcast" => "broadcasted",
+            "linalg.pack" => "pack",
+            "linalg.unpack" => "unpack",
+            _ => return alloc::vec::Vec::new(),
+        };
+        b.result_named(op, name)
+    }
+
+    /// `getAsmBlockArgumentNames`: `%in` for the inputs' arguments, `%out` (`linalg.generic`)
+    /// or `%init` for the inits'.
+    fn asm_block_arg_names(&self, b: &crate::Body<'_>, op: crate::OpId, r: crate::RegionId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
+        let n = b[op].operands.len();
+        let (inputs, inits, out) = match &*b[op].name {
+            "linalg.generic" => (b.operand_group(op, 0).len(), b.operand_group(op, 1).len(), "out"),
+            "linalg.map" => (n.saturating_sub(1), 1, "init"),
+            "linalg.reduce" => (n / 2, n / 2, "init"),
+            _ => return alloc::vec::Vec::new(),
+        };
+        let Some(entry) = b[r].blocks.first() else { return alloc::vec::Vec::new() };
+        let args = &b[*entry].args;
+        let ins = args.iter().take(inputs).map(|a| (*a, "in".into()));
+        let outs = args.iter().skip(args.len().saturating_sub(inits)).map(|a| (*a, out.into()));
+        ins.chain(outs).collect()
+    }
+
     #[cfg(feature = "dialect.bufferization")]
     fn bufferizable(&self, name: &str) -> Option<&dyn crate::Bufferizable> {
         Self::bufferizable_op(name)

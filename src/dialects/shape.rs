@@ -12,6 +12,18 @@ impl OpInterfaces for ShapeDialect {
         "shape"
     }
 
+    /// `OpAsmOpInterface::getAsmResultNames`.
+    fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
+        match &*b[op].name {
+            // `c<value>`.
+            "shape.const_size" => match b[op].get("value").and_then(|a| crate::Const::try_from(a).ok()).and_then(|c| c.as_int()) {
+                Some(i) => b.result_named(op, alloc::format!("c{}", i.signed())),
+                None => alloc::vec::Vec::new(),
+            },
+            _ => b.ods_result_names(op),
+        }
+    }
+
     #[cfg(feature = "dialect.bufferization")]
     fn bufferizable(&self, name: &str) -> Option<&dyn crate::Bufferizable> {
         match name {

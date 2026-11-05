@@ -1,6 +1,13 @@
 //! The `arith` dialect's op interfaces.
 
-use crate::{Body, DialectInliner, InlineAll, OpId, OpInterfaces};
+use alloc::borrow::Cow;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+
+use mlirformat::{Attribute, Type};
+
+use crate::{Body, DialectInliner, InlineAll, OpId, OpInterfaces, ValueId};
 
 /// The `arith` dialect.
 pub struct ArithDialect;
@@ -20,6 +27,14 @@ impl OpInterfaces for ArithDialect {
         Some(&InlineAll { calls: false, regions: false })
     }
 
+    fn asm_result_names(&self, b: &Body<'_>, op: OpId) -> Vec<(ValueId, Cow<'static, str>)> {
+        match &*b[op].name {
+            "arith.constant" => b.result_named(op, Self::constant_name(b, op)),
+            "arith.muli" => Self::vscale_name(b, op).map_or_else(Vec::new, |n| b.result_named(op, n)),
+            _ => b.ods_result_names(op),
+        }
+    }
+
     fn speculatability(&self, b: &Body<'_>, op: OpId) -> Option<bool> {
         let divisor = || b.int_constant(b[op].operands[1]);
         match &*b[op].name {
@@ -27,6 +42,45 @@ impl OpInterfaces for ArithDialect {
             "arith.divsi" | "arith.ceildivsi" => divisor().filter(|v| *v != 0 && *v != -1).map(|_| false),
             _ => None,
         }
+    }
+}
+
+impl ArithDialect {
+    /// `ConstantOp::getAsmResultNames`: `%true` / `%false` for an `i1`, `%c<value>_<type>` for
+    /// another integer (`%c<value>` for an index), `%cst` for anything else.
+    fn constant_name(b: &Body<'_>, op: OpId) -> Cow<'static, str> {
+        let ty = b[op].results.first().map(|r| &b[*r].ty);
+        let value = b[op].get("value");
+        // The value as `APInt` prints it, signed; wider than 128 bits, the literal (which
+        // `mlir-opt` writes the same way).
+        let int = match value.and_then(|a| crate::Const::try_from(a).ok()).filter(|c| !c.elements).and_then(|c| c.as_int()) {
+            Some(i) => Some(Cow::Owned(format!("{}", i.signed()))),
+            None => match value {
+                Some(Attribute::Int { lit, .. }) if lit.trim_start_matches('-').bytes().all(|c| c.is_ascii_digit()) => Some(Cow::Owned(String::from(&**lit))),
+                _ => None,
+            },
+        };
+        match (int, ty) {
+            (Some(i), Some(Type::Integer { width: 1, .. })) => Cow::Borrowed(if i == "0" { "false" } else { "true" }),
+            (Some(i), Some(t @ Type::Integer { .. })) => Cow::Owned(format!("c{i}_{t}")),
+            (Some(i), _) => Cow::Owned(format!("c{i}")),
+            (None, _) => Cow::Borrowed("cst"),
+        }
+    }
+
+    /// `MulIOp::getAsmResultNames`: `%c<base>_vscale` for an index `base * vector.vscale`.
+    fn vscale_name(b: &Body<'_>, op: OpId) -> Option<Cow<'static, str>> {
+        if !matches!(b[b[op].results[0]].ty, Type::Index) {
+            return None;
+        }
+        let vscale = |v: ValueId| b.def_op(v).is_some_and(|d| b[d].name == "vector.vscale");
+        let [l, r] = b[op].operands[..] else { return None };
+        let base = match (b.int_constant(l), b.int_constant(r)) {
+            (Some(c), _) if vscale(r) => c,
+            (_, Some(c)) if vscale(l) => c,
+            _ => return None,
+        };
+        Some(Cow::Owned(format!("c{base}_vscale")))
     }
 }
 

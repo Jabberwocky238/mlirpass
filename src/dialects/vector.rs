@@ -12,6 +12,14 @@ impl OpInterfaces for VectorDialect {
         "vector"
     }
 
+    /// `OpAsmOpInterface::getAsmResultNames`.
+    fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
+        match &*b[op].name {
+            "vector.vscale" => b.result_named(op, "vscale"),
+            _ => b.ods_result_names(op),
+        }
+    }
+
     #[cfg(feature = "dialect.bufferization")]
     fn bufferizable(&self, name: &str) -> Option<&dyn crate::Bufferizable> {
         Self::bufferizable_op(name)

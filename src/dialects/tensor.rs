@@ -15,6 +15,31 @@ impl OpInterfaces for TensorDialect {
         "tensor"
     }
 
+    /// `getAsmResultNames`: each op's fixed name (`%extracted_slice`, `%padded`, ...).
+    fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
+        let name = match &*b[op].name {
+            "tensor.cast" => "cast",
+            "tensor.concat" => "concat",
+            "tensor.dim" => "dim",
+            "tensor.extract" => "extracted",
+            "tensor.from_elements" => "from_elements",
+            "tensor.gather" => "gather",
+            "tensor.insert" => "inserted",
+            "tensor.generate" => "generated",
+            "tensor.rank" => "rank",
+            "tensor.reshape" => "reshape",
+            "tensor.collapse_shape" => "collapsed",
+            "tensor.expand_shape" => "expanded",
+            "tensor.extract_slice" => "extracted_slice",
+            "tensor.insert_slice" => "inserted_slice",
+            "tensor.pad" => "padded",
+            "tensor.scatter" => "scatter",
+            "tensor.splat" => "splat",
+            _ => return alloc::vec::Vec::new(),
+        };
+        b.result_named(op, name)
+    }
+
     /// Ops inline, and into regions (`TensorInlinerInterface`).
     fn inliner(&self) -> Option<&dyn DialectInliner> {
         Some(&InlineAll { calls: false, regions: true })

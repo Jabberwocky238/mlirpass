@@ -10,6 +10,22 @@ impl OpInterfaces for SpirvDialect {
         "spirv"
     }
 
+    /// `OpAsmOpInterface::getAsmResultNames`.
+    fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
+        match &*b[op].name {
+            "spirv.Constant" => b.result_named(op, Self::constant_name(b, op)),
+            // `<variable>_addr`.
+            "spirv.mlir.addressof" => match b[op].get("variable") {
+                Some(mlirformat::Attribute::SymbolRef(path)) => match path.last() {
+                    Some(leaf) => b.result_named(op, alloc::format!("{}_addr", leaf.trim_matches('"'))),
+                    None => alloc::vec::Vec::new(),
+                },
+                _ => alloc::vec::Vec::new(),
+            },
+            _ => alloc::vec::Vec::new(),
+        }
+    }
+
     fn inliner(&self) -> Option<&dyn DialectInliner> {
         Some(self)
     }
@@ -63,5 +79,38 @@ impl DialectInliner for SpirvDialect {
         }
         let v = b[op].operands[0];
         b.replace_all_uses(results[0], v);
+    }
+}
+
+impl SpirvDialect {
+    /// `ConstantOp::getAsmResultNames`: `%true` / `%false` for an `i1`; else `%cst`, the integer
+    /// value as its signedness reads it, `_<type>` for an integer or float, `_vec_<n>x<element>`
+    /// for a vector.
+    fn constant_name(b: &Body<'_>, op: OpId) -> alloc::borrow::Cow<'static, str> {
+        use mlirformat::{ShapedKind, Signedness, Type};
+        let ty = &b[b[op].results[0]].ty;
+        let mut name = alloc::string::String::from("cst");
+        let int = b[op].get("value").and_then(|a| crate::Const::try_from(a).ok()).filter(|c| !c.elements).and_then(|c| c.as_int());
+        if let (Some(i), Type::Integer { signedness, width }) = (int, ty) {
+            if *width == 1 {
+                return alloc::borrow::Cow::Borrowed(if i.is_zero() { "false" } else { "true" });
+            }
+            name += &match signedness {
+                Signedness::Unsigned => alloc::format!("{}", i.unsigned()),
+                _ => alloc::format!("{}", i.signed()),
+            };
+        }
+        if matches!(ty, Type::Integer { .. } | Type::Float(_)) {
+            name += &alloc::format!("_{ty}");
+        }
+        if let Type::Shaped(s) = ty
+            && s.kind == ShapedKind::Vector
+        {
+            name += &alloc::format!("_vec_{}", s.dims().and_then(|d| d.first().copied()).unwrap_or_default());
+            if matches!(*s.elem, Type::Integer { .. } | Type::Float(_)) {
+                name += &alloc::format!("x{}", s.elem);
+            }
+        }
+        alloc::borrow::Cow::Owned(name)
     }
 }

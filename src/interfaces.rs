@@ -11,6 +11,75 @@ use crate::{BlockId, Body, InsertPoint, OpId, RegionId, ValueId, BranchLayout as
 
 pub use mlirformat::{Effect, EffectKind, EffectOn, Effects, OpInfo, Trait};
 
+/// The upstream ops that get the `getAsmResultNames` ODS generates (`genOpAsmInterface`):
+/// several results, some named, no `OpAsmOpInterface` of their own. Each result group by its ODS
+/// name, and whether it is variable length (`Optional` / `Variadic`); sorted by op name.
+const ODS_RESULT_NAMES: &[(&str, &[(&str, bool)])] = &[
+    ("arith.addui_extended", &[("sum", false), ("overflow", false)]),
+    ("arith.mulsi_extended", &[("low", false), ("high", false)]),
+    ("arith.mului_extended", &[("low", false), ("high", false)]),
+    ("arm_sve.zip.x2", &[("resultV1", false), ("resultV2", false)]),
+    ("arm_sve.zip.x4", &[("resultV1", false), ("resultV2", false), ("resultV3", false), ("resultV4", false)]),
+    ("async.execute", &[("token", false), ("bodyResults", true)]),
+    ("gpu.alloc", &[("memref", false), ("asyncToken", true)]),
+    ("gpu.create_2to4_spmat", &[("spMat", false), ("asyncToken", true)]),
+    ("gpu.create_bsr", &[("spmat", false), ("asyncToken", true)]),
+    ("gpu.create_coo", &[("spmat", false), ("asyncToken", true)]),
+    ("gpu.create_coo_aos", &[("spmat", false), ("asyncToken", true)]),
+    ("gpu.create_csc", &[("spmat", false), ("asyncToken", true)]),
+    ("gpu.create_csr", &[("spmat", false), ("asyncToken", true)]),
+    ("gpu.create_dn_tensor", &[("dnTensor", false), ("asyncToken", true)]),
+    ("gpu.rotate", &[("rotateResult", false), ("valid", false)]),
+    ("gpu.sddmm_buffer_size", &[("bufferSz", false), ("asyncToken", true)]),
+    ("gpu.shuffle", &[("shuffleResult", false), ("valid", false)]),
+    ("gpu.spgemm_create_descr", &[("desc", false), ("asyncToken", true)]),
+    ("gpu.spgemm_work_estimation_or_compute", &[("bufferSzNew", false), ("asyncToken", true)]),
+    ("gpu.spmat_get_size", &[("rows", false), ("cols", false), ("nnz", false), ("asyncToken", true)]),
+    ("gpu.spmm_buffer_size", &[("bufferSzs", true), ("asyncToken", true)]),
+    ("gpu.spmv_buffer_size", &[("bufferSz", false), ("asyncToken", true)]),
+    ("math.sincos", &[("sin", false), ("cos", false)]),
+    ("ml_program.global_load_graph", &[("result", false), ("produceToken", false)]),
+    ("shape.split_at", &[("head", false), ("tail", false)]),
+    ("test.alloc_with_multiple_results", &[("index", false), ("memref", false)]),
+    ("test.another_three_result", &[("result1", false), ("result2", false), ("result3", false)]),
+    ("test.another_two_result", &[("result1", false), ("result2", false)]),
+    ("test.asm_interface_op", &[("first", false), ("middle_results", true), ("", false)]),
+    ("test.attr_sized_results", &[("a", true), ("b", true), ("c", false), ("d", true)]),
+    ("test.attr_sized_results_compile_test", &[("a", true), ("b", false), ("c", true)]),
+    ("test.format_custom_directive_results", &[("result", false), ("optResult", true), ("varResults", true)]),
+    ("test.format_custom_directive_results_with_type_refs", &[("result", false), ("optResult", true), ("varResults", true)]),
+    ("test.format_multiple_variadic_results", &[("result0", true), ("result1", true)]),
+    ("test.format_optional_result_a_op", &[("optional", true), ("variadic", true)]),
+    ("test.format_optional_result_b_op", &[("optional", true), ("variadic", true)]),
+    ("test.format_optional_result_c_op", &[("optional", true), ("variadic", true)]),
+    ("test.format_result_a_op", &[("buildable_res", false), ("result", false)]),
+    ("test.format_result_b_op", &[("buildable_res", false), ("result", false)]),
+    ("test.format_result_c_op", &[("buildable_res", false), ("result", false)]),
+    ("test.int_types", &[("any_i16", false), ("si32", false), ("ui64", false), ("any_int", false)]),
+    ("test.mixed_normal_variadic_result", &[("output1", true), ("output2", false), ("output3", true)]),
+    ("test.mixed_variadic_out1", &[("output1", true), ("output2", false), ("output3", true)]),
+    ("test.mixed_variadic_out2", &[("output1", true), ("output2", false), ("output3", true)]),
+    ("test.mixed_variadic_out3", &[("output1", false), ("output2", true), ("output3", true)]),
+    ("test.native_code_call4", &[("output1", false), ("output2", false)]),
+    ("test.native_code_call5", &[("output1", false), ("output2", false)]),
+    ("test.native_code_call6", &[("output1", false), ("output2", false)]),
+    ("test.op_norm_ret", &[("Y", false), ("Z", false)]),
+    ("test.op_with_result_shape_interface", &[("result1", false), ("result2", false)]),
+    ("test.reify_shaped_type_using_reify_dim_of_result", &[("result1", false), ("result2", false)]),
+    ("test.reify_shaped_type_using_reify_result_shapes", &[("result1", false), ("result2", false)]),
+    ("test.reify_shaped_type_using_reify_shape_of_result", &[("result1", false), ("result2", false)]),
+    ("test.tblgen_build_3", &[("resultA", true), ("resultB", true)]),
+    ("test.three_result", &[("result1", false), ("result2", false), ("result3", false)]),
+    ("test.two_result", &[("result1", false), ("result2", false)]),
+    ("test.variadic_segment_prop", &[("b1", true), ("b2", true)]),
+    ("tosa.cast_to_block_scaled", &[("output_data", false), ("output_scale", false)]),
+    ("tosa.fft2d", &[("output_real", false), ("output_imag", false)]),
+    ("tosa.rfft2d", &[("output_real", false), ("output_imag", false)]),
+    ("vector.deinterleave", &[("res1", false), ("res2", false)]),
+    ("vector.scan", &[("dest", false), ("accumulated_value", false)]),
+    ("x86vector.avx512.vp2intersect", &[("k1", false), ("k2", false)]),
+];
+
 /// How a branch lays out its successor operands (`BranchOpInterface::getSuccessorOperands`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BranchLayout {
@@ -143,6 +212,17 @@ pub trait OpInterfaces: Sync {
     /// `CallOpInterface::getCallableForCallee` of an indirect call: the callee value.
     fn indirect_callee(&self, _: &Body<'_>, _: OpId) -> Option<ValueId> {
         None
+    }
+
+    /// `OpAsmOpInterface::getAsmResultNames`: the names `op` suggests for its results, in the
+    /// order it sets them (custom form only; each is made unique where it is printed).
+    fn asm_result_names(&self, b: &Body<'_>, op: OpId) -> Vec<(ValueId, Cow<'static, str>)> {
+        b.ods_result_names(op)
+    }
+
+    /// `OpAsmOpInterface::getAsmBlockArgumentNames`: names for the arguments of `op`'s region `r`.
+    fn asm_block_arg_names(&self, _: &Body<'_>, _: OpId, _: RegionId) -> Vec<(ValueId, Cow<'static, str>)> {
+        Vec::new()
     }
 
     /// The dialect's `DialectInlinerInterface`; `None`: it has none, and nothing of it inlines.
@@ -306,6 +386,39 @@ impl Body<'_> {
             }
             None => operands.get(i..=i).unwrap_or(&[]),
         }
+    }
+
+    /// `setNameFn(getResult(), name)`: `name` for `op`'s first result.
+    pub fn result_named(&self, op: OpId, name: impl Into<Cow<'static, str>>) -> Vec<(ValueId, Cow<'static, str>)> {
+        self[op].results.first().map(|r| (*r, name.into())).into_iter().collect()
+    }
+
+    /// The `getAsmResultNames` ODS writes for an op of several results that names them
+    /// ([`ODS_RESULT_NAMES`]): each result group's name on its first result, an empty group
+    /// skipped, an unnamed one numbered. Nothing for an op not in the table.
+    pub fn ods_result_names(&self, op: OpId) -> Vec<(ValueId, Cow<'static, str>)> {
+        let Ok(at) = ODS_RESULT_NAMES.binary_search_by(|(n, _)| (*n).cmp(&*self[op].name)) else { return Vec::new() };
+        let names = ODS_RESULT_NAMES[at].1;
+        let results = &self[op].results;
+        let variadic = names.iter().filter(|(_, v)| *v).count();
+        let sizes: Vec<usize> = match self.segments(op, "resultSegmentSizes") {
+            Some(sizes) => sizes,
+            None => {
+                // One variadic group takes what the others leave; several split it evenly
+                // (`SameVariadicResultSize`).
+                let each = if variadic == 0 { 0 } else { results.len().saturating_sub(names.len() - variadic) / variadic };
+                names.iter().map(|(_, v)| if *v { each } else { 1 }).collect()
+            }
+        };
+        let mut at = 0;
+        let mut out = Vec::new();
+        for ((name, _), size) in names.iter().zip(sizes) {
+            if size > 0 && let Some(r) = results.get(at) {
+                out.push((*r, Cow::Borrowed(*name)));
+            }
+            at += size;
+        }
+        out
     }
 
     /// ⭐ `MemoryEffectOpInterface::getEffects`; `None`: the op does not implement it.

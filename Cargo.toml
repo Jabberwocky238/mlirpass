@@ -81,6 +81,10 @@ name = "passes"
 required-features = ["all-dialects", "all-targets"]
 
 [[test]]
+name = "asm_names"
+required-features = ["all-dialects"]
+
+[[test]]
 name = "spirv"
 required-features = ["all-dialects", "target.spirv"]
 

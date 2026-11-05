@@ -1323,82 +1323,236 @@ impl<'a> Body<'a> {
 struct Counters {
     value: u32,
     arg: u32,
+    conflict: u32,
 }
 
-/// A value's name on the way out: the `n`th value of its scope (and which result, when its op
-/// has several), or the `n`th entry block argument.
+/// What a value is called: a number (`%7`), or a name (`%c0`, `%arg2`), by index into
+/// [`Names::strs`].
 #[derive(Clone, Copy)]
-enum Name {
-    Value(u32, Option<u32>),
-    Arg(u32),
+enum Head {
+    Num(u32),
+    Str(u32),
+}
+
+/// A value's name on the way out: its result group's head, and its place in the group when the
+/// group has several results (`%0#1`, `%sizes#2`).
+#[derive(Clone, Copy)]
+struct Name {
+    head: Head,
+    index: Option<u32>,
 }
 
 /// ⭐ How a body is named on the way out ([`Body::names`]): every value and block by id, each
-/// spelling (`%7`, `%arg2`, `^bb1`) written once, for [`Body::export`] to borrow.
+/// spelling (`%7`, `%c0`, `^bb1`) written once, for [`Body::export`] to borrow.
 pub struct Names {
     values: Vec<Option<Name>>,
     labels: Vec<Option<u32>>,
+    /// The ops whose results print in several groups (`%a, %b:2 = ...`): each group's start.
+    groups: BTreeMap<OpId, Vec<u32>>,
     nums: Vec<String>,
-    args: Vec<String>,
+    strs: Vec<String>,
     bbs: Vec<String>,
+}
+
+/// One naming scope (`usedNames`), inside its parent's.
+struct NameScope {
+    parent: Option<usize>,
+    used: alloc::collections::BTreeSet<String>,
+}
+
+/// `SSANameState` while it numbers: the names, the counters and the open scopes.
+struct Namer<'n, 'b, 'a> {
+    n: &'n mut Names,
+    body: &'b Body<'a>,
+    /// Generic form: no op is asked for names (`OpAsmOpInterface`), and ids are unique.
+    generic: bool,
+    next: Counters,
+    /// The highest value number given, for the spellings to write.
+    max: u32,
+    scopes: Vec<NameScope>,
+    scope: usize,
+}
+
+impl Namer<'_, '_, '_> {
+    /// `sanitizeIdentifier`: a name that cannot be an identifier made into one.
+    fn sanitize(name: &str) -> Cow<'_, str> {
+        let valid = |c: u8| c.is_ascii_alphanumeric() || b"$._-".contains(&c);
+        let copy = |out: &mut String| {
+            for c in name.bytes() {
+                match c {
+                    c if valid(c) => out.push(c as char),
+                    b' ' => out.push('_'),
+                    c => out.push_str(&format!("{c:X}")),
+                }
+            }
+        };
+        let first = name.as_bytes()[0];
+        if first.is_ascii_digit() || (!valid(first) && first != b' ') {
+            let mut out = String::from("_");
+            copy(&mut out);
+            return Cow::Owned(out);
+        }
+        if name.bytes().all(valid) {
+            return Cow::Borrowed(name);
+        }
+        let mut out = String::new();
+        copy(&mut out);
+        Cow::Owned(out)
+    }
+
+    fn taken(&self, name: &str) -> bool {
+        let mut at = Some(self.scope);
+        while let Some(s) = at {
+            if self.scopes[s].used.contains(name) {
+                return true;
+            }
+            at = self.scopes[s].parent;
+        }
+        false
+    }
+
+    /// `setValueName`: an empty name is numbered; any other made unique in the scopes open
+    /// (`uniqueValueName`: `name_N`, `N` the next conflict id).
+    fn set(&mut self, name: &str) -> Head {
+        if name.is_empty() {
+            self.next.value += 1;
+            return Head::Num(self.next.value - 1);
+        }
+        let name = Self::sanitize(name);
+        let unique = if !self.taken(&name) {
+            name.into_owned()
+        } else {
+            loop {
+                let probe = format!("{name}_{}", self.next.conflict);
+                self.next.conflict += 1;
+                if !self.taken(&probe) {
+                    break probe;
+                }
+            }
+        };
+        self.scopes[self.scope].used.insert(unique.clone());
+        self.n.strs.push(unique);
+        Head::Str(self.n.strs.len() as u32 - 1)
+    }
+
+    /// `numberValuesInOp`: the names `op` suggests, then a number for its first result if it
+    /// has none; the results named apart start groups of their own.
+    fn op(&mut self, op: OpId) {
+        let (body, results) = (self.body, &self.body[op].results);
+        let mut heads: Vec<Option<Head>> = alloc::vec![None; results.len()];
+        let mut groups = alloc::vec![0u32];
+        if !self.generic {
+            let names = body.interfaces(op).map_or_else(|| body.ods_result_names(op), |i| i.asm_result_names(body, op));
+            for (v, name) in names {
+                let Some(k) = results.iter().position(|r| *r == v) else { continue };
+                heads[k] = Some(self.set(&name));
+                if k != 0 {
+                    groups.push(k as u32);
+                }
+            }
+        }
+        if results.is_empty() {
+            return;
+        }
+        if heads[0].is_none() {
+            heads[0] = Some(self.set(""));
+        }
+        groups.sort_unstable();
+        groups.dedup();
+        let total = results.len() as u32;
+        for (k, r) in results.iter().enumerate() {
+            let k = k as u32;
+            // `getResultIDAndNumber`: the group holding result `k`.
+            let at = groups.partition_point(|g| *g <= k) - 1;
+            let (start, end) = (groups[at], groups.get(at + 1).copied().unwrap_or(total));
+            let index = match () {
+                _ if total == 1 => None,
+                _ if groups.len() == 1 => Some(k),
+                _ if end - start != 1 => Some(k - start),
+                _ => None,
+            };
+            self.n.values[usize::from(*r)] = heads[start as usize].map(|head| Name { head, index });
+        }
+        if groups.len() > 1 {
+            self.n.groups.insert(op, groups);
+        }
+    }
+
+    /// `numberValuesInRegion` / `numberValuesInBlock`: the argument names the parent op
+    /// suggests, `%argN` for the entry block's others, numbers for later blocks', then the ops.
+    fn region(&mut self, r: RegionId) {
+        let body = self.body;
+        if !self.generic && let Some(i) = body.interfaces(body[r].parent) {
+            let parent = body[r].parent;
+            for (v, name) in i.asm_block_arg_names(body, parent, r) {
+                let head = self.set(&name);
+                self.n.values[usize::from(v)] = Some(Name { head, index: None });
+            }
+        }
+        for (i, b) in body[r].blocks.iter().enumerate() {
+            self.n.labels[usize::from(*b)] = Some(i as u32);
+            for v in &body[*b].args {
+                if self.n.values[usize::from(*v)].is_some() {
+                    continue;
+                }
+                let head = if i == 0 {
+                    self.next.arg += 1;
+                    self.set(&format!("arg{}", self.next.arg - 1))
+                } else {
+                    self.set("")
+                };
+                self.n.values[usize::from(*v)] = Some(Name { head, index: None });
+            }
+            for o in &body[*b].ops {
+                self.op(*o);
+            }
+            self.max = self.max.max(self.next.value);
+        }
+    }
 }
 
 impl Names {
     /// `SSANameState(root)`: regions are numbered off a stack, so the last one pushed first,
-    /// each after its whole parent region. `unique` (`shouldPrintUniqueSSAIDs`, which generic
-    /// form implies) keeps counting across regions; otherwise a region starts from the counters
-    /// its parent region ended with.
-    pub(crate) fn of(body: &Body<'_>, root: OpId, unique: bool) -> Self {
-        let mut n = Names { values: alloc::vec![None; body.values.len()], labels: alloc::vec![None; body.blocks.len()], nums: Vec::new(), args: Vec::new(), bbs: Vec::new() };
-        let (mut next, mut max, mut bbs) = (Counters::default(), Counters::default(), 0);
-        let mut stack: Vec<(RegionId, Counters)> = body[root].regions.iter().map(|r| (*r, next)).collect();
-        n.name_results(body, root, &mut next);
-        while let Some((r, saved)) = stack.pop() {
-            if !unique {
-                next = saved;
+    /// each after its whole parent region. `generic` form asks no op for names, and keeps
+    /// counting across regions (`shouldPrintUniqueSSAIDs`); otherwise a region starts from the
+    /// counters its parent region ended with.
+    pub(crate) fn of(body: &Body<'_>, root: OpId, generic: bool) -> Self {
+        let mut n = Names { values: alloc::vec![None; body.values.len()], labels: alloc::vec![None; body.blocks.len()], groups: BTreeMap::new(), nums: Vec::new(), strs: Vec::new(), bbs: Vec::new() };
+        let mut namer = Namer { n: &mut n, body, generic, next: Counters::default(), max: 0, scopes: alloc::vec![NameScope { parent: None, used: Default::default() }], scope: 0 };
+        let mut stack: Vec<(RegionId, Counters, usize)> = body[root].regions.iter().map(|r| (*r, namer.next, 0)).collect();
+        namer.op(root);
+        let mut bbs = 0;
+        while let Some((r, saved, parent)) = stack.pop() {
+            if !generic {
+                namer.next = saved;
             }
-            for (i, b) in body[r].blocks.iter().enumerate() {
-                n.labels[usize::from(*b)] = Some(i as u32);
-                bbs = bbs.max(i as u32 + 1);
-                for v in &body[*b].args {
-                    let (name, counter) = if i == 0 { (Name::Arg(next.arg), &mut next.arg) } else { (Name::Value(next.value, None), &mut next.value) };
-                    n.values[usize::from(*v)] = Some(name);
-                    *counter += 1;
-                }
-                for o in &body[*b].ops {
-                    n.name_results(body, *o, &mut next);
-                }
-            }
-            max = Counters { value: max.value.max(next.value), arg: max.arg.max(next.arg) };
-            stack.extend(body[r].blocks.iter().flat_map(|b| &body[*b].ops).flat_map(|o| &body[*o].regions).map(|nr| (*nr, next)));
+            namer.scopes.push(NameScope { parent: Some(parent), used: Default::default() });
+            namer.scope = namer.scopes.len() - 1;
+            namer.region(r);
+            bbs = bbs.max(body[r].blocks.len());
+            let (next, scope) = (namer.next, namer.scope);
+            stack.extend(body[r].blocks.iter().flat_map(|b| &body[*b].ops).flat_map(|o| &body[*o].regions).map(|nr| (*nr, next, scope)));
         }
-        max = Counters { value: max.value.max(next.value), arg: max.arg.max(next.arg) };
-        n.nums = (0..max.value).map(|i| format!("{i}")).collect();
-        n.args = (0..max.arg).map(|i| format!("arg{i}")).collect();
+        let max = namer.max.max(namer.next.value);
+        n.nums = (0..max).map(|i| format!("{i}")).collect();
         n.bbs = (0..bbs).map(|i| format!("bb{i}")).collect();
         n
     }
 
-    /// `numberValuesInOp`: one number for all of `op`'s results (`%N#k`).
-    fn name_results(&mut self, body: &Body<'_>, op: OpId, next: &mut Counters) {
-        let results = &body[op].results;
-        if results.is_empty() {
-            return;
+    fn head(&self, h: Head) -> &str {
+        match h {
+            Head::Num(i) => &self.nums[i as usize],
+            Head::Str(i) => &self.strs[i as usize],
         }
-        let multi = results.len() > 1;
-        for (i, r) in results.iter().enumerate() {
-            self.values[usize::from(*r)] = Some(Name::Value(next.value, multi.then_some(i as u32)));
-        }
-        next.value += 1;
     }
 
-    /// `printAsOperand`: `%N`, `%N#k`, `%argN`, or what MLIR prints for a value not named under
+    /// `printAsOperand`: `%N`, `%name`, `%N#k`, or what MLIR prints for a value not named under
     /// the root.
+    #[cfg(feature = "dialect.bufferization")]
     pub(crate) fn print(&self, v: ValueId) -> String {
         match self.values.get(usize::from(v)).copied().flatten() {
-            Some(Name::Value(n, Some(k))) => format!("%{n}#{k}"),
-            Some(Name::Value(n, None)) => format!("%{n}"),
-            Some(Name::Arg(n)) => format!("%arg{n}"),
+            Some(Name { head, index: Some(k) }) => format!("%{}#{k}", self.head(head)),
+            Some(Name { head, index: None }) => format!("%{}", self.head(head)),
             None => String::from("%<<UNKNOWN SSA VALUE>>"),
         }
     }
@@ -1435,8 +1589,7 @@ impl<'n, 'a> Export<'n, 'a> {
     /// `%INVALIDn` so that it shows.
     fn value(&self, v: ValueId) -> Value<'n> {
         match self.names.values.get(usize::from(v)).copied().flatten() {
-            Some(Name::Value(n, index)) => Value { name: Cow::Borrowed(&self.names.nums[n as usize]), index },
-            Some(Name::Arg(n)) => Value { name: Cow::Borrowed(&self.names.args[n as usize]), index: None },
+            Some(Name { head, index }) => Value { name: Cow::Borrowed(self.names.head(head)), index },
             None => Value { name: Cow::Owned(format!("INVALID{}", v.0)), index: None },
         }
     }
@@ -1452,9 +1605,20 @@ impl<'n, 'a> Export<'n, 'a> {
     fn op(&self, op: OpId) -> Operation<'n> {
         let d = &self.body[op];
         let (properties, attributes) = self.body.placed(d);
-        let results = match d.results.as_slice() {
-            [] => Vec::new(),
-            [r, rest @ ..] => alloc::vec![ResultDef { name: self.value(*r).name, count: (!rest.is_empty()).then_some(d.results.len() as u32) }],
+        // `printResultGroup`: each group by its first result, `:count` when it has several.
+        let total = d.results.len() as u32;
+        let starts = self.names.groups.get(&op).map_or(&[0][..], |g| &g[..]);
+        let results = if d.results.is_empty() {
+            Vec::new()
+        } else {
+            starts
+                .iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    let count = starts.get(i + 1).copied().unwrap_or(total) - s;
+                    ResultDef { name: self.value(d.results[*s as usize]).name, count: (count > 1).then_some(count) }
+                })
+                .collect()
         };
         Operation {
             results,

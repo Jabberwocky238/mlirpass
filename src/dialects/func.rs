@@ -12,6 +12,11 @@ impl OpInterfaces for FuncDialect {
         "func"
     }
 
+    /// `OpAsmOpInterface::getAsmResultNames`.
+    fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
+        if b[op].name == "func.constant" { b.result_named(op, "f") } else { alloc::vec::Vec::new() }
+    }
+
     #[cfg(feature = "dialect.bufferization")]
     fn bufferizable(&self, name: &str) -> Option<&dyn crate::Bufferizable> {
         Self::bufferizable_op(name)
