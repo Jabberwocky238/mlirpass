@@ -18,7 +18,7 @@ fn is_alias(i: &Item<'_>) -> bool {
 fn trip(ctx: Ctx<'_>, src: &str) -> Result<(String, bool), String> {
     let m = ctx.opt.parse(src).map_err(|e| format!("mlirformat: {e}"))?;
     let aliased = m.items.iter().any(is_alias);
-    let body = Body::import(ctx, &m).map_err(|e| format!("import: {e}"))?;
+    let body = Body::import(ctx, m).map_err(|e| format!("import: {e}"))?;
     Ok((body.show_local_scope(ctx.opt, true, |i| !is_alias(i)), aliased))
 }
 
@@ -56,7 +56,7 @@ fn roundtrip() {
                         i => !is_alias(i),
                     });
                     if kind == "generic" && builtin {
-                        let body = Body::import(ctx, &m).map_err(|e| format!("import: {e}"))?;
+                        let body = Body::import(ctx, m).map_err(|e| format!("import: {e}"))?;
                         let named = match run.args.iter().any(|a| a.trim_start_matches('-') == "mlir-print-local-scope") {
                             true => body.show_local_scope(&opt, true, |i| !is_alias(i)),
                             false => body.show(&opt, true, |i| !is_alias(i)),

@@ -19,7 +19,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::ops::{Index, IndexMut};
 
-use mlirformat::{Attribute, Block, BlockArg, Error, Extended, FunctionType, IntoStatic, Item, MlirOpt, Module, NamedAttr, Operation, Reborrow, Region, ResultDef, Shaped, Source, Str, Type, Value};
+use mlirformat::{Attribute, Block, BlockArg, Error, Extended, FunctionType, IntoStatic, Item, MlirOpt, Module, NamedAttr, Operation, Reborrow, Region, ResultDef, Source, Str, Type, Value};
 
 /// Index newtypes into the arena, each with `Index` / `IndexMut` on [`Body`]; `IndexMut` saves the
 /// entry's old value first while a [`Checkpoint`] is open (see [`Journal`]).
@@ -670,7 +670,12 @@ impl<'a> Body<'a> {
     // ---- creation ----------------------------------------------------------------------
 
     /// Adds a detached op with results of `types`; its operands' uses are recorded.
-    pub fn create(&mut self, mut data: OpData<'a>, types: &[Type<'a>]) -> OpId {
+    pub fn create(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
+        self.adopt(data, types.iter().cloned())
+    }
+
+    /// [`Body::create`] with result types it takes over rather than copies.
+    pub fn adopt(&mut self, mut data: OpData<'a>, types: impl IntoIterator<Item = Type<'a>>) -> OpId {
         if data.defaults {
             for a in self.ctx.opt.defaults(&data.name) {
                 if data.get(&a.name).is_none() {
@@ -689,17 +694,17 @@ impl<'a> Body<'a> {
     /// defaults to add, no attributes to sort.
     pub fn push_op(&mut self, mut data: OpData<'a>, types: &[Type<'a>]) -> OpId {
         data.info = self.ctx.opt.op_info(&data.name);
-        self.push_known(data, types)
+        self.push_known(data, types.iter().cloned())
     }
 
     /// [`push_op`](Self::push_op) with `data.info` already this context's.
-    fn push_known(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
+    fn push_known(&mut self, data: OpData<'a>, types: impl IntoIterator<Item = Type<'a>>) -> OpId {
         let id = OpId(self.ops.len() as u32);
         for (index, v) in data.operands.iter().enumerate() {
             self[*v].uses.push(Use { op: id, index: index as u32 });
         }
         self.ops.push(OpData { results: crate::Ids::new(), ..data });
-        let results = types.iter().enumerate().map(|(i, ty)| self.value(ty.clone(), Def::Result(id, i as u32), None)).collect();
+        let results = types.into_iter().enumerate().map(|(i, ty)| self.value(ty, Def::Result(id, i as u32), None)).collect();
         self[id].results = results;
         id
     }
@@ -797,9 +802,14 @@ impl<'a> Body<'a> {
 
     /// Appends a block with arguments `args` (type, location) to `region`.
     pub fn add_block(&mut self, region: RegionId, args: &[(Type<'a>, Option<Str<'a>>)]) -> BlockId {
+        self.add_block_with(region, args.iter().cloned())
+    }
+
+    /// [`Body::add_block`] with arguments it takes over rather than copies.
+    pub fn add_block_with(&mut self, region: RegionId, args: impl IntoIterator<Item = (Type<'a>, Option<Str<'a>>)>) -> BlockId {
         let id = BlockId(self.blocks.len() as u32);
         self.blocks.push(BlockData { parent: Some(region), ..BlockData::default() });
-        let args = args.iter().enumerate().map(|(i, (ty, loc))| self.value(ty.clone(), Def::Arg(id, i as u32), loc.clone())).collect();
+        let args = args.into_iter().enumerate().map(|(i, (ty, loc))| self.value(ty, Def::Arg(id, i as u32), loc)).collect();
         self[id].args = args;
         self[region].blocks.push(id);
         id
@@ -1066,24 +1076,54 @@ impl<'a> Body<'a> {
 // Out: names follow `mlir-opt`'s custom form — `%N` and `%argN` counted in preorder, both
 // restored on leaving a region, restarted at an op isolated from above; `^bbN` per region.
 
-/// The module's aliases, each already resolved against the earlier ones.
+/// Names to values, sorted by name: what a module's aliases are kept in (`#map`, `!t`, `#loc3`).
+/// The names borrow the text; a `Vec`, not a map — a module has few, looked up by halving.
+struct Named<'a, T>(Vec<(Str<'a>, T)>);
+
+impl<'a, T> Default for Named<'a, T> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
+impl<'a, T> Named<'a, T> {
+    fn get(&self, name: &str) -> Option<&T> {
+        self.0.binary_search_by(|(k, _)| (**k).cmp(name)).ok().map(|i| &self.0[i].1)
+    }
+
+    /// A later definition of the same name replaces the earlier one.
+    fn insert(&mut self, name: Str<'a>, value: T) {
+        match self.0.binary_search_by(|(k, _)| (**k).cmp(&*name)) {
+            Ok(i) => self.0[i].1 = value,
+            Err(i) => self.0.insert(i, (name, value)),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// The module's aliases, each already resolved against the earlier ones. Resolving works in
+/// place: only a node that names an alias is replaced, nothing else is copied, and a module
+/// without aliases is not walked at all.
 #[derive(Default)]
 struct Aliases<'a> {
-    attrs: BTreeMap<String, Attribute<'a>>,
-    types: BTreeMap<String, Type<'a>>,
+    attrs: Named<'a, Attribute<'a>>,
+    types: Named<'a, Type<'a>>,
     /// Location aliases (`#loc3 = loc("f":1:2)`), by name, as the text inside `loc(...)`.
-    locs: BTreeMap<String, String>,
+    locs: Named<'a, Str<'a>>,
 }
 
 impl<'a> Aliases<'a> {
     /// A location's raw text with every location alias in it spelled out.
-    fn loc(&self, raw: &Option<Str<'a>>) -> Option<Str<'a>> {
-        let raw = raw.as_ref()?;
+    fn loc(&self, raw: Option<Str<'a>>) -> Option<Str<'a>> {
+        let raw = raw?;
         if !raw.contains('#') || self.locs.is_empty() {
-            return Some(raw.clone());
+            return Some(raw);
         }
         let mut out = String::new();
-        let mut rest = &**raw;
+        let mut rest = &*raw;
         while let Some(i) = rest.find('#') {
             out.push_str(&rest[..i]);
             let tail = &rest[i + 1..];
@@ -1106,37 +1146,55 @@ impl<'a> Aliases<'a> {
         (ext.body.is_none() && ext.params.is_empty() && !ext.name.contains('.')).then_some(&*ext.name)
     }
 
-    fn ty(&self, t: &Type<'a>) -> Type<'a> {
+    /// No alias defined: nothing to resolve.
+    fn none(&self) -> bool {
+        self.attrs.is_empty() && self.types.is_empty()
+    }
+
+    fn ty(&self, t: &mut Type<'a>) {
+        if self.none() {
+            return;
+        }
+        if let Type::Extended(ext) = t
+            && let Some(hit) = Self::alias(ext).and_then(|n| self.types.get(n))
+        {
+            *t = hit.clone();
+            return;
+        }
         match t {
-            Type::Extended(ext) => match Self::alias(ext).and_then(|n| self.types.get(n)) {
-                Some(t) => t.clone(),
-                None => Type::Extended(self.ext(ext)),
-            },
-            Type::Complex(e) => Type::Complex(self.ty(e).into()),
-            Type::Tuple(ts) => Type::Tuple(self.tys(ts)),
-            Type::Function(f) => Type::Function(self.fn_ty(f)),
-            Type::Shaped(s) => Type::Shaped(Shaped { kind: s.kind, shape: s.shape.clone(), elem: self.ty(&s.elem).into(), extras: self.attrs(&s.extras) }),
-            t => t.clone(),
+            Type::Extended(ext) => self.ext(ext),
+            Type::Complex(e) => self.ty(e),
+            Type::Tuple(ts) => self.tys(ts),
+            Type::Function(f) => self.fn_ty(f),
+            Type::Shaped(s) => {
+                self.ty(&mut s.elem);
+                self.attrs(&mut s.extras);
+            }
+            _ => {}
         }
     }
 
-    fn tys(&self, ts: &[Type<'a>]) -> Vec<Type<'a>> {
-        ts.iter().map(|t| self.ty(t)).collect()
+    fn tys(&self, ts: &mut [Type<'a>]) {
+        ts.iter_mut().for_each(|t| self.ty(t));
     }
 
-    fn fn_ty(&self, f: &FunctionType<'a>) -> FunctionType<'a> {
-        FunctionType { inputs: self.tys(&f.inputs), results: self.tys(&f.results) }
+    fn fn_ty(&self, f: &mut FunctionType<'a>) {
+        self.tys(&mut f.inputs);
+        self.tys(&mut f.results);
     }
 
-    fn ext(&self, e: &Extended<'a>) -> Extended<'a> {
-        Extended { name: e.name.clone(), body: e.body.as_ref().map(|b| self.raw(b)), params: self.attrs(&e.params) }
+    fn ext(&self, e: &mut Extended<'a>) {
+        if let Some(b) = &mut e.body {
+            self.raw(b);
+        }
+        self.attrs(&mut e.params);
     }
 
     /// A dialect body's raw text with the aliases it names (`#loop_unroll`, `!t`) spelled out;
     /// string literals and dialect names (`#llvm.loop_unroll`) left alone.
-    fn raw(&self, body: &Str<'a>) -> Str<'a> {
-        if !body.contains(['#', '!']) || (self.attrs.is_empty() && self.types.is_empty()) {
-            return body.clone();
+    fn raw(&self, body: &mut Str<'a>) {
+        if !body.contains(['#', '!']) || self.none() {
+            return;
         }
         let ident = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '$' | '-');
         let mut out = String::new();
@@ -1173,139 +1231,216 @@ impl<'a> Aliases<'a> {
                 _ => {}
             }
         }
-        if at == 0 {
-            return body.clone();
+        if at != 0 {
+            out.push_str(&body[at..]);
+            *body = Cow::Owned(out);
         }
-        out.push_str(&body[at..]);
-        Cow::Owned(out)
     }
 
-    fn opt_ty(&self, t: &Option<Type<'a>>) -> Option<Type<'a>> {
-        t.as_ref().map(|t| self.ty(t))
+    fn opt_ty(&self, t: &mut Option<Type<'a>>) {
+        if let Some(t) = t {
+            self.ty(t);
+        }
     }
 
-    fn attr(&self, a: &Attribute<'a>) -> Attribute<'a> {
+    fn attr(&self, a: &mut Attribute<'a>) {
+        if self.none() {
+            return;
+        }
+        if let Attribute::Extended { ext, ty: None } = a
+            && let Some(hit) = Self::alias(ext).and_then(|n| self.attrs.get(n))
+        {
+            *a = hit.clone();
+            return;
+        }
         match a {
-            Attribute::Extended { ext, ty } => match (Self::alias(ext).and_then(|n| self.attrs.get(n)), ty) {
-                (Some(a), None) => a.clone(),
-                _ => Attribute::Extended { ext: self.ext(ext), ty: self.opt_ty(ty) },
-            },
-            Attribute::Int { lit, ty } => Attribute::Int { lit: lit.clone(), ty: self.opt_ty(ty) },
-            Attribute::Float { lit, ty } => Attribute::Float { lit: lit.clone(), ty: self.opt_ty(ty) },
-            Attribute::Str { lit, ty } => Attribute::Str { lit: lit.clone(), ty: self.opt_ty(ty) },
-            Attribute::Type(t) => Attribute::Type(self.ty(t)),
-            Attribute::Array(xs) => Attribute::Array(self.attrs(xs)),
-            Attribute::Dict(d) => Attribute::Dict(self.dict(d)),
-            Attribute::DenseArray { ty, values } => Attribute::DenseArray { ty: self.ty(ty), values: values.clone() },
-            Attribute::Builtin { name, body, ty } => Attribute::Builtin { name: name.clone(), body: body.clone(), ty: self.opt_ty(ty) },
-            a => a.clone(),
+            Attribute::Extended { ext, ty } => {
+                self.ext(ext);
+                self.opt_ty(ty);
+            }
+            Attribute::Int { ty, .. } | Attribute::Float { ty, .. } | Attribute::Str { ty, .. } | Attribute::Builtin { ty, .. } => self.opt_ty(ty),
+            Attribute::Type(t) | Attribute::DenseArray { ty: t, .. } => self.ty(t),
+            Attribute::Array(xs) => self.attrs(xs),
+            Attribute::Dict(d) => self.dict(d),
+            _ => {}
         }
     }
 
-    fn attrs(&self, xs: &[Attribute<'a>]) -> Vec<Attribute<'a>> {
-        xs.iter().map(|a| self.attr(a)).collect()
+    fn attrs(&self, xs: &mut [Attribute<'a>]) {
+        xs.iter_mut().for_each(|a| self.attr(a));
     }
 
-    fn dict(&self, d: &[NamedAttr<'a>]) -> Vec<NamedAttr<'a>> {
-        d.iter().map(|n| NamedAttr { name: n.name.clone(), value: n.value.as_ref().map(|v| self.attr(v)) }).collect()
+    fn dict(&self, d: &mut [NamedAttr<'a>]) {
+        if self.none() {
+            return;
+        }
+        for n in d {
+            if let Some(v) = &mut n.value {
+                self.attr(v);
+            }
+        }
     }
 }
 
-/// One name scope: a region's values and block labels.
+/// One name scope: a region's values and block labels. Names borrow the text; a result group's
+/// values are a range of `ids`. Filled while the scope's ops are placed, then [`Scope::seal`]ed
+/// (sorted by name) before any use in it is resolved.
 #[derive(Default)]
-struct Scope<'m> {
-    values: BTreeMap<&'m str, Vec<ValueId>>,
-    labels: BTreeMap<&'m str, BlockId>,
+struct Scope<'a> {
+    /// (name, start in `ids`, length).
+    values: Vec<(Str<'a>, u32, u32)>,
+    ids: Vec<ValueId>,
+    labels: Vec<(Str<'a>, BlockId)>,
 }
 
-/// The state of one import.
-struct Import<'m, 'a> {
+impl<'a> Scope<'a> {
+    fn define(&mut self, name: Str<'a>, ids: &[ValueId]) {
+        self.values.push((name, self.ids.len() as u32, ids.len() as u32));
+        self.ids.extend_from_slice(ids);
+    }
+
+    /// Sorted by name, a name defined twice keeping its last definition (as a map would).
+    fn seal(&mut self) {
+        Self::sort(&mut self.values, |v| &v.0);
+        Self::sort(&mut self.labels, |l| &l.0);
+    }
+
+    fn sort<T>(xs: &mut Vec<T>, key: impl Fn(&T) -> &Str<'a>) {
+        xs.reverse();
+        xs.sort_by(|a, b| key(a).cmp(key(b)));
+        xs.dedup_by(|b, a| key(a) == key(b));
+    }
+
+    fn values(&self, name: &str) -> Option<&[ValueId]> {
+        let i = self.values.binary_search_by(|(k, ..)| (**k).cmp(name)).ok()?;
+        let (_, start, len) = self.values[i];
+        Some(&self.ids[start as usize..(start + len) as usize])
+    }
+
+    fn label(&self, name: &str) -> Option<BlockId> {
+        self.labels.binary_search_by(|(k, _)| (**k).cmp(name)).ok().map(|i| self.labels[i].1)
+    }
+}
+
+/// What an op still has to give once its whole scope is known: taken out of its
+/// [`Operation`], which is gone by then.
+struct Pending<'a> {
+    id: OpId,
+    operands: Vec<Value<'a>>,
+    successors: Vec<Str<'a>>,
+    regions: Vec<Region<'a>>,
+}
+
+/// The state of one import. It owns the module and moves each piece into the body: names,
+/// attributes and types go over as they are (borrowing the text), and each op's text-side
+/// [`Operation`] is dropped as soon as it is in.
+struct Import<'a> {
     body: Body<'a>,
     aliases: Aliases<'a>,
-    scopes: Vec<Scope<'m>>,
+    scopes: Vec<Scope<'a>>,
 }
 
-impl<'m, 'a> Import<'m, 'a> {
-    fn scope(&mut self) -> &mut Scope<'m> {
+impl<'a> Import<'a> {
+    fn scope(&mut self) -> &mut Scope<'a> {
         self.scopes.last_mut().expect("no scope")
     }
 
     fn lookup(&self, v: &Value<'_>) -> Result<ValueId, Error> {
-        let pack = self.scopes.iter().rev().find_map(|s| s.values.get(&*v.name)).ok_or_else(|| format!("use of undefined value %{}", v.name))?;
+        let pack = self.scopes.iter().rev().find_map(|s| s.values(&v.name)).ok_or_else(|| format!("use of undefined value %{}", v.name))?;
         pack.get(v.index.unwrap_or(0) as usize).copied().ok_or_else(|| format!("%{}#{} is out of range", v.name, v.index.unwrap_or(0)).into())
     }
 
     /// The op without its operands and regions, results named in the current scope.
-    fn shell(&mut self, op: &'m Operation<'a>) -> Result<OpId, Error> {
-        if op.raw.is_some() {
-            return Err(format!("`{}`: custom form not understood (register its dialect, or print generic)", op.name).into());
+    fn shell(&mut self, op: Operation<'a>) -> Result<Pending<'a>, Error> {
+        let Operation { results, name, operands, successors, properties, regions, mut attributes, ty, loc, raw } = op;
+        if raw.is_some() {
+            return Err(format!("`{name}`: custom form not understood (register its dialect, or print generic)").into());
         }
         let a = &self.aliases;
-        let data = OpData {
-            // `<{...}>` is a dictionary; anything else is not a property
-            properties: match &op.properties {
-                Some(Attribute::Dict(d)) => a.dict(d),
-                _ => Vec::new(),
-            },
-            attributes: a.dict(&op.attributes),
-            loc: a.loc(&op.loc),
-            ..OpData::named(op.name.clone())
+        // `<{...}>` is a dictionary; anything else is not a property
+        let properties = match properties {
+            Some(Attribute::Dict(mut d)) => {
+                a.dict(&mut d);
+                d
+            }
+            _ => Vec::new(),
         };
-        let types = a.tys(&op.ty.results);
-        let id = self.body.create(data, &types);
-        let mut results = self.body[id].results.clone().into_iter();
-        for r in &op.results {
-            let pack: Vec<_> = results.by_ref().take(r.count.unwrap_or(1) as usize).collect();
-            self.scope().values.insert(&r.name, pack);
+        a.dict(&mut attributes);
+        let data = OpData { properties, attributes, loc: a.loc(loc), ..OpData::named(name) };
+        let mut types = ty.results;
+        a.tys(&mut types);
+        let n = types.len();
+        let id = self.body.adopt(data, types);
+        let named: usize = results.iter().map(|r| r.count.unwrap_or(1) as usize).sum();
+        if named != n {
+            return Err(format!("`{}`: {} result names for {} result types", self.body[id].name, results.len(), n).into());
         }
-        if results.next().is_some() || op.results.iter().map(|r| r.count.unwrap_or(1) as usize).sum::<usize>() != types.len() {
-            return Err(format!("`{}`: {} result names for {} result types", op.name, op.results.len(), types.len()).into());
+        let Import { body, scopes, .. } = self;
+        let scope = scopes.last_mut().expect("no scope");
+        let mut at = 0;
+        for r in results {
+            let k = r.count.unwrap_or(1) as usize;
+            scope.define(r.name, &body[id].results[at..at + k]);
+            at += k;
         }
-        Ok(id)
+        Ok(Pending { id, operands, successors, regions })
     }
 
     /// `ops` into `block`; returns them, to be finished once the whole scope is known.
-    fn place(&mut self, block: BlockId, ops: &'m [Operation<'a>], pending: &mut Vec<(OpId, &'m Operation<'a>)>) -> Result<(), Error> {
+    fn place(&mut self, block: BlockId, ops: Vec<Operation<'a>>, pending: &mut Vec<Pending<'a>>) -> Result<(), Error> {
+        pending.reserve(ops.len());
         for op in ops {
-            let id = self.shell(op)?;
-            self.body.insert(id, block, None);
-            pending.push((id, op));
+            let p = self.shell(op)?;
+            self.body.insert(p.id, block, None);
+            pending.push(p);
         }
         Ok(())
     }
 
     /// Operands, successors and regions of the ops of one scope.
-    fn finish(&mut self, pending: Vec<(OpId, &'m Operation<'a>)>) -> Result<(), Error> {
-        for (id, op) in pending {
-            let operands = op.operands.iter().map(|v| self.lookup(v)).collect::<Result<Vec<_>, _>>()?;
-            self.body.set_operands(id, operands);
-            let labels = &self.scopes.last().expect("no scope").labels;
-            self.body[id].successors = op.successors.iter().map(|s| labels.get(&**s).copied().ok_or_else(|| Error(format!("reference to an undefined block ^{s}")))).collect::<Result<_, _>>()?;
-            for r in &op.regions {
-                self.region(id, r)?;
+    fn finish(&mut self, pending: Vec<Pending<'a>>) -> Result<(), Error> {
+        self.scope().seal();
+        for p in pending {
+            let operands = p.operands.iter().map(|v| self.lookup(v)).collect::<Result<Vec<_>, _>>()?;
+            self.body.set_operands(p.id, operands);
+            let scope = self.scopes.last().expect("no scope");
+            self.body[p.id].successors = p.successors.iter().map(|s| scope.label(s).ok_or_else(|| Error(format!("reference to an undefined block ^{s}")))).collect::<Result<_, _>>()?;
+            for r in p.regions {
+                self.region(p.id, r)?;
             }
         }
         Ok(())
     }
 
-    fn region(&mut self, op: OpId, r: &'m Region<'a>) -> Result<RegionId, Error> {
+    fn region(&mut self, op: OpId, r: Region<'a>) -> Result<RegionId, Error> {
         let region = self.body.add_region(op);
         self.scopes.push(Scope::default());
         let mut pending = Vec::new();
-        for b in &r.blocks {
+        let lone = r.blocks.len() == 1;
+        for b in r.blocks {
             // `({ })` holds no block at all; mlirformat reads it as one empty, unlabeled block.
-            if r.blocks.len() == 1 && b.label.is_none() && b.args.is_empty() && b.ops.is_empty() {
+            if lone && b.label.is_none() && b.args.is_empty() && b.ops.is_empty() {
                 break;
             }
-            let args: Vec<_> = b.args.iter().map(|a| (self.aliases.ty(&a.ty), self.aliases.loc(&a.loc))).collect();
-            let block = self.body.add_block(region, &args);
-            if let Some(label) = &b.label {
-                self.scope().labels.insert(label, block);
+            let Block { label, args, ops } = b;
+            let Import { body, aliases, scopes } = self;
+            let mut names = Vec::with_capacity(args.len());
+            let block = body.add_block_with(
+                region,
+                args.into_iter().map(|BlockArg { name, mut ty, loc }| {
+                    names.push(name);
+                    aliases.ty(&mut ty);
+                    (ty, aliases.loc(loc))
+                }),
+            );
+            let scope = scopes.last_mut().expect("no scope");
+            if let Some(label) = label {
+                scope.labels.push((label, block));
             }
-            for (a, v) in b.args.iter().zip(self.body[block].args.clone()) {
-                self.scope().values.insert(&a.name, alloc::vec![v]);
+            for (name, v) in names.into_iter().zip(&body[block].args) {
+                scope.define(name, core::slice::from_ref(v));
             }
-            self.place(block, &b.ops, &mut pending)?;
+            self.place(block, ops, &mut pending)?;
         }
         self.finish(pending)?;
         self.scopes.pop();
@@ -1315,52 +1450,56 @@ impl<'m, 'a> Import<'m, 'a> {
 
 impl<'a> Body<'a> {
     /// The body of module `m` in context `ctx`: its one `builtin.module` becomes the root;
-    /// loose top-level ops are wrapped in one, as `mlir-opt` does.
-    pub fn import<'m>(ctx: crate::Ctx<'a>, m: &'m Module<'a>) -> Result<Self, Error> {
+    /// loose top-level ops are wrapped in one, as `mlir-opt` does. `m` is taken apart, not
+    /// copied: the body ends up holding its names, attributes and types.
+    pub fn import(ctx: crate::Ctx<'a>, m: Module<'a>) -> Result<Self, Error> {
         let mut aliases = Aliases::default();
         let mut items = Vec::new();
-        for item in &m.items {
+        let mut ops = Vec::new();
+        for item in m.items {
             match item {
                 // Location aliases are spelled out where used (so the IR prints them inline).
                 Item::AttrAlias { name, value: Attribute::Builtin { name: kw, body, .. } } if kw == "loc" => {
-                    let inner = body.strip_prefix('(').and_then(|b| b.strip_suffix(')')).unwrap_or(body);
-                    let resolved = aliases.loc(&Some(Cow::Owned(String::from(inner)))).map(String::from).unwrap_or_default();
-                    aliases.locs.insert(String::from(&**name), resolved);
-                    continue;
+                    let inner = match body {
+                        Cow::Borrowed(b) => Cow::Borrowed(b.strip_prefix('(').and_then(|b| b.strip_suffix(')')).unwrap_or(b)),
+                        Cow::Owned(b) => Cow::Owned(String::from(b.strip_prefix('(').and_then(|b| b.strip_suffix(')')).unwrap_or(&b))),
+                    };
+                    let resolved = aliases.loc(Some(inner)).unwrap_or_default();
+                    aliases.locs.insert(name, resolved);
                 }
                 Item::AttrAlias { name, value } => {
-                    let value = aliases.attr(value);
-                    aliases.attrs.insert(String::from(&**name), value);
+                    let mut resolved = value.clone();
+                    aliases.attr(&mut resolved);
+                    aliases.attrs.insert(name.clone(), resolved);
+                    items.push(Item::AttrAlias { name, value });
                 }
                 Item::TypeAlias { name, ty } => {
-                    let ty = aliases.ty(ty);
-                    aliases.types.insert(String::from(&**name), ty);
+                    let mut resolved = ty.clone();
+                    aliases.ty(&mut resolved);
+                    aliases.types.insert(name.clone(), resolved);
+                    items.push(Item::TypeAlias { name, ty });
                 }
-                Item::Metadata { .. } => {}
-                Item::Op(_) => continue,
+                Item::Metadata { .. } => items.push(item),
+                Item::Op(op) => ops.push(op),
             }
-            items.push(item.clone());
         }
-        let ops: Vec<&'m Operation<'a>> = m.items.iter().filter_map(|i| if let Item::Op(op) = i { Some(op) } else { None }).collect();
         let empty = Body { ctx, ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items, journal: crate::ir::Journal::default() };
         let mut im = Import { body: empty, aliases, scopes: alloc::vec![Scope::default()] };
-        match ops.as_slice() {
-            [module] if module.name == "builtin.module" => {
-                let root = im.shell(module)?;
-                im.body.root = root;
-                im.finish(alloc::vec![(root, *module)])?;
-            }
-            _ => {
-                let root = im.body.create(OpData::named("builtin.module"), &[]);
-                im.body.root = root;
-                let region = im.body.add_region(root);
-                let block = im.body.add_block(region, &[]);
-                let mut pending = Vec::new();
-                for op in ops {
-                    im.place(block, core::slice::from_ref(op), &mut pending)?;
-                }
-                im.finish(pending)?;
-            }
+        if let [module] = ops.as_slice()
+            && module.name == "builtin.module"
+        {
+            let module = ops.pop().expect("one op");
+            let p = im.shell(module)?;
+            im.body.root = p.id;
+            im.finish(alloc::vec![p])?;
+        } else {
+            let root = im.body.create(OpData::named("builtin.module"), &[]);
+            im.body.root = root;
+            let region = im.body.add_region(root);
+            let block = im.body.add_block(region, &[]);
+            let mut pending = Vec::new();
+            im.place(block, ops, &mut pending)?;
+            im.finish(pending)?;
         }
         Ok(im.body)
     }
@@ -1824,7 +1963,7 @@ impl<'a> Body<'a> {
     /// Text → body, with the context's dialects for custom forms.
     pub fn parse(ctx: crate::Ctx<'a>, src: &'a str) -> Result<Self, Error> {
         let m = ctx.opt.parse(src).map_err(|e| Error(format!("{e}")))?;
-        Body::import(ctx, &m)
+        Body::import(ctx, m)
     }
 }
 

@@ -21,7 +21,7 @@ fn asm_names() {
             if m.items.is_empty() || opt.show(&m).to_string().trim() != chunk.trim() {
                 continue;
             }
-            let Ok(body) = Body::import(ctx, &m) else { continue };
+            let Ok(body) = Body::import(ctx, m) else { continue };
             chunks += 1;
             // The input's aliases are inlined: printing makes them again.
             let named = body.show(&opt, false, |i| !matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. }));
