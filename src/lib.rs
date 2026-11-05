@@ -12,6 +12,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+mod aliases;
 #[cfg(feature = "dialect.bufferization")]
 mod bufferize;
 mod conversion;

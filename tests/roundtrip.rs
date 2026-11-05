@@ -1,20 +1,25 @@
 //! ⭐ `Module → Body → Module` over every generic fixture (the inputs as mlir-opt reads them, and
 //! what it prints after the passes): the IR must come back unchanged but for SSA names, and a
 //! second trip must change nothing at all. Printed generic, what mlir-opt printed comes back with
-//! its SSA names too.
+//! its SSA names and its aliases too.
 
 mod common;
 
 use common::Fixtures;
 use mlirpass::{Body, Ctx, Interfaces};
-use mlirpass::mlirformat::{Item, MlirOpt};
+use mlirpass::mlirformat::{Attribute, Item, MlirOpt};
+
+/// An alias definition: inlined on import, made again when printing.
+fn is_alias(i: &Item<'_>) -> bool {
+    matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. })
+}
 
 /// Text → body → text, generic.
 fn trip(ctx: Ctx<'_>, src: &str) -> Result<(String, bool), String> {
     let m = ctx.opt.parse(src).map_err(|e| format!("mlirformat: {e}"))?;
-    let aliased = m.items.iter().any(|i| matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. }));
+    let aliased = m.items.iter().any(is_alias);
     let body = Body::import(ctx, &m).map_err(|e| format!("import: {e}"))?;
-    Ok((body.show(ctx.opt, true, |_| true), aliased))
+    Ok((body.show_local_scope(ctx.opt, true, |i| !is_alias(i)), aliased))
 }
 
 #[test]
@@ -43,10 +48,19 @@ fn roundtrip() {
                         let line = Fixtures::anon(&direct).lines().zip(Fixtures::anon(&once).lines()).find(|(a, b)| a != b).map(|(a, b)| format!("\n  - {a}\n  + {b}")).unwrap_or_default();
                         return Err(format!("IR changed{line}"));
                     }
-                    if kind == "generic" && !aliased {
-                        let m = opt.parse(chunk).unwrap();
+                    // Only the builtin dialect's aliases are made again (not a dialect's own, not
+                    // locations').
+                    let m = opt.parse(chunk).unwrap();
+                    let builtin = m.items.iter().all(|i| match i {
+                        Item::AttrAlias { value: Attribute::Builtin { name, .. }, .. } => matches!(&**name, "affine_map" | "affine_set"),
+                        i => !is_alias(i),
+                    });
+                    if kind == "generic" && builtin {
                         let body = Body::import(ctx, &m).map_err(|e| format!("import: {e}"))?;
-                        let named = body.show(&opt, true, |_| true);
+                        let named = match run.args.iter().any(|a| a.trim_start_matches('-') == "mlir-print-local-scope") {
+                            true => body.show_local_scope(&opt, true, |i| !is_alias(i)),
+                            false => body.show(&opt, true, |i| !is_alias(i)),
+                        };
                         if named.trim() != direct.trim() {
                             let line = direct.lines().zip(named.lines()).find(|(a, b)| a != b).map(|(a, b)| format!("\n  - {a}\n  + {b}")).unwrap_or_default();
                             return Err(format!("names differ{line}"));

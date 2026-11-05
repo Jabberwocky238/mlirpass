@@ -745,6 +745,8 @@ pub struct Invocation {
     pub generic: bool,
     /// `-mlir-print-debuginfo`: locations are printed (else dropped).
     pub debuginfo: bool,
+    /// `-mlir-print-local-scope`: no aliases.
+    pub local_scope: bool,
     /// `-verify-diagnostics`: a chunk that expects an error may fail, and then prints nothing.
     pub verify_diagnostics: bool,
     pub input: Option<String>,
@@ -757,12 +759,12 @@ pub struct Invocation {
 }
 
 /// Flags that change nothing this crate does.
-const IGNORED: &[&str] = &["allow-unregistered-dialect", "verify-each", "mlir-print-local-scope", "mlir-print-value-users", "mlir-print-elementsattrs-with-hex-if-larger", "mlir-elide-elementsattrs-if-larger", "mlir-print-unique-ssa-ids", "mlir-very-unsafe-disable-verifier-on-parsing", "mlir-print-assume-verified", "mlir-print-skip-regions"];
+const IGNORED: &[&str] = &["allow-unregistered-dialect", "verify-each", "mlir-print-value-users", "mlir-print-elementsattrs-with-hex-if-larger", "mlir-elide-elementsattrs-if-larger", "mlir-print-unique-ssa-ids", "mlir-very-unsafe-disable-verifier-on-parsing", "mlir-print-assume-verified", "mlir-print-skip-regions"];
 
 impl Invocation {
     /// The `mlir-opt` arguments `args`, the passes named from `reg`.
     pub fn parse<S: AsRef<str>>(reg: &dyn crate::PassRegistry, args: &[S]) -> Result<Self, Error> {
-        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, verify_diagnostics: false, input: None, output: None, threading: true, #[cfg(feature = "std")] pool: crate::ThreadPool::default() };
+        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, local_scope: false, verify_diagnostics: false, input: None, output: None, threading: true, #[cfg(feature = "std")] pool: crate::ThreadPool::default() };
         let mut it = args.iter().map(AsRef::as_ref);
         while let Some(arg) = it.next() {
             let Some(flag) = arg.strip_prefix('-').filter(|f| !f.is_empty()) else {
@@ -776,6 +778,7 @@ impl Invocation {
                 "split-input-file" => inv.split = Some(value.unwrap_or(SPLIT_MARKER).into()),
                 "mlir-print-op-generic" => inv.generic = true,
                 "mlir-print-debuginfo" => inv.debuginfo = true,
+                "mlir-print-local-scope" => inv.local_scope = true,
                 "verify-diagnostics" => inv.verify_diagnostics = true,
                 "mlir-disable-threading" => inv.threading = false,
                 "pass-pipeline" | "p" => {
@@ -840,6 +843,16 @@ impl Invocation {
 
     /// The body as `mlir-opt` prints it under these flags.
     pub fn print(&self, body: &mut Body<'_>) -> String {
+        let mut text = self.print_op(body);
+        // `printTopLevelOperation` ends the op with a newline of its own; a local scope prints
+        // the op alone.
+        if !self.local_scope {
+            text.push('\n');
+        }
+        text
+    }
+
+    fn print_op(&self, body: &mut Body<'_>) -> String {
         let opt = body.ctx.opt;
         if !self.debuginfo {
             body.set_locs(body.root, None);
@@ -847,12 +860,16 @@ impl Invocation {
         let loc = |i: &Item<'_>| matches!(i, Item::AttrAlias { value: mlirformat::Attribute::Builtin { name, .. }, .. } if name == "loc");
         let kept = |i: &Item<'_>| self.debuginfo || !loc(i);
         let alias = |i: &Item<'_>| matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. });
-        let show = |keep: &dyn Fn(&Item<'_>) -> bool| body.show(opt, self.generic, |i| kept(i) && keep(i));
+        let show = |keep: &dyn Fn(&Item<'_>) -> bool| match self.local_scope {
+            true => body.show_local_scope(opt, self.generic, |i| kept(i) && keep(i)),
+            false => body.show(opt, self.generic, |i| kept(i) && keep(i)),
+        };
         if !body.items.iter().any(|i| kept(i) && alias(i)) {
             return show(&|_| true);
         }
-        // Aliases are inlined on import; keep only those raw dialect text still names.
-        let text = show(&|i| !alias(i));
+        // Aliases are inlined on import; keep only those raw dialect text still names (looked
+        // for before any alias is made again).
+        let text = body.show_local_scope(opt, self.generic, |i| kept(i) && !alias(i));
         let named = |sigil: char, name: &str| {
             let pat = format!("{sigil}{name}");
             text.match_indices(&pat).any(|(i, _)| !text[i + pat.len()..].starts_with(|c: char| c.is_ascii_alphanumeric() || "_$.-".contains(c)))

@@ -1687,12 +1687,37 @@ impl<'a> Body<'a> {
     /// in generic form), without building it. The printer reads each op from the body as it
     /// reaches it; `keep` says which of the body's module items to print (the root always).
     pub fn show(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
+        self.render(opt, generic, true, keep)
+    }
+
+    /// [`show`](Self::show) under `--mlir-print-local-scope`: no aliases, every attribute and
+    /// type spelled where it is used.
+    pub fn show_local_scope(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
+        self.render(opt, generic, false, keep)
+    }
+
+    fn render(&self, opt: &MlirOpt, generic: bool, aliased: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
         let names = Names::of(self, self.root, generic);
         let ex = Export { body: self, names: &names, deep: false };
         let mut m = self.module(ex.op(self.root));
         m.items.retain(|i| matches!(i, Item::Op(_)) || keep(i));
         let bare = MlirOpt::new();
-        if generic { &bare } else { opt }.show_from(&m, &ex).text().expect("printing into a string")
+        let text = if generic { &bare } else { opt }.show_from(&m, &ex).text().expect("printing into a string");
+        if !aliased {
+            return text;
+        }
+        // The aliases the C++ printer makes, past those still defined.
+        let taken = m.items.iter().filter_map(|i| match i {
+            Item::AttrAlias { name, .. } | Item::TypeAlias { name, .. } => Some(String::from(&**name)),
+            _ => None,
+        });
+        let mut aliases = crate::aliases::Aliases::new(taken);
+        if generic {
+            aliases.visit_generic(self, self.root);
+        } else {
+            aliases.visit(&text);
+        }
+        aliases.apply(&text)
     }
 }
 
