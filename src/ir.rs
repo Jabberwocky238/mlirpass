@@ -1344,51 +1344,63 @@ pub struct Names {
 }
 
 impl Names {
-    fn of(body: &Body<'_>) -> Self {
+    /// `SSANameState(root)`: regions are numbered off a stack, so the last one pushed first,
+    /// each after its whole parent region. `unique` (`shouldPrintUniqueSSAIDs`, which generic
+    /// form implies) keeps counting across regions; otherwise a region starts from the counters
+    /// its parent region ended with.
+    pub(crate) fn of(body: &Body<'_>, root: OpId, unique: bool) -> Self {
         let mut n = Names { values: alloc::vec![None; body.values.len()], labels: alloc::vec![None; body.blocks.len()], nums: Vec::new(), args: Vec::new(), bbs: Vec::new() };
-        let (mut max, mut next) = (Counters::default(), Counters::default());
-        let mut bbs = 0;
-        n.name_op(body, body.root, &mut next, &mut max, &mut bbs);
+        let (mut next, mut max, mut bbs) = (Counters::default(), Counters::default(), 0);
+        let mut stack: Vec<(RegionId, Counters)> = body[root].regions.iter().map(|r| (*r, next)).collect();
+        n.name_results(body, root, &mut next);
+        while let Some((r, saved)) = stack.pop() {
+            if !unique {
+                next = saved;
+            }
+            for (i, b) in body[r].blocks.iter().enumerate() {
+                n.labels[usize::from(*b)] = Some(i as u32);
+                bbs = bbs.max(i as u32 + 1);
+                for v in &body[*b].args {
+                    let (name, counter) = if i == 0 { (Name::Arg(next.arg), &mut next.arg) } else { (Name::Value(next.value, None), &mut next.value) };
+                    n.values[usize::from(*v)] = Some(name);
+                    *counter += 1;
+                }
+                for o in &body[*b].ops {
+                    n.name_results(body, *o, &mut next);
+                }
+            }
+            max = Counters { value: max.value.max(next.value), arg: max.arg.max(next.arg) };
+            stack.extend(body[r].blocks.iter().flat_map(|b| &body[*b].ops).flat_map(|o| &body[*o].regions).map(|nr| (*nr, next)));
+        }
+        max = Counters { value: max.value.max(next.value), arg: max.arg.max(next.arg) };
         n.nums = (0..max.value).map(|i| format!("{i}")).collect();
         n.args = (0..max.arg).map(|i| format!("arg{i}")).collect();
         n.bbs = (0..bbs).map(|i| format!("bb{i}")).collect();
         n
     }
 
-    fn name_op(&mut self, body: &Body<'_>, op: OpId, next: &mut Counters, max: &mut Counters, bbs: &mut u32) {
+    /// `numberValuesInOp`: one number for all of `op`'s results (`%N#k`).
+    fn name_results(&mut self, body: &Body<'_>, op: OpId, next: &mut Counters) {
         let results = &body[op].results;
-        if !results.is_empty() {
-            let multi = results.len() > 1;
-            for (i, r) in results.iter().enumerate() {
-                self.values[usize::from(*r)] = Some(Name::Value(next.value, multi.then_some(i as u32)));
-            }
-            next.value += 1;
-            max.value = max.value.max(next.value);
+        if results.is_empty() {
+            return;
         }
-        // Whatever the regions number is forgotten on the way out; the results above are not.
-        let after = *next;
-        if op == body.root || body.has(op, crate::Trait::IsIsolatedFromAbove) {
-            *next = Counters::default();
+        let multi = results.len() > 1;
+        for (i, r) in results.iter().enumerate() {
+            self.values[usize::from(*r)] = Some(Name::Value(next.value, multi.then_some(i as u32)));
         }
-        for r in &body[op].regions {
-            let outer = *next;
-            for (i, b) in body[*r].blocks.iter().enumerate() {
-                self.labels[usize::from(*b)] = Some(i as u32);
-                *bbs = (*bbs).max(i as u32 + 1);
-                for v in &body[*b].args {
-                    self.values[usize::from(*v)] = Some(if i == 0 { Name::Arg(next.arg) } else { Name::Value(next.value, None) });
-                    let counter = if i == 0 { &mut next.arg } else { &mut next.value };
-                    *counter += 1;
-                }
-                max.value = max.value.max(next.value);
-                max.arg = max.arg.max(next.arg);
-                for o in &body[*b].ops {
-                    self.name_op(body, *o, next, max, bbs);
-                }
-            }
-            *next = outer;
+        next.value += 1;
+    }
+
+    /// `printAsOperand`: `%N`, `%N#k`, `%argN`, or what MLIR prints for a value not named under
+    /// the root.
+    pub(crate) fn print(&self, v: ValueId) -> String {
+        match self.values.get(usize::from(v)).copied().flatten() {
+            Some(Name::Value(n, Some(k))) => format!("%{n}#{k}"),
+            Some(Name::Value(n, None)) => format!("%{n}"),
+            Some(Name::Arg(n)) => format!("%arg{n}"),
+            None => String::from("%<<UNKNOWN SSA VALUE>>"),
         }
-        *next = after;
     }
 }
 
@@ -1504,14 +1516,14 @@ impl<'a> From<&Body<'a>> for Module<'a> {
 impl<'a> Body<'a> {
     /// How [`export`](Self::export) names things.
     pub fn names(&self) -> Names {
-        Names::of(self)
+        Names::of(self, self.root, false)
     }
 
     /// ⭐ The body as text: what [`Module::from`] gives, shown with `opt` (`generic`: every op
     /// in generic form), without building it. The printer reads each op from the body as it
     /// reaches it; `keep` says which of the body's module items to print (the root always).
     pub fn show(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
-        let names = self.names();
+        let names = Names::of(self, self.root, generic);
         let ex = Export { body: self, names: &names, deep: false };
         let mut m = self.module(ex.op(self.root));
         m.items.retain(|i| matches!(i, Item::Op(_)) || keep(i));

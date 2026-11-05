@@ -1,6 +1,7 @@
 //! ⭐ `Module → Body → Module` over every generic fixture (the inputs as mlir-opt reads them, and
 //! what it prints after the passes): the IR must come back unchanged but for SSA names, and a
-//! second trip must change nothing at all.
+//! second trip must change nothing at all. Printed generic, what mlir-opt printed comes back with
+//! its SSA names too.
 
 mod common;
 
@@ -41,6 +42,15 @@ fn roundtrip() {
                     if !aliased && Fixtures::anon(&direct) != Fixtures::anon(&once) {
                         let line = Fixtures::anon(&direct).lines().zip(Fixtures::anon(&once).lines()).find(|(a, b)| a != b).map(|(a, b)| format!("\n  - {a}\n  + {b}")).unwrap_or_default();
                         return Err(format!("IR changed{line}"));
+                    }
+                    if kind == "generic" && !aliased {
+                        let m = opt.parse(chunk).unwrap();
+                        let body = Body::import(ctx, &m).map_err(|e| format!("import: {e}"))?;
+                        let named = body.show(&opt, true, |_| true);
+                        if named.trim() != direct.trim() {
+                            let line = direct.lines().zip(named.lines()).find(|(a, b)| a != b).map(|(a, b)| format!("\n  - {a}\n  + {b}")).unwrap_or_default();
+                            return Err(format!("names differ{line}"));
+                        }
                     }
                     Ok(())
                 });
