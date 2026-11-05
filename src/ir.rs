@@ -758,10 +758,22 @@ impl<'a> Body<'a> {
     pub fn place(&self, data: &mut OpData<'a>) {
         // One lookup for the op (none once it is in a body), not one per attribute (`inherent`).
         let Some(info) = data.info.or_else(|| self.ctx.opt.op_info(&data.name)) else { return };
+        let inherent = |a: &NamedAttr<'_>| info.inherent.contains(&&*a.name) || matches!(&*a.name, "operandSegmentSizes" | "resultSegmentSizes");
+        // Already where they belong (what the parser gives): each list sorted in place, nothing
+        // moved or allocated.
+        if data.properties.iter().all(inherent) && !data.attributes.iter().any(inherent) {
+            data.properties.sort_by(|a, b| a.name.cmp(&b.name));
+            data.attributes.sort_by(|a, b| a.name.cmp(&b.name));
+            return;
+        }
         let mut all = core::mem::take(&mut data.properties);
         all.append(&mut data.attributes);
         all.sort_by(|a, b| a.name.cmp(&b.name));
-        let (props, attrs): (Vec<_>, Vec<_>) = all.into_iter().partition(|a| info.inherent.contains(&&*a.name) || matches!(&*a.name, "operandSegmentSizes" | "resultSegmentSizes"));
+        let n = all.iter().filter(|a| inherent(a)).count();
+        let (mut props, mut attrs) = (Vec::with_capacity(n), Vec::with_capacity(all.len() - n));
+        for a in all {
+            if inherent(&a) { props.push(a) } else { attrs.push(a) }
+        }
         data.properties = props;
         data.attributes = attrs;
     }
@@ -1341,6 +1353,22 @@ struct Import<'a> {
 }
 
 impl<'a> Import<'a> {
+    /// How many ops, values, blocks and regions `ops` hold, nested ones included: what the
+    /// body's arenas are sized to up front, so that they do not grow by doubling (an arena
+    /// half empty at its last doubling).
+    fn census(ops: &[Operation<'_>], n: &mut [usize; 4]) {
+        for op in ops {
+            n[0] += 1;
+            n[1] += op.ty.results.len();
+            n[3] += op.regions.len();
+            for b in op.regions.iter().flat_map(|r| &r.blocks) {
+                n[2] += 1;
+                n[1] += b.args.len();
+                Self::census(&b.ops, n);
+            }
+        }
+    }
+
     fn scope(&mut self) -> &mut Scope<'a> {
         self.scopes.last_mut().expect("no scope")
     }
@@ -1483,7 +1511,19 @@ impl<'a> Body<'a> {
                 Item::Op(op) => ops.push(op),
             }
         }
-        let empty = Body { ctx, ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), items, journal: crate::ir::Journal::default() };
+        let mut n = [1, 0, 1, 1];
+        Import::census(&ops, &mut n);
+        let [nops, nvalues, nblocks, nregions] = n;
+        let empty = Body {
+            ctx,
+            ops: Vec::with_capacity(nops),
+            blocks: Vec::with_capacity(nblocks),
+            regions: Vec::with_capacity(nregions),
+            values: Vec::with_capacity(nvalues),
+            root: OpId(0),
+            items,
+            journal: crate::ir::Journal::default(),
+        };
         let mut im = Import { body: empty, aliases, scopes: alloc::vec![Scope::default()] };
         if let [module] = ops.as_slice()
             && module.name == "builtin.module"
