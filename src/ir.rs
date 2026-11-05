@@ -1129,7 +1129,55 @@ impl<'a> Aliases<'a> {
     }
 
     fn ext(&self, e: &Extended<'a>) -> Extended<'a> {
-        Extended { name: e.name.clone(), body: e.body.clone(), params: self.attrs(&e.params) }
+        Extended { name: e.name.clone(), body: e.body.as_ref().map(|b| self.raw(b)), params: self.attrs(&e.params) }
+    }
+
+    /// A dialect body's raw text with the aliases it names (`#loop_unroll`, `!t`) spelled out;
+    /// string literals and dialect names (`#llvm.loop_unroll`) left alone.
+    fn raw(&self, body: &Str<'a>) -> Str<'a> {
+        if !body.contains(['#', '!']) || (self.attrs.is_empty() && self.types.is_empty()) {
+            return body.clone();
+        }
+        let ident = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '$' | '-');
+        let mut out = String::new();
+        let mut chars = body.char_indices().peekable();
+        let mut at = 0;
+        while let Some((i, c)) = chars.next() {
+            match c {
+                '"' => {
+                    while let Some((_, d)) = chars.next() {
+                        match d {
+                            '\\' => {
+                                chars.next();
+                            }
+                            '"' => break,
+                            _ => {}
+                        }
+                    }
+                }
+                '#' | '!' => {
+                    let tail = &body[i + 1..];
+                    let end = tail.find(|c: char| !ident(c)).unwrap_or(tail.len());
+                    let name = &tail[..end];
+                    let value = match c {
+                        _ if name.contains('.') => None,
+                        '#' => self.attrs.get(name).map(|a| format!("{a}")),
+                        _ => self.types.get(name).map(|t| format!("{t}")),
+                    };
+                    if let Some(v) = value {
+                        out.push_str(&body[at..i]);
+                        out.push_str(&v);
+                        at = i + 1 + end;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if at == 0 {
+            return body.clone();
+        }
+        out.push_str(&body[at..]);
+        Cow::Owned(out)
     }
 
     fn opt_ty(&self, t: &Option<Type<'a>>) -> Option<Type<'a>> {

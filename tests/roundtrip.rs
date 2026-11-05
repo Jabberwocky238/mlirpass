@@ -48,11 +48,11 @@ fn roundtrip() {
                         let line = Fixtures::anon(&direct).lines().zip(Fixtures::anon(&once).lines()).find(|(a, b)| a != b).map(|(a, b)| format!("\n  - {a}\n  + {b}")).unwrap_or_default();
                         return Err(format!("IR changed{line}"));
                     }
-                    // Only the builtin dialect's aliases are made again (not a dialect's own, not
-                    // locations').
+                    // Attribute aliases are made again, but locations' (not printed here).
                     let m = opt.parse(chunk).unwrap();
                     let builtin = m.items.iter().all(|i| match i {
-                        Item::AttrAlias { value: Attribute::Builtin { name, .. }, .. } => matches!(&**name, "affine_map" | "affine_set"),
+                        Item::AttrAlias { value: Attribute::Builtin { name, .. }, .. } => &**name != "loc",
+                        Item::AttrAlias { .. } => true,
                         i => !is_alias(i),
                     });
                     if kind == "generic" && builtin {
