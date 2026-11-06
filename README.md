@@ -24,7 +24,7 @@ own target env (`tests/support/vkinfo.c`) is checked against the host's product 
 | part | what it is | upstream |
 |---|---|---|
 | `ir` | arena IR with use-def chains (an op's operands, results, successors and regions inline up to four, `Ids`); `Module` ⇄ IR; printed straight from the IR (`Body::show`, read through mlirformat's `Source`); cloning (`Mapping`) | `mlir/IR` |
-| `pass` | pass manager, `--pass-pipeline` syntax, the registry (`registry.gen.rs`), the `mlir-opt` command line (`Invocation`), the verifiers run after each pass, and `Threads` ([moremath](https://crates.io/crates/moremath)'s `ThreadMulti`, the executor mlirformat's `parse_in` / `print_in` take too): nested pipelines over isolated ops (functions) as parallel tasks | `mlir/Pass`, `OpToOpPassAdaptor`, `MlirOptMain` |
+| `pass` | pass manager, `--pass-pipeline` syntax, the registry (`registry.gen.rs`), the `mlir-opt` command line (`Invocation`), the verifiers run after each pass, and `Exec` ([moremath](https://crates.io/crates/moremath)'s `ThreadMulti`, or any `Executor` — the kind mlirformat's `parse_in` / `print_in` take too): nested pipelines over isolated ops (functions) as parallel tasks | `mlir/Pass`, `OpToOpPassAdaptor`, `MlirOptMain` |
 | `rewrite` | patterns, rewriter, greedy and walk drivers | `PatternMatch`, `GreedyPatternRewriteDriver`, `WalkPatternRewriteDriver` |
 | `region` | region simplification (unreachable blocks, region DCE, block merging) and dominance | `RegionUtils`, `Dominance` |
 | `conversion` | conversion target, type converter, dialect conversion, `#[convert]`s as patterns, the `DialectInterfaces` trait `convert-to-*` asks | `DialectConversion` |
@@ -167,8 +167,8 @@ one, byte for byte.
 Nested pipelines run in parallel: `PassManager::run_on(body, op, &ThreadMulti::default())` moves
 each op of a nested pipeline that is `IsolatedFromAbove` (`llvm.func(...)`, `func.func(...)`) into
 a body of its own and runs them as the pool's tasks; the result is the same as on one thread
-(`run`, `-mlir-disable-threading`: `ThreadMulti::from(1)`, no thread started). One `ThreadMulti`
-reads, imports, runs and prints. The command line threads by default, as `mlir-opt`.
+(`-mlir-disable-threading`: `ThreadMulti::from(1)`, starting no thread). `run_on`, `Body::parse_in` and `Body::show_in`
+take any moremath `Executor`: one pool reads, imports, runs and prints. The command line threads by default, as `mlir-opt`.
 
 Nothing is global. Pipelines name passes through a `PassRegistry` (`Invocation::parse(&passes, args)`);
 passes are registered by functions cascaded with `Passes::with`: `Passes::new().with(Passes::add_upstream).with(my_passes)`.

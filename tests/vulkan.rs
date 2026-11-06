@@ -20,7 +20,7 @@ use std::process::Command;
 
 use common::Fixtures;
 use mlirpass::mlirformat::{Attribute, Const, Scalar, Type};
-use mlirpass::{Body, Ctx, Emit, Interfaces, Invocation, OpId, PassManager, Passes, SpirvBinary, SpirvGlsl, ValueId};
+use mlirpass::{Body, Ctx, Emit, Interfaces, Invocation, OpId, Passes, SpirvBinary, SpirvGlsl, ThreadMulti, ValueId};
 
 const LAVAPIPE: &str = "/usr/share/vulkan/icd.d/lvp_icd.json";
 
@@ -363,7 +363,7 @@ fn vulkan_integration() {
             let pipeline = "--pass-pipeline=builtin.module(convert-gpu-to-spirv,spirv.module(spirv-lower-abi-attrs,spirv-update-vce))";
             let inv = Invocation::parse(&passes, &[pipeline]).map_err(|e| e.0)?;
             let root = body.root;
-            inv.pipeline.run_on(&mut body, root, &PassManager::one_thread()).map_err(|e| e.0)?;
+            inv.pipeline.run_on(&mut body, root, &ThreadMulti::default()).map_err(|e| e.0)?;
             let top = body.top_block(root);
             let module_of = |name: &str| body[top].ops.iter().copied().find(|o| body[*o].name == "spirv.module" && body[*o].get("sym_name").is_some_and(|a| matches!(a, Attribute::Str { lit, .. } if **lit == *format!("__spv__{name}"))));
             let main = body[top].ops.iter().copied().find(|o| body[*o].name == "func.func" && matches!(body[*o].get("sym_name"), Some(Attribute::Str { lit, .. }) if &**lit == "main")).ok_or("no @main")?;
@@ -476,7 +476,7 @@ fn cooperative_matrix_on_device() {
     let mut body = Body::parse(ctx, &text).unwrap();
     let inv = Invocation::parse(&passes, &["--pass-pipeline=builtin.module(convert-gpu-to-spirv,spirv.module(spirv-lower-abi-attrs,spirv-update-vce))"]).unwrap();
     let root = body.root;
-    inv.pipeline.run_on(&mut body, root, &PassManager::one_thread()).unwrap();
+    inv.pipeline.run_on(&mut body, root, &ThreadMulti::default()).unwrap();
     let top = body.top_block(root);
     let module = body[top].ops.iter().copied().find(|o| body[*o].name == "spirv.module").expect("a spirv.module");
     let words = SpirvBinary::default().emit(&body, module).unwrap();

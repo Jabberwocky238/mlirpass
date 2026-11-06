@@ -164,7 +164,7 @@ impl PassArgs {
         let doc = format!("`{}`.", self.name.value());
         let local = self.local.then(|| {
             quote! {
-                fn run_in<'a>(&self, body: &mut crate::Body<'a>, op: crate::OpId, exec: &crate::Threads) -> Result<(), mlirformat::Error> {
+                fn run_in<'a>(&self, body: &mut crate::Body<'a>, op: crate::OpId, exec: &crate::Exec<'_>) -> Result<(), mlirformat::Error> {
                     body.run_local(op, exec, &|b, o| crate::Run::run(self, b, o))
                 }
             }

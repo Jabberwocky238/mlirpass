@@ -69,7 +69,7 @@ impl<'a> Bench<'a> {
         let parse = t.elapsed();
         let t = Instant::now();
         let root = body.root;
-        inv.pipeline.run_on(&mut body, root, inv.executor()).map_err(|e| e.0)?;
+        inv.pipeline.run_on(&mut body, root, &inv.executor()).map_err(|e| e.0)?;
         let run = t.elapsed();
         let t = Instant::now();
         let out = inv.print(&mut body);

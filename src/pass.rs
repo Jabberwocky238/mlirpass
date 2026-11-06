@@ -36,7 +36,7 @@ pub trait Run {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error>;
 
     /// [`run`](Self::run), with threads to split the work over (`#[pass(.., local)]`).
-    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, _exec: &crate::Threads) -> Result<(), Error> {
+    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, _exec: &crate::Exec<'_>) -> Result<(), Error> {
         self.run(body, op)
     }
 
@@ -55,7 +55,7 @@ impl<T: PassDecl + Run + Send + Sync> Pass for T {
         Run::run(self, body, op)
     }
 
-    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &crate::Threads) -> Result<(), Error> {
+    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &crate::Exec<'_>) -> Result<(), Error> {
         Run::run_in(self, body, op, exec)
     }
 
@@ -102,7 +102,7 @@ pub trait Pass: Send + Sync {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error>;
 
     /// [`run`](Self::run), with threads to split the work over.
-    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, _exec: &crate::Threads) -> Result<(), Error> {
+    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, _exec: &crate::Exec<'_>) -> Result<(), Error> {
         self.run(body, op)
     }
 
@@ -276,20 +276,20 @@ impl PassManager {
 
     /// ⭐ Runs the pipeline on `op`, nested pipelines one op after the other.
     pub fn run(&self, body: &mut Body<'_>, op: OpId) -> Result<(), Error> {
-        self.run_on(body, op, &Self::one_thread())
-    }
-
-    /// An executor of one thread: every task on the calling thread, none started.
-    pub fn one_thread() -> crate::Threads {
         #[cfg(feature = "std")]
-        return crate::Threads::from(core::num::NonZeroUsize::MIN);
+        return self.run_on(body, op, &crate::ThreadMulti::default());
         #[cfg(not(feature = "std"))]
-        return crate::ThreadSingle;
+        self.run_on(body, op, &crate::ThreadSingle)
     }
 
     /// ⭐ Runs the pipeline on `op`; a nested pipeline's ops, when they are all isolated from
     /// above, each in a body of its own, as `exec`'s tasks (nested deeper: serially).
-    pub fn run_on(&self, body: &mut Body<'_>, op: OpId, exec: &crate::Threads) -> Result<(), Error> {
+    pub fn run_on<X: crate::Executor + Sync>(&self, body: &mut Body<'_>, op: OpId, exec: &X) -> Result<(), Error> {
+        self.run_exec(body, op, &crate::Exec::from(exec))
+    }
+
+    /// [`run_on`](Self::run_on), the executor erased.
+    fn run_exec(&self, body: &mut Body<'_>, op: OpId, exec: &crate::Exec<'_>) -> Result<(), Error> {
         if let Some(anchor) = &self.anchor
             && body[op].name != **anchor
         {
@@ -315,7 +315,7 @@ impl PassManager {
                         .collect();
                     if crate::Executor::threads(exec) < 2 || work.len() < 2 || !work.iter().all(|(c, ..)| body.isolated(*c)) {
                         for (c, _, m) in work {
-                            m.run_on(body, c, exec)?;
+                            m.run_exec(body, c, exec)?;
                         }
                         continue;
                     }
@@ -346,7 +346,7 @@ impl PassManager {
                                         (sub, at, None)
                                     }
                                 };
-                                *slot = Some((m.run_on(&mut sub, at, &PassManager::one_thread()), sub, at, parent));
+                                *slot = Some((m.run_exec(&mut sub, at, exec), sub, at, parent));
                             }) as crate::Task<'_>
                         })
                         .collect();
@@ -376,13 +376,13 @@ impl PassManager {
     /// it costs what was measured, and the threads share that. `None`: not worth it, so every op
     /// has run here; else how many did (the rest go to the threads).
     #[cfg(feature = "std")]
-    fn calibrate(body: &mut Body<'_>, work: &[(OpId, usize, &PassManager)], exec: &crate::Threads) -> Result<Option<usize>, Error> {
+    fn calibrate(body: &mut Body<'_>, work: &[(OpId, usize, &PassManager)], exec: &crate::Exec<'_>) -> Result<Option<usize>, Error> {
         let sizes: Vec<usize> = work.iter().map(|(c, ..)| body.op_count(*c)).collect();
         let total: usize = sizes.iter().sum();
         let (t, mut ran, mut first) = (std::time::Instant::now(), 0, 0);
         while first < work.len() && ran * 32 < total {
             let (c, _, m) = work[first];
-            m.run_on(body, c, exec)?;
+            m.run_exec(body, c, exec)?;
             ran += sizes[first];
             first += 1;
         }
@@ -390,7 +390,7 @@ impl PassManager {
         let w = crate::Executor::threads(exec) as f64;
         if work.len() - first < 2 || per_op * (w - 1.0) / w < MOVE_NS_PER_OP {
             for &(c, _, m) in &work[first..] {
-                m.run_on(body, c, exec)?;
+                m.run_exec(body, c, exec)?;
             }
             return Ok(None);
         }
@@ -398,7 +398,7 @@ impl PassManager {
     }
 
     #[cfg(not(feature = "std"))]
-    fn calibrate(_: &mut Body<'_>, _: &[(OpId, usize, &PassManager)], _: &crate::Threads) -> Result<Option<usize>, Error> {
+    fn calibrate(_: &mut Body<'_>, _: &[(OpId, usize, &PassManager)], _: &crate::Exec<'_>) -> Result<Option<usize>, Error> {
         Ok(Some(0))
     }
 
@@ -575,8 +575,8 @@ impl PassRegistry for Passes {
 //
 // ```text
 // Task       one unit of work: a closure, run once, on any thread
-// Threads    runs a batch of tasks to completion: moremath's `ThreadMulti` (a lock-free pool,
-// workers taking the next task; one thread: none started, every task in order here)
+// Executor   runs a batch of tasks to completion: moremath's `ThreadMulti` (a lock-free pool;
+// calls nest, so a nested pipeline's tasks split further), or any other, as an `Exec`
 // ```
 //
 // ```text
@@ -593,14 +593,52 @@ impl PassRegistry for Passes {
 /// ⭐ A unit of work: run once, on whichever thread the executor picks.
 pub type Task<'s> = Box<dyn FnOnce() + Send + 's>;
 
-/// ⭐ What passes run on: moremath's [`ThreadMulti`](crate::ThreadMulti) (its
-/// [`ThreadSingle`](crate::ThreadSingle) without `std`) — the executor mlirformat reads and prints
-/// on too, so one pool does all of it. One thread is `ThreadMulti::from(1)`
-/// ([`PassManager::one_thread`]): it starts none and runs every task here.
-#[cfg(feature = "std")]
-pub type Threads = crate::ThreadMulti;
-#[cfg(not(feature = "std"))]
-pub type Threads = crate::ThreadSingle;
+/// ⭐ The executor a pass is handed: whichever moremath [`Executor`](crate::Executor) the
+/// pipeline runs on ([`PassManager::run_on`] takes any), its type erased — a pass is a trait
+/// object. It is an `Executor` itself, to hand on (mlirformat's `parse_in`, [`Body::run_local`]).
+#[derive(Clone, Copy)]
+pub struct Exec<'x>(&'x dyn Fork);
+
+/// An executor behind a reference: its tasks boxed.
+trait Fork: Sync {
+    fn threads(&self) -> usize;
+
+    fn run<'s>(&self, tasks: Vec<Task<'s>>);
+}
+
+impl<X: crate::Executor + Sync> Fork for X {
+    #[inline]
+    fn threads(&self) -> usize {
+        crate::Executor::threads(self)
+    }
+
+    #[inline]
+    fn run<'s>(&self, tasks: Vec<Task<'s>>) {
+        self.execute(tasks);
+    }
+}
+
+impl<'x, X: crate::Executor + Sync> From<&'x X> for Exec<'x> {
+    #[inline]
+    fn from(x: &'x X) -> Self {
+        Exec(x)
+    }
+}
+
+impl crate::Executor for Exec<'_> {
+    #[inline]
+    fn threads(&self) -> usize {
+        self.0.threads()
+    }
+
+    /// Each task boxed, its output into a slot of its own.
+    fn execute<'x, 't, E: crate::Execute<'t>>(&'x self, tasks: Vec<E>) -> Vec<E::Output> {
+        let mut out: Vec<Option<E::Output>> = tasks.iter().map(|_| None).collect();
+        let boxed: Vec<Task<'_>> = out.iter_mut().zip(tasks).map(|(slot, t)| Box::new(move || *slot = Some(t.execute())) as Task<'_>).collect();
+        self.0.run(boxed);
+        out.into_iter().map(|o| o.expect("every task ran")).collect()
+    }
+}
 
 /// What a `local` pass runs on one op ([`Body::run_local`]).
 pub type LocalRun<'f> = dyn for<'x> Fn(&mut Body<'x>, OpId) -> Result<(), Error> + Sync + 'f;
@@ -733,8 +771,9 @@ pub struct Invocation {
     /// The threads (not `-mlir-disable-threading`): started the first time anything runs on them.
     #[cfg(feature = "std")]
     pub workers: std::sync::OnceLock<crate::ThreadMulti>,
-    /// One thread (`-mlir-disable-threading`).
-    pub alone: crate::Threads,
+    /// `-mlir-disable-threading`: a pool of one, starting no thread.
+    #[cfg(feature = "std")]
+    pub one: crate::ThreadMulti,
 }
 
 /// Flags that change nothing this crate does.
@@ -743,7 +782,7 @@ const IGNORED: &[&str] = &["allow-unregistered-dialect", "verify-each", "mlir-pr
 impl Invocation {
     /// The `mlir-opt` arguments `args`, the passes named from `reg`.
     pub fn parse<S: AsRef<str>>(reg: &dyn crate::PassRegistry, args: &[S]) -> Result<Self, Error> {
-        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, local_scope: false, verify_diagnostics: false, input: None, output: None, threading: true, #[cfg(feature = "std")] workers: std::sync::OnceLock::new(), alone: PassManager::one_thread() };
+        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, local_scope: false, verify_diagnostics: false, input: None, output: None, threading: true, #[cfg(feature = "std")] workers: std::sync::OnceLock::new(), #[cfg(feature = "std")] one: crate::ThreadMulti::from(core::num::NonZeroUsize::MIN) };
         let mut it = args.iter().map(AsRef::as_ref);
         while let Some(arg) = it.next() {
             let Some(flag) = arg.strip_prefix('-').filter(|f| !f.is_empty()) else {
@@ -804,7 +843,7 @@ impl Invocation {
     pub fn run_chunk(&self, ctx: Ctx<'_>, chunk: &str) -> Result<String, Error> {
         let mut body = self.read(ctx, chunk)?;
         let root = body.root;
-        match self.pipeline.run_on(&mut body, root, self.executor()) {
+        match self.pipeline.run_on(&mut body, root, &self.executor()) {
             Ok(()) => Ok(self.print(&mut body)),
             Err(_) if self.verify_diagnostics && chunk.contains("expected-error") => Ok(String::new()),
             Err(e) => Err(e),
@@ -821,12 +860,11 @@ impl Invocation {
     }
 
     /// What runs nested pipelines: a thread pool unless threading is off (or there is no `std`).
-    pub fn executor(&self) -> &crate::Threads {
+    pub fn executor(&self) -> crate::Exec<'_> {
         #[cfg(feature = "std")]
-        if self.threading {
-            return self.threads();
-        }
-        &self.alone
+        return crate::Exec::from(if self.threading { self.threads() } else { &self.one });
+        #[cfg(not(feature = "std"))]
+        crate::Exec::from(&crate::ThreadSingle)
     }
 
     /// [`Invocation::workers`], started if they are not yet.

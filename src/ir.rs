@@ -946,7 +946,7 @@ impl<'a> Body<'a> {
     /// threads: lent, and back ([`Body::lend`]); the ops it ran on. `f` stays inside its op (as
     /// a rewrite whose constants go into the op's own region): the module a lent op sits in is a
     /// stand-in. On one thread, or with fewer than two such ops, nothing: the caller does all.
-    pub fn for_each_child(&mut self, op: OpId, exec: &crate::Threads, f: &(dyn Fn(&mut Body<'a>, OpId) + Sync)) -> Vec<OpId> {
+    pub fn for_each_child<X: crate::Executor + Sync>(&mut self, op: OpId, exec: &X, f: &(dyn Fn(&mut Body<'a>, OpId) + Sync)) -> Vec<OpId> {
         let children = self.children(op);
         if crate::Executor::threads(exec) < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
             return Vec::new();
@@ -981,7 +981,7 @@ impl<'a> Body<'a> {
     /// declaration the module now has otherwise — is rolled back and done again here, as are the
     /// ops not lent. So whatever goes into the module goes in the order a serial run puts it.
     /// The first error in block order is the pass's. On one thread, `f` on `op`.
-    pub fn run_local(&mut self, op: OpId, exec: &crate::Threads, f: &crate::LocalRun<'_>) -> Result<(), Error> {
+    pub fn run_local<X: crate::Executor + Sync>(&mut self, op: OpId, exec: &X, f: &crate::LocalRun<'_>) -> Result<(), Error> {
         let children = self.children(op);
         if crate::Executor::threads(exec) < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
             return f(self, op);
@@ -2144,7 +2144,10 @@ impl<'a> Body<'a> {
     /// loose top-level ops are wrapped in one, as `mlir-opt` does. `m` is taken apart, not
     /// copied: the body ends up holding its names, attributes and types.
     pub fn import(ctx: crate::Ctx<'a>, m: Module<'a>) -> Result<Self, Error> {
-        Body::import_in(ctx, m, &mlirformat::ThreadSingle)
+        #[cfg(feature = "std")]
+        return Body::import_in(ctx, m, &crate::ThreadMulti::from(core::num::NonZeroUsize::MIN));
+        #[cfg(not(feature = "std"))]
+        Body::import_in(ctx, m, &crate::ThreadSingle)
     }
 
     /// Like [`import`](Self::import), each function (an isolated op in the root's block, with a
@@ -2478,7 +2481,10 @@ impl Names {
         namer.op(root);
         let bbs = namer.drain(stack);
         let max = namer.max.max(namer.next.value);
-        n.spell(max, bbs, &mlirformat::ThreadSingle);
+        #[cfg(feature = "std")]
+        n.spell(max, bbs, &crate::ThreadMulti::from(core::num::NonZeroUsize::MIN));
+        #[cfg(not(feature = "std"))]
+        n.spell(max, bbs, &crate::ThreadSingle);
         n
     }
 
@@ -2750,7 +2756,10 @@ impl<'a> Body<'a> {
     /// in generic form), without building it. The printer reads each op from the body as it
     /// reaches it; `keep` says which of the body's module items to print (the root always).
     pub fn show(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
-        self.render(opt, generic, true, keep, &mlirformat::ThreadSingle)
+        #[cfg(feature = "std")]
+        return self.render(opt, generic, true, keep, &crate::ThreadMulti::from(core::num::NonZeroUsize::MIN));
+        #[cfg(not(feature = "std"))]
+        self.render(opt, generic, true, keep, &crate::ThreadSingle)
     }
 
     /// [`show`](Self::show), the module's ops (its functions) printed in parallel on `x`.
@@ -2761,7 +2770,10 @@ impl<'a> Body<'a> {
     /// [`show`](Self::show) under `--mlir-print-local-scope`: no aliases, every attribute and
     /// type spelled where it is used.
     pub fn show_local_scope(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
-        self.render(opt, generic, false, keep, &mlirformat::ThreadSingle)
+        #[cfg(feature = "std")]
+        return self.render(opt, generic, false, keep, &crate::ThreadMulti::from(core::num::NonZeroUsize::MIN));
+        #[cfg(not(feature = "std"))]
+        self.render(opt, generic, false, keep, &crate::ThreadSingle)
     }
 
     /// [`show_local_scope`](Self::show_local_scope) on `x`, as [`show_in`](Self::show_in).

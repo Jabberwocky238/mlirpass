@@ -377,12 +377,15 @@ pub struct RemoveDeadValues {
 
 impl Run for RemoveDeadValues {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        self.run_in(body, op, &crate::PassManager::one_thread())
+        #[cfg(feature = "std")]
+        return self.run_in(body, op, &crate::Exec::from(&crate::ThreadMulti::default()));
+        #[cfg(not(feature = "std"))]
+        self.run_in(body, op, &crate::Exec::from(&crate::ThreadSingle))
     }
 
     /// The analyses solved function by function on `exec` ([`Solver::liveness_in`]); the cleanup as
     /// before.
-    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &crate::Threads) -> Result<(), Error> {
+    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &crate::Exec<'_>) -> Result<(), Error> {
         let alive = Solver::liveness_in(body, op, exec);
         let mut r = Rdv { body, alive: &alive, dead: BTreeSet::new(), cl: Cleanup::default() };
         r.walk(op, op);
