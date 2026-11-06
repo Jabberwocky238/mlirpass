@@ -1,4 +1,58 @@
-# Benchmark: mlirpass 0.7.1 (mlirformat 0.6.0) vs `mlir-opt` 22.1.8
+# Benchmark: mlirpass 0.8.1 (mlirformat 0.6.2) vs `mlir-opt` 22.1.8
+
+## 0.8.1: jemalloc, every CPU
+
+mlirformat 0.6.2's `std` makes jemalloc the global allocator, so mlirpass (and its command line)
+runs on it. Measured 2026-11-06, the machine of the setup below, again **not idle** (load average
+16–19): mlirpass 0.8.1 (`dfaabf3`), threads on in both tools, all 16 CPUs, no pinning. Same seed 5
+module and command lines as the sections below.
+
+In process (`fuzz/`: `bench --seed 5 --reps 3`); "total Nt" is parse + run Nt + print, against
+the threaded `mlir-opt` process:
+
+| pipeline | parse | run Nt | print | **total Nt** | **`mlir-opt` Nt** | speed-up | same |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
+| `func.func(canonicalize)` | 110 | 90 | 10 | **210** | 1,783 | **8.48×** | yes |
+| `func.func(cse)` | 109 | 18 | 57 | **185** | 1,978 | **10.71×** | yes |
+| `func.func(canonicalize,cse)` | 112 | 93 | 11 | **216** | 1,819 | **8.44×** | yes |
+| `sccp` | 128 | 398 | 110 | **636** | 5,299 | **8.34×** | yes |
+| `func.func(loop-invariant-code-motion)` | 112 | 11 | 101 | **224** | 2,196 | **9.82×** | yes |
+| `func.func(mem2reg)` | 134 | 9 | 117 | **259** | 2,282 | **8.80×** | yes |
+| `convert-scf-to-cf` | 115 | 50 | 113 | **278** | 2,882 | **10.37×** | yes |
+| `remove-dead-values` | 212 | 654 | 32 | **897** | crashes ¹ | — | — |
+| the `-to-llvm` pipeline | 189 | 780 | 356 | **1,325** | 5,986 | **4.52×** | yes |
+
+Process against process (best of 3, `--allow-unregistered-dialect -o /dev/null`, plus
+`--mlir-print-op-generic` when generic text goes in; peak RSS from `/usr/bin/time -f %M`):
+
+| pipeline | mlirpass | `mlir-opt` | **speed-up** | RSS mlirpass / `mlir-opt` |
+| --- | ---: | ---: | ---: | ---: |
+| `func.func(canonicalize)` | 430 | 1,780 | **4.14×** | 1,045 / 343 MB |
+| `func.func(cse)` | 400 | 1,970 | **4.93×** | 943 / 361 MB |
+| `func.func(canonicalize,cse)` | 430 | 1,790 | **4.16×** | 1,049 / 345 MB |
+| `sccp` | 790 | 3,760 | **4.76×** | 1,249 / 1,067 MB |
+| `func.func(loop-invariant-code-motion)` | 470 | 2,110 | **4.49×** | 1,014 / 377 MB |
+| `func.func(mem2reg)` | 460 | 2,090 | **4.54×** | 1,019 / 380 MB |
+| `convert-scf-to-cf` | 540 | 2,320 | **4.30×** | 1,366 / 439 MB |
+| the `-to-llvm` pipeline | 1,160 | 5,690 | **4.91×** | 2,720 / 819 MB |
+| custom in, `canonicalize,cse` | 500 | 1,420 | **2.84×** | 1,031 / 282 MB |
+| custom in, the `-to-llvm` pipeline | 1,800 | 5,460 | **3.03×** | 2,621 / 762 MB |
+
+No pipeline, seed 1's module (mlirformat's `BENCHMARK.md`): custom ⇒ custom 1,300 against 2,100 ms
+(1.62×), custom ⇒ generic 980 / 2,440 (2.49×), generic ⇒ custom 1,490 / 2,840 (1.91×), generic ⇒
+generic 520 / 3,000 (5.77×).
+
+- **Every pipeline is 4.1–4.9× faster than threaded `mlir-opt` as a whole process** with generic
+  text in (2.8–3.0× with custom text in), and 8.3–10.7× in process (the `-to-llvm` pipeline
+  4.5×). Parsing on 16 threads is 110–130 ms where glibc took ~390.
+- **Not yet explained**: `sccp` (run Nt 398 ms) and the `-to-llvm` pipeline (780 ms) are slower
+  than 0.7.1 under jemalloc (285 and 374 ms, table below). Either 0.8.0's linked-list blocks or
+  this load; not re-measured on an idle machine.
+- **Memory**: the peak is 2.7–3.6× `mlir-opt`'s (1.2× for sccp); the `-to-llvm` pipeline peaks at
+  2,720 MB (0.7.1: 2,244 under glibc, 2,304 under jemalloc).
+
+The sections below are 0.7.1's (glibc unless a row says jemalloc).
+
 
 One big random module run through each pipeline, the same input in both tools: in process phase
 by phase, as a process against a process (with peak memory), across core counts and module
@@ -77,7 +131,7 @@ round's work (0.7.0 minus its hot-spot fixes), this one, and this one under jema
 - `remove-dead-values`' cleanup (its walk, the apply, the final canonicalization) was serial
   (~510 ms): now function by function.
 - What is left is glibc malloc: parsing (import, mostly) takes 386–397 ms on 16 threads with
-  glibc and 112–120 ms with jemalloc. mlirpass leaves the allocator to the program that links it.
+  glibc and 112–120 ms with jemalloc. Since 0.8.1 jemalloc is the global allocator.
 
 ### Process against process
 
@@ -154,8 +208,8 @@ modules (as in 0.5.0). The 4,000 and 8,000 rows are best of 1.
   since 0.6.0, which costs the serial run some of 0.5.0's lead.
 - **glibc malloc is now the largest cost left**: under jemalloc canonicalize,cse runs in 400 ms
   as a process on 16 CPUs (5.45× `mlir-opt`), the `-to-llvm` pipeline in 1,150 (4.77×). Parsing
-  on 16 threads goes from ~390 to ~115 ms. mlirpass does not pick the allocator; the command line
-  links glibc's.
+  on 16 threads goes from ~390 to ~115 ms. Since 0.8.1 (mlirformat 0.6.2) jemalloc is the
+  global allocator (first section).
 - **The custom form is still slower than the generic one** to read and print, and slower than
   `mlir-opt` on one thread; on 16 threads custom in ⇒ custom out is 0.88× (1.53× with jemalloc).
 - **Memory**: the peak is 2.1–2.9× `mlir-opt`'s (1.0× for sccp), and threads add little now

@@ -199,12 +199,11 @@ python3 scripts/fixtures.py --llvm $LLVM --mlir-opt $LLVM_BUILD/bin/mlir-opt
 
 ## Performance
 
-Against `mlir-opt` 22.1.8 on a 54 MB module (`BENCHMARK.md`), parse + passes + print on 16
-threads against threaded `mlir-opt`: the `-to-llvm` pipeline 4.68×, sccp 4.18×, mem2reg 4.14×,
-cse 4.09×, convert-scf-to-cf 3.85×, LICM 3.84×, canonicalize + cse 3.23×; as whole processes on
-16 CPUs 2.1–3.0×, on one thread 0.96–1.44×. With jemalloc instead of glibc malloc, a process
-runs canonicalize + cse 5.45× and the `-to-llvm` pipeline 4.77× faster than `mlir-opt`. Peak
-memory is 2.1–2.9× `mlir-opt`'s (1.0× for sccp).
+Against `mlir-opt` 22.1.8 on a 54 MB module (`BENCHMARK.md`), 16 CPUs, both threaded, jemalloc
+(mlirformat's global allocator with `std` since 0.8.1): as whole processes every pipeline is
+4.1–4.9× faster (canonicalize + cse 430 against 1,790 ms, the `-to-llvm` pipeline 1,160 against
+5,690 ms; 2.8–3.0× with custom text in); parse + passes + print in process 8.3–10.7×, the
+`-to-llvm` pipeline 4.5×. Peak memory is 2.7–3.6× `mlir-opt`'s (1.2× for sccp).
 
 ## License
 
