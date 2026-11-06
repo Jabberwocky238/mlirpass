@@ -2667,11 +2667,12 @@ impl<'n, 'a> Export<'n, 'a> {
     }
 
     /// The name of `v`; a value outside the IR (a dangling use, which is a bug) prints as
-    /// `%INVALIDn` so that it shows.
+    /// `%INVALID` so that it shows.
     fn value(&self, v: ValueId) -> Value<'n> {
         match *self.names.values.get(v) {
             Some(Name { head, index }) => Value { name: Cow::Borrowed(self.names.head(head, v.seg())), index },
-            None => Value { name: Cow::Owned(format!("INVALID{}", v.0)), index: None },
+            // Its id says where it sits in memory, which the threads change: not printed.
+            None => Value { name: Cow::Borrowed("INVALID"), index: None },
         }
     }
 
