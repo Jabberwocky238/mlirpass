@@ -942,6 +942,37 @@ impl<'a> Body<'a> {
         }
     }
 
+    /// ⭐ `f` on each op of `op`'s blocks that has a seg of its own (a function), on `exec`'s
+    /// threads: lent, and back ([`Body::lend`]); the ops it ran on. `f` stays inside its op (as
+    /// a rewrite whose constants go into the op's own region): the module a lent op sits in is a
+    /// stand-in. On one thread, or with fewer than two such ops, nothing: the caller does all.
+    pub fn for_each_child(&mut self, op: OpId, exec: &dyn crate::Executor, f: &(dyn Fn(&mut Body<'a>, OpId) + Sync)) -> Vec<OpId> {
+        let children = self.children(op);
+        if exec.width() < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
+            return Vec::new();
+        }
+        let lent: Vec<(OpId, Body<'a>, Option<BlockId>)> = children.iter().filter_map(|c| self.lend(*c).map(|(sub, parent)| (*c, sub, parent))).collect();
+        let mut done: Vec<Option<(OpId, Body<'a>, Option<BlockId>)>> = lent.iter().map(|_| None).collect();
+        let tasks = done
+            .iter_mut()
+            .zip(lent)
+            .map(|(slot, (c, mut sub, parent))| {
+                alloc::boxed::Box::new(move || {
+                    f(&mut sub, c);
+                    *slot = Some((c, sub, parent));
+                }) as crate::Task<'_>
+            })
+            .collect();
+        exec.execute(tasks);
+        let mut ran = Vec::with_capacity(done.len());
+        for (c, sub, parent) in done.into_iter().map(|d| d.expect("every task ran")) {
+            debug_assert_eq!(sub[sub.top_block(sub.root)].ops[..], [c], "a lent op's work stays in it");
+            self.unlend(c, sub, parent);
+            ran.push(c);
+        }
+        ran
+    }
+
     /// ⭐ A local pass (`#[pass(.., local)]`: on a module, the same as on each op of its block in
     /// turn, the module itself left alone) run by `f` on `op`'s ops: those with a seg of their
     /// own lent to `exec`'s threads, each under a checkpoint, knowing the module's symbols as

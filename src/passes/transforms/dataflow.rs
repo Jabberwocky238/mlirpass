@@ -107,6 +107,11 @@ impl<'b, 'a> Solver<'b, 'a> {
         self.lat.get(v).clone()
     }
 
+    /// What the analysis found, the body let go.
+    pub fn lattice(self) -> crate::IdVec<ValueId, Cv<'a>> {
+        self.lat
+    }
+
     fn join(&mut self, v: ValueId, c: &Cv<'a>) {
         let old = self.get(v);
         let new = old.join(c);

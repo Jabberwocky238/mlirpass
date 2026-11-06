@@ -9,19 +9,20 @@ use crate::pass;
 use mlirformat::{Attribute, Error, Type};
 
 use super::dataflow::{Cv, Solver};
-use crate::{Body, BlockId, OpId, RegionId, ValueId};
+use crate::{Body, BlockId, IdVec, OpId, RegionId, Run, ValueId};
 
 /// The rewrite: constants replace what the analysis proved constant.
 struct Rewrite<'s, 'b, 'a> {
-    s: &'s mut Solver<'b, 'a>,
+    body: &'b mut Body<'a>,
+    lat: &'s IdVec<ValueId, Cv<'a>>,
     /// `OperationFolder`'s table: per insertion region, (dialect, value, type) ⇒ the constant.
     folder: BTreeMap<RegionId, Vec<(String, Attribute<'a>, Type<'a>, ValueId)>>,
 }
 
 impl Rewrite<'_, '_, '_> {
     fn replace(&mut self, v: ValueId, block: BlockId) -> bool {
-        let Cv::Known(attr, dialect) = self.s.get(v) else { return false };
-        let body = &mut *self.s.body;
+        let Cv::Known(attr, dialect) = self.lat.get(v).clone() else { return false };
+        let body = &mut *self.body;
         let ty = body[v].ty.clone();
         let region = body.insertion_region(block);
         let table = self.folder.entry(region).or_default();
@@ -50,42 +51,87 @@ impl Rewrite<'_, '_, '_> {
                 r
             }
         };
-        self.s.body.replace_all_uses(v, c);
+        self.body.replace_all_uses(v, c);
         true
     }
 
-    fn run(&mut self, top: OpId) {
+    /// The blocks of `top`'s regions and below, as upstream walks them (a stack), past the ops
+    /// in `done` (rewritten already, each on its own).
+    fn run(&mut self, top: OpId, done: &[OpId]) {
         let mut work: Vec<BlockId> = Vec::new();
-        let add = |body: &Body<'_>, work: &mut Vec<BlockId>, op: OpId| {
-            for r in &body[op].regions {
-                work.extend(body[*r].blocks.iter().rev());
-            }
-        };
-        add(self.s.body, &mut work, top);
+        Self::add(self.body, &mut work, top);
+        self.drain(work, done);
+    }
+
+    /// `op` itself, as the walk meets it in its block, then the blocks under it: what [`run`](Self::run) does for one op of
+    /// the top's block.
+    fn run_op(&mut self, op: OpId) {
+        let Some(block) = self.body[op].parent else { return };
+        if self.op(op, block) {
+            let mut work = Vec::new();
+            Self::add(self.body, &mut work, op);
+            self.drain(work, &[]);
+        }
+    }
+
+    fn add(body: &Body<'_>, work: &mut Vec<BlockId>, op: OpId) {
+        for r in &body[op].regions {
+            work.extend(body[*r].blocks.iter().rev());
+        }
+    }
+
+    fn drain(&mut self, mut work: Vec<BlockId>, done: &[OpId]) {
         while let Some(block) = work.pop() {
-            for op in self.s.body[block].ops.clone() {
-                let results = self.s.body[op].results.clone();
-                let mut all = !results.is_empty();
-                for r in results {
-                    all &= self.replace(r, block);
-                }
-                if all && self.s.body.would_be_trivially_dead(op) {
-                    self.s.body.erase(op);
+            for op in self.body[block].ops.clone() {
+                if done.binary_search(&op).is_ok() {
                     continue;
                 }
-                add(self.s.body, &mut work, op);
+                if self.op(op, block) {
+                    Self::add(self.body, &mut work, op);
+                }
             }
-            for a in self.s.body[block].args.clone() {
+            for a in self.body[block].args.clone() {
                 self.replace(a, block);
             }
         }
     }
+
+    /// `op`'s results replaced where constant, `op` erased when that leaves it dead; whether it
+    /// is still there (its blocks to walk).
+    fn op(&mut self, op: OpId, block: BlockId) -> bool {
+        let results = self.body[op].results.clone();
+        let mut all = !results.is_empty();
+        for r in results {
+            all &= self.replace(r, block);
+        }
+        if all && self.body.would_be_trivially_dead(op) {
+            self.body.erase(op);
+            return false;
+        }
+        true
+    }
 }
 
+/// `sccp`.
 #[pass("sccp")]
-pub fn sccp<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-    let mut s = Solver::new(body, op);
-    s.run();
-    Rewrite { s: &mut s, folder: BTreeMap::new() }.run(op);
-    Ok(())
+pub struct Sccp;
+
+impl Run for Sccp {
+    fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+        self.run_in(body, op, &crate::Serial)
+    }
+
+    /// The analysis over the whole of `op`; the rewrite, which needs only what it found, op by op of
+    /// `op`'s block, each function on its own thread ([`Body::for_each_child`]): a function's
+    /// constants go into its own region.
+    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &dyn crate::Executor) -> Result<(), Error> {
+        let mut s = Solver::new(body, op);
+        s.run();
+        let lat = s.lattice();
+        let lat = &lat;
+        let mut done = body.for_each_child(op, exec, &|b: &mut Body<'a>, c| Rewrite { body: b, lat, folder: BTreeMap::new() }.run_op(c));
+        done.sort_unstable();
+        Rewrite { body, lat, folder: BTreeMap::new() }.run(op, &done);
+        Ok(())
+    }
 }
