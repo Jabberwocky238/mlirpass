@@ -889,20 +889,20 @@ impl<'b, 'a> Solver<'b, 'a> {
     /// through each callable's callers and returns ([`Boundary`]) as the last round left them.
     /// Round after round, what changed in those is fed back to what reads it, until nothing
     /// does: the analyses are monotone, so this is the fixed point a serial run reaches.
-    pub fn solve_in<X: crate::Executor + Sync>(body: &'b mut Body<'a>, top: OpId, exec: &X) -> crate::IdVec<ValueId, Cv<'a>> {
+    pub fn solve_in<X: moremath::Executor + Sync>(body: &'b mut Body<'a>, top: OpId, exec: &X) -> crate::IdVec<ValueId, Cv<'a>> {
         Self::solve(body, top, exec, false).0
     }
 
     /// [`solve_in`](Self::solve_in), then liveness ([`run_liveness`](Self::run_liveness)) the
     /// same way — through each callable's live entry arguments and the results its calls use —
     /// and the values found live.
-    pub fn liveness_in<X: crate::Executor + Sync>(body: &'b mut Body<'a>, top: OpId, exec: &X) -> crate::IdVec<ValueId, bool> {
+    pub fn liveness_in<X: moremath::Executor + Sync>(body: &'b mut Body<'a>, top: OpId, exec: &X) -> crate::IdVec<ValueId, bool> {
         Self::solve(body, top, exec, true).1
     }
 
-    fn solve<X: crate::Executor + Sync>(body: &'b mut Body<'a>, top: OpId, exec: &X, liveness: bool) -> (crate::IdVec<ValueId, Cv<'a>>, crate::IdVec<ValueId, bool>) {
+    fn solve<X: moremath::Executor + Sync>(body: &'b mut Body<'a>, top: OpId, exec: &X, liveness: bool) -> (crate::IdVec<ValueId, Cv<'a>>, crate::IdVec<ValueId, bool>) {
         let children = body.children(top);
-        if crate::Executor::threads(exec) < 2 || children.iter().filter(|c| body.lendable(**c)).count() < 2 {
+        if moremath::Executor::threads(exec) < 2 || children.iter().filter(|c| body.lendable(**c)).count() < 2 {
             let mut s = Solver::new(body, top);
             s.run();
             if liveness {
@@ -977,7 +977,7 @@ impl<'b, 'a> Solver<'b, 'a> {
                     }) as crate::Task<'_>
                 })
                 .collect();
-            crate::Executor::execute(exec, tasks);
+            moremath::Executor::execute(exec, tasks);
             units = slots.into_iter().map(|s| s.expect("every task ran")).collect();
             main.drain();
             // What they all tell: the callers and returns of every callable.
@@ -1046,7 +1046,7 @@ impl<'b, 'a> Solver<'b, 'a> {
     /// calls use as the last round left them; what changed goes back to the calls (arguments)
     /// and the returns (results) that read it, until nothing does.
     #[allow(clippy::too_many_arguments)]
-    fn liveness_rounds<X: crate::Executor + Sync>(main: &mut Self, units: &mut Vec<Self>, top: OpId, lent: &[(OpId, Option<BlockId>)], owner: &BTreeMap<u32, usize>, calls: &BTreeMap<OpId, CallInfo>, callers: &BTreeMap<OpId, Callers<'a>>, exec: &X) {
+    fn liveness_rounds<X: moremath::Executor + Sync>(main: &mut Self, units: &mut Vec<Self>, top: OpId, lent: &[(OpId, Option<BlockId>)], owner: &BTreeMap<u32, usize>, calls: &BTreeMap<OpId, CallInfo>, callers: &BTreeMap<OpId, Callers<'a>>, exec: &X) {
         let owner_of = |x: OpId| owner.get(&crate::Id::seg(x)).copied();
         let mut by_callee: BTreeMap<OpId, Vec<OpId>> = BTreeMap::new();
         for (call, info) in calls {
@@ -1077,7 +1077,7 @@ impl<'b, 'a> Solver<'b, 'a> {
                     }) as crate::Task<'_>
                 })
                 .collect();
-            crate::Executor::execute(exec, tasks);
+            moremath::Executor::execute(exec, tasks);
             *units = slots.into_iter().map(|s| s.expect("every task ran")).collect();
             main.drain_backward();
             // What the parts say: each callee's live entry arguments, each callable's live

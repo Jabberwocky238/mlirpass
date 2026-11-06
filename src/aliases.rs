@@ -208,7 +208,7 @@ impl Aliases {
     /// runs' order, which is the order a serial visit meets them in. The formatting of every
     /// type and attribute, the cost, is the runs'; what is visited again is one text per
     /// aliased attribute.
-    pub(crate) fn visit_generic_in<X: mlirformat::Executor + Sync>(&mut self, b: &Body<'_>, op: OpId, x: &X) {
+    pub(crate) fn visit_generic_in<X: moremath::Executor + Sync>(&mut self, b: &Body<'_>, op: OpId, x: &X) {
         for r in &b[op].regions {
             for blk in &b[*r].blocks {
                 for a in &b[*blk].args {
@@ -241,7 +241,7 @@ impl Aliases {
 
     /// [`visit`](Self::visit) of `text`, its lines cut into runs scanned in parallel on `x`
     /// (no aliased attribute spans a line).
-    pub(crate) fn visit_in<X: mlirformat::Executor + Sync>(&mut self, text: &str, x: &X) {
+    pub(crate) fn visit_in<X: moremath::Executor + Sync>(&mut self, text: &str, x: &X) {
         let runs: Vec<_> = Self::lines(text, x.threads() * 4)
             .map(|run| {
                 move || {
@@ -327,7 +327,7 @@ impl Aliases {
     /// visiting order), numbered; their definitions first, each with the aliases inside it, then
     /// `text` with each aliased attribute by its alias, its lines cut into runs replaced in
     /// parallel on `x`.
-    pub(crate) fn apply<X: mlirformat::Executor + Sync>(mut self, text: String, x: &X) -> String {
+    pub(crate) fn apply<X: moremath::Executor + Sync>(mut self, text: String, x: &X) -> String {
         if self.seen.is_empty() {
             return text;
         }

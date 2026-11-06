@@ -26,10 +26,13 @@ libm = "0.2"
 # An op's operands, results, successors and regions, a block's arguments, a value's uses: a few
 # inline, no allocation each (`ir::Ids`).
 smallvec = { version = "1.15", default-features = false, features = ["union", "const_generics"] }
+# What runs tasks: a pipeline runs on any `moremath::Executor` (`ThreadMulti` by default), the kind
+# mlirformat's `parse_in` / `print_in` take too.
+moremath = { version = "0.2.1", default-features = false, features = ["alloc"] }
 
 [features]
 default = ["std", "cli", "all-dialects", "all-targets"]
-std = ["mlirformat/std", "serde/std", "thiserror/std"]
+std = ["mlirformat/std", "moremath/std", "serde/std", "thiserror/std"]
 # The `mlirpass` command line (`cargo install mlirpass`).
 cli = ["std"]
 # One feature per dialect: its op interfaces, folds, canonicalization patterns, its own

@@ -119,9 +119,9 @@ pub struct Sccp;
 impl Run for Sccp {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         #[cfg(feature = "std")]
-        return self.run_in(body, op, &crate::Exec::from(&crate::ThreadMulti::default()));
+        return self.run_in(body, op, &crate::Exec::from(&moremath::ThreadMulti::default()));
         #[cfg(not(feature = "std"))]
-        self.run_in(body, op, &crate::Exec::from(&crate::ThreadSingle))
+        self.run_in(body, op, &crate::Exec::from(&moremath::ThreadSingle))
     }
 
     /// The analysis over the whole of `op`; the rewrite, which needs only what it found, op by op of

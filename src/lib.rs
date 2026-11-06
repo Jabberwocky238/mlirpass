@@ -47,9 +47,4 @@ pub use targets::*;
 /// The proc macros (`mlirpass-macros`): `#[pass]`, `#[patterns]`, `#[ops]`, `blocks!`.
 pub use mlirpass_macros::{blocks, ops, pass, patterns};
 pub use mlirformat;
-/// What runs tasks: moremath's executors, as mlirformat re-exports them; a pipeline runs on any
-/// [`Executor`] ([`PassManager::run_on`]), a pass is handed it as an [`Exec`].
-pub use mlirformat::{Execute, Executor, ThreadSingle};
-#[cfg(feature = "std")]
-pub use mlirformat::ThreadMulti;
 pub use mlirformat::{AffineBin, AffineExpr, AffineMap, ApFloat, ApInt, Const, IntegerSet, Scalar};

@@ -289,14 +289,14 @@ impl PassManager {
     /// ⭐ Runs the pipeline on `op`, nested pipelines one op after the other.
     pub fn run(&self, body: &mut Body<'_>, op: OpId) -> Result<(), Error> {
         #[cfg(feature = "std")]
-        return self.run_on(body, op, &crate::ThreadMulti::default());
+        return self.run_on(body, op, &moremath::ThreadMulti::default());
         #[cfg(not(feature = "std"))]
-        self.run_on(body, op, &crate::ThreadSingle)
+        self.run_on(body, op, &moremath::ThreadSingle)
     }
 
     /// ⭐ Runs the pipeline on `op`; a nested pipeline's ops, when they are all isolated from
     /// above, each in a body of its own, as `exec`'s tasks (nested deeper: serially).
-    pub fn run_on<X: crate::Executor + Sync>(&self, body: &mut Body<'_>, op: OpId, exec: &X) -> Result<(), Error> {
+    pub fn run_on<X: moremath::Executor + Sync>(&self, body: &mut Body<'_>, op: OpId, exec: &X) -> Result<(), Error> {
         self.run_exec(body, op, &crate::Exec::from(exec))
     }
 
@@ -327,7 +327,7 @@ impl PassManager {
                             mgrs.iter().find(|m| m.anchor.as_deref() == Some(&**name)).or_else(|| mgrs.iter().find(|m| m.anchor.is_none())).map(|m| (c, at, m))
                         })
                         .collect();
-                    if crate::Executor::threads(exec) < 2 || work.len() < 2 || !work.iter().all(|(c, ..)| body.isolated(*c)) {
+                    if moremath::Executor::threads(exec) < 2 || work.len() < 2 || !work.iter().all(|(c, ..)| body.isolated(*c)) {
                         for (c, _, m) in work {
                             m.run_exec(body, c, exec)?;
                         }
@@ -364,7 +364,7 @@ impl PassManager {
                             }) as crate::Task<'_>
                         })
                         .collect();
-                    crate::Executor::execute(exec, tasks);
+                    moremath::Executor::execute(exec, tasks);
                     let done: Vec<_> = done.into_iter().map(|d| d.expect("every task ran")).collect();
                     // Every lent seg goes back, whatever happened; copies only when all went well.
                     let failed = done.iter().find_map(|(r, ..)| r.as_ref().err()).cloned();
@@ -401,7 +401,7 @@ impl PassManager {
             first += 1;
         }
         let per_op = t.elapsed().as_nanos() as f64 / ran.max(1) as f64;
-        let w = crate::Executor::threads(exec) as f64;
+        let w = moremath::Executor::threads(exec) as f64;
         if work.len() - first < 2 || per_op * (w - 1.0) / w < MOVE_NS_PER_OP {
             for &(c, _, m) in &work[first..] {
                 m.run_exec(body, c, exec)?;
@@ -607,7 +607,7 @@ impl PassRegistry for Passes {
 /// ⭐ A unit of work: run once, on whichever thread the executor picks.
 pub type Task<'s> = Box<dyn FnOnce() + Send + 's>;
 
-/// ⭐ The executor a pass is handed: whichever moremath [`Executor`](crate::Executor) the
+/// ⭐ The executor a pass is handed: whichever moremath [`Executor`](moremath::Executor) the
 /// pipeline runs on ([`PassManager::run_on`] takes any), its type erased — a pass is a trait
 /// object. It is an `Executor` itself, to hand on (mlirformat's `parse_in`, [`Body::run_local`]).
 #[derive(Clone, Copy)]
@@ -620,10 +620,10 @@ trait Fork: Sync {
     fn run<'s>(&self, tasks: Vec<Task<'s>>);
 }
 
-impl<X: crate::Executor + Sync> Fork for X {
+impl<X: moremath::Executor + Sync> Fork for X {
     #[inline]
     fn threads(&self) -> usize {
-        crate::Executor::threads(self)
+        moremath::Executor::threads(self)
     }
 
     #[inline]
@@ -632,21 +632,21 @@ impl<X: crate::Executor + Sync> Fork for X {
     }
 }
 
-impl<'x, X: crate::Executor + Sync> From<&'x X> for Exec<'x> {
+impl<'x, X: moremath::Executor + Sync> From<&'x X> for Exec<'x> {
     #[inline]
     fn from(x: &'x X) -> Self {
         Exec(x)
     }
 }
 
-impl crate::Executor for Exec<'_> {
+impl moremath::Executor for Exec<'_> {
     #[inline]
     fn threads(&self) -> usize {
         self.0.threads()
     }
 
     /// Each task boxed, its output into a slot of its own.
-    fn execute<'x, 't, E: crate::Execute<'t>>(&'x self, tasks: Vec<E>) -> Vec<E::Output> {
+    fn execute<'x, 't, E: moremath::Execute<'t>>(&'x self, tasks: Vec<E>) -> Vec<E::Output> {
         let mut out: Vec<Option<E::Output>> = tasks.iter().map(|_| None).collect();
         let boxed: Vec<Task<'_>> = out.iter_mut().zip(tasks).map(|(slot, t)| Box::new(move || *slot = Some(t.execute())) as Task<'_>).collect();
         self.0.run(boxed);
@@ -784,10 +784,10 @@ pub struct Invocation {
     /// Made once: sizing it asks the OS (cgroups, affinity), too slow to repeat per chunk.
     /// The threads (not `-mlir-disable-threading`): started the first time anything runs on them.
     #[cfg(feature = "std")]
-    pub workers: std::sync::OnceLock<crate::ThreadMulti>,
+    pub workers: std::sync::OnceLock<moremath::ThreadMulti>,
     /// `-mlir-disable-threading`: a pool of one, starting no thread.
     #[cfg(feature = "std")]
-    pub one: crate::ThreadMulti,
+    pub one: moremath::ThreadMulti,
 }
 
 /// Flags that change nothing this crate does.
@@ -796,7 +796,7 @@ const IGNORED: &[&str] = &["allow-unregistered-dialect", "mlir-print-value-users
 impl Invocation {
     /// The `mlir-opt` arguments `args`, the passes named from `reg`.
     pub fn parse<S: AsRef<str>>(reg: &dyn crate::PassRegistry, args: &[S]) -> Result<Self, Error> {
-        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, local_scope: false, verify_diagnostics: false, input: None, output: None, threading: true, #[cfg(feature = "std")] workers: std::sync::OnceLock::new(), #[cfg(feature = "std")] one: crate::ThreadMulti::from(core::num::NonZeroUsize::MIN) };
+        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, local_scope: false, verify_diagnostics: false, input: None, output: None, threading: true, #[cfg(feature = "std")] workers: std::sync::OnceLock::new(), #[cfg(feature = "std")] one: moremath::ThreadMulti::from(core::num::NonZeroUsize::MIN) };
         let mut verify_each = true;
         let mut it = args.iter().map(AsRef::as_ref);
         while let Some(arg) = it.next() {
@@ -882,13 +882,13 @@ impl Invocation {
         #[cfg(feature = "std")]
         return crate::Exec::from(if self.threading { self.threads() } else { &self.one });
         #[cfg(not(feature = "std"))]
-        crate::Exec::from(&crate::ThreadSingle)
+        crate::Exec::from(&moremath::ThreadSingle)
     }
 
     /// [`Invocation::workers`], started if they are not yet.
     #[cfg(feature = "std")]
-    fn threads(&self) -> &crate::ThreadMulti {
-        self.workers.get_or_init(crate::ThreadMulti::default)
+    fn threads(&self) -> &moremath::ThreadMulti {
+        self.workers.get_or_init(moremath::ThreadMulti::default)
     }
 
     /// The body as `mlir-opt` prints it under these flags.
@@ -944,12 +944,12 @@ impl Invocation {
 
     /// The threads to print `body` on: when threading and `body` is big enough.
     #[cfg(feature = "std")]
-    fn workers(&self, body: &Body<'_>) -> Option<&mlirformat::ThreadMulti> {
+    fn workers(&self, body: &Body<'_>) -> Option<&moremath::ThreadMulti> {
         (self.threading && body.ops_count() >= Self::PARALLEL_OPS).then(|| self.threads())
     }
 
     #[cfg(not(feature = "std"))]
-    fn workers(&self, _: &Body<'_>) -> Option<&mlirformat::ThreadSingle> {
+    fn workers(&self, _: &Body<'_>) -> Option<&moremath::ThreadSingle> {
         None
     }
 
@@ -1048,15 +1048,21 @@ impl Body<'_> {
 
     /// The affine verifiers over everything in `root`.
     fn verify_affines(&self, root: OpId) -> Result<(), Error> {
-        let mut out = Ok(());
         #[cfg(feature = "dialect.affine")]
-        self.walk(root, &mut |op| {
-            if out.is_ok() {
-                out = self.verify_affine(op);
-            }
-        });
-        let _ = root;
-        out
+        {
+            let mut out = Ok(());
+            self.walk(root, &mut |op| {
+                if out.is_ok() {
+                    out = self.verify_affine(op);
+                }
+            });
+            out
+        }
+        #[cfg(not(feature = "dialect.affine"))]
+        {
+            let _ = root;
+            Ok(())
+        }
     }
 
     /// ⭐ The verifiers over everything in `root`.
@@ -1067,12 +1073,12 @@ impl Body<'_> {
 
     /// [`verify`](Self::verify) with `root`'s ops verified in parallel on `exec`, in runs: the
     /// error a serial walk finds first (every branch error before any affine one), the same.
-    pub fn verify_in<X: crate::Executor + Sync>(&self, root: OpId, exec: &X) -> Result<(), Error> {
+    pub fn verify_in<X: moremath::Executor + Sync>(&self, root: OpId, exec: &X) -> Result<(), Error> {
         let children = self.children(root);
-        if crate::Executor::threads(exec) < 2 || children.len() < 2 {
+        if moremath::Executor::threads(exec) < 2 || children.len() < 2 {
             return self.verify(root);
         }
-        let step = children.len().div_ceil(crate::Executor::threads(exec) * 4).max(1);
+        let step = children.len().div_ceil(moremath::Executor::threads(exec) * 4).max(1);
         let runs: Vec<_> = children
             .chunks(step)
             .map(|run| {
@@ -1083,7 +1089,7 @@ impl Body<'_> {
                 }
             })
             .collect();
-        let found = crate::Executor::execute(exec, runs);
+        let found = moremath::Executor::execute(exec, runs);
         self.verify_branch_op(root)?;
         if let Some(e) = found.iter().find_map(|(b, _)| b.clone()) {
             return Err(e);

@@ -218,17 +218,17 @@ impl<'s, 'b, 'a> Rdv<'s, 'b, 'a> {
     /// already, so no walk sees another's marks. Each function's callers are looked up in one
     /// table made in parallel first, not by a scan of the top per function. A function nested
     /// under an op of the block, or a top with operands or results, is walked serially.
-    fn cleanup_in<X: crate::Executor + Sync>(body: &'b Body<'a>, top: OpId, alive: &'s crate::IdVec<ValueId, bool>, exec: &X) -> Cleanup {
+    fn cleanup_in<X: moremath::Executor + Sync>(body: &'b Body<'a>, top: OpId, alive: &'s crate::IdVec<ValueId, bool>, exec: &X) -> Cleanup {
         let serial = || {
             let mut r = Rdv::new(body, alive, None);
             r.walk(top, top);
             r.cl
         };
         let children = body.children(top);
-        if crate::Executor::threads(exec) < 2 || children.len() < 2 || !body[top].operands.is_empty() || !body[top].results.is_empty() {
+        if moremath::Executor::threads(exec) < 2 || children.len() < 2 || !body[top].operands.is_empty() || !body[top].results.is_empty() {
             return serial();
         }
-        let step = children.len().div_ceil(crate::Executor::threads(exec) * 4).max(1);
+        let step = children.len().div_ceil(moremath::Executor::threads(exec) * 4).max(1);
         // The private functions' names, and the ops naming each, in preorder.
         let private: BTreeSet<&str> = children.iter().filter(|c| body.has(**c, Trait::FunctionOpInterface) && body.visibility(**c) != Visibility::Public).filter_map(|c| body.sym_name(*c)).collect();
         let naming = |o: OpId, out: &mut BTreeMap<String, Vec<OpId>>| {
@@ -253,7 +253,7 @@ impl<'s, 'b, 'a> Rdv<'s, 'b, 'a> {
                     }
                 })
                 .collect();
-            for part in crate::Executor::execute(exec, runs) {
+            for part in moremath::Executor::execute(exec, runs) {
                 for (n, ops) in part {
                     users.entry(n).or_default().extend(ops);
                 }
@@ -277,7 +277,7 @@ impl<'s, 'b, 'a> Rdv<'s, 'b, 'a> {
                 }
             })
             .collect();
-        let parts = crate::Executor::execute(exec, runs);
+        let parts = moremath::Executor::execute(exec, runs);
         if parts.iter().any(|(_, n)| *n) {
             return serial();
         }
@@ -414,10 +414,10 @@ impl Cleanup {
     /// there, on its own thread (lent), in the lists' order; the rest here, in the same order. The
     /// only thing one part needs of another is which arguments each function loses (its calls
     /// drop those operands), known from the lists before anything is done.
-    fn apply_in<X: crate::Executor + Sync>(&self, body: &mut Body<'_>, top: OpId, exec: &X) {
+    fn apply_in<X: moremath::Executor + Sync>(&self, body: &mut Body<'_>, top: OpId, exec: &X) {
         let erased = self.erased_args();
         let owners: BTreeMap<u32, OpId> = body.children(top).into_iter().filter(|c| body.lendable(*c)).map(|c| (crate::Id::seg(c), c)).collect();
-        if crate::Executor::threads(exec) < 2 || owners.len() < 2 {
+        if moremath::Executor::threads(exec) < 2 || owners.len() < 2 {
             return self.apply(body, &erased);
         }
         let mut parts: BTreeMap<OpId, Cleanup> = BTreeMap::new();
@@ -540,9 +540,9 @@ pub struct RemoveDeadValues {
 impl Run for RemoveDeadValues {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         #[cfg(feature = "std")]
-        return self.run_in(body, op, &crate::Exec::from(&crate::ThreadMulti::default()));
+        return self.run_in(body, op, &crate::Exec::from(&moremath::ThreadMulti::default()));
         #[cfg(not(feature = "std"))]
-        self.run_in(body, op, &crate::Exec::from(&crate::ThreadSingle))
+        self.run_in(body, op, &crate::Exec::from(&moremath::ThreadSingle))
     }
 
     /// The analyses solved function by function on `exec` ([`Solver::liveness_in`]); the cleanup as

@@ -435,6 +435,39 @@ pub struct OpData<'a> {
     /// What the context knows of the op ([`MlirOpt::op_info`] of `name`): looked up once, when
     /// the op enters a [`Body`], not on every trait query.
     pub info: Option<&'a mlirformat::OpInfo>,
+    /// Where the op sat in its block when last placed or found ([`Body::position`]): where the
+    /// search for it starts.
+    pub(crate) at: Hint,
+}
+
+/// A place in a block, as last known: a hint, kept through `&` (atomic, so threads sharing a body
+/// may refresh it), never trusted without a look.
+#[derive(Debug, Default)]
+pub(crate) struct Hint(core::sync::atomic::AtomicU32);
+
+impl Hint {
+    #[inline]
+    fn get(&self) -> usize {
+        self.0.load(core::sync::atomic::Ordering::Relaxed) as usize
+    }
+
+    #[inline]
+    fn set(&self, at: usize) {
+        self.0.store(at as u32, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl Clone for Hint {
+    fn clone(&self) -> Self {
+        Hint(core::sync::atomic::AtomicU32::new(self.get() as u32))
+    }
+}
+
+/// Ops compare by their IR.
+impl PartialEq for Hint {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -766,7 +799,7 @@ impl<'a> Body<'a> {
 
     /// Every op's and block argument's location dropped (`set_locs(root, None)` over the whole
     /// body, erased entities too), the segs cleared in parallel on `x`. No checkpoint is open.
-    pub fn clear_locs_in<X: mlirformat::Executor + Sync>(&mut self, x: &X) {
+    pub fn clear_locs_in<X: moremath::Executor + Sync>(&mut self, x: &X) {
         debug_assert_eq!(self.journal.depth, 0, "locations cleared under a checkpoint");
         let step = self.segs.len().div_ceil(x.threads() * 4).max(1);
         let tasks: Vec<_> = self
@@ -946,9 +979,9 @@ impl<'a> Body<'a> {
     /// threads: lent, and back ([`Body::lend`]); the ops it ran on. `f` stays inside its op (as
     /// a rewrite whose constants go into the op's own region): the module a lent op sits in is a
     /// stand-in. On one thread, or with fewer than two such ops, nothing: the caller does all.
-    pub fn for_each_child<X: crate::Executor + Sync>(&mut self, op: OpId, exec: &X, f: &(dyn Fn(&mut Body<'a>, OpId) + Sync)) -> Vec<OpId> {
+    pub fn for_each_child<X: moremath::Executor + Sync>(&mut self, op: OpId, exec: &X, f: &(dyn Fn(&mut Body<'a>, OpId) + Sync)) -> Vec<OpId> {
         let children = self.children(op);
-        if crate::Executor::threads(exec) < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
+        if moremath::Executor::threads(exec) < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
             return Vec::new();
         }
         let lent: Vec<(OpId, Body<'a>, Option<BlockId>)> = children.iter().filter_map(|c| self.lend(*c).map(|(sub, parent)| (*c, sub, parent))).collect();
@@ -963,7 +996,7 @@ impl<'a> Body<'a> {
                 }) as crate::Task<'_>
             })
             .collect();
-        crate::Executor::execute(exec, tasks);
+        moremath::Executor::execute(exec, tasks);
         let mut ran = Vec::with_capacity(done.len());
         for (c, sub, parent) in done.into_iter().map(|d| d.expect("every task ran")) {
             debug_assert_eq!(sub[sub.top_block(sub.root)].ops[..], [c], "a lent op's work stays in it");
@@ -981,9 +1014,9 @@ impl<'a> Body<'a> {
     /// declaration the module now has otherwise — is rolled back and done again here, as are the
     /// ops not lent. So whatever goes into the module goes in the order a serial run puts it.
     /// The first error in block order is the pass's. On one thread, `f` on `op`.
-    pub fn run_local<X: crate::Executor + Sync>(&mut self, op: OpId, exec: &X, f: &crate::LocalRun<'_>) -> Result<(), Error> {
+    pub fn run_local<X: moremath::Executor + Sync>(&mut self, op: OpId, exec: &X, f: &crate::LocalRun<'_>) -> Result<(), Error> {
         let children = self.children(op);
-        if crate::Executor::threads(exec) < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
+        if moremath::Executor::threads(exec) < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
             return f(self, op);
         }
         let symbols = alloc::sync::Arc::new(self.symbols_in(op));
@@ -1010,7 +1043,7 @@ impl<'a> Body<'a> {
                 }) as crate::Task<'_>
             })
             .collect();
-        crate::Executor::execute(exec, tasks);
+        moremath::Executor::execute(exec, tasks);
         // Kept or rolled back, in block order (nothing here asks the module, part of it is still
         // out); then every seg back.
         let mut declared: BTreeMap<String, Option<Attribute<'a>>> = symbols.iter().filter(|(_, d)| d.name == "llvm.func").map(|(n, d)| (n.clone(), d.get("function_type").cloned())).collect();
@@ -1035,7 +1068,7 @@ impl<'a> Body<'a> {
                 }
             })
             .collect();
-        let back: Vec<Option<(Result<(), Error>, Body<'a>, Option<BlockId>, bool)>> = crate::Executor::execute(exec, closing);
+        let back: Vec<Option<(Result<(), Error>, Body<'a>, Option<BlockId>, bool)>> = moremath::Executor::execute(exec, closing);
         let mut kept: Vec<Option<(Result<(), Error>, Vec<OpId>)>> = Vec::with_capacity(back.len());
         for (k, b) in back.into_iter().enumerate() {
             kept.push(match b {
@@ -1161,7 +1194,7 @@ impl<'a> OpData<'a> {
 impl<'a> OpData<'a> {
     /// A detached op with nothing but its name.
     pub fn named(name: impl Into<Str<'a>>) -> Self {
-        Self { name: name.into(), operands: crate::Ids::new(), results: crate::Ids::new(), successors: crate::Ids::new(), properties: Vec::new(), regions: crate::Ids::new(), attributes: Vec::new(), loc: None, parent: None, defaults: false, info: None }
+        Self { name: name.into(), operands: crate::Ids::new(), results: crate::Ids::new(), successors: crate::Ids::new(), properties: Vec::new(), regions: crate::Ids::new(), attributes: Vec::new(), loc: None, parent: None, defaults: false, info: None, at: Hint::default() }
     }
 
     fn dict(&self, inherent: bool) -> &[NamedAttr<'a>] {
@@ -1448,6 +1481,7 @@ impl<'a> Body<'a> {
         self.ops_of(block).insert(at, op);
         self.linked(op, block);
         self[op].parent = Some(block);
+        self[op].at.set(at);
     }
 
     /// ⭐ Moves the ops at `range` of `from` into `to` before position `at` (`None`: the end), in one
@@ -1511,17 +1545,27 @@ impl<'a> Body<'a> {
         self.insert(op, block, Some(at));
     }
 
-    /// Where `op` sits in its block.
+    /// ⭐ Where `op` sits in its block: looked for from where it was last (its [`Hint`]), outward,
+    /// so an op a few others moved is found in a few steps, not by a scan of the block.
     pub fn position(&self, op: OpId) -> usize {
         let block = self[op].parent.expect("op is not placed");
-        self[block].ops.iter().position(|o| *o == op).expect("op not in its block")
+        let ops = &self[block].ops;
+        let hint = &self[op].at;
+        let start = hint.get().min(ops.len().saturating_sub(1));
+        let at = (0..ops.len())
+            .flat_map(|d| [start.checked_add(d), start.checked_sub(d).filter(|_| d > 0)])
+            .flatten()
+            .find(|i| ops.get(*i) == Some(&op))
+            .expect("op not in its block");
+        hint.set(at);
+        at
     }
 
     /// Takes `op` out of its block, keeping it whole. Looks from the end: erasing a block's ops
     /// last first costs nothing per op.
     pub fn detach(&mut self, op: OpId) {
         let Some(block) = self[op].parent else { return };
-        let at = self[block].ops.iter().rposition(|o| *o == op).expect("op not in its block");
+        let at = self.position(op);
         if self.logs(block) {
             self.journal.undo.push(Undo::Removed { block, at, op });
         }
@@ -1942,7 +1986,7 @@ struct Import<'i, 'a, X> {
     x: &'i X,
 }
 
-impl<'i, 'a, X: mlirformat::Executor + Sync> Import<'i, 'a, X> {
+impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
     /// How many ops, values, blocks and regions `ops` hold, nested ones included: what the
     /// body's arenas are sized to up front, so that they do not grow by doubling (an arena
     /// half empty at its last doubling).
@@ -2159,14 +2203,14 @@ impl<'a> Body<'a> {
     /// copied: the body ends up holding its names, attributes and types.
     pub fn import(ctx: crate::Ctx<'a>, m: Module<'a>) -> Result<Self, Error> {
         #[cfg(feature = "std")]
-        return Body::import_in(ctx, m, &crate::ThreadMulti::from(core::num::NonZeroUsize::MIN));
+        return Body::import_in(ctx, m, &moremath::ThreadMulti::from(core::num::NonZeroUsize::MIN));
         #[cfg(not(feature = "std"))]
-        Body::import_in(ctx, m, &crate::ThreadSingle)
+        Body::import_in(ctx, m, &moremath::ThreadSingle)
     }
 
     /// Like [`import`](Self::import), each function (an isolated op in the root's block, with a
     /// seg of its own) imported in parallel on `x`, straight into its seg.
-    pub fn import_in<X: mlirformat::Executor + Sync>(ctx: crate::Ctx<'a>, m: Module<'a>, x: &X) -> Result<Self, Error> {
+    pub fn import_in<X: moremath::Executor + Sync>(ctx: crate::Ctx<'a>, m: Module<'a>, x: &X) -> Result<Self, Error> {
         let mut aliases = Aliases::default();
         let mut items = Vec::new();
         let mut ops = Vec::new();
@@ -2496,9 +2540,9 @@ impl Names {
         let bbs = namer.drain(stack);
         let max = namer.max.max(namer.next.value);
         #[cfg(feature = "std")]
-        n.spell(max, bbs, &crate::ThreadMulti::from(core::num::NonZeroUsize::MIN));
+        n.spell(max, bbs, &moremath::ThreadMulti::from(core::num::NonZeroUsize::MIN));
         #[cfg(not(feature = "std"))]
-        n.spell(max, bbs, &crate::ThreadSingle);
+        n.spell(max, bbs, &moremath::ThreadSingle);
         n
     }
 
@@ -2514,7 +2558,7 @@ impl Names {
     /// their segs' rows. The same names as [`of`](Self::of): a function is named apart only
     /// when its seg holds it alone and it has no results; in generic form, a name that clashed
     /// would have to be renamed, and the whole is named serially instead.
-    pub(crate) fn of_in<X: mlirformat::Executor + Sync>(body: &Body<'_>, root: OpId, generic: bool, x: &X) -> Self {
+    pub(crate) fn of_in<X: moremath::Executor + Sync>(body: &Body<'_>, root: OpId, generic: bool, x: &X) -> Self {
         let &[r] = &body[root].regions[..] else { return Self::of(body, root, generic) };
         // The functions named apart, in block order, and each one's place in it.
         let order: Vec<OpId> = body[r].blocks.iter().flat_map(|b| &body[*b].ops).copied().filter(|o| body.names_apart(*o)).collect();
@@ -2602,7 +2646,7 @@ impl Names {
     }
 
     /// The spellings of the numbers below `max` and of `bbs` block labels, on `x`.
-    fn spell<X: mlirformat::Executor + Sync>(&mut self, max: u32, bbs: usize, x: &X) {
+    fn spell<X: moremath::Executor + Sync>(&mut self, max: u32, bbs: usize, x: &X) {
         let max = max as usize;
         let step = max.div_ceil(x.threads() * 4).max(1);
         let runs: Vec<_> = (0..max).step_by(step).map(|from| move || (from..(from + step).min(max)).map(|i| format!("{i}")).collect::<Vec<_>>()).collect();
@@ -2772,13 +2816,13 @@ impl<'a> Body<'a> {
     /// reaches it; `keep` says which of the body's module items to print (the root always).
     pub fn show(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
         #[cfg(feature = "std")]
-        return self.render(opt, generic, true, keep, &crate::ThreadMulti::from(core::num::NonZeroUsize::MIN));
+        return self.render(opt, generic, true, keep, &moremath::ThreadMulti::from(core::num::NonZeroUsize::MIN));
         #[cfg(not(feature = "std"))]
-        self.render(opt, generic, true, keep, &crate::ThreadSingle)
+        self.render(opt, generic, true, keep, &moremath::ThreadSingle)
     }
 
     /// [`show`](Self::show), the module's ops (its functions) printed in parallel on `x`.
-    pub fn show_in<X: mlirformat::Executor + Sync>(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool, x: &X) -> String {
+    pub fn show_in<X: moremath::Executor + Sync>(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool, x: &X) -> String {
         self.render(opt, generic, true, keep, x)
     }
 
@@ -2786,17 +2830,17 @@ impl<'a> Body<'a> {
     /// type spelled where it is used.
     pub fn show_local_scope(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
         #[cfg(feature = "std")]
-        return self.render(opt, generic, false, keep, &crate::ThreadMulti::from(core::num::NonZeroUsize::MIN));
+        return self.render(opt, generic, false, keep, &moremath::ThreadMulti::from(core::num::NonZeroUsize::MIN));
         #[cfg(not(feature = "std"))]
-        self.render(opt, generic, false, keep, &crate::ThreadSingle)
+        self.render(opt, generic, false, keep, &moremath::ThreadSingle)
     }
 
     /// [`show_local_scope`](Self::show_local_scope) on `x`, as [`show_in`](Self::show_in).
-    pub fn show_local_scope_in<X: mlirformat::Executor + Sync>(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool, x: &X) -> String {
+    pub fn show_local_scope_in<X: moremath::Executor + Sync>(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool, x: &X) -> String {
         self.render(opt, generic, false, keep, x)
     }
 
-    fn render<X: mlirformat::Executor + Sync>(&self, opt: &MlirOpt, generic: bool, aliased: bool, keep: impl Fn(&Item<'_>) -> bool, x: &X) -> String {
+    fn render<X: moremath::Executor + Sync>(&self, opt: &MlirOpt, generic: bool, aliased: bool, keep: impl Fn(&Item<'_>) -> bool, x: &X) -> String {
         let names = Names::of_in(self, self.root, generic, x);
         let ex = Export::new(self, &names, false);
         let mut m = self.module(ex.op(self.root));
@@ -2881,7 +2925,7 @@ impl<'a> Body<'a> {
 
     /// Like [`parse`](Self::parse), read and imported in parallel on `x`
     /// ([`MlirOpt::parse_in`](mlirformat::MlirOpt::parse_in), [`Body::import_in`]).
-    pub fn parse_in<X: mlirformat::Executor + Sync>(ctx: crate::Ctx<'a>, src: &'a str, x: &X) -> Result<Self, Error> {
+    pub fn parse_in<X: moremath::Executor + Sync>(ctx: crate::Ctx<'a>, src: &'a str, x: &X) -> Result<Self, Error> {
         let m = ctx.opt.parse_in(src, x).map_err(|e| Error(format!("{e}")))?;
         Body::import_in(ctx, m, x)
     }
