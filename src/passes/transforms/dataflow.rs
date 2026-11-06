@@ -104,6 +104,8 @@ struct CallInfo {
     internal: bool,
     /// The callee is a callable without a body.
     bodiless: bool,
+    /// The callee is a callable.
+    callable: bool,
 }
 
 /// A callable's callers: an unknown one, the known calls, and what they pass, joined per
@@ -166,6 +168,10 @@ struct Boundary<'a> {
     returns: alloc::sync::Arc<BTreeMap<OpId, Returns<'a>>>,
     out_callers: BTreeMap<OpId, Callers<'a>>,
     out_returns: BTreeMap<OpId, Returns<'a>>,
+    /// Liveness: per callable, whether each entry argument is live; per callable, whether its
+    /// results are live at some call (all, with an unknown caller).
+    args_live: alloc::sync::Arc<BTreeMap<OpId, Vec<bool>>>,
+    results_live: alloc::sync::Arc<BTreeMap<OpId, (bool, Vec<bool>)>>,
     /// Ops of the body that are solved elsewhere (lent out): not visited here.
     skip: BTreeSet<OpId>,
 }
@@ -180,7 +186,7 @@ pub struct Solver<'b, 'a> {
     lat: crate::IdVec<ValueId, Cv<'a>>,
     changed: bool,
     /// `Liveness`: the values found live.
-    pub alive: BTreeSet<ValueId>,
+    pub alive: crate::IdVec<ValueId, bool>,
     /// The sweep under way, from 1.
     round: u32,
     /// Per value, the sweep its lattice last changed in.
@@ -207,16 +213,11 @@ impl<'b, 'a> Solver<'b, 'a> {
     }
 
     fn with(body: BodyRef<'b, 'a>, top: OpId) -> Self {
-        Self { unit: None, body, top, live: BTreeSet::new(), edges: BTreeSet::new(), preds: BTreeMap::new(), lat: crate::IdVec::new(Cv::Uninit), changed: false, alive: BTreeSet::new(), round: 0, changed_in: crate::IdVec::new(0), folded_in: crate::IdVec::new(0), callees: BTreeMap::new(), work: VecDeque::new(), queued_ops: crate::IdVec::new(false), queued_blocks: crate::IdVec::new(false), reads: BTreeMap::new() }
+        Self { unit: None, body, top, live: BTreeSet::new(), edges: BTreeSet::new(), preds: BTreeMap::new(), lat: crate::IdVec::new(Cv::Uninit), changed: false, alive: crate::IdVec::new(false), round: 0, changed_in: crate::IdVec::new(0), folded_in: crate::IdVec::new(0), callees: BTreeMap::new(), work: VecDeque::new(), queued_ops: crate::IdVec::new(false), queued_blocks: crate::IdVec::new(false), reads: BTreeMap::new() }
     }
 
     pub fn get(&self, v: ValueId) -> Cv<'a> {
         self.lat.get(v).clone()
-    }
-
-    /// What the analysis found, the body let go.
-    pub fn lattice(self) -> crate::IdVec<ValueId, Cv<'a>> {
-        self.lat
     }
 
     fn join(&mut self, v: ValueId, c: &Cv<'a>) {
@@ -875,7 +876,8 @@ impl<'b, 'a> Solver<'b, 'a> {
             let callee = self.resolve(op);
             let bodiless = callee.is_some_and(|c| self.is_callable(c) && self.callable_region(c).is_none());
             let internal = callee.is_some_and(|c| self.body.has(c, Trait::SymbolOpInterface) && self.is_ancestor(top, c) && !bodiless);
-            out.insert(op, CallInfo { callee, internal, bodiless });
+            let callable = callee.is_some_and(|c| self.is_callable(c));
+            out.insert(op, CallInfo { callee, internal, bodiless, callable });
         }
         out
     }
@@ -888,11 +890,25 @@ impl<'b, 'a> Solver<'b, 'a> {
     /// Round after round, what changed in those is fed back to what reads it, until nothing
     /// does: the analyses are monotone, so this is the fixed point a serial run reaches.
     pub fn solve_in(body: &'b mut Body<'a>, top: OpId, exec: &dyn crate::Executor) -> crate::IdVec<ValueId, Cv<'a>> {
+        Self::solve(body, top, exec, false).0
+    }
+
+    /// [`solve_in`](Self::solve_in), then liveness ([`run_liveness`](Self::run_liveness)) the
+    /// same way — through each callable's live entry arguments and the results its calls use —
+    /// and the values found live.
+    pub fn liveness_in(body: &'b mut Body<'a>, top: OpId, exec: &dyn crate::Executor) -> crate::IdVec<ValueId, bool> {
+        Self::solve(body, top, exec, true).1
+    }
+
+    fn solve(body: &'b mut Body<'a>, top: OpId, exec: &dyn crate::Executor, liveness: bool) -> (crate::IdVec<ValueId, Cv<'a>>, crate::IdVec<ValueId, bool>) {
         let children = body.children(top);
         if exec.width() < 2 || children.iter().filter(|c| body.lendable(**c)).count() < 2 {
             let mut s = Solver::new(body, top);
             s.run();
-            return s.lattice();
+            if liveness {
+                s.run_liveness_only();
+            }
+            return (s.lat, s.alive);
         }
         let mut main = Solver::new(body, top);
         let visible = main.body[top].parent.is_none();
@@ -1006,25 +1022,132 @@ impl<'b, 'a> Solver<'b, 'a> {
             callers = new_callers;
             returns = new_returns;
         }
-        // Every function back, its lattice into the whole one.
+        if liveness {
+            Self::liveness_rounds(&mut main, &mut units, top, &lent, &owner, &calls, &callers, exec);
+        }
+        // Every function back, its lattice and liveness into the whole ones.
         let mut parts = Vec::with_capacity(units.len());
         for (u, (c, parent)) in units.into_iter().zip(lent) {
-            let (sub, lat) = u.into_parts();
+            let (sub, lat, alive) = u.into_parts();
             main.body.unlend(c, sub, parent);
-            parts.push((c, lat));
+            parts.push((c, lat, alive));
         }
-        let mut lat = main.lattice();
-        for (c, mut l) in parts {
+        let (mut lat, mut alive) = (main.lat, main.alive);
+        for (c, mut l, mut a) in parts {
             let s = crate::Id::seg(c);
             lat.put_row(s, l.take_row(s));
+            alive.put_row(s, a.take_row(s));
         }
-        lat
+        (lat, alive)
     }
 
-    /// An owned body and its lattice.
-    fn into_parts(self) -> (Body<'a>, crate::IdVec<ValueId, Cv<'a>>) {
+    /// Liveness of the parts [`solve`](Self::solve) solved apart, round after round: each to its
+    /// own fixed point in parallel under each callable's live entry arguments and the results its
+    /// calls use as the last round left them; what changed goes back to the calls (arguments)
+    /// and the returns (results) that read it, until nothing does.
+    #[allow(clippy::too_many_arguments)]
+    fn liveness_rounds(main: &mut Self, units: &mut Vec<Self>, top: OpId, lent: &[(OpId, Option<BlockId>)], owner: &BTreeMap<u32, usize>, calls: &BTreeMap<OpId, CallInfo>, callers: &BTreeMap<OpId, Callers<'a>>, exec: &dyn crate::Executor) {
+        let owner_of = |x: OpId| owner.get(&crate::Id::seg(x)).copied();
+        let mut by_callee: BTreeMap<OpId, Vec<OpId>> = BTreeMap::new();
+        for (call, info) in calls {
+            if let Some(c) = info.callee.filter(|_| info.callable && !info.bodiless) {
+                by_callee.entry(c).or_default().push(*call);
+            }
+        }
+        main.enqueue_backward(top);
+        for (u, (c, _)) in units.iter_mut().zip(lent) {
+            u.enqueue_backward(*c);
+        }
+        let (mut args_live, mut results_live): (BTreeMap<OpId, Vec<bool>>, BTreeMap<OpId, (bool, Vec<bool>)>) = (BTreeMap::new(), BTreeMap::new());
+        loop {
+            let (al, rl) = (alloc::sync::Arc::new(args_live.clone()), alloc::sync::Arc::new(results_live.clone()));
+            for s in units.iter_mut().chain(core::iter::once(&mut *main)) {
+                let u = s.unit.as_mut().expect("a unit");
+                u.args_live = al.clone();
+                u.results_live = rl.clone();
+            }
+            let mut slots: Vec<Option<Self>> = units.drain(..).map(Some).collect();
+            let tasks = slots
+                .iter_mut()
+                .map(|slot| {
+                    alloc::boxed::Box::new(move || {
+                        let mut s = slot.take().expect("a solver");
+                        s.drain_backward();
+                        *slot = Some(s);
+                    }) as crate::Task<'_>
+                })
+                .collect();
+            exec.execute(tasks);
+            *units = slots.into_iter().map(|s| s.expect("every task ran")).collect();
+            main.drain_backward();
+            // What the parts say: each callee's live entry arguments, each callable's live
+            // results at its calls.
+            let mut new_args: BTreeMap<OpId, Vec<bool>> = BTreeMap::new();
+            for c in by_callee.keys() {
+                let s: &Self = match owner_of(*c) {
+                    Some(k) => &units[k],
+                    None => main,
+                };
+                if let Some(entry) = s.callable_region(*c).and_then(|r| s.entry_of(r)) {
+                    new_args.insert(*c, s.body[entry].args.iter().map(|a| *s.alive.get(*a)).collect());
+                }
+            }
+            let mut new_results: BTreeMap<OpId, (bool, Vec<bool>)> = BTreeMap::new();
+            for (p, cs) in callers {
+                let mut live: Vec<bool> = Vec::new();
+                for call in &cs.calls {
+                    let s: &Self = match owner_of(*call) {
+                        Some(k) => &units[k],
+                        None => main,
+                    };
+                    let rs: Vec<bool> = s.body[*call].results.iter().map(|r| *s.alive.get(*r)).collect();
+                    if live.len() < rs.len() {
+                        live.resize(rs.len(), false);
+                    }
+                    live.iter_mut().zip(rs).for_each(|(l, r)| *l |= r);
+                }
+                new_results.insert(*p, (cs.unknown, live));
+            }
+            if new_args == args_live && new_results == results_live {
+                break;
+            }
+            for (c, a) in &new_args {
+                if args_live.get(c) != Some(a) {
+                    for call in by_callee.get(c).into_iter().flatten() {
+                        match owner_of(*call) {
+                            Some(k) => units[k].push_op(*call),
+                            None => main.push_op(*call),
+                        }
+                    }
+                }
+            }
+            for (p, r) in &new_results {
+                if results_live.get(p) != Some(r) {
+                    match owner_of(*p) {
+                        Some(k) => units[k].push_terminators(*p),
+                        None => main.push_terminators(*p),
+                    }
+                }
+            }
+            args_live = new_args;
+            results_live = new_results;
+        }
+    }
+
+    /// The backward worklist, to its end.
+    fn drain_backward(&mut self) {
+        while let Some(item) = self.work.pop_front() {
+            if let Item::Op(o) = item {
+                *self.queued_ops.get_mut(o) = false;
+                self.backward(o);
+            }
+        }
+    }
+
+    /// An owned body, its lattice and its liveness.
+    fn into_parts(self) -> (Body<'a>, crate::IdVec<ValueId, Cv<'a>>, crate::IdVec<ValueId, bool>) {
         match self.body {
-            BodyRef::Owned(b) => (b, self.lat),
+            BodyRef::Owned(b) => (b, self.lat, self.alive),
             BodyRef::Borrowed(_) => unreachable!("a lent solver owns its body"),
         }
     }
@@ -1067,7 +1190,7 @@ impl Body<'_> {
 /// `LivenessAnalysis`, the backward sparse analysis over the live code.
 impl Solver<'_, '_> {
     fn mark_alive(&mut self, v: ValueId) {
-        if self.alive.insert(v) {
+        if !core::mem::replace(self.alive.get_mut(v), true) {
             self.changed = true;
             self.alive_changed(v);
         }
@@ -1095,7 +1218,8 @@ impl Solver<'_, '_> {
                 if self.is_region_branch(d) {
                     self.push_terminators(d);
                 }
-                if self.body.has(d, Trait::CallOpInterface)
+                if self.unit.is_none()
+                    && self.body.has(d, Trait::CallOpInterface)
                     && let Some(c) = self.callee(d)
                 {
                     self.push_terminators(c);
@@ -1120,14 +1244,14 @@ impl Solver<'_, '_> {
 
     /// `meet(operand, value)`: `operand` is live once `value` is.
     fn meet_alive(&mut self, operand: ValueId, value: ValueId) {
-        if self.alive.contains(&value) {
+        if *self.alive.get(value) {
             self.mark_alive(operand);
         }
     }
 
     /// `LivenessAnalysis::visitOperation`, for `operands` of `op`.
     fn liveness_visit(&mut self, op: OpId, operands: &[ValueId]) {
-        let any_result = self.body[op].results.iter().any(|r| self.alive.contains(r));
+        let any_result = self.body[op].results.iter().any(|r| *self.alive.get(*r));
         if !self.body.would_be_trivially_dead(op) || any_result {
             operands.iter().for_each(|v| self.mark_alive(*v));
         }
@@ -1162,7 +1286,7 @@ impl Solver<'_, '_> {
                     accounted[i] = true;
                 }
             }
-            let results_live = self.body[op].results.iter().any(|r| self.alive.contains(r));
+            let results_live = self.body[op].results.iter().any(|r| *self.alive.get(*r));
             for (s, inputs) in self.body.region_successors(op, Point::Parent) {
                 let Succ::Region(r) = s else { continue };
                 let Some(b) = self.entry_of(self.body[op].regions[r]) else { continue };
@@ -1197,6 +1321,31 @@ impl Solver<'_, '_> {
             return;
         }
         if self.body.has(op, Trait::CallOpInterface)
+            && let Some(u) = &self.unit
+            && let Some(info) = u.calls.get(&op).copied().filter(|i| i.callable && i.callee.is_some())
+        {
+            if info.bodiless {
+                return operands.iter().for_each(|v| self.mark_alive(*v));
+            }
+            // Not told yet (the first round): no argument is live yet; the calls go again once
+            // the callee's entry is known.
+            let live = u.args_live.get(&info.callee.expect("a callee")).cloned();
+            let first = operands.len() - self.call_args(op).len();
+            for (k, v) in operands.iter().enumerate() {
+                let arg = k.checked_sub(first);
+                let alive = match (&live, arg) {
+                    (_, None) => true,
+                    (None, Some(_)) => false,
+                    (Some(l), Some(i)) => l.get(i).copied().unwrap_or(true),
+                };
+                if alive {
+                    self.mark_alive(*v);
+                }
+            }
+            return;
+        }
+        if self.unit.is_none()
+            && self.body.has(op, Trait::CallOpInterface)
             && let Some(c) = self.callee(op).filter(|c| self.is_callable(*c))
         {
             let Some(region) = self.callable_region(c) else {
@@ -1233,6 +1382,18 @@ impl Solver<'_, '_> {
         if self.body.has(op, Trait::ReturnLike)
             && let Some(p) = self.body.parent_op(op).filter(|p| self.is_callable(*p))
         {
+            if let Some(u) = &self.unit {
+                let (unknown, live) = u.results_live.get(&p).cloned().unwrap_or_default();
+                if unknown {
+                    return operands.iter().for_each(|v| self.mark_alive(*v));
+                }
+                for (v, l) in operands.iter().zip(live) {
+                    if l {
+                        self.mark_alive(*v);
+                    }
+                }
+                return;
+            }
             let cs = self.preds.get(&Pt::After(p)).cloned().unwrap_or_default();
             if cs.unknown {
                 return operands.iter().for_each(|v| self.mark_alive(*v));
@@ -1249,6 +1410,9 @@ impl Solver<'_, '_> {
 
     /// Every op under `op` onto the worklist, in the order a backward sweep visits them.
     fn enqueue_backward(&mut self, op: OpId) {
+        if self.unit.as_ref().is_some_and(|u| u.skip.contains(&op)) {
+            return;
+        }
         self.push_op(op);
         for r in self.body[op].regions.clone() {
             for b in self.body[r].blocks.clone() {
@@ -1259,21 +1423,11 @@ impl Solver<'_, '_> {
         }
     }
 
-    /// `RunLivenessAnalysis`: the baseline analyses, then liveness, to their fixed points (off
-    /// the worklist: every op once, then those a newly live value reaches).
-    pub fn run_liveness(&mut self) {
-        self.run();
+    /// `RunLivenessAnalysis`'s liveness, the baseline analyses done ([`run`](Self::run)): to its
+    /// fixed point off the worklist (every op once, then those a newly live value reaches).
+    fn run_liveness_only(&mut self) {
         let top = self.top;
         self.enqueue_backward(top);
-        while let Some(item) = self.work.pop_front() {
-            if let Item::Op(o) = item {
-                *self.queued_ops.get_mut(o) = false;
-                self.backward(o);
-            }
-        }
-    }
-
-    pub fn is_alive(&self, v: ValueId) -> bool {
-        self.alive.contains(&v)
+        self.drain_backward();
     }
 }

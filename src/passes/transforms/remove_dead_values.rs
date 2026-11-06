@@ -25,19 +25,20 @@ struct Cleanup {
 }
 
 struct Rdv<'s, 'b, 'a> {
-    s: &'s mut Solver<'b, 'a>,
+    body: &'b Body<'a>,
+    alive: &'s crate::IdVec<ValueId, bool>,
     dead: BTreeSet<ValueId>,
     cl: Cleanup,
 }
 
 impl<'a> Rdv<'_, '_, 'a> {
     fn body(&self) -> &Body<'a> {
-        &self.s.body
+        self.body
     }
 
     /// `markLives`: whether each value is live (`None`, a produced operand, counts as live).
     fn lives(&self, vs: &[Option<ValueId>]) -> Vec<bool> {
-        vs.iter().map(|v| v.is_none_or(|v| !self.dead.contains(&v) && self.s.is_alive(v))).collect()
+        vs.iter().map(|v| v.is_none_or(|v| !self.dead.contains(&v) && *self.alive.get(v))).collect()
     }
 
     fn has_live(&self, vs: &[ValueId]) -> bool {
@@ -376,9 +377,14 @@ pub struct RemoveDeadValues {
 
 impl Run for RemoveDeadValues {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let mut s = Solver::new(body, op);
-        s.run_liveness();
-        let mut r = Rdv { s: &mut s, dead: BTreeSet::new(), cl: Cleanup::default() };
+        self.run_in(body, op, &crate::Serial)
+    }
+
+    /// The analyses solved function by function on `exec` ([`Solver::liveness_in`]); the cleanup as
+    /// before.
+    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &dyn crate::Executor) -> Result<(), Error> {
+        let alive = Solver::liveness_in(body, op, exec);
+        let mut r = Rdv { body, alive: &alive, dead: BTreeSet::new(), cl: Cleanup::default() };
         r.walk(op, op);
         let cl = r.cl;
         cl.apply(body);
