@@ -365,7 +365,7 @@ impl<'b, 'a> Glsl<'b, 'a> {
         if Self::enum_case(self.attr(self.module, "addressing_model")).as_deref() != Some("Logical") {
             return unsupported("a non-Logical addressing model");
         }
-        let ops = self.body[self.body.top_block(self.module)].ops.clone();
+        let ops = self.body.block_ops(self.body.top_block(self.module));
         let mut entry: Option<(String, String)> = None;
         let mut local_size = None;
         for op in &ops {
@@ -525,7 +525,7 @@ impl<'b, 'a> Glsl<'b, 'a> {
 
     /// Globals live in `vals` under a key no SSA value has: past the end, by symbol order.
     fn global_key(&self, name: &str) -> ValueId {
-        let globals: Vec<String> = self.body[self.body.top_block(self.module)].ops.iter().filter(|o| self.body[**o].name == "spirv.GlobalVariable").filter_map(|o| self.symbol(*o, "sym_name").ok()).collect();
+        let globals: Vec<String> = self.body.block_ops(self.body.top_block(self.module)).iter().filter(|o| self.body[**o].name == "spirv.GlobalVariable").filter_map(|o| self.symbol(*o, "sym_name").ok()).collect();
         let i = globals.iter().position(|g| g == name).unwrap_or(0);
         ValueId(u64::MAX - i as u64)
     }
@@ -613,7 +613,7 @@ impl<'b, 'a> Glsl<'b, 'a> {
             return unsupported("an unstructured cycle");
         }
         self.path.push(b);
-        let ops = self.body[b].ops.clone();
+        let ops = self.body.block_ops(b);
         let Some((last, rest)) = ops.split_last() else { return unsupported("an empty block") };
         for o in rest {
             self.op(*o, out, depth)?;
@@ -715,7 +715,7 @@ impl<'b, 'a> Glsl<'b, 'a> {
 
     /// The results of a construct: the merge block's merge operands.
     fn construct_results(&mut self, op: OpId, merge: BlockId, out: &mut String, depth: usize) -> Result<(), Error> {
-        let ops = self.body[merge].ops.clone();
+        let ops = self.body.block_ops(merge);
         let Some((last, rest)) = ops.split_last() else { return Ok(()) };
         for o in rest {
             self.op(*o, out, depth)?;
@@ -730,9 +730,9 @@ impl<'b, 'a> Glsl<'b, 'a> {
     fn selection(&mut self, op: OpId, out: &mut String, depth: usize) -> Result<(), Error> {
         let blocks = self.body[self.body[op].regions[0]].blocks.clone();
         let (header, merge) = (blocks[0], *blocks.last().expect("merge"));
-        let term = *self.body[header].ops.last().expect("terminator");
+        let term = self.body.last_op(header).expect("terminator");
         if self.body[term].name == "spirv.Switch" {
-            let ops = self.body[header].ops.clone();
+            let ops = self.body.block_ops(header);
             for o in &ops[..ops.len() - 1] {
                 self.op(*o, out, depth)?;
             }
@@ -766,7 +766,7 @@ impl<'b, 'a> Glsl<'b, 'a> {
     fn loop_op(&mut self, op: OpId, out: &mut String, depth: usize) -> Result<(), Error> {
         let blocks = self.body[self.body[op].regions[0]].blocks.clone();
         let (entry, header, cont, merge) = (blocks[0], blocks[1], blocks[blocks.len() - 2], blocks[blocks.len() - 1]);
-        let e = *self.body[entry].ops.last().expect("terminator");
+        let e = self.body.last_op(entry).expect("terminator");
         self.assign_args(header, &self.body[e].operands.clone(), out, depth)?;
         let p = Self::pad(depth);
         let _ = writeln!(out, "{p}while (true) {{");
@@ -826,7 +826,7 @@ impl<'b, 'a> Glsl<'b, 'a> {
             }
             "spirv.SpecConstantOperation" => {
                 let block = self.body[self.body[op].regions[0]].blocks[0];
-                let inner = self.body[block].ops[0];
+                let inner = self.body.first_op(block).expect("an op in the block");
                 let ir = self.body[inner].results[0];
                 let e = self.value_expr(inner, ir)?;
                 self.define(res.expect("result"), e, out, depth)?;
@@ -1189,8 +1189,8 @@ impl<'b, 'a> Glsl<'b, 'a> {
 impl SpirvGlsl {
     /// The glslang stage of `module`'s entry point (`comp`, `vert`, `frag`), if it has one.
     pub fn stage(body: &Body<'_>, module: OpId) -> Option<&'static str> {
-        let ep = body[body.top_block(module)].ops.iter().find(|o| body[**o].name == "spirv.EntryPoint")?;
-        let model = EnumSpec::attr_value(body[*ep].get("execution_model")?)?;
+        let ep = body.ops(body.top_block(module)).find(|o| body[*o].name == "spirv.EntryPoint")?;
+        let model = EnumSpec::attr_value(body[ep].get("execution_model")?)?;
         let case = |n: &str| EnumSpec::of("ExecutionModel").and_then(|e| e.value(n));
         [("GLCompute", "comp"), ("Vertex", "vert"), ("Fragment", "frag")].into_iter().find(|(n, _)| case(n) == Some(model)).map(|(_, s)| s)
     }

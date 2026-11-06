@@ -436,7 +436,7 @@ impl TosaToLinalgNamed {
         };
         let region = cr.rw.body[p].regions[0];
         let block = cr.rw.body[region].blocks[0];
-        let (old_args, max_op) = (cr.rw.body[block].args.clone(), cr.rw.body[block].ops[0]);
+        let (old_args, max_op) = (cr.rw.body[block].args.clone(), cr.rw.body.first_op(block).expect("an op in the block"));
         let g = cr.generic(core::slice::from_ref(&rt), &[padded, window], &[filled], &maps, &[true, true, true, true, false, false], &mut |cr, a| {
             let mut m = Mapping::default();
             for (x, y) in old_args.iter().zip(a) {

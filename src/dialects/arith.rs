@@ -141,7 +141,7 @@ mod bufferizable {
             let alignment = o.buffer_alignment;
             let block = rw.body[rw.body[module].regions[0]].blocks[0];
             // An existing global of this value and alignment.
-            let existing = rw.body[block].ops.iter().copied().find(|g| {
+            let existing = rw.body.ops(block).find(|g| {
                 let g = &rw.body[*g];
                 g.name == "memref.global"
                     && g.get("initial_value") == Some(&value)

@@ -134,7 +134,7 @@ impl<'k> AllReduce<'k> {
                     if *b == split {
                         break;
                     }
-                    let Some(&term) = rw.body[*b].ops.last() else { continue };
+                    let Some(term) = rw.body.last_op(*b) else { continue };
                     if rw.body[term].name != "gpu.yield" {
                         continue;
                     }

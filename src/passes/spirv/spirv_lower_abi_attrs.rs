@@ -11,7 +11,7 @@ use crate::{Body, OpId};
 #[crate::pass("spirv-lower-abi-attrs", on = "spirv.module")]
 pub fn spirv_lower_abi_attrs<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
     let env = TargetEnv::find(body, module).ok_or_else(|| Error(String::from("'spirv.module' op missing SPIR-V target env attribute")))?;
-    let ops = body[body.top_block(module)].ops.clone();
+    let ops = body.block_ops(body.top_block(module));
     let funcs: Vec<OpId> = ops.iter().copied().filter(|o| body[*o].name == "spirv.func" && body[*o].get("spirv.entry_point_abi").is_some()).collect();
     for o in ops {
         match &*body[o].name {

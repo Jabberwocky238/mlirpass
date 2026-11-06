@@ -53,7 +53,7 @@ impl TensorToLinalg {
     fn constant_padding(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<ValueId> {
         let b = &*cr.rw.body;
         let block = *b[*b[op].regions.first()?].blocks.first()?;
-        let y = *b[block].ops.last()?;
+        let y = b.last_op(block)?;
         let v = *b[y].operands.first()?;
         match b.def_op(v) {
             Some(d) if b[d].parent == Some(block) => b.has(d, Trait::ConstantLike).then_some(v),

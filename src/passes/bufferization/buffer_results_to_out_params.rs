@@ -239,7 +239,7 @@ impl Run for BufferResultsToOutParams {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let mut sizes = BTreeMap::new();
         let top = body[body[op].regions[0]].blocks[0];
-        for f in body[top].ops.clone() {
+        for f in body.block_ops(top) {
             if body[f].name != "func.func" || self.skip(body, f) {
                 continue;
             }

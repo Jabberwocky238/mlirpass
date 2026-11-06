@@ -75,7 +75,7 @@ impl ScfToEmitc {
     /// The terminator of `region`'s last block.
     fn terminator(cr: &Cr<'_, '_, '_>, region: RegionId) -> Option<OpId> {
         let b = &*cr.rw.body;
-        b[region].blocks.last().and_then(|blk| b[*blk].ops.last().copied())
+        b[region].blocks.last().and_then(|blk| b.last_op(*blk))
     }
 
     /// `lowerRegion`: `region` moved into `into`, its yield lowered.
@@ -112,7 +112,7 @@ impl ScfToEmitc {
         }
         let scf_body = cr.rw.body[region].blocks[0];
         cr.merge_blocks(scf_body, body, &replacing);
-        let Some(t) = cr.rw.body[body].ops.last().copied() else { return false };
+        let Some(t) = cr.rw.body.last_op(body) else { return false };
         if !Self::lower_yield(cr, &vars, t) {
             return false;
         }
@@ -218,7 +218,7 @@ impl ScfToEmitc {
         let Some(condition) = cr.remapped(operands[0]) else { return false };
         cr.rw.create(OpData::build("emitc.assign").operands(&[cond_var, condition]), &[]);
         let after_block = cr.rw.body[after].blocks[0];
-        if cr.rw.body[after_block].ops.len() > 1 {
+        if cr.rw.body.len_ops(after_block) > 1 {
             let if_op = cr.rw.create_with(OpData::build("emitc.if").operands(&[condition]), &[], |b, f| {
                 b.add_region(f);
                 b.add_region(f);
@@ -228,7 +228,7 @@ impl ScfToEmitc {
             cr.rw.set_end(if_body);
             let Some(args) = Self::remapped(cr, &operands[1..]) else { return false };
             cr.merge_blocks(after_block, if_body, &args);
-            let Some(y) = cr.rw.body[if_body].ops.last().copied() else { return false };
+            let Some(y) = cr.rw.body.last_op(if_body) else { return false };
             if !Self::lower_yield(cr, loop_vars, y) {
                 return false;
             }

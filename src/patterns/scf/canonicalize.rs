@@ -13,7 +13,7 @@ impl<'a> Body<'a> {
     /// The terminator of `op`'s region `r` (its last block).
     pub fn region_terminator(&self, op: OpId, r: usize) -> Option<OpId> {
         let region = *self[op].regions.get(r)?;
-        self[region].blocks.last().and_then(|b| self[*b].ops.last().copied())
+        self[region].blocks.last().and_then(|b| self.last_op(*b))
     }
 
     fn entry(&self, op: OpId, r: usize) -> Option<BlockId> {
@@ -110,7 +110,7 @@ impl<'a> Rewriter<'_, 'a> {
     /// terminator's operands replace.
     fn replace_op_with_region(&mut self, op: OpId, region: RegionId, args: &[ValueId]) {
         let block = self.body[region].blocks[0];
-        let term = *self.body[block].ops.last().expect("terminator");
+        let term = self.body.last_op(block).expect("terminator");
         let parent = self.body[op].parent.expect("placed");
         self.inline_block_before(block, parent, Some(op), args);
         // Read after inlining: a yielded block argument is by now what replaced it.
@@ -164,7 +164,7 @@ impl ScfCanon {
         rw.set_end(prev);
         rw.create(OpData::build("cf.br").successors(&[entry]), &[]);
         for blk in rw.body[region].blocks.clone() {
-            let Some(&t) = rw.body[blk].ops.last() else { continue };
+            let Some(t) = rw.body.last_op(blk) else { continue };
             if rw.body[t].name == "scf.yield" {
                 rw.set_before(t);
                 let vals = rw.body[t].operands.clone();
@@ -202,10 +202,10 @@ impl ScfCanon {
             return true;
         }
         let block = b.entry(op, 0).expect("body");
-        if b[block].ops.len() != 1 {
+        if b.len_ops(block) != 1 {
             return false;
         }
-        let y = b[block].ops[0];
+        let y = b.first_op(block).expect("an op in the block");
         let yielded = b[y].operands.clone();
         let region = b[op].regions[0];
         if yielded.iter().any(|v| b.defined_in(*v, region)) {
@@ -273,7 +273,7 @@ impl ScfCanon {
             }
         }
         let (tblk, eblk) = (rw.body.entry(new, 0).expect("then"), rw.body.entry(new, 1).expect("else"));
-        let (old_ty, old_ey) = (*rw.body[tblk].ops.last().expect("yield"), *rw.body[eblk].ops.last().expect("yield"));
+        let (old_ty, old_ey) = (rw.body.last_op(tblk).expect("yield"), rw.body.last_op(eblk).expect("yield"));
         rw.set_end(tblk);
         rw.replace_with(old_ty, OpData::build("scf.yield").operands(&ty_vals), &[]);
         rw.set_end(eblk);
@@ -369,7 +369,7 @@ impl ScfCanon {
             return false;
         }
         let Some(eb) = b.entry(op, 1) else { return false };
-        if b[eb].ops.len() != 1 {
+        if b.len_ops(eb) != 1 {
             return false;
         }
         let tr = b[op].regions[0];
@@ -479,7 +479,7 @@ impl ScfCanon {
         // Regions: the default first, then the cases.
         let region = if idx < cases.len() { b[op].regions[idx + 1] } else { b[op].regions[0] };
         let source = b[region].blocks[0];
-        let term = *b[source].ops.last().expect("terminator");
+        let term = b.last_op(source).expect("terminator");
         let results = b[term].operands.clone();
         let parent = b[op].parent.expect("placed");
         rw.inline_block_before(source, parent, Some(op), &[]);
@@ -524,12 +524,7 @@ fn invert(p: i64) -> i64 {
 
 fn combine_ifs(rw: &mut Rewriter<'_, '_>, next: OpId) -> bool {
     let b = &*rw.body;
-    let parent = b[next].parent.expect("placed");
-    let pos = b.position(next);
-    if pos == 0 {
-        return false;
-    }
-    let prev = b[parent].ops[pos - 1];
+    let Some(prev) = b.prev_op(next) else { return false };
     if b[prev].name != "scf.if" {
         return false;
     }
@@ -583,8 +578,8 @@ fn combine_ifs(rw: &mut Rewriter<'_, '_>, next: OpId) -> bool {
     rw.inline_region_before(pt, ct, None);
     if let Some(nt) = next_then {
         let cblk = rw.body[ct].blocks[0];
-        let y1 = *rw.body[cblk].ops.last().expect("yield");
-        let y2 = *rw.body[nt].ops.last().expect("yield");
+        let y1 = rw.body.last_op(cblk).expect("yield");
+        let y2 = rw.body.last_op(nt).expect("yield");
         rw.merge_blocks(nt, cblk, &[]);
         let mut vals = rw.body[y1].operands.clone();
         vals.extend(rw.body[y2].operands.clone());
@@ -599,8 +594,8 @@ fn combine_ifs(rw: &mut Rewriter<'_, '_>, next: OpId) -> bool {
             rw.inline_region_before(r, ce, None);
         } else {
             let cblk = rw.body[ce].blocks[0];
-            let y1 = *rw.body[cblk].ops.last().expect("yield");
-            let y2 = *rw.body[ne].ops.last().expect("yield");
+            let y1 = rw.body.last_op(cblk).expect("yield");
+            let y2 = rw.body.last_op(ne).expect("yield");
             rw.merge_blocks(ne, cblk, &[]);
             let mut vals = rw.body[y1].operands.clone();
             vals.extend(rw.body[y2].operands.clone());
@@ -619,19 +614,19 @@ fn combine_ifs(rw: &mut Rewriter<'_, '_>, next: OpId) -> bool {
 fn combine_nested_ifs(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let then_blk = b.entry(op, 0).expect("then");
-    if b[then_blk].ops.len() != 2 {
+    if b.len_ops(then_blk) != 2 {
         return false;
     }
     let else_blk = b.entry(op, 1);
-    if else_blk.is_some_and(|e| b[e].ops.len() != 1) {
+    if else_blk.is_some_and(|e| b.len_ops(e) != 1) {
         return false;
     }
-    let nested = b[then_blk].ops[0];
+    let nested = b.first_op(then_blk).expect("an op in the block");
     if b[nested].name != "scf.if" {
         return false;
     }
     let nested_else = b.entry(nested, 1);
-    if nested_else.is_some_and(|e| b[e].ops.len() != 1) {
+    if nested_else.is_some_and(|e| b.len_ops(e) != 1) {
         return false;
     }
     let mut then_yield = b[b.region_terminator(op, 0).expect("yield")].operands.clone();
@@ -678,7 +673,7 @@ fn combine_nested_ifs(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         results[i] = rw.body[s].results[0];
     }
     rw.merge_blocks(nested_then, new_then, &[]);
-    let old_yield = *rw.body[new_then].ops.last().expect("yield");
+    let old_yield = rw.body.last_op(new_then).expect("yield");
     rw.set_end(new_then);
     rw.replace_with(old_yield, OpData::build("scf.yield").operands(&then_yield), &[]);
     if !else_yield.is_empty() {
@@ -740,9 +735,9 @@ fn align_before_args(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         after_args[i] = rw.body[na].args[*j];
     }
     let nb_args = rw.body[nb].args.clone();
-    let first_b = rw.body[nb].ops.first().copied();
+    let first_b = rw.body.first_op(nb);
     rw.inline_block_before(before, nb, first_b, &nb_args);
-    let first_a = rw.body[na].ops.first().copied();
+    let first_a = rw.body.first_op(na);
     rw.inline_block_before(after, na, first_a, &after_args);
     rw.replace_op(op, &results);
     true
@@ -751,16 +746,11 @@ fn align_before_args(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
 fn while_move_if_down(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let cond_op = b.region_terminator(op, 0).expect("condition");
-    let before = b[cond_op].parent.expect("placed");
-    let pos = b.position(cond_op);
-    if pos == 0 {
-        return false;
-    }
-    let if_op = b[before].ops[pos - 1];
+    let Some(if_op) = b.prev_op(cond_op) else { return false };
     if b[if_op].name != "scf.if" || b[if_op].operands[0] != b[cond_op].operands[0] {
         return false;
     }
-    if b.entry(if_op, 1).is_some_and(|e| b[e].ops.len() != 1) {
+    if b.entry(if_op, 1).is_some_and(|e| b.len_ops(e) != 1) {
         return false;
     }
     let after = b.entry(op, 1).expect("after");
@@ -815,7 +805,7 @@ fn while_move_if_down(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let then_y = rw.body.region_terminator(if_op, 0).expect("yield");
     rw.erase_op(then_y);
     let then_blk = rw.body.entry(if_op, 0).expect("then");
-    let first = rw.body[new_after].ops.first().copied();
+    let first = rw.body.first_op(new_after);
     rw.inline_block_before(then_blk, new_after, first, &[]);
     rw.erase_op(if_op);
     let n = rw.body[op].results.len();
@@ -860,7 +850,7 @@ fn parallel_single_or_zero(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     rw.set_before(op);
     if nl.is_empty() {
         let mut results = Vec::new();
-        let ops_in_body = rw.body[body_blk].ops.clone();
+        let ops_in_body = rw.body.block_ops(body_blk);
         let (reduce, others) = ops_in_body.split_last().expect("terminator");
         for o in others {
             rw.clone(*o, &mut map);
@@ -871,7 +861,7 @@ fn parallel_single_or_zero(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
             let (a0, a1) = (rw.body[blk].args[0], rw.body[blk].args[1]);
             map.map(a0, inits[results.len()]);
             map.map(a1, map.get(reduce_ops[i]));
-            let rops = rw.body[blk].ops.clone();
+            let rops = rw.body.block_ops(blk);
             let (ret, body_ops) = rops.split_last().expect("terminator");
             for o in body_ops {
                 rw.clone(*o, &mut map);
@@ -900,10 +890,10 @@ fn parallel_single_or_zero(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
 fn merge_nested_parallel(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let outer = b.entry(op, 0).expect("body");
-    if b[outer].ops.len() != 2 {
+    if b.len_ops(outer) != 2 {
         return false;
     }
-    let inner = b[outer].ops[0];
+    let inner = b.first_op(outer).expect("an op in the block");
     if b[inner].name != "scf.parallel" {
         return false;
     }
@@ -929,7 +919,7 @@ fn merge_nested_parallel(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     }
     let inner_blk = b.entry(inner, 0).expect("body");
     let (oargs, iargs) = (b[outer].args.clone(), b[inner_blk].args.clone());
-    let inner_ops: Vec<OpId> = b[inner_blk].ops[..b[inner_blk].ops.len() - 1].to_vec();
+    let inner_ops: Vec<OpId> = b.block_ops(inner_blk)[..b.len_ops(inner_blk) - 1].to_vec();
     let k = no + ni;
     rw.set_before(op);
     let new = rw.create_with(OpData::build("scf.parallel").operands(&all).segments(&[k, k, k, 0]), &[], |body, n| {

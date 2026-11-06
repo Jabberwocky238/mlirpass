@@ -175,12 +175,12 @@ mod bufferizable {
     impl Mask {
         /// The body's terminator.
         fn yield_of(b: &Body<'_>, op: OpId) -> OpId {
-            *b[b[b[op].regions[0]].blocks[0]].ops.last().expect("a terminator")
+            b.last_op(b[b[op].regions[0]].blocks[0]).expect("a terminator")
         }
 
         /// `getMaskableOp`: the body's op, if any.
         fn masked(b: &Body<'_>, op: OpId) -> Option<OpId> {
-            let ops = &b[b[b[op].regions[0]].blocks[0]].ops;
+            let ops = &b.block_ops(b[b[op].regions[0]].blocks[0]);
             (ops.len() > 1).then(|| ops[0])
         }
     }
@@ -194,7 +194,7 @@ mod bufferizable {
         fn resolve_conflicts(&self, rw: &mut Rewriter<'_, '_>, s: &AnalysisState<'_>, op: OpId) -> Result<(), Error> {
             s.resolve_tensor_conflicts(rw, op)?;
             let blk = rw.body[rw.body[op].regions[0]].blocks[0];
-            if rw.body[blk].ops.iter().any(|o| rw.body[*o].name == "bufferization.alloc_tensor") {
+            if rw.body.block_ops(blk).iter().any(|o| rw.body[*o].name == "bufferization.alloc_tensor") {
                 return Err(Error(alloc::format!("'{}' op body must bufferize in-place", rw.body[op].name)));
             }
             Ok(())

@@ -616,7 +616,7 @@ mod bufferizable {
                 .collect();
             let from = self.body[body].blocks[0];
             self.merge_blocks(from, blk, &indices);
-            let y = *self.body[blk].ops.last().expect("a terminator");
+            let y = self.body.last_op(blk).expect("a terminator");
             let v = self.body[y].operands[0];
             self.replace_with(y, OpData::build("linalg.yield").operands(&[v]), &[]);
             self.body[m].results[0]

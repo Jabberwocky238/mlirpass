@@ -323,7 +323,7 @@ impl AssertToNvvm {
         cr.modify(f, |b| b[f].set("passthrough", Attribute::Array(vec![Attribute::str("noreturn")])));
         let before = cr.rw.body[op].parent.expect("in a block");
         let assert_block = cr.rw.split_block(before, op);
-        let next = cr.rw.body[assert_block].ops.iter().position(|o| *o == op).and_then(|i| cr.rw.body[assert_block].ops.get(i + 1).copied());
+        let next = cr.rw.body.block_ops(assert_block).iter().position(|o| *o == op).and_then(|i| cr.rw.body.block_ops(assert_block).get(i + 1).copied());
         let after = match next {
             Some(n) => cr.rw.split_block(assert_block, n),
             None => {

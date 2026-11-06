@@ -235,7 +235,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
         let am = self.enum_attr(self.module, "addressing_model")?;
         Self::encode(&mut self.memory_model, "OpMemoryModel", &[am, mm]);
         // `moveFuncDeclarationsToTop`.
-        let ops = self.body[self.body.top_block(self.module)].ops.clone();
+        let ops = self.body.block_ops(self.body.top_block(self.module));
         let order = Self::declarations_first(self.body, &ops);
         for op in order {
             self.operation(op)?;
@@ -985,7 +985,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
                 let tid = self.type_id(&self.body[self.body[op].results[0]].ty.clone())?;
                 let id = self.next();
                 let block = self.body[self.body[op].regions[0]].blocks[0];
-                let enclosed = self.body[block].ops[0];
+                let enclosed = self.body.first_op(block).expect("an op in the block");
                 let opname = format!("Op{}", self.body[enclosed].name.strip_prefix("spirv.").unwrap_or(""));
                 let code = EnumSpec::of("Opcode").and_then(|e| e.value(&opname)).ok_or_else(|| Error(format!("Couldn't find op code for op {}", self.body[enclosed].name)))?;
                 let mut ops = vec![tid, id, code];
@@ -1459,7 +1459,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
     }
 
     fn successors(&self, b: BlockId) -> Vec<BlockId> {
-        self.body[b].ops.last().map(|t| self.body[*t].successors.clone()).unwrap_or_default().to_vec()
+        self.body.last_op(b).map(|t| self.body[t].successors.clone()).unwrap_or_default().to_vec()
     }
 
     /// `processBlock`.
@@ -1469,7 +1469,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
             Self::encode(&mut self.function_body, "OpLabel", &[id]);
         }
         self.phis(b)?;
-        let ops = self.body[b].ops.clone();
+        let ops = self.body.block_ops(b);
         if let Some(m) = merge
             && ops.iter().any(|o| matches!(&*self.body[*o].name, "spirv.mlir.loop" | "spirv.mlir.selection"))
         {
@@ -1508,12 +1508,12 @@ impl<'b, 'a> Serializer<'b, 'a> {
             let parent = self.body[region].parent;
             if self.body[parent].name == "spirv.mlir.loop" {
                 let outer = self.body[parent].parent.expect("placed");
-                let ops = &self.body[outer].ops;
+                let ops = &self.body.block_ops(outer);
                 let at = ops.iter().position(|o| *o == parent).expect("in its block");
                 return ops[..at].iter().rev().find_map(|o| self.merge_block(*o)).unwrap_or(outer);
             }
         }
-        self.body[b].ops.iter().rev().find_map(|o| self.merge_block(*o)).unwrap_or(b)
+        self.body.block_ops(b).iter().rev().find_map(|o| self.merge_block(*o)).unwrap_or(b)
     }
 
     /// The branches to `b`, as its use list has them (the latest use first).
@@ -1521,7 +1521,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
         let region = self.body[b].parent.expect("in a region");
         let mut uses = Vec::new();
         for blk in &self.body[region].blocks {
-            if let Some(t) = self.body[*blk].ops.last() {
+            if let Some(t) = self.body.last_op(*blk).as_ref() {
                 uses.extend(self.body[*t].successors.iter().filter(|s| **s == b).map(|_| *t));
             }
         }
@@ -1565,7 +1565,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
     }
 
     fn alias_results(&mut self, op: OpId, merge: BlockId) {
-        let m = *self.body[merge].ops.last().expect("spirv.mlir.merge");
+        let m = self.body.last_op(merge).expect("spirv.mlir.merge");
         for (r, v) in self.body[op].results.clone().into_iter().zip(self.body[m].operands.clone()) {
             self.aliases.insert(r, v);
         }

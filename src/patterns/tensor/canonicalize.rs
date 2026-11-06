@@ -243,7 +243,7 @@ impl<'a> Body<'a> {
     pub fn constant_padding(&self, pad: OpId) -> Option<ValueId> {
         let region = self[pad].regions[0];
         let block = *self[region].blocks.first()?;
-        let y = *self[block].ops.last()?;
+        let y = self.last_op(block)?;
         if self[y].name != "tensor.yield" {
             return None;
         }
@@ -846,7 +846,7 @@ impl TensorCanon {
         for (a, i) in b[block].args.iter().zip(&b[op].operands[1..]) {
             map.map(*a, *i);
         }
-        let body_ops = b[block].ops.clone();
+        let body_ops = b.block_ops(block);
         let (last, rest) = body_ops.split_last().expect("terminated");
         let yielded = b[*last].operands[0];
         rw.set_before(op);

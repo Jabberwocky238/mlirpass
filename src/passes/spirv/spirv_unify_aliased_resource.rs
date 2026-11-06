@@ -175,8 +175,8 @@ impl Unify<'_> {
             module = b.parent_op(o);
         }
         let Some(m) = module else { return false };
-        let global = b[b.top_block(m)].ops.iter().find(|g| b[**g].get("sym_name").and_then(symbol_text).as_deref() == Some(dst));
-        let Some(Attribute::Type(ty)) = global.and_then(|g| b[*g].get("type").cloned()) else { return false };
+        let global = b.ops(b.top_block(m)).find(|g| b[*g].get("sym_name").and_then(symbol_text).as_deref() == Some(dst));
+        let Some(Attribute::Type(ty)) = global.and_then(|g| b[g].get("type").cloned()) else { return false };
         cr.replace_new(op, OpData::build("spirv.mlir.addressof").with("variable", Attribute::SymbolRef(alloc::vec![String::from(dst).into()])), &[ty]);
         true
     }

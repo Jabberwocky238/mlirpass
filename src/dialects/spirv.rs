@@ -53,7 +53,7 @@ impl DialectInliner for SpirvDialect {
 
     /// Not a selection or loop that returns, not a kill.
     fn legal_op(&self, b: &Body<'_>, op: OpId) -> bool {
-        let returns = |r: crate::RegionId| b[r].blocks.iter().any(|blk| b[*blk].ops.last().is_some_and(|t| matches!(&*b[*t].name, "spirv.Return" | "spirv.ReturnValue")));
+        let returns = |r: crate::RegionId| b[r].blocks.iter().any(|blk| b.last_op(*blk).is_some_and(|t| matches!(&*b[t].name, "spirv.Return" | "spirv.ReturnValue")));
         if matches!(&*b[op].name, "spirv.mlir.selection" | "spirv.mlir.loop") && b[op].regions.first().is_some_and(|r| returns(*r)) {
             return false;
         }

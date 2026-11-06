@@ -430,14 +430,14 @@ pub fn one_shot_module_bufferize(body: &mut Body<'_>, o: &BufferizationOptions, 
             fold_memref_casts(body, f);
         }
     }
-    let tops: Vec<OpId> = body[module].regions.iter().flat_map(|r| body[*r].blocks.iter()).flat_map(|blk| body[*blk].ops.iter().copied()).collect();
+    let tops: Vec<OpId> = body[module].regions.iter().flat_map(|r| body[*r].blocks.iter()).flat_map(|blk| body.ops(*blk)).collect();
     for op in tops {
         if body[op].parent.is_none() || body[op].name == "func.func" || body.is_symbol_table(op) {
             continue;
         }
         bufferize_op(body, o, op)?;
     }
-    let funcs: Vec<OpId> = body[module].regions.iter().flat_map(|r| body[*r].blocks.iter()).flat_map(|blk| body[*blk].ops.iter().copied()).filter(|x| body[*x].name == "func.func").collect();
+    let funcs: Vec<OpId> = body[module].regions.iter().flat_map(|r| body[*r].blocks.iter()).flat_map(|blk| body.ops(*blk)).filter(|x| body[*x].name == "func.func").collect();
     for f in funcs {
         super::analysis::remove_func_arg_attr(body, f, "bufferization.buffer_layout");
         super::analysis::remove_func_arg_attr(body, f, "bufferization.writable");

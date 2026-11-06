@@ -46,10 +46,14 @@ struct Driver {
 impl Driver {
     /// No op between `from` and `to` (same block) might write.
     fn write_between(&self, body: &Body<'_>, from: OpId, to: OpId) -> bool {
-        let block = body[from].parent.expect("placed");
-        let ops = &body[block].ops;
-        let (i, j) = (body.position(from), body.position(to));
-        ops[i + 1..j].iter().any(|o| body.effects_recursively(*o).is_none_or(|e| e.iter().any(|x| x.kind == EffectKind::Write)))
+        let mut at = body.next_op(from);
+        while let Some(o) = at.filter(|o| *o != to) {
+            if body.effects_recursively(o).is_none_or(|e| e.iter().any(|x| x.kind == EffectKind::Write)) {
+                return true;
+            }
+            at = body.next_op(o);
+        }
+        false
     }
 
     fn replace(&mut self, body: &mut Body<'_>, known: &Known, op: OpId, existing: OpId, ssa: bool) {
@@ -110,7 +114,7 @@ impl Driver {
     }
 
     fn block(&mut self, body: &mut Body<'_>, known: &mut Known, block: BlockId, ssa: bool) {
-        for op in body[block].ops.clone() {
+        for op in body.block_ops(block) {
             let regions = body[op].regions.clone();
             if !regions.is_empty() {
                 if body.might_have(op, Trait::IsIsolatedFromAbove) {
@@ -241,10 +245,11 @@ impl Body<'_> {
                 }
                 eq.values.insert(*p, *q);
             }
-            if bx.ops.len() != by.ops.len() {
+            if self.len_ops(*x) != self.len_ops(*y) {
                 return false;
             }
-            for (o, p) in bx.ops.iter().zip(&by.ops) {
+            for (o, p) in self.ops(*x).zip(self.ops(*y)) {
+                let (o, p) = (&o, &p);
                 if !self.equivalent_in(*o, *p, eq) {
                     return false;
                 }

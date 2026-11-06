@@ -258,7 +258,7 @@ impl GpuToSpirv {
     /// `makeVarName`: `prefix` and the first number no symbol of `table` has.
     fn var_name(cr: &Cr<'_, '_, '_>, table: crate::BlockId, prefix: &str) -> alloc::string::String {
         let b = &cr.rw.body;
-        let taken = |n: &str| b[table].ops.iter().any(|o| b[*o].get("sym_name").and_then(symbol_text).as_deref() == Some(n));
+        let taken = |n: &str| b.block_ops(table).iter().any(|o| b[*o].get("sym_name").and_then(symbol_text).as_deref() == Some(n));
         (0..).map(|i| format!("{prefix}{i}")).find(|n| !taken(n)).expect("a free name")
     }
 

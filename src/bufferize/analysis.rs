@@ -109,7 +109,7 @@ impl Body<'_> {
             if !self.has_ssa_dominance(region) {
                 return true;
             }
-            let ops = &self[blk].ops;
+            let ops = &self.block_ops(blk);
             return ops.iter().position(|o| *o == a) < ops.iter().position(|o| *o == xa);
         }
         !self.has_ssa_dominance(region) || self.dom_tree(region).dominates(blk, xb)
@@ -158,7 +158,7 @@ impl Body<'_> {
         if to == except {
             return false;
         }
-        let succs = |blk: crate::BlockId| self[blk].ops.last().map(|t| self[*t].successors.to_vec()).unwrap_or_default();
+        let succs = |blk: crate::BlockId| self.last_op(blk).map(|t| self[t].successors.to_vec()).unwrap_or_default();
         let mut work = succs(from);
         let mut seen = BTreeSet::new();
         while let Some(blk) = work.pop() {
@@ -533,7 +533,7 @@ impl<'o> AnalysisState<'o> {
         let mut out = Vec::new();
         for r in b[op].regions.iter().rev() {
             for blk in b[*r].blocks.iter().rev() {
-                for o in b[*blk].ops.iter().rev() {
+                for o in b.block_ops(*blk).iter().rev() {
                     out.extend(Self::reverse_post_order(b, *o));
                 }
             }
@@ -925,7 +925,7 @@ pub(crate) fn func_signature<'a>(b: &Body<'a>, f: OpId) -> (Vec<mlirformat::Type
 /// `getReturnOps`: the `func.return`s ending `f`'s blocks.
 pub(crate) fn return_ops(b: &Body<'_>, f: OpId) -> Vec<OpId> {
     let Some(r) = b[f].regions.first() else { return Vec::new() };
-    b[*r].blocks.iter().filter_map(|blk| b[*blk].ops.last().copied()).filter(|t| b[*t].name == "func.return").collect()
+    b[*r].blocks.iter().filter_map(|blk| b.last_op(*blk)).filter(|t| b[*t].name == "func.return").collect()
 }
 
 /// Argument attribute `name` of argument `i` of `f`.
@@ -988,7 +988,7 @@ pub(crate) fn callee(b: &Body<'_>, call: OpId) -> Option<OpId> {
 /// `getFuncOpsOrderedByCalls`: the module's functions, each after the functions with tensor
 /// signatures it calls; those in cycles apart.
 pub(crate) fn funcs_by_calls(b: &Body<'_>, module: OpId) -> (Vec<OpId>, Vec<OpId>) {
-    let funcs: Vec<OpId> = b[module].regions.iter().flat_map(|r| b[*r].blocks.iter()).flat_map(|blk| b[*blk].ops.iter().copied()).filter(|o| b[*o].name == "func.func").collect();
+    let funcs: Vec<OpId> = b[module].regions.iter().flat_map(|r| b[*r].blocks.iter()).flat_map(|blk| b.ops(*blk)).filter(|o| b[*o].name == "func.func").collect();
     let tensor_signature = |f: OpId| {
         let (i, r) = func_signature(b, f);
         i.iter().chain(&r).any(is_tensor)

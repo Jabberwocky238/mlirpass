@@ -194,7 +194,7 @@ impl Aliases {
                 for a in &b[*blk].args {
                     self.visit(&format!("{}", b[*a].ty));
                 }
-                for o in &b[*blk].ops {
+                for o in &b.block_ops(*blk) {
                     self.visit_generic(b, *o);
                 }
             }
@@ -214,7 +214,7 @@ impl Aliases {
                 for a in &b[*blk].args {
                     self.visit(&format!("{}", b[*a].ty));
                 }
-                let ops = &b[*blk].ops;
+                let ops = &b.block_ops(*blk);
                 let step = ops.len().div_ceil(x.threads() * 4).max(1);
                 let runs: Vec<_> = ops
                     .chunks(step)

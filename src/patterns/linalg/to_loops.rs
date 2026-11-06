@@ -274,7 +274,7 @@ impl<'a> Rewriter<'_, 'a> {
         for (a, v) in self.body[block].args.clone().into_iter().zip(indexed) {
             map.map(a, v);
         }
-        let ops = self.body[block].ops.clone();
+        let ops = self.body.block_ops(block);
         let Some((yielded, payload)) = ops.split_last() else { return };
         for o in payload {
             self.clone(*o, &mut map);
@@ -308,7 +308,7 @@ impl<'a> Rewriter<'_, 'a> {
     fn index_to_ivs(&mut self, ivs: &[ValueId]) {
         let Some(&last) = ivs.last() else { return };
         let Def::Arg(block, _) = self.body[last].def else { return };
-        for o in self.body[block].ops.clone() {
+        for o in self.body.block_ops(block) {
             if self.body[o].name == "linalg.index"
                 && let Some(d) = self.body[o].get("dim").and_then(|d| d.int().ok()).and_then(|d| usize::try_from(d).ok())
             {

@@ -40,7 +40,7 @@ impl Libm {
             let f = cr.rw.body.create(data, &[]);
             cr.rw.body.add_region(f);
             let top = cr.rw.body[cr.rw.body[table].regions[0]].blocks[0];
-            let first = cr.rw.body[top].ops.first().copied();
+            let first = cr.rw.body.first_op(top);
             cr.rw.move_before(f, top, first);
         }
         cr.replace_new(op, OpData::build("func.call").operands(&operands).with("callee", Attribute::SymbolRef(alloc::vec![alloc::string::String::from(name).into()])), &results);

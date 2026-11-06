@@ -47,9 +47,7 @@ impl GpuCanon {
     #[rewrite("gpu.barrier")]
     fn erase_redundant_barrier(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
-        let Some(block) = b[op].parent else { return false };
-        let at = b.position(op);
-        if !b[block].ops.get(at + 1).is_some_and(|n| b[*n].name == "gpu.barrier") {
+        if !b.next_op(op).is_some_and(|n| b[n].name == "gpu.barrier") {
             return false;
         }
         rw.erase_op(op);

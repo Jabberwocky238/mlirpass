@@ -277,7 +277,7 @@ impl ShapeToStd {
         let shape = o[0][0];
         let inits = b[op].operands[1..].to_vec();
         let block = b.top_block(op);
-        let (bargs, bops) = (b[block].args.clone(), b[block].ops.clone());
+        let (bargs, bops) = (b[block].args.clone(), b.block_ops(block));
         let zero = Self::cidx(cr, 0);
         let one = Self::cidx(cr, 1);
         let rank = Self::dim(cr, shape, zero);

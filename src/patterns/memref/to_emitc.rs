@@ -188,7 +188,7 @@ impl MemrefToEmitc {
             .filter_map(|o| body[*o].get_str("include").map(alloc::string::String::from))
             .collect();
         let block = body.top_block(module);
-        let first = body[block].ops.first().copied();
+        let first = body.first_op(block);
         for o in ops {
             if body[o].name != "emitc.call_opaque" {
                 continue;

@@ -542,13 +542,13 @@ impl SpirvCanon {
             return false;
         }
         let (header, merge) = (blocks[0], blocks[3]);
-        let [br] = b[header].ops[..] else { return false };
+        let [br] = b.block_ops(header)[..] else { return false };
         if b[br].name != "spirv.BranchConditional" {
             return false;
         }
         let [tb, fb] = b[br].successors[..] else { return false };
         let arm = |blk: crate::BlockId| {
-            let [store, jump] = b[blk].ops[..] else { return None };
+            let [store, jump] = b.block_ops(blk)[..] else { return None };
             (b[store].name == "spirv.Store" && b[jump].name == "spirv.Branch" && b[jump].successors.first() == Some(&merge)).then_some(store)
         };
         let (Some(ts), Some(fs)) = (arm(tb), arm(fb)) else { return false };

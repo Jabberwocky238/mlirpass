@@ -48,13 +48,13 @@ impl ScfToCf {
         let (init, end) = Self::split(cr, op);
         let region = cr.rw.body[op].regions[0];
         let cond = cr.rw.body[region].blocks[0];
-        let head = cr.rw.body[cond].ops[0];
+        let head = cr.rw.body.first_op(cond).expect("an op in the block");
         let first = cr.rw.split_block(cond, head);
         let last = *cr.rw.body[region].blocks.last().expect("a body");
         let parent = Self::region_of(cr, op);
         cr.inline_region(region, parent, Some(end));
         let iv = cr.rw.body[cond].args[0];
-        let term = *cr.rw.body[last].ops.last().expect("terminator");
+        let term = cr.rw.body.last_op(last).expect("terminator");
         cr.rw.set_end(last);
         let ops = cr.rw.body[op].operands.clone();
         let stepped = cr.bin("arith.addi", iv, ops[2]);
@@ -78,7 +78,7 @@ impl ScfToCf {
 
     /// The region's last block ends in a branch to `to` with what its terminator yielded.
     fn yield_to(cr: &mut Cr<'_, '_, '_>, block: BlockId, to: BlockId) {
-        let term = *cr.rw.body[block].ops.last().expect("terminator");
+        let term = cr.rw.body.last_op(block).expect("terminator");
         let ops = cr.rw.body[term].operands.clone();
         cr.rw.set_end(block);
         Self::br(cr, to, &ops);
@@ -128,7 +128,7 @@ impl ScfToCf {
         let entry = cr.rw.body[region].blocks[0];
         Self::br(cr, entry, &[]);
         for b in cr.rw.body[region].blocks.clone() {
-            if cr.rw.body[b].ops.last().is_some_and(|t| cr.rw.body[*t].name == "scf.yield") {
+            if cr.rw.body.last_op(b).is_some_and(|t| cr.rw.body[t].name == "scf.yield") {
                 Self::yield_to(cr, b, rest);
             }
         }
@@ -155,13 +155,13 @@ impl ScfToCf {
         cr.rw.set_end(current);
         let inits = cr.rw.body[op].operands.clone();
         Self::br(cr, before, &inits);
-        let cond = *cr.rw.body[before].ops.last().expect("condition");
+        let cond = cr.rw.body.last_op(before).expect("condition");
         let co = cr.rw.body[cond].operands.clone();
         cr.rw.set_before(cond);
         let new = Self::cond_br(cr, co[0], after, &co[1..], cont, &[]);
         let _ = new;
         cr.erase(cond);
-        let y = *cr.rw.body[after].ops.last().expect("yield");
+        let y = cr.rw.body.last_op(after).expect("yield");
         let yo = cr.rw.body[y].operands.clone();
         cr.rw.set_before(y);
         let latch = Self::br(cr, before, &yo);
@@ -176,7 +176,7 @@ impl ScfToCf {
     fn do_while(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let after_r = cr.rw.body[op].regions[1];
         let after = cr.rw.body[after_r].blocks[0];
-        let [y] = cr.rw.body[after].ops[..] else { return false };
+        let [y] = cr.rw.body.block_ops(after)[..] else { return false };
         if cr.rw.body[y].name != "scf.yield" || cr.rw.body[y].operands != cr.rw.body[after].args {
             return false;
         }
@@ -189,7 +189,7 @@ impl ScfToCf {
         cr.rw.set_end(current);
         let inits = cr.rw.body[op].operands.clone();
         Self::br(cr, before, &inits);
-        let cond = *cr.rw.body[before].ops.last().expect("condition");
+        let cond = cr.rw.body.last_op(before).expect("condition");
         let co = cr.rw.body[cond].operands.clone();
         cr.rw.set_end(before);
         let latch = Self::cond_br(cr, co[0], before, &co[1..], cont, &[]);
@@ -210,7 +210,7 @@ impl ScfToCf {
         let parent = Self::region_of(cr, op);
         let convert = |cr: &mut Cr<'_, '_, '_>, region: crate::RegionId| {
             let block = cr.rw.body[region].blocks[0];
-            let y = *cr.rw.body[block].ops.last().expect("yield");
+            let y = cr.rw.body.last_op(block).expect("yield");
             let yo = cr.rw.body[y].operands.clone();
             cr.rw.set_before(y);
             Self::br(cr, cont, &yo);
@@ -289,7 +289,7 @@ impl ScfToCf {
         let mut yields = Vec::new();
         for i in 0..cr.rw.body[op].results.len() {
             let rb = cr.rw.body[cr.rw.body[reduce].regions[i]].blocks[0];
-            let ret = *cr.rw.body[rb].ops.last().expect("reduce.return");
+            let ret = cr.rw.body.last_op(rb).expect("reduce.return");
             yields.push(cr.rw.body[ret].operands[0]);
             cr.erase(ret);
             let arg = iter_args[i];
@@ -298,7 +298,7 @@ impl ScfToCf {
         }
         cr.erase(reduce);
         let new_body = cr.rw.ip.expect("inside a loop").block;
-        match cr.rw.body[new_body].ops.last().copied() {
+        match cr.rw.body.last_op(new_body) {
             None => cr.merge_blocks(body, new_body, &ivs),
             Some(t) => cr.inline_block_before(body, new_body, Some(t), &ivs),
         }
@@ -341,7 +341,7 @@ impl ScfToCf {
         let pr = cr.rw.body[p].regions[0];
         cr.inline_region(region, pr, None);
         let blk = cr.rw.body[pr].blocks[0];
-        let term = *cr.rw.body[blk].ops.last().expect("in_parallel");
+        let term = cr.rw.body.last_op(blk).expect("in_parallel");
         cr.rw.set_before(term);
         cr.rw.create_with(OpData::build("scf.reduce"), &[], |_, _| {});
         cr.erase(term);

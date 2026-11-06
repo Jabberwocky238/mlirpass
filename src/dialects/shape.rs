@@ -59,7 +59,7 @@ mod bufferizable {
     pub(super) struct AssumingYield;
 
     fn yield_of(b: &Body<'_>, op: OpId) -> OpId {
-        *b[b[b[op].regions[0]].blocks[0]].ops.last().expect("a terminator")
+        b.last_op(b[b[op].regions[0]].blocks[0]).expect("a terminator")
     }
 
     impl Bufferizable for Assuming {

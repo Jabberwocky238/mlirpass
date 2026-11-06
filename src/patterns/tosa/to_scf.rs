@@ -118,7 +118,7 @@ impl TosaToScf {
     /// of its extracted first operand and the block's arguments.
     fn retire_yield(cr: &mut Cr<'_, '_, '_>, region: RegionId, cond: Option<()>) {
         let head = cr.rw.body[region].blocks[0];
-        let Some(&y) = cr.rw.body[head].ops.last() else { return };
+        let Some(y) = cr.rw.body.last_op(head) else { return };
         let saved = cr.rw.ip;
         cr.rw.set_before(y);
         let operands = cr.rw.body[y].operands.clone();

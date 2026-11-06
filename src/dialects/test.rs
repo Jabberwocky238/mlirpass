@@ -144,7 +144,7 @@ impl DialectInliner for TestDialect {
         }
         let mut ops = Vec::new();
         for blk in blocks {
-            for o in &b[*blk].ops {
+            for o in &b.block_ops(*blk) {
                 b.walk(*o, &mut |x| ops.push(x));
             }
         }

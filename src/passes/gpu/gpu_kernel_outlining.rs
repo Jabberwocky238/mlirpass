@@ -56,11 +56,11 @@ impl crate::Run for GpuKernelOutlining {
         };
         let top = body.top_block(module);
         let mut modified = false;
-        for f in body[top].ops.clone() {
+        for f in body.block_ops(top) {
             if !body.has(f, Trait::SymbolOpInterface) {
                 continue;
             }
-            let at = body[top].ops.get(body.position(f) + 1).copied();
+            let at = body.next_op(f);
             let mut launches = Vec::new();
             body.walk_post(f, &mut |o| {
                 if body[o].name == "gpu.launch" {

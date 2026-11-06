@@ -917,7 +917,7 @@ impl<'a> Folder<'_, 'a> {
         let op = self.op;
         let region = self.b[op].regions[0];
         let Some(&block) = self.b[region].blocks.first() else { return Fold::Failed };
-        let ops = self.b[block].ops.clone();
+        let ops = self.b.block_ops(block);
         let passthru = self.b[op].operands.len() > 1;
         if ops.len() == 1 && !passthru {
             let y = ops[0];
@@ -2421,10 +2421,10 @@ impl VectorCanon {
         let b = &*rw.body;
         let region = b[op].regions[0];
         let Some(&block) = b[region].blocks.first() else { return false };
-        if b[block].ops.len() != 1 || b[op].operands.len() < 2 {
+        if b.len_ops(block) != 1 || b[op].operands.len() < 2 {
             return false;
         }
-        let y = b[block].ops[0];
+        let y = b.first_op(block).expect("an op in the block");
         let (m, p, v) = (b[op].operands[0], b[op].operands[1], b[y].operands[0]);
         let types = b.types(&b[op].results.clone());
         rw.replace_with(op, OpData::build("arith.select").operands(&[m, v, p]), &types);

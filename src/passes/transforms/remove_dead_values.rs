@@ -108,7 +108,7 @@ impl<'a> Rdv<'_, '_, 'a> {
             }
         }
         for blk in self.body()[region].blocks.clone() {
-            let Some(&t) = self.body()[blk].ops.last() else { continue };
+            let Some(t) = self.body().last_op(blk) else { continue };
             if self.body().has(t, Trait::ReturnLike) && self.body()[t].operands.len() == n_rets {
                 self.cl.operands.push((t, dead_rets.clone(), None, false));
             }
@@ -180,7 +180,7 @@ impl<'a> Rdv<'_, '_, 'a> {
     fn walk(&mut self, op: OpId, top: OpId) {
         for r in self.body()[op].regions.clone() {
             for b in self.body()[r].blocks.clone() {
-                for o in self.body()[b].ops.clone() {
+                for o in self.body().block_ops(b) {
                     self.walk(o, top);
                 }
             }

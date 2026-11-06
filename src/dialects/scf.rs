@@ -172,7 +172,7 @@ mod bufferizable {
 
     /// The terminator (`scf.yield`) of region `r` of `op`.
     fn yield_of(b: &Body<'_>, op: OpId, r: usize) -> OpId {
-        *b[body_of(b, op, r)].ops.last().expect("a terminator")
+        b.last_op(body_of(b, op, r)).expect("a terminator")
     }
 
     /// `castBuffer`: `buffer` as `ty`, through a `memref.cast` when it differs.
@@ -448,7 +448,7 @@ mod bufferizable {
     impl ExecuteRegion {
         /// `getUniqueYieldOp`: the only `scf.yield` terminating a block of the region.
         fn unique_yield(b: &Body<'_>, op: OpId) -> Option<OpId> {
-            let mut yields = b[b[op].regions[0]].blocks.iter().filter_map(|blk| b[*blk].ops.last().copied().filter(|t| &*b[*t].name == "scf.yield"));
+            let mut yields = b[b[op].regions[0]].blocks.iter().filter_map(|blk| b.last_op(*blk).filter(|t| &*b[*t].name == "scf.yield"));
             let y = yields.next()?;
             yields.next().is_none().then_some(y)
         }

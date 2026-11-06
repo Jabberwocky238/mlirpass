@@ -24,13 +24,13 @@ impl<'a> Body<'a> {
     }
 
     fn terminator(&self, b: BlockId) -> Option<OpId> {
-        self[b].ops.last().copied()
+        self.last_op(b)
     }
 
     /// `collapseBranch`: if `succ` only forwards to another block with a `cf.br`, the block it
     /// reaches and the operands it would get from `operands`.
     fn collapse_branch(&self, succ: BlockId, operands: &[ValueId]) -> Option<(BlockId, Vec<ValueId>)> {
-        if self[succ].ops.len() != 1 {
+        if self.len_ops(succ) != 1 {
             return None;
         }
         let br = self.terminator(succ).filter(|t| self[*t].name == "cf.br")?;
@@ -249,7 +249,7 @@ impl CfCanon {
     fn drop_unreachable_cond_branch(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
         let (t, f) = (b[op].successors[0], b[op].successors[1]);
-        let unreachable = |blk: BlockId| b[blk].ops.len() == 1 && b.terminator(blk).is_some_and(|o| b[o].name == "ub.unreachable");
+        let unreachable = |blk: BlockId| b.len_ops(blk) == 1 && b.terminator(blk).is_some_and(|o| b[o].name == "ub.unreachable");
         if unreachable(t) {
             let operands = b.succ_operands(op, 1);
             return rw.br(op, f, &operands);

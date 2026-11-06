@@ -124,7 +124,7 @@ impl CallGraph {
         }
         for r in &body[op].regions {
             for b in &body[*r].blocks {
-                for o in &body[*b].ops {
+                for o in &body.block_ops(*b) {
                     self.compute(body, *o, parent, resolve);
                 }
             }
@@ -380,7 +380,7 @@ impl Inliner {
     fn collect_calls(body: &Body<'_>, cg: &CallGraph, blocks: &[BlockId], source: usize, nested: bool, calls: &mut Vec<Call>) {
         let mut work: Vec<(BlockId, usize)> = blocks.iter().map(|b| (*b, source)).collect();
         while let Some((b, source)) = work.pop() {
-            for &op in &body[b].ops {
+            for &op in &body.block_ops(b) {
                 if body.is_call(op) {
                     if let Some(Attribute::SymbolRef(p)) = body[op].get("callee")
                         && p.len() != 1
@@ -439,7 +439,7 @@ impl Inliner {
         }
         let count = |n: usize| {
             let r = cg.nodes[n].region.expect("internal");
-            body[r].blocks.iter().flat_map(|b| &body[*b].ops).map(|o| body.ops_in(*o).len() as u64).sum::<u64>()
+            body[r].blocks.iter().flat_map(|b| body.ops(*b)).map(|o| body.ops_in(o).len() as u64).sum::<u64>()
         };
         let caller = count(c.source);
         caller == 0 || count(c.target) * 100 / caller <= self.threshold
@@ -560,7 +560,7 @@ fn callable_results<'a>(body: &Body<'a>, callable: OpId) -> Option<Vec<Type<'a>>
 
 /// `isLegalToInline` over `src`'s ops (recursively where the dialect says).
 fn legal_ops(body: &Body<'_>, src: RegionId) -> bool {
-    body[src].blocks.iter().flat_map(|b| &body[*b].ops).all(|&op| {
+    body[src].blocks.iter().flat_map(|b| body.ops(*b)).all(|op| {
         if body[op].name == "builtin.unrealized_conversion_cast" {
             return true;
         }
@@ -610,7 +610,7 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
         }
         map.map(arg, v);
     }
-    let after_call = body[block].ops.get(body.position(call) + 1).copied();
+    let after_call = body.next_op(call);
     for (r, ty) in results.iter().zip(&result_types) {
         if body[*r].ty == *ty {
             continue;
@@ -634,7 +634,7 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
     }
     let callable_iface = body.inliner_of(callable);
     // The builder's point: before what followed the call (iterator-stable, as in C++).
-    let next = body[block].ops.get(body.position(call) + 1).copied();
+    let next = body.next_op(call);
     let at = InsertPoint { block, before: next };
     if let Some(i) = callable_iface {
         let arg_attrs = match body[callable].get("arg_attrs") {
@@ -653,9 +653,7 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
     let pos = body[region].blocks.iter().position(|b| *b == block).expect("block in region");
     body[region].blocks.insert(pos + 1, post);
     if let Some(nx) = next {
-        let from = body.position(nx);
-        let n = body[block].ops.len();
-        body.splice(block, from..n, post, None);
+        body.splice(block, Some(nx), post, None);
     }
     // The clone callback: copy or move `src`'s blocks before `post`.
     let new_blocks: Vec<BlockId> = if clone {
@@ -682,7 +680,7 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
                 body[a].loc = Some(nl.into());
             }
             let mut ops = Vec::new();
-            for o in &body[*b].ops {
+            for o in &body.block_ops(*b) {
                 body.walk(*o, &mut |x| ops.push(x));
             }
             for o in ops {
@@ -702,7 +700,7 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
     if !clone {
         let mut ops = Vec::new();
         for b in &new_blocks {
-            for o in &body[*b].ops {
+            for o in &body.block_ops(*b) {
                 body.walk(*o, &mut |x| ops.push(x));
             }
         }
@@ -751,15 +749,14 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
         }
     };
     if new_blocks.len() == 1 {
-        let term = *body[first].ops.last().expect("a terminator");
+        let term = body.last_op(first).expect("a terminator");
         let ops = body[term].operands.clone();
         handle_results(body, &ops, InsertPoint { block: first, before: Some(term) });
         if let Some(i) = body.inliner_of(term) {
             i.replace_with_terminator(body, term, &results);
         }
         body.erase(term);
-        let n = body[post].ops.len();
-        body.splice(post, 0..n, first, None);
+        body.splice(post, None, first, None);
         body.remove_block(post);
     } else {
         for (r, ty) in results.iter().zip(&result_types) {
@@ -768,17 +765,16 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
             body.replace_all_uses(*r, a);
         }
         let args = body[post].args.clone();
-        let first_post = body[post].ops.first().copied();
+        let first_post = body.first_op(post);
         handle_results(body, &args, InsertPoint { block: post, before: first_post });
         for b in &new_blocks {
-            let term = *body[*b].ops.last().expect("a terminator");
+            let term = body.last_op(*b).expect("a terminator");
             if let Some(i) = body.inliner_of(term) {
                 i.branch_terminator(body, term, post);
             }
         }
     }
-    let n = body[first].ops.len();
-    body.splice(first, 0..n, block, None);
+    body.splice(first, None, block, None);
     body.remove_block(first);
     true
 }

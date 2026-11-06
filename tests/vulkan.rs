@@ -223,7 +223,7 @@ impl<'b, 'a> Host<'b, 'a> {
     fn run(&mut self, main: OpId, launch: &mut dyn FnMut(&str, &str, [i64; 3], &mut [Buf]) -> Result<String, String>) -> Result<(), String> {
         let b = self.body;
         let block = b[b[main].regions[0]].blocks[0];
-        for op in b[block].ops.clone() {
+        for op in b.block_ops(block) {
             let d = &b[op];
             let res = d.results.first().copied();
             match &*d.name {
@@ -365,8 +365,8 @@ fn vulkan_integration() {
             let root = body.root;
             inv.pipeline.run_on(&mut body, root, &moremath::ThreadMulti::default()).map_err(|e| e.0)?;
             let top = body.top_block(root);
-            let module_of = |name: &str| body[top].ops.iter().copied().find(|o| body[*o].name == "spirv.module" && body[*o].get("sym_name").is_some_and(|a| matches!(a, Attribute::Str { lit, .. } if **lit == *format!("__spv__{name}"))));
-            let main = body[top].ops.iter().copied().find(|o| body[*o].name == "func.func" && matches!(body[*o].get("sym_name"), Some(Attribute::Str { lit, .. }) if &**lit == "main")).ok_or("no @main")?;
+            let module_of = |name: &str| body.ops(top).find(|o| body[*o].name == "spirv.module" && body[*o].get("sym_name").is_some_and(|a| matches!(a, Attribute::Str { lit, .. } if **lit == *format!("__spv__{name}"))));
+            let main = body.ops(top).find(|o| body[*o].name == "func.func" && matches!(body[*o].get("sym_name"), Some(Attribute::Str { lit, .. }) if &**lit == "main")).ok_or("no @main")?;
             let mut outputs = Vec::new();
             for glsl in [false, true] {
                 let mut host = Host { body: &body, bufs: Vec::new(), vals: BTreeMap::new(), out: String::new() };
@@ -478,7 +478,7 @@ fn cooperative_matrix_on_device() {
     let root = body.root;
     inv.pipeline.run_on(&mut body, root, &moremath::ThreadMulti::default()).unwrap();
     let top = body.top_block(root);
-    let module = body[top].ops.iter().copied().find(|o| body[*o].name == "spirv.module").expect("a spirv.module");
+    let module = body.ops(top).find(|o| body[*o].name == "spirv.module").expect("a spirv.module");
     let words = SpirvBinary::default().emit(&body, module).unwrap();
 
     let (a, b, c): (Vec<f32>, Vec<f32>, Vec<f32>) = (

@@ -85,7 +85,7 @@ impl Body<'_> {
     fn propagate_region(&self, region: RegionId, live: &mut LiveMap) {
         let Some(&entry) = self[region].blocks.first() else { return };
         for b in self.post_order(entry) {
-            for op in self[b].ops.iter().rev() {
+            for op in self.block_ops(b).iter().rev() {
                 self.propagate_op(*op, live);
             }
             if b == entry {
@@ -120,10 +120,10 @@ impl Body<'_> {
             let Some(&entry) = self[*r].blocks.first() else { continue };
             let single = self[*r].blocks.len() == 1;
             for b in self.post_order(entry) {
-                if !single && let Some(&t) = self[b].ops.last() {
+                if !single && let Some(t) = self.last_op(b) {
                     self.erase_dead_successor_operands(t, live);
                 }
-                for op in self[b].ops.clone().into_iter().rev() {
+                for op in self.block_ops(b).into_iter().rev() {
                     if !live.ops.contains(&op) {
                         erased = true;
                         self.drop_result_uses(op);
@@ -184,7 +184,7 @@ impl Body<'_> {
         let Some(region) = self[block].parent else { return Vec::new() };
         let mut out = Vec::new();
         for b in &self[region].blocks {
-            if let Some(&t) = self[*b].ops.last() {
+            if let Some(t) = self.last_op(*b) {
                 out.extend(self[t].successors.iter().enumerate().filter(|(_, s)| **s == block).map(|(i, _)| (t, i)));
             }
         }
@@ -247,7 +247,7 @@ impl Body<'_> {
         while let Some(r) = work.pop() {
             for b in self[r].blocks.clone() {
                 changed |= self.drop_redundant_block_args(b);
-                work.extend(self[b].ops.iter().flat_map(|o| self[*o].regions.clone()));
+                work.extend(self.block_ops(b).iter().flat_map(|o| self[*o].regions.clone()));
             }
         }
         changed
@@ -265,7 +265,7 @@ impl Body<'_> {
             crate::Def::Arg(_, i) => i as usize,
             crate::Def::Result(op, i) => {
                 let block = self[op].parent.expect("placed");
-                let before: usize = self[block].ops.iter().take_while(|o| **o != op).map(|o| self[*o].results.len()).sum();
+                let before: usize = self.block_ops(block).iter().take_while(|o| **o != op).map(|o| self[*o].results.len()).sum();
                 self[block].args.len() + before + i as usize
             }
         }
@@ -274,16 +274,16 @@ impl Body<'_> {
     /// `BlockMergeCluster::addToCluster`: the operands to turn into arguments, if `other`
     /// can merge into `leader`.
     fn mergeable(&self, leader: BlockId, other: BlockId) -> Option<Vec<(usize, usize)>> {
-        if self.types(&self[leader].args) != self.types(&self[other].args) || self[leader].ops.len() != self[other].ops.len() {
+        if self.types(&self[leader].args) != self.types(&self[other].args) || self.len_ops(leader) != self.len_ops(other) {
             return None;
         }
         let preds_of = |b: BlockId| self.predecessors(b).into_iter().filter_map(|(t, _)| self[t].parent).collect::<Vec<_>>();
         let valid = |b: BlockId, v: ValueId| {
             let Some(vb) = self.value_block(v) else { return true };
-            self.def_op(v) != self[vb].ops.last().copied() || !preds_of(b).contains(&vb)
+            self.def_op(v) != self.last_op(vb) || !preds_of(b).contains(&vb)
         };
         let mut mismatched = Vec::new();
-        for (i, (l, r)) in self[leader].ops.iter().zip(&self[other].ops).enumerate() {
+        for (i, (l, r)) in self.block_ops(leader).iter().zip(&self.block_ops(other)).enumerate() {
             if !self.alike(*l, *r) {
                 return None;
             }
@@ -327,7 +327,7 @@ impl Body<'_> {
             let mut new_args: Vec<Vec<ValueId>> = alloc::vec![Vec::new(); blocks.len() + 1];
             for (opi, k) in operands {
                 for (c, b) in core::iter::once(leader).chain(blocks.iter().copied()).enumerate() {
-                    let op = self[b].ops[*opi];
+                    let op = self.block_ops(b)[*opi];
                     let v = self[op].operands[*k];
                     new_args[c].push(v);
                     if c == 0 {
@@ -348,7 +348,7 @@ impl Body<'_> {
             for (t, s) in self.predecessors(*b) {
                 self[t].successors[s] = leader;
             }
-            for o in self[*b].ops.clone().into_iter().rev() {
+            for o in self.block_ops(*b).into_iter().rev() {
                 self.drop_result_uses(o);
                 self.erase(o);
             }
@@ -405,7 +405,7 @@ impl Body<'_> {
             }
             let mut clusters: Vec<(BlockId, Vec<BlockId>, BTreeSet<(usize, usize)>)> = Vec::new();
             for b in group {
-                if self[b].ops.iter().any(|o| self[*o].regions.iter().any(|r| !self[*r].blocks.is_empty())) || self[b].args.iter().any(|a| self.used_outside(*a, b)) {
+                if self.block_ops(b).iter().any(|o| self[*o].regions.iter().any(|r| !self[*r].blocks.is_empty())) || self[b].args.iter().any(|a| self.used_outside(*a, b)) {
                     continue;
                 }
                 let mut placed = false;
@@ -437,7 +437,7 @@ impl Body<'_> {
                 changed = true;
             }
             for b in self[r].blocks.clone() {
-                for o in self[b].ops.clone() {
+                for o in self.block_ops(b) {
                     for nested in self[o].regions.clone() {
                         if !work.contains(&nested) {
                             work.push(nested);
@@ -459,14 +459,14 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
             let b = &*self.body;
             let Some(&entry) = b[r].blocks.first() else { continue };
             if b[r].blocks.len() == 1 {
-                work.extend(b[entry].ops.iter().flat_map(|o| b[*o].regions.clone()));
+                work.extend(b.block_ops(entry).iter().flat_map(|o| b[*o].regions.clone()));
                 continue;
             }
             let reachable: BTreeSet<BlockId> = b.post_order(entry).into_iter().collect();
             for blk in self.body[r].blocks.clone() {
                 if !reachable.contains(&blk) {
                     // `dropAllDefinedValueUses`, then the block goes.
-                    for o in self.body[blk].ops.clone() {
+                    for o in self.body.block_ops(blk) {
                         self.body.drop_result_uses(o);
                     }
                     self.erase_block(blk);
@@ -474,7 +474,7 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
                     continue;
                 }
                 let b = &*self.body;
-                work.extend(b[blk].ops.iter().flat_map(|o| b[*o].regions.clone()));
+                work.extend(b.block_ops(blk).iter().flat_map(|o| b[*o].regions.clone()));
             }
         }
         erased
@@ -526,7 +526,7 @@ impl DomTree {
 impl Body<'_> {
     /// The blocks `b`'s terminator may branch to.
     pub fn successors(&self, b: BlockId) -> &[BlockId] {
-        self[b].ops.last().map_or(&[], |t| &self[*t].successors)
+        self.last_op(b).map_or(&[], |t| &self[t].successors)
     }
 
     /// Whether values in `region` obey SSA dominance (not a graph region): `RegionKindInterface`,

@@ -11,10 +11,10 @@ use crate::{Body, OpId};
 /// get Vulkan offsets and strides, and their `spirv.mlir.addressof`s the new type.
 #[crate::pass("decorate-spirv-composite-type-layout", on = "builtin.module")]
 pub fn decorate_spirv_composite_type_layout<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
-    let modules: Vec<OpId> = body[body.top_block(module)].ops.iter().copied().filter(|o| body[*o].name == "spirv.module").collect();
+    let modules: Vec<OpId> = body.ops(body.top_block(module)).filter(|o| body[*o].name == "spirv.module").collect();
     for m in modules {
         let mut retyped = Vec::new();
-        for g in body[body.top_block(m)].ops.clone() {
+        for g in body.block_ops(body.top_block(m)) {
             let Some(Attribute::Type(t)) = body[g].get("type").cloned().filter(|_| body[g].name == "spirv.GlobalVariable") else { continue };
             if VulkanLayout::is_legal(&t) {
                 continue;

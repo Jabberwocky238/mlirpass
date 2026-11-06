@@ -397,7 +397,7 @@ impl VectorToLlvm {
     fn masked_reduction<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let region = cr.rw.body[op].regions[0];
         let Some(&block) = cr.rw.body[region].blocks.first() else { return false };
-        let Some(&red) = cr.rw.body[block].ops.first() else { return false };
+        let Some(red) = cr.rw.body.first_op(block) else { return false };
         if cr.rw.body[red].name != "vector.reduction" {
             return false;
         }

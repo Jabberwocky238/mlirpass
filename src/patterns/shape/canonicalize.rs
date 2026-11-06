@@ -202,7 +202,7 @@ impl<'a> Rewriter<'_, 'a> {
         let after = self.split_block(before, op);
         let region = self.body[op].regions[0];
         let inner = self.body[region].blocks[0];
-        let yield_op = *self.body[inner].ops.last().expect("terminated");
+        let yield_op = self.body.last_op(inner).expect("terminated");
         let parent_region = self.body[before].parent.expect("in region");
         self.inline_region_before(region, parent_region, Some(after));
         let values = self.body[yield_op].operands.clone();
@@ -224,7 +224,7 @@ impl ShapeCanon {
         let b = &*rw.body;
         let region = b[op].regions[0];
         let body = b[region].blocks[0];
-        let yield_op = *b[body].ops.last().expect("terminated");
+        let yield_op = b.last_op(body).expect("terminated");
         let results = b[op].results.clone();
         let kept: Vec<ValueId> = results.iter().zip(&b[yield_op].operands).filter(|(r, _)| !b[**r].uses.is_empty()).map(|(_, y)| *y).collect();
         if kept.len() == b[yield_op].operands.len() {

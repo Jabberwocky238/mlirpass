@@ -82,7 +82,7 @@ impl Rewrite<'_, '_, '_> {
 
     fn drain(&mut self, mut work: Vec<BlockId>, done: &[OpId]) {
         while let Some(block) = work.pop() {
-            for op in self.body[block].ops.clone() {
+            for op in self.body.block_ops(block) {
                 if done.binary_search(&op).is_ok() {
                     continue;
                 }

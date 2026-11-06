@@ -29,7 +29,7 @@ impl<'a> Body<'a> {
     fn post_order_into(&self, op: OpId, out: &mut Vec<OpId>) {
         for r in &self[op].regions {
             for b in &self[*r].blocks {
-                for o in &self[*b].ops {
+                for o in &self.block_ops(*b) {
                     self.post_order_into(*o, out);
                 }
             }
@@ -99,7 +99,7 @@ impl<'a> Body<'a> {
     pub fn move_loop_invariant_code(&mut self, l: OpId) -> usize {
         let mut moved = 0;
         for region in self.loop_regions(l).unwrap_or_default() {
-            let mut work: VecDeque<OpId> = self[region].blocks.iter().flat_map(|b| self[*b].ops.clone()).collect();
+            let mut work: VecDeque<OpId> = self[region].blocks.iter().flat_map(|b| self.block_ops(*b)).collect();
             while let Some(op) = work.pop_front() {
                 if self[op].parent.and_then(|b| self[b].parent) != Some(region) {
                     continue;

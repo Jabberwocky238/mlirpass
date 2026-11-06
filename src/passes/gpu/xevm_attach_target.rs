@@ -60,7 +60,7 @@ impl crate::Run for XevmAttachTarget {
         let mut modules = Vec::new();
         for r in body[op].regions.clone() {
             for b in body[r].blocks.clone() {
-                modules.extend(body[b].ops.iter().copied().filter(|o| body[*o].name == "gpu.module"));
+                modules.extend(body.ops(b).filter(|o| body[*o].name == "gpu.module"));
             }
         }
         for m in modules {

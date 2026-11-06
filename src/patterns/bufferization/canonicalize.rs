@@ -172,7 +172,7 @@ impl BufferizationCanon {
         }
         let block = b[op].parent;
         let Some(redundant) = clone_dealloc.filter(|c| b[*c].parent == block).or(source_dealloc.filter(|s| b[*s].parent == block)) else { return false };
-        let ops = &b[block.expect("placed")].ops;
+        let ops = &b.block_ops(block.expect("placed"));
         let Some(at) = ops.iter().position(|o| *o == op) else { return false };
         let Some(end) = ops.iter().position(|o| *o == redundant).filter(|e| *e > at) else { return false };
         if ops[at + 1..end].iter().any(|o| b.has_effect(*o, EffectKind::Free)) {
@@ -397,7 +397,7 @@ impl BufferizationCanon {
         match &*b[op].name {
             // A `to_buffer` right before it in its block.
             "bufferization.to_tensor" => match b[b[op].operands[0]].def {
-                Def::Result(m, _) if b[m].name == "bufferization.to_buffer" && b[m].parent.is_some() && b[m].parent == b[op].parent && { let ops = &b[b[m].parent.expect("placed")].ops; ops.iter().position(|o| *o == m).map(|i| i + 1) == ops.iter().position(|o| *o == op) } => Folded::Value(b[m].operands[0]).into(),
+                Def::Result(m, _) if b[m].name == "bufferization.to_buffer" && b[m].parent.is_some() && b[m].parent == b[op].parent && { let ops = &b.block_ops(b[m].parent.expect("placed")); ops.iter().position(|o| *o == m).map(|i| i + 1) == ops.iter().position(|o| *o == op) } => Folded::Value(b[m].operands[0]).into(),
                 _ => Fold::Failed,
             },
             // A `to_tensor` of a buffer of its type.

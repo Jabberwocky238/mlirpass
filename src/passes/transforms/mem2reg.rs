@@ -86,7 +86,7 @@ impl<'d> Promotion<'d> {
     fn allocators(&self, b: &Body<'_>, region: RegionId) -> Vec<OpId> {
         let mut out = Vec::new();
         for block in &b[region].blocks {
-            for op in &b[*block].ops {
+            for op in &b.block_ops(*block) {
                 for r in &b[*op].regions {
                     out.extend(self.allocators(b, *r));
                 }
@@ -187,7 +187,7 @@ impl<'d> Promotion<'d> {
             if !seen.insert(block) {
                 continue;
             }
-            for op in &b[block].ops {
+            for op in &b.block_ops(block) {
                 let Some(d) = self.at(b, *op).filter(|d| d.is_mem_op(b, *op)) else { continue };
                 if d.loads_from(b, *op, slot) {
                     work.push(block);
@@ -282,7 +282,7 @@ impl<'d> Promotion<'d> {
                 def = arg;
             }
             def = self.reaching_in_block(rw, slot, info, block, def);
-            if let Some(&t) = rw.body[block].ops.last()
+            if let Some(t) = rw.body.last_op(block)
                 && rw.body.is_branch(t)
             {
                 for (i, s) in rw.body[t].successors.clone().into_iter().enumerate() {
@@ -297,7 +297,7 @@ impl<'d> Promotion<'d> {
 
     /// `computeReachingDefInBlock`: the definition reaching the end of `block`.
     fn reaching_in_block<'a>(&self, rw: &mut Rewriter<'_, 'a>, slot: &MemorySlot<'a>, info: &mut Info, block: BlockId, mut def: ValueId) -> ValueId {
-        for op in rw.body[block].ops.clone() {
+        for op in rw.body.block_ops(block) {
             let Some(d) = self.at(rw.body, op).filter(|d| d.is_mem_op(rw.body, op)) else { continue };
             if info.blocking.iter().any(|(o, _)| *o == op) {
                 info.reaching.entry(op).or_insert(def);
@@ -315,10 +315,8 @@ impl<'d> Promotion<'d> {
     fn remove_blocking_uses<'a>(&self, rw: &mut Rewriter<'_, 'a>, slot: &MemorySlot<'a>, info: &Info) {
         let order = rw.body.blocks_by_dominance(info.region.expect("analysed"));
         let mut users: Vec<OpId> = info.blocking.iter().map(|(o, _)| *o).collect();
-        users.sort_by_key(|o| {
-            let block = rw.body[*o].parent.expect("a placed user");
-            (order.iter().position(|b| *b == block).unwrap_or(usize::MAX), rw.body.position(*o))
-        });
+        let rank = |o: &OpId| order.iter().position(|b| Some(*b) == rw.body[*o].parent).unwrap_or(usize::MAX);
+        users.sort_by(|x, y| rank(x).cmp(&rank(y)).then_with(|| if x == y { core::cmp::Ordering::Equal } else if rw.body.is_before(*x, *y) { core::cmp::Ordering::Less } else { core::cmp::Ordering::Greater }));
         let mut erase = Vec::new();
         let mut replaced_list = Vec::new();
         let mut visit = Vec::new();

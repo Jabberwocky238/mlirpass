@@ -210,7 +210,7 @@ impl MemrefToSpirv {
         }
         let Some(table) = at else { return false };
         let block = b.top_block(table);
-        let n = b[block].ops.iter().filter(|o| b[**o].name == "spirv.GlobalVariable").count();
+        let n = b.block_ops(block).iter().filter(|o| b[**o].name == "spirv.GlobalVariable").count();
         let name = format!("__workgroup_mem__{n}");
         let saved = cr.rw.ip;
         cr.rw.set_start(block);

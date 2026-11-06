@@ -22,7 +22,7 @@ impl crate::Run for GpuMapParallelLoops {
         let mut loops = Vec::new();
         for r in body[op].regions.clone() {
             for b in body[r].blocks.clone() {
-                for o in body[b].ops.clone() {
+                for o in body.block_ops(b) {
                     body.walk_post(o, &mut |x| {
                         if body[x].name == "scf.parallel" {
                             loops.push(x);

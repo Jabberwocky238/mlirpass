@@ -287,12 +287,12 @@ impl GpuToLlvm {
         let block = cr.rw.body.top_block(module);
         let space_attr = Attribute::of_int(space.into(), Type::int(32));
         let b = &*cr.rw.body;
-        let found = b[block].ops.iter().find(|g| {
-            let g = &b[**g];
+        let found = b.ops(block).find(|g| {
+            let g = &b[*g];
             g.name == "llvm.mlir.global" && g.get("global_type") == Some(&Attribute::Type(ty.clone())) && g.get("constant").is_some() && g.get("value") == Some(&value) && g.get("alignment").is_none_or(|a| a == &Attribute::of_int(0, Type::int(64))) && g.get("addr_space").map_or(space == 0, |a| a == &space_attr)
         });
         if let Some(g) = found {
-            return (String::from(b.sym_name(*g).unwrap_or("")), ty);
+            return (String::from(b.sym_name(g).unwrap_or("")), ty);
         }
         let name = (0..).map(|i| format!("{prefix}{i}")).find(|n| cr.rw.body.lookup(module, n).is_none()).unwrap_or_default();
         let saved = cr.rw.ip;

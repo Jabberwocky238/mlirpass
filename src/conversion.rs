@@ -648,10 +648,9 @@ impl<'a> Body<'a> {
         match self[v].def {
             crate::Def::Result(op, _) => {
                 let block = self[op].parent.expect("placed");
-                let i = self.position(op);
-                InsertPoint { block, before: self[block].ops.get(i + 1).copied() }
+                InsertPoint { block, before: self.next_op(op) }
             }
-            crate::Def::Arg(block, _) => InsertPoint { block, before: self[block].ops.first().copied() },
+            crate::Def::Arg(block, _) => InsertPoint { block, before: self.first_op(block) },
         }
     }
 
@@ -661,8 +660,11 @@ impl<'a> Body<'a> {
         for v in &vs[1..] {
             let next = self.insert_point_after(*v);
             let later = if next.block == pt.block {
-                let pos = |p: &InsertPoint| p.before.map_or(usize::MAX, |o| self.position(o));
-                pos(&next) > pos(&pt)
+                match (next.before, pt.before) {
+                    (_, None) => false,
+                    (None, Some(_)) => true,
+                    (Some(a), Some(b)) => self.is_before(b, a),
+                }
             } else {
                 // A block nested deeper, or dominated, comes later.
                 true
@@ -855,7 +857,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
 
     /// `Block::getTerminator`: the last op of `block` not already replaced.
     pub fn terminator(&self, block: BlockId) -> Option<OpId> {
-        self.rw.body[block].ops.iter().rev().copied().find(|o| !self.state_ref().was_replaced(*o))
+        self.rw.body.block_ops(block).iter().rev().copied().find(|o| !self.state_ref().was_replaced(*o))
     }
 
     /// `eraseOp`: replaced by nothing.
@@ -874,7 +876,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
 
     /// `eraseBlock` in rollback mode: out of its region now, its ops count as replaced.
     pub fn erase_block_recorded(&mut self, block: BlockId) {
-        let ops: Vec<OpId> = self.rw.body[block].ops.iter().flat_map(|o| self.rw.body.ops_in(*o)).collect();
+        let ops: Vec<OpId> = self.rw.body.block_ops(block).iter().flat_map(|o| self.rw.body.ops_in(*o)).collect();
         self.rw.body.remove_block(block);
         self.state().replace_ops(ops);
     }
@@ -912,8 +914,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         blocks.pop();
         let pos = blocks.iter().position(|x| *x == block).expect("in region");
         blocks.insert(pos + 1, new);
-        let n = self.rw.body[block].ops.len();
-        self.rw.body.splice(block, 0..n, new, None);
+        self.rw.body.splice(block, None, new, None);
         // Branches to the old block now go to the new one.
         for (t, s) in self.rw.body.predecessors(block) {
             self.rw.body[t].successors[s] = new;
@@ -923,7 +924,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
                 None => {
                     let ty = self.rw.body[arg].ty.clone();
                     let loc = self.rw.body[arg].loc.clone();
-                    let ip = InsertPoint { block: new, before: self.rw.body[new].ops.first().copied() };
+                    let ip = InsertPoint { block: new, before: self.rw.body.first_op(new) };
                     let mat = self.materialization(MatKind::Source, ip, loc, Vec::new(), &[], &[ty], None, converter, false)[0];
                     self.replace_value_with(arg, vec![mat], converter);
                 }
@@ -967,9 +968,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         for (a, v) in self.rw.body[source].args.clone().into_iter().zip(args) {
             self.replace_value_with(a, vec![*v], current);
         }
-        let at = before.map(|b| self.rw.body.position(b));
-        let n = self.rw.body[source].ops.len();
-        self.rw.body.splice(source, 0..n, dest, at);
+        self.rw.body.splice(source, None, dest, before);
         if self.rw.ip.is_some_and(|ip| ip.block == source) {
             self.rw.ip = Some(InsertPoint { block: dest, before });
         }
@@ -1239,7 +1238,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         for r in &body[op].regions {
             let Some(&entry) = body[*r].blocks.first() else { continue };
             for b in body.depth_first(entry) {
-                for o in &body[b].ops {
+                for o in &body.block_ops(b) {
                     self.collect(body, *o, out);
                 }
             }
@@ -1291,7 +1290,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         for u in body[from].uses.clone().into_iter().rev() {
             let ok = match after_def {
                 None => true,
-                Some(d) => body[u.op].parent != body[d].parent || body.position(d) < body.position(u.op),
+                Some(d) => body[u.op].parent != body[d].parent || body.is_before(d, u.op),
             };
             if ok {
                 body.set_operand(u.op, u.index as usize, repl);

@@ -461,7 +461,7 @@ impl Body<'_> {
     }
 
     fn nested_ops(&self, op: OpId) -> Vec<OpId> {
-        self[op].regions.iter().flat_map(|r| &self[*r].blocks).flat_map(|b| self[*b].ops.iter().copied()).collect()
+        self[op].regions.iter().flat_map(|r| &self[*r].blocks).flat_map(|b| self.ops(*b)).collect()
     }
 
     /// `isMemoryEffectFree`.
@@ -727,7 +727,7 @@ impl<'a> Body<'a> {
         let mut work = Vec::new();
         let enqueue = |r: usize, work: &mut Vec<usize>| {
             for blk in self[regions[r]].blocks.iter() {
-                let Some(&t) = self[*blk].ops.last() else { continue };
+                let Some(t) = self.last_op(*blk) else { continue };
                 if !self.interfaces(t).is_some_and(|i| i.is_region_terminator(self, t)) {
                     continue;
                 }
@@ -802,7 +802,7 @@ impl<'a> Body<'a> {
         let mut out = vec![Point::Parent];
         for r in &self[op].regions {
             for b in &self[*r].blocks {
-                if let Some(&t) = self[*b].ops.last()
+                if let Some(t) = self.last_op(*b)
                     && self.interfaces(t).is_some_and(|i| i.is_region_terminator(self, t))
                 {
                     out.push(Point::Terminator(t));
@@ -916,7 +916,7 @@ impl<'a> Body<'a> {
     /// [`lookup`](Self::lookup) of what this body holds, nothing more asked.
     pub fn find_symbol(&self, table: OpId, name: &str) -> Option<OpId> {
         let region = *self[table].regions.first()?;
-        self[region].blocks.iter().flat_map(|b| &self[*b].ops).copied().find(|o| self.sym_name(*o) == Some(name))
+        self[region].blocks.iter().flat_map(|b| self.ops(*b)).find(|o| self.sym_name(*o) == Some(name))
     }
 
     /// Attribute `attr` of symbol `name` in `table`: in a lent body, read off the module's
@@ -966,7 +966,8 @@ impl<'a> Body<'a> {
     fn region_refs(&self, op: OpId, out: &mut Vec<SymbolUse<'a>>) -> Option<()> {
         let mut work: Vec<_> = self[op].regions.clone().to_vec();
         while let Some(r) = work.pop() {
-            for o in self[r].blocks.iter().flat_map(|b| &self[*b].ops) {
+            for o in self[r].blocks.iter().flat_map(|b| self.ops(*b)) {
+                let o = &o;
                 if self.maybe_unknown_symbol_table(*o) {
                     return None;
                 }

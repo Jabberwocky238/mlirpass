@@ -422,7 +422,7 @@ impl<'a> Rewriter<'_, 'a> {
             return false;
         }
         let blk = b.top_block(op);
-        let [y] = b[blk].ops[..] else { return false };
+        let [y] = b.block_ops(blk)[..] else { return false };
         if b[y].name != "linalg.yield" {
             return false;
         }

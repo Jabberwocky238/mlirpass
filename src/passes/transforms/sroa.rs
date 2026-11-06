@@ -163,7 +163,7 @@ pub fn sroa<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         // `region.walk`: post-order.
         let mut allocators = Vec::new();
         for blk in body[region].blocks.clone() {
-            for o in body[blk].ops.clone() {
+            for o in body.block_ops(blk) {
                 body.walk_post(o, &mut |x| {
                     if body.destructurable(&dialects, x).is_some_and(|d| d.destructurable_slots(sroa.cx, body, x).is_some()) {
                         allocators.push(x);

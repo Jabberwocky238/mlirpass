@@ -133,13 +133,12 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
 
     pub fn set_after(&mut self, op: OpId) {
         let block = self.body[op].parent.expect("op is not placed");
-        let ops = &self.body[block].ops;
-        let next = ops.get(self.body.position(op) + 1).copied();
+        let next = self.body.next_op(op);
         self.ip = Some(InsertPoint { block, before: next });
     }
 
     pub fn set_start(&mut self, block: BlockId) {
-        self.ip = Some(InsertPoint { block, before: self.body[block].ops.first().copied() });
+        self.ip = Some(InsertPoint { block, before: self.body.first_op(block) });
     }
 
     pub fn set_end(&mut self, block: BlockId) {
@@ -307,7 +306,7 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
             while let Some(&front) = self.body[r].blocks.first() {
                 let order = self.body.post_order(front);
                 for b in &order {
-                    for o in self.body[*b].ops.clone().into_iter().rev() {
+                    for o in self.body.block_ops(*b).into_iter().rev() {
                         self.erase_tree(o);
                     }
                 }
@@ -323,7 +322,7 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
 
     /// Erases `block` (its ops last first) and takes it out of its region.
     pub fn erase_block(&mut self, block: BlockId) {
-        for o in self.body[block].ops.clone().into_iter().rev() {
+        for o in self.body.block_ops(block).into_iter().rev() {
             self.body.drop_result_uses(o);
             self.erase_op(o);
         }
@@ -350,9 +349,7 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         for (a, v) in self.body[source].args.clone().into_iter().zip(args) {
             self.replace_all_uses(a, *v);
         }
-        let at = before.map(|b| self.body.position(b));
-        let n = self.body[source].ops.len();
-        for o in self.body.splice(source, 0..n, dest, at) {
+        for o in self.body.splice(source, None, dest, before) {
             self.listener.moved(self.body, o);
         }
         if self.ip.is_some_and(|ip| ip.block == source) {
@@ -389,9 +386,7 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.body[region].blocks.pop();
         self.body[region].blocks.insert(pos + 1, new);
         // Moved in one go; the listener still hears of each op, as `RewriterBase::splitBlock` tells it.
-        let i = self.body.position(at);
-        let n = self.body[block].ops.len();
-        for o in self.body.splice(block, i..n, new, None) {
+        for o in self.body.splice(block, Some(at), new, None) {
             self.listener.moved(self.body, o);
         }
         new
@@ -733,12 +728,11 @@ impl<'a> Folder<'a> {
     fn insert(&mut self, rw: &mut Rewriter<'_, 'a>, op: OpId, value: Attribute<'a>) -> bool {
         let block = rw.body[op].parent.expect("placed");
         let prev_owned = |f: &Self, b: &Body<'a>| {
-            let i = b.position(op);
-            i > 0 && f.owns(b[block].ops[i - 1])
+            b.prev_op(op).is_some_and(|p| f.owns(p))
         };
         if self.owns(op) {
-            if rw.body[block].ops.first() != Some(&op) && !prev_owned(self, rw.body) {
-                let front = rw.body[block].ops[0];
+            if rw.body.first_op(block) != Some(op) && !prev_owned(self, rw.body) {
+                let front = rw.body.first_op(block).expect("an op in the block");
                 rw.body.detach(op);
                 rw.body.insert_before(op, front);
                 rw.body[op].loc = Some("unknown".into());
@@ -756,15 +750,15 @@ impl<'a> Folder<'a> {
         }
         let entry = rw.body[region].blocks[0];
         if block != entry {
-            let front = rw.body[entry].ops.first().copied();
+            let front = rw.body.first_op(entry);
             rw.body.detach(op);
             match front {
                 Some(f) => rw.body.insert_before(op, f),
                 None => rw.body.insert(op, entry, None),
             }
             rw.body[op].loc = Some("unknown".into());
-        } else if rw.body[entry].ops.first() != Some(&op) && !prev_owned(self, rw.body) {
-            let front = rw.body[entry].ops[0];
+        } else if rw.body.first_op(entry) != Some(op) && !prev_owned(self, rw.body) {
+            let front = rw.body.first_op(entry).expect("an op in the block");
             rw.body.detach(op);
             rw.body.insert_before(op, front);
         }
@@ -860,7 +854,7 @@ impl<'a> Body<'a> {
     /// worklist, but a constant that duplicates a known one is replaced by it and skipped.
     fn collect(&mut self, region: RegionId, config: &GreedyConfig, tracker: &mut Tracker, folder: &mut Folder<'a>) {
         for b in self[region].blocks.clone() {
-            for op in self[b].ops.clone() {
+            for op in self.block_ops(b) {
                 if config.top_down {
                     if !self.duplicate_constant(op, config, tracker, folder) {
                         tracker.add(self, op);
@@ -977,7 +971,7 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
     pub fn clone_region_before(&mut self, from: crate::RegionId, into: crate::RegionId, before: Option<crate::BlockId>, map: &mut Mapping) {
         let made = self.body.clone_region_into(from, into, before, map);
         for b in made {
-            for o in self.body[b].ops.clone() {
+            for o in self.body.block_ops(b) {
                 for nested in self.body.ops_in(o) {
                     self.notify_inserted(nested);
                 }

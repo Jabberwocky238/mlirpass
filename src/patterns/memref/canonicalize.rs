@@ -212,7 +212,7 @@ impl MemrefCanon {
     fn alloca_scope_inliner(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
         // `isOpItselfPotentialAutomaticAllocation`, pre-order, not entering nested scopes.
-        let children = |o: OpId| -> Vec<OpId> { b[o].regions.iter().flat_map(|r| &b[*r].blocks).flat_map(|k| b[*k].ops.iter().copied()).collect() };
+        let children = |o: OpId| -> Vec<OpId> { b[o].regions.iter().flat_map(|r| &b[*r].blocks).flat_map(|k| b.ops(*k)).collect() };
         let mut work: Vec<OpId> = children(op);
         let mut potential = false;
         while let Some(o) = work.pop() {
@@ -227,14 +227,14 @@ impl MemrefCanon {
         if potential {
             let Some(parent) = b.parent_op(op) else { return false };
             let block = b[op].parent.expect("placed");
-            let ops = &b[block].ops;
+            let ops = &b.block_ops(block);
             let last = ops.len() >= 2 && ops[ops.len() - 2] == op;
             if !b.has(parent, crate::Trait::AutomaticAllocationScope) || !last {
                 return false;
             }
         }
         let block = b[b[op].regions[0]].blocks[0];
-        let term = *b[block].ops.last().expect("terminator");
+        let term = b.last_op(block).expect("terminator");
         let results = b[term].operands.clone();
         let parent = b[op].parent.expect("placed");
         rw.inline_block_before(block, parent, Some(op), &[]);
@@ -376,7 +376,7 @@ impl MemrefCanon {
             Def::Arg(blk, _) => Some(blk),
         };
         if idx_block == rblock {
-            if let Some(d) = b.def_op(idx) && b.position(reshape) < b.position(d) {
+            if let Some(d) = b.def_op(idx) && b.is_before(reshape, d) {
                 return false;
             }
         } else if b[op].parent != rblock {

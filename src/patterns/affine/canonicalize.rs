@@ -877,7 +877,7 @@ fn fold_for<'a>(b: &mut Body<'a>, f: OpId) -> Fold<'a> {
 /// `AffineForEmptyLoopFolder`.
 fn empty_loop_folder(b: &Body<'_>, f: OpId) -> Option<Vec<ValueId>> {
     let body = b[b[f].regions[0]].blocks[0];
-    if b[body].ops.len() != 1 || b[f].results.is_empty() {
+    if b.len_ops(body) != 1 || b[f].results.is_empty() {
         return None;
     }
     let (_, _, inits) = b.for_operands(f);
@@ -885,7 +885,7 @@ fn empty_loop_folder(b: &Body<'_>, f: OpId) -> Option<Vec<ValueId>> {
     if trip == Some(0) {
         return Some(inits.to_vec());
     }
-    let y = b[body].ops[0];
+    let y = b.first_op(body).expect("an op in the block");
     let iter_args = &b[body].args[1..];
     let iv = b[body].args[0];
     let (mut outside, mut unordered) = (false, false);
@@ -1538,7 +1538,7 @@ impl AffineCanon {
         let b = &*rw.body;
         let er = b[op].regions[1];
         let Some(&blk) = b[er].blocks.first() else { return false };
-        if b[blk].ops.len() != 1 || !b[op].results.is_empty() {
+        if b.len_ops(blk) != 1 || !b[op].results.is_empty() {
             return false;
         }
         rw.erase_block(blk);
@@ -1565,7 +1565,7 @@ impl AffineCanon {
         } else {
             return false;
         };
-        let term = *b[block].ops.last().expect("terminator");
+        let term = b.last_op(block).expect("terminator");
         let vals = b[term].operands.clone();
         rw.inline_block_before(block, b[op].parent.expect("placed"), Some(op), &[]);
         rw.replace_op(op, &vals);

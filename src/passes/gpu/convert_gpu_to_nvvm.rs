@@ -66,7 +66,7 @@ impl crate::Run for ConvertGpuToNvvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         // Request C wrapper emission.
         let blk = body.top_block(op);
-        let funcs: Vec<OpId> = body[blk].ops.iter().copied().filter(|f| body[*f].name == "func.func").collect();
+        let funcs: Vec<OpId> = body.ops(blk).filter(|f| body[*f].name == "func.func").collect();
         for f in funcs {
             body[f].set("llvm.emit_c_interface", Attribute::Unit);
         }

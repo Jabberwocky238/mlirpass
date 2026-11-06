@@ -270,7 +270,7 @@ impl<'b, 'a> Solver<'b, 'a> {
             }
             self.push_entries(u);
             // A terminator's operands flow to its parent: its results, its regions, its callers.
-            let last = self.body[u].parent.is_some_and(|b| self.body[b].ops.last() == Some(&u));
+            let last = self.body[u].parent.is_some_and(|b| self.body.last_op(b) == Some(u));
             if let Some(p) = self.body.parent_op(u).filter(|_| last) {
                 self.push_op(p);
                 self.push_entries(p);
@@ -301,7 +301,7 @@ impl<'b, 'a> Solver<'b, 'a> {
     /// Block `b` became live: it, and every op in it.
     fn block_changed(&mut self, b: BlockId) {
         self.push_block(b);
-        for o in self.body[b].ops.clone() {
+        for o in self.body.block_ops(b) {
             self.push_op(o);
         }
     }
@@ -316,7 +316,7 @@ impl<'b, 'a> Solver<'b, 'a> {
                     self.push_entries(o);
                     for r in self.body[o].regions.clone() {
                         for b in self.body[r].blocks.clone() {
-                            if let Some(t) = self.body[b].ops.last().copied() {
+                            if let Some(t) = self.body.last_op(b) {
                                 self.push_op(t);
                             }
                         }
@@ -499,7 +499,7 @@ impl<'b, 'a> Solver<'b, 'a> {
         let b = &*self.body;
         let Some(blk) = b[op].parent else { return false };
         let Some(p) = b.parent_op(op) else { return false };
-        b[op].successors.is_empty() && (self.is_region_branch(p) || self.is_callable(p)) && b[blk].ops.last() == Some(&op)
+        b[op].successors.is_empty() && (self.is_region_branch(p) || self.is_callable(p)) && b.last_op(blk) == Some(op)
     }
 
     /// `DeadCodeAnalysis::visit` of the point after `op`.
@@ -765,7 +765,7 @@ impl<'b, 'a> Solver<'b, 'a> {
         for r in self.body[op].regions.clone() {
             for b in self.body[r].blocks.clone() {
                 self.push_block(b);
-                for o in self.body[b].ops.clone() {
+                for o in self.body.block_ops(b) {
                     self.enqueue_all(o);
                 }
             }
@@ -782,7 +782,7 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
         for r in self.body[op].regions.clone() {
             for b in self.body[r].blocks.clone() {
-                for o in self.body[b].ops.clone() {
+                for o in self.body.block_ops(b) {
                     self.symbol_callables(o, visible);
                 }
             }
@@ -792,7 +792,7 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
         let Some(&blk) = self.body[op].regions.first().and_then(|r| self.body[*r].blocks.first()) else { return };
         let mut found = false;
-        for c in self.body[blk].ops.clone() {
+        for c in self.body.block_ops(blk) {
             if !self.is_callable(c) || self.callable_region(c).is_none() || !self.body.has(c, Trait::SymbolOpInterface) {
                 continue;
             }
@@ -929,7 +929,7 @@ impl<'b, 'a> Solver<'b, 'a> {
             }
         }
         // The functions lent out, each with a solver of its own; the rest stays here.
-        let mut lent: Vec<(OpId, Option<BlockId>)> = Vec::new();
+        let mut lent: Vec<(OpId, crate::Lent)> = Vec::new();
         let mut units: Vec<Solver<'_, 'a>> = Vec::new();
         for c in children {
             if let Some((sub, parent)) = main.body.lend(c) {
@@ -1046,7 +1046,7 @@ impl<'b, 'a> Solver<'b, 'a> {
     /// calls use as the last round left them; what changed goes back to the calls (arguments)
     /// and the returns (results) that read it, until nothing does.
     #[allow(clippy::too_many_arguments)]
-    fn liveness_rounds<X: moremath::Executor + Sync>(main: &mut Self, units: &mut Vec<Self>, top: OpId, lent: &[(OpId, Option<BlockId>)], owner: &BTreeMap<u32, usize>, calls: &BTreeMap<OpId, CallInfo>, callers: &BTreeMap<OpId, Callers<'a>>, exec: &X) {
+    fn liveness_rounds<X: moremath::Executor + Sync>(main: &mut Self, units: &mut Vec<Self>, top: OpId, lent: &[(OpId, crate::Lent)], owner: &BTreeMap<u32, usize>, calls: &BTreeMap<OpId, CallInfo>, callers: &BTreeMap<OpId, Callers<'a>>, exec: &X) {
         let owner_of = |x: OpId| owner.get(&crate::Id::seg(x)).copied();
         let mut by_callee: BTreeMap<OpId, Vec<OpId>> = BTreeMap::new();
         for (call, info) in calls {
@@ -1200,7 +1200,7 @@ impl Solver<'_, '_> {
     fn push_terminators(&mut self, op: OpId) {
         for r in self.body[op].regions.clone() {
             for b in self.body[r].blocks.clone() {
-                if let Some(t) = self.body[b].ops.last().copied() {
+                if let Some(t) = self.body.last_op(b) {
                     self.push_op(t);
                 }
             }
@@ -1416,7 +1416,7 @@ impl Solver<'_, '_> {
         self.push_op(op);
         for r in self.body[op].regions.clone() {
             for b in self.body[r].blocks.clone() {
-                for o in self.body[b].ops.clone().into_iter().rev() {
+                for o in self.body.block_ops(b).into_iter().rev() {
                     self.enqueue_backward(o);
                 }
             }

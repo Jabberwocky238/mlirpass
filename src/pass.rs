@@ -316,19 +316,19 @@ impl PassManager {
                     }
                 }
                 Entry::Adaptor(mgrs) => {
-                    // Each op the managers anchor on, with its place in its block (for the graft).
-                    let work: Vec<(OpId, usize, &PassManager)> = body[op]
+                    // Each op the managers anchor on, with the manager.
+                    let work: Vec<(OpId, &PassManager)> = body[op]
                         .regions
                         .iter()
                         .flat_map(|r| &body[*r].blocks)
-                        .flat_map(|b| body[*b].ops.iter().enumerate())
-                        .filter_map(|(at, &c)| {
+                        .flat_map(|b| body.ops(*b))
+                        .filter_map(|c| {
                             let name = &body[c].name;
-                            mgrs.iter().find(|m| m.anchor.as_deref() == Some(&**name)).or_else(|| mgrs.iter().find(|m| m.anchor.is_none())).map(|m| (c, at, m))
+                            mgrs.iter().find(|m| m.anchor.as_deref() == Some(&**name)).or_else(|| mgrs.iter().find(|m| m.anchor.is_none())).map(|m| (c, m))
                         })
                         .collect();
                     if moremath::Executor::threads(exec) < 2 || work.len() < 2 || !work.iter().all(|(c, ..)| body.isolated(*c)) {
-                        for (c, _, m) in work {
+                        for (c, m) in work {
                             m.run_exec(body, c, exec)?;
                         }
                         continue;
@@ -345,13 +345,13 @@ impl PassManager {
                     let lent: Vec<_> = work.iter().map(|(c, ..)| body.lend(*c)).collect();
                     // A task runs on its lent body, or splits its op off the shared body itself
                     // (reading only), so the copying out runs in parallel too.
-                    let mut done: Vec<Option<(Result<(), Error>, Body<'_>, OpId, Option<Option<crate::BlockId>>)>> = work.iter().map(|_| None).collect();
+                    let mut done: Vec<Option<(Result<(), Error>, Body<'_>, OpId, Option<crate::Lent>)>> = work.iter().map(|_| None).collect();
                     let shared: &Body<'_> = body;
                     let tasks = done
                         .iter_mut()
                         .zip(work)
                         .zip(lent)
-                        .map(|((slot, (c, _, m)), lent)| {
+                        .map(|((slot, (c, m)), lent)| {
                             Box::new(move || {
                                 let (mut sub, at, parent) = match lent {
                                     Some((sub, parent)) => (sub, *c, Some(parent)),
@@ -368,12 +368,17 @@ impl PassManager {
                     let done: Vec<_> = done.into_iter().map(|d| d.expect("every task ran")).collect();
                     // Every lent seg goes back, whatever happened; copies only when all went well.
                     let failed = done.iter().find_map(|(r, ..)| r.as_ref().err()).cloned();
-                    for ((c, at, _), (_, sub, with, parent)) in work.iter().zip(done) {
+                    // All lent ops back first: a graft relinks its op's neighbours, which may be lent.
+                    let mut grafts = Vec::new();
+                    for ((c, _), (_, sub, with, parent)) in work.iter().zip(done) {
                         match parent {
                             Some(parent) => body.unlend(*c, sub, parent),
-                            None if failed.is_none() => body.graft(*c, *at, sub, with),
+                            None if failed.is_none() => grafts.push((*c, sub, with)),
                             None => {}
                         }
+                    }
+                    for (c, sub, with) in grafts {
+                        body.graft(c, sub, with);
                     }
                     if let Some(e) = failed {
                         return Err(e);
@@ -390,12 +395,12 @@ impl PassManager {
     /// it costs what was measured, and the threads share that. `None`: not worth it, so every op
     /// has run here; else how many did (the rest go to the threads).
     #[cfg(feature = "std")]
-    fn calibrate(body: &mut Body<'_>, work: &[(OpId, usize, &PassManager)], exec: &crate::Exec<'_>) -> Result<Option<usize>, Error> {
+    fn calibrate(body: &mut Body<'_>, work: &[(OpId, &PassManager)], exec: &crate::Exec<'_>) -> Result<Option<usize>, Error> {
         let sizes: Vec<usize> = work.iter().map(|(c, ..)| body.op_count(*c)).collect();
         let total: usize = sizes.iter().sum();
         let (t, mut ran, mut first) = (std::time::Instant::now(), 0, 0);
         while first < work.len() && ran * 32 < total {
-            let (c, _, m) = work[first];
+            let (c, m) = work[first];
             m.run_exec(body, c, exec)?;
             ran += sizes[first];
             first += 1;
@@ -403,7 +408,7 @@ impl PassManager {
         let per_op = t.elapsed().as_nanos() as f64 / ran.max(1) as f64;
         let w = moremath::Executor::threads(exec) as f64;
         if work.len() - first < 2 || per_op * (w - 1.0) / w < MOVE_NS_PER_OP {
-            for &(c, _, m) in &work[first..] {
+            for &(c, m) in &work[first..] {
                 m.run_exec(body, c, exec)?;
             }
             return Ok(None);
@@ -412,7 +417,7 @@ impl PassManager {
     }
 
     #[cfg(not(feature = "std"))]
-    fn calibrate(_: &mut Body<'_>, _: &[(OpId, usize, &PassManager)], _: &crate::Exec<'_>) -> Result<Option<usize>, Error> {
+    fn calibrate(_: &mut Body<'_>, _: &[(OpId, &PassManager)], _: &crate::Exec<'_>) -> Result<Option<usize>, Error> {
         Ok(Some(0))
     }
 
@@ -516,12 +521,12 @@ const MOVE_NS_PER_OP: f64 = 300.0;
 impl Body<'_> {
     /// How many ops `op` holds, itself included.
     pub fn op_count(&self, op: OpId) -> usize {
-        1 + self[op].regions.iter().flat_map(|r| &self[*r].blocks).flat_map(|b| &self[*b].ops).map(|o| self.op_count(*o)).sum::<usize>()
+        1 + self[op].regions.iter().flat_map(|r| &self[*r].blocks).flat_map(|b| self.ops(*b)).map(|o| self.op_count(o)).sum::<usize>()
     }
 
     /// The ops directly inside `op`'s regions, in order.
     pub fn children(&self, op: OpId) -> Vec<OpId> {
-        self[op].regions.iter().flat_map(|r| &self[*r].blocks).flat_map(|b| self[*b].ops.iter().copied()).collect()
+        self[op].regions.iter().flat_map(|r| &self[*r].blocks).flat_map(|b| self.ops(*b)).collect()
     }
 }
 
@@ -691,11 +696,11 @@ impl<'a> Body<'a> {
 
     /// `op` (at `at` in its block) replaced by `from`'s `with`, moved over whole
     /// (`split_off`'s inverse): `from`'s arenas join this body's, nothing is copied.
-    pub fn graft(&mut self, op: OpId, at: usize, from: Body<'a>, with: OpId) {
+    pub fn graft(&mut self, op: OpId, from: Body<'a>, with: OpId) {
         let new = with.shift(&self.absorb(from));
         self.detach(new);
         let results = self[new].results.clone();
-        self.swap_in(op, at, new);
+        self.swap_in(op, new);
         // What `op` used and defined is now `new`'s.
         if !self[op].operands.is_empty() {
             self.set_operands(op, Vec::new());
@@ -742,7 +747,7 @@ impl<'a> Body<'a> {
                 let nb = self.add_block(nr, &args);
                 values.extend(from[*b].args.iter().copied().zip(self[nb].args.clone()));
                 blocks.push((*b, nb));
-                for o in &from[*b].ops {
+                for o in &from.block_ops(*b) {
                     let c = self.shell(from, *o, values, blocks, made);
                     self.insert(c, nb, None);
                 }

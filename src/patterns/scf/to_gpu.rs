@@ -62,7 +62,7 @@ impl Body<'_> {
             .collect();
         self[op].set("mapping", Attribute::Array(attrs));
         let body = self[self[op].regions[0]].blocks[0];
-        for o in self[body].ops.clone() {
+        for o in self.block_ops(body) {
             if self[o].name == "scf.parallel" {
                 self.map_parallel(o, (level + 1).min(2), innermost);
             }
@@ -275,7 +275,7 @@ impl ParallelToLaunch {
             }
             cr.rw.body[launch].set(&a.name, a.value.unwrap_or(Attribute::Unit));
         }
-        let ops = cr.rw.body[entry].ops.clone();
+        let ops = cr.rw.body.block_ops(entry);
         let (term, rest) = ops.split_last().expect("a terminator");
         if cr.rw.body[*term].name == "scf.reduce" && cr.rw.body[*term].operands.len() == 1 {
             work.push(Work::Op(*term));
@@ -364,7 +364,7 @@ impl ParallelToLaunch {
                     let into = cr.rw.body[red].regions[0];
                     cr.rw.inline_region_before(region, into, None);
                     let first = cr.rw.body[into].blocks[0];
-                    let ret = *cr.rw.body[first].ops.last().expect("a terminator");
+                    let ret = cr.rw.body.last_op(first).expect("a terminator");
                     let v = cr.rw.body[ret].operands[0];
                     let saved = cr.rw.ip;
                     cr.rw.set_end(first);

@@ -412,7 +412,7 @@ impl Unit {
     /// `replaceUnitDimIndexOps`.
     fn replace_index_ops(rw: &mut Rewriter<'_, '_>, g: OpId, unit: &BTreeSet<usize>) {
         let blk = rw.body[rw.body[g].regions[0]].blocks[0];
-        for o in rw.body[blk].ops.clone() {
+        for o in rw.body.block_ops(blk) {
             if rw.body[o].name != "linalg.index" {
                 continue;
             }
@@ -436,7 +436,7 @@ impl Unit {
     /// `PadOp::getConstantPaddingValue`.
     fn padding_value(b: &Body<'_>, pad: OpId) -> Option<ValueId> {
         let blk = *b[*b[pad].regions.first()?].blocks.first()?;
-        let y = *b[blk].ops.last()?;
+        let y = b.last_op(blk)?;
         let v = *b[y].operands.first()?;
         match b.def_op(v) {
             Some(d) if b[d].parent == Some(blk) => b.has(d, Trait::ConstantLike).then_some(v),
@@ -581,7 +581,7 @@ impl Unit {
             }
         }
         let rts: Vec<Type<'_>> = rw.body[op].results.iter().map(|r| rw.body[*r].ty.clone()).collect();
-        let body_ops = rw.body[blk].ops.clone();
+        let body_ops = rw.body.block_ops(blk);
         let loc = rw.body[op].loc.clone();
         let g = rw.create_with(d, &rts, |b, o| {
             let r = b.add_region(o);

@@ -133,7 +133,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     /// symbol table when missing, named `__builtin__<B>__`) loaded.
     pub fn builtin_value(&mut self, op: OpId, builtin: &str, int: Type<'a>) -> Option<ValueId> {
         let block = self.symbol_table_block(op)?;
-        let existing = self.rw.body[block].ops.iter().copied().find(|o| {
+        let existing = self.rw.body.ops(block).find(|o| {
             let d = &self.rw.body[*o];
             d.name == "spirv.GlobalVariable" && matches!(d.get("built_in"), Some(Attribute::Str { lit, .. }) if &**lit == builtin)
         });

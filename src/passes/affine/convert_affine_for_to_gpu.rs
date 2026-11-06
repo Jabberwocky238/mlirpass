@@ -43,10 +43,10 @@ impl ConvertAffineForToGpu {
                 break;
             }
             let blk = body[body[f].regions[0]].blocks[0];
-            if body[blk].ops.len() != 2 {
+            if body.len_ops(blk) != 2 {
                 return Err(Error(String::from("'affine.for' op expected perfectly nested loops in the body")));
             }
-            let nested = body[blk].ops[0];
+            let nested = body.first_op(blk).expect("an op in the block");
             if body[nested].name != "affine.for" {
                 return Err(Error(format!("'{}' op expected a nested loop", body[nested].name)));
             }
@@ -94,7 +94,7 @@ impl ConvertAffineForToGpu {
             ivs.push(rw.body[blk].args[0]);
             steps.push((step, step_v));
             if i != n - 1 {
-                cur = rw.body[blk].ops[0];
+                cur = rw.body.first_op(blk).expect("an op in the block");
             }
         }
         let loc = rw.body[root].loc.clone();
@@ -108,16 +108,16 @@ impl ConvertAffineForToGpu {
             b.add_block(r, &vec![(Type::Index, loc.clone()); 12]);
         });
         let inner = rw.body[rw.body[cur].regions[0]].blocks[0];
-        let term = *rw.body[inner].ops.last()?;
+        let term = rw.body.last_op(inner)?;
         let mut t = OpData::build("gpu.terminator");
         t.loc = rw.body[term].loc.clone();
         rw.body.erase(term);
         let t = rw.body.create(t, &[]);
         rw.body.insert(t, inner, None);
         let lblock: BlockId = rw.body[rw.body[launch].regions[0]].blocks[0];
-        let count = rw.body[inner].ops.len();
-        rw.body.splice(inner, 0..count, lblock, Some(0));
-        rw.ip = Some(InsertPoint { block: lblock, before: rw.body[lblock].ops.first().copied() });
+        let front = rw.body.first_op(lblock);
+        rw.body.splice(inner, None, lblock, front);
+        rw.ip = Some(InsertPoint { block: lblock, before: rw.body.first_op(lblock) });
         let args = rw.body[lblock].args.clone();
         for (i, iv) in ivs.iter().enumerate() {
             let mut id = if i < blocks { args[i] } else { args[3 + i - blocks] };
@@ -136,7 +136,7 @@ impl ConvertAffineForToGpu {
 impl crate::Run for ConvertAffineForToGpu {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let Some(&region) = body[op].regions.first() else { return Ok(()) };
-        let loops: Vec<OpId> = body[region].blocks.iter().flat_map(|b| body[*b].ops.clone()).filter(|o| body[*o].name == "affine.for").collect();
+        let loops: Vec<OpId> = body[region].blocks.iter().flat_map(|b| body.block_ops(*b)).filter(|o| body[*o].name == "affine.for").collect();
         for f in loops {
             self.mappable(body, f)?;
             let mut quiet = crate::Quiet;

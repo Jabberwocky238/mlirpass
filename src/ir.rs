@@ -193,8 +193,8 @@ macro_rules! shift_fields {
 }
 
 shift_fields! {
-    OpData<'a> { operands, results, successors, regions, parent }
-    BlockData { args, ops, parent }
+    OpData<'a> { operands, results, successors, regions, parent, prev, next }
+    BlockData { args, first, last, parent }
     RegionData { blocks, parent }
     ValueData<'a> { def, uses }
     Use { op }
@@ -223,6 +223,53 @@ ids! {
     Region => RegionId, RegionData, regions;
     Value => ValueId, ValueData<'a>, values;
 }
+
+/// ⭐ A block's ops in order, walked along its list ([`Body::ops`]); both ways.
+pub struct BlockOps<'b, 'a> {
+    body: &'b Body<'a>,
+    front: Option<OpId>,
+    back: Option<OpId>,
+    left: usize,
+}
+
+impl Iterator for BlockOps<'_, '_> {
+    type Item = OpId;
+
+    #[inline]
+    fn next(&mut self) -> Option<OpId> {
+        if self.left == 0 {
+            return None;
+        }
+        let o = self.front?;
+        self.left -= 1;
+        self.front = self.body.links(o).next;
+        Some(o)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.left, Some(self.left))
+    }
+}
+
+impl DoubleEndedIterator for BlockOps<'_, '_> {
+    #[inline]
+    fn next_back(&mut self) -> Option<OpId> {
+        if self.left == 0 {
+            return None;
+        }
+        let o = self.back?;
+        self.left -= 1;
+        self.back = self.body.links(o).prev;
+        Some(o)
+    }
+}
+
+impl ExactSizeIterator for BlockOps<'_, '_> {}
+
+/// Where a lent op sat in its module ([`Body::lend`]), for [`Body::unlend`].
+#[derive(Debug, Clone, Copy)]
+pub struct Lent(Links);
 
 /// ⭐ A table by id, one `Vec` per seg, each as long as the highest index written in it: what a
 /// `Vec` indexed by id was while there was one arena.
@@ -312,12 +359,10 @@ enum Undo<'a> {
     /// An arena entry's value before the first write after a checkpoint (boxed: an op is
     /// hundreds of bytes, the other entries a few words).
     Saved(alloc::boxed::Box<Saved<'a>>),
-    /// An op went into block `block` at `at`.
-    Inserted { block: BlockId, at: usize },
-    /// `op` came out of block `block` at `at`.
-    Removed { block: BlockId, at: usize, op: OpId },
-    /// `len` ops moved from block `from` (at `at_from`) into block `to` (at `at_to`) in one go.
-    Spliced { from: BlockId, at_from: usize, to: BlockId, at_to: usize, len: usize },
+    /// An op's place before an edit of its block's list.
+    Link(OpId, Links),
+    /// A block's list's ends before an edit.
+    Ends(BlockId, Ends),
     /// Arena `kind` of seg `seg` held `len` entries when it first grew under a checkpoint: what a
     /// rollback truncates it back to.
     Grew { seg: u32, kind: Kind, len: usize },
@@ -398,6 +443,8 @@ pub(crate) struct Seg<'a> {
     grown: [u32; 4],
     /// The index of its own op (0 until a pass replaces the op with one made in the seg).
     root: u32,
+    /// Left in a lent seg's place ([`Body::lend`]): where its op sat, for walks along the block.
+    away: Option<Links>,
 }
 
 /// Segs compare by their IR.
@@ -435,45 +482,71 @@ pub struct OpData<'a> {
     /// What the context knows of the op ([`MlirOpt::op_info`] of `name`): looked up once, when
     /// the op enters a [`Body`], not on every trait query.
     pub info: Option<&'a mlirformat::OpInfo>,
-    /// Where the op sat in its block when last placed or found ([`Body::position`]): where the
-    /// search for it starts.
-    pub(crate) at: Hint,
+    /// The ops before and after it in its block (`None` at an end, or while detached): a block
+    /// is a list through its ops ([`BlockData`]).
+    pub(crate) prev: Option<OpId>,
+    pub(crate) next: Option<OpId>,
+    /// Its order in its block, increasing along it with gaps, while the block's order holds
+    /// ([`Body::is_before`]).
+    pub(crate) order: Order,
 }
 
-/// A place in a block, as last known: a hint, kept through `&` (atomic, so threads sharing a body
-/// may refresh it), never trusted without a look.
+/// A number kept through `&` (atomic: threads sharing a body may refresh it): an op's order in
+/// its block, or whether a block's orders hold. A cache, never undone: an edit that cannot keep
+/// it marks the block's orders stale, and the next comparison numbers the block again.
 #[derive(Debug, Default)]
-pub(crate) struct Hint(core::sync::atomic::AtomicU32);
+pub(crate) struct Order(core::sync::atomic::AtomicU32);
 
-impl Hint {
+impl Order {
     #[inline]
-    fn get(&self) -> usize {
-        self.0.load(core::sync::atomic::Ordering::Relaxed) as usize
+    fn get(&self) -> u32 {
+        self.0.load(core::sync::atomic::Ordering::Relaxed)
     }
 
     #[inline]
-    fn set(&self, at: usize) {
-        self.0.store(at as u32, core::sync::atomic::Ordering::Relaxed);
+    fn set(&self, v: u32) {
+        self.0.store(v, core::sync::atomic::Ordering::Relaxed);
     }
 }
 
-impl Clone for Hint {
+impl Clone for Order {
     fn clone(&self) -> Self {
-        Hint(core::sync::atomic::AtomicU32::new(self.get() as u32))
+        Order(core::sync::atomic::AtomicU32::new(self.get()))
     }
 }
 
-/// Ops compare by their IR.
-impl PartialEq for Hint {
+/// IR compares without its caches.
+impl PartialEq for Order {
     fn eq(&self, _: &Self) -> bool {
         true
     }
 }
 
+/// Where an op sits: its neighbours and its block (what [`Undo::Link`] restores).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Links {
+    prev: Option<OpId>,
+    next: Option<OpId>,
+    parent: Option<BlockId>,
+}
+
+/// A block's list: its first and last ops and how many (what [`Undo::Ends`] restores).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Ends {
+    first: Option<OpId>,
+    last: Option<OpId>,
+    len: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BlockData {
     pub args: Ids<ValueId>,
-    pub ops: Vec<OpId>,
+    /// Its ops, as a list through their links ([`Body::ops`]): the first, the last, how many.
+    pub(crate) first: Option<OpId>,
+    pub(crate) last: Option<OpId>,
+    pub(crate) len: u32,
+    /// Whether its ops' orders hold ([`Body::is_before`]); 0: stale.
+    pub(crate) ordered: Order,
     pub parent: Option<RegionId>,
 }
 
@@ -646,13 +719,15 @@ impl<'a> Body<'a> {
         while self.journal.undo.len() > cp.undo {
             match self.journal.undo.pop().expect("longer than the mark") {
                 Undo::Saved(saved) => self.restore(*saved),
-                Undo::Inserted { block, at } => {
-                    self.ops_of(block).remove(at);
+                Undo::Link(op, l) => {
+                    if let Some(b) = l.parent {
+                        self[b].ordered.set(0);
+                    }
+                    self.raw_links(op, l);
                 }
-                Undo::Removed { block, at, op } => self.ops_of(block).insert(at, op),
-                Undo::Spliced { from, at_from, to, at_to, len } => {
-                    let moved: Vec<OpId> = self.ops_of(to).drain(at_to..at_to + len).collect();
-                    self.ops_of(from).splice(at_from..at_from, moved);
+                Undo::Ends(b, e) => {
+                    self[b].ordered.set(0);
+                    self.raw_ends(b, e);
                 }
                 Undo::Grew { seg, kind, len } => self.seg_mut(seg).truncate(kind, len),
             }
@@ -769,10 +844,52 @@ impl<'a> Body<'a> {
         &mut self.segs[i]
     }
 
-    /// `block`'s op list, written without the journal (what logs it does so itself).
+    /// `op`'s place, written without the journal (what logs it does so itself).
     #[inline]
-    fn ops_of(&mut self, block: BlockId) -> &mut Vec<OpId> {
-        &mut self.seg_mut(block.seg()).blocks[block.index() as usize].ops
+    fn raw_links(&mut self, op: OpId, l: Links) {
+        let d = &mut self.seg_mut(op.seg()).ops[op.index() as usize];
+        (d.prev, d.next, d.parent) = (l.prev, l.next, l.parent);
+    }
+
+    /// `block`'s list's ends, written without the journal.
+    #[inline]
+    fn raw_ends(&mut self, b: BlockId, e: Ends) {
+        let d = &mut self.seg_mut(b.seg()).blocks[b.index() as usize];
+        (d.first, d.last, d.len) = (e.first, e.last, e.len);
+    }
+
+    /// `op`'s place: a lent op's as it was lent ([`Body::lend`]).
+    #[inline]
+    fn links(&self, op: OpId) -> Links {
+        let s = self.seg(op.seg());
+        match s.ops.get(op.index() as usize) {
+            Some(d) => Links { prev: d.prev, next: d.next, parent: d.parent },
+            None => s.away.expect("an op of this body"),
+        }
+    }
+
+    fn ends(&self, b: BlockId) -> Ends {
+        let d = &self[b];
+        Ends { first: d.first, last: d.last, len: d.len }
+    }
+
+    /// `op`'s place set to `l`, its old one logged while a checkpoint is open and `op` existed
+    /// when it was taken (a newer op is truncated away whole).
+    fn set_links(&mut self, op: OpId, l: Links) {
+        if self.journal.depth > 0 && self.existed(Kind::Op, op.seg(), op.index() as usize, self.journal.mark) {
+            let old = self.links(op);
+            self.journal.undo.push(Undo::Link(op, old));
+        }
+        self.raw_links(op, l);
+    }
+
+    /// `b`'s list's ends set to `e`, the old ones logged as [`set_links`](Self::set_links) does.
+    fn set_ends(&mut self, b: BlockId, e: Ends) {
+        if self.logs(b) {
+            let old = self.ends(b);
+            self.journal.undo.push(Undo::Ends(b, old));
+        }
+        self.raw_ends(b, e);
     }
 
     /// Whether `op` is its seg's own op (a function in a seg of its own; not the root's seg).
@@ -843,7 +960,7 @@ impl<'a> Body<'a> {
     /// reads), and the block `op` was in. Nothing is copied: the seg itself moves, ids and all,
     /// and [`Body::unlend`] moves it back. The module is in a seg of its own, numbered just below
     /// `op`'s: the lent body holds no other seg, so the number is free there.
-    pub fn lend(&mut self, op: OpId) -> Option<(Body<'a>, Option<BlockId>)> {
+    pub fn lend(&mut self, op: OpId) -> Option<(Body<'a>, Lent)> {
         if !self.lendable(op) {
             return None;
         }
@@ -854,8 +971,9 @@ impl<'a> Body<'a> {
             at = self.parent_op(a);
         }
         let attrs: Vec<NamedAttr<'a>> = ancestors.into_iter().rev().flat_map(|a| self[a].attributes.iter().cloned()).collect();
-        let (s, parent) = (op.seg(), self[op].parent);
+        let (s, parent) = (op.seg(), Lent(self.links(op)));
         let seg = self.take_seg(s);
+        self.seg_mut(s).away = Some(parent.0);
         let mut sub = Body { ctx: self.ctx, segs: alloc::vec![Seg::default(), seg], seg0: s - 1, home: s - 1, root: OpId::at(s - 1, 0), items: Vec::new(), journal: Journal::default(), outside: None };
         let root = sub.create(OpData::named("builtin.module"), &[]);
         sub.root = root;
@@ -864,18 +982,22 @@ impl<'a> Body<'a> {
         }
         let region = sub.add_region(root);
         let block = sub.add_block(region, &[]);
-        sub.ops_of(block).push(op);
-        sub[op].parent = Some(block);
+        sub.raw_links(op, Links { prev: None, next: None, parent: None });
+        sub.insert(op, block, None);
         sub.home = s;
         Some((sub, parent))
     }
 
-    /// `op`'s seg back from the body [`Body::lend`] gave it to, `op` back in `parent`.
-    pub fn unlend(&mut self, op: OpId, mut sub: Body<'a>, parent: Option<BlockId>) {
+    /// `op`'s seg back from the body [`Body::lend`] gave it to, `op` back where it was.
+    pub fn unlend(&mut self, op: OpId, mut sub: Body<'a>, at: Lent) {
         debug_assert_eq!(sub.segs.len(), 2, "a lent body makes no seg");
         let seg = sub.segs.pop().expect("the lent seg");
         self.put_seg(op.seg(), seg);
-        self[op].parent = parent;
+        self.raw_links(op, at.0);
+        // Its order is the lent body's.
+        if let Some(b) = at.0.parent {
+            self[b].ordered.set(0);
+        }
     }
 
     /// A lent body's symbol `name` in `table` past what it holds: the module's, as it was when
@@ -928,7 +1050,7 @@ impl<'a> Body<'a> {
             return false;
         }
         let top = sub.top_block(sub.root);
-        if sub[top].ops.iter().filter(|x| !o.made.contains(x)).count() != 1 {
+        if sub.ops(top).filter(|x| !o.made.contains(x)).count() != 1 {
             return false;
         }
         let made: Vec<(String, Option<Attribute<'a>>)> = o.made.iter().filter_map(|d| Some((String::from(sub.sym_name(*d)?), sub[*d].get("function_type").cloned()))).collect();
@@ -941,19 +1063,24 @@ impl<'a> Body<'a> {
         true
     }
 
-    /// `sub` back, kept ([`Body::returnable`]): its seg in place, what replaced `op` in `op`'s
-    /// place (as the seg's own op); the declarations it made, to merge.
-    fn take_back(&mut self, op: OpId, sub: Body<'a>, parent: Option<BlockId>) -> Vec<OpId> {
+    /// `sub` back, kept ([`Body::returnable`]): its seg in place; what replaced `op` (to go in
+    /// `op`'s place once every lent op is back, [`Body::put_back`]) and the declarations it made,
+    /// to merge.
+    fn take_back(&mut self, op: OpId, sub: Body<'a>, parent: Lent) -> (OpId, Vec<OpId>) {
         let top = sub.top_block(sub.root);
         let made = sub.outside.as_ref().map(|o| o.made.clone()).unwrap_or_default();
-        let new = sub[top].ops.iter().copied().find(|x| !made.contains(x)).expect("the function");
+        let new = sub.ops(top).find(|x| !made.contains(x)).expect("the function");
         self.unlend(op, sub, parent);
+        (new, made)
+    }
+
+    /// What replaced `op` in a lent body ([`Body::take_back`]) in `op`'s place, as the seg's own
+    /// op: its neighbours relinked, so only once none is lent.
+    fn put_back(&mut self, op: OpId, new: OpId) {
         if new != op {
             self.seg_mut(new.seg()).root = new.index();
-            let at = self.position(op);
-            self.swap_in(op, at, new);
+            self.swap_in(op, new);
         }
-        made
     }
 
     /// Declarations `made` by a lent body, in the order made, at the start of `table`'s block in
@@ -984,8 +1111,8 @@ impl<'a> Body<'a> {
         if moremath::Executor::threads(exec) < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
             return Vec::new();
         }
-        let lent: Vec<(OpId, Body<'a>, Option<BlockId>)> = children.iter().filter_map(|c| self.lend(*c).map(|(sub, parent)| (*c, sub, parent))).collect();
-        let mut done: Vec<Option<(OpId, Body<'a>, Option<BlockId>)>> = lent.iter().map(|_| None).collect();
+        let lent: Vec<(OpId, Body<'a>, Lent)> = children.iter().filter_map(|c| self.lend(*c).map(|(sub, parent)| (*c, sub, parent))).collect();
+        let mut done: Vec<Option<(OpId, Body<'a>, Lent)>> = lent.iter().map(|_| None).collect();
         let tasks = done
             .iter_mut()
             .zip(lent)
@@ -999,7 +1126,7 @@ impl<'a> Body<'a> {
         moremath::Executor::execute(exec, tasks);
         let mut ran = Vec::with_capacity(done.len());
         for (c, sub, parent) in done.into_iter().map(|d| d.expect("every task ran")) {
-            debug_assert_eq!(sub[sub.top_block(sub.root)].ops[..], [c], "a lent op's work stays in it");
+            debug_assert!(sub.ops(sub.top_block(sub.root)).eq([c]), "a lent op's work stays in it");
             self.unlend(c, sub, parent);
             ran.push(c);
         }
@@ -1029,7 +1156,7 @@ impl<'a> Body<'a> {
                 })
             })
             .collect();
-        type Ran<'a> = (Result<(), Error>, Body<'a>, Option<BlockId>, Checkpoint);
+        type Ran<'a> = (Result<(), Error>, Body<'a>, Lent, Checkpoint);
         let mut done: Vec<Option<Ran<'a>>> = lent.iter().map(|_| None).collect();
         let tasks = done
             .iter_mut()
@@ -1047,7 +1174,7 @@ impl<'a> Body<'a> {
         // Kept or rolled back, in block order (nothing here asks the module, part of it is still
         // out); then every seg back.
         let mut declared: BTreeMap<String, Option<Attribute<'a>>> = symbols.iter().filter(|(_, d)| d.name == "llvm.func").map(|(n, d)| (n.clone(), d.get("function_type").cloned())).collect();
-        let decided: Vec<Option<(Result<(), Error>, Body<'a>, Option<BlockId>, Checkpoint, bool)>> = done
+        let decided: Vec<Option<(Result<(), Error>, Body<'a>, Lent, Checkpoint, bool)>> = done
             .into_iter()
             .map(|d| {
                 d.map(|(r, sub, parent, cp)| {
@@ -1068,8 +1195,8 @@ impl<'a> Body<'a> {
                 }
             })
             .collect();
-        let back: Vec<Option<(Result<(), Error>, Body<'a>, Option<BlockId>, bool)>> = moremath::Executor::execute(exec, closing);
-        let mut kept: Vec<Option<(Result<(), Error>, Vec<OpId>)>> = Vec::with_capacity(back.len());
+        let back: Vec<Option<(Result<(), Error>, Body<'a>, Lent, bool)>> = moremath::Executor::execute(exec, closing);
+        let mut kept: Vec<Option<(Result<(), Error>, (OpId, Vec<OpId>))>> = Vec::with_capacity(back.len());
         for (k, b) in back.into_iter().enumerate() {
             kept.push(match b {
                 Some((r, sub, parent, true)) => Some((r, self.take_back(children[k], sub, parent))),
@@ -1080,11 +1207,16 @@ impl<'a> Body<'a> {
                 None => None,
             });
         }
+        for (k, c) in children.iter().enumerate() {
+            if let Some((_, (new, _))) = &kept[k] {
+                self.put_back(*c, *new);
+            }
+        }
         // In block order: what a kept function declared goes in; the others are run here.
         let mut first = None;
         for (k, c) in children.iter().enumerate() {
             let r = match kept[k].take() {
-                Some((r, made)) => {
+                Some((r, (_, made))) => {
                     self.merge_declared(op, made);
                     r
                 }
@@ -1194,7 +1326,7 @@ impl<'a> OpData<'a> {
 impl<'a> OpData<'a> {
     /// A detached op with nothing but its name.
     pub fn named(name: impl Into<Str<'a>>) -> Self {
-        Self { name: name.into(), operands: crate::Ids::new(), results: crate::Ids::new(), successors: crate::Ids::new(), properties: Vec::new(), regions: crate::Ids::new(), attributes: Vec::new(), loc: None, parent: None, defaults: false, info: None, at: Hint::default() }
+        Self { name: name.into(), operands: crate::Ids::new(), results: crate::Ids::new(), successors: crate::Ids::new(), properties: Vec::new(), regions: crate::Ids::new(), attributes: Vec::new(), loc: None, parent: None, defaults: false, info: None, prev: None, next: None, order: Order::default() }
     }
 
     fn dict(&self, inherent: bool) -> &[NamedAttr<'a>] {
@@ -1305,7 +1437,7 @@ impl<'a> Body<'a> {
             self.link(s, v.seg());
             self[*v].uses.push(Use { op: id, index: index as u32 });
         }
-        self.seg_mut(s).ops.push(OpData { results: crate::Ids::new(), ..data });
+        self.seg_mut(s).ops.push(OpData { results: crate::Ids::new(), parent: None, prev: None, next: None, order: Order::default(), ..data });
         let results = types.into_iter().enumerate().map(|(i, ty)| self.value(ty, Def::Result(id, i as u32), None)).collect();
         self[id].results = results;
         id
@@ -1328,18 +1460,11 @@ impl<'a> Body<'a> {
         o
     }
 
-    /// Puts `new` (detached) where `old` is, at `at` in its block; `old` is left detached.
-    pub fn swap_in(&mut self, old: OpId, at: usize, new: OpId) {
-        let block = self[old].parent.expect("old is placed");
-        if self.logs(block) {
-            self.insert_before(new, old);
-            return self.detach(old);
-        }
-        debug_assert_eq!(self[block].ops[at], old);
-        self.ops_of(block)[at] = new;
-        self.linked(new, block);
-        self[new].parent = Some(block);
-        self[old].parent = None;
+    /// Puts `new` (detached) where `old` is in its block; `old` is left detached. (`_at`, its
+    /// place, is not needed: the list knows.)
+    pub fn swap_in(&mut self, old: OpId, new: OpId) {
+        self.insert_before(new, old);
+        self.detach(old);
     }
 
     /// Adds mlirformat's typed op `op`, detached.
@@ -1471,63 +1596,94 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// Inserts detached `op` into `block` at position `at` (`None`: the end).
+    /// Inserts detached `op` into `block` at position `at` (`None`: the end; a position is walked
+    /// to: prefer [`insert_before`](Self::insert_before) / [`insert_after`](Self::insert_after)).
     pub fn insert(&mut self, op: OpId, block: BlockId, at: Option<usize>) {
-        debug_assert!(self[op].parent.is_none(), "op is already placed");
-        let at = at.unwrap_or(self[block].ops.len());
-        if self.logs(block) {
-            self.journal.undo.push(Undo::Inserted { block, at });
-        }
-        self.ops_of(block).insert(at, op);
-        self.linked(op, block);
-        self[op].parent = Some(block);
-        self[op].at.set(at);
+        let before = match at {
+            None => None,
+            Some(k) => self.ops(block).nth(k),
+        };
+        self.link_in(op, block, before);
     }
 
-    /// ⭐ Moves the ops at `range` of `from` into `to` before position `at` (`None`: the end), in one
-    /// go and in order; the moved ops. `from` and `to` differ.
-    pub fn splice(&mut self, from: BlockId, range: core::ops::Range<usize>, to: BlockId, at: Option<usize>) -> Vec<OpId> {
-        debug_assert_ne!(from, to, "splice within one block");
-        let at_from = range.start;
-        let moved: Vec<OpId> = self.ops_of(from).drain(range).collect();
-        let at = at.unwrap_or(self[to].ops.len());
-        if self.logs(from) || self.logs(to) {
-            self.journal.undo.push(Undo::Spliced { from, at_from, to, at_to: at, len: moved.len() });
+    /// ⭐ `op` (detached) into `block` before `before` (`None`: at the end), in O(1): its order
+    /// taken from the gap between its neighbours', the block's orders left stale when there is
+    /// none.
+    fn link_in(&mut self, op: OpId, block: BlockId, before: Option<OpId>) {
+        debug_assert!(self[op].parent.is_none(), "op is already placed");
+        let ends = self.ends(block);
+        let prev = match before {
+            Some(b) => self.links(b).prev,
+            None => ends.last,
+        };
+        self.set_links(op, Links { prev, next: before, parent: Some(block) });
+        let mut e = Ends { len: ends.len + 1, ..ends };
+        match prev {
+            Some(p) => self.set_links(p, Links { next: Some(op), ..self.links(p) }),
+            None => e.first = Some(op),
         }
-        self.ops_of(to).splice(at..at, moved.iter().copied());
+        match before {
+            Some(n) => self.set_links(n, Links { prev: Some(op), ..self.links(n) }),
+            None => e.last = Some(op),
+        }
+        self.set_ends(block, e);
+        self.linked(op, block);
+        // Its order: between its neighbours', while the block's hold and there is room.
+        if self[block].ordered.get() != 0 {
+            let lo = prev.map_or(0, |p| u64::from(self[p].order.get()));
+            let hi = before.map_or(u64::from(u32::MAX), |n| u64::from(self[n].order.get()));
+            if hi > lo + 1 {
+                self[op].order.set(((lo + hi) / 2) as u32);
+            } else {
+                self[block].ordered.set(0);
+            }
+        }
+    }
+
+    /// ⭐ Takes `op` out of its block, keeping it whole, in O(1).
+    pub fn detach(&mut self, op: OpId) {
+        let l = self.links(op);
+        let Some(block) = l.parent else { return };
+        let ends = self.ends(block);
+        let mut e = Ends { len: ends.len - 1, ..ends };
+        match l.prev {
+            Some(p) => self.set_links(p, Links { next: l.next, ..self.links(p) }),
+            None => e.first = l.next,
+        }
+        match l.next {
+            Some(n) => self.set_links(n, Links { prev: l.prev, ..self.links(n) }),
+            None => e.last = l.prev,
+        }
+        self.set_ends(block, e);
+        self.set_links(op, Links { prev: None, next: None, parent: None });
+    }
+
+    /// ⭐ Moves `from`'s ops from `start` (`None`: its first) to its end into `to` before
+    /// `before` (`None`: the end), in order; the moved ops. `from` and `to` differ.
+    pub fn splice(&mut self, from: BlockId, start: Option<OpId>, to: BlockId, before: Option<OpId>) -> Vec<OpId> {
+        debug_assert_ne!(from, to, "splice within one block");
+        let mut moved = Vec::new();
+        let mut at = start.or(self[from].first);
+        while let Some(o) = at {
+            moved.push(o);
+            at = self[o].next;
+        }
         for &o in &moved {
-            self.linked(o, to);
-            self[o].parent = Some(to);
+            self.detach(o);
+            self.link_in(o, to, before);
         }
         moved
     }
 
-    /// Takes `ops` out of their blocks, one pass over each block (they stay whole).
+    /// Takes `ops` out of their blocks (they stay whole).
     pub fn detach_all(&mut self, ops: &[OpId]) {
-        let mut by_block: alloc::collections::BTreeMap<BlockId, alloc::collections::BTreeSet<OpId>> = alloc::collections::BTreeMap::new();
-        for &op in ops {
-            if let Some(block) = self[op].parent {
-                by_block.entry(block).or_default().insert(op);
-            }
-        }
-        for (block, gone) in by_block {
-            if self.logs(block) {
-                // Logged edit by edit, so that a rollback can put them back.
-                gone.iter().for_each(|&op| self.detach(op));
-                continue;
-            }
-            self.ops_of(block).retain(|o| !gone.contains(o));
-            for op in gone {
-                self[op].parent = None;
-            }
-        }
+        ops.iter().for_each(|o| self.detach(*o));
     }
 
     /// Inserts detached `op` right before `before`.
     pub fn insert_before(&mut self, op: OpId, before: OpId) {
         let block = self[before].parent.expect("anchor is not placed");
-        let at = self.position(before);
-        self.insert(op, block, Some(at));
+        self.link_in(op, block, Some(before));
     }
 
     /// Inserts detached `op` at insertion point `at`: before its op, else at the end.
@@ -1541,36 +1697,79 @@ impl<'a> Body<'a> {
     /// Inserts detached `op` right after `after`.
     pub fn insert_after(&mut self, op: OpId, after: OpId) {
         let block = self[after].parent.expect("anchor is not placed");
-        let at = self.position(after) + 1;
-        self.insert(op, block, Some(at));
+        let next = self.links(after).next;
+        self.link_in(op, block, next);
     }
 
-    /// ⭐ Where `op` sits in its block: looked for from where it was last (its [`Hint`]), outward,
-    /// so an op a few others moved is found in a few steps, not by a scan of the block.
+    /// Where `op` sits in its block: counted along it (O(position); to order two ops, use
+    /// [`is_before`](Self::is_before)).
     pub fn position(&self, op: OpId) -> usize {
-        let block = self[op].parent.expect("op is not placed");
-        let ops = &self[block].ops;
-        let hint = &self[op].at;
-        let start = hint.get().min(ops.len().saturating_sub(1));
-        let at = (0..ops.len())
-            .flat_map(|d| [start.checked_add(d), start.checked_sub(d).filter(|_| d > 0)])
-            .flatten()
-            .find(|i| ops.get(*i) == Some(&op))
-            .expect("op not in its block");
-        hint.set(at);
-        at
+        debug_assert!(self[op].parent.is_some(), "op is not placed");
+        let mut n = 0;
+        let mut at = self.links(op).prev;
+        while let Some(p) = at {
+            n += 1;
+            at = self.links(p).prev;
+        }
+        n
     }
 
-    /// Takes `op` out of its block, keeping it whole. Looks from the end: erasing a block's ops
-    /// last first costs nothing per op.
-    pub fn detach(&mut self, op: OpId) {
-        let Some(block) = self[op].parent else { return };
-        let at = self.position(op);
-        if self.logs(block) {
-            self.journal.undo.push(Undo::Removed { block, at, op });
+    /// ⭐ Whether `a` comes before `b` in their block, by their orders: numbered again (O(n),
+    /// once) when an edit left them stale, else O(1).
+    pub fn is_before(&self, a: OpId, b: OpId) -> bool {
+        let block = self[a].parent.expect("op is not placed");
+        debug_assert_eq!(self[b].parent, Some(block), "ops of one block");
+        if self[block].ordered.get() == 0 {
+            self.renumber(block);
         }
-        self.ops_of(block).remove(at);
-        self[op].parent = None;
+        self[a].order.get() < self[b].order.get()
+    }
+
+    /// `block`'s ops numbered along it, with gaps.
+    fn renumber(&self, block: BlockId) {
+        let gap = (u32::MAX / (self[block].len + 2)).clamp(1, 1 << 16);
+        for (i, o) in self.ops(block).enumerate() {
+            // A lent op keeps no order here: it takes one again when it is back.
+            if let Some(d) = self.seg(o.seg()).ops.get(o.index() as usize) {
+                d.order.set(gap * (i as u32 + 1));
+            }
+        }
+        self[block].ordered.set(1);
+    }
+
+    /// ⭐ `block`'s ops, in order (a walk along its list).
+    pub fn ops(&self, block: BlockId) -> BlockOps<'_, 'a> {
+        let d = &self[block];
+        BlockOps { body: self, front: d.first, back: d.last, left: d.len as usize }
+    }
+
+    /// `block`'s ops, collected: what to walk while changing the block.
+    pub fn block_ops(&self, block: BlockId) -> Vec<OpId> {
+        self.ops(block).collect()
+    }
+
+    /// How many ops `block` holds.
+    pub fn len_ops(&self, block: BlockId) -> usize {
+        self[block].len as usize
+    }
+
+    pub fn first_op(&self, block: BlockId) -> Option<OpId> {
+        self[block].first
+    }
+
+    /// `block`'s last op (its terminator, when it has one).
+    pub fn last_op(&self, block: BlockId) -> Option<OpId> {
+        self[block].last
+    }
+
+    /// The op after `op` in its block.
+    pub fn next_op(&self, op: OpId) -> Option<OpId> {
+        self.links(op).next
+    }
+
+    /// The op before `op` in its block.
+    pub fn prev_op(&self, op: OpId) -> Option<OpId> {
+        self.links(op).prev
     }
 
     // ---- use-def -----------------------------------------------------------------------
@@ -1637,8 +1836,8 @@ impl<'a> Body<'a> {
 
     fn erase_block_ops(&mut self, block: BlockId) {
         // Drop every use first: ops in a block may use each other (and forward, across blocks).
-        let ops = core::mem::take(&mut self[block].ops);
-        ops.iter().for_each(|o| self[*o].parent = None);
+        let ops = self.block_ops(block);
+        ops.iter().for_each(|o| self.detach(*o));
         ops.into_iter().for_each(|o| self.erase(o));
         self[block].parent = None;
     }
@@ -1683,8 +1882,8 @@ impl<'a> Body<'a> {
     pub fn walk_post(&self, op: OpId, f: &mut impl FnMut(OpId)) {
         for r in &self[op].regions {
             for b in &self[*r].blocks {
-                for o in &self[*b].ops {
-                    self.walk_post(*o, f);
+                for o in self.ops(*b) {
+                    self.walk_post(o, f);
                 }
             }
         }
@@ -1695,8 +1894,8 @@ impl<'a> Body<'a> {
         f(op);
         for r in &self[op].regions {
             for b in &self[*r].blocks {
-                for o in &self[*b].ops {
-                    self.walk(*o, f);
+                for o in self.ops(*b) {
+                    self.walk(o, f);
                 }
             }
         }
@@ -2381,7 +2580,7 @@ impl<'n, 'b, 'a> Namer<'n, 'b, 'a> {
             self.region(r);
             bbs = bbs.max(body[r].blocks.len());
             let (next, scope) = (self.next, self.scope);
-            stack.extend(body[r].blocks.iter().flat_map(|b| &body[*b].ops).flat_map(|o| &body[*o].regions).map(|nr| (*nr, next, scope)));
+            stack.extend(body[r].blocks.iter().flat_map(|b| body.ops(*b)).flat_map(|o| body[o].regions.iter()).map(|nr| (*nr, next, scope)));
         }
         bbs
     }
@@ -2519,8 +2718,8 @@ impl<'n, 'b, 'a> Namer<'n, 'b, 'a> {
                 };
                 self.n.values.set(*v, Some(Name { head, index: None }));
             }
-            for o in &body[*b].ops {
-                self.op(*o);
+            for o in body.ops(*b) {
+                self.op(o);
             }
             self.max = self.max.max(self.next.value);
         }
@@ -2561,7 +2760,7 @@ impl Names {
     pub(crate) fn of_in<X: moremath::Executor + Sync>(body: &Body<'_>, root: OpId, generic: bool, x: &X) -> Self {
         let &[r] = &body[root].regions[..] else { return Self::of(body, root, generic) };
         // The functions named apart, in block order, and each one's place in it.
-        let order: Vec<OpId> = body[r].blocks.iter().flat_map(|b| &body[*b].ops).copied().filter(|o| body.names_apart(*o)).collect();
+        let order: Vec<OpId> = body[r].blocks.iter().flat_map(|b| body.ops(*b)).filter(|o| body.names_apart(*o)).collect();
         let units: BTreeMap<OpId, usize> = order.iter().enumerate().map(|(k, o)| (*o, k)).collect();
         if x.threads() <= 1 || order.len() < 2 {
             return Self::of(body, root, generic);
@@ -2578,7 +2777,7 @@ impl Names {
         namer.region(r);
         let mut bbs = body[r].blocks.len();
         let (next, scope) = (namer.next, namer.scope);
-        let held: Vec<(RegionId, Counters, usize)> = body[r].blocks.iter().flat_map(|b| &body[*b].ops).flat_map(|o| &body[*o].regions).map(|nr| (*nr, next, scope)).collect();
+        let held: Vec<(RegionId, Counters, usize)> = body[r].blocks.iter().flat_map(|b| body.ops(*b)).flat_map(|o| body[o].regions.iter()).map(|nr| (*nr, next, scope)).collect();
         let begin = if generic { Counters::default() } else { next };
         let scopes = &namer.scopes;
         let tasks: Vec<_> = order
@@ -2692,11 +2891,17 @@ impl Source for Export<'_, '_> {
     }
 
     fn len(&self, id: u64, b: usize) -> usize {
-        self.body[self.body[RegionId(id)].blocks[b]].ops.len()
+        self.body.len_ops(self.body[RegionId(id)].blocks[b])
     }
 
     fn op(&self, id: u64, b: usize, k: usize) -> Operation<'_> {
-        self.op(self.body[self.body[RegionId(id)].blocks[b]].ops[k])
+        self.op(self.body.ops(self.body[RegionId(id)].blocks[b]).nth(k).expect("an op of the block"))
+    }
+
+    /// Along the block's list, once.
+    fn ops_iter<'s>(&'s self, id: u64, b: usize, range: core::ops::Range<usize>) -> alloc::boxed::Box<dyn Iterator<Item = Operation<'s>> + 's> {
+        let block = self.body[RegionId(id)].blocks[b];
+        alloc::boxed::Box::new(self.body.ops(block).skip(range.start).take(range.len()).map(move |o| self.op(o)))
     }
 }
 
@@ -2761,7 +2966,7 @@ impl<'n, 'a> Export<'n, 'a> {
     }
 
     fn region(&self, r: RegionId) -> Region<'n> {
-        Region { blocks: self.body[r].blocks.iter().enumerate().map(|(i, b)| self.block(i, *b, self.body[*b].ops.iter().map(|o| self.op(*o)).collect())).collect() }
+        Region { blocks: self.body[r].blocks.iter().enumerate().map(|(i, b)| self.block(i, *b, self.body.ops(*b).map(|o| self.op(o)).collect())).collect() }
     }
 
     /// Block `b`, the `i`th of its region, holding `ops`.
@@ -2770,7 +2975,7 @@ impl<'n, 'a> Export<'n, 'a> {
         Block {
             // An entry block without arguments needs no label, unless it is empty too: the
             // region would read back as having no block at all.
-            label: (i > 0 || !data.args.is_empty() || data.ops.is_empty()).then(|| self.label(b)),
+            label: (i > 0 || !data.args.is_empty() || data.len == 0).then(|| self.label(b)),
             args: data.args.iter().map(|v| BlockArg { name: self.value(*v).name, ty: self.body[*v].ty.reborrow(), loc: self.body[*v].loc.reborrow() }).collect(),
             ops,
         }
@@ -2989,7 +3194,7 @@ impl<'a> Body<'a> {
         }
         let mut cloned = Vec::new();
         for (b, nb) in blocks.iter().zip(&made) {
-            for o in self[*b].ops.clone() {
+            for o in self.block_ops(*b) {
                 let c = self.clone_op(o, map);
                 self.insert(c, *nb, None);
                 cloned.push(c);

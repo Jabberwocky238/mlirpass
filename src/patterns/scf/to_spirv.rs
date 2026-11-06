@@ -75,7 +75,7 @@ impl ScfToSpirv {
     /// The `Function` variables `outputs` made for construct `parent` (the `n` ops before it).
     fn output_vars(cr: &Cr<'_, '_, '_>, parent: OpId, n: usize) -> Option<Vec<ValueId>> {
         let b = &cr.rw.body;
-        let ops = &b[b[parent].parent?].ops;
+        let ops = &b.block_ops(b[parent].parent?);
         let at = ops.iter().position(|o| *o == parent)?;
         let vars = ops[..at].iter().rev().take(n).rev().copied().collect::<Vec<_>>();
         (vars.len() == n && vars.iter().all(|v| b[*v].name == "spirv.Variable")).then(|| vars.iter().map(|v| b[*v].results[0]).collect())
@@ -168,7 +168,7 @@ impl ScfToSpirv {
             }
             if pname == "spirv.mlir.loop" {
                 let block = cr.rw.body[op].parent.expect("placed");
-                let br = *cr.rw.body[block].ops.last().expect("terminator");
+                let br = cr.rw.body.last_op(block).expect("terminator");
                 if cr.rw.body[br].name != "spirv.Branch" {
                     return false;
                 }
@@ -199,8 +199,8 @@ impl ScfToSpirv {
         let (entry, merge) = Self::entry_and_merge(cr, region);
         let before = cr.rw.body[before_r].blocks[0];
         let after = cr.rw.body[after_r].blocks[0];
-        let cond = *cr.rw.body[before].ops.last().expect("scf.condition");
-        let yield_ = *cr.rw.body[after].ops.last().expect("scf.yield");
+        let cond = cr.rw.body.last_op(before).expect("scf.condition");
+        let yield_ = cr.rw.body.last_op(after).expect("scf.yield");
         let Some(cond_ops) = cr.remap(&cr.rw.body[cond].operands.clone(), None) else { return false };
         let Some(cond_ops) = Cr::one_to_one(&cond_ops) else { return false };
         let Some(yield_ops) = cr.remap(&cr.rw.body[yield_].operands.clone(), None) else { return false };

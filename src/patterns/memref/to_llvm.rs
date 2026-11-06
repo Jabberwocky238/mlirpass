@@ -452,7 +452,7 @@ impl MemrefToLlvm {
         cr.rw.set_end(current);
         let saved = Self::stack_save(cr);
         cr.rw.create(OpData { loc: loc.clone(), ..OpData::build("llvm.br").successors(&[first]) }, &[]);
-        let Some(&ret) = cr.rw.body[last].ops.last() else { return false };
+        let Some(ret) = cr.rw.body.last_op(last) else { return false };
         let values = cr.rw.body[ret].operands.clone();
         let br = cr.replace_new(ret, OpData { loc, ..OpData::build("llvm.br").operands(&values).successors(&[cont]) }, &[]);
         cr.rw.set_before(br);
@@ -578,7 +578,7 @@ impl MemrefToLlvm {
         // The yielded value must come from the region.
         let body = cr.rw.body[op].regions[0];
         let entry = cr.rw.body[body].blocks[0];
-        let Some(&term) = cr.rw.body[entry].ops.last() else { return false };
+        let Some(term) = cr.rw.body.last_op(entry) else { return false };
         let yielded = cr.rw.body[term].operands[0];
         let inside = match cr.rw.body[yielded].def {
             crate::Def::Arg(b, _) => b == entry,
@@ -591,7 +591,7 @@ impl MemrefToLlvm {
         let loop_block = cr.rw.split_block(init_block, op);
         let arg = cr.rw.body.add_arg(loop_block, value_ty.clone());
         cr.rw.body[arg].loc = loc.clone();
-        let next = Self::next_op(cr, op);
+        let next = cr.rw.body.next_op(op);
         let end = match next {
             Some(n) => cr.rw.split_block(loop_block, n),
             None => return false,
@@ -605,7 +605,7 @@ impl MemrefToLlvm {
         cr.rw.set_start(loop_block);
         let mut map = crate::Mapping::default();
         map.map(cr.rw.body[entry].args[0], arg);
-        let ops = cr.rw.body[entry].ops.clone();
+        let ops = cr.rw.body.block_ops(entry);
         let Some((&term, inner)) = ops.split_last() else { return false };
         for &o in inner {
             cr.rw.clone(o, &mut map);
@@ -1039,7 +1039,7 @@ impl MemrefToLlvm {
         let next = Self::arith(cr, "llvm.mul", stride_arg, sz);
         let dec = Self::arith(cr, "llvm.sub", index_arg, one);
         let br = cr.rw.create(OpData { loc: loc.clone(), ..OpData::build("llvm.br").operands(&[dec, next]).successors(&[cond]) }, &[]);
-        let remainder = match Self::next_op(cr, br) {
+        let remainder = match cr.rw.body.next_op(br) {
             Some(n) => cr.rw.split_block(body, n),
             None => {
                 let r = Self::block_after(cr, body);
@@ -1053,11 +1053,6 @@ impl MemrefToLlvm {
         true
     }
 
-    /// The op after `op` in its block.
-    fn next_op<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Option<OpId> {
-        let b = cr.rw.body[op].parent?;
-        cr.rw.body[b].ops.get(cr.rw.body.position(op) + 1).copied()
-    }
 
     /// An empty block right after `block`.
     fn block_after<'a>(cr: &mut Cr<'_, 'a, '_>, block: BlockId) -> BlockId {

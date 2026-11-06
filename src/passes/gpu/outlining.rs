@@ -37,7 +37,7 @@ impl<'a> Body<'a> {
     pub fn used_values_defined_above(&self, region: RegionId) -> Vec<ValueId> {
         let mut out = Vec::new();
         for b in &self[region].blocks {
-            for o in &self[*b].ops {
+            for o in &self.block_ops(*b) {
                 self.walk_post(*o, &mut |op| {
                     for v in &self[op].operands {
                         let inside = self.value_block(*v).and_then(|b| self[b].parent).is_some_and(|r| self.region_within(r, region));
@@ -97,7 +97,7 @@ impl<'a> Body<'a> {
             }
         }
         let entry = self[region].blocks[0];
-        let first = self[entry].ops.first().copied();
+        let first = self.first_op(entry);
         let mut map = Mapping::default();
         for op in sunk {
             let c = self.clone_op(op, &mut map);
@@ -176,7 +176,7 @@ impl<'a> Body<'a> {
         }
         let cloned = self.clone_region_into(region, body, None, &mut map);
         for b in &cloned {
-            let Some(&t) = self[*b].ops.last() else { continue };
+            let Some(t) = self.last_op(*b) else { continue };
             if self[t].name == "gpu.terminator" {
                 let mut ret = OpData::build("gpu.return");
                 ret.loc = self[t].loc.clone();
@@ -186,8 +186,7 @@ impl<'a> Body<'a> {
             }
         }
         let centry = cloned[0];
-        let n = self[centry].ops.len();
-        self.splice(centry, 0..n, fentry, None);
+        self.splice(centry, None, fentry, None);
         self[body].blocks.retain(|b| *b != centry);
         (func, operands)
     }

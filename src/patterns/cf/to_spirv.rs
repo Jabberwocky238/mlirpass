@@ -18,7 +18,7 @@ impl CfToSpirv {
     /// rewriter's bookkeeping, as the C++ `OpBuilder` is).
     fn legalize_args(cr: &mut Cr<'_, '_, '_>, block: BlockId) -> bool {
         let Some(tc) = cr.type_converter() else { return false };
-        let Some(&first) = cr.rw.body[block].ops.first() else { return false };
+        let Some(first) = cr.rw.body.first_op(block) else { return false };
         for v in cr.rw.body[block].args.clone() {
             let ty = cr.rw.body[v].ty.clone();
             if tc.is_legal(&ty) {

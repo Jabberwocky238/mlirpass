@@ -141,7 +141,7 @@ impl Body<'_> {
             }
             for r in self[op].regions.iter().rev() {
                 for blk in self.blocks_by_dominance(*r).into_iter().rev() {
-                    stack.extend(self[blk].ops.iter().rev());
+                    stack.extend(self.block_ops(blk).iter().rev());
                 }
             }
         }

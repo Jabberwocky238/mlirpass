@@ -145,7 +145,7 @@ impl Abi {
             return if abis.iter().any(Option::is_some) { Err(Error(String::from("failed to legalize operation 'spirv.func'"))) } else { Ok(()) };
         }
         let entry = body[body[f].regions[0]].blocks[0];
-        let mut at = body[entry].ops.first().copied();
+        let mut at = body.first_op(entry);
         let place = |body: &mut Body<'_>, o: OpId, at: Option<OpId>| match at {
             Some(b) => body.insert_before(o, b),
             None => body.insert(o, entry, None),
@@ -171,12 +171,12 @@ impl Abi {
                 // The source materialization: a `spirv.Bitcast` right after the replacement.
                 let bc = body.create(OpData::build("spirv.Bitcast").operands(&[repl]), core::slice::from_ref(t));
                 let def = body.def_op(repl).expect("defined");
-                let next = body[entry].ops.get(body.position(def) + 1).copied();
+                let next = body.next_op(def);
                 place(body, bc, next);
                 repl = body[bc].results[0];
             }
             body.replace_all_uses(args[i], repl);
-            at = body[entry].ops.get(body.position(body.def_op(repl).expect("defined")) + 1).copied();
+            at = body.next_op(body.def_op(repl).expect("defined"));
         }
         for i in (0..body[entry].args.len()).rev() {
             body.erase_arg(entry, i);
@@ -241,7 +241,7 @@ impl Abi {
                 continue;
             }
             let Some(v) = body[o].get("variable").and_then(super::lower::symbol_text) else { continue };
-            let storage = body[block].ops.iter().find(|g| body[**g].get("sym_name").and_then(super::lower::symbol_text).as_deref() == Some(&v)).and_then(|g| match body[*g].get("type") {
+            let storage = body.block_ops(block).iter().find(|g| body[**g].get("sym_name").and_then(super::lower::symbol_text).as_deref() == Some(&v)).and_then(|g| match body[*g].get("type") {
                 Some(Attribute::Type(t)) => match SpirvType::try_from(t) {
                     Ok(SpirvType::Ptr { storage, .. }) => Some(storage),
                     _ => None,

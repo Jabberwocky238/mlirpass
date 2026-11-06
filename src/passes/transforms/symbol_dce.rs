@@ -21,7 +21,7 @@ pub fn symbol_dce<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let tables: Vec<_> = body.ops_in(op).into_iter().filter(|o| body.is_symbol_table(*o)).collect();
     for table in tables {
         let Some(region) = body[table].regions.first().copied() else { continue };
-        let dead: Vec<_> = body[region].blocks.iter().flat_map(|b| &body[*b].ops).copied().filter(|o| body.has(*o, Trait::SymbolOpInterface) && !live.contains(o)).collect();
+        let dead: Vec<_> = body[region].blocks.iter().flat_map(|b| body.ops(*b)).filter(|o| body.has(*o, Trait::SymbolOpInterface) && !live.contains(o)).collect();
         dead.into_iter().for_each(|o| body.erase(o));
     }
     Ok(())
@@ -33,7 +33,7 @@ impl Body<'_> {
     fn liveness(&self, table: OpId, hidden: bool, live: &mut BTreeSet<OpId>) -> Result<(), Error> {
         let mut work = Vec::new();
         let region = self[table].regions[0];
-        for op in self[region].blocks.iter().flat_map(|b| &self[*b].ops).copied() {
+        for op in self[region].blocks.iter().flat_map(|b| self.ops(*b)) {
             if !self.has(op, Trait::SymbolOpInterface) {
                 work.push(op);
                 continue;
