@@ -458,8 +458,129 @@ impl PartialEq for Seg<'_> {
 /// up to four inline, as big as a `Vec` and no allocation for the usual handful.
 pub type Ids<T> = smallvec::SmallVec<[T; 4]>;
 
-/// A value's uses: two inline.
-pub type Uses = smallvec::SmallVec<[Use; 2]>;
+/// A slot no use holds ([`Uses`]), or an operand whose slot is unknown ([`UseSlots`]).
+const HOLE: u32 = u32::MAX;
+
+/// ⭐ A value's uses in the order they were made (`mlir-opt`'s use list read backwards), two
+/// inline. A use dropped leaves a hole and the others keep their slots, so dropping one is
+/// O(1) through the slot its op remembers ([`UseSlots`]), where MLIR unlinks an `OpOperand`; holes
+/// are squeezed out once they outnumber the uses ([`Body::squeeze`]).
+#[derive(Debug, Clone, Default)]
+pub struct Uses {
+    slots: smallvec::SmallVec<[Use; 2]>,
+    live: u32,
+}
+
+/// [`Uses::iter`].
+pub type UsesIter<'u> = core::iter::Filter<core::slice::Iter<'u, Use>, fn(&&Use) -> bool>;
+
+impl Uses {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.live as usize
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.live == 0
+    }
+
+    /// Oldest first; `.rev()` is `mlir-opt`'s order.
+    #[inline]
+    pub fn iter(&self) -> UsesIter<'_> {
+        self.slots.iter().filter(|u| u.index != HOLE)
+    }
+
+    /// The oldest use.
+    pub fn first(&self) -> Option<&Use> {
+        self.iter().next()
+    }
+
+    /// The one use, if there is exactly one.
+    pub fn single(&self) -> Option<Use> {
+        (self.live == 1).then(|| self.first().copied()).flatten()
+    }
+
+    pub fn to_vec(&self) -> Vec<Use> {
+        self.iter().copied().collect()
+    }
+
+    /// Appends `u`; its slot.
+    fn push(&mut self, u: Use) -> u32 {
+        self.slots.push(u);
+        self.live += 1;
+        self.slots.len() as u32 - 1
+    }
+
+    /// Drops `u`, looked for at `hint` first; whether it was there.
+    fn remove(&mut self, hint: u32, u: Use) -> bool {
+        let at = match self.slots.get(hint as usize) {
+            Some(x) if *x == u => hint as usize,
+            _ => match self.slots.iter().position(|x| *x == u) {
+                Some(at) => at,
+                None => return false,
+            },
+        };
+        self.live -= 1;
+        if self.live == 0 {
+            self.slots.clear();
+        } else {
+            self.slots[at].index = HOLE;
+        }
+        true
+    }
+
+    /// Whether the holes outnumber the uses (and are worth a pass).
+    fn sparse(&self) -> bool {
+        self.slots.len() >= 8 && self.slots.len() > 2 * self.live as usize
+    }
+}
+
+/// Uses compare by what they are, not where the holes are.
+impl PartialEq for Uses {
+    fn eq(&self, o: &Self) -> bool {
+        self.live == o.live && self.iter().eq(o.iter())
+    }
+}
+
+impl<'u> IntoIterator for &'u Uses {
+    type Item = &'u Use;
+    type IntoIter = UsesIter<'u>;
+
+    fn into_iter(self) -> UsesIter<'u> {
+        self.iter()
+    }
+}
+
+impl IntoIterator for Uses {
+    type Item = Use;
+    type IntoIter = core::iter::Filter<smallvec::IntoIter<[Use; 2]>, fn(&Use) -> bool>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.slots.into_iter().filter(|u| u.index != HOLE)
+    }
+}
+
+impl Shift for Uses {
+    fn shift(self, o: &Offsets) -> Self {
+        Uses { slots: self.slots.shift(o), ..self }
+    }
+}
+
+/// Per operand of an op, its slot in its value's [`Uses`] (a cache: a wrong one only costs a
+/// search). Not part of the IR: ops compare without it.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct UseSlots(smallvec::SmallVec<[u32; 4]>);
+
+impl PartialEq for UseSlots {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
 
 /// One operation. Operand and result types live on the values.
 #[derive(Debug, Clone, PartialEq)]
@@ -489,6 +610,8 @@ pub struct OpData<'a> {
     /// Its order in its block, increasing along it with gaps, while the block's order holds
     /// ([`Body::is_before`]).
     pub(crate) order: Order,
+    /// Each operand's slot in its value's uses.
+    pub(crate) slots: UseSlots,
 }
 
 /// A number kept through `&` (atomic: threads sharing a body may refresh it): an op's order in
@@ -1326,7 +1449,7 @@ impl<'a> OpData<'a> {
 impl<'a> OpData<'a> {
     /// A detached op with nothing but its name.
     pub fn named(name: impl Into<Str<'a>>) -> Self {
-        Self { name: name.into(), operands: crate::Ids::new(), results: crate::Ids::new(), successors: crate::Ids::new(), properties: Vec::new(), regions: crate::Ids::new(), attributes: Vec::new(), loc: None, parent: None, defaults: false, info: None, prev: None, next: None, order: Order::default() }
+        Self { name: name.into(), operands: crate::Ids::new(), results: crate::Ids::new(), successors: crate::Ids::new(), properties: Vec::new(), regions: crate::Ids::new(), attributes: Vec::new(), loc: None, parent: None, defaults: false, info: None, prev: None, next: None, order: Order::default(), slots: UseSlots::default() }
     }
 
     fn dict(&self, inherent: bool) -> &[NamedAttr<'a>] {
@@ -1433,11 +1556,12 @@ impl<'a> Body<'a> {
     fn push_known(&mut self, data: OpData<'a>, types: impl IntoIterator<Item = Type<'a>>) -> OpId {
         let s = self.home;
         let id = OpId::at(s, self.grow(Kind::Op, s));
+        let mut slots = UseSlots::default();
         for (index, v) in data.operands.iter().enumerate() {
             self.link(s, v.seg());
-            self[*v].uses.push(Use { op: id, index: index as u32 });
+            slots.0.push(self[*v].uses.push(Use { op: id, index: index as u32 }));
         }
-        self.seg_mut(s).ops.push(OpData { results: crate::Ids::new(), parent: None, prev: None, next: None, order: Order::default(), ..data });
+        self.seg_mut(s).ops.push(OpData { results: crate::Ids::new(), parent: None, prev: None, next: None, order: Order::default(), slots, ..data });
         let results = types.into_iter().enumerate().map(|(i, ty)| self.value(ty, Def::Result(id, i as u32), None)).collect();
         self[id].results = results;
         id
@@ -1533,7 +1657,7 @@ impl<'a> Body<'a> {
             Def::Arg(b, _) => b.seg(),
         };
         let id = ValueId::at(s, self.grow(Kind::Value, s));
-        self.seg_mut(s).values.push(ValueData { ty, def, uses: Uses::new(), loc });
+        self.seg_mut(s).values.push(ValueData { ty, def, uses: Uses::default(), loc });
         id
     }
 
@@ -1777,29 +1901,63 @@ impl<'a> Body<'a> {
     /// Points operand `index` of `op` at `v`.
     pub fn set_operand(&mut self, op: OpId, index: usize, v: ValueId) {
         let old = self[op].operands[index];
-        let u = Use { op, index: index as u32 };
-        self[old].uses.retain(|x| *x != u);
+        self.drop_use(old, Use { op, index: index as u32 });
         self.link(op.seg(), v.seg());
         self[op].operands[index] = v;
-        self[v].uses.push(u);
+        self.add_use(v, Use { op, index: index as u32 });
     }
 
     /// Replaces every operand list of `op` at once.
     pub fn set_operands(&mut self, op: OpId, operands: impl Into<Ids<ValueId>>) {
         let operands = operands.into();
         self.drop_uses(op);
+        self[op].slots.0.clear();
         for (index, v) in operands.iter().enumerate() {
             self.link(op.seg(), v.seg());
-            self[*v].uses.push(Use { op, index: index as u32 });
+            self.add_use(*v, Use { op, index: index as u32 });
         }
         self[op].operands = operands;
     }
 
     fn drop_uses(&mut self, op: OpId) {
         for (index, v) in self[op].operands.clone().into_iter().enumerate() {
-            let u = Use { op, index: index as u32 };
-            self[v].uses.retain(|x| *x != u);
+            self.drop_use(v, Use { op, index: index as u32 });
         }
+    }
+
+    /// Appends `u` to `v`'s uses, its op remembering the slot.
+    fn add_use(&mut self, v: ValueId, u: Use) {
+        let slot = self[v].uses.push(u);
+        self.set_slot(u, slot);
+    }
+
+    fn set_slot(&mut self, u: Use, slot: u32) {
+        let slots = &mut self[u.op].slots.0;
+        let i = u.index as usize;
+        if slots.len() <= i {
+            slots.resize(i + 1, HOLE);
+        }
+        slots[i] = slot;
+    }
+
+    /// Drops `u` from `v`'s uses if it is there: O(1) at the slot its op remembers.
+    fn drop_use(&mut self, v: ValueId, u: Use) {
+        let hint = self[u.op].slots.0.get(u.index as usize).copied().unwrap_or(HOLE);
+        let uses = &mut self[v].uses;
+        if uses.remove(hint, u) && uses.sparse() {
+            self.squeeze(v);
+        }
+    }
+
+    /// `v`'s uses without their holes, each op told its new slot.
+    fn squeeze(&mut self, v: ValueId) {
+        let uses = core::mem::take(&mut self[v].uses);
+        let live = uses.live;
+        let slots: smallvec::SmallVec<[Use; 2]> = uses.into_iter().collect();
+        for (k, u) in slots.iter().enumerate() {
+            self.set_slot(*u, k as u32);
+        }
+        self[v].uses = Uses { slots, live };
     }
 
     /// Every use of `from` now uses `to`.
@@ -1810,7 +1968,7 @@ impl<'a> Body<'a> {
         for u in core::mem::take(&mut self[from].uses) {
             self.link(u.op.seg(), to.seg());
             self[u.op].operands[u.index as usize] = to;
-            self[to].uses.push(u);
+            self.add_use(to, u);
         }
     }
 
@@ -1832,6 +1990,7 @@ impl<'a> Body<'a> {
         }
         self.drop_uses(op);
         self[op].operands.clear();
+        self[op].slots.0.clear();
     }
 
     fn erase_block_ops(&mut self, block: BlockId) {

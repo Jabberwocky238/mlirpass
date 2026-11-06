@@ -614,10 +614,7 @@ patterns! {
             return false;
         }
         let r = b[op].results[0];
-        let insert = match &b[r].uses[..] {
-            [u] if b[u.op].name == "vector.insert" => Some(u.op),
-            _ => None,
-        };
+        let insert = b[r].uses.single().filter(|u| b[u.op].name == "vector.insert").map(|u| u.op);
         let prefix = insert.map(|i| mixed_position(b, i, 2)).unwrap_or_default();
         rw.set_before(op);
         let mut vec = match insert {

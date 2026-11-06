@@ -933,7 +933,7 @@ impl TensorCanon {
     fn fold_target_tensor_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
         let r = b[op].results[0];
-        let [u] = b[r].uses[..] else { return false };
+        let Some(u) = b[r].uses.single() else { return false };
         let cast = u.op;
         if b[cast].name != "tensor.cast" {
             return false;

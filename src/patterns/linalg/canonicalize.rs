@@ -575,7 +575,7 @@ impl<'a> Rewriter<'_, 'a> {
             return true;
         }
         let r = b[op].results[0];
-        if let [user] = b[r].uses[..]
+        if let Some(user) = b[r].uses.single()
             && b[user.op].name == "tensor.extract_slice"
             && u.can_fold_slice(b, user.op)
         {
