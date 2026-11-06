@@ -227,12 +227,24 @@ enum Entry {
 pub struct PassManager {
     pub anchor: Option<String>,
     entries: Vec<Entry>,
+    /// The verifiers run after each pass (`-verify-each`, on by default as in `mlir-opt`).
+    pub verify_each: bool,
 }
 
 impl PassManager {
     /// A manager for ops named `anchor` (`"any"`: every op).
     pub fn on(anchor: &str) -> Self {
-        Self { anchor: (anchor != "any").then(|| anchor.into()), entries: Vec::new() }
+        Self { anchor: (anchor != "any").then(|| anchor.into()), entries: Vec::new(), verify_each: true }
+    }
+
+    /// `-verify-each`, for this manager and every one nested in it.
+    pub fn set_verify_each(&mut self, on: bool) {
+        self.verify_each = on;
+        for e in &mut self.entries {
+            if let Entry::Adaptor(mgrs) = e {
+                mgrs.iter_mut().for_each(|m| m.set_verify_each(on));
+            }
+        }
     }
 
     fn nest(&mut self, pm: PassManager) {
@@ -299,7 +311,9 @@ impl PassManager {
             match e {
                 Entry::Pass(p) => {
                     p.run_in(body, op, exec)?;
-                    body.verify_in(op, exec)?;
+                    if self.verify_each {
+                        body.verify_in(op, exec)?;
+                    }
                 }
                 Entry::Adaptor(mgrs) => {
                     // Each op the managers anchor on, with its place in its block (for the graft).
@@ -777,12 +791,13 @@ pub struct Invocation {
 }
 
 /// Flags that change nothing this crate does.
-const IGNORED: &[&str] = &["allow-unregistered-dialect", "verify-each", "mlir-print-value-users", "mlir-print-elementsattrs-with-hex-if-larger", "mlir-elide-elementsattrs-if-larger", "mlir-print-unique-ssa-ids", "mlir-very-unsafe-disable-verifier-on-parsing", "mlir-print-assume-verified", "mlir-print-skip-regions"];
+const IGNORED: &[&str] = &["allow-unregistered-dialect", "mlir-print-value-users", "mlir-print-elementsattrs-with-hex-if-larger", "mlir-elide-elementsattrs-if-larger", "mlir-print-unique-ssa-ids", "mlir-very-unsafe-disable-verifier-on-parsing", "mlir-print-assume-verified", "mlir-print-skip-regions"];
 
 impl Invocation {
     /// The `mlir-opt` arguments `args`, the passes named from `reg`.
     pub fn parse<S: AsRef<str>>(reg: &dyn crate::PassRegistry, args: &[S]) -> Result<Self, Error> {
         let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, local_scope: false, verify_diagnostics: false, input: None, output: None, threading: true, #[cfg(feature = "std")] workers: std::sync::OnceLock::new(), #[cfg(feature = "std")] one: crate::ThreadMulti::from(core::num::NonZeroUsize::MIN) };
+        let mut verify_each = true;
         let mut it = args.iter().map(AsRef::as_ref);
         while let Some(arg) = it.next() {
             let Some(flag) = arg.strip_prefix('-').filter(|f| !f.is_empty()) else {
@@ -799,6 +814,7 @@ impl Invocation {
                 "mlir-print-local-scope" => inv.local_scope = true,
                 "verify-diagnostics" => inv.verify_diagnostics = true,
                 "mlir-disable-threading" => inv.threading = false,
+                "verify-each" => verify_each = !matches!(value, Some("false" | "0")),
                 "pass-pipeline" | "p" => {
                     let text = value.or_else(|| it.next()).ok_or("`--pass-pipeline` needs a pipeline")?;
                     inv.pipeline = PassManager::parse(reg, text)?;
@@ -809,6 +825,8 @@ impl Invocation {
                 }
             }
         }
+        // After the flags: `--pass-pipeline` may come after it and replace the manager.
+        inv.pipeline.set_verify_each(verify_each);
         Ok(inv)
     }
 }
