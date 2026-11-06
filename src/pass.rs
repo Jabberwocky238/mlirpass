@@ -299,7 +299,7 @@ impl PassManager {
             match e {
                 Entry::Pass(p) => {
                     p.run_in(body, op, exec)?;
-                    body.verify(op)?;
+                    body.verify_in(op, exec)?;
                 }
                 Entry::Adaptor(mgrs) => {
                     // Each op the managers anchor on, with its place in its block (for the graft).
@@ -1009,35 +1009,70 @@ impl Body<'_> {
     pub fn verify_branches(&self, root: OpId) -> Result<(), mlirformat::Error> {
         let mut out = Ok(());
         self.walk(root, &mut |op| {
-            if out.is_err() {
-                return;
-            }
-            for (i, succ) in self[op].successors.iter().enumerate() {
-                let Some(range) = self.successor_operands(op, i) else { continue };
-                let args = &self[*succ].args;
-                if let Some(j) = self[op].operands[range].iter().zip(args).position(|(v, a)| self[*v].ty != self[*a].ty) {
-                    out = Err(mlirformat::Error(format!("'{}' op type mismatch for bb argument #{j} of successor #{i}", self[op].name)));
-                    return;
-                }
+            if out.is_ok() {
+                out = self.verify_branch_op(op);
             }
         });
+        out
+    }
+
+    /// [`verify_branches`](Self::verify_branches) of `op` alone.
+    fn verify_branch_op(&self, op: OpId) -> Result<(), mlirformat::Error> {
+        for (i, succ) in self[op].successors.iter().enumerate() {
+            let Some(range) = self.successor_operands(op, i) else { continue };
+            let args = &self[*succ].args;
+            if let Some(j) = self[op].operands[range].iter().zip(args).position(|(v, a)| self[*v].ty != self[*a].ty) {
+                return Err(mlirformat::Error(format!("'{}' op type mismatch for bb argument #{j} of successor #{i}", self[op].name)));
+            }
+        }
+        Ok(())
+    }
+
+    /// The affine verifiers over everything in `root`.
+    fn verify_affines(&self, root: OpId) -> Result<(), Error> {
+        let mut out = Ok(());
+        #[cfg(feature = "dialect.affine")]
+        self.walk(root, &mut |op| {
+            if out.is_ok() {
+                out = self.verify_affine(op);
+            }
+        });
+        let _ = root;
         out
     }
 
     /// ⭐ The verifiers over everything in `root`.
     pub fn verify(&self, root: OpId) -> Result<(), Error> {
         self.verify_branches(root)?;
-        #[cfg(feature = "dialect.affine")]
-        {
-            let mut out = Ok(());
-            self.walk(root, &mut |op| {
-                if out.is_ok() {
-                    out = self.verify_affine(op);
-                }
-            });
-            out?;
+        self.verify_affines(root)
+    }
+
+    /// [`verify`](Self::verify) with `root`'s ops verified in parallel on `exec`, in runs: the
+    /// error a serial walk finds first (every branch error before any affine one), the same.
+    pub fn verify_in<X: crate::Executor + Sync>(&self, root: OpId, exec: &X) -> Result<(), Error> {
+        let children = self.children(root);
+        if crate::Executor::threads(exec) < 2 || children.len() < 2 {
+            return self.verify(root);
         }
-        Ok(())
+        let step = children.len().div_ceil(crate::Executor::threads(exec) * 4).max(1);
+        let runs: Vec<_> = children
+            .chunks(step)
+            .map(|run| {
+                move || {
+                    let branch = run.iter().find_map(|c| self.verify_branches(*c).err());
+                    let affine = run.iter().find_map(|c| self.verify_affines(*c).err());
+                    (branch, affine)
+                }
+            })
+            .collect();
+        let found = crate::Executor::execute(exec, runs);
+        self.verify_branch_op(root)?;
+        if let Some(e) = found.iter().find_map(|(b, _)| b.clone()) {
+            return Err(e);
+        }
+        #[cfg(feature = "dialect.affine")]
+        self.verify_affine(root)?;
+        found.into_iter().find_map(|(_, a)| a).map_or(Ok(()), Err)
     }
 
     /// `verifyDimAndSymbolIdentifiers`.

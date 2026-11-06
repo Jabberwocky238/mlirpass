@@ -1014,14 +1014,28 @@ impl<'a> Body<'a> {
         // Kept or rolled back, in block order (nothing here asks the module, part of it is still
         // out); then every seg back.
         let mut declared: BTreeMap<String, Option<Attribute<'a>>> = symbols.iter().filter(|(_, d)| d.name == "llvm.func").map(|(n, d)| (n.clone(), d.get("function_type").cloned())).collect();
-        let mut back: Vec<Option<(Result<(), Error>, Body<'a>, Option<BlockId>, bool)>> = Vec::with_capacity(done.len());
-        for d in done {
-            back.push(d.map(|(r, mut sub, parent, cp)| {
-                let keep = Self::returnable(&sub, &mut declared);
-                if keep { sub.release(cp) } else { sub.rollback(cp) }
-                (r, sub, parent, keep)
-            }));
-        }
+        let decided: Vec<Option<(Result<(), Error>, Body<'a>, Option<BlockId>, Checkpoint, bool)>> = done
+            .into_iter()
+            .map(|d| {
+                d.map(|(r, sub, parent, cp)| {
+                    let keep = Self::returnable(&sub, &mut declared);
+                    (r, sub, parent, cp, keep)
+                })
+            })
+            .collect();
+        // Each one's checkpoint closed on its own thread: releasing drops the saves it holds.
+        let closing: Vec<_> = decided
+            .into_iter()
+            .map(|d| {
+                move || {
+                    d.map(|(r, mut sub, parent, cp, keep)| {
+                        if keep { sub.release(cp) } else { sub.rollback(cp) }
+                        (r, sub, parent, keep)
+                    })
+                }
+            })
+            .collect();
+        let back: Vec<Option<(Result<(), Error>, Body<'a>, Option<BlockId>, bool)>> = crate::Executor::execute(exec, closing);
         let mut kept: Vec<Option<(Result<(), Error>, Vec<OpId>)>> = Vec::with_capacity(back.len());
         for (k, b) in back.into_iter().enumerate() {
             kept.push(match b {

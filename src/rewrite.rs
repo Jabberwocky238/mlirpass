@@ -413,7 +413,7 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
 }
 
 /// ⭐ A rewrite pattern rooted at an op name (`None`: any op).
-pub trait Pattern {
+pub trait Pattern: Send + Sync {
     /// The debug name `enable-patterns` / `disable-patterns` match against.
     fn name(&self) -> &str;
 

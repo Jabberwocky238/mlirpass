@@ -392,14 +392,33 @@ impl Run for RemoveDeadValues {
         let cl = r.cl;
         cl.apply(body);
         if self.canonicalize {
-            // In `Operation::walk`'s order (postorder): the worklist pops the last first
-            let mut ops = Vec::new();
-            body.walk_post(op, &mut |o| {
-                if body.is_region_branch(o) {
-                    ops.push(o);
-                }
+            // In `Operation::walk`'s order (postorder): the worklist pops the last first. A
+            // function's region branches are its own: each function's go on its own thread, the
+            // rest here, each in that order.
+            let patterns = crate::canonicalization_patterns();
+            let branches = |b: &Body<'a>, top: OpId, ops: &mut Vec<OpId>| {
+                b.walk_post(top, &mut |o| {
+                    if b.is_region_branch(o) {
+                        ops.push(o);
+                    }
+                });
+            };
+            let mut done = body.for_each_child(op, exec, &|b: &mut Body<'a>, c| {
+                let mut ops = Vec::new();
+                branches(b, c, &mut ops);
+                b.apply_op_patterns_greedily(&ops, &patterns);
             });
-            body.apply_op_patterns_greedily(&ops, &crate::canonicalization_patterns());
+            done.sort_unstable();
+            let mut ops = Vec::new();
+            for c in body.children(op) {
+                if done.binary_search(&c).is_err() {
+                    branches(body, c, &mut ops);
+                }
+            }
+            if body.is_region_branch(op) {
+                ops.push(op);
+            }
+            body.apply_op_patterns_greedily(&ops, &patterns);
         }
         Ok(())
     }
