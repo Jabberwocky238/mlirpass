@@ -670,12 +670,19 @@ impl Body<'_> {
 
     /// Drops the `j`th operand forwarded to successor `i`, keeping the segment sizes right.
     pub fn erase_successor_operand(&mut self, op: OpId, i: usize, j: usize) {
+        self.erase_successor_operands(op, i, &[j]);
+    }
+
+    /// Drops the operands forwarded to successor `i` at `dead` (ascending, within its group) in
+    /// one go, keeping the segment sizes right.
+    pub fn erase_successor_operands(&mut self, op: OpId, i: usize, dead: &[usize]) {
+        if dead.is_empty() {
+            return;
+        }
         let Some(range) = self.successor_operands(op, i) else { return };
-        let at = range.start + j;
-        let mut operands = self[op].operands.clone();
-        operands.remove(at);
+        let operands: crate::Ids<crate::ValueId> = self[op].operands.iter().enumerate().filter(|(at, _)| !(range.contains(at) && dead.binary_search(&(at - range.start)).is_ok())).map(|(_, v)| *v).collect();
         self.set_operands(op, operands);
-        self.resize_successor_group(op, i, -1);
+        self.resize_successor_group(op, i, -(dead.len() as isize));
     }
 }
 

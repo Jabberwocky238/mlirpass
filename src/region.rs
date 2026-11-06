@@ -106,11 +106,8 @@ impl Body<'_> {
         for i in (0..self[terminator].successors.len()).rev() {
             let Some(range) = self.successor_operands(terminator, i) else { continue };
             let succ = self[terminator].successors[i];
-            for j in (0..range.len()).rev() {
-                if !live.args.contains(&self[succ].args[j]) {
-                    self.erase_successor_operand(terminator, i, j);
-                }
-            }
+            let dead: Vec<usize> = (0..range.len()).filter(|j| !live.args.contains(&self[succ].args[*j])).collect();
+            self.erase_successor_operands(terminator, i, &dead);
         }
     }
 
@@ -136,9 +133,7 @@ impl Body<'_> {
             }
             for b in self[*r].blocks.clone().into_iter().skip(1) {
                 let dead: Vec<usize> = self[b].args.iter().enumerate().filter(|(_, a)| !live.args.contains(*a)).map(|(i, _)| i).collect();
-                for i in dead.into_iter().rev() {
-                    self.erase_arg(b, i);
-                }
+                self.erase_args(b, &dead);
             }
         }
         erased
@@ -161,8 +156,22 @@ impl Body<'_> {
 
     /// Erases argument `i` of `block`; its uses must be gone.
     pub fn erase_arg(&mut self, block: BlockId, i: usize) {
-        self[block].args.remove(i);
-        for (k, a) in self[block].args.clone().into_iter().enumerate().skip(i) {
+        self.erase_args(block, &[i]);
+    }
+
+    /// `Block::eraseArguments`: the arguments of `block` at `dead` (ascending) erased in one
+    /// pass, the rest renumbered once; their uses must be gone.
+    pub fn erase_args(&mut self, block: BlockId, dead: &[usize]) {
+        let Some(&from) = dead.first() else { return };
+        let mut k = 0;
+        let mut i = 0;
+        self[block].args.retain(|_| {
+            let keep = dead.get(k) != Some(&i);
+            k += usize::from(!keep);
+            i += 1;
+            keep
+        });
+        for (k, a) in self[block].args.clone().into_iter().enumerate().skip(from) {
             self[a].def = crate::Def::Arg(block, k as u32);
         }
     }
@@ -232,11 +241,9 @@ impl Body<'_> {
                 self.replace_all_uses(arg, c);
             }
         }
-        for i in erase.iter().rev() {
-            self.erase_arg(block, *i);
-            for (t, s) in self.predecessors(block) {
-                self.erase_successor_operand(t, s, *i);
-            }
+        self.erase_args(block, &erase);
+        for (t, s) in self.predecessors(block) {
+            self.erase_successor_operands(t, s, &erase);
         }
         !erase.is_empty()
     }
@@ -378,9 +385,7 @@ impl Body<'_> {
             self.replace_all_uses(from, to);
             erase.push(old + j);
         }
-        for i in erase.into_iter().rev() {
-            self.erase_arg(block, i);
-        }
+        self.erase_args(block, &erase);
         pruned
     }
 
