@@ -1,10 +1,11 @@
 //! The data-flow analyses `sccp` and `remove-dead-values` run: `DeadCodeAnalysis`,
 //! `SparseConstantPropagation` and `LivenessAnalysis`.
 //!
-//! Each is monotone, so its fixed point does not depend on visiting order: it is reached here
-//! by sweeping the IR until nothing changes.
+//! Each is monotone, so its fixed point does not depend on visiting order. The forward analyses
+//! reach it off a worklist (`DataFlowSolver`'s): every op and block once, in preorder, then only
+//! what reads a state that changed. Liveness sweeps the IR until nothing changes.
 
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -53,6 +54,14 @@ struct Preds {
     inputs: BTreeMap<OpId, Vec<ValueId>>,
 }
 
+/// What the worklist visits: an op (`DeadCodeAnalysis` and `SparseConstantPropagation` of it),
+/// or a block (its arguments).
+#[derive(Debug, Clone, Copy)]
+enum Item {
+    Op(OpId),
+    Block(BlockId),
+}
+
 /// A program point: after an op, or the start of a block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Pt {
@@ -80,11 +89,18 @@ pub struct Solver<'b, 'a> {
     folded_in: crate::IdVec<OpId, u32>,
     /// Each call's [`resolve`](Self::resolve): the IR does not change while solving.
     callees: BTreeMap<OpId, Option<OpId>>,
+    /// What to visit again, and whether each op and block is in it already.
+    work: VecDeque<Item>,
+    queued_ops: crate::IdVec<OpId, bool>,
+    queued_blocks: crate::IdVec<BlockId, bool>,
+    /// The ops whose fold gave another value of their own ([`Folded::Value`]): they read it
+    /// although it is not their operand.
+    reads: BTreeMap<ValueId, Vec<OpId>>,
 }
 
 impl<'b, 'a> Solver<'b, 'a> {
     pub fn new(body: &'b mut Body<'a>, top: OpId) -> Self {
-        Self { body, top, live: BTreeSet::new(), edges: BTreeSet::new(), preds: BTreeMap::new(), lat: crate::IdVec::new(Cv::Uninit), changed: false, alive: BTreeSet::new(), round: 0, changed_in: crate::IdVec::new(0), folded_in: crate::IdVec::new(0), callees: BTreeMap::new() }
+        Self { body, top, live: BTreeSet::new(), edges: BTreeSet::new(), preds: BTreeMap::new(), lat: crate::IdVec::new(Cv::Uninit), changed: false, alive: BTreeSet::new(), round: 0, changed_in: crate::IdVec::new(0), folded_in: crate::IdVec::new(0), callees: BTreeMap::new(), work: VecDeque::new(), queued_ops: crate::IdVec::new(false), queued_blocks: crate::IdVec::new(false), reads: BTreeMap::new() }
     }
 
     pub fn get(&self, v: ValueId) -> Cv<'a> {
@@ -98,6 +114,96 @@ impl<'b, 'a> Solver<'b, 'a> {
             self.lat.set(v, new);
             self.changed = true;
             self.changed_in.set(v, self.round);
+            self.value_changed(v);
+        }
+    }
+
+    // ---- the worklist ----------------------------------------------------------------------
+
+    fn push_op(&mut self, o: OpId) {
+        if !core::mem::replace(self.queued_ops.get_mut(o), true) {
+            self.work.push_back(Item::Op(o));
+        }
+    }
+
+    fn push_block(&mut self, b: BlockId) {
+        if !core::mem::replace(self.queued_blocks.get_mut(b), true) {
+            self.work.push_back(Item::Block(b));
+        }
+    }
+
+    /// The entry blocks of `op`'s regions.
+    fn push_entries(&mut self, op: OpId) {
+        for r in self.body[op].regions.clone() {
+            if let Some(b) = self.entry_of(r) {
+                self.push_block(b);
+            }
+        }
+    }
+
+    /// `v`'s lattice changed: what reads it, through each user (the user itself, the blocks its
+    /// operands flow into — successors, its regions', a callee's —, and for a terminator its
+    /// parent, the parent's regions and the calls a return answers), and the ops that folded
+    /// to it.
+    fn value_changed(&mut self, v: ValueId) {
+        let users: Vec<OpId> = self.body[v].uses.iter().map(|u| u.op).collect();
+        for u in users {
+            self.push_op(u);
+            for s in self.body[u].successors.clone() {
+                self.push_block(s);
+            }
+            self.push_entries(u);
+            // A terminator's operands flow to its parent: its results, its regions, its callers.
+            let last = self.body[u].parent.is_some_and(|b| self.body[b].ops.last() == Some(&u));
+            if let Some(p) = self.body.parent_op(u).filter(|_| last) {
+                self.push_op(p);
+                self.push_entries(p);
+                if let Some(cs) = self.preds.get(&Pt::After(p)) {
+                    for call in cs.known.clone() {
+                        self.push_op(call);
+                    }
+                }
+            }
+            if self.body.has(u, Trait::CallOpInterface)
+                && let Some(c) = self.callee(u)
+                && let Some(b) = self.callable_region(c).and_then(|r| self.entry_of(r))
+            {
+                self.push_block(b);
+            }
+        }
+        if let Some(ops) = self.reads.get(&v) {
+            for o in ops.clone() {
+                self.push_op(o);
+            }
+        }
+    }
+
+    /// Block `b` became live: it, and every op in it.
+    fn block_changed(&mut self, b: BlockId) {
+        self.push_block(b);
+        for o in self.body[b].ops.clone() {
+            self.push_op(o);
+        }
+    }
+
+    /// The predecessors of `p` changed: what reads them — the op (its results, a callable's
+    /// liveness), a callable's returns and entry; or the block.
+    fn preds_changed(&mut self, p: Pt) {
+        match p {
+            Pt::After(o) => {
+                self.push_op(o);
+                if self.is_callable(o) {
+                    self.push_entries(o);
+                    for r in self.body[o].regions.clone() {
+                        for b in self.body[r].blocks.clone() {
+                            if let Some(t) = self.body[b].ops.last().copied() {
+                                self.push_op(t);
+                            }
+                        }
+                    }
+                }
+            }
+            Pt::Block(b) => self.push_block(b),
         }
     }
 
@@ -108,7 +214,10 @@ impl<'b, 'a> Solver<'b, 'a> {
     }
 
     fn mark_live(&mut self, b: BlockId) {
-        self.changed |= self.live.insert(b);
+        if self.live.insert(b) {
+            self.changed = true;
+            self.block_changed(b);
+        }
     }
 
     fn preds_mut(&mut self, p: Pt) -> &mut Preds {
@@ -120,6 +229,7 @@ impl<'b, 'a> Solver<'b, 'a> {
         if !s.unknown {
             s.unknown = true;
             self.changed = true;
+            self.preds_changed(p);
         }
     }
 
@@ -134,7 +244,10 @@ impl<'b, 'a> Solver<'b, 'a> {
             s.inputs.insert(pred, inputs.to_vec());
             ch = true;
         }
-        self.changed |= ch;
+        if ch {
+            self.changed = true;
+            self.preds_changed(p);
+        }
     }
 
     fn block_live(&self, op: OpId) -> bool {
@@ -331,7 +444,10 @@ impl<'b, 'a> Solver<'b, 'a> {
             };
             for t in targets {
                 self.mark_live(t);
-                self.changed |= self.edges.insert((from, t));
+                if self.edges.insert((from, t)) {
+                    self.changed = true;
+                    self.push_block(t);
+                }
             }
         }
     }
@@ -402,21 +518,28 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
         self.folded_in.set(op, self.round);
         let Some(consts) = self.operand_values(op) else { return };
-        let dialect: String = self.body[op].name.split_once('.').map_or("", |(d, _)| d).into();
+        let dialect = |s: &Self| String::from(s.body[op].name.split_once('.').map_or("", |(d, _)| d));
         if self.body.has(op, Trait::ConstantLike)
             && let Some(v) = self.body.constant_value(op)
         {
-            return self.join(results[0], &Cv::Known(v, dialect));
+            let d = dialect(self);
+            return self.join(results[0], &Cv::Known(v, d));
         }
-        let saved = (self.body[op].operands.clone(), self.body[op].properties.clone(), self.body[op].attributes.clone());
+        // A fold in place is undone: from the journal, which saves only what the fold writes.
+        let cp = self.body.checkpoint();
         match self.body.fold_with(op, &consts) {
             Fold::Results(rs) => {
+                self.body.release(cp);
                 for (r, f) in results.iter().zip(rs) {
                     let c = match f {
-                        Folded::Attr(a) => Cv::Known(a, dialect.clone()),
+                        Folded::Attr(a) => Cv::Known(a, dialect(self)),
                         Folded::Value(v) => {
                             // A value of its own: the op depends on more than its operands.
                             self.folded_in.set(op, 0);
+                            let readers = self.reads.entry(v).or_default();
+                            if !readers.contains(&op) {
+                                readers.push(op);
+                            }
                             self.get(v)
                         }
                     };
@@ -424,12 +547,13 @@ impl<'b, 'a> Solver<'b, 'a> {
                 }
             }
             Fold::InPlace => {
-                self.body.set_operands(op, saved.0);
-                self.body[op].properties = saved.1;
-                self.body[op].attributes = saved.2;
+                self.body.rollback(cp);
                 self.unknown(&results);
             }
-            Fold::Failed => self.unknown(&results),
+            Fold::Failed => {
+                self.body.release(cp);
+                self.unknown(&results);
+            }
         }
     }
 
@@ -479,14 +603,14 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    fn sweep(&mut self, op: OpId) {
-        self.dca(op);
-        self.sparse_op(op);
+    /// Every op and block under `op` onto the worklist, in the order a sweep visits them.
+    fn enqueue_all(&mut self, op: OpId) {
+        self.push_op(op);
         for r in self.body[op].regions.clone() {
             for b in self.body[r].blocks.clone() {
-                self.sparse_block(b);
+                self.push_block(b);
                 for o in self.body[b].ops.clone() {
-                    self.sweep(o);
+                    self.enqueue_all(o);
                 }
             }
         }
@@ -555,12 +679,20 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
         let visible = self.body[top].parent.is_none();
         self.symbol_callables(top, visible);
-        loop {
+        // What the steps above queued goes first; then everything, as the first sweep did.
+        self.enqueue_all(top);
+        while let Some(item) = self.work.pop_front() {
             self.round += 1;
-            self.changed = false;
-            self.sweep(top);
-            if !self.changed {
-                break;
+            match item {
+                Item::Op(o) => {
+                    *self.queued_ops.get_mut(o) = false;
+                    self.dca(o);
+                    self.sparse_op(o);
+                }
+                Item::Block(b) => {
+                    *self.queued_blocks.get_mut(b) = false;
+                    self.sparse_block(b);
+                }
             }
         }
     }
@@ -585,7 +717,55 @@ impl Body<'_> {
 /// `LivenessAnalysis`, the backward sparse analysis over the live code.
 impl Solver<'_, '_> {
     fn mark_alive(&mut self, v: ValueId) {
-        self.changed |= self.alive.insert(v);
+        if self.alive.insert(v) {
+            self.changed = true;
+            self.alive_changed(v);
+        }
+    }
+
+    /// The terminators of the blocks in `op`'s regions.
+    fn push_terminators(&mut self, op: OpId) {
+        for r in self.body[op].regions.clone() {
+            for b in self.body[r].blocks.clone() {
+                if let Some(t) = self.body[b].ops.last().copied() {
+                    self.push_op(t);
+                }
+            }
+        }
+    }
+
+    /// `v` became live: the ops whose operands may be live through it. Its defining op (and,
+    /// a region branch, its regions' terminators that yield to it; a call, the callee's
+    /// returns); for a block argument, the branches into its block, the op holding its region
+    /// and that op's terminators, and a callable's calls.
+    fn alive_changed(&mut self, v: ValueId) {
+        match self.body[v].def {
+            Def::Result(d, _) => {
+                self.push_op(d);
+                if self.is_region_branch(d) {
+                    self.push_terminators(d);
+                }
+                if self.body.has(d, Trait::CallOpInterface)
+                    && let Some(c) = self.callee(d)
+                {
+                    self.push_terminators(c);
+                }
+            }
+            Def::Arg(b, _) => {
+                for (t, _) in self.body.predecessors(b) {
+                    self.push_op(t);
+                }
+                let Some(r) = self.body[b].parent else { return };
+                let p = self.body[r].parent;
+                self.push_op(p);
+                self.push_terminators(p);
+                if let Some(cs) = self.preds.get(&Pt::After(p)) {
+                    for call in cs.known.clone() {
+                        self.push_op(call);
+                    }
+                }
+            }
+        }
     }
 
     /// `meet(operand, value)`: `operand` is live once `value` is.
@@ -717,26 +897,28 @@ impl Solver<'_, '_> {
         self.liveness_visit(op, &operands);
     }
 
-    fn backward_sweep(&mut self, op: OpId) {
-        self.backward(op);
+    /// Every op under `op` onto the worklist, in the order a backward sweep visits them.
+    fn enqueue_backward(&mut self, op: OpId) {
+        self.push_op(op);
         for r in self.body[op].regions.clone() {
             for b in self.body[r].blocks.clone() {
                 for o in self.body[b].ops.clone().into_iter().rev() {
-                    self.backward_sweep(o);
+                    self.enqueue_backward(o);
                 }
             }
         }
     }
 
-    /// `RunLivenessAnalysis`: the baseline analyses, then liveness, to their fixed points.
+    /// `RunLivenessAnalysis`: the baseline analyses, then liveness, to their fixed points (off
+    /// the worklist: every op once, then those a newly live value reaches).
     pub fn run_liveness(&mut self) {
         self.run();
-        loop {
-            self.changed = false;
-            let top = self.top;
-            self.backward_sweep(top);
-            if !self.changed {
-                break;
+        let top = self.top;
+        self.enqueue_backward(top);
+        while let Some(item) = self.work.pop_front() {
+            if let Item::Op(o) = item {
+                *self.queued_ops.get_mut(o) = false;
+                self.backward(o);
             }
         }
     }
