@@ -95,7 +95,7 @@ impl Run for ConvertToLlvm {
     /// Function by function on `exec`: what goes into the module (runtime declarations) comes
     /// back in the serial order; anything needing more of the module is done again on it
     /// ([`Body::run_local`]).
-    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &dyn crate::Executor) -> Result<(), Error> {
+    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &crate::Threads) -> Result<(), Error> {
         body.run_local(op, exec, &|b, o| Run::run(self, b, o))
     }
 }

@@ -47,4 +47,9 @@ pub use targets::*;
 /// The proc macros (`mlirpass-macros`): `#[pass]`, `#[patterns]`, `#[ops]`, `blocks!`.
 pub use mlirpass_macros::{blocks, ops, pass, patterns};
 pub use mlirformat;
+/// What runs tasks: moremath's executors, as mlirformat re-exports them; passes run on
+/// [`Threads`].
+pub use mlirformat::{Execute, Executor, ThreadSingle};
+#[cfg(feature = "std")]
+pub use mlirformat::ThreadMulti;
 pub use mlirformat::{AffineBin, AffineExpr, AffineMap, ApFloat, ApInt, Const, IntegerSet, Scalar};

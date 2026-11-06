@@ -12,7 +12,3 @@ mlirpass = { path = ".." }
 [profile.release]
 debug = "line-tables-only"
 
-
-# Local mlirformat (parse_in on moremath executors) until it is released.
-[patch."https://github.com/Jabberwocky238/mlirformat.git"]
-mlirformat = { path = "../../mlirformat" }

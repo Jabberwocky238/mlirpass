@@ -9,7 +9,7 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-`0.5.0`: 6715 of the 7333 fixture cases match `mlir-opt` 22.1.8 byte for byte
+`0.6.0`: 6717 of the 7333 fixture cases match `mlir-opt` 22.1.8 byte for byte
 (`cargo test --test passes -- --nocapture` counts them per group), MLIR's own `Dialect/SPIRV`,
 `Dialect/GPU` and `*ToSPIRV` tests included, and the three GPU vendors' lowerings: Intel
 (`convert-xegpu-to-xevm`, `convert-vector-to-xegpu`, `convert-gpu-to-llvm-spv`,
@@ -24,7 +24,7 @@ own target env (`tests/support/vkinfo.c`) is checked against the host's product 
 | part | what it is | upstream |
 |---|---|---|
 | `ir` | arena IR with use-def chains (an op's operands, results, successors and regions inline up to four, `Ids`); `Module` ⇄ IR; printed straight from the IR (`Body::show`, read through mlirformat's `Source`); cloning (`Mapping`) | `mlir/IR` |
-| `pass` | pass manager, `--pass-pipeline` syntax, the registry (`registry.gen.rs`), the `mlir-opt` command line (`Invocation`), the verifiers run after each pass, and `Executor` (`Serial`, `ThreadPool`): nested pipelines over isolated ops (functions) as parallel tasks | `mlir/Pass`, `OpToOpPassAdaptor`, `MlirOptMain` |
+| `pass` | pass manager, `--pass-pipeline` syntax, the registry (`registry.gen.rs`), the `mlir-opt` command line (`Invocation`), the verifiers run after each pass, and `Threads` ([moremath](https://crates.io/crates/moremath)'s `ThreadMulti`, the executor mlirformat's `parse_in` / `print_in` take too): nested pipelines over isolated ops (functions) as parallel tasks | `mlir/Pass`, `OpToOpPassAdaptor`, `MlirOptMain` |
 | `rewrite` | patterns, rewriter, greedy and walk drivers | `PatternMatch`, `GreedyPatternRewriteDriver`, `WalkPatternRewriteDriver` |
 | `region` | region simplification (unreachable blocks, region DCE, block merging) and dominance | `RegionUtils`, `Dominance` |
 | `conversion` | conversion target, type converter, dialect conversion, `#[convert]`s as patterns, the `DialectInterfaces` trait `convert-to-*` asks | `DialectConversion` |
@@ -156,10 +156,19 @@ impl TensorCanon {
 dialect implements once for its ops by name: `Promotable` and `Destructurable`, on the unit
 structs `LlvmSlots` and `MemrefSlots`.
 
-Nested pipelines run in parallel: `PassManager::run_on(body, op, &ThreadPool::default())` moves
+Threads: a `Body` is arenas, one per function (`Seg`; ids are `(seg, index)`), so a function
+moves to a thread and back without a copy (`Body::lend`). Reading (`Body::parse_in`), importing,
+printing (`Body::show_in`), nested pipelines, the conversions to LLVM and `convert-scf-to-cf`
+(`#[pass(.., local)]`: function by function, what goes into the module merged back in serial
+order), `sccp` and `remove-dead-values` (their data-flow solved per function, exchanging each
+callable's callers and returns round after round) all use the threads; the output is the serial
+one, byte for byte.
+
+Nested pipelines run in parallel: `PassManager::run_on(body, op, &ThreadMulti::default())` moves
 each op of a nested pipeline that is `IsolatedFromAbove` (`llvm.func(...)`, `func.func(...)`) into
-a body of its own and runs them as the pool's tasks; the result is the same as with `Serial`
-(`run`, `-mlir-disable-threading`). The command line threads by default, as `mlir-opt`.
+a body of its own and runs them as the pool's tasks; the result is the same as on one thread
+(`run`, `-mlir-disable-threading`: `ThreadMulti::from(1)`, no thread started). One `ThreadMulti`
+reads, imports, runs and prints. The command line threads by default, as `mlir-opt`.
 
 Nothing is global. Pipelines name passes through a `PassRegistry` (`Invocation::parse(&passes, args)`);
 passes are registered by functions cascaded with `Passes::with`: `Passes::new().with(Passes::add_upstream).with(my_passes)`.

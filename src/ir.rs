@@ -946,9 +946,9 @@ impl<'a> Body<'a> {
     /// threads: lent, and back ([`Body::lend`]); the ops it ran on. `f` stays inside its op (as
     /// a rewrite whose constants go into the op's own region): the module a lent op sits in is a
     /// stand-in. On one thread, or with fewer than two such ops, nothing: the caller does all.
-    pub fn for_each_child(&mut self, op: OpId, exec: &dyn crate::Executor, f: &(dyn Fn(&mut Body<'a>, OpId) + Sync)) -> Vec<OpId> {
+    pub fn for_each_child(&mut self, op: OpId, exec: &crate::Threads, f: &(dyn Fn(&mut Body<'a>, OpId) + Sync)) -> Vec<OpId> {
         let children = self.children(op);
-        if exec.width() < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
+        if crate::Executor::threads(exec) < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
             return Vec::new();
         }
         let lent: Vec<(OpId, Body<'a>, Option<BlockId>)> = children.iter().filter_map(|c| self.lend(*c).map(|(sub, parent)| (*c, sub, parent))).collect();
@@ -963,7 +963,7 @@ impl<'a> Body<'a> {
                 }) as crate::Task<'_>
             })
             .collect();
-        exec.execute(tasks);
+        crate::Executor::execute(exec, tasks);
         let mut ran = Vec::with_capacity(done.len());
         for (c, sub, parent) in done.into_iter().map(|d| d.expect("every task ran")) {
             debug_assert_eq!(sub[sub.top_block(sub.root)].ops[..], [c], "a lent op's work stays in it");
@@ -981,9 +981,9 @@ impl<'a> Body<'a> {
     /// declaration the module now has otherwise — is rolled back and done again here, as are the
     /// ops not lent. So whatever goes into the module goes in the order a serial run puts it.
     /// The first error in block order is the pass's. On one thread, `f` on `op`.
-    pub fn run_local(&mut self, op: OpId, exec: &dyn crate::Executor, f: &crate::LocalRun<'_>) -> Result<(), Error> {
+    pub fn run_local(&mut self, op: OpId, exec: &crate::Threads, f: &crate::LocalRun<'_>) -> Result<(), Error> {
         let children = self.children(op);
-        if exec.width() < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
+        if crate::Executor::threads(exec) < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
             return f(self, op);
         }
         let symbols = alloc::sync::Arc::new(self.symbols_in(op));
@@ -1010,7 +1010,7 @@ impl<'a> Body<'a> {
                 }) as crate::Task<'_>
             })
             .collect();
-        exec.execute(tasks);
+        crate::Executor::execute(exec, tasks);
         // Kept or rolled back, in block order (nothing here asks the module, part of it is still
         // out); then every seg back.
         let mut declared: BTreeMap<String, Option<Attribute<'a>>> = symbols.iter().filter(|(_, d)| d.name == "llvm.func").map(|(n, d)| (n.clone(), d.get("function_type").cloned())).collect();
