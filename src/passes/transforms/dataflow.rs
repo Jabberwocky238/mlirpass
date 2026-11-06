@@ -69,8 +69,109 @@ enum Pt {
     Block(BlockId),
 }
 
+/// The body a solver works on: borrowed, or owned (a function lent out, solved apart round
+/// after round: [`Solver::run_in`]).
+pub enum BodyRef<'b, 'a> {
+    Borrowed(&'b mut Body<'a>),
+    Owned(Body<'a>),
+}
+
+impl<'a> core::ops::Deref for BodyRef<'_, 'a> {
+    type Target = Body<'a>;
+    fn deref(&self) -> &Body<'a> {
+        match self {
+            BodyRef::Borrowed(b) => b,
+            BodyRef::Owned(b) => b,
+        }
+    }
+}
+
+impl<'a> core::ops::DerefMut for BodyRef<'_, 'a> {
+    fn deref_mut(&mut self) -> &mut Body<'a> {
+        match self {
+            BodyRef::Borrowed(b) => b,
+            BodyRef::Owned(b) => b,
+        }
+    }
+}
+
+/// A call as the whole body resolved it, for a solver that sees part of it ([`Boundary`]).
+#[derive(Debug, Clone, Copy)]
+struct CallInfo {
+    callee: Option<OpId>,
+    /// The callee is a symbol of the body with a body of its own: the call is one of its known
+    /// callers (else its results are what an unknown callee gives).
+    internal: bool,
+    /// The callee is a callable without a body.
+    bodiless: bool,
+}
+
+/// A callable's callers: an unknown one, the known calls, and what they pass, joined per
+/// argument.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct Callers<'a> {
+    unknown: bool,
+    calls: BTreeSet<OpId>,
+    args: Vec<Cv<'a>>,
+}
+
+impl<'a> Callers<'a> {
+    fn join_args(&mut self, args: &[Cv<'a>]) {
+        if self.args.len() < args.len() {
+            self.args.resize(args.len(), Cv::Uninit);
+        }
+        for (a, c) in self.args.iter_mut().zip(args) {
+            *a = a.join(c);
+        }
+    }
+
+    fn join(&mut self, o: &Self) {
+        self.unknown |= o.unknown;
+        self.calls.extend(o.calls.iter().copied());
+        self.join_args(&o.args);
+    }
+}
+
+/// What a callable's live terminators give its calls: unknown (one is not a return), and the
+/// returns' operands, joined per result.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct Returns<'a> {
+    unknown: bool,
+    values: Vec<Cv<'a>>,
+}
+
+impl<'a> Returns<'a> {
+    fn join_values(&mut self, vs: &[Cv<'a>]) {
+        if self.values.len() < vs.len() {
+            self.values.resize(vs.len(), Cv::Uninit);
+        }
+        for (a, c) in self.values.iter_mut().zip(vs) {
+            *a = a.join(c);
+        }
+    }
+
+    fn join(&mut self, o: &Self) {
+        self.unknown |= o.unknown;
+        self.join_values(&o.values);
+    }
+}
+
+/// What a solver that sees part of the body (a function, or the rest) knows of the other parts —
+/// the calls resolved, each callable's callers and returns as of the last round — and what it
+/// tells them: the callers and returns its own ops make.
+#[derive(Debug, Clone, Default)]
+struct Boundary<'a> {
+    calls: alloc::sync::Arc<BTreeMap<OpId, CallInfo>>,
+    callers: alloc::sync::Arc<BTreeMap<OpId, Callers<'a>>>,
+    returns: alloc::sync::Arc<BTreeMap<OpId, Returns<'a>>>,
+    out_callers: BTreeMap<OpId, Callers<'a>>,
+    out_returns: BTreeMap<OpId, Returns<'a>>,
+    /// Ops of the body that are solved elsewhere (lent out): not visited here.
+    skip: BTreeSet<OpId>,
+}
+
 pub struct Solver<'b, 'a> {
-    pub body: &'b mut Body<'a>,
+    pub body: BodyRef<'b, 'a>,
     pub top: OpId,
     live: BTreeSet<BlockId>,
     edges: BTreeSet<(BlockId, BlockId)>,
@@ -96,11 +197,17 @@ pub struct Solver<'b, 'a> {
     /// The ops whose fold gave another value of their own ([`Folded::Value`]): they read it
     /// although it is not their operand.
     reads: BTreeMap<ValueId, Vec<OpId>>,
+    /// Solving part of the body ([`Solver::run_in`]).
+    unit: Option<Boundary<'a>>,
 }
 
 impl<'b, 'a> Solver<'b, 'a> {
     pub fn new(body: &'b mut Body<'a>, top: OpId) -> Self {
-        Self { body, top, live: BTreeSet::new(), edges: BTreeSet::new(), preds: BTreeMap::new(), lat: crate::IdVec::new(Cv::Uninit), changed: false, alive: BTreeSet::new(), round: 0, changed_in: crate::IdVec::new(0), folded_in: crate::IdVec::new(0), callees: BTreeMap::new(), work: VecDeque::new(), queued_ops: crate::IdVec::new(false), queued_blocks: crate::IdVec::new(false), reads: BTreeMap::new() }
+        Self::with(BodyRef::Borrowed(body), top)
+    }
+
+    fn with(body: BodyRef<'b, 'a>, top: OpId) -> Self {
+        Self { unit: None, body, top, live: BTreeSet::new(), edges: BTreeSet::new(), preds: BTreeMap::new(), lat: crate::IdVec::new(Cv::Uninit), changed: false, alive: BTreeSet::new(), round: 0, changed_in: crate::IdVec::new(0), folded_in: crate::IdVec::new(0), callees: BTreeMap::new(), work: VecDeque::new(), queued_ops: crate::IdVec::new(false), queued_blocks: crate::IdVec::new(false), reads: BTreeMap::new() }
     }
 
     pub fn get(&self, v: ValueId) -> Cv<'a> {
@@ -126,6 +233,9 @@ impl<'b, 'a> Solver<'b, 'a> {
     // ---- the worklist ----------------------------------------------------------------------
 
     fn push_op(&mut self, o: OpId) {
+        if self.unit.as_ref().is_some_and(|u| u.skip.contains(&o)) {
+            return;
+        }
         if !core::mem::replace(self.queued_ops.get_mut(o), true) {
             self.work.push_back(Item::Op(o));
         }
@@ -163,13 +273,17 @@ impl<'b, 'a> Solver<'b, 'a> {
             if let Some(p) = self.body.parent_op(u).filter(|_| last) {
                 self.push_op(p);
                 self.push_entries(p);
+                if self.unit.is_some() {
+                    continue;
+                }
                 if let Some(cs) = self.preds.get(&Pt::After(p)) {
                     for call in cs.known.clone() {
                         self.push_op(call);
                     }
                 }
             }
-            if self.body.has(u, Trait::CallOpInterface)
+            if self.unit.is_none()
+                && self.body.has(u, Trait::CallOpInterface)
                 && let Some(c) = self.callee(u)
                 && let Some(b) = self.callable_region(c).and_then(|r| self.entry_of(r))
             {
@@ -393,11 +507,15 @@ impl<'b, 'a> Solver<'b, 'a> {
             return;
         }
         if self.body.has(op, Trait::CallOpInterface) {
-            let callee = self.callee(op);
-            let external = |s: &Self, c: OpId| !s.is_ancestor(s.top, c) || (s.is_callable(c) && s.callable_region(c).is_none());
-            match callee {
-                Some(c) if self.body.has(c, Trait::SymbolOpInterface) && !external(self, c) => self.join_pred(Pt::After(c), op, &[]),
-                _ => self.set_unknown_preds(Pt::After(op)),
+            if self.unit.is_some() {
+                self.unit_call(op);
+            } else {
+                let callee = self.callee(op);
+                let external = |s: &Self, c: OpId| !s.is_ancestor(s.top, c) || (s.is_callable(c) && s.callable_region(c).is_none());
+                match callee {
+                    Some(c) if self.body.has(c, Trait::SymbolOpInterface) && !external(self, c) => self.join_pred(Pt::After(c), op, &[]),
+                    _ => self.set_unknown_preds(Pt::After(op)),
+                }
             }
         }
         if !self.body[op].regions.is_empty() {
@@ -407,8 +525,11 @@ impl<'b, 'a> Solver<'b, 'a> {
                     self.edges_to(op, op, &s);
                 }
             } else if self.is_callable(op) {
-                let cs = self.preds.get(&Pt::After(op)).cloned().unwrap_or_default();
-                if cs.unknown || !cs.known.is_empty() {
+                let called = match &self.unit {
+                    Some(u) => u.callers.get(&op).is_some_and(|c| c.unknown || !c.calls.is_empty()),
+                    None => self.preds.get(&Pt::After(op)).is_some_and(|cs| cs.unknown || !cs.known.is_empty()),
+                };
+                if called {
                     self.mark_entries_live(op);
                 }
             } else {
@@ -424,6 +545,8 @@ impl<'b, 'a> Solver<'b, 'a> {
                     let s = self.terminator_successors(p, op, &c);
                     self.edges_to(p, op, &s);
                 }
+            } else if self.unit.is_some() {
+                self.unit_return(p, op);
             } else {
                 let cs = self.preds.get(&Pt::After(p)).cloned().unwrap_or_default();
                 let resolves = self.body.has(op, Trait::ReturnLike);
@@ -497,6 +620,20 @@ impl<'b, 'a> Solver<'b, 'a> {
             return self.region_successors(Pt::After(op), op, &results);
         }
         if self.body.has(op, Trait::CallOpInterface) {
+            if let Some(u) = &self.unit {
+                let info = u.calls.get(&op).copied();
+                if info.is_some_and(|i| i.bodiless) || self.preds.get(&Pt::After(op)).is_some_and(|p| p.unknown) {
+                    return self.unknown(&results);
+                }
+                let Some(ret) = info.filter(|i| i.internal).and_then(|i| u.returns.get(&i.callee?)).cloned() else { return };
+                if ret.unknown {
+                    return self.unknown(&results);
+                }
+                for (r, c) in results.iter().zip(&ret.values) {
+                    self.join(*r, c);
+                }
+                return;
+            }
             let callee = self.callee(op);
             if callee.is_some_and(|c| self.is_callable(c) && self.callable_region(c).is_none()) {
                 return self.unknown(&results);
@@ -572,6 +709,16 @@ impl<'b, 'a> Solver<'b, 'a> {
         if self.body[region].blocks[0] == block {
             let parent = self.body[region].parent;
             if self.is_callable(parent) && self.callable_region(parent) == Some(region) {
+                if let Some(u) = &self.unit {
+                    let cs = u.callers.get(&parent).cloned().unwrap_or_default();
+                    if cs.unknown {
+                        return self.unknown(&args);
+                    }
+                    for (a, c) in args.iter().zip(&cs.args) {
+                        self.join(*a, c);
+                    }
+                    return;
+                }
                 let cs = self.preds.get(&Pt::After(parent)).cloned().unwrap_or_default();
                 if cs.unknown {
                     return self.unknown(&args);
@@ -610,6 +757,9 @@ impl<'b, 'a> Solver<'b, 'a> {
 
     /// Every op and block under `op` onto the worklist, in the order a sweep visits them.
     fn enqueue_all(&mut self, op: OpId) {
+        if self.unit.as_ref().is_some_and(|u| u.skip.contains(&op)) {
+            return;
+        }
         self.push_op(op);
         for r in self.body[op].regions.clone() {
             for b in self.body[r].blocks.clone() {
@@ -686,6 +836,201 @@ impl<'b, 'a> Solver<'b, 'a> {
         self.symbol_callables(top, visible);
         // What the steps above queued goes first; then everything, as the first sweep did.
         self.enqueue_all(top);
+        self.drain();
+    }
+
+    /// A call where only part of the body is seen ([`Boundary`]): one of its callee's callers,
+    /// with what it passes; an unknown callee leaves its results' predecessors unknown.
+    fn unit_call(&mut self, op: OpId) {
+        let info = self.unit.as_ref().and_then(|u| u.calls.get(&op).copied());
+        match info.filter(|i| i.internal).and_then(|i| i.callee) {
+            Some(c) => {
+                let args: Vec<Cv<'a>> = self.call_args(op).iter().map(|v| self.get(*v)).collect();
+                let out = self.unit.as_mut().expect("a unit").out_callers.entry(c).or_default();
+                out.calls.insert(op);
+                out.join_args(&args);
+            }
+            None => self.set_unknown_preds(Pt::After(op)),
+        }
+    }
+
+    /// A live terminator `op` of callable `p`, where only part of the body is seen: what it gives
+    /// `p`'s calls (a return's operands; anything else: unknown).
+    fn unit_return(&mut self, p: OpId, op: OpId) {
+        let values: Option<Vec<Cv<'a>>> = self.body.has(op, Trait::ReturnLike).then(|| self.body[op].operands.iter().map(|v| self.get(*v)).collect());
+        let out = self.unit.as_mut().expect("a unit").out_returns.entry(p).or_default();
+        match values {
+            Some(vs) => out.join_values(&vs),
+            None => out.unknown = true,
+        }
+    }
+
+    /// Every call under `top`, resolved on the whole body.
+    fn call_infos(&mut self, top: OpId) -> BTreeMap<OpId, CallInfo> {
+        let mut out = BTreeMap::new();
+        for op in self.body.ops_in(top) {
+            if !self.body.has(op, Trait::CallOpInterface) {
+                continue;
+            }
+            let callee = self.resolve(op);
+            let bodiless = callee.is_some_and(|c| self.is_callable(c) && self.callable_region(c).is_none());
+            let internal = callee.is_some_and(|c| self.body.has(c, Trait::SymbolOpInterface) && self.is_ancestor(top, c) && !bodiless);
+            out.insert(op, CallInfo { callee, internal, bodiless });
+        }
+        out
+    }
+
+    /// ⭐ [`run`](Self::run) of `top` (a module) and the [`lattice`](Self::lattice) it reaches,
+    /// its functions solved in parallel on `exec`. Who calls what, and which callables anyone
+    /// may call, are settled on the whole body first; then each function with a seg of its own
+    /// is lent out and solved by a solver of its own, the rest here, all seeing each other only
+    /// through each callable's callers and returns ([`Boundary`]) as the last round left them.
+    /// Round after round, what changed in those is fed back to what reads it, until nothing
+    /// does: the analyses are monotone, so this is the fixed point a serial run reaches.
+    pub fn solve_in(body: &'b mut Body<'a>, top: OpId, exec: &dyn crate::Executor) -> crate::IdVec<ValueId, Cv<'a>> {
+        let children = body.children(top);
+        if exec.width() < 2 || children.iter().filter(|c| body.lendable(**c)).count() < 2 {
+            let mut s = Solver::new(body, top);
+            s.run();
+            return s.lattice();
+        }
+        let mut main = Solver::new(body, top);
+        let visible = main.body[top].parent.is_none();
+        main.symbol_callables(top, visible);
+        let calls = alloc::sync::Arc::new(main.call_infos(top));
+        let base: BTreeMap<OpId, Callers<'a>> = main
+            .preds
+            .iter()
+            .filter_map(|(p, st)| match p {
+                Pt::After(o) if st.unknown && main.is_callable(*o) => Some((*o, Callers { unknown: true, ..Callers::default() })),
+                _ => None,
+            })
+            .collect();
+        let mut by_callee: BTreeMap<OpId, Vec<OpId>> = BTreeMap::new();
+        for (call, info) in calls.iter() {
+            if let Some(c) = info.callee.filter(|_| info.internal) {
+                by_callee.entry(c).or_default().push(*call);
+            }
+        }
+        // The functions lent out, each with a solver of its own; the rest stays here.
+        let mut lent: Vec<(OpId, Option<BlockId>)> = Vec::new();
+        let mut units: Vec<Solver<'_, 'a>> = Vec::new();
+        for c in children {
+            if let Some((sub, parent)) = main.body.lend(c) {
+                let mut u = Solver::with(BodyRef::Owned(sub), c);
+                u.unit = Some(Boundary { calls: calls.clone(), ..Boundary::default() });
+                let stand_in = u.body.top_block(u.body.root);
+                u.mark_live(stand_in);
+                u.enqueue_all(c);
+                lent.push((c, parent));
+                units.push(u);
+            }
+        }
+        let owner: BTreeMap<u32, usize> = lent.iter().enumerate().map(|(k, (c, _))| (crate::Id::seg(*c), k)).collect();
+        main.unit = Some(Boundary { calls: calls.clone(), skip: lent.iter().map(|(c, _)| *c).collect(), ..Boundary::default() });
+        // What settling the callables queued here belongs to the lent functions' solvers, which
+        // visit everything of theirs anyway.
+        main.work.clear();
+        main.queued_ops = crate::IdVec::new(false);
+        main.queued_blocks = crate::IdVec::new(false);
+        for r in main.body[top].regions.clone() {
+            if let Some(b) = main.entry_of(r) {
+                main.mark_live(b);
+                let args = main.body[b].args.clone();
+                main.unknown(&args);
+            }
+        }
+        main.enqueue_all(top);
+        let (mut callers, mut returns): (BTreeMap<OpId, Callers<'a>>, BTreeMap<OpId, Returns<'a>>) = (base.clone(), BTreeMap::new());
+        loop {
+            let (ca, re) = (alloc::sync::Arc::new(callers.clone()), alloc::sync::Arc::new(returns.clone()));
+            for s in units.iter_mut().chain(core::iter::once(&mut main)) {
+                let u = s.unit.as_mut().expect("a unit");
+                u.callers = ca.clone();
+                u.returns = re.clone();
+            }
+            // Each function to its own fixed point under what the others gave last round.
+            let mut slots: Vec<Option<Solver<'_, 'a>>> = units.drain(..).map(Some).collect();
+            let tasks = slots
+                .iter_mut()
+                .map(|slot| {
+                    alloc::boxed::Box::new(move || {
+                        let mut s = slot.take().expect("a solver");
+                        s.drain();
+                        *slot = Some(s);
+                    }) as crate::Task<'_>
+                })
+                .collect();
+            exec.execute(tasks);
+            units = slots.into_iter().map(|s| s.expect("every task ran")).collect();
+            main.drain();
+            // What they all tell: the callers and returns of every callable.
+            let mut new_callers = base.clone();
+            let mut new_returns: BTreeMap<OpId, Returns<'a>> = BTreeMap::new();
+            for s in units.iter().chain(core::iter::once(&main)) {
+                let u = s.unit.as_ref().expect("a unit");
+                for (c, o) in &u.out_callers {
+                    new_callers.entry(*c).or_default().join(o);
+                }
+                for (p, o) in &u.out_returns {
+                    new_returns.entry(*p).or_default().join(o);
+                }
+            }
+            if new_callers == callers && new_returns == returns {
+                break;
+            }
+            // What read a changed one goes again: a callable's liveness and entry, the calls of a
+            // callable whose returns changed.
+            let owner_of = |x: OpId| -> usize { owner.get(&crate::Id::seg(x)).copied().unwrap_or(usize::MAX) };
+            for (c, cs) in &new_callers {
+                if callers.get(c) != Some(cs) {
+                    let s = match owner_of(*c) {
+                        usize::MAX => &mut main,
+                        k => &mut units[k],
+                    };
+                    s.push_op(*c);
+                    s.push_entries(*c);
+                }
+            }
+            for (p, rs) in &new_returns {
+                if returns.get(p) != Some(rs) {
+                    for call in by_callee.get(p).into_iter().flatten() {
+                        let s = match owner_of(*call) {
+                            usize::MAX => &mut main,
+                            k => &mut units[k],
+                        };
+                        s.push_op(*call);
+                    }
+                }
+            }
+            callers = new_callers;
+            returns = new_returns;
+        }
+        // Every function back, its lattice into the whole one.
+        let mut parts = Vec::with_capacity(units.len());
+        for (u, (c, parent)) in units.into_iter().zip(lent) {
+            let (sub, lat) = u.into_parts();
+            main.body.unlend(c, sub, parent);
+            parts.push((c, lat));
+        }
+        let mut lat = main.lattice();
+        for (c, mut l) in parts {
+            let s = crate::Id::seg(c);
+            lat.put_row(s, l.take_row(s));
+        }
+        lat
+    }
+
+    /// An owned body and its lattice.
+    fn into_parts(self) -> (Body<'a>, crate::IdVec<ValueId, Cv<'a>>) {
+        match self.body {
+            BodyRef::Owned(b) => (b, self.lat),
+            BodyRef::Borrowed(_) => unreachable!("a lent solver owns its body"),
+        }
+    }
+
+    /// The worklist, to its end.
+    fn drain(&mut self) {
         while let Some(item) = self.work.pop_front() {
             self.round += 1;
             match item {

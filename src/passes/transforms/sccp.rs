@@ -125,9 +125,7 @@ impl Run for Sccp {
     /// `op`'s block, each function on its own thread ([`Body::for_each_child`]): a function's
     /// constants go into its own region.
     fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &dyn crate::Executor) -> Result<(), Error> {
-        let mut s = Solver::new(body, op);
-        s.run();
-        let lat = s.lattice();
+        let lat = Solver::solve_in(body, op, exec);
         let lat = &lat;
         let mut done = body.for_each_child(op, exec, &|b: &mut Body<'a>, c| Rewrite { body: b, lat, folder: BTreeMap::new() }.run_op(c));
         done.sort_unstable();

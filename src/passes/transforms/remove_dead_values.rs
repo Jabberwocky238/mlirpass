@@ -32,7 +32,7 @@ struct Rdv<'s, 'b, 'a> {
 
 impl<'a> Rdv<'_, '_, 'a> {
     fn body(&self) -> &Body<'a> {
-        self.s.body
+        &self.s.body
     }
 
     /// `markLives`: whether each value is live (`None`, a produced operand, counts as live).
