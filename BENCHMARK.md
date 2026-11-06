@@ -1,33 +1,35 @@
-# Benchmark: mlirpass 0.5.0 (mlirformat 0.5.5) vs `mlir-opt` 22.1.8
+# Benchmark: mlirpass 0.7.1 (mlirformat 0.6.0) vs `mlir-opt` 22.1.8
 
-One big random module run through each pipeline, the same input in both tools. Measured three
-ways: in process phase by phase, as a process against a process (with peak memory), and across
-core counts and module sizes. Measured 2026-11-05.
+One big random module run through each pipeline, the same input in both tools: in process phase
+by phase, as a process against a process (with peak memory), across core counts and module
+sizes. Measured 2026-11-06.
 
 ## Setup
 
 | | |
 | --- | --- |
-| mlirpass | `main` at `27f1c26` (0.5.0, on mlirformat 0.5.5), release build |
+| mlirpass | 0.7.1 (`758dade`, the code of `d08668f`; on mlirformat 0.6.0 and moremath 0.2.1), release build. 0.8.0 (a block's ops as a linked list with order keys) is not re-measured here |
 | `mlir-opt` | LLVM 22.1.8 from apt.llvm.org (`mlir-22-tools 1:22.1.8~++20260714014902+ca7933e47d3a`, = tag `llvmorg-22.1.8`): Release build, no assertions |
 | machine | Intel Core Ultra 7 356H, 62 GB, Linux 7.0, glibc malloc, rustc 1.98.1. Hybrid CPU: CPUs 0–3 are P cores (4.7 GHz), 4–11 E cores (3.7 GHz), 12–15 LP E cores (3.3 GHz) |
-| input | `mlirpass-fuzz gen --seed 5 --funcs 2000 --ops 40 --depth 2`, printed back by `mlir-opt`: generic 694,693 lines / 53.6 MB, custom 676,150 lines / 31.5 MB (arith, math, scf.if / for, memref, func.call) |
+| load | **not idle**: other jobs (compilers) kept the load average at 8–22 throughout. Every time below is higher than on an idle machine, `mlir-opt`'s as much as mlirpass's; compare the two within a table rather than with other versions' tables |
+| input | `mlirpass-fuzz gen --seed 5 --funcs 2000 --ops 40 --depth 2`, printed back by `mlir-opt`: generic 694,693 lines / 53.6 MB, custom 31.5 MB (arith, math, scf.if / for, memref, func.call) |
 
-The three ways of measuring:
+Threads: one moremath `ThreadMulti` (lock-free pool, calls nest) reads, imports, runs the passes
+and prints. A body is one arena per function (`Seg`), so a function moves to a thread and back
+without a copy; module-level passes (`sccp`, `remove-dead-values`, `convert-scf-to-cf`,
+`convert-to-llvm`) run function by function, exchanging what crosses functions, and give the
+serial output byte for byte.
 
-1. **In process, phase by phase** (`fuzz/`: `cargo run --release -- bench --seed 5 --reps 3`).
-   Reading, running the pipeline and printing are timed separately. The run is timed on one
-   thread (1t) and on the thread pool (Nt, 16 threads). `mlir-opt` runs as a process printing to
-   `/dev/null`, with `--mlir-disable-threading` (1t) and without it (Nt). The threaded mlirpass
-   output is checked against the serial one, and `same` says whether mlirpass's IR equals
-   `mlir-opt`'s. Best of 3.
-2. **Process against process** (best of 3, peak RSS from `/usr/bin/time -f %M`). Both command
-   lines get the same flags: `--allow-unregistered-dialect --mlir-disable-threading -o /dev/null`,
-   plus `--mlir-print-op-generic` when generic text goes in. Each process is pinned to one P core;
-   up to four run at once, each on its own P core.
-3. **Cores and sizes**: the same command lines with threads on, pinned to 1, 2, 4, 8 and 16 CPUs
-   (`taskset -c 0`, `0-1`, `0-3`, `0-7`, `0-15`; from 8 up that includes E cores). Separately,
-   the `bench` of (1) on modules of 250 to 8,000 functions.
+1. **In process, phase by phase** (`fuzz/`: `cargo run --release -- bench --seed 5 --reps 3`):
+   reading, running the pipeline and printing timed separately; the run on one thread (1t) and on
+   the pool (Nt, 16 threads). `mlir-opt` runs as a process printing to `/dev/null`, with and
+   without `--mlir-disable-threading`. The threaded mlirpass output is checked against the
+   serial one; `same` says whether it equals `mlir-opt`'s.
+2. **Process against process** (best of 3, peak RSS from `/usr/bin/time -f %M`): the same flags
+   for both, `--allow-unregistered-dialect -o /dev/null` (plus `--mlir-print-op-generic` when
+   generic text goes in): one thread pinned to one P core, or threads on all 16 CPUs.
+3. **Cores and sizes**: those command lines pinned to 1, 2, 4, 8, 16 CPUs (from 8 up that
+   includes E cores); the `bench` of (1) on modules of 250 to 8,000 functions.
 
 ## Results
 
@@ -37,70 +39,95 @@ All times are in ms.
 
 | pipeline | parse | run 1t | run Nt | print | **total Nt** | `mlir-opt` 1t | **`mlir-opt` Nt** | speed-up | same |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
-| `func.func(canonicalize)` | 677 | 880 | 265 | 61 | **1,003** | 2,098 | **1,713** | **1.71×** | yes |
-| `func.func(cse)` | 712 | 163 | 175 | 410 | **1,297** | 2,286 | **1,894** | **1.46×** | yes |
-| `func.func(canonicalize,cse)` | 676 | 933 | 268 | 61 | **1,005** | 2,129 | **1,747** | **1.74×** | yes |
-| `sccp` | 707 | 1,873 | 1,874 | 736 | **3,317** | 3,974 | **3,681** | **1.11×** | yes |
-| `func.func(loop-invariant-code-motion)` | 688 | 66 | 79 | 700 | **1,467** | 2,500 | **2,044** | **1.39×** | yes |
-| `func.func(mem2reg)` | 684 | 28 | 41 | 685 | **1,410** | 2,326 | **2,047** | **1.45×** | yes |
-| `convert-scf-to-cf` | 689 | 433 | 434 | 736 | **1,860** | 2,652 | **2,218** | **1.19×** | yes |
-| `remove-dead-values` | 683 | 2,647 | 2,639 | 123 | **3,446** | 7,855 | 7,723 | — ¹ | — |
-| `convert-scf-to-cf,convert-to-llvm,reconcile-unrealized-casts` | 670 | 3,379 | 3,325 | 1,268 | **5,262** | 6,285 | **5,490** | **1.04×** | yes |
+| `func.func(canonicalize)` | 411 | 995 | 135 | 15 | **561** | 2,166 | **1,784** | **3.18×** | yes |
+| `func.func(cse)` | 399 | 185 | 25 | 60 | **484** | 2,336 | **1,979** | **4.09×** | yes |
+| `func.func(canonicalize,cse)` | 401 | 1,028 | 135 | 15 | **551** | 2,188 | **1,780** | **3.23×** | yes |
+| `sccp` | 405 | 1,333 | 402 | 97 | **904** | 4,155 | **3,778** | **4.18×** | yes |
+| `func.func(loop-invariant-code-motion)` | 404 | 87 | 17 | 121 | **542** | 2,543 | **2,082** | **3.84×** | yes |
+| `func.func(mem2reg)` | 395 | 37 | 11 | 97 | **502** | 2,344 | **2,079** | **4.14×** | yes |
+| `convert-scf-to-cf` | 388 | 517 | 93 | 107 | **587** | 2,628 | **2,261** | **3.85×** | yes |
+| `remove-dead-values` | 391 | 1,618 | 508 | 21 | **920** | 12,743 | 16,382 | — ¹ | — |
+| `convert-scf-to-cf,convert-to-llvm,reconcile-unrealized-casts` | 381 | 3,781 | 547 | 252 | **1,179** | 6,236 | **5,515** | **4.68×** | yes |
 
 "total Nt" is parse + run Nt + print. The `builtin.module(…)` wrapper is left out of the names.
 
 ¹ `mlir-opt` 22.1.8 segfaults on this module with `remove-dead-values`; its time is the time
-until it crashes. This is an upstream bug (`fuzz/README.md`, verdict `extra`).
+until it crashes. mlirpass leaves dangling call operands on it (printed `%INVALID`): a known bug of
+its own (`fuzz/README.md`).
 
-### Process against process, one thread
+### This release's hot spots: before, after, and with jemalloc
 
-| pipeline | mlirpass | `mlir-opt` | **speed-up** | mlirpass peak RSS | `mlir-opt` peak RSS | **memory** |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `func.func(canonicalize)` | 1,991 | 2,142 | **1.08×** | 851 MB | 381 MB | 2.24× |
-| `func.func(cse)` | 1,690 | 2,438 | **1.44×** | 883 MB | 398 MB | 2.22× |
-| `func.func(canonicalize,cse)` | 1,989 | 2,135 | **1.07×** | 851 MB | 380 MB | 2.24× |
-| `sccp` | 3,968 | 4,344 | **1.09×** | 1,008 MB | 1,104 MB | **0.91×** |
-| `func.func(loop-invariant-code-motion)` | 1,749 | 2,492 | **1.42×** | 950 MB | 421 MB | 2.26× |
-| `func.func(mem2reg)` | 1,826 | 2,488 | **1.36×** | 951 MB | 422 MB | 2.25× |
-| `convert-scf-to-cf` | 2,274 | 2,639 | **1.16×** | 1,008 MB | 477 MB | 2.11× |
-| `remove-dead-values` | 4,112 | crashes ¹ | — | 1,027 MB | — | — |
-| `convert-scf-to-cf,convert-to-llvm,reconcile-unrealized-casts` | 6,200 | 6,361 | **1.03×** | 1,518 MB | 856 MB | 1.77× |
-| custom in, `func.func(canonicalize,cse)` | 3,548 | 1,761 | **0.50×** | 932 MB | 300 MB | 3.11× |
-| custom in, the `-to-llvm` pipeline | 6,921 | 6,169 | **0.89×** | 1,544 MB | 783 MB | 1.97× |
-| custom in, `func.func(canonicalize,cse)`, jemalloc | 2,243 | 1,761 | **0.79×** | 982 MB | 300 MB | 3.27× |
-| generic in, `func.func(canonicalize,cse)`, jemalloc | 1,772 | 2,135 | **1.21×** | 998 MB | 380 MB | 2.63× |
+The same `bench` (total Nt in brackets: parse + run Nt + print, ms), the build before this
+round's work (0.7.0 minus its hot-spot fixes), this one, and this one under jemalloc
+(`LD_PRELOAD`). Found by sampling threaded runs per thread: what ran on the main thread alone.
+
+| pipeline | before: run Nt (total) | now: run Nt (total) | now, jemalloc: run Nt (total) |
+| --- | ---: | ---: | ---: |
+| `func.func(canonicalize)` | 125 (530) | 127 (539) | 89 (**216**) |
+| `func.func(cse)` | 29 (473) | 25 (476) | 18 (**188**) |
+| `sccp` | 414 (888) | 392 (889) | 285 (**483**) |
+| `convert-scf-to-cf` | 175 (668) | **95** (593) | 48 (**272**) |
+| `remove-dead-values` | 894 (1,314) | **518** (928) | 379 (**512**) |
+| the `-to-llvm` pipeline | 840 (1,487) | **547** (1,191) | 374 (**715**) |
+
+- Verifying after each pass ran module-wide on one thread (54–76 ms per module pass): now over
+  the module's ops in parallel (`Body::verify_in`); `-verify-each=false` turns it off.
+- Lent functions' checkpoints were released on the main thread (77–114 ms per conversion): now on
+  the threads.
+- `remove-dead-values`' cleanup (its walk, the apply, the final canonicalization) was serial
+  (~510 ms): now function by function.
+- What is left is glibc malloc: parsing (import, mostly) takes 386–397 ms on 16 threads with
+  glibc and 112–120 ms with jemalloc. mlirpass leaves the allocator to the program that links it.
+
+### Process against process
+
+| pipeline | mlirpass 1t | `mlir-opt` 1t | speed-up | mlirpass Nt | `mlir-opt` Nt | **speed-up Nt** | mlirpass RSS 1t / Nt | `mlir-opt` RSS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `func.func(canonicalize)` | 2,420 | 2,420 | 1.00× | 1,050 | 2,180 | **2.08×** | 914 / 1,018 MB | 379 MB |
+| `func.func(cse)` | 1,830 | 2,630 | 1.44× | 880 | 2,650 | **3.01×** | 924 / 902 MB | 396 MB |
+| `func.func(canonicalize,cse)` | 2,400 | 2,360 | 0.98× | 1,000 | 2,180 | **2.18×** | 914 / 1,018 MB | 379 MB |
+| `sccp` | 3,400 | 4,090 | 1.20× | 1,260 | 3,730 | **2.96×** | 1,096 / 1,211 MB | 1,102 MB |
+| `func.func(loop-invariant-code-motion)` | 1,830 | 2,450 | 1.34× | 750 | 2,040 | **2.72×** | 964 / 933 MB | 419 MB |
+| `func.func(mem2reg)` | 1,760 | 2,260 | 1.28× | 750 | 2,029 | **2.71×** | 965 / 936 MB | 420 MB |
+| `convert-scf-to-cf` | 2,290 | 2,610 | 1.14× | 930 | 2,200 | **2.37×** | 1,020 / 1,114 MB | 475 MB |
+| `remove-dead-values` | 2,890 | crashes ¹ | — | 1,250 | crashes ¹ | — | 1,105 / 1,124 MB | — |
+| the `-to-llvm` pipeline | 6,490 | 6,250 | 0.96× | 2,050 | 5,490 | **2.68×** | 1,741 / 2,244 MB | 855 MB |
+| custom in, `canonicalize,cse` | 3,220 | 1,580 | 0.49× | 990 | 1,340 | **1.35×** | 1,000 / 1,102 MB | 298 MB |
+| custom in, `canonicalize,cse`, jemalloc | 2,320 | 1,580 | 0.68× | 470 | 1,340 | **2.85×** | 892 / 1,015 MB | 298 MB |
+| generic in, `canonicalize,cse`, jemalloc | 1,850 | 2,360 | 1.28× | 400 | 2,180 | **5.45×** | 898 / 1,021 MB | 379 MB |
+| custom in, the `-to-llvm` pipeline | 7,300 | 6,060 | 0.83× | 2,880 | 5,280 | **1.83×** | 1,740 / 2,104 MB | 781 MB |
+| custom in, the `-to-llvm` pipeline, jemalloc | 5,660 | 6,060 | 1.07× | 1,690 | 5,280 | **3.12×** | 1,884 / 2,141 MB | 781 MB |
+| generic in, the `-to-llvm` pipeline, jemalloc | 5,270 | 6,250 | 1.19× | 1,150 | 5,490 | **4.77×** | 1,926 / 2,304 MB | 855 MB |
 
 No pipeline, text in ⇒ text out (seed 1's module, as in mlirformat's `BENCHMARK.md`):
 
-| job | mlirpass | `mlir-opt` | **speed-up** | mlirpass peak RSS | `mlir-opt` peak RSS |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| custom in ⇒ custom out (31.9 MB) | 5,014 | 2,314 | **0.46×** | 989 MB | 355 MB |
-| custom in ⇒ custom out, jemalloc | 2,485 | 2,314 | **0.93×** | 911 MB | 355 MB |
-| custom in ⇒ generic out | 2,730 | 1,934 | **0.71×** | 1,045 MB | 341 MB |
-| generic in ⇒ custom out (54.3 MB) | 4,092 | 2,856 | **0.70×** | 907 MB | 433 MB |
-| generic in ⇒ custom out, jemalloc | 2,057 | 2,856 | **1.39×** | 928 MB | 433 MB |
-| generic in ⇒ generic out | 1,677 | 2,459 | **1.47×** | 962 MB | 423 MB |
-| fixtures, generic ⇒ custom (12,252 chunks) | 968 | 76,087 | **78.6×** | 66 MB | 166 MB |
-| fixtures, custom ⇒ custom (the 6,087 chunks both read) | 479 | 10,738 | **22.4×** | 31 MB | 132 MB |
-| empty file (start-up) | 17.6 | 17.0 | 0.97× | 13.6 MB | 96.2 MB |
+| job | mlirpass 1t | `mlir-opt` 1t | speed-up | mlirpass Nt | `mlir-opt` Nt | **speed-up Nt** | mlirpass RSS 1t / Nt | `mlir-opt` RSS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| custom in ⇒ custom out (31.9 MB) | 4,550 | 2,090 | 0.46× | 2,210 | 1,940 | 0.88× | 1,033 / 984 MB | 353 MB |
+| custom in ⇒ custom out, jemalloc | 2,590 | 2,090 | 0.81× | 1,270 | 1,940 | **1.53×** | 916 / 875 MB | 353 MB |
+| custom in ⇒ generic out | 2,800 | 1,800 | 0.64× | 920 | 1,750 | **1.90×** | 1,065 / 1,037 MB | 337 MB |
+| generic in ⇒ custom out (54.3 MB) | 3,980 | 2,610 | 0.66× | 2,050 | 2,350 | **1.15×** | 946 / 899 MB | 431 MB |
+| generic in ⇒ generic out | 1,750 | 2,240 | 1.28× | 770 | 2,130 | **2.77×** | 978 / 950 MB | 421 MB |
+| empty file (start-up) | 20 | 10 | — | | | | 15 MB | 95 MB |
 
 ### Cores
 
-Wall time of the whole process, threads on, pinned to the first N CPUs:
+Wall time of the whole process, threads on, pinned to the first N CPUs (generic in and out):
 
 | pipeline | tool | 1 | 2 | 4 | 8 | 16 |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `func.func(canonicalize)` | mlirpass | 1,933 | 1,838 | 1,583 | 1,460 | **1,405** |
-| | `mlir-opt` | 1,808 | 1,675 | 1,618 | 1,611 | 1,722 |
-| `func.func(canonicalize,cse)` | mlirpass | 1,937 | 1,840 | 1,583 | 1,458 | **1,404** |
-| | `mlir-opt` | 1,811 | 1,673 | 1,578 | 1,628 | 1,686 |
-| `sccp` | mlirpass | 3,562 | 3,561 | 3,505 | 3,554 | 3,584 |
-| | `mlir-opt` | 3,756 | 3,674 | 3,652 | 3,668 | 3,651 |
-| the `-to-llvm` pipeline | mlirpass | 6,060 | 6,018 | 5,989 | 6,036 | 6,036 |
-| | `mlir-opt` | 6,024 | 5,731 | 5,571 | 5,491 | **5,459** |
+| `func.func(canonicalize)` | mlirpass | 2,150 | 2,300 | 1,630 | 1,130 | **860** |
+| | `mlir-opt` | 1,880 | 2,070 | 1,870 | 1,770 | 1,880 |
+| `func.func(canonicalize,cse)` | mlirpass | 2,260 | 2,630 | 1,290 | 940 | **840** |
+| | `mlir-opt` | 2,009 | 2,200 | 1,690 | 1,830 | 1,870 |
+| `sccp` | mlirpass | 3,150 | 3,600 | 1,850 | 1,690 | **1,260** |
+| | `mlir-opt` | 4,260 | 4,510 | 3,890 | 4,100 | 3,850 |
+| `remove-dead-values` | mlirpass | 3,130 | 3,450 | 1,830 | 1,490 | **1,270** |
+| | `mlir-opt` | 8,880 ¹ | 8,370 ¹ | 7,770 ¹ | 8,090 ¹ | 8,340 ¹ |
+| the `-to-llvm` pipeline | mlirpass | 6,860 | 7,470 | 3,620 | 2,840 | **2,110** |
+| | `mlir-opt` | 6,630 | 6,100 | 5,970 | 6,230 | 5,750 |
 
-mlirpass's peak RSS for canonicalize goes from 851 MB on one CPU to 1,432 MB on two or more, when
-functions are split off to run on the pool. `mlir-opt` stays at 345 MB.
+Two CPUs are slower than one here: CPU 1 was busy with the other jobs.
 
 ### Module size
 
@@ -108,51 +135,54 @@ The in-process `bench` of the first table, total Nt against `mlir-opt` Nt:
 
 | functions | size | canonicalize,cse: mlirpass | `mlir-opt` | speed-up | `-to-llvm`: mlirpass | `mlir-opt` | speed-up |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 250 | 5.7 MB | 123 | 186 | 1.52× | 507 | 480 | 0.95× |
-| 1,000 | 25.9 MB | 483 | 802 | 1.66× | 2,481 | 2,483 | 1.00× |
-| 2,000 | 53.6 MB | 1,005 | 1,747 | 1.74× | 5,262 | 5,490 | 1.04× |
-| 4,000 | 110.0 MB | 2,069 | crashes ² | — | 12,249 | 12,165 | 0.99× |
-| 8,000 | 225.2 MB | 4,204 | crashes ² | — | 30,792 | 29,222 | 0.95× |
+| 250 | 5.7 MB | 55 | 258 | 4.72× | 156 | 760 | 4.86× |
+| 1,000 | 25.9 MB | 300 | 961 | 3.20× | 727 | 3,727 | 5.13× |
+| 2,000 | 53.6 MB | 726 | 2,131 | 2.94× | 1,324 | 5,687 | 4.30× |
+| 4,000 | 110.0 MB | 1,600 | crashes ² | — | 3,090 | 17,726 | 5.74× |
+| 8,000 | 225.2 MB | 4,721 | crashes ² | — | 7,290 | 32,453 | 4.45× |
 
-² `mlir-opt` segfaults (exit 139) running `func.func(canonicalize,cse)` on the 4,000- and
-8,000-function modules. Its times until the crash were 4,617 and 8,106 ms.
-
-### Coverage of the custom form
-
-mlirpass reads 6,087 of the 12,250 custom-form fixture chunks (50 %). The other 6,163 hold an op
-whose custom form mlirpass has not registered. Most belong to `tosa`, `llvm`, `vector`,
-`transform`, `spirv`, `scf`, `gpu`, `test` and `sparse_tensor`. mlirformat itself reads them all;
-the gap is in mlirpass's import. The generic form of every chunk is read.
+² `mlir-opt` crashes running `func.func(canonicalize,cse)` on the 4,000- and 8,000-function
+modules (as in 0.5.0). The 4,000 and 8,000 rows are best of 1.
 
 ## Reading it
 
-- **With the passes, with threads, every comparable pipeline beats `mlir-opt`.** Counting
-  parse + run + print in process against threaded `mlir-opt`: canonicalize 1.71×, cse 1.46×,
-  canonicalize + cse 1.74×, LICM 1.39×, mem2reg 1.45×, scf-to-cf 1.19×, sccp 1.11×, `-to-llvm`
-  1.04×. canonicalize gets 3.3–3.5× from the thread pool, `mlir-opt` 1.2×.
-- **As one-thread processes, the passes win too, but by less**: 1.03–1.44×. Start-up, reading
-  the file and dropping the IR are counted there, and a fresh process pays page faults on every
-  page it touches.
-- **Printing the custom form is the slow part**: custom in ⇒ custom out with no pipeline is
-  0.46× `mlir-opt` with glibc and 0.93× with jemalloc, and the custom-in pipelines are slower than
-  `mlir-opt`. Generic in ⇒ generic out is 1.47× faster.
-- **glibc malloc costs up to 2×** on the custom form. mlirformat 0.5.5 allocates each list at its
-  exact length, which fragments glibc's heap (mlirformat's `BENCHMARK.md`). The same binary
-  under jemalloc runs custom ⇒ custom in 2,485 ms instead of 5,014, and generic ⇒ custom in
-  2,057 instead of 4,092.
-- **Memory**: mlirpass's peak is 1.8–2.3× `mlir-opt`'s on the passes (3.1× with custom input),
-  except sccp, where it is 0.91×. Since 0.5.0, import takes the parsed module apart instead of
-  copying it, and sizes the body's arenas up front. Together with mlirformat 0.5.5, that took a
-  run's peak from 1.6–2.3 GB to 0.85–1.5 GB (History). Threads add about 0.6 GB.
-- **More cores help canonicalize only**: 1,933 ⇒ 1,405 ms from 1 to 16 CPUs. sccp,
-  `remove-dead-values` and the `-to-llvm` pipeline run module-wide, so they do not split by
-  function. `mlir-opt` gains a little on `-to-llvm` (6,024 ⇒ 5,459 ms) and nothing on canonicalize.
-- **Size**: canonicalize + cse stays 1.5–1.7× faster from 250 to 2,000 functions. The `-to-llvm`
-  pipeline is within 5 % of `mlir-opt` at every size.
+- **Every pipeline is 3–4.7× faster than threaded `mlir-opt`** counting parse + run + print in
+  process, and 2.1–3.0× as whole processes. The module-level passes now split too: on 16 CPUs
+  sccp takes 1,260 ms (`mlir-opt` 3,850), `remove-dead-values` 1,270 and the `-to-llvm` pipeline
+  2,110 (`mlir-opt` 5,750); in 0.5.0 they did not gain from more CPUs at all.
+- **On one thread mlirpass is on par**: 0.96–1.44× as processes. Ids are 8 bytes (seg and index)
+  since 0.6.0, which costs the serial run some of 0.5.0's lead.
+- **glibc malloc is now the largest cost left**: under jemalloc canonicalize,cse runs in 400 ms
+  as a process on 16 CPUs (5.45× `mlir-opt`), the `-to-llvm` pipeline in 1,150 (4.77×). Parsing
+  on 16 threads goes from ~390 to ~115 ms. mlirpass does not pick the allocator; the command line
+  links glibc's.
+- **The custom form is still slower than the generic one** to read and print, and slower than
+  `mlir-opt` on one thread; on 16 threads custom in ⇒ custom out is 0.88× (1.53× with jemalloc).
+- **Memory**: the peak is 2.1–2.9× `mlir-opt`'s (1.0× for sccp), and threads add little now
+  (canonicalize 914 ⇒ 1,018 MB): functions are lent, not copied.
 
-## History (seed 5 module, one-thread process)
+## History (seed 5 module, in process, total Nt, 16 threads)
 
-| pipeline | before (0.5.0 on mlirformat 0.5.3) | now (on mlirformat 0.5.5) |
+| pipeline | 0.5.0 | 0.7.1 | |
+| --- | ---: | ---: | ---: |
+| `func.func(canonicalize)` | 1,003 | 561 | 1.8× |
+| `func.func(cse)` | 1,297 | 484 | 2.7× |
+| `func.func(canonicalize,cse)` | 1,005 | 551 | 1.8× |
+| `sccp` | 3,317 | 904 | 3.7× |
+| `func.func(loop-invariant-code-motion)` | 1,467 | 542 | 2.7× |
+| `func.func(mem2reg)` | 1,410 | 502 | 2.8× |
+| `convert-scf-to-cf` | 1,860 | 587 | 3.2× |
+| `remove-dead-values` | 3,446 | 920 | 3.7× |
+| the `-to-llvm` pipeline | 5,262 | 1,179 | 4.5× |
+
+0.5.0 was measured on an idle machine, 0.7.1 on a busy one. What changed: one arena per function
+(0.6.0), parsing, import and printing in parallel, the module-level passes function by function,
+the data-flow solver off a worklist, verification and the cleanup of `remove-dead-values` in
+parallel (0.7.x).
+
+### Before 0.6.0 (one-thread process)
+
+| pipeline | 0.5.0 on mlirformat 0.5.3 | 0.5.0 on mlirformat 0.5.5 |
 | --- | ---: | ---: |
 | `func.func(canonicalize,cse)` | 2,512 ms, 1,604 MB | 1,989 ms, **851 MB** |
 | `sccp` | 3,906 ms, 1,745 MB | 3,968 ms, **1,008 MB** |
@@ -169,4 +199,7 @@ cargo run --release -- gen --seed 5 --funcs 2000 --ops 40 --depth 2 > raw.mlir
 mlir-opt --mlir-print-op-generic raw.mlir -o s5_generic.mlir
 cd .. && taskset -c 0 /usr/bin/time -f %M target/release/mlirpass fuzz/s5_generic.mlir --mlir-print-op-generic \
   --pass-pipeline='builtin.module(func.func(canonicalize,cse))' --mlir-disable-threading -o /dev/null
+# jemalloc
+LD_PRELOAD=/lib/x86_64-linux-gnu/libjemalloc.so.2 target/release/mlirpass fuzz/s5_generic.mlir --mlir-print-op-generic \
+  --pass-pipeline='builtin.module(func.func(canonicalize,cse))' -o /dev/null
 ```
