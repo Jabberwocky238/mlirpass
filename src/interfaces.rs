@@ -903,10 +903,29 @@ impl<'a> Body<'a> {
         self[op].regions.len() == 1 && !self.ctx.opt.knows_dialect_of(&self[op].name)
     }
 
-    /// The symbol named `name` directly in symbol table `table`.
+    /// The symbol named `name` directly in symbol table `table`. In a lent body, a symbol of
+    /// its module it does not hold is more than it knows ([`Body::escape`]).
     pub fn lookup(&self, table: OpId, name: &str) -> Option<OpId> {
+        let found = self.find_symbol(table, name);
+        if found.is_none() && table == self.root {
+            self.escape();
+        }
+        found
+    }
+
+    /// [`lookup`](Self::lookup) of what this body holds, nothing more asked.
+    pub fn find_symbol(&self, table: OpId, name: &str) -> Option<OpId> {
         let region = *self[table].regions.first()?;
         self[region].blocks.iter().flat_map(|b| &self[*b].ops).copied().find(|o| self.sym_name(*o) == Some(name))
+    }
+
+    /// Attribute `attr` of symbol `name` in `table`: in a lent body, read off the module's
+    /// symbols as they were when it was lent ([`Body::outside_symbol`]).
+    pub fn symbol_attr(&self, table: OpId, name: &str, attr: &str) -> Option<Attribute<'a>> {
+        match self.find_symbol(table, name) {
+            Some(f) => self[f].get(attr).cloned(),
+            None => self.outside_symbol(table, name)?.get(attr).cloned(),
+        }
     }
 
     /// Every symbol along `path` from `table` (`@a::@b`: `a`, then `b` inside it); `None` when

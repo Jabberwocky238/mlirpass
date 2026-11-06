@@ -13,14 +13,20 @@ pub struct PassArgs {
     extra: Vec<LitStr>,
     ty: Option<Ident>,
     check: Option<Expr>,
+    /// `local`: run on a module, the pass is the pass on each op of its block (`Body::run_local`).
+    local: bool,
 }
 
 impl Parse for PassArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let name: LitStr = input.parse()?;
-        let mut args = PassArgs { name, on: None, extra: Vec::new(), ty: None, check: None };
+        let mut args = PassArgs { name, on: None, extra: Vec::new(), ty: None, check: None, local: false };
         while input.parse::<Option<Token![,]>>()?.is_some() && !input.is_empty() {
             let key: Ident = input.parse()?;
+            if key == "local" {
+                args.local = true;
+                continue;
+            }
             input.parse::<Token![=]>()?;
             match key.to_string().as_str() {
                 "on" => args.on = Some(input.parse()?),
@@ -156,6 +162,13 @@ impl PassArgs {
         let generics = &sig.generics;
         let d = self.decl(&ty);
         let doc = format!("`{}`.", self.name.value());
+        let local = self.local.then(|| {
+            quote! {
+                fn run_in<'a>(&self, body: &mut crate::Body<'a>, op: crate::OpId, exec: &dyn crate::Executor) -> Result<(), mlirformat::Error> {
+                    body.run_local(op, exec, &|b, o| crate::Run::run(self, b, o))
+                }
+            }
+        });
         quote! {
             #[doc = #doc]
             #vis struct #ty;
@@ -170,6 +183,7 @@ impl PassArgs {
             impl crate::Run for #ty {
                 #(#attrs)*
                 fn run #generics (&self, #inputs) #output #block
+                #local
             }
         }
     }

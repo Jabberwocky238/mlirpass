@@ -501,8 +501,13 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     /// `lookupOrCreateFn`: the `llvm.func` `name` of `module`, declared at its start if missing.
     pub fn llvm_func(&mut self, module: OpId, name: &str, params: Vec<Type<'a>>, ret: Type<'a>, vararg: bool) -> Option<OpId> {
         let fty: Type<'a> = LlvmType::Func { ret: ret.into(), params, vararg }.into();
-        if let Some(f) = self.rw.body.lookup(module, name).filter(|f| self.rw.body[*f].name == "llvm.func") {
+        if let Some(f) = self.rw.body.find_symbol(module, name).filter(|f| self.rw.body[*f].name == "llvm.func") {
             return (self.rw.body[f].get("function_type") == Some(&Attribute::Type(fty))).then_some(f);
+        }
+        // Lent one function: the module's own declaration, as it was, decides as it would; a
+        // declaration made here goes into the module later, where it lacks one.
+        if self.rw.body.outside_symbol(module, name).is_some_and(|f| f.name == "llvm.func" && f.get("function_type") != Some(&Attribute::Type(fty.clone()))) {
+            return None;
         }
         let saved = self.rw.ip;
         let block = self.rw.body.top_block(module);
@@ -513,6 +518,10 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
             b.add_region(f);
         });
         self.rw.ip = saved;
+        // Made in a lent body's stand-in module: it is the module's to have.
+        if module == self.rw.body.root {
+            self.rw.body.declared(f);
+        }
         Some(f)
     }
 

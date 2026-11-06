@@ -212,7 +212,7 @@ impl Shift for Def {
 /// A seg moved whole: its entries shifted, its journal state left behind.
 impl<'a> Shift for Seg<'a> {
     fn shift(self, o: &Offsets) -> Self {
-        Seg { ops: self.ops.shift(o), blocks: self.blocks.shift(o), regions: self.regions.shift(o), values: self.values.shift(o), mixed: self.mixed, ..Seg::default() }
+        Seg { ops: self.ops.shift(o), blocks: self.blocks.shift(o), regions: self.regions.shift(o), values: self.values.shift(o), mixed: self.mixed, root: self.root, ..Seg::default() }
     }
 }
 
@@ -396,6 +396,8 @@ pub(crate) struct Seg<'a> {
     outer: [Vec<u32>; 4],
     /// Per arena, the mark its growth was last logged under ([`Undo::Grew`]).
     grown: [u32; 4],
+    /// The index of its own op (0 until a pass replaces the op with one made in the seg).
+    root: u32,
 }
 
 /// Segs compare by their IR.
@@ -516,6 +518,31 @@ pub struct Body<'a> {
     /// (already inlined everywhere; kept so that a `loc(#loc3)` still has its definition).
     pub items: Vec<mlirformat::Item<'a>>,
     journal: Journal<'a>,
+    /// What a lent body knows of the module it was lent from ([`Body::run_local`]).
+    outside: Option<Outside<'a>>,
+}
+
+/// What a body lent one function knows of the module around it ([`Body::run_local`]): the
+/// module's symbols as they were (no regions), the declarations it made for the module
+/// ([`Body::declared`]), and whether something here needed more of the module than that.
+#[derive(Debug)]
+pub(crate) struct Outside<'a> {
+    symbols: alloc::sync::Arc<BTreeMap<String, OpData<'a>>>,
+    made: Vec<OpId>,
+    escaped: core::sync::atomic::AtomicBool,
+}
+
+impl Clone for Outside<'_> {
+    fn clone(&self) -> Self {
+        Outside { symbols: self.symbols.clone(), made: self.made.clone(), escaped: core::sync::atomic::AtomicBool::new(self.escaped.load(core::sync::atomic::Ordering::Relaxed)) }
+    }
+}
+
+/// Bodies compare by their IR.
+impl PartialEq for Outside<'_> {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 impl<'a> Body<'a> {
@@ -715,6 +742,11 @@ impl<'a> Body<'a> {
         &mut self.seg_mut(block.seg()).blocks[block.index() as usize].ops
     }
 
+    /// Whether `op` is its seg's own op (a function in a seg of its own; not the root's seg).
+    pub(crate) fn seg_root(&self, op: OpId) -> bool {
+        op.seg() != self.root.seg() && self.segs.get(op.seg().wrapping_sub(self.seg0) as usize).is_some_and(|s| s.root == op.index() && !s.ops.is_empty())
+    }
+
     /// Notes that segs `a` and `b` now refer to each other: neither holds its op alone.
     fn link(&mut self, a: u32, b: u32) {
         if a != b {
@@ -755,7 +787,7 @@ impl<'a> Body<'a> {
     /// Whether `op` is named apart ([`Names::of_in`]): its seg's own op, alone in it, with no
     /// results (nothing of it is named in its parent's region).
     fn names_apart(&self, op: OpId) -> bool {
-        op.index() == 0 && op.seg() != self.root.seg() && !self.seg(op.seg()).mixed && self[op].results.is_empty()
+        self.seg_root(op) && !self.seg(op.seg()).mixed && self[op].results.is_empty()
     }
 
     /// How many ops the arenas hold, erased ones included.
@@ -767,9 +799,8 @@ impl<'a> Body<'a> {
     /// function), nothing of another seg was linked into the seg, and `op` neither uses a value
     /// from outside nor has a result used there.
     pub fn lendable(&self, op: OpId) -> bool {
-        op.index() == 0
-            && op.seg() != self.root.seg()
-            && self.segs.get(op.seg().wrapping_sub(self.seg0) as usize).is_some_and(|s| !s.mixed && !s.ops.is_empty())
+        self.seg_root(op)
+            && !self.seg(op.seg()).mixed
             && self[op].operands.is_empty()
             && self[op].results.iter().all(|r| self[*r].uses.is_empty())
     }
@@ -792,7 +823,7 @@ impl<'a> Body<'a> {
         let attrs: Vec<NamedAttr<'a>> = ancestors.into_iter().rev().flat_map(|a| self[a].attributes.iter().cloned()).collect();
         let (s, parent) = (op.seg(), self[op].parent);
         let seg = self.take_seg(s);
-        let mut sub = Body { ctx: self.ctx, segs: alloc::vec![Seg::default(), seg], seg0: s - 1, home: s - 1, root: OpId::at(s - 1, 0), items: Vec::new(), journal: Journal::default() };
+        let mut sub = Body { ctx: self.ctx, segs: alloc::vec![Seg::default(), seg], seg0: s - 1, home: s - 1, root: OpId::at(s - 1, 0), items: Vec::new(), journal: Journal::default(), outside: None };
         let root = sub.create(OpData::named("builtin.module"), &[]);
         sub.root = root;
         for n in attrs {
@@ -812,6 +843,180 @@ impl<'a> Body<'a> {
         let seg = sub.segs.pop().expect("the lent seg");
         self.put_seg(op.seg(), seg);
         self[op].parent = parent;
+    }
+
+    /// A lent body's symbol `name` in `table` past what it holds: the module's, as it was when
+    /// lent (`None` in a body not lent, or for another table).
+    pub fn outside_symbol(&self, table: OpId, name: &str) -> Option<&OpData<'a>> {
+        self.outside.as_ref().filter(|_| table == self.root)?.symbols.get(name)
+    }
+
+    /// Whether this body was lent one function ([`Body::run_local`]).
+    pub fn is_lent(&self) -> bool {
+        self.outside.is_some()
+    }
+
+    /// Notes that something needed more of the module than a lent body knows: what it did is
+    /// rolled back and done again on the module.
+    pub fn escape(&self) {
+        if let Some(o) = &self.outside {
+            o.escaped.store(true, core::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    /// Notes `decl`, a declaration this lent body made in the module's place: it goes into the
+    /// module once the function is back, unless the module has it by then.
+    pub fn declared(&mut self, decl: OpId) {
+        if let Some(o) = &mut self.outside {
+            o.made.push(decl);
+        }
+    }
+
+    /// The module's symbol ops in `op`'s blocks, by name (the first of a name), without their
+    /// regions: what a lent body sees of the module.
+    fn symbols_in(&self, op: OpId) -> BTreeMap<String, OpData<'a>> {
+        let mut out = BTreeMap::new();
+        for o in self.children(op) {
+            if let Some(name) = self.sym_name(o) {
+                out.entry(String::from(name)).or_insert_with(|| OpData { regions: crate::Ids::new(), operands: crate::Ids::new(), results: crate::Ids::new(), successors: crate::Ids::new(), parent: None, ..self[o].clone() });
+            }
+        }
+        out
+    }
+
+    /// Whether `sub`, lent `op` and done, can come back as it is: nothing escaped, its module's
+    /// block holds the declarations it made and one more op (`op`, or what replaced it), and no
+    /// declaration it made names an `llvm.func` of another type in `declared` (the module's, as
+    /// lent, and those of the functions kept before it), which a serial run would have refused.
+    /// The declarations are then in `declared`.
+    fn returnable(sub: &Body<'a>, declared: &mut BTreeMap<String, Option<Attribute<'a>>>) -> bool {
+        let Some(o) = &sub.outside else { return false };
+        if o.escaped.load(core::sync::atomic::Ordering::Relaxed) {
+            return false;
+        }
+        let top = sub.top_block(sub.root);
+        if sub[top].ops.iter().filter(|x| !o.made.contains(x)).count() != 1 {
+            return false;
+        }
+        let made: Vec<(String, Option<Attribute<'a>>)> = o.made.iter().filter_map(|d| Some((String::from(sub.sym_name(*d)?), sub[*d].get("function_type").cloned()))).collect();
+        if made.iter().any(|(n, t)| declared.get(n).is_some_and(|have| have != t)) {
+            return false;
+        }
+        for (n, t) in made {
+            declared.entry(n).or_insert(t);
+        }
+        true
+    }
+
+    /// `sub` back, kept ([`Body::returnable`]): its seg in place, what replaced `op` in `op`'s
+    /// place (as the seg's own op); the declarations it made, to merge.
+    fn take_back(&mut self, op: OpId, sub: Body<'a>, parent: Option<BlockId>) -> Vec<OpId> {
+        let top = sub.top_block(sub.root);
+        let made = sub.outside.as_ref().map(|o| o.made.clone()).unwrap_or_default();
+        let new = sub[top].ops.iter().copied().find(|x| !made.contains(x)).expect("the function");
+        self.unlend(op, sub, parent);
+        if new != op {
+            self.seg_mut(new.seg()).root = new.index();
+            let at = self.position(op);
+            self.swap_in(op, at, new);
+        }
+        made
+    }
+
+    /// Declarations `made` by a lent body, in the order made, at the start of `table`'s block in
+    /// the root's seg, where the module has no `llvm.func` of the name yet: as a serial run puts
+    /// each when the first function needs it.
+    fn merge_declared(&mut self, table: OpId, made: Vec<OpId>) {
+        let block = self.top_block(table);
+        for d in made {
+            let have = self.sym_name(d).and_then(|n| self.find_symbol(table, n)).is_some_and(|e| self[e].name == "llvm.func");
+            if have {
+                continue;
+            }
+            let data = OpData { regions: crate::Ids::new(), operands: crate::Ids::new(), results: crate::Ids::new(), successors: crate::Ids::new(), parent: None, ..self[d].clone() };
+            let home = core::mem::replace(&mut self.home, table.seg());
+            let n = self.push_op(data, &[]);
+            self.add_region(n);
+            self.home = home;
+            self.insert(n, block, Some(0));
+        }
+    }
+
+    /// ⭐ A local pass (`#[pass(.., local)]`: on a module, the same as on each op of its block in
+    /// turn, the module itself left alone) run by `f` on `op`'s ops: those with a seg of their
+    /// own lent to `exec`'s threads, each under a checkpoint, knowing the module's symbols as
+    /// they were ([`Outside`]); then, in block order, a lent op's work comes back
+    /// ([`Body::take_back`]), or — when it needed more of the module than it knew, or made a
+    /// declaration the module now has otherwise — is rolled back and done again here, as are the
+    /// ops not lent. So whatever goes into the module goes in the order a serial run puts it.
+    /// The first error in block order is the pass's. On one thread, `f` on `op`.
+    pub fn run_local(&mut self, op: OpId, exec: &dyn crate::Executor, f: &crate::LocalRun<'_>) -> Result<(), Error> {
+        let children = self.children(op);
+        if exec.width() < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {
+            return f(self, op);
+        }
+        let symbols = alloc::sync::Arc::new(self.symbols_in(op));
+        let lent: Vec<_> = children
+            .iter()
+            .map(|c| {
+                self.lend(*c).map(|(mut sub, parent)| {
+                    sub.outside = Some(Outside { symbols: symbols.clone(), made: Vec::new(), escaped: core::sync::atomic::AtomicBool::new(false) });
+                    (sub, parent)
+                })
+            })
+            .collect();
+        type Ran<'a> = (Result<(), Error>, Body<'a>, Option<BlockId>, Checkpoint);
+        let mut done: Vec<Option<Ran<'a>>> = lent.iter().map(|_| None).collect();
+        let tasks = done
+            .iter_mut()
+            .zip(children.iter().zip(lent))
+            .filter_map(|(slot, (c, lent))| lent.map(|l| (slot, *c, l)))
+            .map(|(slot, c, (mut sub, parent))| {
+                alloc::boxed::Box::new(move || {
+                    let cp = sub.checkpoint();
+                    let r = f(&mut sub, c);
+                    *slot = Some((r, sub, parent, cp));
+                }) as crate::Task<'_>
+            })
+            .collect();
+        exec.execute(tasks);
+        // Kept or rolled back, in block order (nothing here asks the module, part of it is still
+        // out); then every seg back.
+        let mut declared: BTreeMap<String, Option<Attribute<'a>>> = symbols.iter().filter(|(_, d)| d.name == "llvm.func").map(|(n, d)| (n.clone(), d.get("function_type").cloned())).collect();
+        let mut back: Vec<Option<(Result<(), Error>, Body<'a>, Option<BlockId>, bool)>> = Vec::with_capacity(done.len());
+        for d in done {
+            back.push(d.map(|(r, mut sub, parent, cp)| {
+                let keep = Self::returnable(&sub, &mut declared);
+                if keep { sub.release(cp) } else { sub.rollback(cp) }
+                (r, sub, parent, keep)
+            }));
+        }
+        let mut kept: Vec<Option<(Result<(), Error>, Vec<OpId>)>> = Vec::with_capacity(back.len());
+        for (k, b) in back.into_iter().enumerate() {
+            kept.push(match b {
+                Some((r, sub, parent, true)) => Some((r, self.take_back(children[k], sub, parent))),
+                Some((_, sub, parent, false)) => {
+                    self.unlend(children[k], sub, parent);
+                    None
+                }
+                None => None,
+            });
+        }
+        // In block order: what a kept function declared goes in; the others are run here.
+        let mut first = None;
+        for (k, c) in children.iter().enumerate() {
+            let r = match kept[k].take() {
+                Some((r, made)) => {
+                    self.merge_declared(op, made);
+                    r
+                }
+                None => f(self, *c),
+            };
+            if first.is_none() {
+                first = r.err();
+            }
+        }
+        first.map_or(Ok(()), Err)
     }
 
     /// Seg `s` taken out, an empty one left in its place.
@@ -977,7 +1182,7 @@ impl<'a> OpData<'a> {
 impl<'a> Body<'a> {
     /// An empty `builtin.module` with one empty block.
     pub fn new(ctx: Ctx<'a>) -> Self {
-        let mut body = Self { ctx, segs: alloc::vec![Seg::default()], seg0: 0, home: 0, root: OpId::at(0, 0), journal: Journal::default(), items: Vec::new() };
+        let mut body = Self { ctx, segs: alloc::vec![Seg::default()], seg0: 0, home: 0, root: OpId::at(0, 0), journal: Journal::default(), items: Vec::new(), outside: None };
         body.root = body.create(OpData::named("builtin.module"), &[]);
         let region = body.add_region(body.root);
         body.add_block(region, &[]);
@@ -1183,7 +1388,7 @@ impl<'a> Body<'a> {
     /// op (entry 0) going into its parent's block.
     #[inline]
     fn linked(&mut self, op: OpId, block: BlockId) {
-        if op.seg() != block.seg() && (op.index() != 0 || op.seg() == 0) {
+        if op.seg() != block.seg() && !self.seg_root(op) {
             self.link(op.seg(), block.seg());
         }
     }
@@ -1848,7 +2053,7 @@ impl<'i, 'a, X: mlirformat::Executor + Sync> Import<'i, 'a, X> {
         seg.blocks.reserve(n[2]);
         seg.regions.reserve(n[3]);
         let s = op.seg();
-        let body = Body { ctx, segs: alloc::vec![seg], seg0: s, home: s, root: op, items: Vec::new(), journal: crate::ir::Journal::default() };
+        let body = Body { ctx, segs: alloc::vec![seg], seg0: s, home: s, root: op, items: Vec::new(), journal: crate::ir::Journal::default(), outside: None };
         let mut im = Import { body, aliases, scopes: alloc::vec![Scope::default()], x };
         for r in regions {
             im.region(op, r)?;
@@ -1944,7 +2149,7 @@ impl<'a> Body<'a> {
                 Item::Op(op) => ops.push(op),
             }
         }
-        let empty = Body { ctx, segs: alloc::vec![Seg::default()], seg0: 0, home: 0, root: OpId::at(0, 0), items, journal: crate::ir::Journal::default() };
+        let empty = Body { ctx, segs: alloc::vec![Seg::default()], seg0: 0, home: 0, root: OpId::at(0, 0), items, journal: crate::ir::Journal::default(), outside: None };
         let mut im = Import { body: empty, aliases: &aliases, scopes: alloc::vec![Scope::default()], x };
         if let [module] = ops.as_slice()
             && module.name == "builtin.module"

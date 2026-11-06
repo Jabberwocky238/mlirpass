@@ -91,4 +91,11 @@ impl Run for ConvertToLlvm {
         Self::configure(nvvm, &mut patterns, i, llvm, &mut target);
         Converter::new(&target, &patterns, ConversionConfig { rollback: self.rollback, ..ConversionConfig::default() }).apply(body, &[op], Mode::Partial)
     }
+
+    /// Function by function on `exec`: what goes into the module (runtime declarations) comes
+    /// back in the serial order; anything needing more of the module is done again on it
+    /// ([`Body::run_local`]).
+    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &dyn crate::Executor) -> Result<(), Error> {
+        body.run_local(op, exec, &|b, o| Run::run(self, b, o))
+    }
 }

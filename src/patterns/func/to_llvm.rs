@@ -395,7 +395,7 @@ impl FuncToLlvm {
             _ => None,
         };
         let module = cr.module_of(op);
-        let bare = opts.bare_ptr || module.zip(callee).and_then(|(m, c)| cr.rw.body.lookup(m, &c)).is_some_and(|f| cr.rw.body[f].get("llvm.bareptr").is_some());
+        let bare = opts.bare_ptr || module.zip(callee).is_some_and(|(m, c)| cr.rw.body.symbol_attr(m, &c, "llvm.bareptr").is_some());
         Self::call_impl(cr, op, operands, opts, bare, false)
     }
 

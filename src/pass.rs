@@ -41,6 +41,11 @@ pub trait Run {
     /// Runs on `op`; an error is the pass failing (`signalPassFailure`).
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error>;
 
+    /// [`run`](Self::run), with threads to split the work over (`#[pass(.., local)]`).
+    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, _exec: &dyn crate::Executor) -> Result<(), Error> {
+        self.run(body, op)
+    }
+
     /// The options as a textual pipeline prints them (`{a=1 b=true}`), empty when none differ.
     fn options(&self) -> String {
         String::new()
@@ -54,6 +59,10 @@ impl<T: PassDecl + Run + Send + Sync> Pass for T {
 
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         Run::run(self, body, op)
+    }
+
+    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &dyn crate::Executor) -> Result<(), Error> {
+        Run::run_in(self, body, op, exec)
     }
 
     fn options(&self) -> String {
@@ -97,6 +106,11 @@ pub trait Pass: Send + Sync {
 
     /// Runs on `op`; an error is the pass failing (`signalPassFailure`).
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error>;
+
+    /// [`run`](Self::run), with threads to split the work over.
+    fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, _exec: &dyn crate::Executor) -> Result<(), Error> {
+        self.run(body, op)
+    }
 
     /// The options as a textual pipeline prints them (`{a=1 b=true}`), empty when none differ.
     fn options(&self) -> String {
@@ -282,7 +296,7 @@ impl PassManager {
         for e in &self.entries {
             match e {
                 Entry::Pass(p) => {
-                    p.run(body, op)?;
+                    p.run_in(body, op, exec)?;
                     body.verify(op)?;
                 }
                 Entry::Adaptor(mgrs) => {
@@ -599,6 +613,9 @@ impl Executor for Serial {
         1
     }
 }
+
+/// What a `local` pass runs on one op ([`Body::run_local`]).
+pub type LocalRun<'f> = dyn for<'x> Fn(&mut Body<'x>, OpId) -> Result<(), Error> + Sync + 'f;
 
 impl<'a> Body<'a> {
     /// Whether `op` can be run on alone: `IsolatedFromAbove` (no value from outside used in it).
