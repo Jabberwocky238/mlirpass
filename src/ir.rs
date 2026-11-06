@@ -255,7 +255,16 @@ impl<K: Id, T: Clone> IdVec<K, T> {
 
     /// Entry `k`, the table grown to hold it.
     pub fn get_mut(&mut self, k: K) -> &mut T {
-        let seg = k.seg();
+        let fill = self.fill.clone();
+        let (row, i) = (self.row(k.seg()), k.index() as usize);
+        if row.len() <= i {
+            row.resize(i + 1, fill);
+        }
+        &mut row[i]
+    }
+
+    /// Seg `seg`'s row, the table grown to hold it.
+    fn row(&mut self, seg: u32) -> &mut Vec<T> {
         if self.segs.is_empty() {
             self.base = seg;
         } else if seg < self.base {
@@ -266,11 +275,29 @@ impl<K: Id, T: Clone> IdVec<K, T> {
         if self.segs.len() <= s {
             self.segs.resize_with(s + 1, Vec::new);
         }
-        let (row, i) = (&mut self.segs[s], k.index() as usize);
-        if row.len() <= i {
-            row.resize(i + 1, self.fill.clone());
-        }
-        &mut row[i]
+        &mut self.segs[s]
+    }
+
+    /// `v` appended to seg `seg`'s row; its index there.
+    pub fn push(&mut self, seg: u32, v: T) -> u32 {
+        let row = self.row(seg);
+        row.push(v);
+        row.len() as u32 - 1
+    }
+
+    /// Seg `seg`'s row taken out (left empty).
+    pub fn take_row(&mut self, seg: u32) -> Vec<T> {
+        core::mem::take(self.row(seg))
+    }
+
+    /// Seg `seg`'s row set to `row`.
+    pub fn put_row(&mut self, seg: u32, row: Vec<T>) {
+        *self.row(seg) = row;
+    }
+
+    /// Every entry written, every seg.
+    pub fn entries_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.segs.iter_mut().flatten()
     }
 
     #[inline]
@@ -703,6 +730,37 @@ impl<'a> Body<'a> {
     pub(crate) fn new_seg(&mut self, seg: Seg<'a>) -> u32 {
         self.segs.push(seg);
         self.seg0 + self.segs.len() as u32 - 1
+    }
+
+    /// Every op's and block argument's location dropped (`set_locs(root, None)` over the whole
+    /// body, erased entities too), the segs cleared in parallel on `x`. No checkpoint is open.
+    pub fn clear_locs_in<X: mlirformat::Executor + Sync>(&mut self, x: &X) {
+        debug_assert_eq!(self.journal.depth, 0, "locations cleared under a checkpoint");
+        let step = self.segs.len().div_ceil(x.threads() * 4).max(1);
+        let tasks: Vec<_> = self
+            .segs
+            .chunks_mut(step)
+            .map(|segs| {
+                move || {
+                    for s in segs {
+                        s.ops.iter_mut().for_each(|o| o.loc = None);
+                        s.values.iter_mut().for_each(|v| v.loc = None);
+                    }
+                }
+            })
+            .collect();
+        x.execute(tasks);
+    }
+
+    /// Whether `op` is named apart ([`Names::of_in`]): its seg's own op, alone in it, with no
+    /// results (nothing of it is named in its parent's region).
+    fn names_apart(&self, op: OpId) -> bool {
+        op.index() == 0 && op.seg() != self.root.seg() && !self.seg(op.seg()).mixed && self[op].results.is_empty()
+    }
+
+    /// How many ops the arenas hold, erased ones included.
+    pub fn ops_count(&self) -> usize {
+        self.segs.iter().map(|s| s.ops.len()).sum()
     }
 
     /// ⭐ Whether `op`'s seg can be lent out alone ([`Body::lend`]): `op` is its seg's own op (a
@@ -1916,8 +1974,8 @@ struct Counters {
     conflict: u32,
 }
 
-/// What a value is called: a number (`%7`), or a name (`%c0`, `%arg2`), by index into
-/// [`Names::strs`].
+/// What a value is called: a number (`%7`), or a name (`%c0`, `%arg2`), by index into its
+/// seg's [`Names::strs`].
 #[derive(Clone, Copy)]
 enum Head {
     Num(u32),
@@ -1940,11 +1998,53 @@ pub struct Names {
     /// The ops whose results print in several groups (`%a, %b:2 = ...`): each group's start.
     groups: BTreeMap<OpId, Vec<u32>>,
     nums: Vec<String>,
-    strs: Vec<String>,
+    /// The names that are not numbers, per seg: a value's [`Head::Str`] indexes its seg's, so a
+    /// function named apart keeps its own ([`Names::of_in`]).
+    strs: IdVec<StrAt, String>,
     bbs: Vec<String>,
 }
 
+/// Where a name's spelling is kept: its seg's list, at an index.
+#[derive(Debug, Clone, Copy)]
+struct StrAt(u32, u32);
+
+impl Id for StrAt {
+    fn seg(self) -> u32 {
+        self.0
+    }
+
+    fn index(self) -> u32 {
+        self.1
+    }
+}
+
+/// One function named apart ([`Names::of_in`]): its names (in its seg), how far it moved the
+/// counters, the highest number and the most blocks it gave, and its `%argN` spellings (generic
+/// form: counted from 0, shifted once where it starts is known).
+struct Apart {
+    names: Names,
+    used: Counters,
+    max: u32,
+    bbs: usize,
+    args: Vec<(StrAt, u32)>,
+}
+
+impl Apart {
+    /// The function's numbers moved to start at `base`.
+    fn shift(&mut self, base: Counters) {
+        for name in self.names.values.entries_mut().flatten() {
+            if let Head::Num(i) = &mut name.head {
+                *i += base.value;
+            }
+        }
+        for (at, k) in &self.args {
+            *self.names.strs.get_mut(*at) = format!("arg{}", k + base.arg);
+        }
+    }
+}
+
 /// One naming scope (`usedNames`), inside its parent's.
+#[derive(Clone)]
 struct NameScope {
     parent: Option<usize>,
     used: alloc::collections::BTreeSet<String>,
@@ -1961,9 +2061,34 @@ struct Namer<'n, 'b, 'a> {
     max: u32,
     scopes: Vec<NameScope>,
     scope: usize,
+    /// The `%argN` spellings given, to shift later ([`Apart`]).
+    args: Option<Vec<(StrAt, u32)>>,
 }
 
-impl Namer<'_, '_, '_> {
+impl<'n, 'b, 'a> Namer<'n, 'b, 'a> {
+    fn new(n: &'n mut Names, body: &'b Body<'a>, generic: bool) -> Self {
+        Namer { n, body, generic, next: Counters::default(), max: 0, scopes: alloc::vec![NameScope { parent: None, used: Default::default() }], scope: 0, args: None }
+    }
+
+    /// The regions on `stack` numbered, and those inside them: the last pushed first, each after
+    /// its whole parent region (`SSANameState`'s worklist); the most blocks a region had.
+    fn drain(&mut self, mut stack: Vec<(RegionId, Counters, usize)>) -> usize {
+        let body = self.body;
+        let mut bbs = 0;
+        while let Some((r, saved, parent)) = stack.pop() {
+            if !self.generic {
+                self.next = saved;
+            }
+            self.scopes.push(NameScope { parent: Some(parent), used: Default::default() });
+            self.scope = self.scopes.len() - 1;
+            self.region(r);
+            bbs = bbs.max(body[r].blocks.len());
+            let (next, scope) = (self.next, self.scope);
+            stack.extend(body[r].blocks.iter().flat_map(|b| &body[*b].ops).flat_map(|o| &body[*o].regions).map(|nr| (*nr, next, scope)));
+        }
+        bbs
+    }
+
     /// `sanitizeIdentifier`: a name that cannot be an identifier made into one.
     fn sanitize(name: &str) -> Cow<'_, str> {
         let valid = |c: u8| c.is_ascii_alphanumeric() || b"$._-".contains(&c);
@@ -2003,7 +2128,7 @@ impl Namer<'_, '_, '_> {
 
     /// `setValueName`: an empty name is numbered; any other made unique in the scopes open
     /// (`uniqueValueName`: `name_N`, `N` the next conflict id).
-    fn set(&mut self, name: &str) -> Head {
+    fn set(&mut self, name: &str, seg: u32) -> Head {
         if name.is_empty() {
             self.next.value += 1;
             return Head::Num(self.next.value - 1);
@@ -2021,8 +2146,7 @@ impl Namer<'_, '_, '_> {
             }
         };
         self.scopes[self.scope].used.insert(unique.clone());
-        self.n.strs.push(unique);
-        Head::Str(self.n.strs.len() as u32 - 1)
+        Head::Str(self.n.strs.push(seg, unique))
     }
 
     /// `numberValuesInOp`: the names `op` suggests, then a number for its first result if it
@@ -2035,7 +2159,7 @@ impl Namer<'_, '_, '_> {
             let names = body.interfaces(op).map_or_else(|| body.ods_result_names(op), |i| i.asm_result_names(body, op));
             for (v, name) in names {
                 let Some(k) = results.iter().position(|r| *r == v) else { continue };
-                heads[k] = Some(self.set(&name));
+                heads[k] = Some(self.set(&name, op.seg()));
                 if k != 0 {
                     groups.push(k as u32);
                 }
@@ -2045,7 +2169,7 @@ impl Namer<'_, '_, '_> {
             return;
         }
         if heads[0].is_none() {
-            heads[0] = Some(self.set(""));
+            heads[0] = Some(self.set("", op.seg()));
         }
         groups.sort_unstable();
         groups.dedup();
@@ -2075,7 +2199,7 @@ impl Namer<'_, '_, '_> {
         if !self.generic && let Some(i) = body.interfaces(body[r].parent) {
             let parent = body[r].parent;
             for (v, name) in i.asm_block_arg_names(body, parent, r) {
-                let head = self.set(&name);
+                let head = self.set(&name, v.seg());
                 self.n.values.set(v, Some(Name { head, index: None }));
             }
         }
@@ -2087,9 +2211,14 @@ impl Namer<'_, '_, '_> {
                 }
                 let head = if i == 0 {
                     self.next.arg += 1;
-                    self.set(&format!("arg{}", self.next.arg - 1))
+                    let k = self.next.arg - 1;
+                    let head = self.set(&format!("arg{k}"), v.seg());
+                    if let (Some(args), Head::Str(at)) = (&mut self.args, head) {
+                        args.push((StrAt(v.seg(), at), k));
+                    }
+                    head
                 } else {
-                    self.set("")
+                    self.set("", v.seg())
                 };
                 self.n.values.set(*v, Some(Name { head, index: None }));
             }
@@ -2107,32 +2236,128 @@ impl Names {
     /// counting across regions (`shouldPrintUniqueSSAIDs`); otherwise a region starts from the
     /// counters its parent region ended with.
     pub(crate) fn of(body: &Body<'_>, root: OpId, generic: bool) -> Self {
-        let mut n = Names { values: IdVec::new(None), labels: IdVec::new(None), groups: BTreeMap::new(), nums: Vec::new(), strs: Vec::new(), bbs: Vec::new() };
-        let mut namer = Namer { n: &mut n, body, generic, next: Counters::default(), max: 0, scopes: alloc::vec![NameScope { parent: None, used: Default::default() }], scope: 0 };
-        let mut stack: Vec<(RegionId, Counters, usize)> = body[root].regions.iter().map(|r| (*r, namer.next, 0)).collect();
+        let mut n = Names::new();
+        let mut namer = Namer::new(&mut n, body, generic);
+        let stack: Vec<(RegionId, Counters, usize)> = body[root].regions.iter().map(|r| (*r, namer.next, 0)).collect();
         namer.op(root);
-        let mut bbs = 0;
-        while let Some((r, saved, parent)) = stack.pop() {
-            if !generic {
-                namer.next = saved;
-            }
-            namer.scopes.push(NameScope { parent: Some(parent), used: Default::default() });
-            namer.scope = namer.scopes.len() - 1;
-            namer.region(r);
-            bbs = bbs.max(body[r].blocks.len());
-            let (next, scope) = (namer.next, namer.scope);
-            stack.extend(body[r].blocks.iter().flat_map(|b| &body[*b].ops).flat_map(|o| &body[*o].regions).map(|nr| (*nr, next, scope)));
-        }
+        let bbs = namer.drain(stack);
         let max = namer.max.max(namer.next.value);
-        n.nums = (0..max).map(|i| format!("{i}")).collect();
-        n.bbs = (0..bbs).map(|i| format!("bb{i}")).collect();
+        n.spell(max, bbs, &mlirformat::ThreadSingle);
         n
     }
 
-    fn head(&self, h: Head) -> &str {
+    fn new() -> Self {
+        Names { values: IdVec::new(None), labels: IdVec::new(None), groups: BTreeMap::new(), nums: Vec::new(), strs: IdVec::new(String::new()), bbs: Vec::new() }
+    }
+
+    /// ⭐ [`of`](Self::of), the functions in the root's region named in parallel on `x`, each into
+    /// a [`Names`] of its own (its slot), with no other function's names in sight: a function
+    /// starts from the counters its parent region ended with (custom form), or counts from 0 and
+    /// is shifted to where it starts once the worklist, walked here in its order, says (generic
+    /// form: numbers run on across regions, the last function first). The slots then go into
+    /// their segs' rows. The same names as [`of`](Self::of): a function is named apart only
+    /// when its seg holds it alone and it has no results; in generic form, a name that clashed
+    /// would have to be renamed, and the whole is named serially instead.
+    pub(crate) fn of_in<X: mlirformat::Executor + Sync>(body: &Body<'_>, root: OpId, generic: bool, x: &X) -> Self {
+        let &[r] = &body[root].regions[..] else { return Self::of(body, root, generic) };
+        // The functions named apart, in block order, and each one's place in it.
+        let order: Vec<OpId> = body[r].blocks.iter().flat_map(|b| &body[*b].ops).copied().filter(|o| body.names_apart(*o)).collect();
+        let units: BTreeMap<OpId, usize> = order.iter().enumerate().map(|(k, o)| (*o, k)).collect();
+        if x.threads() <= 1 || order.len() < 2 {
+            return Self::of(body, root, generic);
+        }
+        let mut n = Names::new();
+        let mut namer = Namer::new(&mut n, body, generic);
+        namer.op(root);
+        // The root's region, as the worklist takes it first; what it holds waits in `held`.
+        if !generic {
+            namer.next = Counters::default();
+        }
+        namer.scopes.push(NameScope { parent: Some(0), used: Default::default() });
+        namer.scope = 1;
+        namer.region(r);
+        let mut bbs = body[r].blocks.len();
+        let (next, scope) = (namer.next, namer.scope);
+        let held: Vec<(RegionId, Counters, usize)> = body[r].blocks.iter().flat_map(|b| &body[*b].ops).flat_map(|o| &body[*o].regions).map(|nr| (*nr, next, scope)).collect();
+        let begin = if generic { Counters::default() } else { next };
+        let scopes = &namer.scopes;
+        let tasks: Vec<_> = order
+            .iter()
+            .map(|u| (*u, scopes.clone()))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|(u, scopes)| {
+                move || {
+                    let mut names = Names::new();
+                    let mut nm = Namer { n: &mut names, body, generic, next: begin, max: 0, scopes, scope, args: generic.then(Vec::new) };
+                    let bbs = nm.drain(body[u].regions.iter().map(|nr| (*nr, begin, scope)).collect());
+                    let (used, max, args) = (nm.next, nm.max.max(nm.next.value), nm.args.take().unwrap_or_default());
+                    Apart { names, used, max, bbs, args }
+                }
+            })
+            .collect();
+        let mut apart: Vec<Apart> = x.execute(tasks);
+        if generic && apart.iter().any(|a| a.used.conflict != 0) {
+            return Self::of(body, root, generic);
+        }
+        // The worklist, last pushed first: a function moves the counters on by what it used
+        // (generic form); any other region is named here.
+        let mut bases = alloc::vec![Counters::default(); apart.len()];
+        let mut i = held.len();
+        while i > 0 {
+            let (nr, saved, parent) = held[i - 1];
+            let owner = body[nr].parent;
+            let Some(&k) = units.get(&owner) else {
+                bbs = bbs.max(namer.drain(alloc::vec![(nr, saved, parent)]));
+                i -= 1;
+                continue;
+            };
+            while i > 0 && body[held[i - 1].0].parent == owner {
+                i -= 1;
+            }
+            let a = &apart[k];
+            bbs = bbs.max(a.bbs);
+            if generic {
+                bases[k] = namer.next;
+                namer.next.value += a.used.value;
+                namer.next.arg += a.used.arg;
+                namer.max = namer.max.max(namer.next.value);
+            } else {
+                namer.max = namer.max.max(a.max);
+            }
+        }
+        let max = namer.max.max(namer.next.value);
+        if generic {
+            let shifts: Vec<_> = apart.into_iter().zip(bases).map(|(mut a, base)| move || {
+                a.shift(base);
+                a
+            }).collect();
+            apart = x.execute(shifts);
+        }
+        for (u, mut a) in order.iter().zip(apart) {
+            let s = u.seg();
+            n.values.put_row(s, a.names.values.take_row(s));
+            n.labels.put_row(s, a.names.labels.take_row(s));
+            n.strs.put_row(s, a.names.strs.take_row(s));
+            n.groups.append(&mut a.names.groups);
+        }
+        n.spell(max, bbs, x);
+        n
+    }
+
+    /// The spellings of the numbers below `max` and of `bbs` block labels, on `x`.
+    fn spell<X: mlirformat::Executor + Sync>(&mut self, max: u32, bbs: usize, x: &X) {
+        let max = max as usize;
+        let step = max.div_ceil(x.threads() * 4).max(1);
+        let runs: Vec<_> = (0..max).step_by(step).map(|from| move || (from..(from + step).min(max)).map(|i| format!("{i}")).collect::<Vec<_>>()).collect();
+        self.nums = x.execute(runs).into_iter().flatten().collect();
+        self.bbs = (0..bbs).map(|i| format!("bb{i}")).collect();
+    }
+
+    fn head(&self, h: Head, seg: u32) -> &str {
         match h {
             Head::Num(i) => &self.nums[i as usize],
-            Head::Str(i) => &self.strs[i as usize],
+            Head::Str(i) => self.strs.get(StrAt(seg, i)),
         }
     }
 
@@ -2141,8 +2366,8 @@ impl Names {
     #[cfg(feature = "dialect.bufferization")]
     pub(crate) fn print(&self, v: ValueId) -> String {
         match *self.values.get(v) {
-            Some(Name { head, index: Some(k) }) => format!("%{}#{k}", self.head(head)),
-            Some(Name { head, index: None }) => format!("%{}", self.head(head)),
+            Some(Name { head, index: Some(k) }) => format!("%{}#{k}", self.head(head, v.seg())),
+            Some(Name { head, index: None }) => format!("%{}", self.head(head, v.seg())),
             None => String::from("%<<UNKNOWN SSA VALUE>>"),
         }
     }
@@ -2154,50 +2379,42 @@ struct Export<'n, 'a> {
     body: &'n Body<'a>,
     names: &'n Names,
     deep: bool,
-    /// The regions handed to the printer by reference, by the number it knows each by.
-    sourced: core::cell::RefCell<Vec<RegionId>>,
 }
 
+/// Regions go to the printer by reference as their ids: threads printing apart share it.
 impl Source for Export<'_, '_> {
-    fn region(&self, id: u32) -> Region<'_> {
-        self.region(self.sourced(id))
+    fn region(&self, id: u64) -> Region<'_> {
+        self.region(RegionId(id))
     }
 
-    fn blocks(&self, id: u32) -> Vec<Block<'_>> {
-        self.body[self.sourced(id)].blocks.iter().enumerate().map(|(i, b)| self.block(i, *b, Vec::new())).collect()
+    fn blocks(&self, id: u64) -> Vec<Block<'_>> {
+        self.body[RegionId(id)].blocks.iter().enumerate().map(|(i, b)| self.block(i, *b, Vec::new())).collect()
     }
 
-    fn len(&self, id: u32, b: usize) -> usize {
-        self.body[self.body[self.sourced(id)].blocks[b]].ops.len()
+    fn len(&self, id: u64, b: usize) -> usize {
+        self.body[self.body[RegionId(id)].blocks[b]].ops.len()
     }
 
-    fn op(&self, id: u32, b: usize, k: usize) -> Operation<'_> {
-        self.op(self.body[self.body[self.sourced(id)].blocks[b]].ops[k])
+    fn op(&self, id: u64, b: usize, k: usize) -> Operation<'_> {
+        self.op(self.body[self.body[RegionId(id)].blocks[b]].ops[k])
     }
 }
 
 impl<'n, 'a> Export<'n, 'a> {
     fn new(body: &'n Body<'a>, names: &'n Names, deep: bool) -> Self {
-        Self { body, names, deep, sourced: core::cell::RefCell::new(Vec::new()) }
+        Self { body, names, deep }
     }
 
-    /// Region `r` handed to the printer by reference: the number it knows it by.
+    /// Region `r` handed to the printer by reference.
     fn source(&self, r: RegionId) -> Region<'n> {
-        let mut s = self.sourced.borrow_mut();
-        s.push(r);
-        Region::sourced(s.len() as u32 - 1)
-    }
-
-    /// The region the printer knows by `id`.
-    fn sourced(&self, id: u32) -> RegionId {
-        self.sourced.borrow()[id as usize]
+        Region::sourced(r.0)
     }
 
     /// The name of `v`; a value outside the IR (a dangling use, which is a bug) prints as
     /// `%INVALIDn` so that it shows.
     fn value(&self, v: ValueId) -> Value<'n> {
         match *self.names.values.get(v) {
-            Some(Name { head, index }) => Value { name: Cow::Borrowed(self.names.head(head)), index },
+            Some(Name { head, index }) => Value { name: Cow::Borrowed(self.names.head(head, v.seg())), index },
             None => Value { name: Cow::Owned(format!("INVALID{}", v.0)), index: None },
         }
     }
@@ -2268,7 +2485,9 @@ impl<'a> Body<'a> {
     {
         let (meta, mut items): (Vec<_>, Vec<_>) = self.items.iter().cloned().partition(|i| matches!(i, Item::Metadata { .. }));
         items.push(Item::Op(root));
-        let used = self.used_resources();
+        // Only a resource blob asks what the ops use (a walk over every attribute).
+        let blobs = meta.iter().any(|m| matches!(m, Item::Metadata { body } if body.contains("dialect_resources")));
+        let used = if blobs { self.used_resources() } else { Vec::new() };
         items.extend(meta.into_iter().filter_map(|m| match m {
             Item::Metadata { body: text } => Body::keep_resources(&text, &used).map(|t| Item::Metadata { body: t.into() }),
             m => Some(m),
@@ -2295,22 +2514,32 @@ impl<'a> Body<'a> {
     /// in generic form), without building it. The printer reads each op from the body as it
     /// reaches it; `keep` says which of the body's module items to print (the root always).
     pub fn show(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
-        self.render(opt, generic, true, keep)
+        self.render(opt, generic, true, keep, &mlirformat::ThreadSingle)
+    }
+
+    /// [`show`](Self::show), the module's ops (its functions) printed in parallel on `x`.
+    pub fn show_in<X: mlirformat::Executor + Sync>(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool, x: &X) -> String {
+        self.render(opt, generic, true, keep, x)
     }
 
     /// [`show`](Self::show) under `--mlir-print-local-scope`: no aliases, every attribute and
     /// type spelled where it is used.
     pub fn show_local_scope(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
-        self.render(opt, generic, false, keep)
+        self.render(opt, generic, false, keep, &mlirformat::ThreadSingle)
     }
 
-    fn render(&self, opt: &MlirOpt, generic: bool, aliased: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
-        let names = Names::of(self, self.root, generic);
+    /// [`show_local_scope`](Self::show_local_scope) on `x`, as [`show_in`](Self::show_in).
+    pub fn show_local_scope_in<X: mlirformat::Executor + Sync>(&self, opt: &MlirOpt, generic: bool, keep: impl Fn(&Item<'_>) -> bool, x: &X) -> String {
+        self.render(opt, generic, false, keep, x)
+    }
+
+    fn render<X: mlirformat::Executor + Sync>(&self, opt: &MlirOpt, generic: bool, aliased: bool, keep: impl Fn(&Item<'_>) -> bool, x: &X) -> String {
+        let names = Names::of_in(self, self.root, generic, x);
         let ex = Export::new(self, &names, false);
         let mut m = self.module(ex.op(self.root));
         m.items.retain(|i| matches!(i, Item::Op(_)) || keep(i));
         let bare = MlirOpt::new();
-        let text = if generic { &bare } else { opt }.show_from(&m, &ex).text().expect("printing into a string");
+        let text = if generic { &bare } else { opt }.print_in(&m, &ex, x).expect("printing into a string");
         if !aliased {
             return text;
         }
@@ -2321,11 +2550,11 @@ impl<'a> Body<'a> {
         });
         let mut aliases = crate::aliases::Aliases::new(taken);
         if generic {
-            aliases.visit_generic(self, self.root);
+            aliases.visit_generic_in(self, self.root, x);
         } else {
-            aliases.visit(&text);
+            aliases.visit_in(&text, x);
         }
-        aliases.apply(&text)
+        aliases.apply(text, x)
     }
 }
 

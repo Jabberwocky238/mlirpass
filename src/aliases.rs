@@ -199,6 +199,78 @@ impl Aliases {
                 }
             }
         }
+        self.visit_own(b, op);
+    }
+
+    /// [`visit_generic`](Self::visit_generic) of the root `op`, the ops of its blocks (the
+    /// functions) visited in parallel on `x`: each run of them by an `Aliases` of its own, which
+    /// gives its attributes in the order it first met them; those are then visited here in the
+    /// runs' order, which is the order a serial visit meets them in. The formatting of every
+    /// type and attribute, the cost, is the runs'; what is visited again is one text per
+    /// aliased attribute.
+    pub(crate) fn visit_generic_in<X: mlirformat::Executor + Sync>(&mut self, b: &Body<'_>, op: OpId, x: &X) {
+        for r in &b[op].regions {
+            for blk in &b[*r].blocks {
+                for a in &b[*blk].args {
+                    self.visit(&format!("{}", b[*a].ty));
+                }
+                let ops = &b[*blk].ops;
+                let step = ops.len().div_ceil(x.threads() * 4).max(1);
+                let runs: Vec<_> = ops
+                    .chunks(step)
+                    .map(|run| {
+                        move || {
+                            let mut a = Aliases::new([]);
+                            run.iter().for_each(|o| a.visit_generic(b, *o));
+                            a.seen
+                        }
+                    })
+                    .collect();
+                self.replay(x.execute(runs));
+            }
+        }
+        self.visit_own(b, op);
+    }
+
+    /// The aliased attributes other `Aliases` saw, in their order and then each one's.
+    fn replay(&mut self, runs: Vec<Vec<Seen>>) {
+        for seen in runs.into_iter().flatten() {
+            self.visit_one(&seen.text, seen.alias);
+        }
+    }
+
+    /// [`visit`](Self::visit) of `text`, its lines cut into runs scanned in parallel on `x`
+    /// (no aliased attribute spans a line).
+    pub(crate) fn visit_in<X: mlirformat::Executor + Sync>(&mut self, text: &str, x: &X) {
+        let runs: Vec<_> = Self::lines(text, x.threads() * 4)
+            .map(|run| {
+                move || {
+                    let mut a = Aliases::new([]);
+                    a.visit(run);
+                    a.seen
+                }
+            })
+            .collect();
+        self.replay(x.execute(runs));
+    }
+
+    /// `text` cut at line ends into about `n` runs.
+    fn lines(text: &str, n: usize) -> impl Iterator<Item = &str> {
+        let step = text.len().div_ceil(n.max(1)).max(1);
+        let mut rest = text;
+        core::iter::from_fn(move || {
+            if rest.is_empty() {
+                return None;
+            }
+            let cut = rest.as_bytes().get(step..).and_then(|t| t.iter().position(|c| *c == b'\n')).map_or(rest.len(), |i| step + i + 1);
+            let (run, tail) = rest.split_at(cut);
+            rest = tail;
+            Some(run)
+        })
+    }
+
+    /// What [`visit_generic`](Self::visit_generic) visits of `op` itself, after its regions.
+    fn visit_own(&mut self, b: &Body<'_>, op: OpId) {
         for v in b[op].operands.iter().chain(&b[op].results) {
             self.visit(&format!("{}", b[*v].ty));
         }
@@ -253,10 +325,11 @@ impl Aliases {
 
     /// `initializeAliases` and the printing: the aliases sorted by depth, then name (stably: in
     /// visiting order), numbered; their definitions first, each with the aliases inside it, then
-    /// `text` with each aliased attribute by its alias.
-    pub(crate) fn apply(mut self, text: &str) -> String {
+    /// `text` with each aliased attribute by its alias, its lines cut into runs replaced in
+    /// parallel on `x`.
+    pub(crate) fn apply<X: mlirformat::Executor + Sync>(mut self, text: String, x: &X) -> String {
         if self.seen.is_empty() {
-            return String::from(text);
+            return text;
         }
         let mut order: Vec<usize> = (0..self.seen.len()).collect();
         order.sort_by(|a, b| {
@@ -281,6 +354,8 @@ impl Aliases {
             };
             out += &format!("#{name} = {body}\n");
         }
-        out + &Self::replace(text, &names)
+        let names = &names;
+        let runs: Vec<_> = Self::lines(&text, x.threads() * 4).map(|run| move || Self::replace(run, names)).collect();
+        x.execute(runs).into_iter().fold(out, |out, run| out + &run)
     }
 }

@@ -780,7 +780,7 @@ pub struct Invocation {
     /// Made once: sizing it asks the OS (cgroups, affinity), too slow to repeat per chunk.
     #[cfg(feature = "std")]
     pub pool: crate::ThreadPool,
-    /// Reads a big chunk's ops in parallel; started the first time one is read.
+    /// Reads, imports and prints a big chunk in parallel; started the first time one is.
     #[cfg(feature = "std")]
     pub reader: std::sync::OnceLock<mlirformat::ThreadMulti>,
 }
@@ -889,23 +889,23 @@ impl Invocation {
     }
 
     fn print_op(&self, body: &mut Body<'_>) -> String {
-        let opt = body.ctx.opt;
         if !self.debuginfo {
-            body.set_locs(body.root, None);
+            match self.workers(body) {
+                #[cfg(feature = "std")]
+                Some(x) => body.clear_locs_in(x),
+                _ => body.set_locs(body.root, None),
+            }
         }
         let loc = |i: &Item<'_>| matches!(i, Item::AttrAlias { value: mlirformat::Attribute::Builtin { name, .. }, .. } if name == "loc");
         let kept = |i: &Item<'_>| self.debuginfo || !loc(i);
         let alias = |i: &Item<'_>| matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. });
-        let show = |keep: &dyn Fn(&Item<'_>) -> bool| match self.local_scope {
-            true => body.show_local_scope(opt, self.generic, |i| kept(i) && keep(i)),
-            false => body.show(opt, self.generic, |i| kept(i) && keep(i)),
-        };
+        let show = |keep: &dyn Fn(&Item<'_>) -> bool| self.show(body, self.local_scope, |i| kept(i) && keep(i));
         if !body.items.iter().any(|i| kept(i) && alias(i)) {
             return show(&|_| true);
         }
         // Aliases are inlined on import; keep only those raw dialect text still names (looked
         // for before any alias is made again).
-        let text = body.show_local_scope(opt, self.generic, |i| kept(i) && !alias(i));
+        let text = self.show(body, true, |i| kept(i) && !alias(i));
         let named = |sigil: char, name: &str| {
             let pat = format!("{sigil}{name}");
             text.match_indices(&pat).any(|(i, _)| !text[i + pat.len()..].starts_with(|c: char| c.is_ascii_alphanumeric() || "_$.-".contains(c)))
@@ -916,6 +916,31 @@ impl Invocation {
             _ => true,
         })
     }
+
+    /// `body` shown with or without aliases, its functions printed on [`Invocation::reader`]
+    /// when threading and the body is big enough.
+    fn show(&self, body: &Body<'_>, local_scope: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
+        let opt = body.ctx.opt;
+        #[cfg(feature = "std")]
+        if let Some(x) = self.workers(body) {
+            return if local_scope { body.show_local_scope_in(opt, self.generic, keep, x) } else { body.show_in(opt, self.generic, keep, x) };
+        }
+        if local_scope { body.show_local_scope(opt, self.generic, keep) } else { body.show(opt, self.generic, keep) }
+    }
+
+    /// The threads to print `body` on: when threading and `body` is big enough.
+    #[cfg(feature = "std")]
+    fn workers(&self, body: &Body<'_>) -> Option<&mlirformat::ThreadMulti> {
+        (self.threading && body.ops_count() >= Self::PARALLEL_OPS).then(|| self.reader.get_or_init(mlirformat::ThreadMulti::default))
+    }
+
+    #[cfg(not(feature = "std"))]
+    fn workers(&self, _: &Body<'_>) -> Option<&mlirformat::ThreadSingle> {
+        None
+    }
+
+    /// A body with fewer ops than this prints on one thread.
+    const PARALLEL_OPS: usize = 1 << 14;
 
     /// The whole input, chunk by chunk, joined as `mlir-opt` joins them.
     pub fn run(&self, ctx: Ctx<'_>, src: &str) -> Result<String, Error> {
