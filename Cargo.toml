@@ -95,3 +95,7 @@ required-features = ["all-dialects", "target.spirv"]
 [[test]]
 name = "vulkan"
 required-features = ["all-dialects", "target.spirv"]
+
+# Local mlirformat (parse_in on moremath executors) until it is released.
+[patch."https://github.com/Jabberwocky238/mlirformat.git"]
+mlirformat = { path = "../mlirformat" }

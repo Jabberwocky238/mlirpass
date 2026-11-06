@@ -306,7 +306,7 @@ enum Rewrite {
 #[derive(Debug, Clone, Default)]
 pub struct ConvState<'a> {
     /// What one value maps to: by value id, 1 + its index in `targets` (0: nothing).
-    one: Vec<u32>,
+    one: crate::IdVec<ValueId, u32>,
     targets: Vec<Vec<ValueId>>,
     /// What several values map to together (rare).
     many: BTreeMap<Vec<ValueId>, Vec<ValueId>>,
@@ -409,33 +409,54 @@ impl<P: crate::Pattern> ConversionPattern for Plain<P> {
     }
 }
 
-/// A set of arena ids, one bit each.
-#[derive(Debug, Clone, Default)]
-struct Bits(Vec<u64>);
+/// A set of arena ids, one bit each: 64-bit words per seg.
+#[derive(Debug, Clone)]
+struct Bits(crate::IdVec<Word, u64>);
+
+impl Default for Bits {
+    fn default() -> Self {
+        Self(crate::IdVec::new(0))
+    }
+}
+
+/// Which word of [`Bits`] holds an id: its seg, and its index over 64.
+#[derive(Debug, Clone, Copy)]
+struct Word(u32, u32);
+
+impl crate::Id for Word {
+    fn seg(self) -> u32 {
+        self.0
+    }
+
+    fn index(self) -> u32 {
+        self.1
+    }
+}
 
 impl Bits {
+    fn word(i: impl crate::Id) -> (Word, u64) {
+        (Word(i.seg(), i.index() / 64), 1u64 << (i.index() % 64))
+    }
+
     /// Whether `i` was not in yet.
-    fn insert(&mut self, i: impl Into<usize>) -> bool {
-        let i = i.into();
-        if self.0.len() <= i / 64 {
-            self.0.resize(i / 64 + 1, 0);
-        }
-        let (w, b) = (&mut self.0[i / 64], 1u64 << (i % 64));
+    fn insert(&mut self, i: impl crate::Id) -> bool {
+        let (k, b) = Self::word(i);
+        let w = self.0.get_mut(k);
         let new = *w & b == 0;
         *w |= b;
         new
     }
 
-    fn remove(&mut self, i: impl Into<usize>) {
-        let i = i.into();
-        if let Some(w) = self.0.get_mut(i / 64) {
-            *w &= !(1u64 << (i % 64));
+    fn remove(&mut self, i: impl crate::Id) {
+        let (k, b) = Self::word(i);
+        if *self.0.get(k) & b != 0 {
+            *self.0.get_mut(k) &= !b;
         }
     }
 
-    fn contains(&self, i: impl Into<usize>) -> bool {
-        let i = i.into();
-        self.0.get(i / 64).is_some_and(|w| w & (1u64 << (i % 64)) != 0)
+    fn contains(&self, i: impl crate::Id) -> bool {
+        let (k, b) = Self::word(i);
+        self.0.get(k) & b != 0
     }
 }
 
@@ -447,12 +468,8 @@ impl<'a> ConvState<'a> {
             }
         }
         if let [v] = from[..] {
-            let i = usize::from(v);
-            if self.one.len() <= i {
-                self.one.resize(i + 1, 0);
-            }
             self.targets.push(to);
-            let old = core::mem::replace(&mut self.one[i], self.targets.len() as u32);
+            let old = core::mem::replace(self.one.get_mut(v), self.targets.len() as u32);
             if self.depth > 0 {
                 self.undo.push(Undo::One(v, old));
             }
@@ -467,7 +484,7 @@ impl<'a> ConvState<'a> {
     /// What `vs` map to (empty: nothing).
     fn mapped(&self, vs: &[ValueId]) -> &[ValueId] {
         match vs {
-            [v] => match self.one.get(usize::from(*v)).copied().unwrap_or(0) {
+            [v] => match *self.one.get(*v) {
                 0 => &[],
                 i => &self.targets[i as usize - 1],
             },
@@ -512,7 +529,7 @@ impl<'a> ConvState<'a> {
     fn rollback(&mut self, m: StateMark) {
         while self.undo.len() > m.undo {
             match self.undo.pop().expect("longer than the mark") {
-                Undo::One(v, old) => self.one[usize::from(v)] = old,
+                Undo::One(v, old) => self.one.set(v, old),
                 Undo::Many(from, Some(old)) => {
                     self.many.insert(from, old);
                 }

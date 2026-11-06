@@ -8,7 +8,6 @@
 
 use std::time::{Duration, Instant};
 
-use mlirpass::Body;
 
 use crate::irgen::{Gen, Shape};
 use crate::oracle::{Mlirpass, MlirOptTool};
@@ -44,6 +43,8 @@ pub struct Bench<'a> {
     reps: usize,
     /// The module as generated (custom form), not as mlir-opt prints it back.
     raw: bool,
+    /// `--opt no`: mlirpass alone, mlir-opt neither timed nor compared.
+    opt: bool,
 }
 
 /// Milliseconds, for the table.
@@ -58,13 +59,13 @@ impl core::fmt::Display for Ms {
 impl<'a> Bench<'a> {
     pub fn from_args(a: &'a Args) -> Result<Self, String> {
         let shape = Shape { funcs: a.get("funcs", 2000)?, ops: a.get("ops", 40)?, depth: a.get("depth", 2)? };
-        Ok(Self { shape, seed: a.get("seed", 1)?, pipelines: a.pipelines(), reps: a.get("reps", 3)?, raw: a.get("raw", String::from("no"))? == "yes" })
+        Ok(Self { shape, seed: a.get("seed", 1)?, pipelines: a.pipelines(), reps: a.get("reps", 3)?, raw: a.get("raw", String::from("no"))? == "yes", opt: a.get("opt", String::from("yes"))? == "yes" })
     }
 
     /// One mlirpass run of `src`, phase by phase, and what it printed.
     fn once(pass: &Mlirpass, inv: &mlirpass::Invocation, src: &str) -> Result<(Phases, String), String> {
         let t = Instant::now();
-        let mut body = Body::parse(pass.ctx(), src).map_err(|e| e.0)?;
+        let mut body = inv.read(pass.ctx(), src).map_err(|e| e.0)?;
         let parse = t.elapsed();
         let t = Instant::now();
         let root = body.root;
@@ -112,6 +113,10 @@ impl<'a> Bench<'a> {
             let (threaded, t_out) = self.mlirpass(&pass, p, &src, true)?;
             if s_out != t_out {
                 return Err(format!("{p}: threaded output differs from serial"));
+            }
+            if !self.opt {
+                println!("{p:<64} parse 1t {} Nt {} | {} {} {} {} {:>6.2}x", Ms(serial.parse), Ms(threaded.parse), Ms(serial.run), Ms(threaded.run), Ms(threaded.print), Ms(threaded.total()), serial.run.as_secs_f64() / threaded.run.as_secs_f64());
+                continue;
             }
             let (opt1, _) = self.mlir_opt(&tool, p, &src, &["--mlir-disable-threading"]);
             let (optn, want) = self.mlir_opt(&tool, p, &src, &[]);

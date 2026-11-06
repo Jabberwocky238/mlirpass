@@ -303,29 +303,50 @@ impl PassManager {
                         }
                         continue;
                     }
-                    let Some(first) = Self::calibrate(body, &work, exec)? else { continue };
+                    // A function in a seg of its own moves out and back for free; only the others
+                    // are copied out, which has to pay for itself (`calibrate`).
+                    let first = if work.iter().all(|(c, ..)| body.lendable(*c)) {
+                        0
+                    } else {
+                        let Some(first) = Self::calibrate(body, &work, exec)? else { continue };
+                        first
+                    };
                     let work = &work[first..];
-                    // Each task splits its op off the shared body itself (reading only), so the
-                    // copying out runs in parallel too; the moving back is one append per op.
-                    let mut done: Vec<Option<(Result<(), Error>, Body<'_>, OpId)>> = work.iter().map(|_| None).collect();
+                    let lent: Vec<_> = work.iter().map(|(c, ..)| body.lend(*c)).collect();
+                    // A task runs on its lent body, or splits its op off the shared body itself
+                    // (reading only), so the copying out runs in parallel too.
+                    let mut done: Vec<Option<(Result<(), Error>, Body<'_>, OpId, Option<Option<crate::BlockId>>)>> = work.iter().map(|_| None).collect();
                     let shared: &Body<'_> = body;
                     let tasks = done
                         .iter_mut()
                         .zip(work)
-                        .map(|(slot, (c, _, m))| {
+                        .zip(lent)
+                        .map(|((slot, (c, _, m)), lent)| {
                             Box::new(move || {
-                                let (mut sub, at) = shared.split_off(*c);
-                                *slot = Some((m.run_on(&mut sub, at, &crate::Serial), sub, at));
+                                let (mut sub, at, parent) = match lent {
+                                    Some((sub, parent)) => (sub, *c, Some(parent)),
+                                    None => {
+                                        let (sub, at) = shared.split_off(*c);
+                                        (sub, at, None)
+                                    }
+                                };
+                                *slot = Some((m.run_on(&mut sub, at, &crate::Serial), sub, at, parent));
                             }) as crate::Task<'_>
                         })
                         .collect();
                     exec.execute(tasks);
                     let done: Vec<_> = done.into_iter().map(|d| d.expect("every task ran")).collect();
-                    if let Some(e) = done.iter().find_map(|(r, ..)| r.as_ref().err()) {
-                        return Err(e.clone());
+                    // Every lent seg goes back, whatever happened; copies only when all went well.
+                    let failed = done.iter().find_map(|(r, ..)| r.as_ref().err()).cloned();
+                    for ((c, at, _), (_, sub, with, parent)) in work.iter().zip(done) {
+                        match parent {
+                            Some(parent) => body.unlend(*c, sub, parent),
+                            None if failed.is_none() => body.graft(*c, *at, sub, with),
+                            None => {}
+                        }
                     }
-                    for ((c, at, _), (_, sub, with)) in work.iter().zip(done) {
-                        body.graft(*c, *at, sub, with);
+                    if let Some(e) = failed {
+                        return Err(e);
                     }
                 }
             }
@@ -602,7 +623,10 @@ impl<'a> Body<'a> {
                 sub[root].set(&n.name, n.value.clone().unwrap_or(mlirformat::Attribute::Unit));
             }
         }
+        // In a seg of its own, as its entry 0: back in this body, it can be lent from then on.
+        sub.home = sub.new_seg(crate::Seg::default());
         let moved = sub.transplant(self, op);
+        sub.home = crate::Id::seg(sub.root);
         let block = sub.top_block(sub.root);
         sub.insert(moved, block, None);
         (sub, moved)
@@ -756,6 +780,9 @@ pub struct Invocation {
     /// Made once: sizing it asks the OS (cgroups, affinity), too slow to repeat per chunk.
     #[cfg(feature = "std")]
     pub pool: crate::ThreadPool,
+    /// Reads a big chunk's ops in parallel; started the first time one is read.
+    #[cfg(feature = "std")]
+    pub reader: std::sync::OnceLock<mlirformat::ThreadMulti>,
 }
 
 /// Flags that change nothing this crate does.
@@ -764,7 +791,7 @@ const IGNORED: &[&str] = &["allow-unregistered-dialect", "verify-each", "mlir-pr
 impl Invocation {
     /// The `mlir-opt` arguments `args`, the passes named from `reg`.
     pub fn parse<S: AsRef<str>>(reg: &dyn crate::PassRegistry, args: &[S]) -> Result<Self, Error> {
-        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, local_scope: false, verify_diagnostics: false, input: None, output: None, threading: true, #[cfg(feature = "std")] pool: crate::ThreadPool::default() };
+        let mut inv = Invocation { pipeline: PassManager::on("builtin.module"), split: None, generic: false, debuginfo: false, local_scope: false, verify_diagnostics: false, input: None, output: None, threading: true, #[cfg(feature = "std")] pool: crate::ThreadPool::default(), #[cfg(feature = "std")] reader: std::sync::OnceLock::new() };
         let mut it = args.iter().map(AsRef::as_ref);
         while let Some(arg) = it.next() {
             let Some(flag) = arg.strip_prefix('-').filter(|f| !f.is_empty()) else {
@@ -823,13 +850,22 @@ impl Invocation {
     /// ⭐ One chunk: parse, run the pipeline, and print as the flags say. `Ok("")`: the chunk
     /// failed as `-verify-diagnostics` expected it to.
     pub fn run_chunk(&self, ctx: Ctx<'_>, chunk: &str) -> Result<String, Error> {
-        let mut body = Body::parse(ctx, chunk)?;
+        let mut body = self.read(ctx, chunk)?;
         let root = body.root;
         match self.pipeline.run_on(&mut body, root, self.executor()) {
             Ok(()) => Ok(self.print(&mut body)),
             Err(_) if self.verify_diagnostics && chunk.contains("expected-error") => Ok(String::new()),
             Err(e) => Err(e),
         }
+    }
+
+    /// A chunk as a body: its ops read on [`Invocation::reader`] when threading and big enough.
+    pub fn read<'a>(&self, ctx: Ctx<'a>, chunk: &'a str) -> Result<Body<'a>, Error> {
+        #[cfg(feature = "std")]
+        if self.threading && chunk.len() >= mlirformat::MlirOpt::PARALLEL_BYTES {
+            return Body::parse_in(ctx, chunk, self.reader.get_or_init(mlirformat::ThreadMulti::default));
+        }
+        Body::parse(ctx, chunk)
     }
 
     /// What runs nested pipelines: a thread pool unless threading is off (or there is no `std`).

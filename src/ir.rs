@@ -1,7 +1,10 @@
-//! ⭐ The mutable IR: one arena per [`Body`], everything else is an index into it.
+//! ⭐ The mutable IR: arenas, one per function ([`Seg`]), everything else an index into them.
 //!
 //! ```text
-//! Body        the arena + its root op (always a `builtin.module`)
+//! Body        the arenas + its root op (always a `builtin.module`)
+//! Seg         one arena of each kind: the module's own level (seg 0), or one function (an
+//!             isolated op in the root's block) with everything in it; moved whole, never copied
+//! ids         (seg, index): the seg in the high half
 //! OpId        one operation: name, operands, results, successors, properties, regions, attributes
 //! BlockId     arguments + ops in order, inside one region
 //! RegionId    blocks in order, inside one op
@@ -21,41 +24,66 @@ use core::ops::{Index, IndexMut};
 
 use mlirformat::{Attribute, Block, BlockArg, Error, Extended, FunctionType, IntoStatic, Item, MlirOpt, Module, NamedAttr, Operation, Reborrow, Region, ResultDef, Source, Str, Type, Value};
 
-/// Index newtypes into the arena, each with `Index` / `IndexMut` on [`Body`]; `IndexMut` saves the
+/// Where an entity lives: its seg ([`Seg`]) and its index in that seg's arena of its kind.
+pub trait Id: Copy {
+    fn seg(self) -> u32;
+    fn index(self) -> u32;
+}
+
+/// Index newtypes into the arenas, each with `Index` / `IndexMut` on [`Body`]; `IndexMut` saves the
 /// entry's old value first while a [`Checkpoint`] is open (see [`Journal`]).
 macro_rules! ids {
     ($($(#[$m:meta])* $id:ident => $data:ident $(<$lt:lifetime>)?, $field:ident, $kind:ident;)*) => {$(
         $(#[$m])*
+        /// Its seg in the high half, its index in the seg in the low half: ids order by seg, then
+        /// by creation in the seg.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        pub struct $id(pub u32);
+        pub struct $id(pub(crate) u64);
 
-        impl From<$id> for usize {
-            fn from(id: $id) -> usize {
-                id.0 as usize
+        impl $id {
+            /// Entry `index` of seg `seg`.
+            #[inline]
+            pub(crate) const fn at(seg: u32, index: u32) -> Self {
+                Self(((seg as u64) << 32) | index as u64)
+            }
+        }
+
+        impl Id for $id {
+            #[inline]
+            fn seg(self) -> u32 {
+                (self.0 >> 32) as u32
+            }
+
+            #[inline]
+            fn index(self) -> u32 {
+                self.0 as u32
             }
         }
 
         impl<'a> Index<$id> for Body<'a> {
             type Output = $data $(<$lt>)?;
+            #[inline]
             fn index(&self, id: $id) -> &Self::Output {
-                &self.$field[usize::from(id)]
+                &self.seg(id.seg()).$field[id.index() as usize]
             }
         }
 
         impl<'a> IndexMut<$id> for Body<'a> {
+            #[inline]
             fn index_mut(&mut self, id: $id) -> &mut Self::Output {
-                let i = usize::from(id);
-                if self.journal.saves(Kind::$kind, i) {
-                    self.journal.undo.push(Undo::Saved(alloc::boxed::Box::new(Saved::$kind(i, self.$field[i].clone()))));
+                let (s, i) = (id.seg(), id.index() as usize);
+                if self.journal.depth > 0 && self.saves(Kind::$kind, s, i) {
+                    let old = self.seg(s).$field[i].clone();
+                    self.journal.undo.push(Undo::Saved(alloc::boxed::Box::new(Saved::$kind(id, old))));
                 }
-                &mut self.$field[i]
+                &mut self.seg_mut(s).$field[i]
             }
         }
     )*};
 
-    (@saved $($kind:ident => $data:ident $(<$lt:lifetime>)?, $field:ident;)*) => {
+    (@saved $($kind:ident => $id:ident, $data:ident $(<$lt:lifetime>)?, $field:ident;)*) => {
         /// Which arena an entry lives in.
-        #[derive(Debug, Clone, Copy)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         enum Kind {
             $($kind),*
         }
@@ -63,14 +91,30 @@ macro_rules! ids {
         /// An arena entry's value before the first write after a checkpoint.
         #[derive(Debug, Clone)]
         enum Saved<'a> {
-            $($kind(usize, $data $(<$lt>)?)),*
+            $($kind($id, $data $(<$lt>)?)),*
         }
 
         impl Saved<'_> {
-            /// The arena and the entry.
-            fn slot(&self) -> (Kind, usize) {
+            /// The arena, the seg and the entry.
+            fn slot(&self) -> (Kind, u32, usize) {
                 match self {
-                    $(Saved::$kind(i, _) => (Kind::$kind, *i)),*
+                    $(Saved::$kind(id, _) => (Kind::$kind, id.seg(), id.index() as usize)),*
+                }
+            }
+        }
+
+        impl Seg<'_> {
+            /// How many entries its arena `kind` holds.
+            fn len(&self, kind: Kind) -> usize {
+                match kind {
+                    $(Kind::$kind => self.$field.len()),*
+                }
+            }
+
+            /// Drops the entries of arena `kind` from `len` on.
+            fn truncate(&mut self, kind: Kind, len: usize) {
+                match kind {
+                    $(Kind::$kind => self.$field.truncate(len)),*
                 }
             }
         }
@@ -79,20 +123,8 @@ macro_rules! ids {
             /// Puts a saved value back (rollback).
             fn restore(&mut self, saved: Saved<'a>) {
                 match saved {
-                    $(Saved::$kind(i, d) => self.$field[i] = d),*
+                    $(Saved::$kind(id, d) => self.seg_mut(id.seg()).$field[id.index() as usize] = d),*
                 }
-            }
-
-            /// The arenas' lengths, in [`Kind`] order.
-            fn lens(&self) -> [usize; 4] {
-                [$(self.$field.len()),*]
-            }
-
-            /// Drops what was appended after `lens`.
-            fn truncate(&mut self, lens: [usize; 4]) {
-                let mut k = 0;
-                $(self.$field.truncate(lens[k]); k += 1;)*
-                let _ = k;
             }
         }
     };
@@ -105,13 +137,12 @@ ids! {
     ValueId => ValueData<'a>, values, Value;
 }
 
-/// Where the ids of an absorbed body moved ([`Body::absorb`]): each arena's offset.
+/// Where the segs of an absorbed body went ([`Body::absorb`]): seg `from` and those after it
+/// are now seg `to` and those after it.
 #[derive(Debug, Clone, Copy)]
 pub struct Offsets {
-    pub op: u32,
-    pub block: u32,
-    pub region: u32,
-    pub value: u32,
+    pub from: u32,
+    pub to: u32,
 }
 
 /// An arena entry (or an id in one) with every id it holds moved by [`Offsets`].
@@ -120,16 +151,17 @@ pub trait Shift {
 }
 
 macro_rules! shift_ids {
-    ($($id:ident => $f:ident),*) => {$(
+    ($($id:ident),*) => {$(
         impl Shift for $id {
+            #[inline]
             fn shift(self, o: &Offsets) -> Self {
-                $id(self.0 + o.$f)
+                $id::at(self.seg() - o.from + o.to, self.index())
             }
         }
     )*};
 }
 
-shift_ids!(OpId => op, BlockId => block, RegionId => region, ValueId => value);
+shift_ids!(OpId, BlockId, RegionId, ValueId);
 
 impl<T: Shift> Shift for Vec<T> {
     fn shift(self, o: &Offsets) -> Self {
@@ -177,12 +209,74 @@ impl Shift for Def {
     }
 }
 
+/// A seg moved whole: its entries shifted, its journal state left behind.
+impl<'a> Shift for Seg<'a> {
+    fn shift(self, o: &Offsets) -> Self {
+        Seg { ops: self.ops.shift(o), blocks: self.blocks.shift(o), regions: self.regions.shift(o), values: self.values.shift(o), mixed: self.mixed, ..Seg::default() }
+    }
+}
+
 ids! {
     @saved
-    Op => OpData<'a>, ops;
-    Block => BlockData, blocks;
-    Region => RegionData, regions;
-    Value => ValueData<'a>, values;
+    Op => OpId, OpData<'a>, ops;
+    Block => BlockId, BlockData, blocks;
+    Region => RegionId, RegionData, regions;
+    Value => ValueId, ValueData<'a>, values;
+}
+
+/// ⭐ A table by id, one `Vec` per seg, each as long as the highest index written in it: what a
+/// `Vec` indexed by id was while there was one arena.
+#[derive(Debug, Clone)]
+pub struct IdVec<K, T> {
+    /// The seg `segs[0]` is.
+    base: u32,
+    segs: Vec<Vec<T>>,
+    /// What an entry never written reads as.
+    fill: T,
+    _k: core::marker::PhantomData<K>,
+}
+
+impl<K: Id, T: Clone + Default> Default for IdVec<K, T> {
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
+
+impl<K: Id, T: Clone> IdVec<K, T> {
+    /// Every entry `fill`.
+    pub fn new(fill: T) -> Self {
+        Self { base: 0, segs: Vec::new(), fill, _k: core::marker::PhantomData }
+    }
+
+    #[inline]
+    pub fn get(&self, k: K) -> &T {
+        self.segs.get(k.seg().wrapping_sub(self.base) as usize).and_then(|s| s.get(k.index() as usize)).unwrap_or(&self.fill)
+    }
+
+    /// Entry `k`, the table grown to hold it.
+    pub fn get_mut(&mut self, k: K) -> &mut T {
+        let seg = k.seg();
+        if self.segs.is_empty() {
+            self.base = seg;
+        } else if seg < self.base {
+            self.segs.splice(0..0, (seg..self.base).map(|_| Vec::new()));
+            self.base = seg;
+        }
+        let s = (seg - self.base) as usize;
+        if self.segs.len() <= s {
+            self.segs.resize_with(s + 1, Vec::new);
+        }
+        let (row, i) = (&mut self.segs[s], k.index() as usize);
+        if row.len() <= i {
+            row.resize(i + 1, self.fill.clone());
+        }
+        &mut row[i]
+    }
+
+    #[inline]
+    pub fn set(&mut self, k: K, v: T) {
+        *self.get_mut(k) = v;
+    }
 }
 
 /// One entry of the undo log.
@@ -192,11 +286,14 @@ enum Undo<'a> {
     /// hundreds of bytes, the other entries a few words).
     Saved(alloc::boxed::Box<Saved<'a>>),
     /// An op went into block `block` at `at`.
-    Inserted { block: usize, at: usize },
+    Inserted { block: BlockId, at: usize },
     /// `op` came out of block `block` at `at`.
-    Removed { block: usize, at: usize, op: OpId },
+    Removed { block: BlockId, at: usize, op: OpId },
     /// `len` ops moved from block `from` (at `at_from`) into block `to` (at `at_to`) in one go.
-    Spliced { from: usize, at_from: usize, to: usize, at_to: usize, len: usize },
+    Spliced { from: BlockId, at_from: usize, to: BlockId, at_to: usize, len: usize },
+    /// Arena `kind` of seg `seg` held `len` entries when it first grew under a checkpoint: what a
+    /// rollback truncates it back to.
+    Grew { seg: u32, kind: Kind, len: usize },
 }
 
 /// ⭐ Undo log for cheap rollback: while a [`Checkpoint`] is open, the first write to an entry
@@ -210,7 +307,11 @@ enum Undo<'a> {
 ///
 /// Checkpoints nest: each one is an epoch, and an entry is saved at most once per epoch. A
 /// checkpoint released into the outermost one leaves only the saves the outermost one lacks
-/// ([`Journal::compact`]): a conversion's whole-run checkpoint holds one save per entry touched.
+/// ([`Body::compact`]): a conversion's whole-run checkpoint holds one save per entry touched.
+///
+/// Each seg keeps what concerns its own entries ([`Seg`]): when each was made (a checkpoint's
+/// mark tells the entries that existed when it was taken), the epochs each was saved in, and
+/// under which mark each arena last grew (one [`Undo::Grew`] per arena and checkpoint).
 #[derive(Debug, Clone, Default)]
 pub struct Journal<'a> {
     undo: Vec<Undo<'a>>,
@@ -218,15 +319,14 @@ pub struct Journal<'a> {
     depth: u32,
     epoch: u32,
     next_epoch: u32,
-    /// The arenas' lengths when the innermost open checkpoint was taken.
-    lens: [usize; 4],
-    /// Per arena and entry, the epoch it was last saved in.
-    saved: [Vec<u32>; 4],
-    /// Per arena and entry, the outermost epoch it was saved in: what an inner checkpoint's
-    /// saves are checked against when it is released into the outermost one.
-    outer: [Vec<u32>; 4],
     /// The outermost open checkpoint's epoch.
     outer_epoch: u32,
+    /// Ticks once per checkpoint taken.
+    clock: u32,
+    /// The clock when the innermost open checkpoint was taken: an entry made before it existed.
+    mark: u32,
+    /// The outermost open checkpoint's mark.
+    outer_mark: u32,
 }
 
 /// A journal compares equal to any other: bodies compare by their IR.
@@ -236,66 +336,46 @@ impl PartialEq for Journal<'_> {
     }
 }
 
-impl Journal<'_> {
-    /// Whether a write to entry `i` of `kind` must save its old value first (and marks it saved).
-    fn saves(&mut self, kind: Kind, i: usize) -> bool {
-        let k = kind as usize;
-        if self.depth == 0 || i >= self.lens[k] {
-            return false;
-        }
-        let (saved, epoch) = if self.depth == 1 { (&mut self.outer[k], self.outer_epoch) } else { (&mut self.saved[k], self.epoch) };
-        if saved.len() <= i {
-            saved.resize(i + 1, u32::MAX);
-        }
-        let fresh = saved[i] != epoch;
-        saved[i] = epoch;
-        fresh
-    }
-
-    /// An inner checkpoint taken at `from` in the log was released into the outermost one: of
-    /// its saves, those of entries the outermost one saved already, or that did not exist when
-    /// it was taken (its rollback truncates them), go. Every entry then has one save, however
-    /// many attempts touched it. A block's save stays: its op list is also undone edit by
-    /// edit, and those edits need every list they were made on.
-    fn compact(&mut self, from: usize) {
-        let (lens, epoch) = (self.lens, self.outer_epoch);
-        let mut kept = from;
-        for r in from..self.undo.len() {
-            let keep = match &self.undo[r] {
-                Undo::Saved(saved) => match saved.slot() {
-                    (Kind::Block, _) => true,
-                    (kind, i) => {
-                        let outer = &mut self.outer[kind as usize];
-                        if outer.len() <= i {
-                            outer.resize(i + 1, u32::MAX);
-                        }
-                        let fresh = i < lens[kind as usize] && outer[i] != epoch;
-                        if fresh {
-                            outer[i] = epoch;
-                        }
-                        fresh
-                    }
-                },
-                _ => true,
-            };
-            if keep {
-                self.undo.swap(kept, r);
-                kept += 1;
-            }
-        }
-        self.undo.truncate(kept);
-    }
-}
-
 /// ⭐ A point to roll a [`Body`] back to ([`Body::checkpoint`]); every one is closed exactly once,
 /// by [`Body::rollback`] or [`Body::release`], innermost first.
 #[derive(Debug)]
 #[must_use = "a checkpoint is closed by rollback or release"]
 pub struct Checkpoint {
     undo: usize,
-    lens: [usize; 4],
-    outer_epoch: u32,
-    outer_lens: [usize; 4],
+    /// The enclosing checkpoint's epoch and mark, restored when this one closes.
+    prev_epoch: u32,
+    prev_mark: u32,
+}
+
+/// ⭐ One arena of each kind: the module's own level (seg 0), or one isolated op that is a child
+/// of the root (a function) and everything in it, the op itself its entry 0. A seg moves whole
+/// ([`Body::lend`]): an op's body changes hands without a copy, and ids stay what they are.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Seg<'a> {
+    ops: Vec<OpData<'a>>,
+    blocks: Vec<BlockData>,
+    regions: Vec<RegionData>,
+    values: Vec<ValueData<'a>>,
+    /// An entity of another seg was linked in (other than its entry 0 into its parent's block):
+    /// the seg no longer holds its op alone, and is not lent.
+    mixed: bool,
+    /// Per arena, the mark an entry was made under while a checkpoint was open (an entry past
+    /// the end was made outside any).
+    born: [Vec<u32>; 4],
+    /// Per arena and entry, the epoch it was last saved in.
+    saved: [Vec<u32>; 4],
+    /// Per arena and entry, the outermost epoch it was saved in: what an inner checkpoint's
+    /// saves are checked against when it is released into the outermost one.
+    outer: [Vec<u32>; 4],
+    /// Per arena, the mark its growth was last logged under ([`Undo::Grew`]).
+    grown: [u32; 4],
+}
+
+/// Segs compare by their IR.
+impl PartialEq for Seg<'_> {
+    fn eq(&self, o: &Self) -> bool {
+        self.ops == o.ops && self.blocks == o.blocks && self.regions == o.regions && self.values == o.values
+    }
 }
 
 /// The ids an op or a block holds (operands, results, successors, regions, arguments, blocks):
@@ -391,15 +471,18 @@ impl PartialEq for Ctx<'_> {
     }
 }
 
-/// ⭐ The arena. Erased entities stay in it (ids are never reused), detached from everything.
+/// ⭐ The arenas, one [`Seg`] per function. Erased entities stay in them (ids are never reused),
+/// detached from everything.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Body<'a> {
     /// What the context knows of ops (traits, effects, inherent attributes, dialects).
     pub ctx: Ctx<'a>,
-    ops: Vec<OpData<'a>>,
-    blocks: Vec<BlockData>,
-    regions: Vec<RegionData>,
-    values: Vec<ValueData<'a>>,
+    /// Seg `seg0 + i` is `segs[i]`: a body lent one function holds just its segs ([`Body::lend`]).
+    segs: Vec<Seg<'a>>,
+    seg0: u32,
+    /// The seg new ops are made in ([`Body::create`]); blocks, regions and values go to the seg
+    /// of what holds them.
+    pub(crate) home: u32,
     /// The `builtin.module` everything hangs off.
     pub root: OpId,
     /// Module items that are not IR: `{-# ... #-}` bodies, and the aliases the input defined
@@ -448,7 +531,7 @@ impl<'a> Body<'a> {
     }
 }
 
-impl Body<'_> {
+impl<'a> Body<'a> {
     /// The single block of a symbol table op like `builtin.module`.
     pub fn top_block(&self, op: OpId) -> BlockId {
         self[self[op].regions[0]].blocks[0]
@@ -458,17 +541,17 @@ impl Body<'_> {
     /// this point (what `*body = snapshot` did, at the cost of what changed since).
     pub fn checkpoint(&mut self) -> Checkpoint {
         let j = &mut self.journal;
-        let cp = Checkpoint { undo: j.undo.len(), lens: [0; 4], outer_epoch: j.epoch, outer_lens: j.lens };
-        let lens = self.lens();
-        let j = &mut self.journal;
+        let cp = Checkpoint { undo: j.undo.len(), prev_epoch: j.epoch, prev_mark: j.mark };
         j.depth += 1;
         j.next_epoch += 1;
         j.epoch = j.next_epoch;
-        j.lens = lens;
+        j.clock += 1;
+        j.mark = j.clock;
         if j.depth == 1 {
             j.outer_epoch = j.epoch;
+            j.outer_mark = j.mark;
         }
-        Checkpoint { lens, ..cp }
+        cp
     }
 
     /// ⭐ Brings the IR back to `cp` and closes it.
@@ -477,16 +560,16 @@ impl Body<'_> {
             match self.journal.undo.pop().expect("longer than the mark") {
                 Undo::Saved(saved) => self.restore(*saved),
                 Undo::Inserted { block, at } => {
-                    self.blocks[block].ops.remove(at);
+                    self.ops_of(block).remove(at);
                 }
-                Undo::Removed { block, at, op } => self.blocks[block].ops.insert(at, op),
+                Undo::Removed { block, at, op } => self.ops_of(block).insert(at, op),
                 Undo::Spliced { from, at_from, to, at_to, len } => {
-                    let moved: Vec<OpId> = self.blocks[to].ops.drain(at_to..at_to + len).collect();
-                    self.blocks[from].ops.splice(at_from..at_from, moved);
+                    let moved: Vec<OpId> = self.ops_of(to).drain(at_to..at_to + len).collect();
+                    self.ops_of(from).splice(at_from..at_from, moved);
                 }
+                Undo::Grew { seg, kind, len } => self.seg_mut(seg).truncate(kind, len),
             }
         }
-        self.truncate(cp.lens);
         self.close(&cp);
     }
 
@@ -498,13 +581,189 @@ impl Body<'_> {
     fn close(&mut self, cp: &Checkpoint) {
         let j = &mut self.journal;
         j.depth -= 1;
-        j.epoch = cp.outer_epoch;
-        j.lens = cp.outer_lens;
+        j.epoch = cp.prev_epoch;
+        j.mark = cp.prev_mark;
         match j.depth {
             0 => j.undo.clear(),
-            1 => j.compact(cp.undo),
+            1 => self.compact(cp.undo),
             _ => {}
         }
+    }
+
+    /// Whether entry `i` of seg `s`'s arena `kind` existed when the checkpoint at `mark` was taken.
+    fn existed(&self, kind: Kind, s: u32, i: usize, mark: u32) -> bool {
+        self.seg(s).born[kind as usize].get(i).is_none_or(|b| *b < mark)
+    }
+
+    /// Whether a write to entry `i` of seg `s`'s `kind` must save its old value first (and marks
+    /// it saved).
+    fn saves(&mut self, kind: Kind, s: u32, i: usize) -> bool {
+        let j = &self.journal;
+        if j.depth == 0 || !self.existed(kind, s, i, j.mark) {
+            return false;
+        }
+        let (outer, epoch) = (j.depth == 1, if j.depth == 1 { j.outer_epoch } else { j.epoch });
+        let seg = self.seg_mut(s);
+        let saved = if outer { &mut seg.outer[kind as usize] } else { &mut seg.saved[kind as usize] };
+        if saved.len() <= i {
+            saved.resize(i + 1, u32::MAX);
+        }
+        let fresh = saved[i] != epoch;
+        saved[i] = epoch;
+        fresh
+    }
+
+    /// An inner checkpoint taken at `from` in the log was released into the outermost one: of
+    /// its saves, those of entries the outermost one saved already, or that did not exist when
+    /// it was taken (its rollback truncates them), go. Every entry then has one save, however
+    /// many attempts touched it. A block's save stays: its op list is also undone edit by
+    /// edit, and those edits need every list they were made on.
+    fn compact(&mut self, from: usize) {
+        let (mark, epoch) = (self.journal.outer_mark, self.journal.outer_epoch);
+        let mut undo = core::mem::take(&mut self.journal.undo);
+        let mut kept = from;
+        for r in from..undo.len() {
+            let keep = match &undo[r] {
+                Undo::Saved(saved) => match saved.slot() {
+                    (Kind::Block, ..) => true,
+                    (kind, s, i) => {
+                        let existed = self.existed(kind, s, i, mark);
+                        let outer = &mut self.seg_mut(s).outer[kind as usize];
+                        if outer.len() <= i {
+                            outer.resize(i + 1, u32::MAX);
+                        }
+                        let fresh = existed && outer[i] != epoch;
+                        if fresh {
+                            outer[i] = epoch;
+                        }
+                        fresh
+                    }
+                },
+                _ => true,
+            };
+            if keep {
+                undo.swap(kept, r);
+                kept += 1;
+            }
+        }
+        undo.truncate(kept);
+        self.journal.undo = undo;
+    }
+
+    /// The next index of seg `s`'s arena `kind`, about to be appended: under a checkpoint, the
+    /// entry is stamped with its mark and the arena's growth logged once per checkpoint.
+    fn grow(&mut self, kind: Kind, s: u32) -> u32 {
+        let (depth, mark) = (self.journal.depth, self.journal.mark);
+        let seg = self.seg_mut(s);
+        let len = seg.len(kind);
+        if depth > 0 {
+            let k = kind as usize;
+            let born = &mut seg.born[k];
+            if born.len() <= len {
+                born.resize(len + 1, 0);
+            }
+            born[len] = mark;
+            if seg.grown[k] != mark {
+                seg.grown[k] = mark;
+                self.journal.undo.push(Undo::Grew { seg: s, kind, len });
+            }
+        }
+        len as u32
+    }
+
+    #[inline]
+    fn seg(&self, s: u32) -> &Seg<'a> {
+        &self.segs[s.wrapping_sub(self.seg0) as usize]
+    }
+
+    #[inline]
+    fn seg_mut(&mut self, s: u32) -> &mut Seg<'a> {
+        let i = s.wrapping_sub(self.seg0) as usize;
+        &mut self.segs[i]
+    }
+
+    /// `block`'s op list, written without the journal (what logs it does so itself).
+    #[inline]
+    fn ops_of(&mut self, block: BlockId) -> &mut Vec<OpId> {
+        &mut self.seg_mut(block.seg()).blocks[block.index() as usize].ops
+    }
+
+    /// Notes that segs `a` and `b` now refer to each other: neither holds its op alone.
+    fn link(&mut self, a: u32, b: u32) {
+        if a != b {
+            for s in [a, b] {
+                if let Some(seg) = self.segs.get_mut(s.wrapping_sub(self.seg0) as usize) {
+                    seg.mixed = true;
+                }
+            }
+        }
+    }
+
+    /// A new seg, `seg`; its number.
+    pub(crate) fn new_seg(&mut self, seg: Seg<'a>) -> u32 {
+        self.segs.push(seg);
+        self.seg0 + self.segs.len() as u32 - 1
+    }
+
+    /// ⭐ Whether `op`'s seg can be lent out alone ([`Body::lend`]): `op` is its seg's own op (a
+    /// function), nothing of another seg was linked into the seg, and `op` neither uses a value
+    /// from outside nor has a result used there.
+    pub fn lendable(&self, op: OpId) -> bool {
+        op.index() == 0
+            && op.seg() != self.root.seg()
+            && self.segs.get(op.seg().wrapping_sub(self.seg0) as usize).is_some_and(|s| !s.mixed && !s.ops.is_empty())
+            && self[op].operands.is_empty()
+            && self[op].results.iter().all(|r| self[*r].uses.is_empty())
+    }
+
+    /// ⭐ `op`'s seg moved into a body of its own ([`Body::lendable`]), under a module carrying the
+    /// discardable attributes of `op`'s ancestors (the nearest wins: what `DataLayout::closest`
+    /// reads), and the block `op` was in. Nothing is copied: the seg itself moves, ids and all,
+    /// and [`Body::unlend`] moves it back. The module is in a seg of its own, numbered just below
+    /// `op`'s: the lent body holds no other seg, so the number is free there.
+    pub fn lend(&mut self, op: OpId) -> Option<(Body<'a>, Option<BlockId>)> {
+        if !self.lendable(op) {
+            return None;
+        }
+        let mut ancestors = Vec::new();
+        let mut at = self.parent_op(op);
+        while let Some(a) = at {
+            ancestors.push(a);
+            at = self.parent_op(a);
+        }
+        let attrs: Vec<NamedAttr<'a>> = ancestors.into_iter().rev().flat_map(|a| self[a].attributes.iter().cloned()).collect();
+        let (s, parent) = (op.seg(), self[op].parent);
+        let seg = self.take_seg(s);
+        let mut sub = Body { ctx: self.ctx, segs: alloc::vec![Seg::default(), seg], seg0: s - 1, home: s - 1, root: OpId::at(s - 1, 0), items: Vec::new(), journal: Journal::default() };
+        let root = sub.create(OpData::named("builtin.module"), &[]);
+        sub.root = root;
+        for n in attrs {
+            sub[root].set(&n.name, n.value.unwrap_or(Attribute::Unit));
+        }
+        let region = sub.add_region(root);
+        let block = sub.add_block(region, &[]);
+        sub.ops_of(block).push(op);
+        sub[op].parent = Some(block);
+        sub.home = s;
+        Some((sub, parent))
+    }
+
+    /// `op`'s seg back from the body [`Body::lend`] gave it to, `op` back in `parent`.
+    pub fn unlend(&mut self, op: OpId, mut sub: Body<'a>, parent: Option<BlockId>) {
+        debug_assert_eq!(sub.segs.len(), 2, "a lent body makes no seg");
+        let seg = sub.segs.pop().expect("the lent seg");
+        self.put_seg(op.seg(), seg);
+        self[op].parent = parent;
+    }
+
+    /// Seg `s` taken out, an empty one left in its place.
+    fn take_seg(&mut self, s: u32) -> Seg<'a> {
+        core::mem::take(self.seg_mut(s))
+    }
+
+    /// Seg `s` put back.
+    fn put_seg(&mut self, s: u32, seg: Seg<'a>) {
+        *self.seg_mut(s) = seg;
     }
 }
 
@@ -660,7 +919,7 @@ impl<'a> OpData<'a> {
 impl<'a> Body<'a> {
     /// An empty `builtin.module` with one empty block.
     pub fn new(ctx: Ctx<'a>) -> Self {
-        let mut body = Self { ctx, ops: Vec::new(), blocks: Vec::new(), regions: Vec::new(), values: Vec::new(), root: OpId(0), journal: Journal::default(), items: Vec::new() };
+        let mut body = Self { ctx, segs: alloc::vec![Seg::default()], seg0: 0, home: 0, root: OpId::at(0, 0), journal: Journal::default(), items: Vec::new() };
         body.root = body.create(OpData::named("builtin.module"), &[]);
         let region = body.add_region(body.root);
         body.add_block(region, &[]);
@@ -699,31 +958,32 @@ impl<'a> Body<'a> {
 
     /// [`push_op`](Self::push_op) with `data.info` already this context's.
     fn push_known(&mut self, data: OpData<'a>, types: impl IntoIterator<Item = Type<'a>>) -> OpId {
-        let id = OpId(self.ops.len() as u32);
+        let s = self.home;
+        let id = OpId::at(s, self.grow(Kind::Op, s));
         for (index, v) in data.operands.iter().enumerate() {
+            self.link(s, v.seg());
             self[*v].uses.push(Use { op: id, index: index as u32 });
         }
-        self.ops.push(OpData { results: crate::Ids::new(), ..data });
+        self.seg_mut(s).ops.push(OpData { results: crate::Ids::new(), ..data });
         let results = types.into_iter().enumerate().map(|(i, ty)| self.value(ty, Def::Result(id, i as u32), None)).collect();
         self[id].results = results;
         id
     }
 
-    /// ⭐ Moves every entry of `from` into this body, ids shifted past this body's own; the
-    /// returned offsets say where `from`'s ids now are ([`Shift`]). Nothing is copied or looked
-    /// up op by op: what moving an isolated op back from a body of its own costs
-    /// ([`crate::parallel`]). `from`'s root and its block come along, detached and unused.
+    /// ⭐ Moves the segs of `from` into this body, after its own, ids shifted to their new seg
+    /// numbers; the returned offsets say where `from`'s ids now are ([`Shift`]). Nothing is
+    /// copied or looked up op by op. `from`'s root and its block come along, detached and unused.
     pub fn absorb(&mut self, from: Body<'a>) -> Offsets {
-        let o = Offsets { op: self.ops.len() as u32, block: self.blocks.len() as u32, region: self.regions.len() as u32, value: self.values.len() as u32 };
+        let o = Offsets { from: from.seg0, to: self.seg0 + self.segs.len() as u32 };
         let same = core::ptr::eq(self.ctx.opt, from.ctx.opt);
         let opt = self.ctx.opt;
-        self.ops.extend(from.ops.into_iter().map(|d| {
-            let info = if same { d.info } else { opt.op_info(&d.name) };
-            OpData { info, ..d.shift(&o) }
-        }));
-        self.blocks.extend(from.blocks.into_iter().map(|d| d.shift(&o)));
-        self.regions.extend(from.regions.into_iter().map(|d| d.shift(&o)));
-        self.values.extend(from.values.into_iter().map(|d| d.shift(&o)));
+        for seg in from.segs {
+            let mut seg = seg.shift(&o);
+            if !same {
+                seg.ops.iter_mut().for_each(|d| d.info = opt.op_info(&d.name));
+            }
+            self.segs.push(seg);
+        }
         o
     }
 
@@ -734,8 +994,9 @@ impl<'a> Body<'a> {
             self.insert_before(new, old);
             return self.detach(old);
         }
-        debug_assert_eq!(self.blocks[usize::from(block)].ops[at], old);
-        self.blocks[usize::from(block)].ops[at] = new;
+        debug_assert_eq!(self[block].ops[at], old);
+        self.ops_of(block)[at] = new;
+        self.linked(new, block);
         self[new].parent = Some(block);
         self[old].parent = None;
     }
@@ -799,15 +1060,22 @@ impl<'a> Body<'a> {
         d.attributes
     }
 
+    /// A new value, in the seg of what defines it.
     fn value(&mut self, ty: Type<'a>, def: Def, loc: Option<Str<'a>>) -> ValueId {
-        self.values.push(ValueData { ty, def, uses: Uses::new(), loc });
-        ValueId(self.values.len() as u32 - 1)
+        let s = match def {
+            Def::Result(op, _) => op.seg(),
+            Def::Arg(b, _) => b.seg(),
+        };
+        let id = ValueId::at(s, self.grow(Kind::Value, s));
+        self.seg_mut(s).values.push(ValueData { ty, def, uses: Uses::new(), loc });
+        id
     }
 
-    /// Appends an empty region to `op`.
+    /// Appends an empty region to `op` (in `op`'s seg).
     pub fn add_region(&mut self, op: OpId) -> RegionId {
-        self.regions.push(RegionData { blocks: crate::Ids::new(), parent: op });
-        let id = RegionId(self.regions.len() as u32 - 1);
+        let s = op.seg();
+        let id = RegionId::at(s, self.grow(Kind::Region, s));
+        self.seg_mut(s).regions.push(RegionData { blocks: crate::Ids::new(), parent: op });
         self[op].regions.push(id);
         id
     }
@@ -819,8 +1087,9 @@ impl<'a> Body<'a> {
 
     /// [`Body::add_block`] with arguments it takes over rather than copies.
     pub fn add_block_with(&mut self, region: RegionId, args: impl IntoIterator<Item = (Type<'a>, Option<Str<'a>>)>) -> BlockId {
-        let id = BlockId(self.blocks.len() as u32);
-        self.blocks.push(BlockData { parent: Some(region), ..BlockData::default() });
+        let s = region.seg();
+        let id = BlockId::at(s, self.grow(Kind::Block, s));
+        self.seg_mut(s).blocks.push(BlockData { parent: Some(region), ..BlockData::default() });
         let args = args.into_iter().enumerate().map(|(i, (ty, loc))| self.value(ty, Def::Arg(id, i as u32), loc)).collect();
         self[id].args = args;
         self[region].blocks.push(id);
@@ -849,18 +1118,27 @@ impl<'a> Body<'a> {
     /// Whether an edit of `block`'s op list goes into the undo log (a checkpoint is open and the
     /// block existed when it was taken; blocks made since are truncated away whole).
     fn logs(&self, block: BlockId) -> bool {
-        self.journal.depth > 0 && usize::from(block) < self.journal.lens[Kind::Block as usize]
+        self.journal.depth > 0 && self.existed(Kind::Block, block.seg(), block.index() as usize, self.journal.mark)
+    }
+
+    /// Notes `op` going into `block`: a link between their segs unless `op` is its seg's own
+    /// op (entry 0) going into its parent's block.
+    #[inline]
+    fn linked(&mut self, op: OpId, block: BlockId) {
+        if op.seg() != block.seg() && (op.index() != 0 || op.seg() == 0) {
+            self.link(op.seg(), block.seg());
+        }
     }
 
     /// Inserts detached `op` into `block` at position `at` (`None`: the end).
     pub fn insert(&mut self, op: OpId, block: BlockId, at: Option<usize>) {
         debug_assert!(self[op].parent.is_none(), "op is already placed");
-        let b = usize::from(block);
-        let at = at.unwrap_or(self.blocks[b].ops.len());
+        let at = at.unwrap_or(self[block].ops.len());
         if self.logs(block) {
-            self.journal.undo.push(Undo::Inserted { block: b, at });
+            self.journal.undo.push(Undo::Inserted { block, at });
         }
-        self.blocks[b].ops.insert(at, op);
+        self.ops_of(block).insert(at, op);
+        self.linked(op, block);
         self[op].parent = Some(block);
     }
 
@@ -868,15 +1146,15 @@ impl<'a> Body<'a> {
     /// go and in order; the moved ops. `from` and `to` differ.
     pub fn splice(&mut self, from: BlockId, range: core::ops::Range<usize>, to: BlockId, at: Option<usize>) -> Vec<OpId> {
         debug_assert_ne!(from, to, "splice within one block");
-        let (f, t) = (usize::from(from), usize::from(to));
         let at_from = range.start;
-        let moved: Vec<OpId> = self.blocks[f].ops.drain(range).collect();
-        let at = at.unwrap_or(self.blocks[t].ops.len());
+        let moved: Vec<OpId> = self.ops_of(from).drain(range).collect();
+        let at = at.unwrap_or(self[to].ops.len());
         if self.logs(from) || self.logs(to) {
-            self.journal.undo.push(Undo::Spliced { from: f, at_from, to: t, at_to: at, len: moved.len() });
+            self.journal.undo.push(Undo::Spliced { from, at_from, to, at_to: at, len: moved.len() });
         }
-        self.blocks[t].ops.splice(at..at, moved.iter().copied());
+        self.ops_of(to).splice(at..at, moved.iter().copied());
         for &o in &moved {
+            self.linked(o, to);
             self[o].parent = Some(to);
         }
         moved
@@ -886,7 +1164,7 @@ impl<'a> Body<'a> {
     pub fn detach_all(&mut self, ops: &[OpId]) {
         let mut by_block: alloc::collections::BTreeMap<BlockId, alloc::collections::BTreeSet<OpId>> = alloc::collections::BTreeMap::new();
         for &op in ops {
-            if let Some(block) = self.ops[usize::from(op)].parent {
+            if let Some(block) = self[op].parent {
                 by_block.entry(block).or_default().insert(op);
             }
         }
@@ -896,7 +1174,7 @@ impl<'a> Body<'a> {
                 gone.iter().for_each(|&op| self.detach(op));
                 continue;
             }
-            self.blocks[usize::from(block)].ops.retain(|o| !gone.contains(o));
+            self.ops_of(block).retain(|o| !gone.contains(o));
             for op in gone {
                 self[op].parent = None;
             }
@@ -934,13 +1212,12 @@ impl<'a> Body<'a> {
     /// Takes `op` out of its block, keeping it whole. Looks from the end: erasing a block's ops
     /// last first costs nothing per op.
     pub fn detach(&mut self, op: OpId) {
-        let Some(block) = self.ops[usize::from(op)].parent else { return };
-        let b = usize::from(block);
-        let at = self.blocks[b].ops.iter().rposition(|o| *o == op).expect("op not in its block");
+        let Some(block) = self[op].parent else { return };
+        let at = self[block].ops.iter().rposition(|o| *o == op).expect("op not in its block");
         if self.logs(block) {
-            self.journal.undo.push(Undo::Removed { block: b, at, op });
+            self.journal.undo.push(Undo::Removed { block, at, op });
         }
-        self.blocks[b].ops.remove(at);
+        self.ops_of(block).remove(at);
         self[op].parent = None;
     }
 
@@ -951,6 +1228,7 @@ impl<'a> Body<'a> {
         let old = self[op].operands[index];
         let u = Use { op, index: index as u32 };
         self[old].uses.retain(|x| *x != u);
+        self.link(op.seg(), v.seg());
         self[op].operands[index] = v;
         self[v].uses.push(u);
     }
@@ -960,6 +1238,7 @@ impl<'a> Body<'a> {
         let operands = operands.into();
         self.drop_uses(op);
         for (index, v) in operands.iter().enumerate() {
+            self.link(op.seg(), v.seg());
             self[*v].uses.push(Use { op, index: index as u32 });
         }
         self[op].operands = operands;
@@ -978,6 +1257,7 @@ impl<'a> Body<'a> {
             return;
         }
         for u in core::mem::take(&mut self[from].uses) {
+            self.link(u.op.seg(), to.seg());
             self[u.op].operands[u.index as usize] = to;
             self[to].uses.push(u);
         }
@@ -1345,14 +1625,16 @@ struct Pending<'a> {
 
 /// The state of one import. It owns the module and moves each piece into the body: names,
 /// attributes and types go over as they are (borrowing the text), and each op's text-side
-/// [`Operation`] is dropped as soon as it is in.
-struct Import<'a> {
+/// [`Operation`] is dropped as soon as it is in. The regions of isolated ops are imported
+/// apart, on `x` ([`Import::apart`]).
+struct Import<'i, 'a, X> {
     body: Body<'a>,
-    aliases: Aliases<'a>,
+    aliases: &'i Aliases<'a>,
     scopes: Vec<Scope<'a>>,
+    x: &'i X,
 }
 
-impl<'a> Import<'a> {
+impl<'i, 'a, X: mlirformat::Executor + Sync> Import<'i, 'a, X> {
     /// How many ops, values, blocks and regions `ops` hold, nested ones included: what the
     /// body's arenas are sized to up front, so that they do not grow by doubling (an arena
     /// half empty at its last doubling).
@@ -1414,30 +1696,117 @@ impl<'a> Import<'a> {
         Ok(Pending { id, operands, successors, regions })
     }
 
-    /// `ops` into `block`; returns them, to be finished once the whole scope is known.
+    /// `ops` into `block`; returns them, to be finished once the whole scope is known. An
+    /// isolated op placed in the root's block (a function) starts a seg of its own, as its
+    /// entry 0: everything in it is imported there ([`Import::finish`]).
     fn place(&mut self, block: BlockId, ops: Vec<Operation<'a>>, pending: &mut Vec<Pending<'a>>) -> Result<(), Error> {
         pending.reserve(ops.len());
+        let top = self.body.block_owner(block) == Some(self.body.root);
         for op in ops {
-            let p = self.shell(op)?;
+            let home = self.body.home;
+            if top && self.body.ctx.opt.op_info(&op.name).is_some_and(|i| i.has(crate::Trait::IsIsolatedFromAbove)) {
+                self.body.home = self.body.new_seg(Seg::default());
+            }
+            let p = self.shell(op);
+            self.body.home = home;
+            let p = p?;
             self.body.insert(p.id, block, None);
             pending.push(p);
         }
         Ok(())
     }
 
-    /// Operands, successors and regions of the ops of one scope.
-    fn finish(&mut self, pending: Vec<Pending<'a>>) -> Result<(), Error> {
+    /// Whether `op` starts a seg of its own here.
+    fn owns(&self, op: OpId) -> bool {
+        op.seg() != self.body.home
+    }
+
+    /// Operands, successors and regions of the ops of one scope. The regions of an op with a
+    /// seg of its own are imported into that seg alone: on `x`, all at once ([`Import::apart`]),
+    /// or here one after the other, the same way.
+    fn finish(&mut self, mut pending: Vec<Pending<'a>>) -> Result<(), Error> {
         self.scope().seal();
-        for p in pending {
+        let apart = self.apart(&mut pending);
+        for (p, done) in pending.into_iter().zip(apart) {
             let operands = p.operands.iter().map(|v| self.lookup(v)).collect::<Result<Vec<_>, _>>()?;
-            self.body.set_operands(p.id, operands);
             let scope = self.scopes.last().expect("no scope");
-            self.body[p.id].successors = p.successors.iter().map(|s| scope.label(s).ok_or_else(|| Error(format!("reference to an undefined block ^{s}")))).collect::<Result<_, _>>()?;
-            for r in p.regions {
-                self.region(p.id, r)?;
+            let successors = p.successors.iter().map(|s| scope.label(s).ok_or_else(|| Error(format!("reference to an undefined block ^{s}")))).collect::<Result<_, _>>()?;
+            let apart = done.is_some();
+            if let Some(seg) = done.transpose()? {
+                self.body.put_seg(p.id.seg(), seg);
+            }
+            self.body.set_operands(p.id, operands);
+            self.body[p.id].successors = successors;
+            if !apart && !p.regions.is_empty() {
+                if self.owns(p.id) {
+                    self.isolate(p.id, p.regions)?;
+                } else {
+                    for r in p.regions {
+                        self.region(p.id, r)?;
+                    }
+                }
             }
         }
         Ok(())
+    }
+
+    /// ⭐ The regions of the ops among `pending` with a seg of their own, each imported into its
+    /// seg as a task on `x`: the seg taken out of the body, filled, handed back (in `pending`'s
+    /// order; `None`: imported in [`Import::finish`]). Such an op is isolated: its regions name
+    /// nothing outside themselves, so a task needs none of this import's scopes, only its
+    /// aliases. On one thread, or with fewer than two such ops, nothing goes apart.
+    fn apart(&mut self, pending: &mut [Pending<'a>]) -> Vec<Option<Result<Seg<'a>, Error>>> {
+        let mut out: Vec<_> = pending.iter().map(|_| None).collect();
+        let picked: Vec<usize> = (0..pending.len()).filter(|i| self.owns(pending[*i].id) && !pending[*i].regions.is_empty()).collect();
+        if self.x.threads() <= 1 || picked.len() < 2 {
+            return out;
+        }
+        let (ctx, aliases, x) = (self.body.ctx, self.aliases, self.x);
+        let tasks: Vec<_> = picked
+            .iter()
+            .map(|i| {
+                let (op, regions) = (pending[*i].id, core::mem::take(&mut pending[*i].regions));
+                let seg = self.body.take_seg(op.seg());
+                move || Import::alone(ctx, aliases, x, op, seg, regions)
+            })
+            .collect();
+        for (i, r) in picked.into_iter().zip(x.execute(tasks)) {
+            out[i] = Some(r);
+        }
+        out
+    }
+
+    /// `op`'s `regions` imported into `seg`, `op`'s own (taken out of the body: a body of its own
+    /// holds it meanwhile), sized to them up front.
+    fn alone(ctx: crate::Ctx<'a>, aliases: &'i Aliases<'a>, x: &'i X, op: OpId, mut seg: Seg<'a>, regions: Vec<Region<'a>>) -> Result<Seg<'a>, Error> {
+        let mut n = [0, 0, 0, regions.len()];
+        for b in regions.iter().flat_map(|r| &r.blocks) {
+            n[2] += 1;
+            n[1] += b.args.len();
+            Self::census(&b.ops, &mut n);
+        }
+        seg.ops.reserve(n[0]);
+        seg.values.reserve(n[1]);
+        seg.blocks.reserve(n[2]);
+        seg.regions.reserve(n[3]);
+        let s = op.seg();
+        let body = Body { ctx, segs: alloc::vec![seg], seg0: s, home: s, root: op, items: Vec::new(), journal: crate::ir::Journal::default() };
+        let mut im = Import { body, aliases, scopes: alloc::vec![Scope::default()], x };
+        for r in regions {
+            im.region(op, r)?;
+        }
+        Ok(im.body.segs.pop().expect("its seg"))
+    }
+
+    /// [`Import::alone`] in place: `op`'s regions imported into its seg, with none of the
+    /// scopes around it.
+    fn isolate(&mut self, op: OpId, regions: Vec<Region<'a>>) -> Result<(), Error> {
+        let scopes = core::mem::replace(&mut self.scopes, alloc::vec![Scope::default()]);
+        let home = core::mem::replace(&mut self.body.home, op.seg());
+        let r = regions.into_iter().try_for_each(|r| self.region(op, r).map(|_| ()));
+        self.body.home = home;
+        self.scopes = scopes;
+        r
     }
 
     fn region(&mut self, op: OpId, r: Region<'a>) -> Result<RegionId, Error> {
@@ -1451,7 +1820,7 @@ impl<'a> Import<'a> {
                 break;
             }
             let Block { label, args, ops } = b;
-            let Import { body, aliases, scopes } = self;
+            let Import { body, aliases, scopes, .. } = self;
             let mut names = Vec::with_capacity(args.len());
             let block = body.add_block_with(
                 region,
@@ -1481,6 +1850,12 @@ impl<'a> Body<'a> {
     /// loose top-level ops are wrapped in one, as `mlir-opt` does. `m` is taken apart, not
     /// copied: the body ends up holding its names, attributes and types.
     pub fn import(ctx: crate::Ctx<'a>, m: Module<'a>) -> Result<Self, Error> {
+        Body::import_in(ctx, m, &mlirformat::ThreadSingle)
+    }
+
+    /// Like [`import`](Self::import), each function (an isolated op in the root's block, with a
+    /// seg of its own) imported in parallel on `x`, straight into its seg.
+    pub fn import_in<X: mlirformat::Executor + Sync>(ctx: crate::Ctx<'a>, m: Module<'a>, x: &X) -> Result<Self, Error> {
         let mut aliases = Aliases::default();
         let mut items = Vec::new();
         let mut ops = Vec::new();
@@ -1511,20 +1886,8 @@ impl<'a> Body<'a> {
                 Item::Op(op) => ops.push(op),
             }
         }
-        let mut n = [1, 0, 1, 1];
-        Import::census(&ops, &mut n);
-        let [nops, nvalues, nblocks, nregions] = n;
-        let empty = Body {
-            ctx,
-            ops: Vec::with_capacity(nops),
-            blocks: Vec::with_capacity(nblocks),
-            regions: Vec::with_capacity(nregions),
-            values: Vec::with_capacity(nvalues),
-            root: OpId(0),
-            items,
-            journal: crate::ir::Journal::default(),
-        };
-        let mut im = Import { body: empty, aliases, scopes: alloc::vec![Scope::default()] };
+        let empty = Body { ctx, segs: alloc::vec![Seg::default()], seg0: 0, home: 0, root: OpId::at(0, 0), items, journal: crate::ir::Journal::default() };
+        let mut im = Import { body: empty, aliases: &aliases, scopes: alloc::vec![Scope::default()], x };
         if let [module] = ops.as_slice()
             && module.name == "builtin.module"
         {
@@ -1572,8 +1935,8 @@ struct Name {
 /// ⭐ How a body is named on the way out ([`Body::names`]): every value and block by id, each
 /// spelling (`%7`, `%c0`, `^bb1`) written once, for [`Body::export`] to borrow.
 pub struct Names {
-    values: Vec<Option<Name>>,
-    labels: Vec<Option<u32>>,
+    values: IdVec<ValueId, Option<Name>>,
+    labels: IdVec<BlockId, Option<u32>>,
     /// The ops whose results print in several groups (`%a, %b:2 = ...`): each group's start.
     groups: BTreeMap<OpId, Vec<u32>>,
     nums: Vec<String>,
@@ -1698,7 +2061,7 @@ impl Namer<'_, '_, '_> {
                 _ if end - start != 1 => Some(k - start),
                 _ => None,
             };
-            self.n.values[usize::from(*r)] = heads[start as usize].map(|head| Name { head, index });
+            self.n.values.set(*r, heads[start as usize].map(|head| Name { head, index }));
         }
         if groups.len() > 1 {
             self.n.groups.insert(op, groups);
@@ -1713,13 +2076,13 @@ impl Namer<'_, '_, '_> {
             let parent = body[r].parent;
             for (v, name) in i.asm_block_arg_names(body, parent, r) {
                 let head = self.set(&name);
-                self.n.values[usize::from(v)] = Some(Name { head, index: None });
+                self.n.values.set(v, Some(Name { head, index: None }));
             }
         }
         for (i, b) in body[r].blocks.iter().enumerate() {
-            self.n.labels[usize::from(*b)] = Some(i as u32);
+            self.n.labels.set(*b, Some(i as u32));
             for v in &body[*b].args {
-                if self.n.values[usize::from(*v)].is_some() {
+                if self.n.values.get(*v).is_some() {
                     continue;
                 }
                 let head = if i == 0 {
@@ -1728,7 +2091,7 @@ impl Namer<'_, '_, '_> {
                 } else {
                     self.set("")
                 };
-                self.n.values[usize::from(*v)] = Some(Name { head, index: None });
+                self.n.values.set(*v, Some(Name { head, index: None }));
             }
             for o in &body[*b].ops {
                 self.op(*o);
@@ -1744,7 +2107,7 @@ impl Names {
     /// counting across regions (`shouldPrintUniqueSSAIDs`); otherwise a region starts from the
     /// counters its parent region ended with.
     pub(crate) fn of(body: &Body<'_>, root: OpId, generic: bool) -> Self {
-        let mut n = Names { values: alloc::vec![None; body.values.len()], labels: alloc::vec![None; body.blocks.len()], groups: BTreeMap::new(), nums: Vec::new(), strs: Vec::new(), bbs: Vec::new() };
+        let mut n = Names { values: IdVec::new(None), labels: IdVec::new(None), groups: BTreeMap::new(), nums: Vec::new(), strs: Vec::new(), bbs: Vec::new() };
         let mut namer = Namer { n: &mut n, body, generic, next: Counters::default(), max: 0, scopes: alloc::vec![NameScope { parent: None, used: Default::default() }], scope: 0 };
         let mut stack: Vec<(RegionId, Counters, usize)> = body[root].regions.iter().map(|r| (*r, namer.next, 0)).collect();
         namer.op(root);
@@ -1777,7 +2140,7 @@ impl Names {
     /// the root.
     #[cfg(feature = "dialect.bufferization")]
     pub(crate) fn print(&self, v: ValueId) -> String {
-        match self.values.get(usize::from(v)).copied().flatten() {
+        match *self.values.get(v) {
             Some(Name { head, index: Some(k) }) => format!("%{}#{k}", self.head(head)),
             Some(Name { head, index: None }) => format!("%{}", self.head(head)),
             None => String::from("%<<UNKNOWN SSA VALUE>>"),
@@ -1791,38 +2154,56 @@ struct Export<'n, 'a> {
     body: &'n Body<'a>,
     names: &'n Names,
     deep: bool,
+    /// The regions handed to the printer by reference, by the number it knows each by.
+    sourced: core::cell::RefCell<Vec<RegionId>>,
 }
 
 impl Source for Export<'_, '_> {
     fn region(&self, id: u32) -> Region<'_> {
-        self.region(RegionId(id))
+        self.region(self.sourced(id))
     }
 
     fn blocks(&self, id: u32) -> Vec<Block<'_>> {
-        self.body[RegionId(id)].blocks.iter().enumerate().map(|(i, b)| self.block(i, *b, Vec::new())).collect()
+        self.body[self.sourced(id)].blocks.iter().enumerate().map(|(i, b)| self.block(i, *b, Vec::new())).collect()
     }
 
     fn len(&self, id: u32, b: usize) -> usize {
-        self.body[self.body[RegionId(id)].blocks[b]].ops.len()
+        self.body[self.body[self.sourced(id)].blocks[b]].ops.len()
     }
 
     fn op(&self, id: u32, b: usize, k: usize) -> Operation<'_> {
-        self.op(self.body[self.body[RegionId(id)].blocks[b]].ops[k])
+        self.op(self.body[self.body[self.sourced(id)].blocks[b]].ops[k])
     }
 }
 
 impl<'n, 'a> Export<'n, 'a> {
+    fn new(body: &'n Body<'a>, names: &'n Names, deep: bool) -> Self {
+        Self { body, names, deep, sourced: core::cell::RefCell::new(Vec::new()) }
+    }
+
+    /// Region `r` handed to the printer by reference: the number it knows it by.
+    fn source(&self, r: RegionId) -> Region<'n> {
+        let mut s = self.sourced.borrow_mut();
+        s.push(r);
+        Region::sourced(s.len() as u32 - 1)
+    }
+
+    /// The region the printer knows by `id`.
+    fn sourced(&self, id: u32) -> RegionId {
+        self.sourced.borrow()[id as usize]
+    }
+
     /// The name of `v`; a value outside the IR (a dangling use, which is a bug) prints as
     /// `%INVALIDn` so that it shows.
     fn value(&self, v: ValueId) -> Value<'n> {
-        match self.names.values.get(usize::from(v)).copied().flatten() {
+        match *self.names.values.get(v) {
             Some(Name { head, index }) => Value { name: Cow::Borrowed(self.names.head(head)), index },
             None => Value { name: Cow::Owned(format!("INVALID{}", v.0)), index: None },
         }
     }
 
     fn label(&self, b: BlockId) -> Str<'n> {
-        Cow::Borrowed(&self.names.bbs[self.names.labels[usize::from(b)].expect("placed block") as usize])
+        Cow::Borrowed(&self.names.bbs[(*self.names.labels.get(b)).expect("placed block") as usize])
     }
 
     fn types(&self, vs: &[ValueId]) -> Vec<Type<'n>> {
@@ -1853,7 +2234,7 @@ impl<'n, 'a> Export<'n, 'a> {
             operands: d.operands.iter().map(|v| self.value(*v)).collect(),
             successors: d.successors.iter().map(|b| self.label(*b)).collect(),
             properties,
-            regions: d.regions.iter().map(|r| if self.deep || self.body[*r].blocks.is_empty() { self.region(*r) } else { Region::sourced(r.0) }).collect(),
+            regions: d.regions.iter().map(|r| if self.deep || self.body[*r].blocks.is_empty() { self.region(*r) } else { self.source(*r) }).collect(),
             attributes,
             ty: FunctionType { inputs: self.types(&d.operands), results: self.types(&d.results) },
             loc: d.loc.reborrow(),
@@ -1900,7 +2281,7 @@ impl<'a> From<&Body<'a>> for Module<'a> {
     /// [`Body::export`], copied: a module that borrows nothing of the body.
     fn from(body: &Body<'a>) -> Self {
         let names = body.names();
-        body.module(Export { body, names: &names, deep: true }.op(body.root).into_static())
+        body.module(Export::new(body, &names, true).op(body.root).into_static())
     }
 }
 
@@ -1925,7 +2306,7 @@ impl<'a> Body<'a> {
 
     fn render(&self, opt: &MlirOpt, generic: bool, aliased: bool, keep: impl Fn(&Item<'_>) -> bool) -> String {
         let names = Names::of(self, self.root, generic);
-        let ex = Export { body: self, names: &names, deep: false };
+        let ex = Export::new(self, &names, false);
         let mut m = self.module(ex.op(self.root));
         m.items.retain(|i| matches!(i, Item::Op(_)) || keep(i));
         let bare = MlirOpt::new();
@@ -1997,13 +2378,20 @@ impl<'a> Body<'a> {
     /// The op at `id` as a free-standing mlirformat [`Operation`], named as in [`Module::from`].
     pub fn operation(&self, id: OpId) -> Operation<'a> {
         let names = self.names();
-        Export { body: self, names: &names, deep: true }.op(id).into_static()
+        Export::new(self, &names, true).op(id).into_static()
     }
 
     /// Text → body, with the context's dialects for custom forms.
     pub fn parse(ctx: crate::Ctx<'a>, src: &'a str) -> Result<Self, Error> {
         let m = ctx.opt.parse(src).map_err(|e| Error(format!("{e}")))?;
         Body::import(ctx, m)
+    }
+
+    /// Like [`parse`](Self::parse), read and imported in parallel on `x`
+    /// ([`MlirOpt::parse_in`](mlirformat::MlirOpt::parse_in), [`Body::import_in`]).
+    pub fn parse_in<X: mlirformat::Executor + Sync>(ctx: crate::Ctx<'a>, src: &'a str, x: &X) -> Result<Self, Error> {
+        let m = ctx.opt.parse_in(src, x).map_err(|e| Error(format!("{e}")))?;
+        Body::import_in(ctx, m, x)
     }
 }
 

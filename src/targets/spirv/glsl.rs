@@ -527,7 +527,7 @@ impl<'b, 'a> Glsl<'b, 'a> {
     fn global_key(&self, name: &str) -> ValueId {
         let globals: Vec<String> = self.body[self.body.top_block(self.module)].ops.iter().filter(|o| self.body[**o].name == "spirv.GlobalVariable").filter_map(|o| self.symbol(*o, "sym_name").ok()).collect();
         let i = globals.iter().position(|g| g == name).unwrap_or(0);
-        ValueId(u32::MAX - i as u32)
+        ValueId(u64::MAX - i as u64)
     }
 
     // ---- functions ---------------------------------------------------------------------
