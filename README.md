@@ -9,7 +9,7 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-`0.8.2`: 6717 of the 7333 fixture cases match `mlir-opt` 22.1.8 byte for byte
+`0.8.3`: 6719 of the 7333 fixture cases match `mlir-opt` 22.1.8 byte for byte
 (`cargo test --test passes -- --nocapture` counts them per group), MLIR's own `Dialect/SPIRV`,
 `Dialect/GPU` and `*ToSPIRV` tests included, and the three GPU vendors' lowerings: Intel
 (`convert-xegpu-to-xevm`, `convert-vector-to-xegpu`, `convert-gpu-to-llvm-spv`,
@@ -44,6 +44,8 @@ only what it runs (`default-features = false, features = ["std", "dialect.scf", 
   (`dialects/<name>.rs`, `patterns/<name>/`, `passes/<name>/`). A dialect whose code uses another's
   turns that one on (`dialect.math` = `dialect.arith`). Without a dialect's feature its ops still
   parse and print (mlirformat knows them all); they are just opaque to folds and patterns.
+- `dialect.rdna2` / `dialect.agx` / `dialect.xe3` / `dialect.image`: the GPU instruction sets, command streams and
+  images mlirpass encodes itself (not upstream dialects; not in `all-dialects`).
 - `target.<backend>`: a backend, below. Its rules and passes sit in `patterns/` / `passes/` like
   any other (`arith/to_llvm.rs` needs `dialect.arith` and `target.llvm`); `src/targets` keeps what
   they share.
@@ -52,6 +54,7 @@ only what it runs (`default-features = false, features = ["std", "dialect.scf", 
 |---|---|---|
 | `target.llvm` | the type converter, dialect → `llvm` (the CPU's `x86vector` / `amx` too: `convert-vector-to-llvm=enable-x86vector,enable-amx`); `dialect.llvm` (the llvm folds, the llvm memory-slot interfaces) | `mlir/lib/Conversion/*ToLLVM`, `Dialect/LLVMIR` |
 | `target.emitc` | dialect → `emitc`: the EmitC type converter, `convert-to-emitc` | `mlir/lib/Conversion/*ToEmitC` |
+| `target.rdna2` / `target.agx` / `target.xe3` | a GPU's own machine code, without LLVM (not in `all-targets`): `convert-gpu-to-<isa>` (upstream `gpu.func` kernels: arith / math / vector / scf, `gpu.block_id` / `thread_id` / `barrier`, flat 32-bit memory as `llvm.inttoptr` + `llvm.load` / `store` / `atomicrmw`), register allocation, waits, encoding; command streams (PM4, CDM, genxml batches), the image's layout; `gpu-module-to-binary` encodes a module of kernels into a `#gpu.object`. AMD RDNA2 (gfx1036), Apple AGX (G13), Intel Xe3 (its shader lowering still to come). Encoders checked against llvm-mc, Mesa and gentool (`tests/{rdna2,agx,xe3}.rs`) | Mesa radv / asahi / anv, LLVM AMDGPU |
 | `target.spirv` | target env, type converter, `gpu` / `func` / `arith` / `cf` / `complex` / `index` / `math` / `memref` / `scf` / `tensor` / `vector` / `ub` → `spirv`, `spirv-lower-abi-attrs`, `spirv-update-vce`, the spirv dialect's own transforms (`spirv-canonicalize-gl`, `spirv-unify-aliased-resource`, `spirv-rewrite-inserts`, `spirv-promote-to-replicated-constants`, `spirv-webgpu-prepare`, `decorate-spirv-composite-type-layout`); `SpirvBinary` (the serializer) and `SpirvGlsl` (GLSL 4.50) emit | `mlir/lib/Conversion/*ToSPIRV`, `Target/SPIRV` |
 
 Dialects: every dialect mlirformat describes parses and prints; those with a `dialect.*` feature
