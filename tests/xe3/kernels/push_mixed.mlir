@@ -1,0 +1,44 @@
+// acgpu's examples/push_mixed shaders as SPIR-V (a gpu.module of their spirv.module).
+module attributes {gpu.container_module} {
+gpu.module @shaders [#xevm.target<chip = "ptl">] {
+"spirv.module"() <{addressing_model = #spirv.addressing_model<Logical>, memory_model = #spirv.memory_model<GLSL450>}> ({
+  "spirv.GlobalVariable"() <{sym_name = "vs_in0", type = !spirv.ptr<vector<2xf32>, Input>}> {location = 0 : i32} : () -> ()
+  "spirv.GlobalVariable"() <{sym_name = "vs_out0", type = !spirv.ptr<vector<4xf32>, Output>}> {built_in = "Position"} : () -> ()
+  "spirv.GlobalVariable"() <{sym_name = "fs_out0", type = !spirv.ptr<vector<4xf32>, Output>}> {location = 0 : i32} : () -> ()
+  "spirv.GlobalVariable"() <{sym_name = "buf0", type = !spirv.ptr<!spirv.struct<(vector<4xf32> [0])>, StorageBuffer>}> {binding = 0 : i32, descriptor_set = 1 : i32} : () -> ()
+  "spirv.GlobalVariable"() <{sym_name = "push", type = !spirv.ptr<!spirv.struct<(vector<2xf32> [0], f32 [8])>, PushConstant>}> : () -> ()
+  "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = () -> (), sym_name = "vs"}> ({
+    %t1 = "spirv.mlir.addressof"() <{variable = @vs_in0}> : () -> !spirv.ptr<vector<2xf32>, Input>
+    %p = "spirv.Load"(%t1) : (!spirv.ptr<vector<2xf32>, Input>) -> vector<2xf32>
+    %t2 = "spirv.mlir.addressof"() <{variable = @push}> : () -> !spirv.ptr<!spirv.struct<(vector<2xf32> [0], f32 [8])>, PushConstant>
+    %t3 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %t4 = "spirv.AccessChain"(%t2, %t3) : (!spirv.ptr<!spirv.struct<(vector<2xf32> [0], f32 [8])>, PushConstant>, i32) -> !spirv.ptr<vector<2xf32>, PushConstant>
+    %t = "spirv.Load"(%t4) : (!spirv.ptr<vector<2xf32>, PushConstant>) -> vector<2xf32>
+    %q = "spirv.FAdd"(%p, %t) : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
+    %zw = "spirv.Constant"() <{value = dense<[0.0, 1.0]> : vector<2xf32>}> : () -> vector<2xf32>
+    %pos = "spirv.VectorShuffle"(%q, %zw) <{components = [0 : i32, 1 : i32, 2 : i32, 3 : i32]}> : (vector<2xf32>, vector<2xf32>) -> vector<4xf32>
+    %t5 = "spirv.mlir.addressof"() <{variable = @vs_out0}> : () -> !spirv.ptr<vector<4xf32>, Output>
+    "spirv.Store"(%t5, %pos) : (!spirv.ptr<vector<4xf32>, Output>, vector<4xf32>) -> ()
+    "spirv.Return"() : () -> ()
+  }) : () -> ()
+  "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = () -> (), sym_name = "fs"}> ({
+    %c0 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %t1 = "spirv.mlir.addressof"() <{variable = @buf0}> : () -> !spirv.ptr<!spirv.struct<(vector<4xf32> [0])>, StorageBuffer>
+    %t2 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %t3 = "spirv.AccessChain"(%t1, %t2) : (!spirv.ptr<!spirv.struct<(vector<4xf32> [0])>, StorageBuffer>, i32) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
+    %c = "spirv.Load"(%t3) : (!spirv.ptr<vector<4xf32>, StorageBuffer>) -> vector<4xf32>
+    %t4 = "spirv.mlir.addressof"() <{variable = @push}> : () -> !spirv.ptr<!spirv.struct<(vector<2xf32> [0], f32 [8])>, PushConstant>
+    %t5 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %t6 = "spirv.AccessChain"(%t4, %t5) : (!spirv.ptr<!spirv.struct<(vector<2xf32> [0], f32 [8])>, PushConstant>, i32) -> !spirv.ptr<f32, PushConstant>
+    %s = "spirv.Load"(%t6) : (!spirv.ptr<f32, PushConstant>) -> f32
+    %v = "spirv.CompositeConstruct"(%s, %s, %s, %s) : (f32, f32, f32, f32) -> vector<4xf32>
+    %out = "spirv.FMul"(%c, %v) : (vector<4xf32>, vector<4xf32>) -> vector<4xf32>
+    %t7 = "spirv.mlir.addressof"() <{variable = @fs_out0}> : () -> !spirv.ptr<vector<4xf32>, Output>
+    "spirv.Store"(%t7, %out) : (!spirv.ptr<vector<4xf32>, Output>, vector<4xf32>) -> ()
+    "spirv.Return"() : () -> ()
+  }) : () -> ()
+  "spirv.EntryPoint"() <{execution_model = #spirv.execution_model<Vertex>, fn = @vs, interface = [@vs_in0, @vs_out0]}> : () -> ()
+  "spirv.EntryPoint"() <{execution_model = #spirv.execution_model<Fragment>, fn = @fs, interface = [@fs_out0]}> : () -> ()
+}) : () -> ()
+}
+}

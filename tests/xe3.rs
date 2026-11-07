@@ -71,8 +71,8 @@ fn all<'a>(op: &Operation<'a>) -> Vec<NamedAttr<'a>> {
 }
 
 /// acgpu's shaders in upstream dialects (tests/xe3/kernels/*.mlir: compute kernels with integers, atomics, structured
-/// control flow, exact f64, shared memory with barriers, byte copies; a triangle's vertex and fragment shaders as
-/// SPIR-V) through the SPIR-V intake and acgpu's frontend passes (inlined, canonicalize, cse)
+/// control flow, exact f64, shared memory with barriers, byte copies; vertex and fragment shaders as SPIR-V:
+/// a triangle, textures, push constants, buffers, a multisample resolve, two targets, exact division) through the SPIR-V intake and acgpu's frontend passes (inlined, canonicalize, cse)
 /// and the Xe3 backend: each kernel's head and bytes (its padding included) exactly as acgpu's own Xe3 backend made
 /// them before it moved here (tests/xe3/kernels/*.expected).
 #[cfg(feature = "target.xe3")]
@@ -95,6 +95,13 @@ fn kernels_as_acgpu() {
         ("workgroups", include_str!("xe3/kernels/workgroups.mlir"), include_str!("xe3/kernels/workgroups.expected")),
         ("copy", include_str!("xe3/kernels/copy.mlir"), include_str!("xe3/kernels/copy.expected")),
         ("triangle", include_str!("xe3/kernels/triangle.mlir"), include_str!("xe3/kernels/triangle.expected")),
+        ("texture", include_str!("xe3/kernels/texture.mlir"), include_str!("xe3/kernels/texture.expected")),
+        ("push", include_str!("xe3/kernels/push.mlir"), include_str!("xe3/kernels/push.expected")),
+        ("push_mixed", include_str!("xe3/kernels/push_mixed.mlir"), include_str!("xe3/kernels/push_mixed.expected")),
+        ("uniform", include_str!("xe3/kernels/uniform.mlir"), include_str!("xe3/kernels/uniform.expected")),
+        ("resolve", include_str!("xe3/kernels/resolve.mlir"), include_str!("xe3/kernels/resolve.expected")),
+        ("mrt", include_str!("xe3/kernels/mrt.mlir"), include_str!("xe3/kernels/mrt.expected")),
+        ("math", include_str!("xe3/kernels/math.mlir"), include_str!("xe3/kernels/math.expected")),
     ];
     let mut bad = Vec::new();
     for (name, src, want) in cases {

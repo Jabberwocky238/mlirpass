@@ -20,12 +20,13 @@ pub fn convert_gpu_to_xe3<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error
         }
     });
     body.sink_constants(&shaders);
+    GpuToXe3::resources(body, &shaders)?;
     let tc = Xe3Types::converter();
     let mut patterns = ConversionPatterns::default();
     let i = patterns.converter(&tc);
     GpuToXe3::populate(&mut patterns, i);
     let mut target = ConversionTarget::default();
-    target.legal_dialect("xe3").illegal_dialect("arith").illegal_dialect("vector").illegal_dialect("math").illegal_dialect("llvm");
+    target.legal_dialect("xe3").illegal_dialect("spirv").illegal_dialect("arith").illegal_dialect("vector").illegal_dialect("math").illegal_dialect("llvm");
     for o in ["func.func", "func.return", "gpu.func", "gpu.return", "gpu.block_id", "gpu.thread_id", "gpu.barrier"] {
         target.illegal_op(o);
     }

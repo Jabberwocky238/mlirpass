@@ -45,7 +45,9 @@ use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, Const, Error, FloatKind, Op, Scalar, ShapedKind, Type};
 
 use super::Dimension;
-use crate::{A, AddrSize, AddrSurface, Attrs, Body, CacheStore, ConversionRewriter, DataSize, EuPayload, Grf, Heads, Lsc, LscOp, OpData, OpHead, OpId, Quiet, Render, Rewriter, SendInfo, ShaderStage as Stage, SignatureConversion, Sfid, TypeConverter, Updates, ValueId, VectSize, WithAttrs, Xe3Kernel as Kernel, patterns};
+use mlirformat::spirv_types::SpirvType;
+
+use crate::{A, AddrSize, AddrSurface, Attrs, Body, Xe3Sampler as Sampler, CacheStore, ConversionRewriter, DataSize, EuPayload, Grf, Heads, Lsc, LscOp, OpData, OpHead, OpId, Quiet, Render, Rewriter, SendInfo, ShaderStage as Stage, SignatureConversion, Sfid, TypeConverter, Updates, ValueId, VectSize, WithAttrs, Xe3Kernel as Kernel, patterns};
 
 /// The gateway's barrier message (Mesa `BRW_MESSAGE_GATEWAY_SFID_BARRIER_MSG`).
 const GATEWAY_BARRIER: u32 = 4;
@@ -142,6 +144,8 @@ impl Xe3Types {
     pub fn converter<'c>() -> TypeConverter<'c> {
         let mut tc = TypeConverter::default();
         tc.conversion(|t| Self::of(t).map(|(n, e)| Some(vec![Type::from(Grf(e)); n])));
+        // a resource's pointer, an image, a sampled image: nothing in registers (its uses say which binding)
+        tc.conversion(|t| matches!(SpirvType::try_from(t), Ok(SpirvType::Ptr { .. } | SpirvType::Image { .. } | SpirvType::SampledImage(_))).then(|| Some(Vec::new())));
         tc.conversion(|t| Grf::try_from(t).is_ok().then(|| Some(vec![t.clone()])));
         tc
     }
@@ -155,6 +159,14 @@ impl GpuToXe3 {
     /// sample mask (its last result), or two colors to one target (dual-source blending).
     pub const STAGE: &str = "spirv.execution_model";
     const SAMPLE_MASK: &str = "xe3.sample_mask";
+    /// What [`GpuToXe3::resources`] counts on a shader: its textures, buffers, push constant bytes; and puts on a
+    /// resource access: its binding, its byte offset, a push constant's offset.
+    const BINDINGS: &str = "xe3.bindings";
+    const BUFFERS: &str = "xe3.buffers";
+    const PUSH: &str = "xe3.push";
+    const BINDING: &str = "xe3.binding";
+    const OFFSET: &str = "xe3.offset";
+    const PUSH_AT: &str = "xe3.push_offset";
     const DUAL_SOURCE: &str = "xe3.dual_source";
 
     /// ⭐ The prologue of every kernel: f32 and f64 denormals kept (cr0 bits 7 and 6, Mesa `BRW_CR0_FP32_DENORM_PRESERVE`
@@ -164,6 +176,108 @@ impl GpuToXe3 {
         let or = vec![("exec", A::from(1u8)), ("dst", A::str("arf128<1>:ud")), ("src0", A::str("arf128<0;1,0>:ud")), ("src1", A::str("0xc0:ud")), ("w", A::Bool(true))];
         let sync = vec![("exec", A::from(1u8)), ("fn", A::str("nop")), ("swsb", A::str("A@1"))];
         [OpData::build("xe3.eu.or").with_attrs(or), OpData::build("xe3.eu.sync").with_attrs(sync)]
+    }
+
+    /// ⭐ Each shader's resources (its `spirv.interface_var_abi` arguments) followed to their uses, before the
+    /// lowering: an image op gets its texture's binding, a load through an access chain its buffer's binding and
+    /// byte offset (or its push constant offset); the shader the highest texture and buffer binding + 1 and the end
+    /// of the furthest push constant it reads (the binding table, the sampler states, the push constants' bytes).
+    pub fn resources(body: &mut Body<'_>, shaders: &[OpId]) -> Result<(), Error> {
+        for &f in shaders {
+            let Some(Attribute::Array(attrs)) = body[f].get("arg_attrs").cloned() else { continue };
+            let block = body.top_block(f);
+            let args = body[block].args.clone();
+            // each resource argument: (storage class, binding)
+            let mut res: alloc::collections::BTreeMap<ValueId, (String, i64)> = alloc::collections::BTreeMap::new();
+            for (a, d) in args.iter().zip(&attrs) {
+                let Attribute::Dict(d) = d else { continue };
+                let Some(abi) = d.iter().find(|n| n.name == "spirv.interface_var_abi").and_then(|n| n.value.as_ref()) else { continue };
+                let text = abi.to_string();
+                let inner = text.split_once("<(").and_then(|(_, r)| r.split_once(')')).ok_or_else(|| Error(format!("{text}: not an interface ABI")))?;
+                let binding = inner.0.split(',').nth(1).and_then(|b| b.trim().parse().ok()).ok_or_else(|| Error(format!("{text}: no binding")))?;
+                let class = inner.1.trim_start_matches(',').trim().trim_end_matches('>').to_owned();
+                res.insert(*a, (class, binding));
+            }
+            let mut ops = Vec::new();
+            body.walk(f, &mut |o| ops.push(o));
+            let (mut textures, mut buffers, mut push) = (0i64, 0i64, 0i64);
+            // a value's resource argument: through loads of it and sampled images made of it
+            let root = |body: &Body<'_>, mut v: ValueId| -> Option<ValueId> {
+                for _ in 0..4 {
+                    if res.contains_key(&v) {
+                        return Some(v);
+                    }
+                    let crate::Def::Result(d, _) = body[v].def else { return None };
+                    v = *body[d].operands.first()?;
+                }
+                None
+            };
+            for o in ops {
+                let name = body[o].name.to_string();
+                if name.starts_with("spirv.Image") {
+                    let Some(r) = body[o].operands.first().and_then(|v| root(body, *v)) else { continue };
+                    let b = res[&r].1;
+                    textures = textures.max(b + 1);
+                    body[o].set(Self::BINDING, A::from(b).into());
+                } else if name == "spirv.Load" {
+                    let p = body[o].operands[0];
+                    let crate::Def::Result(chain, _) = body[p].def else { continue };
+                    if body[chain].name != "spirv.AccessChain" {
+                        continue;
+                    }
+                    let base = body[chain].operands[0];
+                    let Some((class, b)) = res.get(&base).cloned() else { continue };
+                    let offset = Self::member_offset(body, base, &body[chain].operands[1..]).ok_or_else(|| Error("a resource access chain: not constant struct members".into()))?;
+                    let ty = body[body[o].results[0]].ty.clone();
+                    let bytes = Xe3Types::of(&ty).map_or(4, |(n, _)| 4 * n as i64);
+                    if class == "PushConstant" {
+                        push = push.max(offset + bytes);
+                        body[o].set(Self::PUSH_AT, A::from(offset).into());
+                    } else {
+                        buffers = buffers.max(b + 1);
+                        body[o].set(Self::BINDING, A::from(b).into());
+                        body[o].set(Self::OFFSET, A::from(offset).into());
+                    }
+                    // the load knows where it reads: it takes the resource itself, the access chain and its constant
+                    // indices go (nothing of them would be in registers but the indices' movs)
+                    body.set_operand(o, 0, base);
+                    if body[p].uses.is_empty() {
+                        let indices: Vec<ValueId> = body[chain].operands[1..].to_vec();
+                        body.erase(chain);
+                        for i in indices {
+                            if let crate::Def::Result(c, _) = body[i].def
+                                && body[i].uses.is_empty()
+                            {
+                                body.erase(c);
+                            }
+                        }
+                    }
+                }
+            }
+            body[f].set(Self::BINDINGS, A::from(textures).into());
+            body[f].set(Self::BUFFERS, A::from(buffers).into());
+            body[f].set(Self::PUSH, A::from(push).into());
+        }
+        Ok(())
+    }
+
+    /// The byte offset of the struct member an access chain from pointer `base` reaches through constant `indices`.
+    fn member_offset(body: &Body<'_>, base: ValueId, indices: &[ValueId]) -> Option<i64> {
+        let Ok(SpirvType::Ptr { pointee, .. }) = SpirvType::try_from(&body[base].ty) else { return None };
+        let mut ty = (*pointee).clone();
+        let mut at = 0i64;
+        for i in indices {
+            let crate::Def::Result(c, _) = body[*i].def else { return None };
+            let k = Attrs::as_int(body[c].get("value")?).ok()? as usize;
+            match SpirvType::try_from(&ty).ok()? {
+                SpirvType::Struct { members: Some(m), .. } => {
+                    at += i64::from(m.get(k)?.offset?);
+                    ty = m[k].ty.clone();
+                }
+                _ => return None,
+            }
+        }
+        Some(at)
     }
 
     /// Each kernel's arguments where the thread finds them: a vertex shader's in payload registers, a compute
@@ -546,7 +660,9 @@ impl GpuToXe3 {
         let omask = stage == Stage::Fragment && flag(Self::SAMPLE_MASK) && !fty.results.is_empty();
         // two colors to the one target (dual-source blending), not two targets
         let dual = stage == Stage::Fragment && flag(Self::DUAL_SOURCE) && fty.results.len() == 2;
-        let (bindings, buffers, push, imask) = (0u32, 0u32, 0u32, 0u32);
+        let count = |attr: &str| cr.rw.body[op].get(attr).map(Attrs::as_int).transpose().map(|n| n.unwrap_or(0) as u32);
+        let (Ok(bindings), Ok(buffers), Ok(push)) = (count(Self::BINDINGS), count(Self::BUFFERS), count(Self::PUSH)) else { return false };
+        let imask = 0u32;
         // a compute kernel's workgroup: `known_block_size` x / 16 threads (1 .. 64), its attributions' bytes shared
         let threads = match cr.rw.body[op].get("known_block_size").and_then(|a| a.dense_values()).as_deref() {
             Some([x, ..]) => (*x as u32).div_ceil(u32::from(XE3_SIMD)),
@@ -790,6 +906,94 @@ impl GpuToXe3 {
             _ => return false,
         }
         cr.erase(op);
+        true
+    }
+
+    /// A resource load: through an access chain into the push constants (an LSC load at that byte offset of their
+    /// buffer surface, binding table entry `XE3_PUSH_BTI`, the same address in every lane) or a buffer (binding b,
+    /// entry `XE3_BUFFER_BTI + b`); a texture's or sampler's handle is nothing in registers.
+    #[convert("spirv.Load")]
+    fn resource_load(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let r = cr.rw.body[op].results[0];
+        let int = |cr: &Cr<'_, '_, '_>, n: &str| cr.rw.body[op].get(n).and_then(|a| Attrs::as_int(a).ok());
+        let (push, binding, offset) = (int(cr, Self::PUSH_AT), int(cr, Self::BINDING), int(cr, Self::OFFSET));
+        let Some((n, elem)) = Xe3Types::of(&cr.rw.body[r].ty) else {
+            // a handle
+            cr.replace(op, vec![Vec::new()]);
+            return true;
+        };
+        let (offset, bti) = match (push, binding, offset) {
+            (Some(p), _, _) => (p, XE3_PUSH_BTI),
+            (None, Some(b), Some(o)) => (o, XE3_BUFFER_BTI + b as u8),
+            _ => return false,
+        };
+        let Some(vect_size) = Self::vect_size(n).filter(|_| offset % 4 == 0) else { return false };
+        let addr = Self::imm(cr, op, offset as u32, "i32");
+        let lsc = Lsc { op: LscOp::Load, surface: AddrSurface::Bti, addr_size: AddrSize::A32, data_size: DataSize::D32, cache: 0, vect_size, transpose: false, cmask: 0 };
+        let attrs = vec![
+            ("sfid", A::str(<&str>::from(Sfid::Ugm))),
+            ("desc", A::from(SendInfo::lengths(lsc.desc(), 1, n as u32))),
+            ("ex_desc", A::from(u32::from(bti) << 24)),
+            ("src0_len", A::from(1u8)),
+        ];
+        let values = Self::create(cr, op, "xe3.eu.send", &[addr], attrs, &vec![Type::from(Grf(elem)); n]);
+        cr.replace(op, vec![values]);
+        true
+    }
+
+    /// A pointer into a resource, a sampled image: nothing in registers (the loads and image ops know their binding).
+    #[convert("spirv.AccessChain", "spirv.SampledImage")]
+    fn handle(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        cr.replace(op, vec![Vec::new()]);
+        true
+    }
+
+    /// The binding `resources` put on an image op.
+    fn binding(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<u8> {
+        cr.rw.body[op].get(Self::BINDING).and_then(|a| Attrs::as_int(a).ok()).and_then(|b| u8::try_from(b).ok())
+    }
+
+    /// `spirv.ImageSampleImplicitLod` ⇒ a SIMD16 SAMPLE (the level from the 2x2 quad's derivatives: WGSL
+    /// `textureSample`) without a header: u, v in, r, g, b, a out (Mesa `lower_sampler_logical_send`, Xe2 SIMD16 mode
+    /// 1; message type 0 as GEN_SAMPLER_MESSAGE_SAMPLE). A texture of one level samples level 0 whatever the
+    /// derivatives. Binding b is binding table entry n + b (entries 0 .. n are the n render targets) and sampler state
+    /// b. Out of order: an SBID, its users wait for it (xe3-swsb).
+    #[convert("spirv.ImageSampleImplicitLod")]
+    fn sample(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let Some(uv) = o.get(1) else { return false };
+        // (u, v), or (u, v, layer) of a 2D array: SAMPLE's r is the array index (the hardware rounds and clamps it);
+        // a cube's direction (u, v, r), a cube array's (u, v, r, ai: the cube)
+        if !matches!(uv.len(), 2..=4) {
+            return false;
+        }
+        let (Some(b), Some(targets)) = (Self::binding(cr, op), Self::targets(cr.rw.body, op)) else { return false };
+        let msg = Sampler { msg_type: 0, simd_mode: 1, bti: targets + b, sampler: b, return_hp: false };
+        let n = uv.len() as u32;
+        let attrs = vec![("sfid", A::str(<&str>::from(Sfid::Sampler))), ("desc", A::from(SendInfo::lengths(msg.desc(), n, 4))), ("src0_len", A::from(n as u8))];
+        let values = Self::create(cr, op, "xe3.eu.send", uv, attrs, &vec![Type::from(Grf("f32")); 4]);
+        cr.replace(op, vec![values]);
+        true
+    }
+
+    /// `spirv.ImageFetch` of a multisampled texture with its `Sample` operand (WGSL `textureLoad` of a
+    /// `texture_multisampled_2d`): texel (x, y), sample s, unfiltered ⇒ a SIMD16H LD2DMS_W (message type 28) without a
+    /// header. Its parameters as Mesa's `ld2dms_w` (brw_lower_logical_sends.cpp): the sample index, MCS 0 ..= 3 (zero:
+    /// the surface is not compressed), u, v; 16-bit ("ld2dms_w: SIMD8H and SIMD16H only", gfx12.5+), each the low half
+    /// of a register of its own.
+    #[convert("spirv.ImageFetch")]
+    fn load_sample(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let (Some(xy), Some(s)) = (o.get(1), o.get(2)) else { return false };
+        let ([x, y], [s]) = (&xy[..], &s[..]) else { return false };
+        let (Some(b), Some(targets)) = (Self::binding(cr, op), Self::targets(cr.rw.body, op)) else { return false };
+        let zero = Self::imm(cr, op, 0, "i32");
+        let mut words = |v: ValueId| Self::eu(cr, op, "xe3.eu.mov", &[v], vec![("dst_as", A::str("uw")), ("low0", A::Bool(true))], "i32");
+        let (s, zero, x, y) = (words(*s), words(zero), words(*x), words(*y));
+        let params = [s, zero, zero, zero, zero, x, y];
+        // SIMD16H: 16-bit parameters (Mesa's GEN_XE2_SAMPLER_SIMD_MODE_SIMD16H)
+        let msg = Sampler { msg_type: 28, simd_mode: 5, bti: targets + b, sampler: b, return_hp: false };
+        let attrs = vec![("sfid", A::str(<&str>::from(Sfid::Sampler))), ("desc", A::from(SendInfo::lengths(msg.desc(), params.len() as u32, 4))), ("src0_len", A::from(params.len() as u8))];
+        let values = Self::create(cr, op, "xe3.eu.send", &params, attrs, &vec![Type::from(Grf("f32")); 4]);
+        cr.replace(op, vec![values]);
         true
     }
 
