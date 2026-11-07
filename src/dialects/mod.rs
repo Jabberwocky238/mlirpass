@@ -49,6 +49,8 @@ mod tosa;
 mod ub;
 #[cfg(feature = "dialect.vector")]
 mod vector;
+#[cfg(feature = "dialect.xe3")]
+mod xe3;
 
 #[cfg(feature = "dialect.affine")]
 pub use affine::AffineDialect;
@@ -114,3 +116,5 @@ impl Body<'_> {
         (i < rank).then_some(false)
     }
 }
+#[cfg(feature = "dialect.xe3")]
+pub use xe3::*;

@@ -117,5 +117,9 @@ name = "rdna2"
 required-features = ["dialect.rdna2"]
 
 [[test]]
+name = "xe3"
+required-features = ["dialect.xe3"]
+
+[[test]]
 name = "vulkan"
 required-features = ["all-dialects", "target.spirv"]
