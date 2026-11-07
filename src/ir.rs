@@ -1189,10 +1189,14 @@ impl<'a> Body<'a> {
     /// `sub` back, kept ([`Body::returnable`]): its seg in place; what replaced `op` (to go in
     /// `op`'s place once every lent op is back, [`Body::put_back`]) and the declarations it made,
     /// to merge.
-    fn take_back(&mut self, op: OpId, sub: Body<'a>, parent: Lent) -> (OpId, Vec<OpId>) {
+    fn take_back(&mut self, op: OpId, mut sub: Body<'a>, parent: Lent) -> (OpId, Vec<OpId>) {
         let top = sub.top_block(sub.root);
         let made = sub.outside.as_ref().map(|o| o.made.clone()).unwrap_or_default();
         let new = sub.ops(top).find(|x| !made.contains(x)).expect("the function");
+        // It sits in the lent body's module, which stays behind: detached, for `put_back`.
+        if new != op {
+            sub.raw_links(new, Links { prev: None, next: None, parent: None });
+        }
         self.unlend(op, sub, parent);
         (new, made)
     }
@@ -2289,10 +2293,13 @@ impl<'a> Aliases<'a> {
 /// (sorted by name) before any use in it is resolved.
 #[derive(Default)]
 struct Scope<'a> {
-    /// (name, start in `ids`, length).
+    /// (name, start in `ids`, length); `ids` grows in definition order, so a start says when.
     values: Vec<(Str<'a>, u32, u32)>,
     ids: Vec<ValueId>,
     labels: Vec<(Str<'a>, BlockId)>,
+    /// How many of the enclosing scope's `ids` were defined before the op owning this region:
+    /// those are the ones in scope here (the op's own results come after its regions).
+    cut: u32,
 }
 
 impl<'a> Scope<'a> {
@@ -2301,16 +2308,24 @@ impl<'a> Scope<'a> {
         self.ids.extend_from_slice(ids);
     }
 
-    /// Sorted by name, a name defined twice keeping its last definition (as a map would).
-    fn seal(&mut self) {
-        Self::sort(&mut self.values, |v| &v.0);
-        Self::sort(&mut self.labels, |l| &l.0);
+    /// Sorted by name. A name defined twice in it, or over one of `outer` (the enclosing scopes,
+    /// outermost first) already defined where this region starts, is refused as `mlir-opt`
+    /// refuses it (`defineSSAValue`, `defineBlockNamed`).
+    fn seal(&mut self, outer: &[Scope<'a>]) -> Result<(), Error> {
+        Self::sort(&mut self.values, |v| &v.0).map_err(|n| format!("redefinition of SSA value '%{n}'"))?;
+        Self::sort(&mut self.labels, |l| &l.0).map_err(|n| format!("redefinition of block '^{n}'"))?;
+        let cuts = outer.iter().skip(1).map(|s| s.cut).chain([self.cut]);
+        let seen = |name: &str| outer.iter().zip(cuts.clone()).any(|(s, cut)| s.values.binary_search_by(|(k, ..)| (**k).cmp(name)).is_ok_and(|i| s.values[i].1 < cut));
+        match self.values.iter().find(|(n, ..)| seen(n)) {
+            Some((n, ..)) => Err(format!("redefinition of SSA value '%{n}'").into()),
+            None => Ok(()),
+        }
     }
 
-    fn sort<T>(xs: &mut Vec<T>, key: impl Fn(&T) -> &Str<'a>) {
-        xs.reverse();
-        xs.sort_by(|a, b| key(a).cmp(key(b)));
-        xs.dedup_by(|b, a| key(a) == key(b));
+    /// Sorted by key; `Err`: a key twice.
+    fn sort<T>(xs: &mut [T], key: impl Fn(&T) -> &Str<'a>) -> Result<(), Str<'a>> {
+        xs.sort_unstable_by(|a, b| key(a).cmp(key(b)));
+        xs.windows(2).find(|w| key(&w[0]) == key(&w[1])).map_or(Ok(()), |w| Err(key(&w[0]).clone()))
     }
 
     fn values(&self, name: &str) -> Option<&[ValueId]> {
@@ -2328,6 +2343,8 @@ impl<'a> Scope<'a> {
 /// [`Operation`], which is gone by then.
 struct Pending<'a> {
     id: OpId,
+    /// Its scope's values defined before it ([`Scope::cut`] of its regions).
+    cut: u32,
     operands: Vec<Value<'a>>,
     successors: Vec<Str<'a>>,
     regions: Vec<Region<'a>>,
@@ -2359,10 +2376,6 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
                 Self::census(&b.ops, n);
             }
         }
-    }
-
-    fn scope(&mut self) -> &mut Scope<'a> {
-        self.scopes.last_mut().expect("no scope")
     }
 
     fn lookup(&self, v: &Value<'_>) -> Result<ValueId, Error> {
@@ -2397,13 +2410,14 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
         }
         let Import { body, scopes, .. } = self;
         let scope = scopes.last_mut().expect("no scope");
+        let cut = scope.ids.len() as u32;
         let mut at = 0;
         for r in results {
             let k = r.count.unwrap_or(1) as usize;
             scope.define(r.name, &body[id].results[at..at + k]);
             at += k;
         }
-        Ok(Pending { id, operands, successors, regions })
+        Ok(Pending { id, cut, operands, successors, regions })
     }
 
     /// `ops` into `block`; returns them, to be finished once the whole scope is known. An
@@ -2435,7 +2449,8 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
     /// seg of its own are imported into that seg alone: on `x`, all at once ([`Import::apart`]),
     /// or here one after the other, the same way.
     fn finish(&mut self, mut pending: Vec<Pending<'a>>) -> Result<(), Error> {
-        self.scope().seal();
+        let (scope, outer) = self.scopes.split_last_mut().expect("no scope");
+        scope.seal(outer)?;
         let apart = self.apart(&mut pending);
         for (p, done) in pending.into_iter().zip(apart) {
             let operands = p.operands.iter().map(|v| self.lookup(v)).collect::<Result<Vec<_>, _>>()?;
@@ -2452,7 +2467,7 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
                     self.isolate(p.id, p.regions)?;
                 } else {
                     for r in p.regions {
-                        self.region(p.id, r)?;
+                        self.region(p.id, p.cut, r)?;
                     }
                 }
             }
@@ -2503,7 +2518,7 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
         let body = Body { ctx, segs: alloc::vec![seg], seg0: s, home: s, root: op, items: Vec::new(), journal: crate::ir::Journal::default(), outside: None };
         let mut im = Import { body, aliases, scopes: alloc::vec![Scope::default()], x };
         for r in regions {
-            im.region(op, r)?;
+            im.region(op, 0, r)?;
         }
         Ok(im.body.segs.pop().expect("its seg"))
     }
@@ -2513,15 +2528,16 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
     fn isolate(&mut self, op: OpId, regions: Vec<Region<'a>>) -> Result<(), Error> {
         let scopes = core::mem::replace(&mut self.scopes, alloc::vec![Scope::default()]);
         let home = core::mem::replace(&mut self.body.home, op.seg());
-        let r = regions.into_iter().try_for_each(|r| self.region(op, r).map(|_| ()));
+        let r = regions.into_iter().try_for_each(|r| self.region(op, 0, r).map(|_| ()));
         self.body.home = home;
         self.scopes = scopes;
         r
     }
 
-    fn region(&mut self, op: OpId, r: Region<'a>) -> Result<RegionId, Error> {
+    /// `cut`: [`Scope::cut`].
+    fn region(&mut self, op: OpId, cut: u32, r: Region<'a>) -> Result<RegionId, Error> {
         let region = self.body.add_region(op);
-        self.scopes.push(Scope::default());
+        self.scopes.push(Scope { cut, ..Scope::default() });
         let mut pending = Vec::new();
         let lone = r.blocks.len() == 1;
         for b in r.blocks {
