@@ -9,7 +9,7 @@ readme = "README.md"
 keywords = ["mlir", "compiler", "ir", "pass", "lowering"]
 categories = ["compilers", "no-std"]
 # The mlir-opt fixtures stay in the repository.
-exclude = ["tests", ".github", "fuzz"]
+exclude = ["tests", ".github", "fuzz", "data"]
 
 [workspace]
 members = ["macros"]
@@ -66,12 +66,22 @@ all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bu
 "dialect.x86vector" = ["dialect.memref"]
 "dialect.xegpu" = ["dialect.xevm", "dialect.vector", "dialect.memref", "dialect.arith", "dialect.index", "dialect.scf", "dialect.gpu"]
 "dialect.xevm" = []
+# The GPU instruction sets mlirpass encodes itself (not upstream dialects; not in `all-dialects`): their ops, types
+# and encodings. `target.<isa>` lowers into one and emits its machine code.
+"dialect.agx" = []
+"dialect.rdna2" = []
+"dialect.xe3" = []
 # One feature per backend (`src/targets`): its type converter, `convert-to-*`, the lowerings
 # into it, and what it emits.
 all-targets = ["target.llvm", "target.emitc", "target.spirv"]
 "target.llvm" = ["dialect.llvm"]
 "target.emitc" = []
 "target.spirv" = ["dialect.spirv"]
+# The GPUs' own machine code, one feature each (not in `all-targets`): SPIR-V and the upstream dialects ⇒ the
+# instruction set ⇒ registers ⇒ bytes (`gpu-module-to-binary`). Apple AGX (G13), AMD RDNA2 (GFX10.3), Intel Xe3.
+"target.agx" = ["dialect.agx", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
+"target.rdna2" = ["dialect.rdna2", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
+"target.xe3" = ["dialect.xe3", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
 
 [[bin]]
 name = "mlirpass"
@@ -94,6 +104,11 @@ required-features = ["all-dialects", "target.spirv"]
 [[test]]
 name = "spirv_glsl"
 required-features = ["all-dialects", "target.spirv"]
+
+# Each GPU target's encoder against its oracle (llvm-mc, Mesa, gentool).
+[[test]]
+name = "rdna2"
+required-features = ["dialect.rdna2"]
 
 [[test]]
 name = "vulkan"

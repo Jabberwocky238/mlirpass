@@ -28,6 +28,7 @@ mod patterns;
 mod region;
 mod rewrite;
 mod targets;
+mod typed;
 
 #[cfg(feature = "dialect.bufferization")]
 pub use bufferize::*;
@@ -44,6 +45,7 @@ pub use patterns::*;
 pub use region::*;
 pub use rewrite::*;
 pub use targets::*;
+pub use typed::*;
 /// The proc macros (`mlirpass-macros`): `#[pass]`, `#[patterns]`, `#[ops]`, `blocks!`.
 pub use mlirpass_macros::{blocks, ops, pass, patterns};
 pub use mlirformat;
