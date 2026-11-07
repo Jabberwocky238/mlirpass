@@ -69,3 +69,54 @@ fn all<'a>(op: &Operation<'a>) -> Vec<NamedAttr<'a>> {
     a.extend(op.attributes.iter().cloned());
     a
 }
+
+/// acgpu's compute shaders in upstream dialects (tests/xe3/kernels/*.mlir: integers, atomics, structured control flow,
+/// exact f64, shared memory with barriers, byte copies) through acgpu's frontend passes (inlined, canonicalize, cse)
+/// and the Xe3 backend: each kernel's head and bytes (its padding included) exactly as acgpu's own Xe3 backend made
+/// them before it moved here (tests/xe3/kernels/*.expected).
+#[cfg(feature = "target.xe3")]
+#[test]
+fn kernels_as_acgpu() {
+    use std::fmt::Write as _;
+
+    use mlirformat::Op;
+    use mlirpass::{Heads, ImageTarget, Kernels, PassManager, Passes, ShaderStage, Symbol, Xe3Image, Xe3Kernel};
+    let mut opt = MlirOpt::upstream();
+    opt.load(Xe3Dialect);
+    let interfaces = Interfaces::upstream();
+    let passes = Passes::upstream();
+    let pm = PassManager::parse(&passes, "builtin.module(gpu-inline-calls, canonicalize, cse, convert-gpu-to-xe3, xe3-regalloc, xe3-control, xe3-swsb, xe3-branches, xe3-pad)").unwrap();
+    let cases = [
+        ("ints", include_str!("xe3/kernels/ints.mlir"), include_str!("xe3/kernels/ints.expected")),
+        ("atomics", include_str!("xe3/kernels/atomics.mlir"), include_str!("xe3/kernels/atomics.expected")),
+        ("loops", include_str!("xe3/kernels/loops.mlir"), include_str!("xe3/kernels/loops.expected")),
+        ("math64", include_str!("xe3/kernels/math64.mlir"), include_str!("xe3/kernels/math64.expected")),
+        ("workgroups", include_str!("xe3/kernels/workgroups.mlir"), include_str!("xe3/kernels/workgroups.expected")),
+        ("copy", include_str!("xe3/kernels/copy.mlir"), include_str!("xe3/kernels/copy.expected")),
+    ];
+    let mut bad = Vec::new();
+    for (name, src, want) in cases {
+        let mut body = Body::parse(Ctx::new(&opt, &interfaces), src).unwrap();
+        let root = body.root;
+        pm.run(&mut body, root).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let mut got = String::new();
+        for k in Kernels::all(&body, root, Xe3Kernel::NAME) {
+            let h = body.head::<Xe3Kernel>(k).unwrap();
+            let stage = h.stage.map(|s| match s {
+                ShaderStage::Compute => "Compute",
+                ShaderStage::Vertex => "Vertex",
+                ShaderStage::Fragment => "Fragment",
+            });
+            let stage = stage.map_or("None".to_owned(), |s| format!("Some({s})"));
+            writeln!(got, "kernel {} stage={stage} simd={:?} payload={:?} inputs={:?} varyings={:?} targets={:?} omask={:?} imask={:?} bindings={:?} buffers={:?} push={:?} reserve={:?} threads={:?} shared={:?} params={:?} pad={:?} align={:?}",
+                Symbol::defined(&h.sym_name).unwrap(), h.simd, h.payload, h.inputs, h.varyings, h.targets, h.omask, h.imask, h.bindings, h.buffers, h.push, h.reserve, h.threads, h.shared, h.params, h.pad, h.align).unwrap();
+            for line in Xe3Image.item(&body, k).unwrap().chunks(32) {
+                writeln!(got, "  {}", line.iter().map(|b| format!("{b:02x}")).collect::<String>()).unwrap();
+            }
+        }
+        if got != want {
+            bad.push(name);
+        }
+    }
+    assert!(bad.is_empty(), "differ from acgpu's kernels: {bad:?}");
+}
