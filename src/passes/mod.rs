@@ -37,7 +37,7 @@ mod rdna2;
 mod scf;
 #[cfg(feature = "dialect.shape")]
 mod shape;
-#[cfg(feature = "target.spirv")]
+#[cfg(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
 mod spirv;
 #[cfg(all(feature = "dialect.tensor", any(feature = "dialect.linalg", all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func"))))]
 mod tensor;
@@ -95,7 +95,7 @@ pub use rdna2::*;
 pub use scf::*;
 #[cfg(feature = "dialect.shape")]
 pub use shape::*;
-#[cfg(feature = "target.spirv")]
+#[cfg(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
 pub use spirv::*;
 #[cfg(all(feature = "dialect.tensor", any(feature = "dialect.linalg", all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func"))))]
 pub use tensor::*;

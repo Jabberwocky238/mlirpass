@@ -4,7 +4,7 @@
 //!   gpu.func {gpu.kernel}         ⇒ xe3.kernel {stage = "compute", payload}: SIMD16, its arguments the walker's inline
 //!                                   data; `known_block_size` x / 16 threads a workgroup, its workgroup attribution's
 //!                                   bytes of shared memory
-//!   func.func {xe3.stage}         ⇒ xe3.kernel {stage, payload}: a vertex / fragment shader as SPIR-V's entry points
+//!   func.func {spirv.execution_model} ⇒ xe3.kernel {stage, payload}: a vertex / fragment shader as `convert-spirv-entry-points`
 //!                                   come in (their interface the arguments and results)
 //!   f32, vector<Nxf32>            ⇒ 1, N × !xe3.grf<f32>: one register a component, a lane per vertex / pixel
 //!   i8, i16, i32, index, !llvm.ptr<1 | 3> ⇒ !xe3.grf<i32> (a narrow integer zero-extended, a pointer its byte address)
@@ -153,7 +153,7 @@ pub struct GpuToXe3;
 impl GpuToXe3 {
     /// A shader's discardable attributes as its SPIR-V entry point comes in: its stage; a fragment shader writing the
     /// sample mask (its last result), or two colors to one target (dual-source blending).
-    pub const STAGE: &str = "xe3.stage";
+    pub const STAGE: &str = "spirv.execution_model";
     const SAMPLE_MASK: &str = "xe3.sample_mask";
     const DUAL_SOURCE: &str = "xe3.dual_source";
 
@@ -329,21 +329,28 @@ impl GpuToXe3 {
         None
     }
 
-    /// The stage of shader `f`: a `gpu.func` kernel's compute, a `func.func`'s its `xe3.stage`.
+    /// The stage of shader `f`: a `gpu.func` kernel's compute, a `func.func`'s its `spirv.execution_model`.
     pub fn stage_of(body: &Body<'_>, f: OpId) -> Option<Stage> {
         match &*body[f].name {
             "gpu.func" => body[f].get("gpu.kernel").map(|_| Stage::Compute),
             "func.func" => match body[f].get(Self::STAGE)? {
-                Attribute::Str { lit, .. } => match &**lit {
-                    "vertex" => Some(Stage::Vertex),
-                    "fragment" => Some(Stage::Fragment),
-                    "compute" => Some(Stage::Compute),
+                Attribute::Extended { ext, .. } => match ext.body.as_deref()? {
+                    "<Vertex>" => Some(Stage::Vertex),
+                    "<Fragment>" => Some(Stage::Fragment),
+                    "<GLCompute>" => Some(Stage::Compute),
                     _ => None,
                 },
                 _ => None,
             },
             _ => None,
         }
+    }
+
+    /// How many of shader `f`'s arguments are its inputs: those before its resources (an argument with
+    /// `spirv.interface_var_abi`).
+    fn interface_inputs(body: &Body<'_>, f: OpId, inputs: &[Type<'_>]) -> usize {
+        let Some(Attribute::Array(attrs)) = body[f].get("arg_attrs") else { return inputs.len() };
+        attrs.iter().position(|a| matches!(a, Attribute::Dict(d) if d.iter().any(|n| n.name == "spirv.interface_var_abi"))).unwrap_or(inputs.len())
     }
 
     /// The stage of the kernel `op` is in.
@@ -494,7 +501,7 @@ impl GpuToXe3 {
 // The same bits.
 #[map("arith.bitcast" => "xe3.eu.mov", via = Self::lanes(&[("as", A::str("ud"))]))]
 impl GpuToXe3 {
-    /// A shader (`gpu.func` kernel, `func.func {xe3.stage}`) ⇒ `xe3.kernel`. `payload`, per argument component in order: a vertex shader's the
+    /// A shader (`gpu.func` kernel, `func.func {spirv.execution_model}`) ⇒ `xe3.kernel`. `payload`, per argument component in order: a vertex shader's the
     /// register its attribute component arrives in; a fragment shader's the index of its varying component among the
     /// interpolated inputs (four a varying), interpolated at the kernel's start (`Interpolate`). A vertex shader's
     /// `varyings`: its results after the position.
@@ -509,7 +516,13 @@ impl GpuToXe3 {
         let attributions: Vec<ValueId> = cr.rw.body[entry].args[fty.inputs.len()..].to_vec();
         let mut sig = SignatureConversion::new(fty.inputs.len() + attributions.len());
         let mut payload = Vec::new();
+        // the resources (`spirv.interface_var_abi`: textures, buffers, push constants) after the inputs: no registers
+        let inputs = Self::interface_inputs(cr.rw.body, op, &fty.inputs);
         for (i, t) in fty.inputs.iter().enumerate() {
+            if i >= inputs {
+                sig.add_inputs(i, Vec::new());
+                continue;
+            }
             let Some((n, elem)) = Xe3Types::of(t) else { return false };
             if stage == Stage::Compute {
                 // a dword of the inline data, the same in every lane
@@ -525,7 +538,7 @@ impl GpuToXe3 {
             sig.add_inputs(i, vec![Type::from(Grf(elem)); n]);
         }
         let varyings = if stage == Stage::Vertex { fty.results.len().saturating_sub(1) } else { 0 };
-        if varyings > XE3_MAX_VARYINGS || (stage == Stage::Fragment && fty.inputs.len() > XE3_MAX_VARYINGS) || (stage == Stage::Compute && !fty.results.is_empty()) {
+        if varyings > XE3_MAX_VARYINGS || (stage == Stage::Fragment && inputs > XE3_MAX_VARYINGS) || (stage == Stage::Compute && !fty.results.is_empty()) {
             return false;
         }
         let flag = |attr: &str| matches!(cr.rw.body[op].get(attr), Some(Attribute::Bool(true) | Attribute::Unit));
@@ -551,7 +564,7 @@ impl GpuToXe3 {
         let kernel = Kernel {
             simd: Some(u32::from(XE3_SIMD)),
             payload: Some(payload),
-            inputs: Some(fty.inputs.len() as u32),
+            inputs: Some(inputs as u32),
             varyings: Some(varyings as u32),
             targets: (stage == Stage::Fragment).then_some(fty.results.len() as u32 - u32::from(omask) - u32::from(dual)),
             omask: omask.then_some(true),

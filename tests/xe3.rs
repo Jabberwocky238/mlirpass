@@ -70,8 +70,9 @@ fn all<'a>(op: &Operation<'a>) -> Vec<NamedAttr<'a>> {
     a
 }
 
-/// acgpu's compute shaders in upstream dialects (tests/xe3/kernels/*.mlir: integers, atomics, structured control flow,
-/// exact f64, shared memory with barriers, byte copies) through acgpu's frontend passes (inlined, canonicalize, cse)
+/// acgpu's shaders in upstream dialects (tests/xe3/kernels/*.mlir: compute kernels with integers, atomics, structured
+/// control flow, exact f64, shared memory with barriers, byte copies; a triangle's vertex and fragment shaders as
+/// SPIR-V) through the SPIR-V intake and acgpu's frontend passes (inlined, canonicalize, cse)
 /// and the Xe3 backend: each kernel's head and bytes (its padding included) exactly as acgpu's own Xe3 backend made
 /// them before it moved here (tests/xe3/kernels/*.expected).
 #[cfg(feature = "target.xe3")]
@@ -85,7 +86,7 @@ fn kernels_as_acgpu() {
     opt.load(Xe3Dialect);
     let interfaces = Interfaces::upstream();
     let passes = Passes::upstream();
-    let pm = PassManager::parse(&passes, "builtin.module(gpu-inline-calls, canonicalize, cse, convert-gpu-to-xe3, xe3-regalloc, xe3-control, xe3-swsb, xe3-branches, xe3-pad)").unwrap();
+    let pm = PassManager::parse(&passes, "builtin.module(convert-spirv-entry-points, gpu-inline-calls, canonicalize, cse, convert-gpu-to-xe3, xe3-regalloc, xe3-control, xe3-swsb, xe3-branches, xe3-pad)").unwrap();
     let cases = [
         ("ints", include_str!("xe3/kernels/ints.mlir"), include_str!("xe3/kernels/ints.expected")),
         ("atomics", include_str!("xe3/kernels/atomics.mlir"), include_str!("xe3/kernels/atomics.expected")),
@@ -93,6 +94,7 @@ fn kernels_as_acgpu() {
         ("math64", include_str!("xe3/kernels/math64.mlir"), include_str!("xe3/kernels/math64.expected")),
         ("workgroups", include_str!("xe3/kernels/workgroups.mlir"), include_str!("xe3/kernels/workgroups.expected")),
         ("copy", include_str!("xe3/kernels/copy.mlir"), include_str!("xe3/kernels/copy.expected")),
+        ("triangle", include_str!("xe3/kernels/triangle.mlir"), include_str!("xe3/kernels/triangle.expected")),
     ];
     let mut bad = Vec::new();
     for (name, src, want) in cases {

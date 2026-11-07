@@ -1,5 +1,5 @@
 //! `convert-gpu-to-xe3`: the kernels' calls inlined ([`Kernels::inline_calls`]); every shader (a `gpu.func` kernel,
-//! a `func.func {xe3.stage}`) ⇒ an `xe3.kernel` of virtual EU instructions ([`GpuToXe3`]), its structured control
+//! a `func.func {spirv.execution_model}`) ⇒ an `xe3.kernel` of virtual EU instructions ([`GpuToXe3`]), its structured control
 //! flow kept (of registers: `xe3-control` makes it branches); then each kernel's arguments where the thread finds
 //! them, its IEEE prologue and its `reserve` ([`GpuToXe3::place_arguments`]).
 
