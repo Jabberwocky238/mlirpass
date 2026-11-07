@@ -9,10 +9,10 @@ readme = "README.md"
 keywords = ["mlir", "compiler", "ir", "pass", "lowering"]
 categories = ["compilers", "no-std"]
 # The mlir-opt fixtures stay in the repository.
-exclude = ["tests", ".github", "fuzz", "data"]
+exclude = ["tests", ".github", "fuzz", "data", "tools"]
 
 [workspace]
-members = ["macros"]
+members = ["macros", "tools/*"]
 # Random IR against mlir-opt, and timings: a crate of its own (`fuzz/README.md`).
 exclude = ["fuzz"]
 
@@ -68,9 +68,11 @@ all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bu
 "dialect.xevm" = []
 # The GPU instruction sets mlirpass encodes itself (not upstream dialects; not in `all-dialects`): their ops, types
 # and encodings. `target.<isa>` lowers into one and emits its machine code.
-"dialect.agx" = []
-"dialect.rdna2" = []
-"dialect.xe3" = []
+"dialect.agx" = ["dialect.image"]
+"dialect.rdna2" = ["dialect.image"]
+"dialect.xe3" = ["dialect.image"]
+# What a GPU runs, for every GPU target: memories, command streams, data; table-driven packing; the layout.
+"dialect.image" = []
 # One feature per backend (`src/targets`): its type converter, `convert-to-*`, the lowerings
 # into it, and what it emits.
 all-targets = ["target.llvm", "target.emitc", "target.spirv"]

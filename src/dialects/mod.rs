@@ -15,6 +15,8 @@ mod complex;
 mod func;
 #[cfg(feature = "dialect.gpu")]
 mod gpu;
+#[cfg(feature = "dialect.image")]
+mod image;
 #[cfg(feature = "dialect.index")]
 mod index;
 #[cfg(feature = "dialect.linalg")]
@@ -60,6 +62,11 @@ pub use complex::ComplexDialect;
 pub use func::FuncDialect;
 #[cfg(feature = "dialect.gpu")]
 pub use gpu::GpuDialect;
+#[cfg(feature = "dialect.image")]
+pub use image::{
+    Data as ImageData, Field as PackField, Fill, Fields, Group as PackGroup, Hole, Image, ImageDialect, ImageEmit, ImageTarget, Item as PackItem, Layout as ImageLayout, Layouts, MemType, Memory as ImageMemory, Placed as ImagePlaced, Real,
+    Segment as ImageSegment, Stream as ImageStream, Template, Ty as PackTy, Words as ImageWords, attribute_of,
+};
 #[cfg(feature = "dialect.index")]
 pub use index::IndexDialect;
 #[cfg(feature = "dialect.linalg")]

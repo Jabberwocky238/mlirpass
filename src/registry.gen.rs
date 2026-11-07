@@ -128,6 +128,12 @@ impl crate::Passes {
         #[cfg(all(feature = "dialect.nvvm", feature = "target.llvm"))]
         p.register::<crate::ConvertNvvmToLlvm>(); // convert-nvvm-to-llvm
         #[cfg(feature = "target.rdna2")]
+        p.register::<crate::Rdna2Layout>(); // rdna2-layout
+        #[cfg(feature = "target.rdna2")]
+        p.register::<crate::Rdna2Pad>(); // rdna2-pad
+        #[cfg(feature = "target.rdna2")]
+        p.register::<crate::Rdna2Pm4>(); // rdna2-pm4
+        #[cfg(feature = "target.rdna2")]
         p.register::<crate::Rdna2Regalloc>(); // rdna2-regalloc
         #[cfg(feature = "target.rdna2")]
         p.register::<crate::Rdna2Waitcnt>(); // rdna2-waitcnt

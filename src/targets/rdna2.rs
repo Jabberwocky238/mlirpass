@@ -1,13 +1,14 @@
-//! ⭐ RDNA2 machine code out: each `rdna2.kernel` (registers allocated) ⇒ its instructions' bytes and what the
-//! driver needs to run it ([`Rdna2Code`]).
+//! ⭐ RDNA2 out: each `rdna2.kernel` (registers allocated) ⇒ its instructions' bytes and what the driver needs to run
+//! it ([`Rdna2Code`]); a module of memories ⇒ an [`Image`](crate::Image) ([`Rdna2Image`], [`RDNA2_IMAGE`]).
 
 use alloc::borrow::ToOwned;
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
 use mlirformat::{Error, Op};
 
-use crate::{Body, Emit, Heads, Kernels, OpId, Rdna2Isa, Rdna2Kernel, ShaderStage, Symbol};
+use crate::{Body, Emit, Heads, ImageEmit, ImageTarget, Kernels, OpId, Pm4, Rdna2Isa, Rdna2Kernel, ShaderStage, Symbol};
 
 /// ⭐ One kernel's machine code: its instructions (no padding), and how to run it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,3 +57,37 @@ impl Rdna2Code {
         })
     }
 }
+
+/// ⭐ RDNA2 as an image target.
+pub struct Rdna2Image;
+
+impl ImageTarget for Rdna2Image {
+    /// 16 MiB, inside amdgpu's low VA range (it starts at 2 MiB) and below 4 GiB: shader addresses are 32-bit bytes
+    /// (a global access adds them to a zero base, `saddr`).
+    const BASE: u64 = 0x100_0000;
+    /// The PTE fragment amdgpu maps with (64 KiB).
+    const PAGE: u64 = 0x1_0000;
+
+    /// The ops one by one (after `rdna2-pm4`, `rdna2-pad`).
+    fn stream(&self, body: &Body<'_>, stream: OpId) -> Result<Vec<u8>, Error> {
+        let mut dw = Vec::new();
+        for op in body.ops(body.top_block(stream)) {
+            dw.extend(Pm4::pack(body, op)?);
+        }
+        Ok(dw.iter().flat_map(|d| d.to_le_bytes()).collect())
+    }
+
+    /// An `rdna2.kernel`: its instructions, then its `pad` zeros.
+    fn item(&self, body: &Body<'_>, op: OpId) -> Result<Vec<u8>, Error> {
+        if body[op].name != Rdna2Kernel::NAME {
+            return Err(Error(format!("{} cannot be placed in memory", body[op].name)));
+        }
+        let code = Rdna2Code::of(body, op)?;
+        let mut bytes = code.bytes;
+        bytes.resize(bytes.len() + code.pad as usize, 0);
+        Ok(bytes)
+    }
+}
+
+/// ⭐ A module (after `rdna2-layout`) as an [`Image`](crate::Image).
+pub const RDNA2_IMAGE: ImageEmit<'_, Rdna2Image> = ImageEmit(&Rdna2Image);

@@ -10,6 +10,8 @@ mod emitc;
 mod llvm;
 #[cfg(feature = "target.rdna2")]
 mod rdna2;
+#[cfg(feature = "target.rdna2")]
+mod rdna2_dispatch;
 #[cfg(any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
 mod regalloc;
 #[cfg(any(feature = "dialect.agx", feature = "dialect.rdna2", feature = "dialect.xe3"))]
@@ -29,6 +31,8 @@ pub use emitc::*;
 pub use llvm::*;
 #[cfg(feature = "target.rdna2")]
 pub use rdna2::*;
+#[cfg(feature = "target.rdna2")]
+pub use rdna2_dispatch::*;
 #[cfg(any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
 pub use regalloc::*;
 #[cfg(any(feature = "dialect.agx", feature = "dialect.rdna2", feature = "dialect.xe3"))]

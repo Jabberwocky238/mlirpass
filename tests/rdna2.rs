@@ -64,3 +64,66 @@ fn ints_as_acgpu() {
         + &k.bytes.chunks(32).map(|c| c.iter().map(|b| format!("{b:02x}")).collect::<String>() + "\n").collect::<String>();
     assert_eq!(got, include_str!("rdna2/ints.expected"));
 }
+
+/// Every gfx103 register / packet dword with fields, packed from MLIR (tests/rdna2/oracle.mlir: each field set to the
+/// value Mesa's S_* macros were given) is what Mesa packed (tests/rdna2/oracle.expected, scripts/rdna2_reg_oracle.sh);
+/// reads as its typed op; and printed and read again packs the same.
+#[test]
+fn registers_pack_as_mesa() {
+    use mlirpass::{OpId, RDNA2, Rdna2Regs};
+    let mut opt = MlirOpt::upstream();
+    opt.load(Rdna2Dialect);
+    let interfaces = Interfaces::upstream();
+    let body = Body::parse(Ctx::new(&opt, &interfaces), include_str!("rdna2/oracle.mlir")).unwrap();
+    let printed = opt.show(&Module::from(&body)).to_string();
+    let again = Body::parse(Ctx::new(&opt, &interfaces), &printed).unwrap();
+    let expected: Vec<&str> = include_str!("rdna2/oracle.expected").lines().collect();
+    let ops = |b: &Body<'_>| b.block_ops(b.top_block(b.root));
+    let (ops, reread) = (ops(&body), ops(&again));
+    assert_eq!(ops.len(), expected.len());
+    let pack = |b: &Body<'_>, o: OpId| {
+        let name = &b[o].name;
+        let item = RDNA2.get(name).unwrap();
+        let dw = RDNA2.pack(name, &b[o].all_attrs()).unwrap_or_else(|e| panic!("{e}"));
+        format!("{} {:08x}", item.name, dw[0])
+    };
+    let mut bad = Vec::new();
+    for ((op, re), want) in ops.iter().zip(&reread).zip(&expected) {
+        let (got, got_again) = (pack(&body, *op), pack(&again, *re));
+        let typed = Rdna2Regs::verify(&body, *op).map(|r| r.map_err(|e| e.to_string()));
+        if got != *want || got_again != got || !matches!(typed, Some(Ok(()))) {
+            bad.push(format!("want {want}\n got {got}\n printed and read again {got_again}\n typed {typed:?}"));
+        }
+    }
+    assert!(bad.is_empty(), "{} of {} differ:\n{}", bad.len(), expected.len(), bad.join("\n"));
+}
+
+/// tests/rdna2/pm4.mlir through `rdna2-pm4, rdna2-pad, rdna2-layout` packs to the IB Mesa's macros write for it
+/// (tests/rdna2/pm4.expected, scripts/rdna2_pm4_oracle.sh), dword for dword; every packet, the padding's NOP among
+/// them, reads as its typed op.
+#[cfg(feature = "target.rdna2")]
+#[test]
+fn ib_as_mesa() {
+    use mlirpass::{Emit, ImageDialect, PassManager, Passes, RDNA2_IMAGE, Rdna2Packets};
+    let mut opt = MlirOpt::upstream();
+    opt.load(Rdna2Dialect);
+    opt.load(ImageDialect);
+    let interfaces = Interfaces::upstream();
+    let passes = Passes::upstream();
+    let mut body = Body::parse(Ctx::new(&opt, &interfaces), include_str!("rdna2/pm4.mlir")).unwrap();
+    let root = body.root;
+    PassManager::parse(&passes, "builtin.module(rdna2-pm4, rdna2-pad, rdna2-layout)").unwrap().run(&mut body, root).unwrap();
+    let mut packets = Vec::new();
+    body.walk(body.root, &mut |o| packets.extend(Rdna2Packets::verify(&body, o).map(|r| (o, r))));
+    assert!(packets.len() >= 3, "the stream's packets: write_data, dispatch_direct, the padding's NOP");
+    for (o, r) in packets {
+        r.unwrap_or_else(|e| panic!("{}: {e}", body[o].name));
+    }
+    let show = || opt.show(&Module::from(&body)).to_string();
+    let image = RDNA2_IMAGE.emit(&body, body.root).unwrap_or_else(|e| panic!("{e}\n{}", show()));
+    let code = image.segment("code").unwrap();
+    let at = (image.stream - code.addr) as usize;
+    let want: Vec<u32> = include_str!("rdna2/pm4.expected").lines().map(|l| u32::from_str_radix(l, 16).unwrap()).collect();
+    let got: Vec<u32> = code.bytes[at..at + want.len() * 4].as_chunks::<4>().0.iter().map(|b| u32::from_le_bytes(*b)).collect();
+    assert_eq!(got.iter().map(|d| format!("{d:08x}")).collect::<Vec<_>>(), want.iter().map(|d| format!("{d:08x}")).collect::<Vec<_>>(), "\n{}", show());
+}
