@@ -18,6 +18,8 @@ mod rdna2;
 mod rdna2_dispatch;
 #[cfg(any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
 mod regalloc;
+#[cfg(feature = "target.xe3")]
+mod xe3;
 #[cfg(any(feature = "dialect.agx", feature = "dialect.rdna2", feature = "dialect.xe3"))]
 mod shader;
 #[cfg(feature = "target.spirv")]
@@ -43,6 +45,8 @@ pub use rdna2::*;
 pub use rdna2_dispatch::*;
 #[cfg(any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
 pub use regalloc::*;
+#[cfg(feature = "target.xe3")]
+pub use xe3::*;
 #[cfg(any(feature = "dialect.agx", feature = "dialect.rdna2", feature = "dialect.xe3"))]
 pub use shader::*;
 #[cfg(feature = "target.spirv")]

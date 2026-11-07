@@ -217,6 +217,20 @@ impl crate::Passes {
         p.register::<crate::ConvertVectorToSpirv>(); // convert-vector-to-spirv
         #[cfg(all(feature = "dialect.vector", feature = "dialect.xegpu"))]
         p.register::<crate::ConvertVectorToXegpu>(); // convert-vector-to-xegpu
+        #[cfg(feature = "target.xe3")]
+        p.register::<crate::Xe3Branches>(); // xe3-branches
+        #[cfg(feature = "target.xe3")]
+        p.register::<crate::Xe3Control>(); // xe3-control
+        #[cfg(feature = "target.xe3")]
+        p.register::<crate::Xe3End>(); // xe3-end
+        #[cfg(feature = "target.xe3")]
+        p.register::<crate::Xe3Layout>(); // xe3-layout
+        #[cfg(feature = "target.xe3")]
+        p.register::<crate::Xe3Pad>(); // xe3-pad
+        #[cfg(feature = "target.xe3")]
+        p.register::<crate::Xe3Regalloc>(); // xe3-regalloc
+        #[cfg(feature = "target.xe3")]
+        p.register::<crate::Xe3Swsb>(); // xe3-swsb
         #[cfg(all(feature = "dialect.xegpu", feature = "target.llvm"))]
         p.register::<crate::ConvertXegpuToXevm>(); // convert-xegpu-to-xevm
         #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
