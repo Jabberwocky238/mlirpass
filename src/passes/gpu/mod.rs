@@ -1,10 +1,12 @@
 //! `gpu` passes.
 
 mod gpu_kernel_outlining;
+mod gpu_module_to_binary;
 mod gpu_launch_sink_index_computations;
 mod outlining;
 
 pub use gpu_kernel_outlining::{GpuKernelOutlining};
+pub use gpu_module_to_binary::{CompilationFormat, GpuModuleToBinary};
 pub use gpu_launch_sink_index_computations::{GpuLaunchSinkIndexComputations};
 
 #[cfg(all(feature = "target.spirv", feature = "dialect.func", feature = "dialect.scf", feature = "dialect.vector"))]
@@ -29,3 +31,8 @@ pub use convert_gpu_to_nvvm::{configure_nvvm, ConvertGpuToNvvm, NVVM_GPU_SPACES}
 mod convert_gpu_to_rocdl;
 #[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 pub use convert_gpu_to_rocdl::{AmdRuntime, ConvertGpuToRocdl};
+
+#[cfg(feature = "target.rdna2")]
+mod convert_gpu_to_rdna2;
+#[cfg(feature = "target.rdna2")]
+pub use convert_gpu_to_rdna2::*;

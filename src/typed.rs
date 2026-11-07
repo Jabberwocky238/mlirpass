@@ -485,3 +485,25 @@ impl SinkConstants for Body<'_> {
         }
     }
 }
+/// ⭐ A symbol's name, as a `sym_name` defines it or a reference names it.
+pub struct Symbol;
+
+impl Symbol {
+    /// The attribute naming a symbol (`SymbolTable::getSymbolAttrName`).
+    pub const ATTR: &str = "sym_name";
+
+    /// A `sym_name`: its string (or a symbol written `@name`).
+    pub fn defined<'r>(a: &'r Attribute<'_>) -> Result<&'r str, Error> {
+        match a {
+            Attribute::Str { lit, .. } => Ok(lit),
+            a => Self::name(a),
+        }
+    }
+
+    pub fn name<'r>(a: &'r Attribute<'_>) -> Result<&'r str, Error> {
+        match a {
+            Attribute::SymbolRef(path) if path.len() == 1 => Ok(path[0].trim_matches('"')),
+            a => Err(Error(format!("{a} is not a symbol"))),
+        }
+    }
+}

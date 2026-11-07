@@ -53,3 +53,8 @@ pub use wmma_to_nvvm::{convert_mma_types, WmmaToNvvm};
 mod to_rocdl;
 #[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 pub use to_rocdl::{GpuRocdlOptions, GpuToRocdl};
+
+#[cfg(feature = "target.rdna2")]
+mod to_rdna2;
+#[cfg(feature = "target.rdna2")]
+pub use to_rdna2::*;

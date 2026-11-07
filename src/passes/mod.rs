@@ -29,6 +29,8 @@ mod llvm;
 mod math;
 #[cfg(feature = "dialect.memref")]
 mod memref;
+#[cfg(feature = "target.rdna2")]
+mod rdna2;
 #[cfg(feature = "dialect.scf")]
 mod scf;
 #[cfg(feature = "dialect.shape")]
@@ -81,6 +83,8 @@ pub use llvm::*;
 pub use math::*;
 #[cfg(feature = "dialect.memref")]
 pub use memref::*;
+#[cfg(feature = "target.rdna2")]
+pub use rdna2::*;
 #[cfg(feature = "dialect.scf")]
 pub use scf::*;
 #[cfg(feature = "dialect.shape")]

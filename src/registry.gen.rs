@@ -59,6 +59,8 @@ impl crate::Passes {
         p.register::<crate::ConvertGpuToLlvmSpv>(); // convert-gpu-to-llvm-spv
         #[cfg(all(feature = "dialect.gpu", all(feature = "target.llvm", feature = "dialect.nvvm")))]
         p.register::<crate::ConvertGpuToNvvm>(); // convert-gpu-to-nvvm
+        #[cfg(all(feature = "dialect.gpu", feature = "target.rdna2"))]
+        p.register::<crate::ConvertGpuToRdna2>(); // convert-gpu-to-rdna2
         #[cfg(all(feature = "dialect.gpu", all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math")))]
         p.register::<crate::ConvertGpuToRocdl>(); // convert-gpu-to-rocdl
         #[cfg(all(feature = "dialect.gpu", all(feature = "target.spirv", feature = "dialect.func", feature = "dialect.scf", feature = "dialect.vector")))]
@@ -67,6 +69,8 @@ impl crate::Passes {
         p.register::<crate::GpuKernelOutlining>(); // gpu-kernel-outlining
         #[cfg(feature = "dialect.gpu")]
         p.register::<crate::GpuLaunchSinkIndexComputations>(); // gpu-launch-sink-index-computations
+        #[cfg(feature = "dialect.gpu")]
+        p.register::<crate::GpuModuleToBinary>(); // gpu-module-to-binary
         #[cfg(feature = "dialect.gpu")]
         p.register::<crate::XevmAttachTarget>(); // xevm-attach-target
         #[cfg(all(all(feature = "dialect.index", any(feature = "target.llvm", feature = "target.spirv")), feature = "target.llvm"))]
@@ -123,6 +127,10 @@ impl crate::Passes {
         p.register::<crate::ConvertNvgpuToNvvm>(); // convert-nvgpu-to-nvvm
         #[cfg(all(feature = "dialect.nvvm", feature = "target.llvm"))]
         p.register::<crate::ConvertNvvmToLlvm>(); // convert-nvvm-to-llvm
+        #[cfg(feature = "target.rdna2")]
+        p.register::<crate::Rdna2Regalloc>(); // rdna2-regalloc
+        #[cfg(feature = "target.rdna2")]
+        p.register::<crate::Rdna2Waitcnt>(); // rdna2-waitcnt
         #[cfg(all(feature = "dialect.scf", all(feature = "dialect.gpu", feature = "dialect.affine")))]
         p.register::<crate::ConvertParallelLoopsToGpu>(); // convert-parallel-loops-to-gpu
         #[cfg(feature = "dialect.scf")]
