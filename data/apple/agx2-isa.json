@@ -1,0 +1,10730 @@
+{
+"instructions": [
+{
+"name": "ldimm16",
+"display": "ldimm",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x17f",
+"value": "0x62",
+"modifiers": [],
+"immediates": [
+{
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+16,
+31
+]
+]
+}
+],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": []
+},
+{
+"name": "ldimm32",
+"display": "ldimm",
+"lengths": [
+6,
+8
+],
+"length_bit": 15,
+"mask": "0x17f",
+"value": "0x162",
+"modifiers": [],
+"immediates": [
+{
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+16,
+47
+]
+]
+}
+],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": []
+},
+{
+"name": "mfsr",
+"display": "mov",
+"lengths": [
+4
+],
+"length_bit": null,
+"mask": "0x807f",
+"value": "0x72",
+"modifiers": [
+{
+"name": "sr",
+"kind": "sr",
+"bits": [
+[
+16,
+21
+],
+[
+26,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+28,
+29
+]
+]
+}
+],
+"sources": []
+},
+{
+"name": "iadd",
+"display": "iadd",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0x800803f",
+"value": "0xe",
+"modifiers": [
+{
+"name": "shift",
+"kind": "shift",
+"bits": [
+[
+39,
+39
+],
+[
+52,
+53
+]
+]
+},
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu64",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "add",
+"bits": [
+[
+16,
+26
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "add",
+"bits": [
+[
+28,
+38
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "isub",
+"display": "isub",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0x800803f",
+"value": "0x800000e",
+"modifiers": [
+{
+"name": "shift",
+"kind": "shift",
+"bits": [
+[
+39,
+39
+],
+[
+52,
+53
+]
+]
+},
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu64",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "add",
+"bits": [
+[
+16,
+26
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "add",
+"bits": [
+[
+28,
+38
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "imul",
+"display": "imul",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0xf7ff800800803f",
+"value": "0x1e",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu64",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "mul",
+"bits": [
+[
+16,
+26
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "mul",
+"bits": [
+[
+28,
+38
+],
+[
+56,
+57
+]
+]
+}
+]
+},
+{
+"name": "imadd",
+"display": "imadd",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0x800803f",
+"value": "0x1e",
+"modifiers": [
+{
+"name": "shift",
+"kind": "shift",
+"bits": [
+[
+39,
+39
+],
+[
+52,
+53
+]
+]
+},
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu64",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "mul",
+"bits": [
+[
+16,
+26
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "mul",
+"bits": [
+[
+28,
+38
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "add",
+"bits": [
+[
+40,
+50
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "imsub",
+"display": "imsub",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0x800803f",
+"value": "0x800001e",
+"modifiers": [
+{
+"name": "shift",
+"kind": "shift",
+"bits": [
+[
+39,
+39
+],
+[
+52,
+53
+]
+]
+},
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu64",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "mul",
+"bits": [
+[
+16,
+26
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "mul",
+"bits": [
+[
+28,
+38
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "add",
+"bits": [
+[
+40,
+50
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "u8_to_f",
+"display": "u8_to_f",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xcc003ff807f",
+"value": "0x803e",
+"modifiers": [
+{
+"name": "round",
+"kind": "round",
+"bits": [
+[
+26,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "s8_to_f",
+"display": "s8_to_f",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xcc003ff807f",
+"value": "0x1803e",
+"modifiers": [
+{
+"name": "round",
+"kind": "round",
+"bits": [
+[
+26,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "f_to_u16",
+"display": "f_to_u16",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xcc003ff807f",
+"value": "0x4803e",
+"modifiers": [
+{
+"name": "round",
+"kind": "round",
+"bits": [
+[
+26,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "f_to_s16",
+"display": "f_to_s16",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xcc003ff807f",
+"value": "0x5803e",
+"modifiers": [
+{
+"name": "round",
+"kind": "round",
+"bits": [
+[
+26,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "u16_to_f",
+"display": "u16_to_f",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xcc003ff807f",
+"value": "0x6803e",
+"modifiers": [
+{
+"name": "round",
+"kind": "round",
+"bits": [
+[
+26,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "s16_to_f",
+"display": "s16_to_f",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xcc003ff807f",
+"value": "0x7803e",
+"modifiers": [
+{
+"name": "round",
+"kind": "round",
+"bits": [
+[
+26,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "f_to_u32",
+"display": "f_to_u32",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xcc003ff807f",
+"value": "0x8803e",
+"modifiers": [
+{
+"name": "round",
+"kind": "round",
+"bits": [
+[
+26,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "f_to_s32",
+"display": "f_to_s32",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xcc003ff807f",
+"value": "0x9803e",
+"modifiers": [
+{
+"name": "round",
+"kind": "round",
+"bits": [
+[
+26,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "u32_to_f",
+"display": "u32_to_f",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xcc003ff807f",
+"value": "0xa803e",
+"modifiers": [
+{
+"name": "round",
+"kind": "round",
+"bits": [
+[
+26,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "s32_to_f",
+"display": "s32_to_f",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xcc003ff807f",
+"value": "0xb803e",
+"modifiers": [
+{
+"name": "round",
+"kind": "round",
+"bits": [
+[
+26,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "shl",
+"display": "shl",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0x8c0c00c00fff807f",
+"value": "0x2e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+40,
+49
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "shr",
+"display": "shr",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0x8c0c00c00fff807f",
+"value": "0x802e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+40,
+49
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "bfi",
+"display": "bfi",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0xc00807f",
+"value": "0x2e",
+"modifiers": [],
+"immediates": [
+{
+"name": "bitmask",
+"kind": "int",
+"bits": [
+[
+38,
+39
+],
+[
+50,
+51
+],
+[
+63,
+63
+]
+]
+}
+],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+40,
+49
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "bfeil",
+"display": "bfeil",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0xc00807f",
+"value": "0x802e",
+"modifiers": [],
+"immediates": [
+{
+"name": "bitmask",
+"kind": "int",
+"bits": [
+[
+38,
+39
+],
+[
+50,
+51
+],
+[
+63,
+63
+]
+]
+}
+],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+40,
+49
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "extr",
+"display": "extr",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0xc00807f",
+"value": "0x400002e",
+"modifiers": [],
+"immediates": [
+{
+"name": "bitmask",
+"kind": "int",
+"bits": [
+[
+38,
+39
+],
+[
+50,
+51
+],
+[
+63,
+63
+]
+]
+}
+],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+40,
+49
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "shlhi",
+"display": "shlhi",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0xc00807f",
+"value": "0x800002e",
+"modifiers": [],
+"immediates": [
+{
+"name": "bitmask",
+"kind": "int",
+"bits": [
+[
+38,
+39
+],
+[
+50,
+51
+],
+[
+63,
+63
+]
+]
+}
+],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+40,
+49
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "shrhi",
+"display": "shrhi",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0xc00807f",
+"value": "0x800802e",
+"modifiers": [],
+"immediates": [
+{
+"name": "bitmask",
+"kind": "int",
+"bits": [
+[
+38,
+39
+],
+[
+50,
+51
+],
+[
+63,
+63
+]
+]
+}
+],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+40,
+49
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "asr",
+"display": "asr",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0xc00807f",
+"value": "0x400802e",
+"modifiers": [],
+"immediates": [
+{
+"name": "bitmask",
+"kind": "int",
+"bits": [
+[
+38,
+39
+],
+[
+50,
+51
+],
+[
+63,
+63
+]
+]
+}
+],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+40,
+49
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "asrh",
+"display": "asrh",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0xc00807f",
+"value": "0xc00802e",
+"modifiers": [],
+"immediates": [
+{
+"name": "bitmask",
+"kind": "int",
+"bits": [
+[
+38,
+39
+],
+[
+50,
+51
+],
+[
+63,
+63
+]
+]
+}
+],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+40,
+49
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "ffma",
+"display": "ffma",
+"lengths": [
+6,
+8
+],
+"length_bit": 15,
+"mask": "0x3f",
+"value": "0x3a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "float",
+"bits": [
+[
+28,
+39
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "float",
+"bits": [
+[
+40,
+51
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "hfma",
+"display": "hfma",
+"lengths": [
+6,
+8
+],
+"length_bit": 15,
+"mask": "0x3f",
+"value": "0x36",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dhalf",
+"bits": [
+[
+7,
+14
+],
+[
+60,
+61
+]
+]
+}
+],
+"sources": [
+{
+"kind": "half",
+"bits": [
+[
+16,
+26
+],
+[
+58,
+59
+]
+]
+},
+{
+"kind": "half",
+"bits": [
+[
+28,
+38
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "half",
+"bits": [
+[
+40,
+50
+],
+[
+54,
+55
+]
+]
+}
+]
+},
+{
+"name": "fadd",
+"display": "fadd",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3f",
+"value": "0x2a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "float",
+"bits": [
+[
+28,
+39
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "fmul",
+"display": "fmul",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3f",
+"value": "0x1a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "float",
+"bits": [
+[
+28,
+39
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "hadd",
+"display": "hadd",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3f",
+"value": "0x26",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dhalf",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "half",
+"bits": [
+[
+16,
+26
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "half",
+"bits": [
+[
+28,
+38
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "hmul",
+"display": "hmul",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3f",
+"value": "0x16",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dhalf",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "half",
+"bits": [
+[
+16,
+26
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "half",
+"bits": [
+[
+28,
+38
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "not_a",
+"display": "not_a",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x3fffc00807f",
+"value": "0xc00000007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "mov",
+"display": "mov",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x3fffc00807f",
+"value": "0x800800007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "not",
+"display": "not",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x3fffc00807f",
+"value": "0x400400007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "mov_a",
+"display": "mov_a",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x3fffc00807f",
+"value": "0xc00007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "zero",
+"display": "zero",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0x7e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "and",
+"display": "and",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0x800000007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "andn1",
+"display": "andn1",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0x400000007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "andn2",
+"display": "andn2",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0x800007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "xor",
+"display": "xor",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0x400800007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "or",
+"display": "or",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0xc00800007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "nor",
+"display": "nor",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0x400007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "xnor",
+"display": "xnor",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0x800400007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "orn1",
+"display": "orn1",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0xc00400007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "orn2",
+"display": "orn2",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0x800c00007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "nand",
+"display": "nand",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0x400c00007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "one",
+"display": "one",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0xc00c00007e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "bitrev",
+"display": "bitrev",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xfffc00807f",
+"value": "0x400003e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "popcnt",
+"display": "popcnt",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xfffc00807f",
+"value": "0x800003e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "ffs",
+"display": "ffs",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xfffc00807f",
+"value": "0xc00003e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "intl",
+"display": "intl",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xc00c00807f",
+"value": "0x3e",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "floor",
+"display": "floor",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0xa",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "rsqrts",
+"display": "rsqrts",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0x1000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "rcp",
+"display": "rcp",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0x8000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "rsqrt",
+"display": "rsqrt",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0x9000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "sinr",
+"display": "sinr",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0xa000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "dfdx",
+"display": "dfdx",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0x4000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "dfdy",
+"display": "dfdy",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0x6000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "sinc",
+"display": "sinc",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0xe000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "log2",
+"display": "log2",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0xc000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "exp2",
+"display": "exp2",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0xd000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "ceil",
+"display": "ceil",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0x10000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "trunc",
+"display": "trunc",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0x20000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "rint",
+"display": "rint",
+"lengths": [
+4,
+6
+],
+"length_bit": 15,
+"mask": "0x3fff000003f",
+"value": "0x30000000a",
+"modifiers": [
+{
+"name": "saturate",
+"kind": "int",
+"bits": [
+[
+6,
+6
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "stop",
+"display": "stop",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0x88",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "trap",
+"display": "trap",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0x8",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "jmp_incomplete",
+"display": "jmp_incomplete",
+"lengths": [
+4
+],
+"length_bit": null,
+"mask": "0xff00ffff",
+"value": "0x0",
+"modifiers": [],
+"immediates": [
+{
+"name": "offset",
+"kind": "int",
+"bits": [
+[
+16,
+23
+]
+]
+}
+],
+"dests": [],
+"sources": []
+},
+{
+"name": "ret",
+"display": "ret",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0x7f",
+"value": "0x14",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "exreg32",
+"bits": [
+[
+9,
+15
+]
+]
+}
+]
+},
+{
+"name": "call_reg",
+"display": "call",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0x7f",
+"value": "0x4",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "exreg32",
+"bits": [
+[
+9,
+15
+]
+]
+}
+]
+},
+{
+"name": "jmp_any",
+"display": "jmp_any",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0xc000",
+"modifiers": [],
+"immediates": [
+{
+"name": "offset",
+"kind": "signed",
+"bits": [
+[
+16,
+47
+]
+]
+}
+],
+"dests": [],
+"sources": []
+},
+{
+"name": "call",
+"display": "call",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0xc010",
+"modifiers": [],
+"immediates": [
+{
+"name": "offset",
+"kind": "signed",
+"bits": [
+[
+16,
+47
+]
+]
+}
+],
+"dests": [],
+"sources": []
+},
+{
+"name": "jmp_none",
+"display": "jmp_none",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0xc020",
+"modifiers": [],
+"immediates": [
+{
+"name": "offset",
+"kind": "signed",
+"bits": [
+[
+16,
+47
+]
+]
+}
+],
+"dests": [],
+"sources": []
+},
+{
+"name": "pop_exec",
+"display": "pop_exec",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0xffffffffe67f",
+"value": "0x652",
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+}
+],
+"immediates": [
+{
+"name": "nest",
+"kind": "int",
+"bits": [
+[
+11,
+12
+]
+]
+}
+],
+"dests": [],
+"sources": []
+},
+{
+"name": "if_icmp",
+"display": "if",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x30c00c00067f",
+"value": "0x52",
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+},
+{
+"name": "cond",
+"kind": "icond",
+"bits": [
+[
+13,
+15
+],
+[
+8,
+8
+]
+]
+}
+],
+"immediates": [
+{
+"name": "nest",
+"kind": "int",
+"bits": [
+[
+11,
+12
+]
+]
+}
+],
+"dests": [],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "else_icmp",
+"display": "else",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x30c00c00067f",
+"value": "0x252",
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+},
+{
+"name": "cond",
+"kind": "icond",
+"bits": [
+[
+13,
+15
+],
+[
+8,
+8
+]
+]
+}
+],
+"immediates": [
+{
+"name": "nest",
+"kind": "int",
+"bits": [
+[
+11,
+12
+]
+]
+}
+],
+"dests": [],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "while_icmp",
+"display": "while",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x30c00c00067f",
+"value": "0x452",
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+},
+{
+"name": "cond",
+"kind": "icond",
+"bits": [
+[
+13,
+15
+],
+[
+8,
+8
+]
+]
+}
+],
+"immediates": [
+{
+"name": "nest",
+"kind": "int",
+"bits": [
+[
+11,
+12
+]
+]
+}
+],
+"dests": [],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "update_exec",
+"display": "update_exec",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x3fffffffff7f",
+"value": "0x42",
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+}
+],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "if_fcmp",
+"display": "if",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x30000000067f",
+"value": "0x42",
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+},
+{
+"name": "cond",
+"kind": "fcond",
+"bits": [
+[
+13,
+15
+],
+[
+8,
+8
+]
+]
+}
+],
+"immediates": [
+{
+"name": "nest",
+"kind": "int",
+"bits": [
+[
+11,
+12
+]
+]
+}
+],
+"dests": [],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "float",
+"bits": [
+[
+28,
+39
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "else_fcmp",
+"display": "else",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x30000000067f",
+"value": "0x242",
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+},
+{
+"name": "cond",
+"kind": "fcond",
+"bits": [
+[
+13,
+15
+],
+[
+8,
+8
+]
+]
+}
+],
+"immediates": [
+{
+"name": "nest",
+"kind": "int",
+"bits": [
+[
+11,
+12
+]
+]
+}
+],
+"dests": [],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "float",
+"bits": [
+[
+28,
+39
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "while_fcmp",
+"display": "while",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x30000000067f",
+"value": "0x442",
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+},
+{
+"name": "cond",
+"kind": "fcond",
+"bits": [
+[
+13,
+15
+],
+[
+8,
+8
+]
+]
+}
+],
+"immediates": [
+{
+"name": "nest",
+"kind": "int",
+"bits": [
+[
+11,
+12
+]
+]
+}
+],
+"dests": [],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "float",
+"bits": [
+[
+28,
+39
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "icsel",
+"display": "csel",
+"lengths": [
+8,
+10
+],
+"length_bit": 15,
+"mask": "0x7f",
+"value": "0x12",
+"modifiers": [
+{
+"name": "condition",
+"kind": "icond",
+"bits": [
+[
+61,
+63
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+76,
+77
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+74,
+75
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+72,
+73
+]
+]
+},
+{
+"kind": "cmpsel",
+"bits": [
+[
+40,
+48
+],
+[
+70,
+71
+],
+[
+8,
+8
+]
+]
+},
+{
+"kind": "cmpsel",
+"bits": [
+[
+52,
+60
+],
+[
+68,
+69
+],
+[
+8,
+8
+]
+]
+}
+]
+},
+{
+"name": "fcsel",
+"display": "csel",
+"lengths": [
+8,
+10
+],
+"length_bit": 15,
+"mask": "0x7f",
+"value": "0x2",
+"modifiers": [
+{
+"name": "condition",
+"kind": "fcond",
+"bits": [
+[
+61,
+63
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+76,
+77
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+27
+],
+[
+74,
+75
+]
+]
+},
+{
+"kind": "float",
+"bits": [
+[
+28,
+39
+],
+[
+72,
+73
+]
+]
+},
+{
+"kind": "cmpsel",
+"bits": [
+[
+40,
+48
+],
+[
+70,
+71
+],
+[
+8,
+8
+]
+]
+},
+{
+"kind": "cmpsel",
+"bits": [
+[
+52,
+60
+],
+[
+68,
+69
+],
+[
+8,
+8
+]
+]
+}
+]
+},
+{
+"name": "ballot",
+"display": "ballot",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0xffff803ff3ff007f",
+"value": "0x1800000010032",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": []
+},
+{
+"name": "icmp_ballot",
+"display": "ballot",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0x1ffe00000000007f",
+"value": "0x32",
+"modifiers": [
+{
+"name": "quad",
+"kind": "quad",
+"bits": [
+[
+48,
+48
+]
+]
+},
+{
+"name": "condition",
+"kind": "icond",
+"bits": [
+[
+61,
+63
+],
+[
+47,
+47
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "fcmp_ballot",
+"display": "ballot",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0x1ffe00000000007f",
+"value": "0x22",
+"modifiers": [
+{
+"name": "quad",
+"kind": "quad",
+"bits": [
+[
+48,
+48
+]
+]
+},
+{
+"name": "condition",
+"kind": "icond",
+"bits": [
+[
+61,
+63
+],
+[
+47,
+47
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "float",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "float",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "shuffle",
+"display": "shuffle",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x800807f",
+"value": "0x6f",
+"modifiers": [
+{
+"name": "quad",
+"kind": "quad",
+"bits": [
+[
+26,
+26
+]
+]
+},
+{
+"name": "rotate",
+"kind": "int",
+"bits": [
+[
+47,
+47
+]
+]
+},
+{
+"name": "op",
+"kind": "shuffle_op",
+"bits": [
+[
+38,
+39
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+},
+{
+"kind": "alu",
+"bits": [
+[
+28,
+37
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "pixwait",
+"display": "pixwait",
+"lengths": [
+4
+],
+"length_bit": null,
+"mask": "0xff",
+"value": "0x48",
+"modifiers": [],
+"immediates": [
+{
+"name": "i",
+"kind": "int",
+"bits": [
+[
+8,
+17
+]
+]
+},
+{
+"name": "j",
+"kind": "int",
+"bits": [
+[
+22,
+23
+]
+]
+}
+],
+"dests": [],
+"sources": []
+},
+{
+"name": "pixrel",
+"display": "pixrel",
+"lengths": [
+4
+],
+"length_bit": null,
+"mask": "0xff",
+"value": "0x58",
+"modifiers": [],
+"immediates": [
+{
+"name": "i",
+"kind": "int",
+"bits": [
+[
+8,
+17
+]
+]
+},
+{
+"name": "j",
+"kind": "int",
+"bits": [
+[
+22,
+23
+]
+]
+}
+],
+"dests": [],
+"sources": []
+},
+{
+"name": "wait",
+"display": "wait",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xff",
+"value": "0x38",
+"modifiers": [
+{
+"name": "group",
+"kind": "group",
+"bits": [
+[
+8,
+8
+]
+]
+}
+],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "no_var",
+"display": "no_var",
+"lengths": [
+4
+],
+"length_bit": null,
+"mask": "0x804003ff",
+"value": "0x80000051",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "st_var",
+"display": "st_var",
+"lengths": [
+4
+],
+"length_bit": null,
+"mask": "0x8040037f",
+"value": "0x80000011",
+"modifiers": [
+{
+"name": "last",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+}
+],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "exreg32",
+"bits": [
+[
+10,
+14
+],
+[
+24,
+25
+]
+]
+},
+{
+"kind": "uvs",
+"bits": [
+[
+16,
+21
+],
+[
+26,
+27
+],
+[
+23,
+23
+]
+]
+}
+]
+},
+{
+"name": "load",
+"display": "load",
+"lengths": [
+6,
+8
+],
+"length_bit": 47,
+"mask": "0x40000400007f",
+"value": "0x400004000005",
+"modifiers": [
+{
+"name": "shift",
+"kind": "shift",
+"bits": [
+[
+42,
+43
+]
+]
+},
+{
+"name": "format",
+"kind": "format",
+"bits": [
+[
+7,
+9
+],
+[
+48,
+48
+]
+]
+},
+{
+"name": "mask",
+"kind": "mask",
+"bits": [
+[
+52,
+55
+]
+]
+},
+{
+"name": "coherency",
+"kind": "coherent",
+"bits": [
+[
+44,
+45
+]
+]
+},
+{
+"name": "waitgroup",
+"kind": "group",
+"bits": [
+[
+30,
+30
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "memory",
+"bits": [
+[
+10,
+15
+],
+[
+40,
+41
+],
+[
+49,
+49
+],
+[
+52,
+55
+]
+]
+}
+],
+"sources": [
+{
+"kind": "membase",
+"bits": [
+[
+16,
+19
+],
+[
+36,
+39
+],
+[
+27,
+27
+]
+]
+},
+{
+"kind": "memindex",
+"bits": [
+[
+20,
+23
+],
+[
+32,
+35
+],
+[
+56,
+63
+],
+[
+24,
+24
+],
+[
+25,
+25
+]
+]
+}
+]
+},
+{
+"name": "atomic",
+"display": "atomic",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0x40008400003f",
+"value": "0x400084000015",
+"modifiers": [
+{
+"name": "op",
+"kind": "atomic",
+"bits": [
+[
+6,
+9
+]
+]
+},
+{
+"name": "coherency",
+"kind": "coherent",
+"bits": [
+[
+44,
+45
+]
+]
+},
+{
+"name": "waitgroup",
+"kind": "group",
+"bits": [
+[
+30,
+30
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "atomic_dest",
+"bits": [
+[
+10,
+15
+],
+[
+40,
+41
+],
+[
+47,
+47
+]
+]
+}
+],
+"sources": [
+{
+"kind": "atomic_source",
+"bits": [
+[
+48,
+55
+],
+[
+6,
+9
+]
+]
+},
+{
+"kind": "membase",
+"bits": [
+[
+16,
+19
+],
+[
+36,
+39
+],
+[
+27,
+27
+]
+]
+},
+{
+"kind": "memindex",
+"bits": [
+[
+20,
+23
+],
+[
+32,
+35
+],
+[
+56,
+63
+],
+[
+24,
+24
+],
+[
+25,
+25
+]
+]
+}
+]
+},
+{
+"name": "latomic",
+"display": "latomic",
+"lengths": [
+6,
+10
+],
+"length_bit": 15,
+"mask": "0x80100000003f",
+"value": "0x801000000019",
+"modifiers": [
+{
+"name": "op",
+"kind": "atomic",
+"bits": [
+[
+24,
+27
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "local_atomic_dest",
+"bits": [
+[
+9,
+14
+],
+[
+60,
+61
+],
+[
+38,
+38
+],
+[
+8,
+8
+]
+]
+}
+],
+"sources": [
+{
+"kind": "atomic_source",
+"bits": [
+[
+64,
+71
+],
+[
+24,
+27
+]
+]
+},
+{
+"kind": "localmembase",
+"bits": [
+[
+16,
+21
+],
+[
+58,
+59
+],
+[
+22,
+23
+]
+]
+},
+{
+"kind": "localmemindex",
+"bits": [
+[
+28,
+33
+],
+[
+48,
+57
+],
+[
+34,
+34
+]
+]
+}
+]
+},
+{
+"name": "stack_load",
+"display": "stack_load",
+"lengths": [
+6,
+8
+],
+"length_bit": 47,
+"mask": "0x7070040000ff",
+"value": "0x400004000035",
+"modifiers": [
+{
+"name": "shift",
+"kind": "shift",
+"bits": [
+[
+42,
+43
+]
+]
+},
+{
+"name": "format",
+"kind": "format",
+"bits": [
+[
+8,
+9
+],
+[
+50,
+51
+]
+]
+},
+{
+"name": "mask",
+"kind": "mask",
+"bits": [
+[
+52,
+55
+]
+]
+},
+{
+"name": "waitgroup",
+"kind": "group",
+"bits": [
+[
+30,
+30
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "memory",
+"bits": [
+[
+10,
+15
+],
+[
+40,
+41
+],
+[
+49,
+49
+],
+[
+52,
+55
+]
+]
+}
+],
+"sources": [
+{
+"kind": "memindex",
+"bits": [
+[
+20,
+23
+],
+[
+32,
+35
+],
+[
+56,
+63
+],
+[
+24,
+24
+],
+[
+25,
+25
+]
+]
+}
+]
+},
+{
+"name": "stack_adjust",
+"display": "stack_adjust",
+"lengths": [
+6,
+8
+],
+"length_bit": 47,
+"mask": "0x7070040100ff",
+"value": "0x20040100b5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "memindex",
+"bits": [
+[
+20,
+23
+],
+[
+32,
+35
+],
+[
+56,
+63
+],
+[
+24,
+24
+],
+[
+25,
+25
+]
+]
+}
+]
+},
+{
+"name": "stack_store",
+"display": "stack_store",
+"lengths": [
+6,
+8
+],
+"length_bit": 47,
+"mask": "0x7070040000ff",
+"value": "0x4000040000b5",
+"modifiers": [
+{
+"name": "shift",
+"kind": "shift",
+"bits": [
+[
+42,
+43
+]
+]
+},
+{
+"name": "format",
+"kind": "format",
+"bits": [
+[
+8,
+9
+],
+[
+50,
+51
+]
+]
+},
+{
+"name": "mask",
+"kind": "mask",
+"bits": [
+[
+52,
+55
+]
+]
+},
+{
+"name": "waitgroup",
+"kind": "group",
+"bits": [
+[
+30,
+30
+]
+]
+}
+],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "memory",
+"bits": [
+[
+10,
+15
+],
+[
+40,
+41
+],
+[
+49,
+49
+],
+[
+52,
+55
+]
+]
+},
+{
+"kind": "memindex",
+"bits": [
+[
+20,
+23
+],
+[
+32,
+35
+],
+[
+56,
+63
+],
+[
+24,
+24
+],
+[
+25,
+25
+]
+]
+}
+]
+},
+{
+"name": "uniform_store",
+"display": "mov",
+"lengths": [
+6,
+8
+],
+"length_bit": 47,
+"mask": "0xd0cf07f0f03ff",
+"value": "0x3d0000c5",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "uniform_dest",
+"bits": [
+[
+20,
+23
+],
+[
+32,
+35
+],
+[
+56,
+63
+],
+[
+52,
+55
+]
+]
+}
+],
+"sources": [
+{
+"kind": "uniform_src",
+"bits": [
+[
+10,
+15
+],
+[
+40,
+41
+],
+[
+52,
+55
+]
+]
+}
+]
+},
+{
+"name": "uniform_store_unk",
+"display": "uniform_store_unk",
+"lengths": [
+6,
+8
+],
+"length_bit": 47,
+"mask": "0xc00f03c0f007f",
+"value": "0x3c000045",
+"modifiers": [
+{
+"name": "shift",
+"kind": "shift",
+"bits": [
+[
+42,
+43
+]
+]
+},
+{
+"name": "format",
+"kind": "format",
+"bits": [
+[
+7,
+9
+],
+[
+48,
+48
+]
+]
+},
+{
+"name": "mask",
+"kind": "mask",
+"bits": [
+[
+52,
+55
+]
+]
+},
+{
+"name": "waitgroup",
+"kind": "group",
+"bits": [
+[
+30,
+30
+]
+]
+}
+],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "memory",
+"bits": [
+[
+10,
+15
+],
+[
+40,
+41
+],
+[
+49,
+49
+],
+[
+52,
+55
+]
+]
+},
+{
+"kind": "memindex",
+"bits": [
+[
+20,
+23
+],
+[
+32,
+35
+],
+[
+56,
+63
+],
+[
+24,
+24
+],
+[
+25,
+25
+]
+]
+}
+]
+},
+{
+"name": "tex_state_store",
+"display": "load",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0x1000ff",
+"value": "0x1000ed",
+"modifiers": [
+{
+"name": "group",
+"kind": "group",
+"bits": [
+[
+16,
+16
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "ts",
+"bits": [
+[
+8,
+14
+]
+]
+}
+],
+"sources": [
+{
+"kind": "ureg64_shift2",
+"bits": [
+[
+59,
+63
+]
+]
+},
+{
+"kind": "heap_offs",
+"bits": [
+[
+26,
+56
+],
+[
+58,
+58
+]
+]
+}
+]
+},
+{
+"name": "sampler_state_store",
+"display": "load",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0x1000ff",
+"value": "0x1000ad",
+"modifiers": [
+{
+"name": "group",
+"kind": "group",
+"bits": [
+[
+16,
+16
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "ss",
+"bits": [
+[
+8,
+14
+]
+]
+}
+],
+"sources": [
+{
+"kind": "ureg64_shift2",
+"bits": [
+[
+59,
+63
+]
+]
+},
+{
+"kind": "heap_offs",
+"bits": [
+[
+26,
+56
+],
+[
+58,
+58
+]
+]
+}
+]
+},
+{
+"name": "store",
+"display": "store",
+"lengths": [
+6,
+8
+],
+"length_bit": 47,
+"mask": "0x40000400007f",
+"value": "0x400004000045",
+"modifiers": [
+{
+"name": "shift",
+"kind": "shift",
+"bits": [
+[
+42,
+43
+]
+]
+},
+{
+"name": "format",
+"kind": "format",
+"bits": [
+[
+7,
+9
+],
+[
+48,
+48
+]
+]
+},
+{
+"name": "mask",
+"kind": "mask",
+"bits": [
+[
+52,
+55
+]
+]
+},
+{
+"name": "coherency",
+"kind": "coherent",
+"bits": [
+[
+44,
+45
+]
+]
+},
+{
+"name": "waitgroup",
+"kind": "group",
+"bits": [
+[
+30,
+30
+]
+]
+}
+],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "memory",
+"bits": [
+[
+10,
+15
+],
+[
+40,
+41
+],
+[
+49,
+49
+],
+[
+52,
+55
+]
+]
+},
+{
+"kind": "membase",
+"bits": [
+[
+16,
+19
+],
+[
+36,
+39
+],
+[
+27,
+27
+]
+]
+},
+{
+"kind": "memindex",
+"bits": [
+[
+20,
+23
+],
+[
+32,
+35
+],
+[
+56,
+63
+],
+[
+24,
+24
+],
+[
+25,
+25
+]
+]
+}
+]
+},
+{
+"name": "lload",
+"display": "lload",
+"lengths": [
+6,
+8
+],
+"length_bit": 15,
+"mask": "0x7f",
+"value": "0x69",
+"modifiers": [
+{
+"name": "format",
+"kind": "format",
+"bits": [
+[
+24,
+27
+]
+]
+},
+{
+"name": "mask",
+"kind": "mask",
+"bits": [
+[
+36,
+39
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "memory",
+"bits": [
+[
+9,
+14
+],
+[
+60,
+61
+],
+[
+8,
+8
+],
+[
+36,
+39
+]
+]
+}
+],
+"sources": [
+{
+"kind": "localmembase",
+"bits": [
+[
+16,
+21
+],
+[
+58,
+59
+],
+[
+22,
+23
+]
+]
+},
+{
+"kind": "localmemindex",
+"bits": [
+[
+28,
+33
+],
+[
+48,
+57
+],
+[
+34,
+34
+]
+]
+}
+]
+},
+{
+"name": "lstore",
+"display": "lstore",
+"lengths": [
+6,
+8
+],
+"length_bit": 15,
+"mask": "0x7f",
+"value": "0x29",
+"modifiers": [
+{
+"name": "format",
+"kind": "format",
+"bits": [
+[
+24,
+27
+]
+]
+},
+{
+"name": "mask",
+"kind": "mask",
+"bits": [
+[
+36,
+39
+]
+]
+}
+],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "memory",
+"bits": [
+[
+9,
+14
+],
+[
+60,
+61
+],
+[
+8,
+8
+],
+[
+36,
+39
+]
+]
+},
+{
+"kind": "localmembase",
+"bits": [
+[
+16,
+21
+],
+[
+58,
+59
+],
+[
+22,
+23
+]
+]
+},
+{
+"kind": "localmemindex",
+"bits": [
+[
+28,
+33
+],
+[
+48,
+57
+],
+[
+34,
+34
+]
+]
+}
+]
+},
+{
+"name": "barrier",
+"display": "barrier",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xff",
+"value": "0x68",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "doorbell",
+"display": "doorbell",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xff",
+"value": "0x28",
+"modifiers": [],
+"immediates": [
+{
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+8,
+15
+]
+]
+}
+],
+"dests": [],
+"sources": []
+},
+{
+"name": "jmp_if_skipping_doorbell",
+"display": "jmp_if_skipping_doorbell",
+"lengths": [
+4
+],
+"length_bit": null,
+"mask": "0xff00ffff",
+"value": "0x20",
+"modifiers": [],
+"immediates": [
+{
+"name": "offset",
+"kind": "int",
+"bits": [
+[
+16,
+23
+]
+]
+}
+],
+"dests": [],
+"sources": []
+},
+{
+"name": "unmap",
+"display": "unmap",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0xfffce0ff0f07ff",
+"value": "0x10c00005000075",
+"modifiers": [],
+"immediates": [
+{
+"name": "target",
+"kind": "int",
+"bits": [
+[
+36,
+36
+]
+]
+},
+{
+"name": "v",
+"kind": "int",
+"bits": [
+[
+20,
+23
+],
+[
+32,
+35
+],
+[
+56,
+63
+]
+]
+}
+],
+"dests": [],
+"sources": [
+{
+"kind": "exreg32",
+"bits": [
+[
+11,
+15
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "map",
+"display": "map",
+"lengths": [
+8
+],
+"length_bit": null,
+"mask": "0xfffce0ff0f07ff",
+"value": "0x10c00005010075",
+"modifiers": [],
+"immediates": [
+{
+"name": "target",
+"kind": "int",
+"bits": [
+[
+36,
+36
+]
+]
+},
+{
+"name": "v",
+"kind": "int",
+"bits": [
+[
+20,
+23
+],
+[
+32,
+35
+],
+[
+56,
+63
+]
+]
+}
+],
+"dests": [],
+"sources": [
+{
+"kind": "exreg32",
+"bits": [
+[
+11,
+15
+],
+[
+40,
+41
+]
+]
+}
+]
+},
+{
+"name": "memory_barrier",
+"display": "memory_barrier",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0x96f5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "image_barrier_1",
+"display": "image_barrier_1",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0xaaf5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "image_barrier_2",
+"display": "image_barrier_2",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0xaef5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "image_barrier_3",
+"display": "image_barrier_3",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0xa9f5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "image_barrier_4",
+"display": "image_barrier_4",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0xadf5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "flush_memory_to_texture",
+"display": "flush_memory_to_texture",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0x40f5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "memory_barrier_2",
+"display": "memory_barrier_2",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0x9af5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "memory_barrier_3",
+"display": "memory_barrier_3",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0x99f5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "unknown_barrier_1",
+"display": "unknown_barrier_1",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0x33f5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "unknown_barrier_2",
+"display": "unknown_barrier_2",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0x3f5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "device_barrier_1",
+"display": "device_barrier_1",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0x9df5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "device_barrier_2",
+"display": "device_barrier_2",
+"lengths": [
+2
+],
+"length_bit": null,
+"mask": "0xffff",
+"value": "0x9ef5",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": []
+},
+{
+"name": "quad",
+"display": "quad",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x23fac00807f",
+"value": "0x806f",
+"modifiers": [
+{
+"name": "prefix",
+"kind": "int",
+"bits": [
+[
+30,
+30
+]
+]
+},
+{
+"name": "op",
+"kind": "subop",
+"bits": [
+[
+28,
+28
+],
+[
+38,
+40
+],
+[
+47,
+47
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "simd",
+"display": "simd",
+"lengths": [
+6
+],
+"length_bit": null,
+"mask": "0x23fac00807f",
+"value": "0x2000806f",
+"modifiers": [
+{
+"name": "prefix",
+"kind": "int",
+"bits": [
+[
+30,
+30
+]
+]
+},
+{
+"name": "op",
+"kind": "subop",
+"bits": [
+[
+28,
+28
+],
+[
+38,
+40
+],
+[
+47,
+47
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "dalu",
+"bits": [
+[
+7,
+14
+],
+[
+44,
+45
+]
+]
+}
+],
+"sources": [
+{
+"kind": "alu",
+"bits": [
+[
+16,
+25
+],
+[
+42,
+43
+]
+]
+}
+]
+},
+{
+"name": "ld_tile",
+"display": "ld_tile",
+"lengths": [
+8,
+10
+],
+"length_bit": 15,
+"mask": "0x80000007f",
+"value": "0x800000049",
+"modifiers": [
+{
+"name": "format",
+"kind": "format",
+"bits": [
+[
+24,
+27
+]
+]
+},
+{
+"name": "mask",
+"kind": "mask",
+"bits": [
+[
+36,
+39
+]
+]
+}
+],
+"immediates": [
+{
+"name": "offset",
+"kind": "int",
+"bits": [
+[
+28,
+34
+],
+[
+40,
+41
+]
+]
+}
+],
+"dests": [
+{
+"kind": "memory",
+"bits": [
+[
+9,
+14
+],
+[
+60,
+61
+],
+[
+8,
+8
+],
+[
+36,
+39
+]
+]
+}
+],
+"sources": [
+{
+"kind": "tilecoord",
+"bits": [
+[
+16,
+21
+],
+[
+58,
+59
+],
+[
+55,
+55
+]
+]
+},
+{
+"kind": "samples",
+"bits": [
+[
+42,
+47
+],
+[
+56,
+57
+],
+[
+22,
+22
+]
+]
+}
+]
+},
+{
+"name": "st_tile",
+"display": "st_tile",
+"lengths": [
+8,
+10
+],
+"length_bit": 15,
+"mask": "0x7f",
+"value": "0x9",
+"modifiers": [
+{
+"name": "explicit_coords",
+"kind": "int",
+"bits": [
+[
+35,
+35
+]
+]
+},
+{
+"name": "format",
+"kind": "format",
+"bits": [
+[
+24,
+27
+]
+]
+},
+{
+"name": "mask",
+"kind": "mask",
+"bits": [
+[
+36,
+39
+]
+]
+}
+],
+"immediates": [
+{
+"name": "offset",
+"kind": "int",
+"bits": [
+[
+28,
+34
+],
+[
+40,
+41
+]
+]
+}
+],
+"dests": [],
+"sources": [
+{
+"kind": "memory",
+"bits": [
+[
+9,
+14
+],
+[
+60,
+61
+],
+[
+8,
+8
+],
+[
+36,
+39
+]
+]
+},
+{
+"kind": "tilecoord",
+"bits": [
+[
+16,
+21
+],
+[
+58,
+59
+],
+[
+55,
+55
+]
+]
+},
+{
+"kind": "samples",
+"bits": [
+[
+42,
+47
+],
+[
+56,
+57
+],
+[
+22,
+22
+]
+]
+}
+]
+},
+{
+"name": "sample_mask",
+"display": "sample_mask",
+"lengths": [
+4
+],
+"length_bit": null,
+"mask": "0x80ff",
+"value": "0xc1",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "discard",
+"bits": [
+[
+9,
+14
+],
+[
+24,
+25
+],
+[
+8,
+8
+]
+]
+},
+{
+"kind": "discard",
+"bits": [
+[
+16,
+21
+],
+[
+26,
+27
+],
+[
+23,
+23
+]
+]
+}
+]
+},
+{
+"name": "zs_emit",
+"display": "zs_emit",
+"lengths": [
+4
+],
+"length_bit": null,
+"mask": "0xc080ff",
+"value": "0x41",
+"modifiers": [],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "discard",
+"bits": [
+[
+9,
+14
+],
+[
+24,
+25
+],
+[
+8,
+8
+]
+]
+},
+{
+"kind": "zs",
+"bits": [
+[
+16,
+21
+],
+[
+26,
+27
+],
+[
+29,
+29
+],
+[
+30,
+30
+]
+]
+}
+]
+},
+{
+"name": "iter",
+"display": "iter",
+"lengths": [
+4,
+8
+],
+"length_bit": 15,
+"mask": "0xff",
+"value": "0x21",
+"modifiers": [
+{
+"name": "fwd",
+"kind": "int",
+"bits": [
+[
+22,
+22
+]
+]
+},
+{
+"name": "elide",
+"kind": "int",
+"bits": [
+[
+46,
+46
+]
+]
+},
+{
+"name": "interpolation",
+"kind": "interpolation",
+"bits": [
+[
+48,
+49
+]
+]
+},
+{
+"name": "kill",
+"kind": "int",
+"bits": [
+[
+52,
+52
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "diter",
+"bits": [
+[
+8,
+14
+],
+[
+56,
+57
+],
+[
+30,
+31
+]
+]
+}
+],
+"sources": [
+{
+"kind": "cf",
+"bits": [
+[
+16,
+21
+],
+[
+58,
+59
+],
+[
+23,
+23
+]
+]
+},
+{
+"kind": "itersample",
+"bits": [
+[
+32,
+39
+],
+[
+48,
+49
+]
+]
+}
+]
+},
+{
+"name": "iterproj",
+"display": "iter",
+"lengths": [
+4,
+8
+],
+"length_bit": 15,
+"mask": "0xff",
+"value": "0x61",
+"modifiers": [
+{
+"name": "fwd",
+"kind": "int",
+"bits": [
+[
+22,
+22
+]
+]
+},
+{
+"name": "elide",
+"kind": "int",
+"bits": [
+[
+46,
+46
+]
+]
+},
+{
+"name": "interpolation",
+"kind": "interpolation",
+"bits": [
+[
+48,
+49
+]
+]
+},
+{
+"name": "kill",
+"kind": "int",
+"bits": [
+[
+52,
+52
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "diter",
+"bits": [
+[
+8,
+14
+],
+[
+56,
+57
+],
+[
+30,
+31
+]
+]
+}
+],
+"sources": [
+{
+"kind": "cf",
+"bits": [
+[
+16,
+21
+],
+[
+58,
+59
+],
+[
+23,
+23
+]
+]
+},
+{
+"kind": "cfperspective",
+"bits": [
+[
+24,
+29
+],
+[
+60,
+61
+]
+]
+},
+{
+"kind": "itersample",
+"bits": [
+[
+32,
+39
+],
+[
+48,
+49
+]
+]
+}
+]
+},
+{
+"name": "ldcf",
+"display": "ldcf",
+"lengths": [
+4,
+8
+],
+"length_bit": 15,
+"mask": "0xff",
+"value": "0xa1",
+"modifiers": [],
+"immediates": [],
+"dests": [
+{
+"kind": "dldcf",
+"bits": [
+[
+8,
+14
+],
+[
+56,
+57
+],
+[
+30,
+31
+]
+]
+}
+],
+"sources": [
+{
+"kind": "cf",
+"bits": [
+[
+16,
+21
+],
+[
+58,
+59
+],
+[
+23,
+23
+]
+]
+},
+{
+"kind": "itersample",
+"bits": [
+[
+32,
+39
+],
+[
+48,
+49
+]
+]
+}
+]
+},
+{
+"name": "smpf",
+"display": "smpf",
+"lengths": [
+8,
+12
+],
+"length_bit": 15,
+"mask": "0x6000000000ff",
+"value": "0x600000000031",
+"modifiers": [
+{
+"name": "shadow",
+"kind": "int",
+"bits": [
+[
+23,
+23
+]
+]
+},
+{
+"name": "query_lod",
+"kind": "int",
+"bits": [
+[
+31,
+31
+]
+]
+},
+{
+"name": "rw",
+"kind": "int",
+"bits": [
+[
+43,
+43
+]
+]
+},
+{
+"name": "coherent",
+"kind": "int",
+"bits": [
+[
+44,
+44
+]
+]
+},
+{
+"name": "sparse",
+"kind": "int",
+"bits": [
+[
+70,
+70
+]
+]
+},
+{
+"name": "kill",
+"kind": "int",
+"bits": [
+[
+69,
+69
+]
+]
+},
+{
+"name": "dim",
+"kind": "dim",
+"bits": [
+[
+40,
+42
+],
+[
+71,
+71
+]
+]
+},
+{
+"name": "mask",
+"kind": "mask",
+"bits": [
+[
+48,
+51
+]
+]
+},
+{
+"name": "lod_type",
+"kind": "lod_type",
+"bits": [
+[
+52,
+55
+]
+]
+},
+{
+"name": "gather",
+"kind": "gather",
+"bits": [
+[
+87,
+90
+]
+]
+},
+{
+"name": "group",
+"kind": "group",
+"bits": [
+[
+63,
+63
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "memory",
+"bits": [
+[
+9,
+14
+],
+[
+72,
+73
+],
+[
+8,
+8
+],
+[
+48,
+51
+]
+]
+}
+],
+"sources": [
+{
+"kind": "heap",
+"bits": [
+[
+64,
+68
+],
+[
+39,
+39
+]
+]
+},
+{
+"kind": "texture",
+"bits": [
+[
+32,
+37
+],
+[
+78,
+79
+],
+[
+38,
+39
+]
+]
+},
+{
+"kind": "sampler",
+"bits": [
+[
+56,
+61
+],
+[
+92,
+93
+],
+[
+62,
+62
+]
+]
+},
+{
+"kind": "coord",
+"bits": [
+[
+16,
+21
+],
+[
+74,
+75
+],
+[
+22,
+22
+],
+[
+47,
+47
+]
+]
+},
+{
+"kind": "lod",
+"bits": [
+[
+24,
+29
+],
+[
+76,
+77
+],
+[
+52,
+55
+]
+]
+},
+{
+"kind": "zs",
+"bits": [
+[
+80,
+85
+],
+[
+94,
+95
+],
+[
+23,
+23
+],
+[
+91,
+91
+]
+]
+}
+]
+},
+{
+"name": "smpi",
+"display": "smpi",
+"lengths": [
+8,
+12
+],
+"length_bit": 15,
+"mask": "0x6000000000ff",
+"value": "0x600000000071",
+"modifiers": [
+{
+"name": "shadow",
+"kind": "int",
+"bits": [
+[
+23,
+23
+]
+]
+},
+{
+"name": "query_lod",
+"kind": "int",
+"bits": [
+[
+31,
+31
+]
+]
+},
+{
+"name": "rw",
+"kind": "int",
+"bits": [
+[
+43,
+43
+]
+]
+},
+{
+"name": "coherent",
+"kind": "int",
+"bits": [
+[
+44,
+44
+]
+]
+},
+{
+"name": "sparse",
+"kind": "int",
+"bits": [
+[
+70,
+70
+]
+]
+},
+{
+"name": "kill",
+"kind": "int",
+"bits": [
+[
+69,
+69
+]
+]
+},
+{
+"name": "dim",
+"kind": "dim",
+"bits": [
+[
+40,
+42
+],
+[
+71,
+71
+]
+]
+},
+{
+"name": "mask",
+"kind": "mask",
+"bits": [
+[
+48,
+51
+]
+]
+},
+{
+"name": "lod_type",
+"kind": "lod_type",
+"bits": [
+[
+52,
+55
+]
+]
+},
+{
+"name": "gather",
+"kind": "gather",
+"bits": [
+[
+87,
+90
+]
+]
+},
+{
+"name": "group",
+"kind": "group",
+"bits": [
+[
+63,
+63
+]
+]
+}
+],
+"immediates": [],
+"dests": [
+{
+"kind": "memory",
+"bits": [
+[
+9,
+14
+],
+[
+72,
+73
+],
+[
+8,
+8
+],
+[
+48,
+51
+]
+]
+}
+],
+"sources": [
+{
+"kind": "heap",
+"bits": [
+[
+64,
+68
+],
+[
+39,
+39
+]
+]
+},
+{
+"kind": "texture",
+"bits": [
+[
+32,
+37
+],
+[
+78,
+79
+],
+[
+38,
+39
+]
+]
+},
+{
+"kind": "sampler",
+"bits": [
+[
+56,
+61
+],
+[
+92,
+93
+],
+[
+62,
+62
+]
+]
+},
+{
+"kind": "coord",
+"bits": [
+[
+16,
+21
+],
+[
+74,
+75
+],
+[
+22,
+22
+],
+[
+47,
+47
+]
+]
+},
+{
+"kind": "lod",
+"bits": [
+[
+24,
+29
+],
+[
+76,
+77
+],
+[
+52,
+55
+]
+]
+},
+{
+"kind": "zs",
+"bits": [
+[
+80,
+85
+],
+[
+94,
+95
+],
+[
+23,
+23
+],
+[
+91,
+91
+]
+]
+}
+]
+},
+{
+"name": "imgw",
+"display": "imgw",
+"lengths": [
+6,
+8
+],
+"length_bit": 15,
+"mask": "0x4800008000ff",
+"value": "0x4800008000f1",
+"modifiers": [
+{
+"name": "dim",
+"kind": "dim",
+"bits": [
+[
+40,
+42
+],
+[
+55,
+55
+]
+]
+},
+{
+"name": "rtz",
+"kind": "int",
+"bits": [
+[
+53,
+53
+]
+]
+},
+{
+"name": "coherency",
+"kind": "coherent",
+"bits": [
+[
+44,
+45
+]
+]
+}
+],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "pbesource",
+"bits": [
+[
+9,
+14
+],
+[
+56,
+57
+],
+[
+8,
+8
+]
+]
+},
+{
+"kind": "heap",
+"bits": [
+[
+48,
+52
+],
+[
+39,
+39
+]
+]
+},
+{
+"kind": "texture",
+"bits": [
+[
+32,
+37
+],
+[
+62,
+63
+],
+[
+38,
+39
+]
+]
+},
+{
+"kind": "coord",
+"bits": [
+[
+16,
+21
+],
+[
+58,
+59
+],
+[
+22,
+22
+],
+[
+47,
+47
+]
+]
+},
+{
+"kind": "uvs",
+"bits": [
+[
+24,
+29
+],
+[
+60,
+61
+],
+[
+31,
+31
+]
+]
+}
+]
+},
+{
+"name": "imgwblk",
+"display": "imgwblk",
+"lengths": [
+6,
+10
+],
+"length_bit": 15,
+"mask": "0x3ff800004800000000ff",
+"value": "0x800004800000000b1",
+"modifiers": [
+{
+"name": "explicit_coords",
+"kind": "int",
+"bits": [
+[
+23,
+23
+]
+]
+},
+{
+"name": "dim",
+"kind": "dim",
+"bits": [
+[
+40,
+42
+],
+[
+55,
+55
+]
+]
+},
+{
+"name": "format",
+"kind": "format",
+"bits": [
+[
+8,
+8
+],
+[
+64,
+66
+]
+]
+},
+{
+"name": "rtz",
+"kind": "int",
+"bits": [
+[
+53,
+53
+]
+]
+}
+],
+"immediates": [],
+"dests": [],
+"sources": [
+{
+"kind": "exreg16",
+"bits": [
+[
+9,
+14
+],
+[
+56,
+57
+]
+]
+},
+{
+"kind": "heap",
+"bits": [
+[
+48,
+52
+],
+[
+39,
+39
+]
+]
+},
+{
+"kind": "texture",
+"bits": [
+[
+32,
+37
+],
+[
+62,
+63
+],
+[
+38,
+39
+]
+]
+},
+{
+"kind": "coord",
+"bits": [
+[
+16,
+21
+],
+[
+58,
+59
+],
+[
+22,
+22
+],
+[
+47,
+47
+]
+]
+},
+{
+"kind": "uvs",
+"bits": [
+[
+24,
+29
+],
+[
+60,
+61
+],
+[
+31,
+31
+]
+]
+}
+]
+}
+],
+"encodings": {
+"diter": [
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+1,
+8
+]
+]
+},
+"modifiers": [
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+0,
+0
+]
+]
+},
+{
+"name": "count",
+"kind": "int",
+"bits": [
+[
+9,
+10
+]
+]
+}
+],
+"properties": {}
+}
+],
+"dldcf": [
+{
+"mask": "0x600",
+"value": "0x200",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+1,
+8
+]
+]
+},
+"modifiers": [
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+0,
+0
+]
+]
+}
+],
+"properties": {
+"count": "3"
+}
+}
+],
+"dalu": [
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+2,
+9
+]
+]
+},
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+0,
+0
+]
+]
+},
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+1,
+1
+]
+]
+}
+],
+"properties": {}
+}
+],
+"dhalf": [
+{
+"mask": "0x2",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+2,
+9
+]
+]
+},
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+0,
+0
+]
+]
+}
+],
+"properties": {}
+}
+],
+"dalu64": [
+{
+"mask": "0x6",
+"value": "0x6",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+3,
+9
+]
+],
+"shift": 1
+},
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+0,
+0
+]
+]
+}
+],
+"properties": {
+"size64": "1"
+}
+},
+{
+"mask": "0x6",
+"value": "0x2",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+3,
+9
+]
+],
+"shift": 1
+},
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+0,
+0
+]
+]
+}
+],
+"properties": {
+"size32": "1"
+}
+},
+{
+"mask": "0x2",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+2,
+9
+]
+]
+},
+"modifiers": [
+{
+"name": "cache",
+"kind": "int",
+"bits": [
+[
+0,
+0
+]
+]
+}
+],
+"properties": {
+"size16": "1"
+}
+}
+],
+"ts": [
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "ts",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"ss": [
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "ss",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"uniform_dest": [
+{
+"mask": "0xf0001",
+"value": "0xf0000",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+15
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size64": "1"
+}
+},
+{
+"mask": "0xf0001",
+"value": "0x30000",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+15
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size32": "1"
+}
+},
+{
+"mask": "0xf0000",
+"value": "0xf0000",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+15
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "4"
+}
+},
+{
+"mask": "0xf0000",
+"value": "0x70000",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+15
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "3"
+}
+},
+{
+"mask": "0xf0000",
+"value": "0x30000",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+15
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "2"
+}
+},
+{
+"mask": "0xf0000",
+"value": "0x10000",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+15
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"uniform_src": [
+{
+"mask": "0xf01",
+"value": "0xf00",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size64": "1"
+}
+},
+{
+"mask": "0xf01",
+"value": "0x300",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size32": "1"
+}
+},
+{
+"mask": "0xf00",
+"value": "0xf00",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "4"
+}
+},
+{
+"mask": "0xf00",
+"value": "0x700",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "3"
+}
+},
+{
+"mask": "0xf00",
+"value": "0x300",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "2"
+}
+},
+{
+"mask": "0xf00",
+"value": "0x100",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"coord": [
+{
+"mask": "0x200",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [
+{
+"name": "lu",
+"kind": "int",
+"bits": [
+[
+8,
+8
+]
+]
+}
+],
+"properties": {
+"size32": "1"
+}
+},
+{
+"mask": "0x200",
+"value": "0x200",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [
+{
+"name": "lu",
+"kind": "int",
+"bits": [
+[
+8,
+8
+]
+]
+}
+],
+"properties": {
+"size16": "1"
+}
+}
+],
+"lod": [
+{
+"mask": "0xfff",
+"value": "0x0",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+0
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0xf00",
+"value": "0x400",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size32": "1",
+"count": "2"
+}
+},
+{
+"mask": "0xf00",
+"value": "0xc00",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size16": "1",
+"count": "5"
+}
+},
+{
+"mask": "0xf00",
+"value": "0x200",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0xf00",
+"value": "0x100",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0xf00",
+"value": "0x900",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "2"
+}
+},
+{
+"mask": "0xf00",
+"value": "0xd00",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "2"
+}
+},
+{
+"mask": "0xf00",
+"value": "0x600",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0xf00",
+"value": "0x500",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"ureg64": [
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+],
+"shift": 1
+},
+"modifiers": [],
+"properties": {
+"size64": "1"
+}
+}
+],
+"ureg64_shift2": [
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+6
+]
+],
+"shift": 2
+},
+"modifiers": [],
+"properties": {
+"size64": "1"
+}
+}
+],
+"exreg16": [
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"exreg32": [
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+],
+"shift": 1
+},
+"modifiers": [],
+"properties": {
+"size32": "1"
+}
+}
+],
+"heap_offs": [
+{
+"mask": "0x80000000",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+8
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size32": "1"
+}
+},
+{
+"mask": "0x80000000",
+"value": "0x80000000",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+30
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size32": "1"
+}
+}
+],
+"atomic_dest": [
+{
+"mask": "0x100",
+"value": "0x100",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size32": "1"
+}
+},
+{
+"mask": "0x1ff",
+"value": "0x0",
+"field": null,
+"modifiers": [],
+"properties": {}
+}
+],
+"local_atomic_dest": [
+{
+"mask": "0x300",
+"value": "0x300",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size32": "1"
+}
+},
+{
+"mask": "0x1ff",
+"value": "0x0",
+"field": null,
+"modifiers": [],
+"properties": {}
+}
+],
+"atomic_source": [
+{
+"mask": "0xf00",
+"value": "0x300",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "2",
+"size32": "1"
+}
+},
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "1",
+"size32": "1"
+}
+}
+],
+"memory": [
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+8,
+8
+]
+]
+},
+{
+"name": "mask",
+"kind": "int",
+"bits": [
+[
+9,
+12
+]
+]
+}
+],
+"properties": {}
+}
+],
+"uvs": [
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x100",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"cf": [
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "cf",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x100",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"cfperspective": [
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "cf",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"itersample": [
+{
+"mask": "0x300",
+"value": "0x300",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x300",
+"value": "0x100",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x1ff",
+"value": "0x0",
+"field": null,
+"modifiers": [],
+"properties": {}
+}
+],
+"pbesource": [
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size16": "1",
+"count": "4"
+}
+},
+{
+"mask": "0x100",
+"value": "0x100",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size32": "1",
+"count": "4"
+}
+}
+],
+"membase": [
+{
+"mask": "0x101",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+1,
+7
+]
+],
+"shift": 1
+},
+"modifiers": [],
+"properties": {
+"size64": "1"
+}
+},
+{
+"mask": "0x101",
+"value": "0x100",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+1,
+7
+]
+],
+"shift": 1
+},
+"modifiers": [],
+"properties": {
+"size64": "1"
+}
+}
+],
+"localmembase": [
+{
+"mask": "0x300",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x3ff",
+"value": "0x200",
+"field": null,
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x100",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+7
+],
+[
+9,
+9
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"memindex": [
+{
+"mask": "0x1ff01",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+1,
+7
+]
+],
+"shift": 1
+},
+"modifiers": [
+{
+"name": "zx",
+"kind": "int",
+"bits": [
+[
+17,
+17
+]
+]
+}
+],
+"properties": {
+"size32": "1"
+}
+},
+{
+"mask": "0x30000",
+"value": "0x10000",
+"field": {
+"name": "imm",
+"kind": "signed",
+"bits": [
+[
+0,
+15
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x30000",
+"value": "0x30000",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+15
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"localmemindex": [
+{
+"mask": "0x1ff00",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x10000",
+"value": "0x10000",
+"field": {
+"name": "imm",
+"kind": "signed",
+"bits": [
+[
+0,
+15
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"cmpsel": [
+{
+"mask": "0x1c0",
+"value": "0x100",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+9,
+10
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+9,
+10
+]
+]
+},
+"modifiers": [
+{
+"name": "hint",
+"kind": "hint",
+"bits": [
+[
+6,
+7
+]
+]
+},
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+11,
+11
+]
+]
+}
+],
+"properties": {}
+},
+{
+"mask": "0x180",
+"value": "0x180",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+9,
+10
+],
+[
+6,
+6
+]
+]
+},
+"modifiers": [
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+11,
+11
+]
+]
+}
+],
+"properties": {}
+}
+],
+"alu": [
+{
+"mask": "0x3c0",
+"value": "0x0",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+10,
+11
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x300",
+"value": "0x100",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+10,
+11
+],
+[
+6,
+6
+]
+]
+},
+"modifiers": [
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+}
+],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+10,
+11
+]
+]
+},
+"modifiers": [
+{
+"name": "hint",
+"kind": "hint",
+"bits": [
+[
+6,
+7
+]
+]
+},
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+9,
+9
+]
+]
+}
+],
+"properties": {}
+}
+],
+"mul": [
+{
+"mask": "0x3c0",
+"value": "0x0",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+11,
+12
+]
+]
+},
+"modifiers": [
+{
+"name": "sx",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+}
+],
+"properties": {}
+},
+{
+"mask": "0x300",
+"value": "0x100",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+11,
+12
+],
+[
+6,
+6
+]
+]
+},
+"modifiers": [
+{
+"name": "sx",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+},
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+}
+],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+11,
+12
+]
+]
+},
+"modifiers": [
+{
+"name": "sx",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+},
+{
+"name": "hint",
+"kind": "hint",
+"bits": [
+[
+6,
+7
+]
+]
+},
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+9,
+9
+]
+]
+}
+],
+"properties": {}
+}
+],
+"add": [
+{
+"mask": "0x3c0",
+"value": "0x0",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+11,
+12
+]
+]
+},
+"modifiers": [
+{
+"name": "sx",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+}
+],
+"properties": {}
+},
+{
+"mask": "0x300",
+"value": "0x100",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+11,
+12
+],
+[
+6,
+6
+]
+]
+},
+"modifiers": [
+{
+"name": "sx",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+},
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+}
+],
+"properties": {}
+},
+{
+"mask": "0x0",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+11,
+12
+]
+]
+},
+"modifiers": [
+{
+"name": "sx",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+},
+{
+"name": "hint",
+"kind": "hint",
+"bits": [
+[
+6,
+7
+]
+]
+},
+{
+"name": "size64",
+"kind": "int",
+"bits": [
+[
+8,
+8
+]
+]
+},
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+9,
+9
+]
+]
+}
+],
+"properties": {}
+}
+],
+"float": [
+{
+"mask": "0x3c0",
+"value": "0x0",
+"field": {
+"name": "fimm",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+12,
+13
+]
+]
+},
+"modifiers": [
+{
+"name": "abs",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+},
+{
+"name": "neg",
+"kind": "int",
+"bits": [
+[
+11,
+11
+]
+]
+}
+],
+"properties": {}
+},
+{
+"mask": "0x300",
+"value": "0x100",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+12,
+13
+],
+[
+6,
+6
+]
+]
+},
+"modifiers": [
+{
+"name": "abs",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+},
+{
+"name": "neg",
+"kind": "int",
+"bits": [
+[
+11,
+11
+]
+]
+},
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+7,
+7
+]
+]
+}
+],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+12,
+13
+]
+]
+},
+"modifiers": [
+{
+"name": "abs",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+},
+{
+"name": "neg",
+"kind": "int",
+"bits": [
+[
+11,
+11
+]
+]
+},
+{
+"name": "hint",
+"kind": "hint",
+"bits": [
+[
+6,
+7
+]
+]
+},
+{
+"name": "size32",
+"kind": "int",
+"bits": [
+[
+9,
+9
+]
+]
+}
+],
+"properties": {}
+}
+],
+"half": [
+{
+"mask": "0x7c0",
+"value": "0x0",
+"field": {
+"name": "fimm",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+11,
+12
+]
+]
+},
+"modifiers": [
+{
+"name": "abs",
+"kind": "int",
+"bits": [
+[
+9,
+9
+]
+]
+},
+{
+"name": "neg",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+}
+],
+"properties": {}
+},
+{
+"mask": "0x180",
+"value": "0x100",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+11,
+12
+],
+[
+6,
+6
+]
+]
+},
+"modifiers": [
+{
+"name": "abs",
+"kind": "int",
+"bits": [
+[
+9,
+9
+]
+]
+},
+{
+"name": "neg",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+}
+],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+5
+],
+[
+11,
+12
+]
+]
+},
+"modifiers": [
+{
+"name": "abs",
+"kind": "int",
+"bits": [
+[
+9,
+9
+]
+]
+},
+{
+"name": "neg",
+"kind": "int",
+"bits": [
+[
+10,
+10
+]
+]
+},
+{
+"name": "hint",
+"kind": "hint",
+"bits": [
+[
+6,
+7
+]
+]
+}
+],
+"properties": {}
+}
+],
+"discard": [
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x100",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"samples": [
+{
+"mask": "0x100",
+"value": "0x100",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+],
+"tilecoord": [
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x100",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "2"
+}
+}
+],
+"zs": [
+{
+"mask": "0x3ff",
+"value": "0x0",
+"field": null,
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x300",
+"value": "0x100",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size32": "1"
+}
+},
+{
+"mask": "0x300",
+"value": "0x200",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x300",
+"value": "0x300",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"count": "3"
+}
+}
+],
+"heap": [
+{
+"mask": "0x3f",
+"value": "0x0",
+"field": null,
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x20",
+"value": "0x20",
+"field": {
+"name": "uniform",
+"kind": "int",
+"bits": [
+[
+0,
+4
+]
+],
+"shift": 2
+},
+"modifiers": [],
+"properties": {
+"size64": "1"
+}
+}
+],
+"texture": [
+{
+"mask": "0x300",
+"value": "0x0",
+"field": {
+"name": "ts",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x300",
+"value": "0x100",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x300",
+"value": "0x200",
+"field": {
+"name": "imm",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x300",
+"value": "0x300",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {
+"size32": "1"
+}
+}
+],
+"sampler": [
+{
+"mask": "0x100",
+"value": "0x0",
+"field": {
+"name": "ss",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+},
+{
+"mask": "0x100",
+"value": "0x100",
+"field": {
+"name": "reg",
+"kind": "int",
+"bits": [
+[
+0,
+7
+]
+]
+},
+"modifiers": [],
+"properties": {}
+}
+]
+}
+}

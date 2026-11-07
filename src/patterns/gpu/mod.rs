@@ -58,3 +58,8 @@ pub use to_rocdl::{GpuRocdlOptions, GpuToRocdl};
 mod to_rdna2;
 #[cfg(feature = "target.rdna2")]
 pub use to_rdna2::*;
+
+#[cfg(feature = "target.agx")]
+mod to_agx;
+#[cfg(feature = "target.agx")]
+pub use to_agx::*;

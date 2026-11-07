@@ -15,6 +15,14 @@ impl crate::Passes {
         p.register::<crate::ConvertAffineForToGpu>(); // convert-affine-for-to-gpu
         #[cfg(feature = "dialect.affine")]
         p.register::<crate::LowerAffine>(); // lower-affine
+        #[cfg(feature = "target.agx")]
+        p.register::<crate::AgxEnd>(); // agx-end
+        #[cfg(feature = "target.agx")]
+        p.register::<crate::AgxLayout>(); // agx-layout
+        #[cfg(feature = "target.agx")]
+        p.register::<crate::AgxRegalloc>(); // agx-regalloc
+        #[cfg(feature = "target.agx")]
+        p.register::<crate::AgxWait>(); // agx-wait
         #[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
         p.register::<crate::ConvertAmdgpuToRocdl>(); // convert-amdgpu-to-rocdl
         #[cfg(all(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")), all(feature = "dialect.amdgpu", feature = "dialect.vector")))]
@@ -55,6 +63,8 @@ impl crate::Passes {
         p.register::<crate::ConvertFuncToLlvm>(); // convert-func-to-llvm
         #[cfg(all(all(feature = "dialect.func", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")), feature = "target.spirv"))]
         p.register::<crate::ConvertFuncToSpirv>(); // convert-func-to-spirv
+        #[cfg(all(feature = "dialect.gpu", feature = "target.agx"))]
+        p.register::<crate::ConvertGpuToAgx>(); // convert-gpu-to-agx
         #[cfg(all(feature = "dialect.gpu", feature = "target.llvm"))]
         p.register::<crate::ConvertGpuToLlvmSpv>(); // convert-gpu-to-llvm-spv
         #[cfg(all(feature = "dialect.gpu", all(feature = "target.llvm", feature = "dialect.nvvm")))]

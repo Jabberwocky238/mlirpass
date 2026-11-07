@@ -41,3 +41,8 @@ pub use gpu_inline_calls::*;
 mod convert_gpu_to_rdna2;
 #[cfg(feature = "target.rdna2")]
 pub use convert_gpu_to_rdna2::*;
+
+#[cfg(feature = "target.agx")]
+mod convert_gpu_to_agx;
+#[cfg(feature = "target.agx")]
+pub use convert_gpu_to_agx::*;

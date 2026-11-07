@@ -8,6 +8,10 @@
 mod emitc;
 #[cfg(feature = "target.llvm")]
 mod llvm;
+#[cfg(feature = "target.agx")]
+mod agx;
+#[cfg(feature = "target.agx")]
+mod agx_dispatch;
 #[cfg(feature = "target.rdna2")]
 mod rdna2;
 #[cfg(feature = "target.rdna2")]
@@ -29,6 +33,10 @@ use crate::{Body, OpId};
 pub use emitc::*;
 #[cfg(feature = "target.llvm")]
 pub use llvm::*;
+#[cfg(feature = "target.agx")]
+pub use agx::*;
+#[cfg(feature = "target.agx")]
+pub use agx_dispatch::*;
 #[cfg(feature = "target.rdna2")]
 pub use rdna2::*;
 #[cfg(feature = "target.rdna2")]

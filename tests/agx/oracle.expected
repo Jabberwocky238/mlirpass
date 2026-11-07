@@ -1,0 +1,84 @@
+Border 424e617b 4a6f188a af6d114c e8d79f49
+CDM Barrier 6408daff
+CDM Global size e5f31bed c147eea8 8cb950a5
+CDM Indirect 00000090 fb3e7194
+CDM Launch Word 0 1000ef8e
+CDM Launch Word 1 5052aa00
+CDM Local size a7be99ae 1e0b4ee5 58921843
+CDM Stream Link 200000d1 b0e04e90
+CDM Stream Return 80000000 00000000
+CDM Stream Terminate 40000000 00000000
+CDM Unk G14X 00000000 40000000
+CF binding 00fcbf91
+CF binding header 00007022
+Counts 85df74c1
+CR ISP ZLS Pixels 10362d99
+CR PPP Control 00000200
+Cull 00038580
+Cull 2 00001200
+Depth bias bb63c2a4 bc39935c bc40f270
+Depth bias/Scissor de45bc7b
+Fragment control c42a4200
+Fragment face 04680a9e
+Fragment face 2 32000000
+Fragment occlusion query 2a1a0000
+Fragment occlusion query 2 00019326
+Fragment Shader Word 0 003632f5
+Fragment Shader Word 1 98594742
+Fragment Shader Word 2 8e600acc
+Fragment Shader Word 3 0000000c
+Fragment stencil 0cf8b18b
+Index List 68b9a557
+Index List: Buffer lo f03b3189
+Index List: Buffer size 1e12afae
+Index List: Count 85a300e0
+Index List: Indirect buffer 0000005d da048969
+Index List: Instances d5a2038f
+Index List: Start 092936e8
+Output Select 00289ac9
+Output Size 6d8a1848
+Output Unknown 00000000
+PBE 8d546b23 303118c5 8dfc2307 bbaa7256 6dffffff 05efffdf
+PPP Header 09edf886
+PPP State 0000cd43 d24f0724
+Region clip 8018006d 01a70155
+Sampler 133dd9d8 01800466
+Scissor 65848899 26254cac 3d4c4006 420d5574
+Sparse block c0ab0a6f
+Texture 7cb8c8a8 926ca282 55286eb9 ff33c0ab 77ffffff 4f69f7fb
+USC Fragment Properties ef395358
+USC No Preshader 00000088
+USC Preshader c0800038 fe0022c2
+USC Registers 2818108d
+USC Sampler 86b0fe9d 66184016
+USC Shader bdda400d 000027b2
+USC Shared c133944d
+USC Texture 73c0b6dd 1ea6b436
+USC Uniform 7040071d d1ed8012
+USC Uniform High 0d60803d 1880488a
+Varying 2 00000000 00000000
+Varying Counts 00229601
+VDM Barrier 25100150
+VDM State 40000093
+VDM State Restart Index 9ba8d551
+VDM State Tessellation c0503018
+VDM State Tessellation Scale 00003dc3
+VDM State Vertex Outputs 0000b386
+VDM State Vertex Shader Word 0 00001eff
+VDM State Vertex Shader Word 1 5e75bd40
+VDM State Vertex Unknown 00000013
+VDM Stream Link 900000d4 ae6d4bca
+VDM Stream Terminate c0000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+VDM Tessellate b6db8858
+VDM Tessellate: Base instance a4465f14
+VDM Tessellate: Base patch 2446b39d
+VDM Tessellate: Factor buffer 9c2ca931
+VDM Tessellate: Factor buffer size bc3f67cc
+VDM Tessellate: Indirect 00000082 06ab1f24 c6685080
+VDM Tessellate: Instance count 76427709
+VDM Tessellate: Instance stride e057776c
+VDM Tessellate: Patch count 5b36d6af
+Viewport c17fcfcd bf71c7bd 40612af4 3e53cdfe 3d6a0f70 be63b8bc
+Viewport control 00000000
+W Clamp 3d1475d7
+ZLS Control 040cc069 05000000

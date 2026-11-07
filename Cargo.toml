@@ -109,6 +109,10 @@ required-features = ["all-dialects", "target.spirv"]
 
 # Each GPU target's encoder against its oracle (llvm-mc, Mesa, gentool).
 [[test]]
+name = "agx"
+required-features = ["dialect.agx"]
+
+[[test]]
 name = "rdna2"
 required-features = ["dialect.rdna2"]
 

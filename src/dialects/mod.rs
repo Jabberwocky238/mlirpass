@@ -3,6 +3,8 @@
 
 #[cfg(feature = "dialect.affine")]
 mod affine;
+#[cfg(feature = "dialect.agx")]
+mod agx;
 #[cfg(feature = "dialect.arith")]
 mod arith;
 #[cfg(feature = "dialect.bufferization")]
@@ -50,6 +52,8 @@ mod vector;
 
 #[cfg(feature = "dialect.affine")]
 pub use affine::AffineDialect;
+#[cfg(feature = "dialect.agx")]
+pub use agx::*;
 #[cfg(feature = "dialect.arith")]
 pub use arith::ArithDialect;
 #[cfg(feature = "dialect.bufferization")]

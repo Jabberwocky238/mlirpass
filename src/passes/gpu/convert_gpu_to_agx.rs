@@ -1,0 +1,52 @@
+//! `convert-gpu-to-agx`: the kernels' calls inlined ([`Kernels::inline_calls`]); the compute kernels of each
+//! `gpu.module` ⇒ `agx.kernel`s of virtual USC instructions ([`GpuToAgx`]); then each kernel's parameters, uniforms
+//! after the 64-bit base, copied to GPRs at its start.
+
+use alloc::vec;
+use alloc::vec::Vec;
+
+use mlirformat::{Error, Op};
+
+use crate::{AGX_KERNEL_ALIGN, AGX_PARAM_UNIFORM, AgxKernel, AgxSlot, AgxType, AgxTypes, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, GpuToAgx, Kernels, Mode, OpId, Quiet, Rewriter, SinkConstants, Updates, UscBuild, UscInput, UscOp, pass};
+
+/// `convert-gpu-to-agx`.
+#[pass("convert-gpu-to-agx", on = "builtin.module")]
+pub fn convert_gpu_to_agx<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    Kernels::inline_calls(body, op)?;
+    let mut shaders = Vec::new();
+    body.walk(op, &mut |f| {
+        if body[f].name == "gpu.func" && body[f].get("gpu.kernel").is_some() {
+            shaders.push(f);
+        }
+    });
+    body.sink_constants(&shaders);
+    let tc = AgxTypes::converter();
+    let mut patterns = ConversionPatterns::default();
+    let i = patterns.converter(&tc);
+    GpuToAgx::populate(&mut patterns, i);
+    let mut target = ConversionTarget::default();
+    target.legal_dialect("agx").illegal_dialect("arith").illegal_dialect("vector").illegal_dialect("math").illegal_dialect("llvm");
+    for o in ["gpu.func", "gpu.return", "gpu.block_id", "gpu.thread_id"] {
+        target.illegal_op(o);
+    }
+    Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &shaders, Mode::Full)?;
+
+    let mut quiet = Quiet;
+    let mut rw = Rewriter::new(body, &mut quiet);
+    for k in Kernels::all(rw.body, op, AgxKernel::NAME) {
+        rw.update::<AgxKernel>(k, |k| k.align = Some(AGX_KERNEL_ALIGN))?;
+        let block = rw.body.top_block(k);
+        let args = rw.body[block].args.clone();
+        rw.set_start(block);
+        for (i, arg) in args.iter().enumerate() {
+            let u = rw.emit(&UscInput::new(i64::from(AGX_PARAM_UNIFORM) + 2 * i as i64, AgxType::U("i32").into()));
+            let u = rw.body[u].results[0];
+            let (copy, types) = UscBuild::new(UscOp::Mov, &[u], &[AgxSlot::S0], vec![AgxType::R("i32").into()]).split();
+            let v = rw.create(copy, &types);
+            let v = rw.body[v].results[0];
+            rw.replace_all_uses(*arg, v);
+        }
+        rw.body[block].args.clear();
+    }
+    Ok(())
+}

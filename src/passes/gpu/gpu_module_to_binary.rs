@@ -2,7 +2,7 @@
 //!
 //! A `#spirv.target_env` serializes the module's `spirv.module` (`SPIRVTarget::serializeToObject`). A module whose
 //! kernels are machine code already (`rdna2.kernel`, lowered by `convert-gpu-to-rdna2` and allocated) is encoded here,
-//! without LLVM: its object's bytes are the kernels one after another (each at its alignment, its padding after it),
+//! (or `agx.kernel`) without LLVM: its object's bytes are the kernels one after another (each at its alignment, its padding after it),
 //! `properties` each kernel's offset, size and what the driver needs to run it. Anything else needs LLVM (NVVM, ROCDL
 //! from LLVM IR, XeVM) and is refused.
 
@@ -45,7 +45,7 @@ impl core::str::FromStr for CompilationFormat {
 #[crate::pass("gpu-module-to-binary", extra = ["toolkit", "l", "opts", "section"])]
 pub struct GpuModuleToBinary {
     #[opt("format", default = CompilationFormat::Fatbin, from_str)]
-    #[cfg_attr(not(any(feature = "target.spirv", feature = "target.rdna2")), allow(dead_code, reason = "no target that emits here"))]
+    #[cfg_attr(not(any(feature = "target.spirv", feature = "target.rdna2", feature = "target.agx")), allow(dead_code, reason = "no target that emits here"))]
     format: CompilationFormat,
 }
 
@@ -83,7 +83,13 @@ impl GpuModuleToBinary {
         let inner: Vec<OpId> = body.ops(body.top_block(m)).collect();
         #[cfg(feature = "target.rdna2")]
         if inner.iter().any(|o| body[*o].name == <crate::Rdna2Kernel as mlirformat::Op>::NAME) {
-            return self.rdna2(body, m, t);
+            let codes = crate::Emit::emit(&crate::Rdna2Emit, body, m)?;
+            return self.native(t, codes.into_iter().map(|k| (k.name, k.align, k.pad, k.bytes, alloc::vec![("params", u64::from(k.params)), ("sgprs", u64::from(k.sgprs)), ("vgprs", u64::from(k.vgprs))])));
+        }
+        #[cfg(feature = "target.agx")]
+        if inner.iter().any(|o| body[*o].name == <crate::AgxKernel as mlirformat::Op>::NAME) {
+            let codes = crate::Emit::emit(&crate::AgxEmit, body, m)?;
+            return self.native(t, codes.into_iter().map(|k| (k.name, k.align, 0, k.bytes, alloc::vec![("params", u64::from(k.params)), ("gprs", u64::from(k.gprs))])));
         }
         #[cfg(feature = "target.spirv")]
         if matches!(t, Attribute::Extended { ext, .. } if ext.name == "spirv.target_env") {
@@ -97,7 +103,7 @@ impl GpuModuleToBinary {
     }
 
     /// `#gpu.object<target, [properties = {...},] [format =] "bytes">`.
-    #[cfg_attr(not(any(feature = "target.spirv", feature = "target.rdna2")), allow(dead_code, reason = "no target that emits here"))]
+    #[cfg_attr(not(any(feature = "target.spirv", feature = "target.rdna2", feature = "target.agx")), allow(dead_code, reason = "no target that emits here"))]
     fn make<'a>(t: &Attribute<'_>, properties: Option<Attribute<'_>>, format: CompilationFormat, bytes: &[u8]) -> Attribute<'a> {
         let key = match format {
             CompilationFormat::Fatbin => "",
@@ -111,23 +117,24 @@ impl GpuModuleToBinary {
         Attribute::Extended { ext: Extended { name: String::from("gpu.object").into(), body: Some(body.into()), params: Vec::new() }, ty: None }
     }
 
-    /// The RDNA2 kernels of module `m`, one after another: the object.
-    #[cfg(feature = "target.rdna2")]
-    fn rdna2<'a>(&self, body: &Body<'a>, m: OpId, t: &Attribute<'a>) -> Result<Attribute<'a>, Error> {
+    /// Kernels of machine code (name, alignment, padding after, bytes, what the driver needs) one after another: the
+    /// object, `properties` each kernel's `offset`, `size` and the rest.
+    #[cfg(any(feature = "target.agx", feature = "target.rdna2"))]
+    fn native<'a>(&self, t: &Attribute<'a>, kernels: impl Iterator<Item = (String, u64, u64, Vec<u8>, Vec<(&'static str, u64)>)>) -> Result<Attribute<'a>, Error> {
         if !matches!(self.format, CompilationFormat::Fatbin | CompilationFormat::Binary) {
-            return Err(Error("gpu-module-to-binary: RDNA2 machine code is binary only".to_owned()));
+            return Err(Error("gpu-module-to-binary: a GPU's machine code is binary only".to_owned()));
         }
         let mut bytes: Vec<u8> = Vec::new();
         let mut props = Vec::new();
-        for k in crate::Emit::emit(&crate::Rdna2Emit, body, m)? {
-            let at = bytes.len().next_multiple_of(k.align.max(1) as usize);
+        let int = |n: u64| Attribute::Int { lit: format!("{n}").into(), ty: Some(mlirformat::Type::int(64)) };
+        for (name, align, pad, code, info) in kernels {
+            let at = bytes.len().next_multiple_of(align.max(1) as usize);
             bytes.resize(at, 0);
-            bytes.extend(&k.bytes);
-            bytes.resize(bytes.len() + k.pad as usize, 0);
-            let int = |n: u64| Attribute::Int { lit: format!("{n}").into(), ty: Some(mlirformat::Type::int(64)) };
-            let entry = alloc::vec![("offset", int(at as u64)), ("size", int(k.bytes.len() as u64)), ("params", int(k.params.into())), ("sgprs", int(k.sgprs.into())), ("vgprs", int(k.vgprs.into()))];
-            let entry = Attribute::Dict(entry.into_iter().map(|(n, v)| mlirformat::NamedAttr { name: String::from(n).into(), value: Some(v) }).collect());
-            props.push(mlirformat::NamedAttr { name: k.name.into(), value: Some(entry) });
+            bytes.extend(&code);
+            bytes.resize(bytes.len() + pad as usize, 0);
+            let entry = [("offset", at as u64), ("size", code.len() as u64)].into_iter().chain(info);
+            let entry = Attribute::Dict(entry.map(|(n, v)| mlirformat::NamedAttr { name: String::from(n).into(), value: Some(int(v)) }).collect());
+            props.push(mlirformat::NamedAttr { name: name.into(), value: Some(entry) });
         }
         Ok(Self::make(t, Some(Attribute::Dict(props)), self.format, &bytes))
     }
