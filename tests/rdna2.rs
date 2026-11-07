@@ -45,24 +45,35 @@ fn encodes_as_llvm_mc() {
     assert!(bad.is_empty(), "{} of {} differ:\n{}", bad.len(), expected.len(), bad.join("\n"));
 }
 
-/// acgpu's `ints` compute shader, in upstream dialects (tests/rdna2/ints.mlir), canonicalized as acgpu's frontend does, lowered and allocated: the kernel's
-/// bytes and registers exactly as acgpu's own RDNA2 backend made them before it moved here (tests/rdna2/ints.expected).
+/// `src` (a module of compute kernels in upstream dialects) through acgpu's frontend passes (inlined, canonicalize, cse)
+/// and the RDNA2 backend: each kernel, its registers and its bytes.
 #[cfg(feature = "target.rdna2")]
-#[test]
-fn ints_as_acgpu() {
+fn kernels(src: &str) -> String {
     use mlirpass::{Emit, PassManager, Passes, Rdna2Emit};
     let mut opt = MlirOpt::upstream();
     opt.load(Rdna2Dialect);
     let interfaces = Interfaces::upstream();
     let passes = Passes::upstream();
-    let mut body = Body::parse(Ctx::new(&opt, &interfaces), include_str!("rdna2/ints.mlir")).unwrap();
-    let pm = PassManager::parse(&passes, "builtin.module(canonicalize, cse, convert-gpu-to-rdna2, rdna2-regalloc, rdna2-waitcnt)").unwrap();
+    let mut body = Body::parse(Ctx::new(&opt, &interfaces), src).unwrap();
+    let pm = PassManager::parse(&passes, "builtin.module(gpu-inline-calls, canonicalize, cse, convert-gpu-to-rdna2, rdna2-regalloc, rdna2-waitcnt)").unwrap();
     let root = body.root;
     pm.run(&mut body, root).unwrap();
-    let [k] = &Rdna2Emit.emit(&body, root).unwrap()[..] else { panic!("one kernel") };
-    let got = format!("params={} sgprs={} vgprs={} pad={} align={}\n", k.params, k.sgprs, k.vgprs, k.pad, k.align)
-        + &k.bytes.chunks(32).map(|c| c.iter().map(|b| format!("{b:02x}")).collect::<String>() + "\n").collect::<String>();
-    assert_eq!(got, include_str!("rdna2/ints.expected"));
+    let mut out = String::new();
+    for k in Rdna2Emit.emit(&body, root).unwrap() {
+        let name = if src.contains("@ints") { String::new() } else { format!("{} ", k.name) };
+        out += &format!("{name}params={} sgprs={} vgprs={} pad={} align={}\n", k.params, k.sgprs, k.vgprs, k.pad, k.align);
+        out += &k.bytes.chunks(32).map(|c| c.iter().map(|b| format!("{b:02x}")).collect::<String>() + "\n").collect::<String>();
+    }
+    out
+}
+
+/// acgpu's `ints` and copy shaders, in upstream dialects (tests/rdna2/{ints,copy}.mlir): each kernel's bytes and
+/// registers exactly as acgpu's own RDNA2 backend made them before it moved here (tests/rdna2/*.expected).
+#[cfg(feature = "target.rdna2")]
+#[test]
+fn kernels_as_acgpu() {
+    assert_eq!(kernels(include_str!("rdna2/ints.mlir")), include_str!("rdna2/ints.expected"));
+    assert_eq!(kernels(include_str!("rdna2/copy.mlir")), include_str!("rdna2/copy.expected"));
 }
 
 /// Every gfx103 register / packet dword with fields, packed from MLIR (tests/rdna2/oracle.mlir: each field set to the

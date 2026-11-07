@@ -65,6 +65,8 @@ impl crate::Passes {
         p.register::<crate::ConvertGpuToRocdl>(); // convert-gpu-to-rocdl
         #[cfg(all(feature = "dialect.gpu", all(feature = "target.spirv", feature = "dialect.func", feature = "dialect.scf", feature = "dialect.vector")))]
         p.register::<crate::ConvertGpuToSpirv>(); // convert-gpu-to-spirv
+        #[cfg(all(feature = "dialect.gpu", any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3")))]
+        p.register::<crate::GpuInlineCalls>(); // gpu-inline-calls
         #[cfg(feature = "dialect.gpu")]
         p.register::<crate::GpuKernelOutlining>(); // gpu-kernel-outlining
         #[cfg(feature = "dialect.gpu")]

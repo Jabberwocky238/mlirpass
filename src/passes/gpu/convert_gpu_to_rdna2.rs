@@ -1,4 +1,5 @@
-//! `convert-gpu-to-rdna2`: the compute kernels of each `gpu.module` ⇒ `rdna2.kernel`s of virtual RDNA2 instructions
+//! `convert-gpu-to-rdna2`: the kernels' calls inlined ([`Kernels::inline_calls`]); the compute kernels of each
+//! `gpu.module` ⇒ `rdna2.kernel`s of virtual RDNA2 instructions
 //! ([`GpuToRdna2`]); then each kernel's parameters, user SGPRs s0 ..., copied to VGPRs at its start (a VALU source
 //! is a VGPR).
 
@@ -12,6 +13,7 @@ use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Conver
 /// `convert-gpu-to-rdna2`.
 #[pass("convert-gpu-to-rdna2", on = "builtin.module")]
 pub fn convert_gpu_to_rdna2<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
+    Kernels::inline_calls(body, op)?;
     let mut shaders = Vec::new();
     body.walk(op, &mut |f| {
         if body[f].name == "gpu.func" && body[f].get("gpu.kernel").is_some() {
