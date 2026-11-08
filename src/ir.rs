@@ -2386,9 +2386,9 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
         pack.get(v.index.unwrap_or(0) as usize).copied().ok_or_else(|| format!("%{}#{} is out of range", v.name, v.index.unwrap_or(0)).into())
     }
 
-    /// A float `FloatAttr` or a `DenseElementsAttr` of floats as MLIR holds it: the value, printed
-    /// as MLIR prints it (`1.0 : f32` ⇒ `1.000000e+00 : f32`), not the text it was written as;
-    /// inside arrays and dictionaries too.
+    /// A float `FloatAttr` or a `DenseElementsAttr` of numbers as MLIR holds it: the value, printed
+    /// as MLIR prints it (`1.0 : f32` ⇒ `1.000000e+00 : f32`, `dense<[true,false]>` ⇒
+    /// `dense<[true, false]>`), not the text it was written as; inside arrays and dictionaries too.
     fn canonical_floats(a: &mut Attribute<'a>) {
         match a {
             Attribute::Array(xs) => xs.iter_mut().for_each(Self::canonical_floats),
@@ -2398,7 +2398,7 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
                     *a = Attribute::from(c);
                 }
             }
-            Attribute::Builtin { name, ty: Some(t), .. } if name == "dense" && matches!(t.element_type(), Type::Float(_)) => {
+            Attribute::Builtin { name, ty: Some(t), .. } if name == "dense" && matches!(t.element_type(), Type::Float(_) | Type::Integer { .. } | Type::Index) => {
                 if let Ok(c) = mlirformat::Const::try_from(&*a) {
                     *a = Attribute::from(c);
                 }
