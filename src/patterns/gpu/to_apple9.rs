@@ -32,6 +32,7 @@
 //!   gpu.block_id x / y / z, gpu.thread_id x ⇒ get_sr threadgroup_position_in_grid (0x9c ..), get_sr16
 //!                                     thread_position_in_threadgroup.x (0xa4); thread_id y / z: 0
 //!   gpu.block_dim                   ⇒ 32, 1, 1
+//!   gpu.grid_dim x / y / z          ⇒ load of the parameter buffer's word params + 0 / 1 / 2 (the dispatcher's)
 //!   gpu.return                      ⇒ halt
 //!   vector.extract / insert / from_elements / broadcast / shuffle ⇒ the components themselves
 //!   scf.if / scf.while (scf.for: as an scf.while, `convert-gpu-to-apple9`) ⇒ themselves, of registers, the
@@ -67,8 +68,8 @@ pub const APPLE9_PARAMETERS: u32 = 1;
 /// The bytes of threadgroup memory a workgroup may use (scripts/apple9_donor.metal's).
 pub const APPLE9_SHARED: u32 = 16384;
 /// The special registers (Metal's code for an M4 reads them so): threadgroup_position_in_grid.x (y, z after it),
-/// thread_position_in_threadgroup.x (16-bit). (The grid's size is no special register: 0x98 .. and 0xa8 .., which
-/// Metal's code reads for it, hold the workgroup's size, measured; `gpu.grid_dim` is refused.)
+/// thread_position_in_threadgroup.x (16-bit). (The grid's size is no special register: Metal's code loads it from a
+/// buffer of the driver's; 0x98 .. and 0xa8 .. are the workgroup's size, measured. `gpu.grid_dim`: the parameter buffer.)
 const SR_THREADGROUP_X: u32 = 0x9c;
 const SR_THREAD_IN_GROUP_X: u32 = 0xa4;
 
@@ -654,6 +655,19 @@ impl GpuToApple9 {
     fn thread_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(d) = Self::dimension(cr, op) else { return false };
         let v = if d == 0 { Self::one(cr, op, Apple9Op::GetSr16, &[], vec![("selector", A::from(SR_THREAD_IN_GROUP_X))], Self::i32()) } else { Self::imm(cr, op, 0, Self::i32()) };
+        cr.replace(op, vec![vec![v]]);
+        true
+    }
+
+    /// The grid's size in workgroups, x / y / z: the parameter buffer's words after the parameters (the ABI's: no
+    /// special register holds it; Metal loads it from a buffer of the driver's). A load with `grid` = the dimension,
+    /// its offset set by `convert-gpu-to-apple9` once the parameters are counted.
+    #[convert("gpu.grid_dim")]
+    fn grid_dim(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let Some(d) = Self::dimension(cr, op) else { return false };
+        let zero = Self::imm(cr, op, 0, Self::i32());
+        let attrs = vec![("binding", A::from(APPLE9_PARAMETERS)), ("shift", A::from(0u32)), ("grid", A::from(d))];
+        let v = Self::one(cr, op, Apple9Op::Load, &[zero], attrs, Self::i32());
         cr.replace(op, vec![vec![v]]);
         true
     }

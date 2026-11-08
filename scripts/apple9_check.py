@@ -3,12 +3,12 @@
 tests/apple9.rs keeps equal to the compiler's output) run on this Mac's GPU (an M4), every result checked against the
 semantics of tests/apple9/<kernel>.mlir: `ints` (i32 arithmetic), `floats` (f32: IEEE, one rounding, denormals
 flushed to zero), `control` (ifs and loops, the condition differing between the lanes) and `memory` (threadgroup memory
-across a barrier; atomics, compare-exchange, on the memory and the threadgroup memory), `ids` (a 3-D grid of workgroups: the ids). macOS with an Apple9 GPU only.
+across a barrier; atomics, compare-exchange, on the memory and the threadgroup memory), `ids` (a 3-D grid of workgroups: the ids, the grid's size from the parameter buffer). macOS with an Apple9 GPU only.
 
 How it runs (the ABI of the apple9 target): the kernel's code replaces the main of a donor kernel
 (scripts/apple9_donor.metal: binding 0 the memory, binding 1 the parameter words) in a Metal binary archive
 (scripts/apple9_metal.swift `run --text`); workgroups of 32 (the target's); the parameters src = 0, dst are byte offsets into the
-memory: the inputs, then 20 results an invocation.
+memory: the inputs, then 20 results an invocation (after the parameters the parameter buffer has the grid's size).
 
     swiftc -O scripts/apple9_metal.swift -o target/apple9-metal
     python3 scripts/apple9_check.py [KERNEL ...]     # each: `N of N right`; exit 1 on any wrong result
@@ -209,7 +209,7 @@ def ids():
     lines = open(os.path.join(ROOT, 'tests/apple9/ids.expected')).read().split('\n')
     code = ''.join(lines[1:]).strip()
     args = [os.path.abspath(RUNNER), 'run', os.path.join(ROOT, 'scripts/apple9_donor.metal'), 'donor', '--text', code, '--grid', f'{nx},{ny},{nz}', '--group', '32',
-            f'u32:{12 * n}:0', 'u32:1:0']
+            f'u32:{12 * n}:0', f'u32:4:0,{nx:x},{ny:x},{nz:x}']
     ran = subprocess.run(args, capture_output=True, text=True)
     if ran.returncode:
         sys.exit(ran.stdout + ran.stderr)
@@ -220,7 +220,7 @@ def ids():
             for gx in range(nx):
                 for lx in range(32):
                     k = ((gz * ny + gy) * nx + gx) * 32 + lx
-                    want = [gx, gy, gz, lx, 0, 0, k, 0, 0, 32, 1, 1]
+                    want = [gx, gy, gz, lx, 0, 0, nx, ny, nz, 32, 1, 1]
                     got = mem[12 * k:12 * k + 12]
                     if got != want: bad.append(f'invocation ({gx}, {gy}, {gz}; {lx}): got {got}, want {want}')
     return n, bad, len(code) // 2, lines[0]

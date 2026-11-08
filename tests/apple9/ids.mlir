@@ -1,6 +1,6 @@
-// The ids of a 3 × 2 × 2 grid of workgroups for Apple9: invocation (g, l) writes at dst + 48 k, k its number in the
-// grid (((g.z * 2 + g.y) * 3 + g.x) * 32 + l.x), the twelve words g.x, g.y, g.z, l.x, l.y, l.z, k, 0, 0, block.x,
-// block.y, block.z.
+// The ids of a grid of workgroups for Apple9: invocation (g, l) writes at dst + 48 k, k its number in the grid
+// (((g.z * grid.y + g.y) * grid.x + g.x) * 32 + l.x), the twelve words g.x, g.y, g.z, l.x, l.y, l.z, grid.x, grid.y,
+// grid.z, block.x, block.y, block.z.
 module attributes {gpu.container_module} {
 gpu.module @shaders [#apple9.target<chip = "m4">] {
   gpu.func @ids(%dst: i32) kernel {
@@ -23,9 +23,12 @@ gpu.module @shaders [#apple9.target<chip = "m4">] {
   %by = arith.index_cast %by_ix : index to i32
   %bz = arith.index_cast %bz_ix : index to i32
   %c32 = arith.constant 32 : i32
-  %nx = arith.constant 3 : i32
-  %ny = arith.constant 2 : i32
-  %c0 = arith.constant 0 : i32
+  %nx_ix = gpu.grid_dim x
+  %ny_ix = gpu.grid_dim y
+  %nz_ix = gpu.grid_dim z
+  %nx = arith.index_cast %nx_ix : index to i32
+  %ny = arith.index_cast %ny_ix : index to i32
+  %nz = arith.index_cast %nz_ix : index to i32
   %c48 = arith.constant 48 : i32
   %c16 = arith.constant 16 : i32
   %zy = arith.muli %gz, %ny : i32
@@ -39,8 +42,8 @@ gpu.module @shaders [#apple9.target<chip = "m4">] {
   %o1 = arith.addi %o0, %c16 : i32
   %o2 = arith.addi %o1, %c16 : i32
   %v0 = vector.from_elements %gx, %gy, %gz, %lx : vector<4xi32>
-  %v1 = vector.from_elements %ly, %lz, %k, %c0 : vector<4xi32>
-  %v2 = vector.from_elements %c0, %bx, %by, %bz : vector<4xi32>
+  %v1 = vector.from_elements %ly, %lz, %nx, %ny : vector<4xi32>
+  %v2 = vector.from_elements %nz, %bx, %by, %bz : vector<4xi32>
   %p0 = llvm.inttoptr %o0 : i32 to !llvm.ptr<1>
   llvm.store %v0, %p0 {alignment = 4 : i64} : vector<4xi32>, !llvm.ptr<1>
   %p1 = llvm.inttoptr %o1 : i32 to !llvm.ptr<1>

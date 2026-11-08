@@ -3,7 +3,8 @@
 //!
 //! How it runs (the Metal compute ABI this target assumes; scripts/apple9_metal.swift puts it there): a workgroup of
 //! 32 threads (APPLE9_WORKGROUP); binding 0 the memory (a load's / store's address is a byte offset into it), binding 1 the parameter
-//! buffer (the kernel reads parameter k at byte 4k at its start); up to APPLE9_SHARED bytes of threadgroup memory (one
+//! buffer (the kernel reads parameter k at byte 4k at its start; after the parameters the grid's size in workgroups,
+//! x, y, z, which the dispatcher writes); up to APPLE9_SHARED bytes of threadgroup memory (one
 //! array, the donor's).
 
 use alloc::borrow::ToOwned;

@@ -1,7 +1,7 @@
 //! `convert-gpu-to-apple9`: the kernels' calls inlined ([`Kernels::inline_calls`]), their `scf.for`s made `scf.while`s
 //! ([`GpuToApple9::for_to_while`]); the compute kernels of each
 //! `gpu.module` ⇒ `apple9.kernel`s of virtual Apple9 instructions ([`GpuToApple9`]); then each kernel's parameters
-//! read at its start: word k of the parameter buffer (binding 1, byte 4k).
+//! read at its start: word k of the parameter buffer (binding 1, byte 4k); `gpu.grid_dim` the words after them.
 
 use alloc::vec;
 use alloc::vec::Vec;
@@ -52,6 +52,21 @@ pub fn convert_gpu_to_apple9<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Er
             rw.replace_all_uses(*arg, v);
         }
         rw.body[block].args.clear();
+        // the grid's size: the words after the parameters
+        let mut grid = Vec::new();
+        rw.body.walk(k, &mut |o| {
+            if rw.body[o].get("grid").is_some() {
+                grid.push(o);
+            }
+        });
+        for g in grid {
+            let d = rw.body[g].get("grid").map(crate::Attrs::as_int).transpose().ok().flatten().unwrap_or(0) as u32;
+            let offset = 4 * (args.len() as u32 + d);
+            rw.modify(g, |b| {
+                b[g].remove("grid");
+                b[g].set("offset", A::from(offset).into());
+            });
+        }
     }
     Ok(())
 }
