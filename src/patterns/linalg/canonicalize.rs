@@ -5,9 +5,10 @@ use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::{arith, linalg, Attribute, Dim, NamedAttr, Shaped, ShapedKind, Type};
+use mlirformat::{arith, linalg, Attribute, Dim, NamedAttr, Shaped, ShapedKind, Str, Type};
 
 use crate::MemrefOfr as Ofr;
+use crate::patterns::RegionLocs;
 use crate::{AffineExpr, AffineMap, Body, OpDsl, Const, Def, Fold, Folded, Mapping, OpData, OpId, Rewriter, Trait, TypedOp, ValueId};
 
 /// The `linalg` ops' helpers.
@@ -374,13 +375,29 @@ impl<'a> Rewriter<'_, 'a> {
     /// `transpose`, `broadcast`), result types those of its tensor init; its results. The
     /// OpDSL scalar cast is not built: the first operand's element type is the init's.
     fn structured(&mut self, data: OpData<'a>) -> Vec<ValueId> {
-        let args: Vec<(Type<'a>, Option<_>)> = data.operands.iter().map(|v| (self.body[*v].ty.element_type().clone(), None)).collect();
+        let locs = RegionLocs::from(&*data.name);
+        let unknown = || Some(Str::from("unknown"));
+        let args: Vec<(Type<'a>, Option<_>)> = data
+            .operands
+            .iter()
+            .map(|v| {
+                let loc = match locs {
+                    RegionLocs::Operands => self.body.value_loc(*v),
+                    RegionLocs::Unknown => unknown(),
+                };
+                (self.body[*v].ty.element_type().clone(), loc)
+            })
+            .collect();
+        let yield_loc = match locs {
+            RegionLocs::Operands => self.loc.clone(),
+            RegionLocs::Unknown => unknown(),
+        };
         let types = Lg::results_for(&self.body[*data.operands.last().expect("an init")].ty);
         let op = self.create_with(data, &types, |b, o| {
             let r = b.add_region(o);
             let blk = b.add_block(r, &args);
             let a = b[blk].args[0];
-            let y = b.create(OpData::build("linalg.yield").operands(&[a]), &[]);
+            let y = b.create(OpData { loc: yield_loc, ..OpData::build("linalg.yield").operands(&[a]) }, &[]);
             b.insert(y, blk, None);
         });
         self.body[op].results.clone().to_vec()

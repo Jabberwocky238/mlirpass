@@ -64,7 +64,7 @@ mod xevm;
 
 pub use canonicalize::{fold, materialize, memref_cast_compatible, memref_cast_foldable, patterns as canonicalization_patterns, Fold, Folded};
 #[cfg(any(all(feature = "dialect.tensor", feature = "dialect.linalg"), feature = "dialect.tosa"))]
-pub(crate) use build::Named;
+pub(crate) use build::{Named, RegionLocs};
 #[cfg(feature = "dialect.tosa")]
 pub(crate) use build::i64_elements;
 #[cfg(any(feature = "dialect.math", feature = "dialect.complex"))]

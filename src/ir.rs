@@ -3303,6 +3303,13 @@ impl<'a> Body<'a> {
         Body::import(ctx, m)
     }
 
+    /// Like [`parse`](Self::parse), the text read as file `name`: an op or block argument written without
+    /// `loc(...)` is at `"name":line:col` ([`MlirOpt::parse_file`](mlirformat::MlirOpt::parse_file)), as `mlir-opt` reads a file.
+    pub fn parse_file(ctx: crate::Ctx<'a>, src: &'a str, name: &str) -> Result<Self, Error> {
+        let m = ctx.opt.parse_file(src, name).map_err(|e| Error(format!("{e}")))?;
+        Body::import(ctx, m)
+    }
+
     /// Like [`parse`](Self::parse), read and imported in parallel on `x`
     /// ([`MlirOpt::parse_in`](mlirformat::MlirOpt::parse_in), [`Body::import_in`]).
     pub fn parse_in<X: moremath::Executor + Sync>(ctx: crate::Ctx<'a>, src: &'a str, x: &X) -> Result<Self, Error> {

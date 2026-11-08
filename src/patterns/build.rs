@@ -12,6 +12,25 @@ use crate::{AffineMap, ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
+/// Where a structured op's region takes its locations from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RegionLocs {
+    /// `buildGenericRegion` (`generic`, `map`, `reduce`, `transpose`, `broadcast`): each block argument at its operand,
+    /// the body at the op.
+    Operands,
+    /// `fillStructuredOpRegion` (the named ops): block arguments and body all `loc(unknown)`.
+    Unknown,
+}
+
+impl From<&str> for RegionLocs {
+    fn from(name: &str) -> Self {
+        match name {
+            "linalg.generic" | "linalg.map" | "linalg.reduce" | "linalg.transpose" | "linalg.broadcast" => Self::Operands,
+            _ => Self::Unknown,
+        }
+    }
+}
+
 /// The bodies of the named structured ops (OpDSL assignments).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Named {
@@ -121,18 +140,33 @@ impl<'a> Cr<'_, 'a, '_> {
         for (k, v) in props {
             data.set(k, v);
         }
-        let args: Vec<(Type<'a>, Option<_>)> = ops.iter().map(|v| (self.rw.body[*v].ty.element_type().clone(), None)).collect();
+        let locs = RegionLocs::from(name);
+        let args: Vec<(Type<'a>, Option<_>)> = ops
+            .iter()
+            .map(|v| {
+                let loc = match locs {
+                    RegionLocs::Operands => self.rw.body.value_loc(*v),
+                    RegionLocs::Unknown => Some("unknown".into()),
+                };
+                (self.rw.body[*v].ty.element_type().clone(), loc)
+            })
+            .collect();
         let op = self.rw.create_with(data, results, |b, o| {
             let r = b.add_region(o);
             b.add_block(r, &args);
         });
         let block = self.rw.body.top_block(op);
         let saved = self.rw.ip;
+        let saved_loc = match locs {
+            RegionLocs::Operands => self.rw.loc.clone(),
+            RegionLocs::Unknown => core::mem::replace(&mut self.rw.loc, Some("unknown".into())),
+        };
         self.rw.set_end(block);
         let a = self.rw.body[block].args.clone();
         let y = body(self, &a);
         self.rw.create(OpData::build("linalg.yield").operands(&y), &[]);
         self.rw.ip = saved;
+        self.rw.loc = saved_loc;
         op
     }
 
