@@ -5,6 +5,8 @@
 mod affine;
 #[cfg(feature = "target.agx")]
 mod agx;
+#[cfg(feature = "target.apple9")]
+mod apple9;
 #[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
 mod amdgpu;
 #[cfg(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")))]
@@ -63,6 +65,8 @@ mod xevm;
 pub use affine::*;
 #[cfg(feature = "target.agx")]
 pub use agx::*;
+#[cfg(feature = "target.apple9")]
+pub use apple9::*;
 #[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
 pub use amdgpu::*;
 #[cfg(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")))]

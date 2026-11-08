@@ -64,6 +64,11 @@ mod to_agx;
 #[cfg(feature = "target.agx")]
 pub use to_agx::*;
 
+#[cfg(feature = "target.apple9")]
+mod to_apple9;
+#[cfg(feature = "target.apple9")]
+pub use to_apple9::*;
+
 #[cfg(feature = "target.xe3")]
 mod to_xe3;
 #[cfg(feature = "target.xe3")]

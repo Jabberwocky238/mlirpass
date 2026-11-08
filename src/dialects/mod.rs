@@ -5,6 +5,8 @@
 mod affine;
 #[cfg(feature = "dialect.agx")]
 mod agx;
+#[cfg(feature = "dialect.apple9")]
+mod apple9;
 #[cfg(feature = "dialect.arith")]
 mod arith;
 #[cfg(feature = "dialect.bufferization")]
@@ -56,6 +58,8 @@ mod xe3;
 pub use affine::AffineDialect;
 #[cfg(feature = "dialect.agx")]
 pub use agx::*;
+#[cfg(feature = "dialect.apple9")]
+pub use apple9::*;
 #[cfg(feature = "dialect.arith")]
 pub use arith::ArithDialect;
 #[cfg(feature = "dialect.bufferization")]

@@ -25,6 +25,12 @@ impl crate::Passes {
         p.register::<crate::AgxWait>(); // agx-wait
         #[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
         p.register::<crate::ConvertAmdgpuToRocdl>(); // convert-amdgpu-to-rocdl
+        #[cfg(feature = "target.apple9")]
+        p.register::<crate::Apple9Control>(); // apple9-control
+        #[cfg(feature = "target.apple9")]
+        p.register::<crate::Apple9Regalloc>(); // apple9-regalloc
+        #[cfg(feature = "target.apple9")]
+        p.register::<crate::Apple9Wait>(); // apple9-wait
         #[cfg(all(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")), all(feature = "dialect.amdgpu", feature = "dialect.vector")))]
         p.register::<crate::ConvertArithToAmdgpu>(); // convert-arith-to-amdgpu
         #[cfg(all(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")), feature = "target.emitc"))]
@@ -67,6 +73,8 @@ impl crate::Passes {
         p.register::<crate::ConvertFuncToSpirv>(); // convert-func-to-spirv
         #[cfg(all(feature = "dialect.gpu", feature = "target.agx"))]
         p.register::<crate::ConvertGpuToAgx>(); // convert-gpu-to-agx
+        #[cfg(all(feature = "dialect.gpu", feature = "target.apple9"))]
+        p.register::<crate::ConvertGpuToApple9>(); // convert-gpu-to-apple9
         #[cfg(all(feature = "dialect.gpu", feature = "target.llvm"))]
         p.register::<crate::ConvertGpuToLlvmSpv>(); // convert-gpu-to-llvm-spv
         #[cfg(all(feature = "dialect.gpu", all(feature = "target.llvm", feature = "dialect.nvvm")))]
@@ -79,7 +87,7 @@ impl crate::Passes {
         p.register::<crate::ConvertGpuToSpirv>(); // convert-gpu-to-spirv
         #[cfg(all(feature = "dialect.gpu", feature = "target.xe3"))]
         p.register::<crate::ConvertGpuToXe3>(); // convert-gpu-to-xe3
-        #[cfg(all(feature = "dialect.gpu", any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3")))]
+        #[cfg(all(feature = "dialect.gpu", any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3")))]
         p.register::<crate::GpuInlineCalls>(); // gpu-inline-calls
         #[cfg(feature = "dialect.gpu")]
         p.register::<crate::GpuKernelOutlining>(); // gpu-kernel-outlining
