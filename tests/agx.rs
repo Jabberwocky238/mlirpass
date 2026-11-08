@@ -2,7 +2,7 @@
 //! stream as Mesa's agx_pack writes them, and acgpu's kernels as its own AGX backend made them before it moved here.
 
 use mlirformat::{MlirOpt, Module};
-use mlirpass::{AGX, AgxDialect, AgxStructs, Body, Ctx, Interfaces, OpId, Usc};
+use mlirpass::{AGX, AgxDialect, AgxStructs, Body, Ctx, G16, Interfaces, OpId, Usc};
 
 /// Every instruction of Mesa's AGX2 disassembler cases, as its fields (tests/agx/usc.mlir), encodes back to the
 /// case's bytes (tests/agx/usc.expected); reads as its typed op; printed and read again encodes the same.
@@ -106,4 +106,33 @@ fn kernels_as_acgpu() {
     let [k] = &AgxEmit.emit(&body, root).unwrap()[..] else { panic!("one kernel") };
     let got = format!("params={} gprs={} align={}\n", k.params, k.gprs, k.align) + &k.bytes.chunks(32).map(|c| c.iter().map(|b| format!("{b:02x}")).collect::<String>() + "\n").collect::<String>();
     assert_eq!(got, include_str!("agx/ints.expected"));
+}
+
+/// tests/agx/g16.mlir is acgpu's `ints` kernel in Apple G16 (M4) instructions, as an M4 ran it through Metal (160 of 160
+/// results right, 2026-11-08); each encodes to its bytes there (tests/agx/g16.expected), printed and read again the same.
+#[test]
+fn g16_encodes_as_the_m4_ran_it() {
+    let mut opt = MlirOpt::upstream();
+    opt.load(AgxDialect);
+    let interfaces = Interfaces::upstream();
+    let src = include_str!("agx/g16.mlir");
+    let body = Body::parse(Ctx::new(&opt, &interfaces), src).unwrap();
+    let printed = opt.show(&Module::from(&body)).to_string();
+    let again = Body::parse(Ctx::new(&opt, &interfaces), &printed).unwrap();
+    let expected: Vec<&str> = include_str!("agx/g16.expected").lines().collect();
+    let ops = |b: &Body<'_>| b.block_ops(b.top_block(b.root));
+    let (ops, reread) = (ops(&body), ops(&again));
+    assert_eq!(ops.len(), expected.len());
+    let encode = |b: &Body<'_>, o: OpId| match G16::encode(&b[o].name, &b[o].all_attrs()) {
+        Ok(bytes) => bytes.iter().map(|x| format!("{x:02x}")).collect::<String>(),
+        Err(e) => e.to_string(),
+    };
+    let mut bad = Vec::new();
+    for ((op, re), want) in ops.iter().zip(&reread).zip(&expected) {
+        let (got, got_again) = (encode(&body, *op), encode(&again, *re));
+        if got != *want || got_again != got {
+            bad.push(format!("{}\n want {want}\n  got {got}\n printed and read again {got_again}", body[*op].name));
+        }
+    }
+    assert!(bad.is_empty(), "{} of {} differ:\n{}", bad.len(), expected.len(), bad.join("\n"));
 }
