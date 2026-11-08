@@ -70,6 +70,13 @@ impl<'r, 'a, L: Listener<'a>> Rewriter<'r, 'a, L> {
 }
 
 impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
+    /// ⭐ A DRR pattern's location for what it builds: `rewriter.getFusedLoc` of the ops its source DAG matched
+    /// (`tblgen_ops`: the root first, then its operands' ops depth first), as `FusedLoc::get` makes it.
+    pub fn fuse_locs(&mut self, ops: &[OpId]) {
+        let locs: Vec<Option<&str>> = ops.iter().map(|o| self.body[*o].loc.as_deref()).collect();
+        self.loc = Some(fused_loc(&locs).into());
+    }
+
     /// An op built with its regions' contents first, as builders with body callbacks do: the
     /// nested ops are created (and reported) before the op is inserted.
     pub fn with_body(&mut self, data: OpData<'a>, types: &[Type<'a>], blocks: &[Vec<Type<'a>>], fill: &mut dyn FnMut(&mut Self, usize, &[ValueId])) -> OpId {
@@ -1001,4 +1008,57 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
         self.replace_op(op, &replacements);
         new
     }
+}
+
+
+/// `FusedLoc::get(locs)` (no metadata) printed: a fused location without metadata is taken apart, unknown ones go,
+/// duplicates go (the first kept); none left is `unknown`, one left is itself, else `fused[a, b, …]`.
+pub fn fused_loc(locs: &[Option<&str>]) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    let mut parts: Vec<&str> = Vec::new();
+    for l in locs.iter().flatten() {
+        let l = l.trim();
+        match l.strip_prefix("fused[").and_then(|r| r.strip_suffix(']')) {
+            Some(inner) => parts.extend(split_top(inner)),
+            None => parts.push(l),
+        }
+    }
+    for p in parts {
+        if p != "unknown" && !out.contains(&p) {
+            out.push(p);
+        }
+    }
+    match out.as_slice() {
+        [] => "unknown".into(),
+        [one] => (*one).into(),
+        _ => alloc::format!("fused[{}]", out.join(", ")),
+    }
+}
+
+/// The top-level comma-separated items of a location list (strings, parens and brackets nest).
+fn split_top(s: &str) -> Vec<&str> {
+    let (mut out, mut depth, mut start, mut quoted, mut escaped) = (Vec::new(), 0i32, 0usize, false, false);
+    for (i, c) in s.char_indices() {
+        if quoted {
+            match c {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                '"' => quoted = false,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            '"' => quoted = true,
+            '(' | '[' | '<' | '{' => depth += 1,
+            ')' | ']' | '>' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(s[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(s[start..].trim());
+    out
 }

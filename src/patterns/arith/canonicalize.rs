@@ -1006,6 +1006,11 @@ impl Combine {
             ConstFold::Mul => c0.mul(c1),
         };
         let flags = if self.merge_flags { overflow_attr(overflow(b[inner].get("overflowFlags")) & overflow(b[op].get("overflowFlags"))) } else { overflow_attr(0) };
+        // `tblgen_ops[1]`: the first constant op the DAG walk meets, the root's own when it is on the root's left
+        let first_const = if self.const_on_lhs { c1_v } else { c0_v };
+        let mut locs = vec![op];
+        locs.extend(rw.body.def_op(first_const));
+        rw.fuse_locs(&locs);
         rw.set_before(op);
         let c = rw.constant(Const::int(value, res_ty.clone()).into(), res_ty);
         let operands = if self.const_first { [c, x] } else { [x, c] };
@@ -1023,6 +1028,7 @@ fn hoist_ext(rw: &mut Rewriter<'_, '_>, op: OpId, root: &str, ext: &str) -> bool
         return false;
     }
     let ty = b[x].ty.clone();
+    rw.fuse_locs(&[op, el, er]);
     let inner = rw.make(op, OpData::build(root).operands(&[x, y]), ty);
     rw.replace_new(op, OpData::build(ext).operands(&[inner]))
 }
@@ -1033,7 +1039,10 @@ fn collapse(rw: &mut Rewriter<'_, '_>, op: OpId, inner: &str, new: Option<&str>)
     let Some(i) = b.def_named(b[op].operands[0], inner) else { return false };
     let x = b[i].operands[0];
     match new {
-        Some(n) => rw.replace_new(op, OpData::build(n).operands(&[x])),
+        Some(n) => {
+            rw.fuse_locs(&[op, i]);
+            rw.replace_new(op, OpData::build(n).operands(&[x]))
+        }
         None => {
             if rw.body[rw.body[op].results[0]].ty != rw.body[x].ty {
                 return false;
@@ -1190,6 +1199,10 @@ impl ArithCanon {
         if !b.int_or_splat(c).is_some_and(ApInt::is_all_ones) {
             return false;
         }
+        // `tblgen_ops[1]`: the -1 constant
+        let mut locs = vec![op];
+        locs.extend(rw.body.def_op(c));
+        rw.fuse_locs(&locs);
         rw.replace_new(op, OpData::build("arith.subi").operands(&[x, y]))
     }
 
@@ -1202,6 +1215,9 @@ impl ArithCanon {
         if !b.int_or_splat(c).is_some_and(ApInt::is_all_ones) {
             return false;
         }
+        let mut locs = vec![op];
+        locs.extend(rw.body.def_op(c));
+        rw.fuse_locs(&locs);
         rw.replace_new(op, OpData::build("arith.subi").operands(&[y, x]))
     }
 
@@ -1217,6 +1233,7 @@ impl ArithCanon {
         let ty = b[y].ty.clone();
         let Some(zero) = Folder::zero_attr(&ty) else { return false };
         let flags = overflow_attr(overflow(b[sub].get("overflowFlags")) & overflow(b[op].get("overflowFlags")));
+        rw.fuse_locs(&[op, sub]);
         rw.set_before(op);
         let c = rw.constant(zero, ty);
         rw.replace_new(op, OpData::build("arith.subi").operands(&[c, y]).with("overflowFlags", flags))
@@ -1277,6 +1294,7 @@ impl ArithCanon {
             _ => ULT,
         };
         let (a, c) = b.operands2(cmp);
+        rw.fuse_locs(&[op, cmp]);
         rw.replace_new(op, OpData::build("arith.cmpi").operands(&[a, c]).with("predicate", Attribute::i64(inverted)))
     }
 
@@ -1299,6 +1317,10 @@ impl ArithCanon {
         if !b.int_attr(ones).is_some_and(|(v, _)| v.is_all_ones()) {
             return false;
         }
+        // `tblgen_ops[1]`: the all-ones constant
+        let mut locs = vec![op];
+        locs.extend(rw.body.def_op(ones));
+        rw.fuse_locs(&locs);
         rw.replace_new(op, OpData::build("arith.select").operands(&[p, f, t]))
     }
 
@@ -1311,6 +1333,7 @@ impl ArithCanon {
             return false;
         }
         let c = b[inner].operands[2];
+        rw.fuse_locs(&[op, inner]);
         rw.replace_new(op, OpData::build("arith.select").operands(&[p, a, c]))
     }
 
@@ -1323,6 +1346,7 @@ impl ArithCanon {
             return false;
         }
         let a = b[inner].operands[1];
+        rw.fuse_locs(&[op, inner]);
         rw.replace_new(op, OpData::build("arith.select").operands(&[p, a, c]))
     }
 
@@ -1384,6 +1408,10 @@ impl ArithCanon {
         let exact = b[shr].get("isExact").is_some();
         let flags = b[op].get("overflowFlags").cloned();
         let (xty, cty) = (b[x].ty.clone(), b[c].ty.clone());
+        // `tblgen_ops[1]`: the shift amount's constant
+        let mut locs = vec![op];
+        locs.extend(rw.body.def_op(c));
+        rw.fuse_locs(&locs);
         rw.set_before(op);
         let c2 = rw.constant(attr, cty);
         let mut shr_data = OpData::build("arith.shrui").operands(&[x, c2]);
@@ -1446,6 +1474,7 @@ fn cmpi_of_ext(rw: &mut Rewriter<'_, '_>, op: OpId, ext: &str) -> bool {
     if b[a].ty != b[c].ty || !matches!(pred_of(pred.as_ref()), Some(EQ | NE)) {
         return false;
     }
+    rw.fuse_locs(&[op, el, er]);
     rw.replace_new(op, OpData::build("arith.cmpi").operands(&[a, c]).with("predicate", pred.expect("predicate")))
 }
 
@@ -1457,6 +1486,7 @@ fn trunc_of_ext(rw: &mut Rewriter<'_, '_>, op: OpId, ext: &str) -> bool {
     if !(we > wt && wt > 0 && wt > wx && wx > 0) {
         return false;
     }
+    rw.fuse_locs(&[op, e]);
     rw.replace_new(op, OpData::build(ext).operands(&[x]))
 }
 
@@ -1467,6 +1497,7 @@ fn truncf_of_itofp(rw: &mut Rewriter<'_, '_>, op: OpId, itofp: &str) -> bool {
         return false;
     }
     let x = b[fp].operands[0];
+    rw.fuse_locs(&[op, fp]);
     rw.replace_new(op, OpData::build(itofp).operands(&[x]))
 }
 
@@ -1483,6 +1514,7 @@ fn negf_pair(rw: &mut Rewriter<'_, '_>, op: OpId, name: &str) -> bool {
     if let Some(f) = fmf {
         d = d.with("fastmath", f);
     }
+    rw.fuse_locs(&[op, nl, nr]);
     rw.replace_new(op, d)
 }
 
