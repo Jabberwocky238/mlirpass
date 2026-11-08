@@ -1,6 +1,7 @@
 //! `scf` rule sets.
 
 mod canonicalize;
+mod structural;
 mod to_cf;
 #[cfg(all(feature = "dialect.gpu", feature = "dialect.affine"))]
 mod to_gpu;
@@ -9,6 +10,7 @@ pub use to_cf::{ScfToCf};
 #[cfg(all(feature = "dialect.gpu", feature = "dialect.affine"))]
 pub use to_gpu::ScfToGpu;
 pub use canonicalize::ScfCanon;
+pub use structural::ScfStructural;
 
 #[cfg(feature = "target.spirv")]
 mod to_spirv;
