@@ -38,6 +38,18 @@ impl OpInterfaces for ScfDialect {
     fn region_successors(&self, b: &Body<'_>, op: OpId, point: Point) -> Vec<(Succ, Vec<ValueId>)> {
         let results = b[op].results.clone();
         match &*b[op].name {
+            #[cfg(feature = "scf-for-trip-count")]
+            "scf.for" => {
+                let body = (Succ::Region(0), b.region_args(op, 0, 1));
+                let parent = (Succ::Parent, results.to_vec());
+                match (Self::static_trip_count(b, op), point) {
+                    (Some(n), Point::Parent) if n.is_zero() => vec![parent],
+                    (Some(_), Point::Parent) => vec![body],
+                    (Some(n), Point::Terminator(_)) if n == mlirformat::ApInt::new(n.width, 1) => vec![parent],
+                    _ => vec![body, parent],
+                }
+            }
+            #[cfg(not(feature = "scf-for-trip-count"))]
             "scf.for" => vec![(Succ::Region(0), b.region_args(op, 0, 1)), (Succ::Parent, results.to_vec())],
             "scf.if" => match point {
                 Point::Parent => {
@@ -103,6 +115,62 @@ impl OpInterfaces for ScfDialect {
             Some(_) => all.into_iter().filter(|s| s.0 == Succ::Parent).collect(),
             None => all,
         }
+    }
+}
+
+#[cfg(feature = "scf-for-trip-count")]
+impl ScfDialect {
+    /// `ForOp::getStaticTripCount` = `constantTripCount(lb, ub, step, !unsignedCmp, computeUbMinusLb)` as LLVM
+    /// 1f126a6d has it (newer than 22.1.8: a zero step or, signed, a negative one is unknown, not 0).
+    fn static_trip_count(b: &Body<'_>, op: OpId) -> Option<mlirformat::ApInt> {
+        use core::cmp::Ordering;
+        use mlirformat::{ApInt, Const, Type};
+        let [lb, ub, step] = [0, 1, 2].map(|i| b[op].operands[i]);
+        let signed = b[op].get("unsignedCmp").is_none();
+        let shape = |v: ValueId| (b[v].ty.int_width().map_or(64, |w| w.0), matches!(b[v].ty, Type::Index));
+        let (width, _) = shape(lb);
+        if shape(lb) != shape(ub) {
+            return None;
+        }
+        if lb == ub {
+            return Some(ApInt::zero(width));
+        }
+        let cst = |v: ValueId| Const::try_from(&b.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int();
+        let step_c = cst(step);
+        if step_c.is_some_and(|s| s.is_zero()) {
+            return None;
+        }
+        let diff = match (cst(lb), cst(ub)) {
+            (Some(l), Some(u)) => {
+                let le = if signed { u.scmp(l) != Ordering::Greater } else { u.ucmp(l) != Ordering::Greater };
+                if le {
+                    return Some(ApInt::zero(width));
+                }
+                u.sub(l)
+            }
+            (Some(_), None) | (None, Some(_)) => return None,
+            (None, None) => {
+                // `computeUbMinusLb`: ub = lb + c, without wrapping.
+                let add = b.def_named(ub, "arith.addi")?;
+                let flags = match b[add].get("overflowFlags") {
+                    Some(mlirformat::Attribute::Extended { ext, .. }) => ext.body.as_deref().unwrap_or(""),
+                    _ => "",
+                };
+                if !flags.contains(if signed { "nsw" } else { "nuw" }) || b[add].operands[0] != lb {
+                    return None;
+                }
+                cst(b[add].operands[1])?
+            }
+        };
+        if signed && diff.is_negative() {
+            return Some(ApInt::zero(width));
+        }
+        let s = step_c?;
+        if signed && s.is_negative() {
+            return None;
+        }
+        let (q, r) = if signed { (diff.sdiv(s)?, diff.srem(s)?) } else { (diff.udiv(s)?, diff.urem(s)?) };
+        Some(if r.is_zero() { q } else { q.add(ApInt::new(width, 1)) })
     }
 }
 
