@@ -114,23 +114,27 @@ impl Kernels {
         None
     }
 
-    /// The private `func.func`s of the `gpu.module`s under `op` nothing calls.
+    /// The private `func.func`s of the `gpu.module`s under `op` nothing calls; again until none is left (a helper
+    /// only another unused helper called goes too, as upstream's symbol DCE).
     fn erase_unused(body: &mut Body<'_>, op: OpId) -> Result<(), Error> {
-        let mut called = alloc::collections::BTreeSet::new();
-        let mut funcs = Vec::new();
-        body.walk(op, &mut |o| {
-            if let Some(Attribute::SymbolRef(p)) = body[o].get("callee") {
-                called.insert(p[0].trim_matches('"').to_owned());
+        loop {
+            let mut called = alloc::collections::BTreeSet::new();
+            let mut funcs = Vec::new();
+            body.walk(op, &mut |o| {
+                if let Some(Attribute::SymbolRef(p)) = body[o].get("callee") {
+                    called.insert(p[0].trim_matches('"').to_owned());
+                }
+                if body[o].name == "func.func" && Self::module_of(body, o).is_some() && body[o].get("sym_visibility").is_some_and(|v| matches!(v, Attribute::Str { lit, .. } if *lit == "private")) {
+                    funcs.push(o);
+                }
+            });
+            let unused: Vec<OpId> = funcs.into_iter().filter(|f| body[*f].get("sym_name").is_some_and(|s| matches!(s, Attribute::Str { lit, .. } if !called.contains(&**lit)))).collect();
+            if unused.is_empty() {
+                return Ok(());
             }
-            if body[o].name == "func.func" && Self::module_of(body, o).is_some() && body[o].get("sym_visibility").is_some_and(|v| matches!(v, Attribute::Str { lit, .. } if *lit == "private")) {
-                funcs.push(o);
-            }
-        });
-        for f in funcs {
-            if body[f].get("sym_name").is_some_and(|s| matches!(s, Attribute::Str { lit, .. } if !called.contains(&**lit))) {
+            for f in unused {
                 body.erase(f);
             }
         }
-        Ok(())
     }
 }

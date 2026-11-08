@@ -63,3 +63,8 @@ pub use to_rdna2::*;
 mod to_agx;
 #[cfg(feature = "target.agx")]
 pub use to_agx::*;
+
+#[cfg(feature = "target.xe3")]
+mod to_xe3;
+#[cfg(feature = "target.xe3")]
+pub use to_xe3::*;

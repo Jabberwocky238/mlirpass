@@ -46,3 +46,8 @@ pub use convert_gpu_to_rdna2::*;
 mod convert_gpu_to_agx;
 #[cfg(feature = "target.agx")]
 pub use convert_gpu_to_agx::*;
+
+#[cfg(feature = "target.xe3")]
+mod convert_gpu_to_xe3;
+#[cfg(feature = "target.xe3")]
+pub use convert_gpu_to_xe3::*;
