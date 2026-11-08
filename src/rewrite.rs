@@ -154,12 +154,13 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
 
     // ---- creation --------------------------------------------------------------------
 
-    /// Places detached `op` at the insertion point and tells the listener.
+    /// Places detached `op` at the insertion point and tells the listener. `op` and the ops its
+    /// regions already hold (built with it, [`Self::create_with`]) that have no location take the
+    /// rewriter's ([`Self::loc`]: the matched op's, or what the pattern set), as C++ builds them all
+    /// through one builder at that location; a location set explicitly stays.
     pub fn insert(&mut self, op: OpId) -> OpId {
         let ip = self.ip.expect("no insertion point");
-        if self.body[op].loc.is_none() {
-            self.body[op].loc.clone_from(&self.loc);
-        }
+        self.stamp(op);
         match ip.before {
             Some(b) => self.body.insert_before(op, b),
             None => self.body.insert(op, ip.block, None),
@@ -185,9 +186,7 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
     pub fn create_or_fold(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> Vec<ValueId> {
         let op = self.body.create(data, types);
         let ip = self.ip.expect("no insertion point");
-        if self.body[op].loc.is_none() {
-            self.body[op].loc.clone_from(&self.loc);
-        }
+        self.stamp(op);
         match ip.before {
             Some(b) => self.body.insert_before(op, b),
             None => self.body.insert(op, ip.block, None),
@@ -227,6 +226,20 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         }
         self.listener.inserted(self.body, op);
         self.body[op].results.clone().to_vec()
+    }
+
+    /// Gives `op` and the ops nested in it that have no location the rewriter's.
+    fn stamp(&mut self, op: OpId) {
+        if self.loc.is_none() {
+            return;
+        }
+        let mut bare = Vec::new();
+        self.body.walk(op, &mut |o| bare.push(o));
+        for o in bare {
+            if self.body[o].loc.is_none() {
+                self.body[o].loc.clone_from(&self.loc);
+            }
+        }
     }
 
     /// Builds an op with regions: `regions` fills them (on the body) before it is inserted, so
@@ -605,7 +618,8 @@ pub struct GreedyConfig {
 
 impl Default for GreedyConfig {
     fn default() -> Self {
-        Self { top_down: true, region_simplify: RegionSimplify::Normal, max_iterations: Some(10), max_rewrites: None, fold: true, cse_constants: true }
+        // `GreedyRewriteConfig` 的缺省是 Aggressive（合并相同的块）；canonicalize pass 的选项缺省才是 normal
+        Self { top_down: true, region_simplify: RegionSimplify::Aggressive, max_iterations: Some(10), max_rewrites: None, fold: true, cse_constants: true }
     }
 }
 
@@ -810,7 +824,9 @@ impl<'a> Body<'a> {
     /// `walkAndApplyPatterns(op, patterns)`: one post-order walk of the ops nested in `op`,
     /// each tried once against `patterns` (highest benefit first, the first that matches
     /// wins); no folding, no dead-code erasure, and ops a rewrite creates are not visited.
-    pub fn walk_and_apply(&mut self, op: OpId, patterns: &PatternSet) {
+    /// Whether a pattern matched (a pass that walks again until nothing does).
+    pub fn walk_and_apply(&mut self, op: OpId, patterns: &PatternSet) -> bool {
+        let mut matched = false;
         let mut ops = Vec::new();
         self.walk_post(op, &mut |o| ops.push(o));
         ops.pop();
@@ -825,10 +841,12 @@ impl<'a> Body<'a> {
             rw.loc = loc;
             for p in patterns.for_op(&name) {
                 if p.rewrite(&mut rw, o) {
+                    matched = true;
                     break;
                 }
             }
         }
+        matched
     }
 
     /// ⭐ `applyPatternsGreedily(region, patterns, config)`; whether it converged.

@@ -13,3 +13,6 @@ pub use to_llvm::{AssertLowering, CfToLlvm};
 mod to_spirv;
 #[cfg(feature = "target.spirv")]
 pub use to_spirv::CfToSpirv;
+
+mod to_scf;
+pub use to_scf::ControlFlowToScf;

@@ -47,10 +47,12 @@ impl crate::Passes {
         p.register::<crate::OneShotBufferize>(); // one-shot-bufferize
         #[cfg(feature = "dialect.bufferization")]
         p.register::<crate::PromoteBuffersToStack>(); // promote-buffers-to-stack
-        #[cfg(all(all(feature = "dialect.cf", any(feature = "target.llvm", feature = "target.spirv")), feature = "target.llvm"))]
+        #[cfg(all(feature = "dialect.cf", feature = "target.llvm"))]
         p.register::<crate::ConvertCfToLlvm>(); // convert-cf-to-llvm
-        #[cfg(all(all(feature = "dialect.cf", any(feature = "target.llvm", feature = "target.spirv")), feature = "target.spirv"))]
+        #[cfg(all(feature = "dialect.cf", feature = "target.spirv"))]
         p.register::<crate::ConvertCfToSpirv>(); // convert-cf-to-spirv
+        #[cfg(all(feature = "dialect.cf", all(feature = "dialect.scf", feature = "dialect.func")))]
+        p.register::<crate::LiftCfToScf>(); // lift-cf-to-scf
         #[cfg(feature = "dialect.complex")]
         p.register::<crate::ConvertComplexToLibm>(); // convert-complex-to-libm
         #[cfg(all(feature = "dialect.complex", feature = "target.llvm"))]
