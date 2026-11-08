@@ -209,10 +209,11 @@ impl Apple9Op {
         matches!(self, Apple9Op::GetSr | Apple9Op::GetSr16 | Apple9Op::Load | Apple9Op::SharedLoad | Apple9Op::Atomic | Apple9Op::Cmpxchg | Apple9Op::SharedAtomic)
     }
 
-    /// Whether its sources may be released (`release`): the forms whose release bits GravityLinux Mesa's packers name.
+    /// Whether its sources may be released (`release`): the forms whose release bits GravityLinux Mesa's packers name
+    /// (a store's: its index only, not its data).
     pub fn releases(self) -> bool {
         use Apple9Op::*;
-        matches!(self, Iadd | Isub | Imad | Shl | Shr | Asr | And | Or | Xor | Smin | Smax | Umin | Umax | Fmin | Fmax | Fadd | Fsub | Fmul | Fma | Select)
+        matches!(self, Iadd | Isub | Imad | Shl | Shr | Asr | And | Or | Xor | Smin | Smax | Umin | Umax | Fmin | Fmax | Fadd | Fsub | Fmul | Fma | Select | I2f | F2i | Floor | Ceil | Trunc | Roundeven | Load | SharedLoad | Store | SharedStore)
     }
 
     /// The one slot it completes on, if it has one only.
@@ -514,7 +515,7 @@ impl Apple9Isa {
                 let (dst, a) = (f.reg("dst")?, f.reg("a")?);
                 let signed = f.flag("signed");
                 if op == I2f {
-                    vec![0xa7, 0x07, 0x54, (dst << 1) as u8, 0x03, ((a & 63) << 2) as u8, 0x8c | (a >> 6) as u8, if signed { 0x60 } else { 0x20 }]
+                    vec![0xa7, 0x07, 0x54, (dst << 1) as u8, 0x03, ((a & 63) << 2) as u8, if released(0) { 0xac } else { 0x8c } | (a >> 6) as u8, if signed { 0x60 } else { 0x20 }]
                 } else {
                     vec![
                         0x27,
@@ -523,7 +524,7 @@ impl Apple9Isa {
                         (dst << 1) as u8,
                         0x03,
                         ((a & 63) << 2) as u8,
-                        0x96 | (a >> 6) as u8,
+                        if released(0) { 0xb4 } else { 0x96 } | (a >> 6) as u8,
                         if signed { 0x48 } else { 0x08 },
                         if signed { 0x03 } else { 0x02 },
                         0x00,
@@ -570,7 +571,14 @@ impl Apple9Isa {
                     _ => (0, 0, 0x40, 0),
                 };
                 let (dst, a) = (f.reg("dst")?, f.reg("a")?);
-                vec![0x2f | (family << 7), function, 0x54, (dst << 1) as u8, 0x02, ((a & 63) << 2) as u8, (a >> 6) as u8 | if op == Rcp { 0x00 } else { 0x90 }, precision, rounding, 0]
+                // the source retained (rcp 0x00, the rest 0x90) or released (0x10, 0xb0)
+                let lifetime = match (op == Rcp, released(0)) {
+                    (true, false) => 0x00,
+                    (true, true) => 0x10,
+                    (false, false) => 0x90,
+                    (false, true) => 0xb0,
+                };
+                vec![0x2f | (family << 7), function, 0x54, (dst << 1) as u8, 0x02, ((a & 63) << 2) as u8, (a >> 6) as u8 | lifetime, precision, rounding, 0]
             }
             // pack_float2: FLOAT2_COMPACT (fsub: bit 43 negates b), or FLOAT2_MUL_ABS_EXTENDED with `abs` (a mask of
             // the sources taken absolute)
@@ -604,7 +612,7 @@ impl Apple9Isa {
                     return Err(err("1 ..= 4 components, slot 1 ..= 6"));
                 }
                 let token = LOAD_TOKEN[slot as usize - 1];
-                let mut b = vec![0x67, 0x00, 0x44, (dst << 1) as u8, f.int("binding")? as u8, f.reg("index")? as u8, 0x20, 0x00, 0x11, 0x00, 0x00, 0x40, 0x46, 0x00];
+                let mut b = vec![0x67, 0x00, 0x44, (dst << 1) as u8, f.int("binding")? as u8, f.reg("index")? as u8 | if released(0) { 0x80 } else { 0 }, 0x20, 0x00, 0x11, 0x00, 0x00, 0x40, 0x46, 0x00];
                 b[8] = (token >> 8) as u8 | [0x00, 0x08, 0x0c, 0x06][n as usize - 1];
                 b[9] = token as u8;
                 b[12] = [0x46, 0x48, 0x40, 0x40][n as usize - 1];
@@ -624,6 +632,10 @@ impl Apple9Isa {
                     b[11] = 0x90;
                     b[12] = 0x11;
                 }
+                if released(0) {
+                    return Err(err("a store's data is not released"));
+                }
+                Self::set(&mut b, 48, 1, u32::from(released(1)));
                 Self::wait(&mut b, f.int("wait")?)?;
                 Self::address(&mut b, false, f.int("offset")?, f.int("shift")?)?;
                 b
@@ -698,7 +710,11 @@ impl Apple9Isa {
                 if data >= 64 || index >= 64 || offset >= 1 << 12 {
                     return Err(err("a register past r63 or an offset past 12 bits"));
                 }
-                let mut b = vec![if load { 0x67 } else { 0xe7 }, 0x02, 0x54, (data << 1) as u8, 0x04, (index << 2) as u8, 0, 0, 0x44, if load { 0x08 } else { 0x02 }, 0, if load { 0xc0 } else { 0x30 }, if load { 0x08 } else { 0x02 }, 0];
+                if !load && released(0) {
+                    return Err(err("a store's data is not released"));
+                }
+                let index_released = released(if load { 0 } else { 1 });
+                let mut b = vec![if load { 0x67 } else { 0xe7 }, 0x02, 0x54, (data << 1) as u8, 0x04, (index << 2) as u8, if index_released { 0x80 } else { 0 }, 0, 0x44, if load { 0x08 } else { 0x02 }, 0, if load { 0xc0 } else { 0x30 }, if load { 0x08 } else { 0x02 }, 0];
                 if load {
                     let slot = f.int("slot")?;
                     let slot = if slot == 0 { 6 } else { slot };

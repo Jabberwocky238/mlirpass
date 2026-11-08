@@ -306,7 +306,11 @@ impl<'a> Alloc<'_, 'a> {
                 attrs.push(("dst", A::from(first).into()));
             }
             if let Some(&m) = releases.get(&op).filter(|_| inst.releases()) {
-                attrs.push(("release", A::from(m).into()));
+                // a store's operands are its data, then its index: only the index is released (source 1)
+                let m = if matches!(inst, Apple9Op::Store | Apple9Op::SharedStore) { u32::from(m & (1 << (operands.len() - 1)) != 0) << 1 } else { m };
+                if m != 0 {
+                    attrs.push(("release", A::from(m).into()));
+                }
             }
             self.rw.modify(op, |b| {
                 for (n, v) in attrs {

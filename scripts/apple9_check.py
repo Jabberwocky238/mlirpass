@@ -226,9 +226,28 @@ def ids():
     return n, bad, len(code) // 2, lines[0]
 
 
+def special():
+    random.seed(11)
+    def rf(): return B((random.getrandbits(1) << 31) | (random.randint(127 - 8, 127 + 12) << 23) | random.getrandbits(23))
+    pairs = [(2.5, 1.5), (-2.5, 0.5), (0.5, 0.5), (1e-3, 3.0)] + [(rf(), rf()) for _ in range(252)]
+    pairs = [(B(F(a)), B(F(b))) for a, b in pairs]
+    got, size, head = run('special', len(pairs), [F(x) for a, b in pairs for x in (a, b)], 2, out=4)
+    names = ['floor', 'ceil', 'trunc', 'roundeven']
+    f32 = lambda x: B(F(x))
+    bad = []
+    for t, (a, b) in enumerate(pairs):
+        ops = [(math.floor, f32(a * b)), (math.ceil, f32(a + b)), (math.trunc, f32(a - b)), (round, f32(f32(a * b) + a))]
+        want = []
+        for f, x in ops:
+            r = float(f(x))
+            want.append(F(math.copysign(r, x)) if r == 0 else F(r))
+        bad += [f'invocation {t} ({a!r}, {b!r}) {names[i]}: got {g:#010x}, want {w:#010x}' for i, (g, w) in enumerate(zip(got[t], want)) if g != w]
+    return 4 * len(pairs), bad, size, head
+
+
 wrong = 0
-for name in sys.argv[1:] or ['ints', 'floats', 'control', 'memory', 'ids']:
-    total, bad, size, head = {'ints': ints, 'floats': floats, 'control': control, 'memory': memory, 'ids': ids}[name]()
+for name in sys.argv[1:] or ['ints', 'floats', 'control', 'memory', 'ids', 'special']:
+    total, bad, size, head = {'ints': ints, 'floats': floats, 'control': control, 'memory': memory, 'ids': ids, 'special': special}[name]()
     for line in bad[:20]: print(line)
     print(f'{name}: {total - len(bad)} of {total} right ({size} bytes of code, {head})')
     wrong += len(bad)
