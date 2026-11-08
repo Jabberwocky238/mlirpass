@@ -2386,6 +2386,27 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
         pack.get(v.index.unwrap_or(0) as usize).copied().ok_or_else(|| format!("%{}#{} is out of range", v.name, v.index.unwrap_or(0)).into())
     }
 
+    /// A float `FloatAttr` or a `DenseElementsAttr` of floats as MLIR holds it: the value, printed
+    /// as MLIR prints it (`1.0 : f32` ⇒ `1.000000e+00 : f32`), not the text it was written as;
+    /// inside arrays and dictionaries too.
+    fn canonical_floats(a: &mut Attribute<'a>) {
+        match a {
+            Attribute::Array(xs) => xs.iter_mut().for_each(Self::canonical_floats),
+            Attribute::Dict(xs) => xs.iter_mut().filter_map(|n| n.value.as_mut()).for_each(Self::canonical_floats),
+            Attribute::Float { ty: Some(Type::Float(_)), .. } => {
+                if let Ok(c) = mlirformat::Const::try_from(&*a) {
+                    *a = Attribute::from(c);
+                }
+            }
+            Attribute::Builtin { name, ty: Some(t), .. } if name == "dense" && matches!(t.element_type(), Type::Float(_)) => {
+                if let Ok(c) = mlirformat::Const::try_from(&*a) {
+                    *a = Attribute::from(c);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// The op without its operands and regions, results named in the current scope.
     fn shell(&mut self, op: Operation<'a>) -> Result<Pending<'a>, Error> {
         let Operation { results, name, operands, successors, properties, regions, mut attributes, ty, loc, raw } = op;
@@ -2402,6 +2423,12 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
             _ => Vec::new(),
         };
         a.dict(&mut attributes);
+        let (mut properties, mut attributes) = (properties, attributes);
+        for n in properties.iter_mut().chain(attributes.iter_mut()) {
+            if let Some(v) = n.value.as_mut() {
+                Self::canonical_floats(v);
+            }
+        }
         let data = OpData { properties, attributes, loc: a.loc(loc), ..OpData::named(name) };
         let mut types = ty.results;
         a.tys(&mut types);
