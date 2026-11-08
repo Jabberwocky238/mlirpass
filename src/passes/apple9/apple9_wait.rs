@@ -53,11 +53,17 @@ pub fn apple9_wait<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
                 mask |= pending.values().fold(0, |m, s| m | 1 << (s - 1));
             }
             // its own slot: the lowest free one; none free, everything pending is waited for first
-            let free = (1..=6).find(|s| !pending.values().any(|p| p == s));
+            let free = match inst.slot() {
+                Some(s) => (!pending.values().any(|p| *p == s)).then_some(s),
+                None => (1..=6).find(|s| !pending.values().any(|p| p == s)),
+            };
             if inst.completes() && free.is_none() {
-                mask |= pending.values().fold(0, |m, s| m | 1 << (s - 1));
+                mask |= match inst.slot() {
+                    Some(s) => 1 << (s - 1),
+                    None => pending.values().fold(0, |m, s| m | 1 << (s - 1)),
+                };
             }
-            let slot = inst.completes().then(|| free.unwrap_or(1));
+            let slot = inst.completes().then(|| free.or(inst.slot()).unwrap_or(1));
             if mask != 0 {
                 if inst.waits() {
                     let have = Attrs(&rw.body[i].all_attrs()).get("wait").map(Attrs::as_int).transpose()?.unwrap_or(0) as u32;

@@ -1,6 +1,6 @@
 //! ⭐ `apple9-regalloc`: a kernel's virtual Apple9 instructions ⇒ GPRs ([`LinearScan`] over the 32-bit GPRs r0 ..
 //! r62; r63 is `apple9-wait`'s). A store of several dwords gets its data copied into a run first (`or` of a value
-//! with itself); a load's destination is kept apart from its index. Then each instruction gets its registers in the
+//! with itself); a load's (an atomic's) destination is kept apart from its sources. Then each instruction gets its registers in the
 //! attributes [`Apple9Op::sources`] names (a store's `data` the run's first), `dst` its result's (a load's: the
 //! first of its components), and the kernel `gprs`.
 //!
@@ -32,7 +32,7 @@ impl RegTarget for Files {
     }
 
     fn reuses_sources(&self, body: &Body<'_>, op: OpId) -> bool {
-        Apple9Op::of(&body[op].name) != Some(Apple9Op::Load)
+        !matches!(Apple9Op::of(&body[op].name), Some(Apple9Op::Load | Apple9Op::SharedLoad | Apple9Op::Atomic))
     }
 
     fn file(&self, body: &Body<'_>, v: ValueId) -> Result<usize, Error> {

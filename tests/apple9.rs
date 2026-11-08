@@ -57,12 +57,12 @@ fn kernels(src: &str) -> String {
     out
 }
 
-/// Kernels through the Apple9 backend (tests/apple9/{ints,floats,control}.mlir): their bytes as the M4 ran them right
+/// Kernels through the Apple9 backend (tests/apple9/{ints,floats,control,memory}.mlir): their bytes as the M4 ran them right
 /// (tests/apple9/*.expected; scripts/apple9_check.py runs them and checks every result).
 #[cfg(feature = "target.apple9")]
 #[test]
 fn kernels_as_the_m4_ran_them() {
-    for (name, src, want) in [("ints", include_str!("apple9/ints.mlir"), include_str!("apple9/ints.expected")), ("floats", include_str!("apple9/floats.mlir"), include_str!("apple9/floats.expected")), ("control", include_str!("apple9/control.mlir"), include_str!("apple9/control.expected"))] {
+    for (name, src, want) in [("ints", include_str!("apple9/ints.mlir"), include_str!("apple9/ints.expected")), ("floats", include_str!("apple9/floats.mlir"), include_str!("apple9/floats.expected")), ("control", include_str!("apple9/control.mlir"), include_str!("apple9/control.expected")), ("memory", include_str!("apple9/memory.mlir"), include_str!("apple9/memory.expected"))] {
         let got = kernels(src);
         if let Ok(dir) = std::env::var("APPLE9_WRITE") {
             std::fs::write(format!("{dir}/{name}.expected"), &got).unwrap();

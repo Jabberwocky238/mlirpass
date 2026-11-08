@@ -3,7 +3,8 @@
 //!
 //! How it runs (the Metal compute ABI this target assumes; scripts/apple9_metal.swift puts it there): a workgroup of
 //! 32 threads (APPLE9_WORKGROUP); binding 0 the memory (a load's / store's address is a byte offset into it), binding 1 the parameter
-//! buffer (the kernel reads parameter k at byte 4k at its start).
+//! buffer (the kernel reads parameter k at byte 4k at its start); up to APPLE9_SHARED bytes of threadgroup memory (one
+//! array, the donor's).
 
 use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
@@ -24,6 +25,8 @@ pub struct Apple9Code {
     pub params: u32,
     /// GPRs it uses: r0 .. r(gprs - 1).
     pub gprs: u32,
+    /// Bytes of threadgroup memory.
+    pub shared: u32,
     pub bytes: Vec<u8>,
 }
 
@@ -60,7 +63,7 @@ impl Apple9Code {
                 None => bytes.extend(b),
             }
         }
-        Ok(Apple9Code { name: Symbol::defined(&head.sym_name)?.to_owned(), stage: head.stage, params: head.params.unwrap_or(0), gprs: head.gprs.unwrap_or(0), bytes })
+        Ok(Apple9Code { name: Symbol::defined(&head.sym_name)?.to_owned(), stage: head.stage, params: head.params.unwrap_or(0), gprs: head.gprs.unwrap_or(0), shared: head.shared.unwrap_or(0), bytes })
     }
 }
 

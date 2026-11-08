@@ -2,7 +2,8 @@
 """The Apple9 target on the hardware: kernels as mlirpass compiles them (tests/apple9/<kernel>.expected, which
 tests/apple9.rs keeps equal to the compiler's output) run on this Mac's GPU (an M4), every result checked against the
 semantics of tests/apple9/<kernel>.mlir: `ints` (i32 arithmetic), `floats` (f32: IEEE, one rounding, denormals
-flushed to zero) and `control` (ifs and loops, the condition differing between the lanes). macOS with an Apple9 GPU only.
+flushed to zero), `control` (ifs and loops, the condition differing between the lanes) and `memory` (threadgroup memory
+across a barrier; atomics). macOS with an Apple9 GPU only.
 
 How it runs (the ABI of the apple9 target): the kernel's code replaces the main of a donor kernel
 (scripts/apple9_donor.metal: binding 0 the memory, binding 1 the parameter words) in a Metal binary archive
@@ -26,19 +27,25 @@ def u32(x): return x & 0xffffffff
 def isnan(u): return (u & 0x7fffffff) > 0x7f800000
 
 
-def run(kernel, n, inputs, words_in, out=20):
-    """Kernel `kernel`'s code over n invocations: the memory `inputs` then `out` result words each; the results."""
+def launch(kernel, n, words, params):
+    """Kernel `kernel`'s code over n invocations of the memory `words` and the parameter words `params`: the memory
+    after, the code's bytes, its head line."""
     lines = open(os.path.join(ROOT, f'tests/apple9/{kernel}.expected')).read().split('\n')
     code = ''.join(lines[1:]).strip()
-    dst = 4 * len(inputs)
-    words = inputs + [0] * (out * n)
     args = [os.path.abspath(RUNNER), 'run', os.path.join(ROOT, 'scripts/apple9_donor.metal'), 'donor', '--text', code, '--threads', str(n), '--group', '32',
-            f'u32:{len(words)}:' + ','.join(f'{w:x}' for w in words), f'u32:2:0,{dst:x}']
+            f'u32:{len(words)}:' + ','.join(f'{w:x}' for w in words), f'u32:{len(params)}:' + ','.join(f'{p:x}' for p in params)]
     ran = subprocess.run(args, capture_output=True, text=True)
     if ran.returncode:
         sys.exit(ran.stdout + ran.stderr)
     memory = next([int(x, 16) for x in l.split()[2:]] for l in ran.stdout.splitlines() if l.startswith('buf 0 '))
-    return [memory[dst // 4 + out * t:dst // 4 + out * t + out] for t in range(n)], len(code) // 2, lines[0]
+    return memory, len(code) // 2, lines[0]
+
+
+def run(kernel, n, inputs, words_in, out=20):
+    """Kernel `kernel`'s code over n invocations: the memory `inputs` then `out` result words each; the results."""
+    dst = 4 * len(inputs)
+    memory, size, head = launch(kernel, n, inputs + [0] * (out * n), [0, dst])
+    return [memory[dst // 4 + out * t:dst // 4 + out * t + out] for t in range(n)], size, head
 
 
 def ints():
@@ -144,9 +151,41 @@ def control():
     return 4 * len(values), bad, size, head
 
 
+def memory():
+    random.seed(7)
+    n = 512
+    values = [random.getrandbits(32) for _ in range(n)]
+    dst, cnt = 4 * n, 12 * n
+    counters = [0, 0, 0, 0, 0, 0x7fffffff, 0, 0, 0xffffffff, 0, 0, 0]
+    mem, size, head = launch('memory', n, values + [0] * (2 * n) + counters, [0, dst, cnt])
+    bad = []
+    for t in range(n):
+        g, l = t // 32, t % 32
+        a = lambda k: values[32 * g + k]
+        want = u32(a(31 - l) + 7 * a((l + 5) & 31))
+        got = mem[dst // 4 + 2 * t]
+        if got != want: bad.append(f'invocation {t} shared: got {got:#010x}, want {want:#010x}')
+    # each add counter: its invocations' old values, in order, are the running sums (an order of the adds)
+    for c in range(4):
+        ts = sorted((mem[dst // 4 + 2 * t + 1], t) for t in range(n) if t & 3 == c)
+        run_ = 0
+        for old, t in ts:
+            if old != run_: bad.append(f'add counter {c}: invocation {t} got old {old:#x}, the running sum is {run_:#x}'); break
+            run_ = u32(run_ + t)
+        if mem[cnt // 4 + c] != run_: bad.append(f'add counter {c}: {mem[cnt // 4 + c]:#x}, want {run_:#x}')
+    import functools, operator
+    xchg = mem[cnt // 4 + 10]
+    want = {4: n - 1, 5: u32(-(n - 1)), 6: functools.reduce(operator.or_, range(n)), 7: functools.reduce(operator.xor, range(n)), 8: 0, 9: u32(-n)}
+    names = {4: 'umax', 5: 'smin', 6: 'or', 7: 'xor', 8: 'and', 9: 'sub'}
+    for w, v in want.items():
+        if mem[cnt // 4 + w] != v: bad.append(f'{names[w]}: {mem[cnt // 4 + w]:#x}, want {v:#x}')
+    if not xchg < n: bad.append(f'xchg: {xchg:#x}, want one of the invocations')
+    return n + 4 + 7, bad, size, head
+
+
 wrong = 0
-for name in sys.argv[1:] or ['ints', 'floats', 'control']:
-    total, bad, size, head = {'ints': ints, 'floats': floats, 'control': control}[name]()
+for name in sys.argv[1:] or ['ints', 'floats', 'control', 'memory']:
+    total, bad, size, head = {'ints': ints, 'floats': floats, 'control': control, 'memory': memory}[name]()
     for line in bad[:20]: print(line)
     print(f'{name}: {total - len(bad)} of {total} right ({size} bytes of code, {head})')
     wrong += len(bad)

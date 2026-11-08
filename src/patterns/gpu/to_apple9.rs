@@ -21,6 +21,11 @@
 //!   arith.bitcast                   ⇒ or of the value with itself (the same bits, the other type)
 //!   arith.index_cast(ui), llvm.inttoptr ⇒ the value itself
 //!   llvm.load / llvm.store (!llvm.ptr<1>) ⇒ load / store of 1 ..= 4 dwords at binding 0 [the address] (bytes)
+//!   llvm.load / llvm.store (!llvm.ptr<3>) ⇒ shared_load / shared_store a dword each, of the threadgroup memory [the
+//!                                     address >> 2] (a byte address in it: a workgroup attribution only sizes it)
+//!   llvm.atomicrmw (!llvm.ptr<1>, i32) ⇒ atomic on the word [the address >> 2] of binding 0, the old value back (add,
+//!                                     sub, and, or, xor, min, max, umin, umax, xchg)
+//!   gpu.barrier                     ⇒ barrier
 //!   gpu.block_id x, gpu.thread_id x ⇒ get_sr threadgroup_position_in_grid.x (0x9c), get_sr16
 //!                                     thread_position_in_threadgroup.x (0xa4)
 //!   gpu.return                      ⇒ halt
@@ -55,6 +60,8 @@ pub const APPLE9_WORKGROUP: u32 = 32;
 /// The bindings: the memory (byte addresses), the parameter buffer.
 pub const APPLE9_MEMORY: u32 = 0;
 pub const APPLE9_PARAMETERS: u32 = 1;
+/// The bytes of threadgroup memory a workgroup may use (scripts/apple9_donor.metal's).
+pub const APPLE9_SHARED: u32 = 16384;
 /// The special registers: threadgroup_position_in_grid.x, thread_position_in_threadgroup.x (16-bit).
 const SR_THREADGROUP_X: u32 = 0x9c;
 const SR_THREAD_IN_GROUP_X: u32 = 0xa4;
@@ -68,7 +75,7 @@ impl Apple9Types {
             Type::Float(FloatKind::F32) => Some(Type::from(Apple9Type("f32"))),
             Type::Integer { width: 32 | 1, .. } | Type::Index => Some(Type::from(Apple9Type("i32"))),
             _ => match LlvmType::try_from(t) {
-                Ok(LlvmType::Ptr(1)) => Some(Type::from(Apple9Type("i32"))),
+                Ok(LlvmType::Ptr(1 | 3)) => Some(Type::from(Apple9Type("i32"))),
                 _ => None,
             },
         }
@@ -356,6 +363,28 @@ impl GpuToApple9 {
         }
     }
 
+    /// The bytes of a workgroup attribution (`memref<N x T>`).
+    fn bytes(t: &Type<'_>) -> Option<u32> {
+        let Type::Shaped(s) = t else { return None };
+        let n: i64 = t.dims()?.iter().product();
+        Some(n as u32 * (s.elem.bit_width()? as u32 / 8))
+    }
+
+    /// Whether a pointer of type `t` reaches the threadgroup memory (`!llvm.ptr<3>`; `!llvm.ptr<1>`: the memory).
+    fn shared(t: &Type<'_>) -> Option<bool> {
+        match LlvmType::try_from(t) {
+            Ok(LlvmType::Ptr(3)) => Some(true),
+            Ok(LlvmType::Ptr(1)) => Some(false),
+            _ => None,
+        }
+    }
+
+    /// A byte address as a word index: `addr >> 2`.
+    fn word(cr: &mut Cr<'_, '_, '_>, before: OpId, addr: ValueId) -> ValueId {
+        let two = Self::imm(cr, before, 2, Self::i32());
+        Self::one(cr, before, Apple9Op::Shr, &[addr, two], Vec::new(), Self::i32())
+    }
+
     /// The memory's dwords at a byte address: binding 0, the address unscaled.
     fn memory(n: usize) -> Vec<(&'static str, A)> {
         vec![("binding", A::from(APPLE9_MEMORY)), ("components", A::from(n as u32)), ("shift", A::from(0u32))]
@@ -392,9 +421,7 @@ impl GpuToApple9 {
 impl GpuToApple9 {
     #[convert("gpu.func")]
     fn func(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
-        // no workgroup memory (yet)
-        let attributions = cr.rw.body[op].get("workgroup_attributions").map(crate::Attrs::as_int).transpose();
-        if cr.rw.body[op].get("gpu.kernel").is_none() || !matches!(attributions, Ok(None | Some(0))) {
+        if cr.rw.body[op].get("gpu.kernel").is_none() {
             return false;
         }
         let Some(Attribute::Type(Type::Function(fty))) = cr.rw.body[op].get("function_type").cloned() else { return false };
@@ -402,14 +429,31 @@ impl GpuToApple9 {
         if fty.inputs.len() > APPLE9_PARAMS || !fty.results.is_empty() {
             return false;
         }
-        let mut sig = SignatureConversion::new(fty.inputs.len());
+        // the workgroup attributions (after the arguments): the threadgroup memory's bytes, reached by `!llvm.ptr<3>`
+        let entry = cr.rw.body[cr.rw.body[op].regions[0]].blocks[0];
+        let attributions: Vec<ValueId> = cr.rw.body[entry].args[fty.inputs.len()..].to_vec();
+        let mut shared = 0;
+        for a in &attributions {
+            if !cr.rw.body[*a].uses.is_empty() {
+                return false;
+            }
+            let Some(n) = Self::bytes(&cr.rw.body[*a].ty) else { return false };
+            shared += n;
+        }
+        if shared > APPLE9_SHARED {
+            return false;
+        }
+        let mut sig = SignatureConversion::new(fty.inputs.len() + attributions.len());
         for (i, t) in fty.inputs.iter().enumerate() {
             if !matches!(t, Type::Integer { width: 32, .. }) {
                 return false;
             }
             sig.add_inputs(i, vec![Self::i32()]);
         }
-        let kernel = Apple9Kernel::new(name, Some(ShaderStage::Compute), Some(fty.inputs.len() as u32), None, mlirformat::Region { blocks: Vec::new() });
+        for i in 0..attributions.len() {
+            sig.add_inputs(fty.inputs.len() + i, Vec::new());
+        }
+        let kernel = Apple9Kernel::new(name, Some(ShaderStage::Compute), Some(fty.inputs.len() as u32), None, (shared > 0).then_some(shared), mlirformat::Region { blocks: Vec::new() });
         let Ok(data) = OpData::head(&kernel) else { return false };
         let region = cr.rw.body[op].regions[0];
         cr.rw.set_before(op);
@@ -608,7 +652,13 @@ impl GpuToApple9 {
             return false;
         }
         let n = types.len();
-        let values = Self::instruction(cr, op, Apple9Op::Load, &addr[..], Self::memory(n), types);
+        let Some(shared) = Self::shared(&cr.rw.body[cr.rw.body[op].operands[0]].ty) else { return false };
+        let values = if shared {
+            let index = Self::word(cr, op, addr[0]);
+            types.into_iter().enumerate().map(|(k, t)| Self::one(cr, op, Apple9Op::SharedLoad, &[index], vec![("offset", A::from(k as u32))], t)).collect()
+        } else {
+            Self::instruction(cr, op, Apple9Op::Load, &addr[..], Self::memory(n), types)
+        };
         cr.replace(op, vec![values]);
         true
     }
@@ -620,9 +670,56 @@ impl GpuToApple9 {
         if !Apple9Types::dwords(&ty) || value.len() > 4 {
             return false;
         }
-        let mut operands = value.clone();
-        operands.extend(addr);
-        Self::instruction(cr, op, Apple9Op::Store, &operands, Self::memory(value.len()), Vec::new());
+        let Some(shared) = Self::shared(&cr.rw.body[cr.rw.body[op].operands[1]].ty) else { return false };
+        if shared {
+            let index = Self::word(cr, op, addr[0]);
+            for (k, v) in value.iter().enumerate() {
+                Self::instruction(cr, op, Apple9Op::SharedStore, &[*v, index], vec![("offset", A::from(k as u32))], Vec::new());
+            }
+        } else {
+            let mut operands = value.clone();
+            operands.extend(addr);
+            Self::instruction(cr, op, Apple9Op::Store, &operands, Self::memory(value.len()), Vec::new());
+        }
+        cr.erase(op);
+        true
+    }
+
+    /// The old value of the memory's word, `op` with the value done to it.
+    #[convert("llvm.atomicrmw")]
+    fn atomic(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        use mlirformat::llvm::AtomicBinOp as B;
+        let [addr, value] = o else { return false };
+        if Self::shared(&cr.rw.body[cr.rw.body[op].operands[0]].ty) != Some(false) || value.len() != 1 {
+            return false;
+        }
+        let Some(ty) = Self::result_type(cr, op) else { return false };
+        if ty != Self::i32() {
+            return false;
+        }
+        let Ok(rmw) = cr.rw.body.head::<mlirformat::llvm::AtomicRMWOp>(op) else { return false };
+        let name = match rmw.bin_op {
+            B::Add => "add",
+            B::Sub => "sub",
+            B::And => "and",
+            B::Or => "or",
+            B::Xor => "xor",
+            B::Min => "smin",
+            B::Max => "smax",
+            B::Umin => "umin",
+            B::Umax => "umax",
+            B::Xchg => "xchg",
+            _ => return false,
+        };
+        let index = Self::word(cr, op, addr[0]);
+        let old = Self::one(cr, op, Apple9Op::Atomic, &[value[0], index], vec![("op", A::str(name)), ("binding", A::from(APPLE9_MEMORY))], ty);
+        cr.replace(op, vec![vec![old]]);
+        true
+    }
+
+    #[convert("gpu.barrier")]
+    fn barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        Self::instruction(cr, op, Apple9Op::Barrier, &[], Vec::new(), Vec::new());
         cr.erase(op);
         true
     }

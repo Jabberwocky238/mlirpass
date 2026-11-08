@@ -21,8 +21,8 @@
 //!
 //! Every source is retained (its release bit clear): a source released while still used reads back as zero, so a
 //! release is the allocator's business (not done yet, nothing is released). Completions: a special register read
-//! (`get_sr`, `get_sr16`) and a load complete on their `slot`, one slot to one pending result (`apple9-wait` picks
-//! them); a reader waits first.
+//! (`get_sr`, `get_sr16`), a load, a threadgroup load and an atomic complete on their `slot`, one slot to one pending
+//! result (`apple9-wait` picks them; an atomic's is always 6); a reader waits first.
 
 use alloc::format;
 use alloc::vec;
@@ -74,6 +74,15 @@ pub enum Apple9Op {
     Roundeven,
     Load,
     Store,
+    /// A device atomic on the word `index` of `binding` (a word index): `op` (add, sub, and, or, xor, smin, smax, umin,
+    /// umax, xchg) with `a`, the old value to `dst` (completing on slot 6: Metal's; on slots 1 and 2 by GravityLinux
+    /// Mesa's publication codes the old value never landed, measured).
+    Atomic,
+    /// A word of the threadgroup memory: at word `index` + `offset` (the index register's low 16 bits).
+    SharedLoad,
+    SharedStore,
+    /// The workgroup's threads meet (and their threadgroup memory writes are seen).
+    Barrier,
     /// Predicate bank 0 := a <cond> b (`cond`: `ieq`), a lane each; `loop`: the form a loop's latch takes.
     Pred,
     /// The execution mask pushed, then the lanes of predicate bank 0 kept (`invert`: those not in it).
@@ -97,7 +106,7 @@ pub enum Apple9Op {
 }
 
 impl Apple9Op {
-    const ALL: [(&'static str, Apple9Op); 45] = [
+    const ALL: [(&'static str, Apple9Op); 49] = [
         ("apple9.get_sr", Apple9Op::GetSr),
         ("apple9.get_sr16", Apple9Op::GetSr16),
         ("apple9.mov", Apple9Op::Mov),
@@ -132,6 +141,10 @@ impl Apple9Op {
         ("apple9.roundeven", Apple9Op::Roundeven),
         ("apple9.load", Apple9Op::Load),
         ("apple9.store", Apple9Op::Store),
+        ("apple9.atomic", Apple9Op::Atomic),
+        ("apple9.shared_load", Apple9Op::SharedLoad),
+        ("apple9.shared_store", Apple9Op::SharedStore),
+        ("apple9.barrier", Apple9Op::Barrier),
         ("apple9.pred", Apple9Op::Pred),
         ("apple9.push", Apple9Op::Push),
         ("apple9.else", Apple9Op::Else),
@@ -159,19 +172,20 @@ impl Apple9Op {
     pub fn sources(self) -> &'static [&'static str] {
         use Apple9Op::*;
         match self {
-            GetSr | GetSr16 | MovImm | Halt | Push | Else | Pop | LoopPush | LoopUpdate | LoopPop | JmpAny | JmpNone | Label => &[],
+            GetSr | GetSr16 | MovImm | Halt | Barrier | Push | Else | Pop | LoopPush | LoopUpdate | LoopPop | JmpAny | JmpNone | Label => &[],
             Mov | I2f | F2i | Rcp | Rsq | Floor | Ceil | Trunc | Roundeven => &["a"],
             Iadd | Isub | Shl | Shr | Asr | And | Or | Xor | Smin | Smax | Umin | Umax | Fadd | Fsub | Fmul | Fmin | Fmax | Pred => &["a", "b"],
             Imad | Fma => &["a", "b", "c"],
             Select => &["a", "b", "t", "f"],
-            Load => &["index"],
-            Store => &["data", "index"],
+            Load | SharedLoad => &["index"],
+            Store | SharedStore => &["data", "index"],
+            Atomic => &["a", "index"],
         }
     }
 
     /// Whether it writes `dst` (a load: `components` registers from it).
     pub fn has_dst(self) -> bool {
-        !matches!(self, Apple9Op::Store | Apple9Op::Halt) && !self.controls()
+        !matches!(self, Apple9Op::Store | Apple9Op::SharedStore | Apple9Op::Barrier | Apple9Op::Halt) && !self.controls()
     }
 
     /// Whether it changes which lanes run or where (the predicate, the masks, the jumps and their labels).
@@ -182,12 +196,18 @@ impl Apple9Op {
 
     /// Whether its result completes later than the instruction, on its `slot`.
     pub fn completes(self) -> bool {
-        matches!(self, Apple9Op::GetSr | Apple9Op::GetSr16 | Apple9Op::Load)
+        matches!(self, Apple9Op::GetSr | Apple9Op::GetSr16 | Apple9Op::Load | Apple9Op::SharedLoad | Apple9Op::Atomic)
+    }
+
+    /// The one slot it completes on, if it has one only.
+    pub fn slot(self) -> Option<u32> {
+        (self == Apple9Op::Atomic).then_some(6)
     }
 
     /// Whether it carries a wait itself (the six-bit mask at bits 12 ..= 17); else a wait goes before it.
     pub fn waits(self) -> bool {
-        matches!(self, Apple9Op::Iadd | Apple9Op::Isub | Apple9Op::Load | Apple9Op::Store)
+        use Apple9Op::*;
+        matches!(self, Iadd | Isub | Load | Store | SharedLoad | SharedStore | Atomic)
     }
 }
 
@@ -196,6 +216,13 @@ pub const APPLE9_GPRS: u32 = 96;
 
 /// A load's completion token per slot (agx_apple9_ir.c `apple9_scalar_load_token_for_slot`).
 const LOAD_TOKEN: [u16; 6] = [0x1100, 0x5100, 0x9100, 0xd100, 0x1101, 0x5101];
+
+/// An atomic's result publication code per slot (agx_apple9_ir.c, AGX_APPLE9_VIR_DEVICE_ATOMIC_RESULT; only slot 6's,
+/// Metal's, is used: [`Apple9Op::slot`]).
+const PUBLICATION: [u8; 6] = [2, 4, 3, 5, 6, 1];
+
+/// The atomic operations (agx_apple9_ir.h `agx_apple9_atomic_op`).
+const ATOMICS: [(&str, u8); 10] = [("add", 0x10), ("and", 0x11), ("smax", 0x14), ("smin", 0x15), ("or", 0x16), ("sub", 0x1b), ("umax", 0x1c), ("umin", 0x1d), ("xchg", 0x1e), ("xor", 0x1f)];
 
 /// The fields of one instruction, read off its attributes.
 struct Fields<'r, 'a>(&'r [NamedAttr<'a>]);
@@ -593,6 +620,44 @@ impl Apple9Isa {
             LoopPop => vec![0x0f, 0x06, 0x04, 0x02, 0x00, 0x00],
             JmpAny | JmpNone => return Err(err("a jump is encoded where its label is known (Apple9Isa::jump)")),
             Label => Vec::new(),
+            // agx_apple9_pack_device_atomic, returning (its result landed by the publication record after it)
+            Atomic => {
+                let name = f.str("op")?;
+                let code = ATOMICS.iter().find(|(n, _)| *n == name).map(|(_, c)| *c).ok_or_else(|| err(&format!("atomic {name}")))?;
+                let (dst, a, index, binding) = (f.reg("dst")?, f.reg("a")?, f.reg("index")?, f.int("binding")?);
+                let slot = f.int("slot")?;
+                let slot = if slot == 0 { 6 } else { slot };
+                if dst >= 64 || binding >= 128 || !(1..=6).contains(&slot) {
+                    return Err(err("dst past r63, binding past 127 or slot past 6"));
+                }
+                let mut b = vec![0x67, 0x01, 0x54, 0, 0, binding as u8 | ((a & 1) << 7) as u8, ((a >> 1) & 0x3f) as u8 | ((index & 1) << 7) as u8, 0x80 | ((index >> 1) & 0x3f) as u8, 0, 0x02, 0, 0, (code << 1) | 0x40, 0x02];
+                Self::wait(&mut b, f.int("wait")?)?;
+                b.extend([((dst & 0xf) << 4) as u8 | 0x0c, 0x80, 0x09 | (((dst >> 4) & 3) << 6) as u8, 0xa7, 0, PUBLICATION[slot as usize - 1] << 5, 0, ((dst >> 6) << 4) as u8]);
+                b
+            }
+            // Metal's threadgroup word load / store (agx_apple9_ir.c AGX_APPLE9_VIR_SHARED_*): root 1 (the one array), the
+            // index register's low half, a word offset (a load's at bit 79, a store's at 77), a load's slot at bits 72 ..= 74
+            SharedLoad | SharedStore => {
+                let load = op == SharedLoad;
+                let (data, index, offset) = (f.reg(if load { "dst" } else { "data" })?, f.reg("index")?, f.int("offset")?);
+                if data >= 64 || index >= 64 || offset >= 1 << 12 {
+                    return Err(err("a register past r63 or an offset past 12 bits"));
+                }
+                let mut b = vec![if load { 0x67 } else { 0xe7 }, 0x02, 0x54, (data << 1) as u8, 0x04, (index << 2) as u8, 0, 0, 0x44, if load { 0x08 } else { 0x02 }, 0, if load { 0xc0 } else { 0x30 }, if load { 0x08 } else { 0x02 }, 0];
+                if load {
+                    let slot = f.int("slot")?;
+                    let slot = if slot == 0 { 6 } else { slot };
+                    if !(1..=6).contains(&slot) {
+                        return Err(err("slot 1 ..= 6"));
+                    }
+                    Self::set(&mut b, 72, 3, slot - 1);
+                }
+                Self::set(&mut b, if load { 79 } else { 77 }, 12, offset);
+                Self::wait(&mut b, f.int("wait")?)?;
+                b
+            }
+            // agx_apple9_ir.c AGX_APPLE9_VIR_WORKGROUP_BARRIER
+            Barrier => vec![0x07, 0x04, 0x54, 0x61, 0x09, 0x00],
             Halt => vec![0x0e, 0, 0, 0],
         })
     }

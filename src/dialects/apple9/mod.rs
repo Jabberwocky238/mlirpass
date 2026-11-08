@@ -73,8 +73,9 @@ impl mlirformat::Dialect for Apple9Dialect {
     }
 }
 
-/// ⭐ `apple9.kernel @k {stage, params, gprs} {...}`: one shader's instructions, in order, and what running it needs:
-/// its `params` (32-bit words: the parameter buffer's), the GPRs it uses (`gprs`: r0 .. r(gprs - 1)).
+/// ⭐ `apple9.kernel @k {stage, params, gprs, shared} {...}`: one shader's instructions, in order, and what running it
+/// needs: its `params` (32-bit words: the parameter buffer's), the GPRs it uses (`gprs`: r0 .. r(gprs - 1)), the bytes of
+/// threadgroup memory it uses (`shared`).
 #[mlirformat::mlir::op("apple9.kernel", format = "$sym_name attr-dict-with-keyword $body")]
 pub struct Apple9Kernel<'a> {
     #[attr(symbol)]
@@ -82,6 +83,7 @@ pub struct Apple9Kernel<'a> {
     pub stage: Option<ShaderStage>,
     pub params: Option<u32>,
     pub gprs: Option<u32>,
+    pub shared: Option<u32>,
     pub body: Region<'a>,
 }
 
@@ -98,5 +100,9 @@ crate::attr_ops! { "apple9" IsaOps;
     Apple9Fmul "apple9.fmul", Apple9Fsub "apple9.fsub", Apple9Fma "apple9.fma", Apple9Fmin "apple9.fmin",
     Apple9Fmax "apple9.fmax", Apple9Rcp "apple9.rcp", Apple9Rsq "apple9.rsq", Apple9Floor "apple9.floor",
     Apple9Ceil "apple9.ceil", Apple9Trunc "apple9.trunc", Apple9Roundeven "apple9.roundeven", Apple9Load "apple9.load",
-    Apple9Store "apple9.store", Apple9Halt "apple9.halt",
+    Apple9Store "apple9.store", Apple9Atomic "apple9.atomic", Apple9SharedLoad "apple9.shared_load",
+    Apple9SharedStore "apple9.shared_store", Apple9Barrier "apple9.barrier", Apple9Pred "apple9.pred",
+    Apple9Push "apple9.push", Apple9Else "apple9.else", Apple9Pop "apple9.pop", Apple9LoopPush "apple9.loop_push",
+    Apple9LoopUpdate "apple9.loop_update", Apple9LoopPop "apple9.loop_pop", Apple9JmpAny "apple9.jmp_any",
+    Apple9JmpNone "apple9.jmp_none", Apple9Label "apple9.label", Apple9Halt "apple9.halt",
 }
