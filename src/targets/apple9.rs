@@ -28,6 +28,8 @@ pub struct Apple9Code {
     pub gprs: u32,
     /// Bytes of threadgroup memory.
     pub shared: u32,
+    /// Invocations of a workgroup: 32, or 16 (two a hardware workgroup; the dispatch is of 16 a workgroup).
+    pub workgroup: u32,
     pub bytes: Vec<u8>,
 }
 
@@ -64,7 +66,7 @@ impl Apple9Code {
                 None => bytes.extend(b),
             }
         }
-        Ok(Apple9Code { name: Symbol::defined(&head.sym_name)?.to_owned(), stage: head.stage, params: head.params.unwrap_or(0), gprs: head.gprs.unwrap_or(0), shared: head.shared.unwrap_or(0), bytes })
+        Ok(Apple9Code { name: Symbol::defined(&head.sym_name)?.to_owned(), stage: head.stage, params: head.params.unwrap_or(0), gprs: head.gprs.unwrap_or(0), shared: head.shared.unwrap_or(0), workgroup: head.workgroup.unwrap_or(32), bytes })
     }
 }
 

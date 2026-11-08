@@ -20,6 +20,7 @@ pub fn convert_gpu_to_apple9<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Er
             shaders.push(f);
         }
     });
+    GpuToApple9::half_workgroups(body, &shaders)?;
     GpuToApple9::for_to_while(body, &shaders);
     body.sink_constants(&shaders);
     let tc = Apple9Types::converter();

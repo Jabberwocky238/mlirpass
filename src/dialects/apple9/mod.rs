@@ -75,7 +75,8 @@ impl mlirformat::Dialect for Apple9Dialect {
 
 /// ⭐ `apple9.kernel @k {stage, params, gprs, shared} {...}`: one shader's instructions, in order, and what running it
 /// needs: its `params` (32-bit words: the parameter buffer's), the GPRs it uses (`gprs`: r0 .. r(gprs - 1)), the bytes of
-/// threadgroup memory it uses (`shared`).
+/// threadgroup memory it uses (`shared`), the invocations of its workgroup (`workgroup`: 32, or 16, two a hardware
+/// workgroup).
 #[mlirformat::mlir::op("apple9.kernel", format = "$sym_name attr-dict-with-keyword $body")]
 pub struct Apple9Kernel<'a> {
     #[attr(symbol)]
@@ -84,6 +85,7 @@ pub struct Apple9Kernel<'a> {
     pub params: Option<u32>,
     pub gprs: Option<u32>,
     pub shared: Option<u32>,
+    pub workgroup: Option<u32>,
     pub body: Region<'a>,
 }
 

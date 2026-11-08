@@ -1,8 +1,9 @@
 //! ⭐ Compute shaders ⇒ `apple9.kernel`s of virtual Apple9 instructions (dialect conversion).
 //!
 //! ```text
-//!   gpu.func {gpu.kernel}           ⇒ apple9.kernel {stage = "compute", params}: a workgroup of 32 threads (the SIMD
-//!                                     width: a workgroup of 16 is not one in the hardware's ids, measured)
+//!   gpu.func {gpu.kernel}           ⇒ apple9.kernel {stage = "compute", params, workgroup}: a workgroup of 32 threads
+//!                                     (the SIMD width: a workgroup of 16 is not one in the hardware's ids, measured);
+//!                                     `known_block_size` 16 x 1 x 1: two a hardware workgroup ([`GpuToApple9::half_workgroups`])
 //!   i32, i1, index, !llvm.ptr<1>, f32, vector<N x ...> ⇒ 1, N × !apple9.r<i32 | f32>: a 32-bit GPR a component, a
 //!                                     thread each (an i1: 0 or 1; an index and a global pointer: 32 bits, a byte
 //!                                     address in the memory, binding 0)
@@ -246,7 +247,8 @@ impl GpuToApple9 {
         let c = Const::try_from(value).ok()?;
         let bits = |s: Scalar| match s {
             Scalar::Float(f) => (f.kind == FloatKind::F32).then_some(f.bits as u32),
-            Scalar::Int(i) => (i.width == 32 || i.width == 1).then_some(i.bits() as u32),
+            // i32, i1, and index (32 bits in a GPR: the value's low 32 bits; the result type admits nothing wider)
+            Scalar::Int(i) => (i.width == 32 || i.width == 1 || i.width == 64).then_some(i.bits() as u32),
         };
         (0..n).map(|i| bits(c.at(i))).collect()
     }
@@ -325,6 +327,78 @@ impl GpuToApple9 {
         let reg = |v: &ValueId| Apple9Type::try_from(&body[*v].ty).is_ok();
         let args = body[op].regions.iter().flat_map(|r| body[*r].blocks.iter().flat_map(|b| body[*b].args.iter()));
         body[op].operands.iter().all(reg) && body[op].results.iter().all(reg) && args.into_iter().all(reg)
+    }
+
+    /// A kernel's workgroup: `known_block_size` x (16 or 32; absent: 32), y and z 1. Anything else is refused.
+    pub fn workgroup(body: &Body<'_>, f: OpId) -> Result<u32, mlirformat::Error> {
+        match body[f].get("known_block_size").map(|a| a.dense_values()) {
+            None => Ok(APPLE9_WORKGROUP),
+            Some(Some(v)) if matches!(v[..], [16 | 32, 1, 1]) => Ok(v[0] as u32),
+            Some(v) => Err(mlirformat::Error(alloc::format!("apple9: a workgroup of {v:?} (16 x 1 x 1 or 32 x 1 x 1)"))),
+        }
+    }
+
+    /// Kernels of 16-invocation workgroups (`known_block_size` 16 x 1 x 1: acgpu's, Xe3's SIMD16) on the hardware's
+    /// 32: each hardware workgroup runs two of them, `gpu.block_id x` ⇒ 2 block_id + (thread_id >> 4), `gpu.thread_id
+    /// x` ⇒ thread_id & 15, `gpu.block_dim x` ⇒ 16. Refused with a barrier or workgroup memory (the two would share
+    /// them). The dispatcher launches 16 invocations a workgroup (the last hardware workgroup half full when odd).
+    pub fn half_workgroups(body: &mut Body<'_>, kernels: &[OpId]) -> Result<(), mlirformat::Error> {
+        let mut quiet = crate::Quiet;
+        let mut rw = crate::Rewriter::new(body, &mut quiet);
+        for &f in kernels {
+            if Self::workgroup(rw.body, f)? != 16 {
+                continue;
+            }
+            let attributions = rw.body[f].get("workgroup_attributions").map(crate::Attrs::as_int).transpose()?.unwrap_or(0);
+            let mut ids = Vec::new();
+            let mut barrier = false;
+            rw.body.walk(f, &mut |o| match &*rw.body[o].name {
+                "gpu.block_id" | "gpu.thread_id" | "gpu.block_dim" => ids.push(o),
+                "gpu.barrier" => barrier = true,
+                _ => {}
+            });
+            if barrier || attributions > 0 {
+                return Err(mlirformat::Error("apple9: a workgroup of 16 with a barrier or workgroup memory (two share a hardware workgroup of 32)".into()));
+            }
+            let index = |rw: &mut crate::Rewriter<'_, '_>, v: i64| {
+                let c = rw.create(OpData::build("arith.constant").with("value", Attribute::index(v)), &[Type::Index]);
+                rw.body[c].results[0]
+            };
+            let x = |rw: &crate::Rewriter<'_, '_>, o: OpId| rw.body[o].get("dimension").and_then(|a| super::Dimension::try_from(a).ok()) == Some(super::Dimension::X);
+            for o in ids {
+                if !x(&rw, o) {
+                    continue;
+                }
+                let r = rw.body[o].results[0];
+                let uses: Vec<crate::Use> = rw.body[r].uses.to_vec();
+                rw.set_after(o);
+                let v = match &*rw.body[o].name {
+                    "gpu.block_id" => {
+                        let t = rw.create(OpData::build("gpu.thread_id").with("dimension", rw.body[o].get("dimension").cloned().unwrap_or(Attribute::Unit)), &[Type::Index]);
+                        let t = rw.body[t].results[0];
+                        let (four, two) = (index(&mut rw, 4), index(&mut rw, 2));
+                        let half = rw.create(OpData::build("arith.shrui").operands(&[t, four]), &[Type::Index]);
+                        let twice = rw.create(OpData::build("arith.muli").operands(&[r, two]), &[Type::Index]);
+                        let (half, twice) = (rw.body[half].results[0], rw.body[twice].results[0]);
+                        let sum = rw.create(OpData::build("arith.addi").operands(&[twice, half]), &[Type::Index]);
+                        rw.body[sum].results[0]
+                    }
+                    "gpu.thread_id" => {
+                        let fifteen = index(&mut rw, 15);
+                        let low = rw.create(OpData::build("arith.andi").operands(&[r, fifteen]), &[Type::Index]);
+                        rw.body[low].results[0]
+                    }
+                    _ => index(&mut rw, 16),
+                };
+                for u in uses {
+                    rw.modify(u.op, |b| b.set_operand(u.op, u.index as usize, v));
+                }
+                if rw.body[o].name == "gpu.block_dim" {
+                    rw.erase_op(o);
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Every `scf.for` under `ops` ⇒ an `scf.while` of the same: the induction variable carried first, the
@@ -463,7 +537,8 @@ impl GpuToApple9 {
         for i in 0..attributions.len() {
             sig.add_inputs(fty.inputs.len() + i, Vec::new());
         }
-        let kernel = Apple9Kernel::new(name, Some(ShaderStage::Compute), Some(fty.inputs.len() as u32), None, (shared > 0).then_some(shared), mlirformat::Region { blocks: Vec::new() });
+        let Ok(workgroup) = Self::workgroup(cr.rw.body, op) else { return false };
+        let kernel = Apple9Kernel::new(name, Some(ShaderStage::Compute), Some(fty.inputs.len() as u32), None, (shared > 0).then_some(shared), Some(workgroup), mlirformat::Region { blocks: Vec::new() });
         let Ok(data) = OpData::head(&kernel) else { return false };
         let region = cr.rw.body[op].regions[0];
         cr.rw.set_before(op);

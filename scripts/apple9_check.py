@@ -48,9 +48,9 @@ def run(kernel, n, inputs, words_in, out=20):
     return [memory[dst // 4 + out * t:dst // 4 + out * t + out] for t in range(n)], size, head
 
 
-def ints():
-    pairs = [(7, 3), (3, 7), (5, 5), (0xfffffffb, 3), (3, 0xfffffffb), (0x80000000, 33), (123456789, 0xffffffff), (0x12345678, 4)] * 16
-    got, size, head = run('ints', len(pairs), [w for a, b in pairs for w in (a, b)], 2)
+def ints(kernel='ints', copies=16):
+    pairs = [(7, 3), (3, 7), (5, 5), (0xfffffffb, 3), (3, 0xfffffffb), (0x80000000, 33), (123456789, 0xffffffff), (0x12345678, 4)] * copies
+    got, size, head = run(kernel, len(pairs), [w for a, b in pairs for w in (a, b)], 2)
     names = ['add', 'sub', 'mul', 'shl', 'shr', 'asr', 'and', 'or', 'xor', 'smin', 'smax', 'umin', 'umax', 'select', 'ult', 'eq', 'sitofp', 'uitofp', 'fptosi', 'fptoui']
     k = B(F(0.37))
     bad = []
@@ -246,8 +246,13 @@ def special():
 
 
 wrong = 0
-for name in sys.argv[1:] or ['ints', 'floats', 'control', 'memory', 'ids', 'special']:
-    total, bad, size, head = {'ints': ints, 'floats': floats, 'control': control, 'memory': memory, 'ids': ids, 'special': special}[name]()
+def halves():
+    # 144 invocations: nine workgroups of 16, the last hardware workgroup half full
+    return ints('halves', 18)
+
+
+for name in sys.argv[1:] or ['ints', 'floats', 'control', 'memory', 'ids', 'special', 'halves']:
+    total, bad, size, head = {'ints': ints, 'floats': floats, 'control': control, 'memory': memory, 'ids': ids, 'special': special, 'halves': halves}[name]()
     for line in bad[:20]: print(line)
     print(f'{name}: {total - len(bad)} of {total} right ({size} bytes of code, {head})')
     wrong += len(bad)

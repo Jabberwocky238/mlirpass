@@ -95,7 +95,7 @@ impl GpuModuleToBinary {
         #[cfg(feature = "target.apple9")]
         if inner.iter().any(|o| body[*o].name == <crate::Apple9Kernel as mlirformat::Op>::NAME) {
             let codes = crate::Emit::emit(&crate::Apple9Emit, body, m)?;
-            return self.native(t, codes.into_iter().map(|k| (k.name, 4, 0, k.bytes, alloc::vec![("params", u64::from(k.params)), ("gprs", u64::from(k.gprs)), ("shared", u64::from(k.shared))])));
+            return self.native(t, codes.into_iter().map(|k| (k.name, 4, 0, k.bytes, alloc::vec![("params", u64::from(k.params)), ("gprs", u64::from(k.gprs)), ("shared", u64::from(k.shared)), ("workgroup", u64::from(k.workgroup))])));
         }
         #[cfg(feature = "target.xe3")]
         if inner.iter().any(|o| body[*o].name == <crate::Xe3Kernel as mlirformat::Op>::NAME) {
