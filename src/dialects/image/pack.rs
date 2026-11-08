@@ -361,7 +361,7 @@ impl Ty<'_> {
     /// positions: `lo` low bits below the field must be zero, and its bits from `lo` up are returned.
     fn encode(self, s: Scalar, width: u32, lo: u32) -> Option<u64> {
         let fits = |v: i128| v >= 0 && (width >= 64 || v >> width == 0);
-        let frac = |v: f64, f: u8| (v * (1u64 << f) as f64).round() as i128;
+        let frac = |v: f64, f: u8| libm::round(v * (1u64 << f) as f64) as i128;
         match self {
             Ty::Bool => (s.0 == 0 || s.0 == 1).then_some(s.0 as u64),
             Ty::Uint => fits(s.0).then_some(s.0 as u64),
@@ -401,9 +401,9 @@ impl From<f32> for Half {
             return Half(sign | 0x7c00 | if man != 0 { 0x200 | (man >> 13) as u16 } else { 0 });
         }
         let x = f64::from(f.abs());
-        if x < f64::powi(2.0, -14) {
+        if x < libm::ldexp(1.0, -14) {
             // a subnormal half (or zero): x in units of 2^-24, rounded to even (exact in f64)
-            return Half(sign | (x * f64::powi(2.0, 24)).round_ties_even() as u16);
+            return Half(sign | libm::rint(x * libm::ldexp(1.0, 24)) as u16);
         }
         let e = exp as i32 - 127 + 15;
         if e >= 31 {

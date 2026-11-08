@@ -1407,9 +1407,9 @@ impl Exact {
 
     fn div(cr: &mut Cr<'_, '_, '_>, at: OpId, a: ValueId, b: ValueId) -> ValueId {
         let one = Self::imm(cr, at, 1.0);
-        let up = Self::imm(cr, at, 2f32.powi(64));
-        let small = Self::below(cr, at, a, 2f32.powi(-100), up, one);
-        let s = Self::below(cr, at, b, 2f32.powi(-100), up, small);
+        let up = Self::imm(cr, at, pow2f(64));
+        let small = Self::below(cr, at, a, pow2f(-100), up, one);
+        let s = Self::below(cr, at, b, pow2f(-100), up, small);
         let a = Self::op(cr, at, "xe3.eu.mul", &[a, s], vec![]);
         let b = Self::op(cr, at, "xe3.eu.mul", &[b, s], vec![]);
         let y0 = Self::math(cr, at, "inv", b);
@@ -1425,9 +1425,9 @@ impl Exact {
 
     fn sqrt(cr: &mut Cr<'_, '_, '_>, at: OpId, a: ValueId) -> ValueId {
         let one = Self::imm(cr, at, 1.0);
-        let (up, down) = (Self::imm(cr, at, 2f32.powi(64)), Self::imm(cr, at, 2f32.powi(-32)));
-        let s = Self::below(cr, at, a, 2f32.powi(-100), up, one);
-        let back = Self::below(cr, at, a, 2f32.powi(-100), down, one);
+        let (up, down) = (Self::imm(cr, at, pow2f(64)), Self::imm(cr, at, pow2f(-32)));
+        let s = Self::below(cr, at, a, pow2f(-100), up, one);
+        let back = Self::below(cr, at, a, pow2f(-100), down, one);
         let a = Self::op(cr, at, "xe3.eu.mul", &[a, s], vec![]);
         let half = Self::imm(cr, at, 0.5);
         let y0 = Self::math(cr, at, "rsq", a);
@@ -1569,7 +1569,7 @@ impl Exact64 {
         };
         let zero = Self::iimm(cr, at, 0);
         let sub = Self::cmpi(cr, at, "z", e0, zero);
-        let up = Self::fimm(cr, at, 2f64.powi(54));
+        let up = Self::fimm(cr, at, pow2d(54));
         let scaled = Self::mul(cr, at, x, up);
         let x2 = Self::sel(cr, at, sub, scaled, x);
         let h = Self::hi(cr, at, x2);
@@ -1775,7 +1775,7 @@ impl Exact64 {
             let l = Self::lo(cr, at, v);
             Self::pack(cr, at, l, h)
         };
-        let big = Self::fimm(cr, at, 2f64.powi(52));
+        let big = Self::fimm(cr, at, pow2d(52));
         let s = signed(cr, big);
         let up = Self::f(cr, at, "xe3.eu.add", &[x, s], vec![]);
         let even = Self::f(cr, at, "xe3.eu.add", &[up, s], vec![("neg1", A::Bool(true))]);
@@ -1808,3 +1808,12 @@ impl Exact64 {
     }
 }
 
+/// 2^`e` as an f32, for `e` within its normal exponents (exact; `powi` needs std).
+const fn pow2f(e: i32) -> f32 {
+    f32::from_bits(((127 + e) as u32) << 23)
+}
+
+/// 2^`e` as an f64, for `e` within its normal exponents (exact; `powi` needs std).
+const fn pow2d(e: i32) -> f64 {
+    f64::from_bits(((1023 + e) as u64) << 52)
+}

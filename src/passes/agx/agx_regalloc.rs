@@ -20,7 +20,7 @@ use crate::{Body, Groups, Heads, Kernels, LinearScan, OpId, Quiet, RegTarget, Re
 
 
 /// The GPR halves a kernel may use: from r1 (r0l is the nesting counter) up.
-const GPRS: std::ops::Range<u32> = 2..256;
+const GPRS: core::ops::Range<u32> = 2..256;
 
 /// The register files as the linear scan sees them: 0 the GPR halves, 1 the uniform halves.
 struct Files;
