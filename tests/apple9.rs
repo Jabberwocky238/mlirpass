@@ -43,7 +43,7 @@ fn kernels(src: &str) -> String {
     let interfaces = Interfaces::upstream();
     let passes = Passes::upstream();
     let mut body = Body::parse(Ctx::new(&opt, &interfaces), src).unwrap();
-    let pm = PassManager::parse(&passes, "builtin.module(gpu-inline-calls, canonicalize, cse, convert-gpu-to-apple9, apple9-regalloc, apple9-wait)").unwrap();
+    let pm = PassManager::parse(&passes, "builtin.module(gpu-inline-calls, canonicalize, cse, convert-gpu-to-apple9, apple9-regalloc, apple9-control, apple9-wait)").unwrap();
     let root = body.root;
     pm.run(&mut body, root).unwrap_or_else(|e| panic!("{e}"));
     if std::env::var("APPLE9_SHOW").is_ok() {
@@ -57,12 +57,12 @@ fn kernels(src: &str) -> String {
     out
 }
 
-/// Kernels through the Apple9 backend (tests/apple9/{ints,floats}.mlir): their bytes as the M4 ran them right
+/// Kernels through the Apple9 backend (tests/apple9/{ints,floats,control}.mlir): their bytes as the M4 ran them right
 /// (tests/apple9/*.expected; scripts/apple9_check.py runs them and checks every result).
 #[cfg(feature = "target.apple9")]
 #[test]
 fn kernels_as_the_m4_ran_them() {
-    for (name, src, want) in [("ints", include_str!("apple9/ints.mlir"), include_str!("apple9/ints.expected")), ("floats", include_str!("apple9/floats.mlir"), include_str!("apple9/floats.expected"))] {
+    for (name, src, want) in [("ints", include_str!("apple9/ints.mlir"), include_str!("apple9/ints.expected")), ("floats", include_str!("apple9/floats.mlir"), include_str!("apple9/floats.expected")), ("control", include_str!("apple9/control.mlir"), include_str!("apple9/control.expected"))] {
         let got = kernels(src);
         if let Ok(dir) = std::env::var("APPLE9_WRITE") {
             std::fs::write(format!("{dir}/{name}.expected"), &got).unwrap();

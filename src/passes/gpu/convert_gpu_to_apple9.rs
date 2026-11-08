@@ -1,4 +1,5 @@
-//! `convert-gpu-to-apple9`: the kernels' calls inlined ([`Kernels::inline_calls`]); the compute kernels of each
+//! `convert-gpu-to-apple9`: the kernels' calls inlined ([`Kernels::inline_calls`]), their `scf.for`s made `scf.while`s
+//! ([`GpuToApple9::for_to_while`]); the compute kernels of each
 //! `gpu.module` ⇒ `apple9.kernel`s of virtual Apple9 instructions ([`GpuToApple9`]); then each kernel's parameters
 //! read at its start: word k of the parameter buffer (binding 1, byte 4k).
 
@@ -19,6 +20,7 @@ pub fn convert_gpu_to_apple9<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Er
             shaders.push(f);
         }
     });
+    GpuToApple9::for_to_while(body, &shaders);
     body.sink_constants(&shaders);
     let tc = Apple9Types::converter();
     let mut patterns = ConversionPatterns::default();
@@ -26,8 +28,12 @@ pub fn convert_gpu_to_apple9<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Er
     GpuToApple9::populate(&mut patterns, i);
     let mut target = ConversionTarget::default();
     target.legal_dialect("apple9").illegal_dialect("arith").illegal_dialect("vector").illegal_dialect("math").illegal_dialect("llvm");
-    for o in ["gpu.func", "gpu.return", "gpu.block_id", "gpu.thread_id"] {
+    for o in ["gpu.func", "gpu.return", "gpu.block_id", "gpu.thread_id", "scf.for"] {
         target.illegal_op(o);
+    }
+    // structured control flow stays, of registers (`apple9-control` makes it masks)
+    for o in ["scf.if", "scf.while", "scf.condition", "scf.yield"] {
+        target.dynamic_op(o, |b, op| Some(GpuToApple9::structured_legal(b, op)));
     }
     Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &shaders, Mode::Full)?;
 

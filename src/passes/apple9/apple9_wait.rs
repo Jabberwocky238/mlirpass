@@ -2,7 +2,8 @@
 //! one with nothing pending (two pending results on one slot are not both waited for by a wait for it: measured, as
 //! Metal gives each its own); with all six pending, the instruction waits for them first. An instruction that touches a
 //! pending register waits for its slot, in its own wait field when it has one ([`Apple9Op::waits`]), else by an `iadd`
-//! of r63 just before (it only waits).
+//! of r63 just before (it only waits). Before a change of the running lanes or of the way (a mask, a jump, a label),
+//! everything pending is waited for.
 
 use alloc::collections::BTreeMap;
 use alloc::vec;
@@ -47,6 +48,10 @@ pub fn apple9_wait<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
             let Some(inst) = Apple9Op::of(&rw.body[i].name) else { continue };
             let (read, written) = touches(rw.body, i, inst)?;
             let mut mask: u32 = read.iter().chain(&written).filter_map(|r| pending.get(r)).fold(0, |m, s| m | 1 << (s - 1));
+            // where the lanes or the way change, nothing is left pending (a branch's other side, a loop's next time)
+            if inst.controls() && inst != Apple9Op::Pred {
+                mask |= pending.values().fold(0, |m, s| m | 1 << (s - 1));
+            }
             // its own slot: the lowest free one; none free, everything pending is waited for first
             let free = (1..=6).find(|s| !pending.values().any(|p| p == s));
             if inst.completes() && free.is_none() {

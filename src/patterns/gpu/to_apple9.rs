@@ -25,12 +25,16 @@
 //!                                     thread_position_in_threadgroup.x (0xa4)
 //!   gpu.return                      ⇒ halt
 //!   vector.extract / insert / from_elements / broadcast / shuffle ⇒ the components themselves
+//!   scf.if / scf.while (scf.for: as an scf.while, `convert-gpu-to-apple9`) ⇒ themselves, of registers, the
+//!                                     condition (0 / 1) compared with 0 into predicate bank 0 by an `apple9.pred` just
+//!                                     before the if / the while's scf.condition (`apple9-control` makes them masks)
 //! ```
 //!
 //! The parameters (32-bit words) are read from the parameter buffer (binding 1) at the kernel's start
-//! (`convert-gpu-to-apple9`). Refused: loads and stores of other than whole dwords, control flow, f32 minimum / maximum
+//! (`convert-gpu-to-apple9`). Refused: loads and stores of other than whole dwords, f32 minimum / maximum
 //! (NaN-propagating).
 
+use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -39,7 +43,7 @@ use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, Const, FloatKind, Scalar, ShapedKind, Type};
 
 use super::Dimension;
-use crate::{A, Apple9Kernel, Apple9Op, Apple9Type, ConversionRewriter, Heads, OpData, OpHead, OpId, ShaderStage, SignatureConversion, TypeConverter, ValueId, WithAttrs, patterns};
+use crate::{A, Apple9Kernel, Apple9Op, Apple9Type, Body, ConversionRewriter, Heads, OpData, OpHead, OpId, ShaderStage, SignatureConversion, TypeConverter, ValueId, WithAttrs, patterns};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -242,6 +246,116 @@ impl GpuToApple9 {
         }
     }
 
+    /// A structured control flow op (`scf.if` / `scf.while`) again, of registers: its operands the converted ones,
+    /// its results and its regions' arguments a register a component, its regions moved over.
+    fn structured(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let name = cr.rw.body[op].name.to_string();
+        let types: Vec<Type<'_>> = cr.rw.body[op].results.iter().map(|r| cr.rw.body[*r].ty.clone()).collect();
+        let Some(results) = types.iter().map(Apple9Types::of).collect::<Option<Vec<_>>>() else { return false };
+        let regions = cr.rw.body[op].regions.to_vec();
+        let mut sigs = Vec::new();
+        for r in &regions {
+            let Some(&entry) = cr.rw.body[*r].blocks.first() else {
+                sigs.push(None);
+                continue;
+            };
+            let args: Vec<Type<'_>> = cr.rw.body[entry].args.iter().map(|a| cr.rw.body[*a].ty.clone()).collect();
+            let mut sig = SignatureConversion::new(args.len());
+            for (i, t) in args.iter().enumerate() {
+                let Some(g) = Apple9Types::of(t) else { return false };
+                sig.add_inputs(i, g);
+            }
+            sigs.push(Some(sig));
+        }
+        let mut data = OpData::build(&name).operands(&o.concat());
+        for a in cr.rw.body[op].attributes.clone() {
+            data.set(&a.name, a.value.unwrap_or(Attribute::Unit));
+        }
+        cr.rw.set_before(op);
+        let flat: Vec<Type<'_>> = results.concat();
+        let n = regions.len();
+        let new = cr.rw.create_with(data, &flat, |b, k| {
+            for _ in 0..n {
+                b.add_region(k);
+            }
+        });
+        let Some(current) = cr.current else { return false };
+        for (i, (r, sig)) in regions.iter().zip(&sigs).enumerate() {
+            let into = cr.rw.body[new].regions[i];
+            cr.inline_region(*r, into, None);
+            if cr.convert_region_types(into, current, sig.as_ref()).is_none() {
+                return false;
+            }
+        }
+        let mut values = cr.rw.body[new].results.iter().copied();
+        let grouped = results.iter().map(|g| values.by_ref().take(g.len()).collect()).collect();
+        cr.replace(op, grouped);
+        true
+    }
+
+    /// Predicate bank 0 := `c` (0 / 1) == 0, before `before` (`loop`: a loop's form).
+    fn predicate(cr: &mut Cr<'_, '_, '_>, before: OpId, c: ValueId, looped: bool) {
+        let zero = Self::imm(cr, before, 0, Self::i32());
+        let mut attrs = vec![("cond", A::str("ieq"))];
+        if looped {
+            attrs.push(("loop", A::Bool(true)));
+        }
+        Self::instruction(cr, before, Apple9Op::Pred, &[c, zero], attrs, Vec::new());
+    }
+
+    /// Whether a structured control flow op is of registers already (its operands, results and arguments).
+    pub fn structured_legal(body: &Body<'_>, op: OpId) -> bool {
+        let reg = |v: &ValueId| Apple9Type::try_from(&body[*v].ty).is_ok();
+        let args = body[op].regions.iter().flat_map(|r| body[*r].blocks.iter().flat_map(|b| body[*b].args.iter()));
+        body[op].operands.iter().all(reg) && body[op].results.iter().all(reg) && args.into_iter().all(reg)
+    }
+
+    /// Every `scf.for` under `ops` ⇒ an `scf.while` of the same: the induction variable carried first, the
+    /// condition `iv < ub` (signed), the body then `iv + step`.
+    pub fn for_to_while(body: &mut Body<'_>, ops: &[OpId]) {
+        let mut fors = Vec::new();
+        for &op in ops {
+            body.walk(op, &mut |o| {
+                if body[o].name == "scf.for" {
+                    fors.push(o);
+                }
+            });
+        }
+        let mut quiet = crate::Quiet;
+        let mut rw = crate::Rewriter::new(body, &mut quiet);
+        for f in fors {
+            let operands = rw.body[f].operands.to_vec();
+            let (lb, ub, step) = (operands[0], operands[1], operands[2]);
+            let mut inits = vec![lb];
+            inits.extend(&operands[3..]);
+            let types = rw.body.types(&inits);
+            let old = rw.body.top_block(f);
+            rw.set_before(f);
+            let w = rw.with_body(OpData::build("scf.while").operands(&inits), &types, &[types.clone(), types.clone()], &mut |rw, k, args| {
+                if k == 0 {
+                    let c = rw.create(OpData::build("arith.cmpi").operands(&[args[0], ub]).with("predicate", Attribute::i64(2)), &[Type::int(1)]);
+                    let c = rw.body[c].results[0];
+                    let mut forwarded = vec![c];
+                    forwarded.extend(args);
+                    rw.create(OpData::build("scf.condition").operands(&forwarded), &[]);
+                }
+            });
+            let after = rw.body[rw.body[w].regions[1]].blocks[0];
+            let args = rw.body[after].args.to_vec();
+            rw.inline_block_before(old, after, None, &args);
+            if let Some(y) = rw.body.last_op(after).filter(|y| rw.body[*y].name == "scf.yield") {
+                rw.set_before(y);
+                let next = rw.create(OpData::build("arith.addi").operands(&[args[0], step]), &[types[0].clone()]);
+                let mut yielded = vec![rw.body[next].results[0]];
+                yielded.extend(rw.body[y].operands.to_vec());
+                rw.create(OpData::build("scf.yield").operands(&yielded), &[]);
+                rw.erase_op(y);
+            }
+            let results = rw.body[w].results[1..].to_vec();
+            rw.replace_op(f, &results);
+        }
+    }
+
     /// The memory's dwords at a byte address: binding 0, the address unscaled.
     fn memory(n: usize) -> Vec<(&'static str, A)> {
         vec![("binding", A::from(APPLE9_MEMORY)), ("components", A::from(n as u32)), ("shift", A::from(0u32))]
@@ -308,6 +422,37 @@ impl GpuToApple9 {
         if cr.convert_region_types(into, current, Some(&sig)).is_none() {
             return false;
         }
+        cr.erase(op);
+        true
+    }
+
+    #[convert("scf.if")]
+    fn scf_if(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let Some(&[c]) = o.first().map(Vec::as_slice) else { return false };
+        Self::predicate(cr, op, c, false);
+        Self::structured(cr, op, o)
+    }
+
+    #[convert("scf.while")]
+    fn scf_while(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        Self::structured(cr, op, o)
+    }
+
+    /// The condition into predicate bank 0, then what goes on to the body (or out).
+    #[convert("scf.condition")]
+    fn scf_condition(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let Some(&[c]) = o.first().map(Vec::as_slice) else { return false };
+        Self::predicate(cr, op, c, true);
+        cr.rw.set_before(op);
+        cr.rw.create(OpData::build("scf.condition").operands(&o.concat()), &[]);
+        cr.erase(op);
+        true
+    }
+
+    #[convert("scf.yield")]
+    fn scf_yield(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        cr.rw.set_before(op);
+        cr.rw.create(OpData::build("scf.yield").operands(&o.concat()), &[]);
         cr.erase(op);
         true
     }

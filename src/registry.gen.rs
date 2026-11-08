@@ -26,6 +26,8 @@ impl crate::Passes {
         #[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
         p.register::<crate::ConvertAmdgpuToRocdl>(); // convert-amdgpu-to-rocdl
         #[cfg(feature = "target.apple9")]
+        p.register::<crate::Apple9Control>(); // apple9-control
+        #[cfg(feature = "target.apple9")]
         p.register::<crate::Apple9Regalloc>(); // apple9-regalloc
         #[cfg(feature = "target.apple9")]
         p.register::<crate::Apple9Wait>(); // apple9-wait

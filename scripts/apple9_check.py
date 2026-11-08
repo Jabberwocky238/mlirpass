@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The Apple9 target on the hardware: kernels as mlirpass compiles them (tests/apple9/<kernel>.expected, which
 tests/apple9.rs keeps equal to the compiler's output) run on this Mac's GPU (an M4), every result checked against the
-semantics of tests/apple9/<kernel>.mlir: `ints` (i32 arithmetic) and `floats` (f32: IEEE, one rounding, denormals
-flushed to zero). macOS with an Apple9 GPU only.
+semantics of tests/apple9/<kernel>.mlir: `ints` (i32 arithmetic), `floats` (f32: IEEE, one rounding, denormals
+flushed to zero) and `control` (ifs and loops, the condition differing between the lanes). macOS with an Apple9 GPU only.
 
 How it runs (the ABI of the apple9 target): the kernel's code replaces the main of a donor kernel
 (scripts/apple9_donor.metal: binding 0 the memory, binding 1 the parameter words) in a Metal binary archive
@@ -26,19 +26,19 @@ def u32(x): return x & 0xffffffff
 def isnan(u): return (u & 0x7fffffff) > 0x7f800000
 
 
-def run(kernel, n, inputs, words_in):
-    """Kernel `kernel`'s code over n invocations: the memory `inputs` then 20 results each; the results."""
+def run(kernel, n, inputs, words_in, out=20):
+    """Kernel `kernel`'s code over n invocations: the memory `inputs` then `out` result words each; the results."""
     lines = open(os.path.join(ROOT, f'tests/apple9/{kernel}.expected')).read().split('\n')
     code = ''.join(lines[1:]).strip()
     dst = 4 * len(inputs)
-    words = inputs + [0] * (20 * n)
+    words = inputs + [0] * (out * n)
     args = [os.path.abspath(RUNNER), 'run', os.path.join(ROOT, 'scripts/apple9_donor.metal'), 'donor', '--text', code, '--threads', str(n), '--group', '32',
             f'u32:{len(words)}:' + ','.join(f'{w:x}' for w in words), f'u32:2:0,{dst:x}']
-    out = subprocess.run(args, capture_output=True, text=True)
-    if out.returncode:
-        sys.exit(out.stdout + out.stderr)
-    memory = next([int(x, 16) for x in l.split()[2:]] for l in out.stdout.splitlines() if l.startswith('buf 0 '))
-    return [memory[dst // 4 + 20 * t:dst // 4 + 20 * t + 20] for t in range(n)], len(code) // 2, lines[0]
+    ran = subprocess.run(args, capture_output=True, text=True)
+    if ran.returncode:
+        sys.exit(ran.stdout + ran.stderr)
+    memory = next([int(x, 16) for x in l.split()[2:]] for l in ran.stdout.splitlines() if l.startswith('buf 0 '))
+    return [memory[dst // 4 + out * t:dst // 4 + out * t + out] for t in range(n)], len(code) // 2, lines[0]
 
 
 def ints():
@@ -128,9 +128,25 @@ def floats():
     return 20 * len(cases), bad, size, head
 
 
+def control():
+    random.seed(5)
+    values = [0, 1, 2, 5, 6, 7, 8, 13, 40, 0xfffffffd, 0x80000000] + [u32(random.randint(-5, 45)) for _ in range(501)]
+    got, size, head = run('control', len(values), values, 1, out=4)
+    names = ['if', 'loop', 'nested', 'odd']
+    bad = []
+    for t, a in enumerate(values):
+        s = 0
+        for k in range(max(s32(a), 0)): s = u32(s * 5 + k)
+        acc = a
+        for k in range(a & 7): acc = u32(acc + k) if k & 1 else acc ^ 3
+        want = [u32(a * 3) if s32(a) > 5 else u32(a + 9), s, acc, u32(a + 1000) if a & 1 else 0]
+        bad += [f'invocation {t} ({a:#x}) {names[i]}: got {g:#010x}, want {w:#010x}' for i, (g, w) in enumerate(zip(got[t], want)) if g != w]
+    return 4 * len(values), bad, size, head
+
+
 wrong = 0
-for name in sys.argv[1:] or ['ints', 'floats']:
-    total, bad, size, head = {'ints': ints, 'floats': floats}[name]()
+for name in sys.argv[1:] or ['ints', 'floats', 'control']:
+    total, bad, size, head = {'ints': ints, 'floats': floats, 'control': control}[name]()
     for line in bad[:20]: print(line)
     print(f'{name}: {total - len(bad)} of {total} right ({size} bytes of code, {head})')
     wrong += len(bad)

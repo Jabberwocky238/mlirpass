@@ -15,6 +15,8 @@
 //!   wait                 the completion slots (1 ..= 6, a bit mask: slot k is bit k - 1) waited for first
 //!   slot                 the slot a load completes on (1 ..= 6; 6 when absent)
 //!   ...                  a form's own: `selector`, `value`, `cond`, `signed`, `binding`, `components`, `shift`, `offset`
+//!   invert, loop, id, to the control flow's: a mask taking the lanes not in the predicate, the loop form of a
+//!                        predicate, a label's number, the label a jump goes to (its displacement: [`Apple9Isa::jump`])
 //! ```
 //!
 //! Every source is retained (its release bit clear): a source released while still used reads back as zero, so a
@@ -72,11 +74,30 @@ pub enum Apple9Op {
     Roundeven,
     Load,
     Store,
+    /// Predicate bank 0 := a <cond> b (`cond`: `ieq`), a lane each; `loop`: the form a loop's latch takes.
+    Pred,
+    /// The execution mask pushed, then the lanes of predicate bank 0 kept (`invert`: those not in it).
+    Push,
+    /// The lanes of the innermost push that it left out, instead.
+    Else,
+    /// The execution mask as before the innermost push.
+    Pop,
+    /// A loop's mask pushed (its lanes the ones running).
+    LoopPush,
+    /// The loop's lanes cut down to those of predicate bank 0 (`invert`: those not in it): the rest leave the loop.
+    LoopUpdate,
+    /// The execution mask as before the loop.
+    LoopPop,
+    /// To label `to` when any lane is running, when none is.
+    JmpAny,
+    JmpNone,
+    /// Where a jump goes (`id`): no bytes.
+    Label,
     Halt,
 }
 
 impl Apple9Op {
-    const ALL: [(&'static str, Apple9Op); 35] = [
+    const ALL: [(&'static str, Apple9Op); 45] = [
         ("apple9.get_sr", Apple9Op::GetSr),
         ("apple9.get_sr16", Apple9Op::GetSr16),
         ("apple9.mov", Apple9Op::Mov),
@@ -111,6 +132,16 @@ impl Apple9Op {
         ("apple9.roundeven", Apple9Op::Roundeven),
         ("apple9.load", Apple9Op::Load),
         ("apple9.store", Apple9Op::Store),
+        ("apple9.pred", Apple9Op::Pred),
+        ("apple9.push", Apple9Op::Push),
+        ("apple9.else", Apple9Op::Else),
+        ("apple9.pop", Apple9Op::Pop),
+        ("apple9.loop_push", Apple9Op::LoopPush),
+        ("apple9.loop_update", Apple9Op::LoopUpdate),
+        ("apple9.loop_pop", Apple9Op::LoopPop),
+        ("apple9.jmp_any", Apple9Op::JmpAny),
+        ("apple9.jmp_none", Apple9Op::JmpNone),
+        ("apple9.label", Apple9Op::Label),
         ("apple9.halt", Apple9Op::Halt),
     ];
 
@@ -128,9 +159,9 @@ impl Apple9Op {
     pub fn sources(self) -> &'static [&'static str] {
         use Apple9Op::*;
         match self {
-            GetSr | GetSr16 | MovImm | Halt => &[],
+            GetSr | GetSr16 | MovImm | Halt | Push | Else | Pop | LoopPush | LoopUpdate | LoopPop | JmpAny | JmpNone | Label => &[],
             Mov | I2f | F2i | Rcp | Rsq | Floor | Ceil | Trunc | Roundeven => &["a"],
-            Iadd | Isub | Shl | Shr | Asr | And | Or | Xor | Smin | Smax | Umin | Umax | Fadd | Fsub | Fmul | Fmin | Fmax => &["a", "b"],
+            Iadd | Isub | Shl | Shr | Asr | And | Or | Xor | Smin | Smax | Umin | Umax | Fadd | Fsub | Fmul | Fmin | Fmax | Pred => &["a", "b"],
             Imad | Fma => &["a", "b", "c"],
             Select => &["a", "b", "t", "f"],
             Load => &["index"],
@@ -140,7 +171,13 @@ impl Apple9Op {
 
     /// Whether it writes `dst` (a load: `components` registers from it).
     pub fn has_dst(self) -> bool {
-        !matches!(self, Apple9Op::Store | Apple9Op::Halt)
+        !matches!(self, Apple9Op::Store | Apple9Op::Halt) && !self.controls()
+    }
+
+    /// Whether it changes which lanes run or where (the predicate, the masks, the jumps and their labels).
+    pub fn controls(self) -> bool {
+        use Apple9Op::*;
+        matches!(self, Pred | Push | Else | Pop | LoopPush | LoopUpdate | LoopPop | JmpAny | JmpNone | Label)
     }
 
     /// Whether its result completes later than the instruction, on its `slot`.
@@ -536,7 +573,42 @@ impl Apple9Isa {
                 Self::address(&mut b, false, f.int("offset")?, f.int("shift")?)?;
                 b
             }
+            // pack_predicate_compare, PREDICATE_COMPARE_EXTENDED / _LOOP (bank 0, both sources retained)
+            Pred => {
+                if f.str("cond")? != "ieq" {
+                    return Err(err("condition ieq"));
+                }
+                let (a, bb) = (f.reg("a")?, f.reg("b")?);
+                let mut b = vec![0x0a, ((a & 63) << 1) as u8 | 1, 0x23, ((bb & 63) << 1) as u8 | 1, 0x06, 0x00, 0x07, if f.flag("loop") { 0x00 } else { 0xc0 }, 0, 0];
+                Self::set(&mut b, 56, 1, a >> 6);
+                Self::set(&mut b, 58, 1, bb >> 6);
+                b
+            }
+            // the execution-mask stack (agx_apple9_ir.c, AGX_APPLE9_VIR_EXEC_MASK_* / LOOP_MASK_*): bank 0's selector
+            Push => vec![0x0f, 0x05, 0x54, 0x01 | if f.flag("invert") { 0x20 } else { 0 }],
+            Else => vec![0x0f, 0x04, 0x04, 0x19],
+            Pop => vec![0x0f, 0x06, 0x04, 0x01, 0x00, 0x00],
+            LoopPush => vec![0x0f, 0x05, 0x54, 0x1a],
+            LoopUpdate => vec![0x8f, 0x04, 0x54, 0x02 | if f.flag("invert") { 0x20 } else { 0 }],
+            LoopPop => vec![0x0f, 0x06, 0x04, 0x02, 0x00, 0x00],
+            JmpAny | JmpNone => return Err(err("a jump is encoded where its label is known (Apple9Isa::jump)")),
+            Label => Vec::new(),
             Halt => vec![0x0e, 0, 0, 0],
         })
     }
+
+    /// The bytes of a jump (agx_apple9_encode_branch): `displacement` bytes from its own start, when any lane is
+    /// running (`any`) or when none is.
+    pub fn jump(any: bool, displacement: i64) -> Result<Vec<u8>, Error> {
+        if displacement & 1 != 0 || !(-(1 << 47)..1 << 47).contains(&displacement) {
+            return Err(Error(format!("jump by {displacement}: even, 48 bits")));
+        }
+        let mut b = vec![0x0f, if any { 0x00 } else { 0x01 }, 0x54];
+        b.extend((0..6).map(|k| (displacement >> (8 * k)) as u8));
+        b.push(0);
+        Ok(b)
+    }
+
+    /// The bytes of a jump.
+    pub const JUMP_BYTES: usize = 10;
 }
