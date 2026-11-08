@@ -366,6 +366,9 @@ enum Undo<'a> {
     /// Arena `kind` of seg `seg` held `len` entries when it first grew under a checkpoint: what a
     /// rollback truncates it back to.
     Grew { seg: u32, kind: Kind, len: usize },
+    /// [`Body::splice`] moved `from`'s tail `first ..= last` into `to`: one entry however long
+    /// the tail (an entry per moved op made splitting a long block quadratic in memory).
+    Spliced { from: BlockId, to: BlockId, first: OpId, last: OpId, n: u32 },
 }
 
 /// ⭐ Undo log for cheap rollback: while a [`Checkpoint`] is open, the first write to an entry
@@ -855,6 +858,11 @@ impl<'a> Body<'a> {
                     self.raw_ends(b, e);
                 }
                 Undo::Grew { seg, kind, len } => self.seg_mut(seg).truncate(kind, len),
+                Undo::Spliced { from, to, first, last, n } => {
+                    self[from].ordered.set(0);
+                    self[to].ordered.set(0);
+                    self.move_run(to, first, last, n, from, None);
+                }
             }
         }
         self.close(&cp);
@@ -1793,17 +1801,63 @@ impl<'a> Body<'a> {
     /// `before` (`None`: the end), in order; the moved ops. `from` and `to` differ.
     pub fn splice(&mut self, from: BlockId, start: Option<OpId>, to: BlockId, before: Option<OpId>) -> Vec<OpId> {
         debug_assert_ne!(from, to, "splice within one block");
+        let Some(first) = start.or(self[from].first) else { return Vec::new() };
+        let last = self[from].last.expect("a block with a first op has a last");
         let mut moved = Vec::new();
-        let mut at = start.or(self[from].first);
+        let mut at = Some(first);
         while let Some(o) = at {
             moved.push(o);
             at = self[o].next;
         }
+        let n = moved.len() as u32;
+        if self.logs(from) || self.logs(to) {
+            self.journal.undo.push(Undo::Spliced { from, to, first, last, n });
+        }
+        self[to].ordered.set(0);
+        self.move_run(from, first, last, n, to, before);
         for &o in &moved {
-            self.detach(o);
-            self.link_in(o, to, before);
+            self.linked(o, to);
         }
         moved
+    }
+
+    /// The run `first ..= last` (`n` ops) of `from` into `to` before `before` (`None`: the end),
+    /// without the journal: two cuts and the moved ops' parents.
+    fn move_run(&mut self, from: BlockId, first: OpId, last: OpId, n: u32, to: BlockId, before: Option<OpId>) {
+        let (fl, ll) = (self.links(first), self.links(last));
+        let mut e = self.ends(from);
+        e.len -= n;
+        match fl.prev {
+            Some(p) => self.raw_links(p, Links { next: ll.next, ..self.links(p) }),
+            None => e.first = ll.next,
+        }
+        match ll.next {
+            Some(x) => self.raw_links(x, Links { prev: fl.prev, ..self.links(x) }),
+            None => e.last = fl.prev,
+        }
+        self.raw_ends(from, e);
+        let mut t = self.ends(to);
+        let prev = match before {
+            Some(b) => self.links(b).prev,
+            None => t.last,
+        };
+        match prev {
+            Some(p) => self.raw_links(p, Links { next: Some(first), ..self.links(p) }),
+            None => t.first = Some(first),
+        }
+        match before {
+            Some(b) => self.raw_links(b, Links { prev: Some(last), ..self.links(b) }),
+            None => t.last = Some(last),
+        }
+        t.len += n;
+        self.raw_ends(to, t);
+        self.raw_links(first, Links { prev, ..self.links(first) });
+        self.raw_links(last, Links { next: before, ..self.links(last) });
+        let mut at = Some(first);
+        while let Some(o) = at {
+            self.raw_links(o, Links { parent: Some(to), ..self.links(o) });
+            at = if o == last { None } else { self.links(o).next };
+        }
     }
 
     /// Takes `ops` out of their blocks (they stay whole).

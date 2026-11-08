@@ -9,7 +9,7 @@ what `mlir-opt` 22.1.8 prints for the same input and pipeline.
 
 ## Status
 
-`0.8.10`: 6741 of the 7333 fixture cases match `mlir-opt` 22.1.8 byte for byte
+`0.8.11`: 6741 of the 7333 fixture cases match `mlir-opt` 22.1.8 byte for byte
 (`cargo test --test passes -- --nocapture` counts them per group), MLIR's own `Dialect/SPIRV`,
 `Dialect/GPU` and `*ToSPIRV` tests included, and the three GPU vendors' lowerings: Intel
 (`convert-xegpu-to-xevm`, `convert-vector-to-xegpu`, `convert-gpu-to-llvm-spv`,
