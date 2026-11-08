@@ -2435,7 +2435,8 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
         let n = types.len();
         let id = self.body.adopt(data, types);
         let named: usize = results.iter().map(|r| r.count.unwrap_or(1) as usize).sum();
-        if named != n {
+        // Results left unbound (`scf.for ... -> (f32) {`) are valid MLIR: the op still has them, nothing names them
+        if named != 0 && named != n {
             return Err(format!("`{}`: {} result names for {} result types", self.body[id].name, results.len(), n).into());
         }
         let Import { body, scopes, .. } = self;
