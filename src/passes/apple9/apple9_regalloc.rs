@@ -8,6 +8,10 @@
 //! copy of each value going in, the region arguments, a copy of what each region yields, the results; a loop's yields
 //! copied twice, so one carried value read for another is read before it is written), a value read in a loop lives to
 //! the loop's end; then the ops lose their values (`apple9-control` makes them masks).
+//!
+//! A source read for the last time is released (`release`, a bit per source; the forms [`Apple9Op::releases`]):
+//! no later instruction reads it, the instruction does not read it twice, and no loop around the instruction runs it
+//! again with the value from outside the loop. (A released source is gone: one still needed reads back as zero.)
 
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -170,6 +174,57 @@ impl<'a> Alloc<'_, 'a> {
         webs
     }
 
+    /// Whether block `b` is inside op `l` (at any depth).
+    fn within(body: &Body<'_>, mut b: crate::BlockId, l: OpId) -> bool {
+        while let Some(owner) = body.block_owner(b) {
+            if owner == l {
+                return true;
+            }
+            let Some(p) = body[owner].parent else { return false };
+            b = p;
+        }
+        false
+    }
+
+    /// The sources each instruction reads for the last time (a bit per source, in [`Apple9Op::sources`] order): no
+    /// later instruction reads the value, it is not read by the same instruction twice, and no loop around the
+    /// instruction that the value comes from outside of runs it again.
+    fn releases(&self) -> BTreeMap<OpId, u32> {
+        let body = &*self.rw.body;
+        let ops = self.ops();
+        let at: BTreeMap<OpId, usize> = ops.iter().enumerate().map(|(i, o)| (*o, i)).collect();
+        let mut out = BTreeMap::new();
+        for &op in &ops {
+            let operands = &body[op].operands;
+            let mut mask = 0;
+            for (s, v) in operands.iter().enumerate() {
+                if operands.iter().filter(|w| *w == v).count() > 1 {
+                    continue;
+                }
+                let last = body[*v].uses.iter().filter_map(|u| at.get(&u.op)).all(|i| *i <= at[&op]);
+                // the loops around the instruction: none may lie between it and the value's definition
+                let Some(home) = body.value_block(*v) else { continue };
+                let mut looped = false;
+                let mut b = body[op].parent;
+                while let Some(blk) = b {
+                    let Some(owner) = body.block_owner(blk) else { break };
+                    if body[owner].name == "scf.while" && !Self::within(body, home, owner) {
+                        looped = true;
+                        break;
+                    }
+                    b = body[owner].parent;
+                }
+                if last && !looped {
+                    mask |= 1 << s;
+                }
+            }
+            if mask != 0 {
+                out.insert(op, mask);
+            }
+        }
+        out
+    }
+
     /// The structured ops without their values (what they carry is in its registers already).
     fn structure(&mut self) {
         for op in self.structured() {
@@ -212,7 +267,7 @@ impl<'a> Alloc<'_, 'a> {
     }
 
     /// Every instruction with its registers; `gprs` on the kernel.
-    fn rewrite(&mut self, reg: &BTreeMap<ValueId, u32>) -> Result<(), Error> {
+    fn rewrite(&mut self, reg: &BTreeMap<ValueId, u32>, releases: &BTreeMap<OpId, u32>) -> Result<(), Error> {
         let top = reg.values().copied().max().map_or(0, |r| r + 1).max(APPLE9_WAIT_GPR + 1);
         for op in self.ops() {
             let Some(inst) = Apple9Op::of(&self.rw.body[op].name) else {
@@ -250,6 +305,9 @@ impl<'a> Alloc<'_, 'a> {
                 }
                 attrs.push(("dst", A::from(first).into()));
             }
+            if let Some(&m) = releases.get(&op).filter(|_| inst.releases()) {
+                attrs.push(("release", A::from(m).into()));
+            }
             self.rw.modify(op, |b| {
                 for (n, v) in attrs {
                     b[op].set(n, v);
@@ -274,8 +332,9 @@ pub fn apple9_regalloc<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let scan = LinearScan { files: vec![GPRS], fixed: BTreeMap::new(), groups };
         let block = kernel.rw.body.top_block(k);
         let reg = scan.run_with(&Files, kernel.rw.body, block, &webs)?;
+        let releases = kernel.releases();
         kernel.structure();
-        kernel.rewrite(&reg)?;
+        kernel.rewrite(&reg, &releases)?;
     }
     Ok(())
 }

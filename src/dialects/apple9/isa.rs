@@ -19,8 +19,9 @@
 //!                        predicate, a label's number, the label a jump goes to (its displacement: [`Apple9Isa::jump`])
 //! ```
 //!
-//! Every source is retained (its release bit clear): a source released while still used reads back as zero, so a
-//! release is the allocator's business (not done yet, nothing is released). Completions: a special register read
+//! `release` (a bit per source, in the order of [`Apple9Op::sources`]) releases a source read for the last time; any
+//! other is retained: a source released while still used reads back as zero (measured), so it is the allocator's
+//! business (`apple9-regalloc`). The forms that take it: [`Apple9Op::releases`]. Completions: a special register read
 //! (`get_sr`, `get_sr16`), a load, a threadgroup load and an atomic complete on their `slot`, one slot to one pending
 //! result (`apple9-wait` picks them; an atomic's is always 6); a reader waits first.
 
@@ -199,6 +200,12 @@ impl Apple9Op {
         matches!(self, Apple9Op::GetSr | Apple9Op::GetSr16 | Apple9Op::Load | Apple9Op::SharedLoad | Apple9Op::Atomic)
     }
 
+    /// Whether its sources may be released (`release`): the forms whose release bits GravityLinux Mesa's packers name.
+    pub fn releases(self) -> bool {
+        use Apple9Op::*;
+        matches!(self, Iadd | Isub | Imad | Shl | Shr | Asr | And | Or | Xor | Smin | Smax | Umin | Umax | Fmin | Fmax | Fadd | Fsub | Fmul | Fma | Select)
+    }
+
     /// The one slot it completes on, if it has one only.
     pub fn slot(self) -> Option<u32> {
         (self == Apple9Op::Atomic).then_some(6)
@@ -276,12 +283,23 @@ impl Apple9Isa {
         Ok(())
     }
 
-    /// pack_integer_source, a retained GPR.
-    fn int_source(b: &mut [u8], src: u32, value_bit: u32, discard_bit: u32, file_bit: u32) {
+    /// pack_integer_source, a GPR: retained (its live bit set) or released (its discard bit).
+    fn int_source(b: &mut [u8], src: u32, value_bit: u32, discard_bit: u32, file_bit: u32, released: bool) {
         Self::set(b, value_bit, 7, src);
-        Self::set(b, value_bit + 7, 1, 1);
-        Self::set(b, discard_bit, 1, 0);
+        Self::set(b, value_bit + 7, 1, u32::from(!released));
+        Self::set(b, discard_bit, 1, u32::from(released));
         Self::set(b, file_bit, 1, 1);
+    }
+
+    /// The retain pairs (live bit, hold bit) of the sources not released: live set, hold clear (a released source
+    /// keeps the form's baseline: live clear, hold set).
+    fn retain(b: &mut [u8], pairs: &[(u32, u32)], release: u32) {
+        for (s, (live, hold)) in pairs.iter().enumerate() {
+            if release & (1 << s) == 0 {
+                Self::set(b, *live, 1, 1);
+                Self::set(b, *hold, 1, 0);
+            }
+        }
     }
 
     /// pack_compact_binary_gprs.
@@ -295,12 +313,9 @@ impl Apple9Isa {
         Self::set(b, 42, 1, bb >> 6);
     }
 
-    /// The retain bits of a compact binary form's two sources (both retained).
-    fn retain2(b: &mut [u8]) {
-        Self::set(b, 15, 1, 1);
-        Self::set(b, 19, 1, 0);
-        Self::set(b, 31, 1, 1);
-        Self::set(b, 20, 1, 0);
+    /// The retain bits of a compact binary form's two sources.
+    fn retain2(b: &mut [u8], release: u32) {
+        Self::retain(b, &[(15, 19), (31, 20)], release);
     }
 
     /// pack_memory_address: a byte `offset`, the index scaled by 1 << `shift` (at most 4).
@@ -319,6 +334,11 @@ impl Apple9Isa {
         let op = Apple9Op::of(name).ok_or_else(|| Error(format!("{name}: not an Apple9 instruction")))?;
         let f = Fields(attrs);
         let err = |m: &str| Error(format!("{name}: {m}"));
+        let release = f.int("release")?;
+        if release != 0 && !op.releases() {
+            return Err(err("its sources are not released"));
+        }
+        let released = |s: u32| release & (1 << s) != 0;
         use Apple9Op::*;
         Ok(match op {
             // agx_apple9_pack_get_sr / _zext16
@@ -376,7 +396,7 @@ impl Apple9Isa {
                 Self::set(&mut b, 25, 7, f.reg("dst")?);
                 for (s, k) in ["a", "b"].iter().enumerate() {
                     let s = s as u32;
-                    Self::int_source(&mut b, f.reg(k)?, 42 + 9 * s, 65 + s, 72 + 2 * s);
+                    Self::int_source(&mut b, f.reg(k)?, 42 + 9 * s, 65 + s, 72 + 2 * s, released(s));
                 }
                 Self::wait(&mut b, f.int("wait")?)?;
                 b
@@ -387,7 +407,7 @@ impl Apple9Isa {
                 Self::set(&mut b, 25, 7, f.reg("dst")?);
                 for (s, k) in ["a", "b", "c"].iter().enumerate() {
                     let s = s as u32;
-                    Self::int_source(&mut b, f.reg(k)?, 42 + 9 * s, 73 + s, 81 + 2 * s);
+                    Self::int_source(&mut b, f.reg(k)?, 42 + 9 * s, 73 + s, 81 + 2 * s, released(s));
                 }
                 b
             }
@@ -410,8 +430,13 @@ impl Apple9Isa {
                 Self::set(&mut b, 25, 7, f.reg("dst")?);
                 Self::set(&mut b, 42, 7, f.reg("a")?);
                 Self::set(&mut b, 51, 7, f.reg("b")?);
-                let release = if arithmetic { 62 } else { 72 };
-                Self::set(&mut b, release, 2, 0);
+                // the release flags (set in the baseline): a retained source's cleared
+                let flag = if arithmetic { 62 } else { 72 };
+                for s in 0..2 {
+                    if !released(s) {
+                        Self::set(&mut b, flag + s, 1, 0);
+                    }
+                }
                 b.truncate(if arithmetic { 10 } else { 12 });
                 b
             }
@@ -425,7 +450,7 @@ impl Apple9Isa {
                 if op == Xor {
                     b[2] = 0x1e;
                 }
-                Self::retain2(&mut b);
+                Self::retain2(&mut b, release);
                 Self::set(&mut b, 21, 1, 1);
                 Self::compact(&mut b, f.reg("dst")?, f.reg("a")?, f.reg("b")?);
                 b
@@ -440,7 +465,7 @@ impl Apple9Isa {
                 };
                 let mut b = vec![0x02, 0x01, 0x1e, 0x05, select, 0x00];
                 Self::set(&mut b, 21, 1, 1);
-                Self::retain2(&mut b);
+                Self::retain2(&mut b, release);
                 Self::compact(&mut b, f.reg("dst")?, f.reg("a")?, f.reg("b")?);
                 b
             }
@@ -459,11 +484,8 @@ impl Apple9Isa {
                     c => return Err(err(&format!("condition {c} (feq / fgt / flt / ugt / ult / igt / ilt)"))),
                 };
                 let mut b = vec![0x02, 0x01, 0x1f, 0x01, 0x82 | if equality { 0x04 } else { 0 }, 0x00, cond, 0x00, 0x80, 0x00];
-                // each source retained: its live bit set, its hold bit clear
-                for (live, hold) in [(15, 19), (31, 20), (47, 39), (79, 71)] {
-                    Self::set(&mut b, live, 1, 1);
-                    Self::set(&mut b, hold, 1, 0);
-                }
+                // each source retained (its live bit set, its hold bit clear) but the released
+                Self::retain(&mut b, &[(15, 19), (31, 20), (47, 39), (79, 71)], release);
                 let (dst, a, bb, t, fl) = (f.reg("dst")?, f.reg("a")?, f.reg("b")?, f.reg("t")?, f.reg("f")?);
                 Self::set(&mut b, 4, 4, dst & 15);
                 Self::set(&mut b, 22, 2, (dst >> 4) & 3);
@@ -503,7 +525,7 @@ impl Apple9Isa {
             Fmin | Fmax => {
                 let mut b = vec![0x02, 0x01, 0x1e, 0x05, if op == Fmax { 0 } else { 1 }, 0x00];
                 Self::set(&mut b, 21, 1, 1);
-                Self::retain2(&mut b);
+                Self::retain2(&mut b, release);
                 Self::compact(&mut b, f.reg("dst")?, f.reg("a")?, f.reg("b")?);
                 b
             }
@@ -511,10 +533,7 @@ impl Apple9Isa {
             Fma => {
                 let mut b = vec![0x09, 0x01, 0x1e, 0x05, 0x81, 0x08, 0x02, 0x00];
                 Self::set(&mut b, 21, 1, 1);
-                for (live, hold) in [(15, 19), (31, 20), (47, 39)] {
-                    Self::set(&mut b, live, 1, 1);
-                    Self::set(&mut b, hold, 1, 0);
-                }
+                Self::retain(&mut b, &[(15, 19), (31, 20), (47, 39)], release);
                 let (dst, a, bb, c) = (f.reg("dst")?, f.reg("a")?, f.reg("b")?, f.reg("c")?);
                 Self::set(&mut b, 4, 4, dst & 0xf);
                 Self::set(&mut b, 22, 2, (dst >> 4) & 3);
@@ -550,7 +569,7 @@ impl Apple9Isa {
                 let mut b = vec![0x09, 0x05, 0x1c, 0x01, 0x00, 0x00, 0, 0, 0, 0, 0, 0];
                 Self::set(&mut b, 16, 3, if op == Fmul { 5 } else { 4 });
                 Self::set(&mut b, 21, 1, 1);
-                Self::retain2(&mut b);
+                Self::retain2(&mut b, release);
                 Self::compact(&mut b, f.reg("dst")?, f.reg("a")?, f.reg("b")?);
                 if op == Fsub {
                     Self::set(&mut b, 43, 1, 1);
