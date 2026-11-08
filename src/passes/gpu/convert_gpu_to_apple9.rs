@@ -28,7 +28,7 @@ pub fn convert_gpu_to_apple9<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Er
     GpuToApple9::populate(&mut patterns, i);
     let mut target = ConversionTarget::default();
     target.legal_dialect("apple9").illegal_dialect("arith").illegal_dialect("vector").illegal_dialect("math").illegal_dialect("llvm");
-    for o in ["gpu.func", "gpu.return", "gpu.block_id", "gpu.thread_id", "gpu.barrier", "scf.for"] {
+    for o in ["gpu.func", "gpu.return", "gpu.block_id", "gpu.thread_id", "gpu.block_dim", "gpu.barrier", "scf.for"] {
         target.illegal_op(o);
     }
     // structured control flow stays, of registers (`apple9-control` makes it masks)

@@ -5,7 +5,7 @@
 //   apple9-metal dump FILE.metal                 each kernel: `kernel NAME`, `text HEX` (__TEXT,__text of the GPU
 //                                                Mach-O), `const HEX` (the constant program's pool)
 //   apple9-metal archive FILE.metal KERNEL OUT   the serialized archive of KERNEL's pipeline
-//   apple9-metal run FILE.metal KERNEL [--text HEX] [--threads N] [--group N] BUF...
+//   apple9-metal run FILE.metal KERNEL [--text HEX] [--threads N | --grid X,Y,Z] [--group N] BUF...
 //        BUF is `u32:N[:i|:0|:HEX,HEX..]` (N dwords: their index, zero, or the given words), bound at 0, 1 ...
 //        --text replaces the kernel's main (from `_agc.main` on) by HEX, padded with `halt` to its length;
 //        prints every buffer after the dispatch as `buf K HEX..` (little-endian dwords).
@@ -147,11 +147,12 @@ case "archive":
     try! Data(archive(library(args[1]), args[2])).write(to: URL(fileURLWithPath: args[3]))
 
 case "run":
-    guard args.count >= 3 else { fail("run FILE.metal KERNEL [--text HEX] [--threads N] [--group N] BUF...") }
+    guard args.count >= 3 else { fail("run FILE.metal KERNEL [--text HEX] [--threads N | --grid X,Y,Z] [--group N] BUF...") }
     let lib = library(args[1])
     let name = args[2]
     var text: [UInt8]? = nil
     var threads = 64, group = 32
+    var grid: [Int]? = nil
     var specs: [String] = []
     var i = 3
     while i < args.count {
@@ -159,6 +160,7 @@ case "run":
         case "--text": text = bytes(args[i + 1]); i += 2
         case "--threads": threads = Int(args[i + 1])!; i += 2
         case "--group": group = Int(args[i + 1])!; i += 2
+        case "--grid": grid = args[i + 1].split(separator: ",").map { Int($0)! }; i += 2
         default: specs.append(args[i]); i += 1
         }
     }
@@ -207,7 +209,12 @@ case "run":
     let q = dev.makeCommandQueue()!, cb = q.makeCommandBuffer()!, e = cb.makeComputeCommandEncoder()!
     e.setComputePipelineState(p)
     for (k, buf) in bufs.enumerated() { e.setBuffer(buf, offset: 0, index: k) }
-    e.dispatchThreads(MTLSize(width: threads, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: group, height: 1, depth: 1))
+    if let g = grid, g.count == 3 {
+        // threadgroups of `group` threads, X × Y × Z of them
+        e.dispatchThreadgroups(MTLSize(width: g[0], height: g[1], depth: g[2]), threadsPerThreadgroup: MTLSize(width: group, height: 1, depth: 1))
+    } else {
+        e.dispatchThreads(MTLSize(width: threads, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: group, height: 1, depth: 1))
+    }
     e.endEncoding()
     cb.commit()
     cb.waitUntilCompleted()
@@ -219,5 +226,5 @@ case "run":
     }
 
 default:
-    fail("apple9-metal dump FILE.metal | run FILE.metal KERNEL [--text HEX] [--threads N] [--group N] BUF...")
+    fail("apple9-metal dump FILE.metal | run FILE.metal KERNEL [--text HEX] [--threads N | --grid X,Y,Z] [--group N] BUF...")
 }

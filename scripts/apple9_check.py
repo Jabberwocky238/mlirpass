@@ -3,7 +3,7 @@
 tests/apple9.rs keeps equal to the compiler's output) run on this Mac's GPU (an M4), every result checked against the
 semantics of tests/apple9/<kernel>.mlir: `ints` (i32 arithmetic), `floats` (f32: IEEE, one rounding, denormals
 flushed to zero), `control` (ifs and loops, the condition differing between the lanes) and `memory` (threadgroup memory
-across a barrier; atomics). macOS with an Apple9 GPU only.
+across a barrier; atomics, compare-exchange), `ids` (a 3-D grid of workgroups: the ids). macOS with an Apple9 GPU only.
 
 How it runs (the ABI of the apple9 target): the kernel's code replaces the main of a donor kernel
 (scripts/apple9_donor.metal: binding 0 the memory, binding 1 the parameter words) in a Metal binary archive
@@ -155,19 +155,23 @@ def memory():
     random.seed(7)
     n = 512
     values = [random.getrandbits(32) for _ in range(n)]
-    dst, cnt = 4 * n, 12 * n
+    dst, cnt = 4 * n, 20 * n
     counters = [0, 0, 0, 0, 0, 0x7fffffff, 0, 0, 0xffffffff, 0, 0, 0]
-    mem, size, head = launch('memory', n, values + [0] * (2 * n) + counters, [0, dst, cnt])
+    mem, size, head = launch('memory', n, values + [0] * (4 * n) + counters, [0, dst, cnt])
     bad = []
     for t in range(n):
         g, l = t // 32, t % 32
         a = lambda k: values[32 * g + k]
         want = u32(a(31 - l) + 7 * a((l + 5) & 31))
-        got = mem[dst // 4 + 2 * t]
+        got = mem[dst // 4 + 4 * t]
         if got != want: bad.append(f'invocation {t} shared: got {got:#010x}, want {want:#010x}')
+        # the compare-exchange of its own word: old a; exchanged (to t + 77) for an odd t only
+        old, ok, now = mem[dst // 4 + 4 * t + 2], mem[dst // 4 + 4 * t + 3], mem[t]
+        want = (values[t], t & 1, t + 77 if t & 1 else values[t])
+        if (old, ok, now) != want: bad.append(f'invocation {t} cmpxchg: old, exchanged, word {old:#x}, {ok}, {now:#x}; want {want[0]:#x}, {want[1]}, {want[2]:#x}')
     # each add counter: its invocations' old values, in order, are the running sums (an order of the adds)
     for c in range(4):
-        ts = sorted((mem[dst // 4 + 2 * t + 1], t) for t in range(n) if t & 3 == c)
+        ts = sorted((mem[dst // 4 + 4 * t + 1], t) for t in range(n) if t & 3 == c)
         run_ = 0
         for old, t in ts:
             if old != run_: bad.append(f'add counter {c}: invocation {t} got old {old:#x}, the running sum is {run_:#x}'); break
@@ -180,12 +184,35 @@ def memory():
     for w, v in want.items():
         if mem[cnt // 4 + w] != v: bad.append(f'{names[w]}: {mem[cnt // 4 + w]:#x}, want {v:#x}')
     if not xchg < n: bad.append(f'xchg: {xchg:#x}, want one of the invocations')
-    return n + 4 + 7, bad, size, head
+    return 2 * n + 4 + 7, bad, size, head
+
+
+def ids():
+    nx, ny, nz = 3, 2, 2
+    n = nx * ny * nz * 32
+    lines = open(os.path.join(ROOT, 'tests/apple9/ids.expected')).read().split('\n')
+    code = ''.join(lines[1:]).strip()
+    args = [os.path.abspath(RUNNER), 'run', os.path.join(ROOT, 'scripts/apple9_donor.metal'), 'donor', '--text', code, '--grid', f'{nx},{ny},{nz}', '--group', '32',
+            f'u32:{12 * n}:0', 'u32:1:0']
+    ran = subprocess.run(args, capture_output=True, text=True)
+    if ran.returncode:
+        sys.exit(ran.stdout + ran.stderr)
+    mem = next([int(x, 16) for x in l.split()[2:]] for l in ran.stdout.splitlines() if l.startswith('buf 0 '))
+    bad = []
+    for gz in range(nz):
+        for gy in range(ny):
+            for gx in range(nx):
+                for lx in range(32):
+                    k = ((gz * ny + gy) * nx + gx) * 32 + lx
+                    want = [gx, gy, gz, lx, 0, 0, k, 0, 0, 32, 1, 1]
+                    got = mem[12 * k:12 * k + 12]
+                    if got != want: bad.append(f'invocation ({gx}, {gy}, {gz}; {lx}): got {got}, want {want}')
+    return n, bad, len(code) // 2, lines[0]
 
 
 wrong = 0
-for name in sys.argv[1:] or ['ints', 'floats', 'control', 'memory']:
-    total, bad, size, head = {'ints': ints, 'floats': floats, 'control': control, 'memory': memory}[name]()
+for name in sys.argv[1:] or ['ints', 'floats', 'control', 'memory', 'ids']:
+    total, bad, size, head = {'ints': ints, 'floats': floats, 'control': control, 'memory': memory, 'ids': ids}[name]()
     for line in bad[:20]: print(line)
     print(f'{name}: {total - len(bad)} of {total} right ({size} bytes of code, {head})')
     wrong += len(bad)

@@ -1,7 +1,9 @@
 // Threadgroup memory, barriers and atomics for Apple9: invocation i (l in its workgroup) reads a = the word at src + 4 i;
-// puts a at word l and 7 a at word 32 + l of the threadgroup memory; after a barrier writes at dst + 8 i the words
-// 31 - l and 32 + ((l + 5) & 31) summed (other lanes' writes) and the old value of an atomic add of i to the counter
-// at cnt + 4 (i & 3); then umax i, smin -i, or i, xor i, and ~(1 << (i & 31)), sub 1, xchg i on the counters at cnt + 16 ..
+// puts a at word l and 7 a at word 32 + l of the threadgroup memory; after a barrier writes at dst + 16 i the words
+// 31 - l and 32 + ((l + 5) & 31) summed (other lanes' writes), the old value of an atomic add of i to the counter at
+// cnt + 4 (i & 3), and of a compare-exchange of its own word (i + 77 for a, odd i; for a + 1, even i: no exchange)
+// with whether it exchanged (cmpxchg and extractvalue generic: mlirformat 0.6.3 reads neither custom form here); then umax i, smin -i, or i, xor i, and ~(1 << (i & 31)), sub 1, xchg i on the counters at
+// cnt + 16 ..
 module attributes {gpu.container_module} {
 gpu.module @shaders [#apple9.target<chip = "m4">] {
   gpu.func @memory(%src: i32, %dst: i32, %cnt: i32) workgroup(%t : memref<64xi32, #gpu.address_space<workgroup>>) kernel {
@@ -48,11 +50,21 @@ gpu.module @shaders [#apple9.target<chip = "m4">] {
   %ca = arith.addi %cnt, %k4 : i32
   %ca_p = llvm.inttoptr %ca : i32 to !llvm.ptr<1>
   %r1 = llvm.atomicrmw add %ca_p, %i monotonic : !llvm.ptr<1>, i32
-  %o = arith.muli %i, %c8 : i32
+  %odd = arith.andi %i, %c1 : i32
+  %even = arith.xori %odd, %c1 : i32
+  %expect = arith.addi %a, %even : i32
+  %c77 = arith.constant 77 : i32
+  %new = arith.addi %i, %c77 : i32
+  %pair = "llvm.cmpxchg"(%at_p, %expect, %new) <{failure_ordering = 2 : i64, success_ordering = 2 : i64}> : (!llvm.ptr<1>, i32, i32) -> !llvm.struct<(i32, i1)>
+  %r2 = "llvm.extractvalue"(%pair) <{position = array<i64: 0>}> : (!llvm.struct<(i32, i1)>) -> i32
+  %ok = "llvm.extractvalue"(%pair) <{position = array<i64: 1>}> : (!llvm.struct<(i32, i1)>) -> i1
+  %r3 = arith.extui %ok : i1 to i32
+  %c16o = arith.constant 16 : i32
+  %o = arith.muli %i, %c16o : i32
   %o0 = arith.addi %dst, %o : i32
-  %v = vector.from_elements %r0, %r1 : vector<2xi32>
+  %v = vector.from_elements %r0, %r1, %r2, %r3 : vector<4xi32>
   %o0_p = llvm.inttoptr %o0 : i32 to !llvm.ptr<1>
-  llvm.store %v, %o0_p {alignment = 4 : i64} : vector<2xi32>, !llvm.ptr<1>
+  llvm.store %v, %o0_p {alignment = 4 : i64} : vector<4xi32>, !llvm.ptr<1>
   %c16 = arith.constant 16 : i32
   %p0 = arith.addi %cnt, %c16 : i32
   %p0_p = llvm.inttoptr %p0 : i32 to !llvm.ptr<1>

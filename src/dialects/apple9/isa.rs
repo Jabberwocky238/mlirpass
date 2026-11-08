@@ -79,6 +79,9 @@ pub enum Apple9Op {
     /// umax, xchg) with `a`, the old value to `dst` (completing on slot 6: Metal's; on slots 1 and 2 by GravityLinux
     /// Mesa's publication codes the old value never landed, measured).
     Atomic,
+    /// A device compare-exchange on the word `index` of `binding`: `data` a run of two registers, the value to put and
+    /// the one to compare with (Metal's order); the old value to `dst` (completing on slot 6).
+    Cmpxchg,
     /// A word of the threadgroup memory: at word `index` + `offset` (the index register's low 16 bits).
     SharedLoad,
     SharedStore,
@@ -107,7 +110,7 @@ pub enum Apple9Op {
 }
 
 impl Apple9Op {
-    const ALL: [(&'static str, Apple9Op); 49] = [
+    const ALL: [(&'static str, Apple9Op); 50] = [
         ("apple9.get_sr", Apple9Op::GetSr),
         ("apple9.get_sr16", Apple9Op::GetSr16),
         ("apple9.mov", Apple9Op::Mov),
@@ -143,6 +146,7 @@ impl Apple9Op {
         ("apple9.load", Apple9Op::Load),
         ("apple9.store", Apple9Op::Store),
         ("apple9.atomic", Apple9Op::Atomic),
+        ("apple9.cmpxchg", Apple9Op::Cmpxchg),
         ("apple9.shared_load", Apple9Op::SharedLoad),
         ("apple9.shared_store", Apple9Op::SharedStore),
         ("apple9.barrier", Apple9Op::Barrier),
@@ -179,7 +183,7 @@ impl Apple9Op {
             Imad | Fma => &["a", "b", "c"],
             Select => &["a", "b", "t", "f"],
             Load | SharedLoad => &["index"],
-            Store | SharedStore => &["data", "index"],
+            Store | SharedStore | Cmpxchg => &["data", "index"],
             Atomic => &["a", "index"],
         }
     }
@@ -197,7 +201,7 @@ impl Apple9Op {
 
     /// Whether its result completes later than the instruction, on its `slot`.
     pub fn completes(self) -> bool {
-        matches!(self, Apple9Op::GetSr | Apple9Op::GetSr16 | Apple9Op::Load | Apple9Op::SharedLoad | Apple9Op::Atomic)
+        matches!(self, Apple9Op::GetSr | Apple9Op::GetSr16 | Apple9Op::Load | Apple9Op::SharedLoad | Apple9Op::Atomic | Apple9Op::Cmpxchg)
     }
 
     /// Whether its sources may be released (`release`): the forms whose release bits GravityLinux Mesa's packers name.
@@ -208,13 +212,13 @@ impl Apple9Op {
 
     /// The one slot it completes on, if it has one only.
     pub fn slot(self) -> Option<u32> {
-        (self == Apple9Op::Atomic).then_some(6)
+        matches!(self, Apple9Op::Atomic | Apple9Op::Cmpxchg).then_some(6)
     }
 
     /// Whether it carries a wait itself (the six-bit mask at bits 12 ..= 17); else a wait goes before it.
     pub fn waits(self) -> bool {
         use Apple9Op::*;
-        matches!(self, Iadd | Isub | Load | Store | SharedLoad | SharedStore | Atomic)
+        matches!(self, Iadd | Isub | Load | Store | SharedLoad | SharedStore | Atomic | Cmpxchg)
     }
 }
 
@@ -640,10 +644,18 @@ impl Apple9Isa {
             JmpAny | JmpNone => return Err(err("a jump is encoded where its label is known (Apple9Isa::jump)")),
             Label => Vec::new(),
             // agx_apple9_pack_device_atomic, returning (its result landed by the publication record after it)
-            Atomic => {
-                let name = f.str("op")?;
-                let code = ATOMICS.iter().find(|(n, _)| *n == name).map(|(_, c)| *c).ok_or_else(|| err(&format!("atomic {name}")))?;
-                let (dst, a, index, binding) = (f.reg("dst")?, f.reg("a")?, f.reg("index")?, f.int("binding")?);
+            Atomic | Cmpxchg => {
+                let code = if op == Cmpxchg {
+                    if f.int("components")? != 2 {
+                        return Err(err("components = 2 (the value, the one compared with)"));
+                    }
+                    0x12
+                } else {
+                    let name = f.str("op")?;
+                    ATOMICS.iter().find(|(n, _)| *n == name).map(|(_, c)| *c).ok_or_else(|| err(&format!("atomic {name}")))?
+                };
+                let a = f.reg(if op == Cmpxchg { "data" } else { "a" })?;
+                let (dst, index, binding) = (f.reg("dst")?, f.reg("index")?, f.int("binding")?);
                 let slot = f.int("slot")?;
                 let slot = if slot == 0 { 6 } else { slot };
                 if dst >= 64 || binding >= 128 || !(1..=6).contains(&slot) {

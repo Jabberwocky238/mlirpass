@@ -25,9 +25,13 @@
 //!                                     address >> 2] (a byte address in it: a workgroup attribution only sizes it)
 //!   llvm.atomicrmw (!llvm.ptr<1>, i32) ⇒ atomic on the word [the address >> 2] of binding 0, the old value back (add,
 //!                                     sub, and, or, xor, min, max, umin, umax, xchg)
+//!   llvm.cmpxchg (!llvm.ptr<1>, i32) ⇒ cmpxchg (the value and the one compared with a run), the old value and whether
+//!                                     it was the one compared with (!llvm.struct<(i32, i1)>: two registers)
+//!   llvm.extractvalue               ⇒ the field's register
 //!   gpu.barrier                     ⇒ barrier
-//!   gpu.block_id x, gpu.thread_id x ⇒ get_sr threadgroup_position_in_grid.x (0x9c), get_sr16
-//!                                     thread_position_in_threadgroup.x (0xa4)
+//!   gpu.block_id x / y / z, gpu.thread_id x ⇒ get_sr threadgroup_position_in_grid (0x9c ..), get_sr16
+//!                                     thread_position_in_threadgroup.x (0xa4); thread_id y / z: 0
+//!   gpu.block_dim                   ⇒ 32, 1, 1
 //!   gpu.return                      ⇒ halt
 //!   vector.extract / insert / from_elements / broadcast / shuffle ⇒ the components themselves
 //!   scf.if / scf.while (scf.for: as an scf.while, `convert-gpu-to-apple9`) ⇒ themselves, of registers, the
@@ -62,7 +66,9 @@ pub const APPLE9_MEMORY: u32 = 0;
 pub const APPLE9_PARAMETERS: u32 = 1;
 /// The bytes of threadgroup memory a workgroup may use (scripts/apple9_donor.metal's).
 pub const APPLE9_SHARED: u32 = 16384;
-/// The special registers: threadgroup_position_in_grid.x, thread_position_in_threadgroup.x (16-bit).
+/// The special registers (Metal's code for an M4 reads them so): threadgroup_position_in_grid.x (y, z after it),
+/// thread_position_in_threadgroup.x (16-bit). (The grid's size is no special register: 0x98 .. and 0xa8 .., which
+/// Metal's code reads for it, hold the workgroup's size, measured; `gpu.grid_dim` is refused.)
 const SR_THREADGROUP_X: u32 = 0x9c;
 const SR_THREAD_IN_GROUP_X: u32 = 0xa4;
 
@@ -82,6 +88,9 @@ impl Apple9Types {
     }
 
     pub fn of(t: &Type<'_>) -> Option<Vec<Type<'static>>> {
+        if let Ok(LlvmType::Struct { body: Some(fields), .. }) = LlvmType::try_from(t) {
+            return fields.iter().map(Self::elem).collect();
+        }
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::Vector => match t.dims()?[..] {
                 [n] if n > 0 => Some(vec![Self::elem(&s.elem)?; n as usize]),
@@ -622,25 +631,42 @@ impl GpuToApple9 {
         true
     }
 
+    /// The op's dimension: 0, 1, 2 for x, y, z.
+    fn dimension(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<u32> {
+        match cr.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok())? {
+            Dimension::X => Some(0),
+            Dimension::Y => Some(1),
+            Dimension::Z => Some(2),
+        }
+    }
+
+    /// threadgroup_position_in_grid.x / y / z (0x9c + d).
     #[convert("gpu.block_id")]
     fn block_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
-        if cr.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok()) != Some(Dimension::X) {
-            return false;
-        }
-        let v = Self::one(cr, op, Apple9Op::GetSr, &[], vec![("selector", A::from(SR_THREADGROUP_X))], Self::i32());
+        let Some(d) = Self::dimension(cr, op) else { return false };
+        let v = Self::one(cr, op, Apple9Op::GetSr, &[], vec![("selector", A::from(SR_THREADGROUP_X + d))], Self::i32());
         cr.replace(op, vec![vec![v]]);
         true
     }
 
+    /// thread_position_in_threadgroup.x (0xa4, 16 bits); y and z are 0 (a workgroup is APPLE9_WORKGROUP × 1 × 1).
     #[convert("gpu.thread_id")]
     fn thread_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
-        if cr.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok()) != Some(Dimension::X) {
-            return false;
-        }
-        let v = Self::one(cr, op, Apple9Op::GetSr16, &[], vec![("selector", A::from(SR_THREAD_IN_GROUP_X))], Self::i32());
+        let Some(d) = Self::dimension(cr, op) else { return false };
+        let v = if d == 0 { Self::one(cr, op, Apple9Op::GetSr16, &[], vec![("selector", A::from(SR_THREAD_IN_GROUP_X))], Self::i32()) } else { Self::imm(cr, op, 0, Self::i32()) };
         cr.replace(op, vec![vec![v]]);
         true
     }
+
+    /// The workgroup's size: APPLE9_WORKGROUP × 1 × 1.
+    #[convert("gpu.block_dim")]
+    fn block_dim(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let Some(d) = Self::dimension(cr, op) else { return false };
+        let v = Self::imm(cr, op, if d == 0 { APPLE9_WORKGROUP } else { 1 }, Self::i32());
+        cr.replace(op, vec![vec![v]]);
+        true
+    }
+
 
     /// `n` dwords at a byte address of the memory.
     #[convert("llvm.load")]
@@ -714,6 +740,34 @@ impl GpuToApple9 {
         let index = Self::word(cr, op, addr[0]);
         let old = Self::one(cr, op, Apple9Op::Atomic, &[value[0], index], vec![("op", A::str(name)), ("binding", A::from(APPLE9_MEMORY))], ty);
         cr.replace(op, vec![vec![old]]);
+        true
+    }
+
+    /// The old value and whether the exchange happened (it was the one compared with).
+    #[convert("llvm.cmpxchg")]
+    fn cmpxchg(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let [addr, cmp, value] = o else { return false };
+        if Self::shared(&cr.rw.body[cr.rw.body[op].operands[0]].ty) != Some(false) || cmp.len() != 1 || value.len() != 1 {
+            return false;
+        }
+        let r = cr.rw.body[op].results[0];
+        if Apple9Types::of(&cr.rw.body[r].ty) != Some(vec![Self::i32(), Self::i32()]) {
+            return false;
+        }
+        let index = Self::word(cr, op, addr[0]);
+        let attrs = vec![("binding", A::from(APPLE9_MEMORY)), ("components", A::from(2u32))];
+        let old = Self::one(cr, op, Apple9Op::Cmpxchg, &[value[0], cmp[0], index], attrs, Self::i32());
+        let swapped = Self::compare(cr, op, CmpIPredicate::eq, old, cmp[0]);
+        cr.replace(op, vec![vec![old, swapped]]);
+        true
+    }
+
+    /// A field of a struct: its register.
+    #[convert("llvm.extractvalue")]
+    fn extractvalue(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let Some(at) = Self::positions(cr, op, "position").and_then(|p| (p.len() == 1).then(|| p[0])) else { return false };
+        let Some(v) = o[0].get(at).copied() else { return false };
+        cr.replace(op, vec![vec![v]]);
         true
     }
 
