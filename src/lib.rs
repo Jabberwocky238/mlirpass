@@ -15,6 +15,7 @@ extern crate std;
 mod aliases;
 #[cfg(feature = "dialect.bufferization")]
 mod bufferize;
+mod cfg_to_scf;
 mod conversion;
 mod diag;
 mod dialects;
@@ -33,6 +34,7 @@ mod typed;
 
 #[cfg(feature = "dialect.bufferization")]
 pub use bufferize::*;
+pub use cfg_to_scf::{transform_cfg_to_scf, At as CfgAt, CfgToScfInterface};
 pub use conversion::*;
 pub use diag::{Diagnostic, Note, Severity};
 // (nothing without a dialect feature)

@@ -11,7 +11,7 @@ mod amdgpu;
 mod arith;
 #[cfg(feature = "dialect.bufferization")]
 mod bufferization;
-#[cfg(all(feature = "dialect.cf", any(feature = "target.llvm", feature = "target.spirv")))]
+#[cfg(feature = "dialect.cf")]
 mod cf;
 #[cfg(feature = "dialect.complex")]
 mod complex;
@@ -69,7 +69,7 @@ pub use amdgpu::*;
 pub use arith::*;
 #[cfg(feature = "dialect.bufferization")]
 pub use bufferization::*;
-#[cfg(all(feature = "dialect.cf", any(feature = "target.llvm", feature = "target.spirv")))]
+#[cfg(feature = "dialect.cf")]
 pub use cf::*;
 #[cfg(feature = "dialect.complex")]
 pub use complex::*;
