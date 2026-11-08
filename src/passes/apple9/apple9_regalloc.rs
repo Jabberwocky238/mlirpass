@@ -36,7 +36,7 @@ impl RegTarget for Files {
     }
 
     fn reuses_sources(&self, body: &Body<'_>, op: OpId) -> bool {
-        !matches!(Apple9Op::of(&body[op].name), Some(Apple9Op::Load | Apple9Op::SharedLoad | Apple9Op::Atomic | Apple9Op::Cmpxchg))
+        !matches!(Apple9Op::of(&body[op].name), Some(Apple9Op::Load | Apple9Op::SharedLoad | Apple9Op::Atomic | Apple9Op::Cmpxchg | Apple9Op::SharedAtomic))
     }
 
     fn file(&self, body: &Body<'_>, v: ValueId) -> Result<usize, Error> {
@@ -244,7 +244,7 @@ impl<'a> Alloc<'_, 'a> {
     fn prepare(&mut self) -> Groups {
         let mut groups = Groups::new();
         for op in self.ops() {
-            if !matches!(Apple9Op::of(&self.rw.body[op].name), Some(Apple9Op::Store | Apple9Op::Cmpxchg)) {
+            if !matches!(Apple9Op::of(&self.rw.body[op].name), Some(Apple9Op::Store | Apple9Op::Cmpxchg | Apple9Op::SharedAtomic)) {
                 continue;
             }
             let n = self.rw.body[op].operands.len() - 1;
@@ -278,7 +278,7 @@ impl<'a> Alloc<'_, 'a> {
             let mut attrs: Vec<(&str, Attribute<'a>)> = Vec::new();
             let names = inst.sources();
             let at = |v: &ValueId| reg.get(v).copied().ok_or_else(|| Error(format!("{}: a value without a register", inst.name())));
-            if matches!(inst, Apple9Op::Store | Apple9Op::Cmpxchg) {
+            if matches!(inst, Apple9Op::Store | Apple9Op::Cmpxchg | Apple9Op::SharedAtomic) {
                 let (data, index) = operands.split_at(operands.len() - 1);
                 let first = at(&data[0])?;
                 for (i, v) in data.iter().enumerate() {

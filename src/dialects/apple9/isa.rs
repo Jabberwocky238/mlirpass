@@ -82,6 +82,9 @@ pub enum Apple9Op {
     /// A device compare-exchange on the word `index` of `binding`: `data` a run of two registers, the value to put and
     /// the one to compare with (Metal's order); the old value to `dst` (completing on slot 6).
     Cmpxchg,
+    /// A threadgroup memory atomic on word `index` (`op` as [`Apple9Op::Atomic`]'s; `cmpxchg` with `data` a run of
+    /// the value and the one compared with), the old value to `dst` on its `slot`.
+    SharedAtomic,
     /// A word of the threadgroup memory: at word `index` + `offset` (the index register's low 16 bits).
     SharedLoad,
     SharedStore,
@@ -110,7 +113,7 @@ pub enum Apple9Op {
 }
 
 impl Apple9Op {
-    const ALL: [(&'static str, Apple9Op); 50] = [
+    const ALL: [(&'static str, Apple9Op); 51] = [
         ("apple9.get_sr", Apple9Op::GetSr),
         ("apple9.get_sr16", Apple9Op::GetSr16),
         ("apple9.mov", Apple9Op::Mov),
@@ -147,6 +150,7 @@ impl Apple9Op {
         ("apple9.store", Apple9Op::Store),
         ("apple9.atomic", Apple9Op::Atomic),
         ("apple9.cmpxchg", Apple9Op::Cmpxchg),
+        ("apple9.shared_atomic", Apple9Op::SharedAtomic),
         ("apple9.shared_load", Apple9Op::SharedLoad),
         ("apple9.shared_store", Apple9Op::SharedStore),
         ("apple9.barrier", Apple9Op::Barrier),
@@ -185,6 +189,7 @@ impl Apple9Op {
             Load | SharedLoad => &["index"],
             Store | SharedStore | Cmpxchg => &["data", "index"],
             Atomic => &["a", "index"],
+            SharedAtomic => &["data", "index"],
         }
     }
 
@@ -201,7 +206,7 @@ impl Apple9Op {
 
     /// Whether its result completes later than the instruction, on its `slot`.
     pub fn completes(self) -> bool {
-        matches!(self, Apple9Op::GetSr | Apple9Op::GetSr16 | Apple9Op::Load | Apple9Op::SharedLoad | Apple9Op::Atomic | Apple9Op::Cmpxchg)
+        matches!(self, Apple9Op::GetSr | Apple9Op::GetSr16 | Apple9Op::Load | Apple9Op::SharedLoad | Apple9Op::Atomic | Apple9Op::Cmpxchg | Apple9Op::SharedAtomic)
     }
 
     /// Whether its sources may be released (`release`): the forms whose release bits GravityLinux Mesa's packers name.
@@ -218,7 +223,7 @@ impl Apple9Op {
     /// Whether it carries a wait itself (the six-bit mask at bits 12 ..= 17); else a wait goes before it.
     pub fn waits(self) -> bool {
         use Apple9Op::*;
-        matches!(self, Iadd | Isub | Load | Store | SharedLoad | SharedStore | Atomic | Cmpxchg)
+        matches!(self, Iadd | Isub | Load | Store | SharedLoad | SharedStore | Atomic | Cmpxchg | SharedAtomic)
     }
 }
 
@@ -233,7 +238,7 @@ const LOAD_TOKEN: [u16; 6] = [0x1100, 0x5100, 0x9100, 0xd100, 0x1101, 0x5101];
 const PUBLICATION: [u8; 6] = [2, 4, 3, 5, 6, 1];
 
 /// The atomic operations (agx_apple9_ir.h `agx_apple9_atomic_op`).
-const ATOMICS: [(&str, u8); 10] = [("add", 0x10), ("and", 0x11), ("smax", 0x14), ("smin", 0x15), ("or", 0x16), ("sub", 0x1b), ("umax", 0x1c), ("umin", 0x1d), ("xchg", 0x1e), ("xor", 0x1f)];
+const ATOMICS: [(&str, u8); 11] = [("add", 0x10), ("and", 0x11), ("cmpxchg", 0x12), ("smax", 0x14), ("smin", 0x15), ("or", 0x16), ("sub", 0x1b), ("umax", 0x1c), ("umin", 0x1d), ("xchg", 0x1e), ("xor", 0x1f)];
 
 /// The fields of one instruction, read off its attributes.
 struct Fields<'r, 'a>(&'r [NamedAttr<'a>]);
@@ -652,7 +657,7 @@ impl Apple9Isa {
                     0x12
                 } else {
                     let name = f.str("op")?;
-                    ATOMICS.iter().find(|(n, _)| *n == name).map(|(_, c)| *c).ok_or_else(|| err(&format!("atomic {name}")))?
+                    ATOMICS.iter().find(|(n, _)| *n == name && *n != "cmpxchg").map(|(_, c)| *c).ok_or_else(|| err(&format!("atomic {name}")))?
                 };
                 let a = f.reg(if op == Cmpxchg { "data" } else { "a" })?;
                 let (dst, index, binding) = (f.reg("dst")?, f.reg("index")?, f.int("binding")?);
@@ -664,6 +669,25 @@ impl Apple9Isa {
                 let mut b = vec![0x67, 0x01, 0x54, 0, 0, binding as u8 | ((a & 1) << 7) as u8, ((a >> 1) & 0x3f) as u8 | ((index & 1) << 7) as u8, 0x80 | ((index >> 1) & 0x3f) as u8, 0, 0x02, 0, 0, (code << 1) | 0x40, 0x02];
                 Self::wait(&mut b, f.int("wait")?)?;
                 b.extend([((dst & 0xf) << 4) as u8 | 0x0c, 0x80, 0x09 | (((dst >> 4) & 3) << 6) as u8, 0xa7, 0, PUBLICATION[slot as usize - 1] << 5, 0, ((dst >> 6) << 4) as u8]);
+                b
+            }
+            // Metal's threadgroup atomic (no GravityLinux Mesa form: read off Metal's code for each operation): dst, data,
+            // index as they are, the operation at bits 86 ..= 90, the slot at byte 8
+            SharedAtomic => {
+                let name = f.str("op")?;
+                let code = ATOMICS.iter().find(|(n, _)| *n == name).map(|(_, c)| *c).ok_or_else(|| err(&format!("atomic {name}")))?;
+                if (code == 0x12) != (f.int("components")? == 2) {
+                    return Err(err("cmpxchg with components = 2, any other with 1"));
+                }
+                let (dst, data, index) = (f.reg("dst")?, f.reg("data")?, f.reg("index")?);
+                let slot = f.int("slot")?;
+                let slot = if slot == 0 { 6 } else { slot };
+                if dst >= 128 || data >= 128 || index >= 128 || !(1..=6).contains(&slot) {
+                    return Err(err("a register past r127 or slot past 6"));
+                }
+                let mut b = vec![0x67, 0x03, 0x54, dst as u8, 0x02, data as u8, 0x80 | index as u8, 0, 0x10 | (slot << 1) as u8, 0, 0, 0x48];
+                Self::set(&mut b, 86, 5, u32::from(code));
+                Self::wait(&mut b, f.int("wait")?)?;
                 b
             }
             // Metal's threadgroup word load / store (agx_apple9_ir.c AGX_APPLE9_VIR_SHARED_*): root 1 (the one array), the

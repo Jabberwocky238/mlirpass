@@ -3,7 +3,7 @@
 tests/apple9.rs keeps equal to the compiler's output) run on this Mac's GPU (an M4), every result checked against the
 semantics of tests/apple9/<kernel>.mlir: `ints` (i32 arithmetic), `floats` (f32: IEEE, one rounding, denormals
 flushed to zero), `control` (ifs and loops, the condition differing between the lanes) and `memory` (threadgroup memory
-across a barrier; atomics, compare-exchange), `ids` (a 3-D grid of workgroups: the ids). macOS with an Apple9 GPU only.
+across a barrier; atomics, compare-exchange, on the memory and the threadgroup memory), `ids` (a 3-D grid of workgroups: the ids). macOS with an Apple9 GPU only.
 
 How it runs (the ABI of the apple9 target): the kernel's code replaces the main of a donor kernel
 (scripts/apple9_donor.metal: binding 0 the memory, binding 1 the parameter words) in a Metal binary archive
@@ -155,9 +155,9 @@ def memory():
     random.seed(7)
     n = 512
     values = [random.getrandbits(32) for _ in range(n)]
-    dst, cnt = 4 * n, 20 * n
+    dst, cnt, dst2 = 4 * n, 20 * n, 20 * n + 48
     counters = [0, 0, 0, 0, 0, 0x7fffffff, 0, 0, 0xffffffff, 0, 0, 0]
-    mem, size, head = launch('memory', n, values + [0] * (4 * n) + counters, [0, dst, cnt])
+    mem, size, head = launch('memory', n, values + [0] * (4 * n) + counters + [0] * (8 * n), [0, dst, cnt, dst2])
     bad = []
     for t in range(n):
         g, l = t // 32, t % 32
@@ -177,6 +177,22 @@ def memory():
             if old != run_: bad.append(f'add counter {c}: invocation {t} got old {old:#x}, the running sum is {run_:#x}'); break
             run_ = u32(run_ + t)
         if mem[cnt // 4 + c] != run_: bad.append(f'add counter {c}: {mem[cnt // 4 + c]:#x}, want {run_:#x}')
+    # the threadgroup atomics: per workgroup and word, the adds' old values in order the running sums; the sum and the
+    # max after the barrier; the compare-exchange of each lane's word (old l; exchanged for an odd l)
+    for g in range(n // 32):
+        for c in range(4):
+            lanes = [l for l in range(32) if l & 3 == c]
+            olds = sorted((mem[dst2 // 4 + 8 * (32 * g + l)], 32 * g + l) for l in lanes)
+            run_ = 0
+            for old, t in olds:
+                if old != run_: bad.append(f'workgroup {g} word {c}: invocation {t} old {old:#x}, the running sum {run_:#x}'); break
+                run_ = u32(run_ + t)
+            for l in lanes:
+                if mem[dst2 // 4 + 8 * (32 * g + l) + 1] != run_: bad.append(f'workgroup {g} lane {l}: sum {mem[dst2 // 4 + 8 * (32 * g + l) + 1]:#x}, want {run_:#x}')
+        for l in range(32):
+            row = mem[dst2 // 4 + 8 * (32 * g + l):][:4]
+            if row[2] != 32 * g + 31: bad.append(f'workgroup {g} lane {l}: max {row[2]:#x}, want {32 * g + 31:#x}')
+            if row[3] != l + (1000 if l & 1 else 0): bad.append(f'workgroup {g} lane {l}: exchange {row[3]}, want {l + (1000 if l & 1 else 0)}')
     import functools, operator
     xchg = mem[cnt // 4 + 10]
     want = {4: n - 1, 5: u32(-(n - 1)), 6: functools.reduce(operator.or_, range(n)), 7: functools.reduce(operator.xor, range(n)), 8: 0, 9: u32(-n)}
@@ -184,7 +200,7 @@ def memory():
     for w, v in want.items():
         if mem[cnt // 4 + w] != v: bad.append(f'{names[w]}: {mem[cnt // 4 + w]:#x}, want {v:#x}')
     if not xchg < n: bad.append(f'xchg: {xchg:#x}, want one of the invocations')
-    return 2 * n + 4 + 7, bad, size, head
+    return 5 * n + 4 + 7, bad, size, head
 
 
 def ids():

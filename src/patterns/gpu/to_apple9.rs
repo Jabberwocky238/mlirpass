@@ -24,8 +24,8 @@
 //!   llvm.load / llvm.store (!llvm.ptr<3>) ⇒ shared_load / shared_store a dword each, of the threadgroup memory [the
 //!                                     address >> 2] (a byte address in it: a workgroup attribution only sizes it)
 //!   llvm.atomicrmw (!llvm.ptr<1>, i32) ⇒ atomic on the word [the address >> 2] of binding 0, the old value back (add,
-//!                                     sub, and, or, xor, min, max, umin, umax, xchg)
-//!   llvm.cmpxchg (!llvm.ptr<1>, i32) ⇒ cmpxchg (the value and the one compared with a run), the old value and whether
+//!                                     sub, and, or, xor, min, max, umin, umax, xchg); !llvm.ptr<3>: shared_atomic
+//!   llvm.cmpxchg (!llvm.ptr<1> / <3>, i32) ⇒ cmpxchg / shared_atomic {op = "cmpxchg"} (the value and the one compared with a run), the old value and whether
 //!                                     it was the one compared with (!llvm.struct<(i32, i1)>: two registers)
 //!   llvm.extractvalue               ⇒ the field's register
 //!   gpu.barrier                     ⇒ barrier
@@ -716,7 +716,8 @@ impl GpuToApple9 {
     fn atomic(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         use mlirformat::llvm::AtomicBinOp as B;
         let [addr, value] = o else { return false };
-        if Self::shared(&cr.rw.body[cr.rw.body[op].operands[0]].ty) != Some(false) || value.len() != 1 {
+        let Some(shared) = Self::shared(&cr.rw.body[cr.rw.body[op].operands[0]].ty) else { return false };
+        if value.len() != 1 {
             return false;
         }
         let Some(ty) = Self::result_type(cr, op) else { return false };
@@ -738,7 +739,11 @@ impl GpuToApple9 {
             _ => return false,
         };
         let index = Self::word(cr, op, addr[0]);
-        let old = Self::one(cr, op, Apple9Op::Atomic, &[value[0], index], vec![("op", A::str(name)), ("binding", A::from(APPLE9_MEMORY))], ty);
+        let old = if shared {
+            Self::one(cr, op, Apple9Op::SharedAtomic, &[value[0], index], vec![("op", A::str(name))], ty)
+        } else {
+            Self::one(cr, op, Apple9Op::Atomic, &[value[0], index], vec![("op", A::str(name)), ("binding", A::from(APPLE9_MEMORY))], ty)
+        };
         cr.replace(op, vec![vec![old]]);
         true
     }
@@ -747,7 +752,8 @@ impl GpuToApple9 {
     #[convert("llvm.cmpxchg")]
     fn cmpxchg(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let [addr, cmp, value] = o else { return false };
-        if Self::shared(&cr.rw.body[cr.rw.body[op].operands[0]].ty) != Some(false) || cmp.len() != 1 || value.len() != 1 {
+        let Some(shared) = Self::shared(&cr.rw.body[cr.rw.body[op].operands[0]].ty) else { return false };
+        if cmp.len() != 1 || value.len() != 1 {
             return false;
         }
         let r = cr.rw.body[op].results[0];
@@ -755,8 +761,12 @@ impl GpuToApple9 {
             return false;
         }
         let index = Self::word(cr, op, addr[0]);
-        let attrs = vec![("binding", A::from(APPLE9_MEMORY)), ("components", A::from(2u32))];
-        let old = Self::one(cr, op, Apple9Op::Cmpxchg, &[value[0], cmp[0], index], attrs, Self::i32());
+        let old = if shared {
+            Self::one(cr, op, Apple9Op::SharedAtomic, &[value[0], cmp[0], index], vec![("op", A::str("cmpxchg")), ("components", A::from(2u32))], Self::i32())
+        } else {
+            let attrs = vec![("binding", A::from(APPLE9_MEMORY)), ("components", A::from(2u32))];
+            Self::one(cr, op, Apple9Op::Cmpxchg, &[value[0], cmp[0], index], attrs, Self::i32())
+        };
         let swapped = Self::compare(cr, op, CmpIPredicate::eq, old, cmp[0]);
         cr.replace(op, vec![vec![old, swapped]]);
         true

@@ -3,10 +3,13 @@
 // 31 - l and 32 + ((l + 5) & 31) summed (other lanes' writes), the old value of an atomic add of i to the counter at
 // cnt + 4 (i & 3), and of a compare-exchange of its own word (i + 77 for a, odd i; for a + 1, even i: no exchange)
 // with whether it exchanged (cmpxchg and extractvalue generic: mlirformat 0.6.3 reads neither custom form here); then umax i, smin -i, or i, xor i, and ~(1 << (i & 31)), sub 1, xchg i on the counters at
-// cnt + 16 ..
+// cnt + 16 ..; then on the threadgroup memory (words 64 + l zeroed, 96 + l = l before the barrier): an add of i to
+// word 64 + (l & 3), a umax of i on word 68, a compare-exchange of word 96 + l (i + 5 for l, odd l), and after a second
+// barrier words 64 + (l & 3) and 68: at dst + 16 i + 16 n... (the second row: 8 words at dst2 + 32 i: the add's old
+// value, the sum, the max, the exchange's old value + 1000 if it exchanged)
 module attributes {gpu.container_module} {
 gpu.module @shaders [#apple9.target<chip = "m4">] {
-  gpu.func @memory(%src: i32, %dst: i32, %cnt: i32) workgroup(%t : memref<64xi32, #gpu.address_space<workgroup>>) kernel {
+  gpu.func @memory(%src: i32, %dst: i32, %cnt: i32, %dst2: i32) workgroup(%t : memref<128xi32, #gpu.address_space<workgroup>>) kernel {
   %g_ix = gpu.block_id x
   %g = arith.index_cast %g_ix : index to i32
   %l_ix = gpu.thread_id x
@@ -33,7 +36,44 @@ gpu.module @shaders [#apple9.target<chip = "m4">] {
   %u = arith.addi %l4, %c128 : i32
   %t1_p = llvm.inttoptr %u : i32 to !llvm.ptr<3>
   llvm.store %a7, %t1_p {alignment = 4 : i64} : i32, !llvm.ptr<3>
+  %c256 = arith.constant 256 : i32
+  %c384 = arith.constant 384 : i32
+  %z_at = arith.addi %l4, %c256 : i32
+  %z_p = llvm.inttoptr %z_at : i32 to !llvm.ptr<3>
+  %c0z = arith.constant 0 : i32
+  llvm.store %c0z, %z_p {alignment = 4 : i64} : i32, !llvm.ptr<3>
+  %w_at = arith.addi %l4, %c384 : i32
+  %w_p = llvm.inttoptr %w_at : i32 to !llvm.ptr<3>
+  llvm.store %l, %w_p {alignment = 4 : i64} : i32, !llvm.ptr<3>
   gpu.barrier
+  %lq = arith.andi %l, %c3 : i32
+  %lq4 = arith.muli %lq, %c4 : i32
+  %sa_at = arith.addi %lq4, %c256 : i32
+  %sa_p = llvm.inttoptr %sa_at : i32 to !llvm.ptr<3>
+  %s0 = llvm.atomicrmw add %sa_p, %i monotonic : !llvm.ptr<3>, i32
+  %c272 = arith.constant 272 : i32
+  %sm_p = llvm.inttoptr %c272 : i32 to !llvm.ptr<3>
+  %smx = llvm.atomicrmw umax %sm_p, %i monotonic : !llvm.ptr<3>, i32
+  %lodd = arith.andi %l, %c1 : i32
+  %leven = arith.xori %lodd, %c1 : i32
+  %lexp = arith.addi %l, %leven : i32
+  %inew = arith.addi %i, %c5 : i32
+  %spair = "llvm.cmpxchg"(%w_p, %lexp, %inew) <{failure_ordering = 2 : i64, success_ordering = 2 : i64}> : (!llvm.ptr<3>, i32, i32) -> !llvm.struct<(i32, i1)>
+  %sc_old = "llvm.extractvalue"(%spair) <{position = array<i64: 0>}> : (!llvm.struct<(i32, i1)>) -> i32
+  %sc_ok = "llvm.extractvalue"(%spair) <{position = array<i64: 1>}> : (!llvm.struct<(i32, i1)>) -> i1
+  gpu.barrier
+  %f0 = llvm.load %sa_p {alignment = 4 : i64} : !llvm.ptr<3> -> i32
+  %f1 = llvm.load %sm_p {alignment = 4 : i64} : !llvm.ptr<3> -> i32
+  %sc_ok32 = arith.extui %sc_ok : i1 to i32
+  %c1000s = arith.constant 1000 : i32
+  %sc_okk = arith.muli %sc_ok32, %c1000s : i32
+  %sc = arith.addi %sc_old, %sc_okk : i32
+  %c32b = arith.constant 32 : i32
+  %q = arith.muli %i, %c32b : i32
+  %q0 = arith.addi %dst2, %q : i32
+  %qv = vector.from_elements %s0, %f0, %f1, %sc : vector<4xi32>
+  %q0_p = llvm.inttoptr %q0 : i32 to !llvm.ptr<1>
+  llvm.store %qv, %q0_p {alignment = 4 : i64} : vector<4xi32>, !llvm.ptr<1>
   %m = arith.subi %c31, %l : i32
   %m4 = arith.muli %m, %c4 : i32
   %x_p = llvm.inttoptr %m4 : i32 to !llvm.ptr<3>

@@ -100,7 +100,7 @@ crate::attr_ops! { "apple9" IsaOps;
     Apple9Fmul "apple9.fmul", Apple9Fsub "apple9.fsub", Apple9Fma "apple9.fma", Apple9Fmin "apple9.fmin",
     Apple9Fmax "apple9.fmax", Apple9Rcp "apple9.rcp", Apple9Rsq "apple9.rsq", Apple9Floor "apple9.floor",
     Apple9Ceil "apple9.ceil", Apple9Trunc "apple9.trunc", Apple9Roundeven "apple9.roundeven", Apple9Load "apple9.load",
-    Apple9Store "apple9.store", Apple9Atomic "apple9.atomic", Apple9Cmpxchg "apple9.cmpxchg", Apple9SharedLoad "apple9.shared_load",
+    Apple9Store "apple9.store", Apple9Atomic "apple9.atomic", Apple9Cmpxchg "apple9.cmpxchg", Apple9SharedAtomic "apple9.shared_atomic", Apple9SharedLoad "apple9.shared_load",
     Apple9SharedStore "apple9.shared_store", Apple9Barrier "apple9.barrier", Apple9Pred "apple9.pred",
     Apple9Push "apple9.push", Apple9Else "apple9.else", Apple9Pop "apple9.pop", Apple9LoopPush "apple9.loop_push",
     Apple9LoopUpdate "apple9.loop_update", Apple9LoopPop "apple9.loop_pop", Apple9JmpAny "apple9.jmp_any",
