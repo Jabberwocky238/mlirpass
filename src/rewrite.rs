@@ -823,7 +823,9 @@ impl<'a> Body<'a> {
     /// `walkAndApplyPatterns(op, patterns)`: one post-order walk of the ops nested in `op`,
     /// each tried once against `patterns` (highest benefit first, the first that matches
     /// wins); no folding, no dead-code erasure, and ops a rewrite creates are not visited.
-    pub fn walk_and_apply(&mut self, op: OpId, patterns: &PatternSet) {
+    /// Whether a pattern matched (a pass that walks again until nothing does).
+    pub fn walk_and_apply(&mut self, op: OpId, patterns: &PatternSet) -> bool {
+        let mut matched = false;
         let mut ops = Vec::new();
         self.walk_post(op, &mut |o| ops.push(o));
         ops.pop();
@@ -838,10 +840,12 @@ impl<'a> Body<'a> {
             rw.loc = loc;
             for p in patterns.for_op(&name) {
                 if p.rewrite(&mut rw, o) {
+                    matched = true;
                     break;
                 }
             }
         }
+        matched
     }
 
     /// ⭐ `applyPatternsGreedily(region, patterns, config)`; whether it converged.
