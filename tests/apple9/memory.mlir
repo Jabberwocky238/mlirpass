@@ -2,7 +2,7 @@
 // puts a at word l and 7 a at word 32 + l of the threadgroup memory; after a barrier writes at dst + 16 i the words
 // 31 - l and 32 + ((l + 5) & 31) summed (other lanes' writes), the old value of an atomic add of i to the counter at
 // cnt + 4 (i & 3), and of a compare-exchange of its own word (i + 77 for a, odd i; for a + 1, even i: no exchange)
-// with whether it exchanged (cmpxchg and extractvalue generic: mlirformat 0.6.3 reads neither custom form here); then umax i, smin -i, or i, xor i, and ~(1 << (i & 31)), sub 1, xchg i on the counters at
+// with whether it exchanged; then umax i, smin -i, or i, xor i, and ~(1 << (i & 31)), sub 1, xchg i on the counters at
 // cnt + 16 ..; then on the threadgroup memory (words 64 + l zeroed, 96 + l = l before the barrier): an add of i to
 // word 64 + (l & 3), a umax of i on word 68, a compare-exchange of word 96 + l (i + 5 for l, odd l), and after a second
 // barrier words 64 + (l & 3) and 68: at dst + 16 i + 16 n... (the second row: 8 words at dst2 + 32 i: the add's old
@@ -58,9 +58,9 @@ gpu.module @shaders [#apple9.target<chip = "m4">] {
   %leven = arith.xori %lodd, %c1 : i32
   %lexp = arith.addi %l, %leven : i32
   %inew = arith.addi %i, %c5 : i32
-  %spair = "llvm.cmpxchg"(%w_p, %lexp, %inew) <{failure_ordering = 2 : i64, success_ordering = 2 : i64}> : (!llvm.ptr<3>, i32, i32) -> !llvm.struct<(i32, i1)>
-  %sc_old = "llvm.extractvalue"(%spair) <{position = array<i64: 0>}> : (!llvm.struct<(i32, i1)>) -> i32
-  %sc_ok = "llvm.extractvalue"(%spair) <{position = array<i64: 1>}> : (!llvm.struct<(i32, i1)>) -> i1
+  %spair = llvm.cmpxchg %w_p, %lexp, %inew monotonic monotonic : !llvm.ptr<3>, i32
+  %sc_old = llvm.extractvalue %spair[0] : !llvm.struct<(i32, i1)>
+  %sc_ok = llvm.extractvalue %spair[1] : !llvm.struct<(i32, i1)>
   gpu.barrier
   %f0 = llvm.load %sa_p {alignment = 4 : i64} : !llvm.ptr<3> -> i32
   %f1 = llvm.load %sm_p {alignment = 4 : i64} : !llvm.ptr<3> -> i32
@@ -95,9 +95,9 @@ gpu.module @shaders [#apple9.target<chip = "m4">] {
   %expect = arith.addi %a, %even : i32
   %c77 = arith.constant 77 : i32
   %new = arith.addi %i, %c77 : i32
-  %pair = "llvm.cmpxchg"(%at_p, %expect, %new) <{failure_ordering = 2 : i64, success_ordering = 2 : i64}> : (!llvm.ptr<1>, i32, i32) -> !llvm.struct<(i32, i1)>
-  %r2 = "llvm.extractvalue"(%pair) <{position = array<i64: 0>}> : (!llvm.struct<(i32, i1)>) -> i32
-  %ok = "llvm.extractvalue"(%pair) <{position = array<i64: 1>}> : (!llvm.struct<(i32, i1)>) -> i1
+  %pair = llvm.cmpxchg %at_p, %expect, %new monotonic monotonic : !llvm.ptr<1>, i32
+  %r2 = llvm.extractvalue %pair[0] : !llvm.struct<(i32, i1)>
+  %ok = llvm.extractvalue %pair[1] : !llvm.struct<(i32, i1)>
   %r3 = arith.extui %ok : i1 to i32
   %c16o = arith.constant 16 : i32
   %o = arith.muli %i, %c16o : i32
