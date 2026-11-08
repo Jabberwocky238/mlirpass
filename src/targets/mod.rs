@@ -12,15 +12,17 @@ mod llvm;
 mod agx;
 #[cfg(feature = "target.agx")]
 mod agx_dispatch;
+#[cfg(feature = "target.apple9")]
+mod apple9;
 #[cfg(feature = "target.rdna2")]
 mod rdna2;
 #[cfg(feature = "target.rdna2")]
 mod rdna2_dispatch;
-#[cfg(any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
+#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
 mod regalloc;
 #[cfg(feature = "target.xe3")]
 mod xe3;
-#[cfg(any(feature = "dialect.agx", feature = "dialect.rdna2", feature = "dialect.xe3"))]
+#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3"))]
 mod shader;
 #[cfg(feature = "target.spirv")]
 mod spirv;
@@ -39,15 +41,17 @@ pub use llvm::*;
 pub use agx::*;
 #[cfg(feature = "target.agx")]
 pub use agx_dispatch::*;
+#[cfg(feature = "target.apple9")]
+pub use apple9::*;
 #[cfg(feature = "target.rdna2")]
 pub use rdna2::*;
 #[cfg(feature = "target.rdna2")]
 pub use rdna2_dispatch::*;
-#[cfg(any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
+#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
 pub use regalloc::*;
 #[cfg(feature = "target.xe3")]
 pub use xe3::*;
-#[cfg(any(feature = "dialect.agx", feature = "dialect.rdna2", feature = "dialect.xe3"))]
+#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3"))]
 pub use shader::*;
 #[cfg(feature = "target.spirv")]
 pub use spirv::*;

@@ -69,6 +69,7 @@ all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bu
 # The GPU instruction sets mlirpass encodes itself (not upstream dialects; not in `all-dialects`): their ops, types
 # and encodings. `target.<isa>` lowers into one and emits its machine code.
 "dialect.agx" = ["dialect.image"]
+"dialect.apple9" = []
 "dialect.rdna2" = ["dialect.image"]
 "dialect.xe3" = ["dialect.image"]
 # What a GPU runs, for every GPU target: memories, command streams, data; table-driven packing; the layout.
@@ -80,7 +81,8 @@ all-targets = ["target.llvm", "target.emitc", "target.spirv"]
 "target.emitc" = []
 "target.spirv" = ["dialect.spirv"]
 # The GPUs' own machine code, one feature each (not in `all-targets`): SPIR-V and the upstream dialects ⇒ the
-# instruction set ⇒ registers ⇒ bytes (`gpu-module-to-binary`). Apple AGX (G13), AMD RDNA2 (GFX10.3), Intel Xe3.
+# instruction set ⇒ registers ⇒ bytes (`gpu-module-to-binary`). Apple AGX (G13), Apple9 (M3 / M4), AMD RDNA2 (GFX10.3), Intel Xe3.
+"target.apple9" = ["dialect.apple9", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
 "target.agx" = ["dialect.agx", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
 "target.rdna2" = ["dialect.rdna2", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
 "target.xe3" = ["dialect.xe3", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
@@ -111,6 +113,10 @@ required-features = ["all-dialects", "target.spirv"]
 [[test]]
 name = "agx"
 required-features = ["dialect.agx"]
+
+[[test]]
+name = "apple9"
+required-features = ["dialect.apple9"]
 
 [[test]]
 name = "rdna2"

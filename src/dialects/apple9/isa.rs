@@ -1,8 +1,9 @@
-//! ⭐ Apple G16 (M4: Metal's `applegpu_g16g`) instructions: `agx.g16.<form> {...}` ⇒ their bytes ([`G16`]).
+//! ⭐ Apple9 instructions (the GPU of Apple M3 / M4; on an M4, Metal's `applegpu_g16g`): `apple9.<form> {...}` ⇒
+//! their bytes ([`Apple9Isa`]).
 //!
 //! There is no Mesa model of this generation. Each form is packed as GravityLinux Mesa's Apple9 backend packs it
 //! (src/asahi/compiler/agx_apple9_ir.c, MIT: the function named on each form), and every form here ran on an M4
-//! through Metal (scripts/agx_g16_metal.swift: the code put into a binary archive's pipeline, run, read back): the
+//! through Metal (scripts/apple9_metal.swift: the code put into a binary archive's pipeline, run, read back): the
 //! instruction set is not Apple's documentation, it is what the hardware did.
 //!
 //! An instruction's attributes are its fields; absent is zero / false:
@@ -28,9 +29,9 @@ use mlirformat::{Attribute, Error, NamedAttr};
 
 use crate::Attrs;
 
-/// A G16 form.
+/// An Apple9 form.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum G16Op {
+pub enum Apple9Op {
     /// A 32-bit special register (`selector`: 0xa0 + k thread_position_in_grid.k, 0x9c threadgroup_position_in_grid.x).
     GetSr,
     /// A 16-bit special register zero-extended (`selector`: 0xa4 thread_position_in_threadgroup.x).
@@ -60,48 +61,48 @@ pub enum G16Op {
     Halt,
 }
 
-impl G16Op {
-    const ALL: [(&'static str, G16Op); 25] = [
-        ("agx.g16.get_sr", G16Op::GetSr),
-        ("agx.g16.get_sr16", G16Op::GetSr16),
-        ("agx.g16.mov", G16Op::Mov),
-        ("agx.g16.mov_imm", G16Op::MovImm),
-        ("agx.g16.iadd", G16Op::Iadd),
-        ("agx.g16.isub", G16Op::Isub),
-        ("agx.g16.imad", G16Op::Imad),
-        ("agx.g16.shl", G16Op::Shl),
-        ("agx.g16.shr", G16Op::Shr),
-        ("agx.g16.asr", G16Op::Asr),
-        ("agx.g16.and", G16Op::And),
-        ("agx.g16.or", G16Op::Or),
-        ("agx.g16.xor", G16Op::Xor),
-        ("agx.g16.smin", G16Op::Smin),
-        ("agx.g16.smax", G16Op::Smax),
-        ("agx.g16.umin", G16Op::Umin),
-        ("agx.g16.umax", G16Op::Umax),
-        ("agx.g16.select", G16Op::Select),
-        ("agx.g16.i2f", G16Op::I2f),
-        ("agx.g16.f2i", G16Op::F2i),
-        ("agx.g16.fadd", G16Op::Fadd),
-        ("agx.g16.fmul", G16Op::Fmul),
-        ("agx.g16.load", G16Op::Load),
-        ("agx.g16.store", G16Op::Store),
-        ("agx.g16.halt", G16Op::Halt),
+impl Apple9Op {
+    const ALL: [(&'static str, Apple9Op); 25] = [
+        ("apple9.get_sr", Apple9Op::GetSr),
+        ("apple9.get_sr16", Apple9Op::GetSr16),
+        ("apple9.mov", Apple9Op::Mov),
+        ("apple9.mov_imm", Apple9Op::MovImm),
+        ("apple9.iadd", Apple9Op::Iadd),
+        ("apple9.isub", Apple9Op::Isub),
+        ("apple9.imad", Apple9Op::Imad),
+        ("apple9.shl", Apple9Op::Shl),
+        ("apple9.shr", Apple9Op::Shr),
+        ("apple9.asr", Apple9Op::Asr),
+        ("apple9.and", Apple9Op::And),
+        ("apple9.or", Apple9Op::Or),
+        ("apple9.xor", Apple9Op::Xor),
+        ("apple9.smin", Apple9Op::Smin),
+        ("apple9.smax", Apple9Op::Smax),
+        ("apple9.umin", Apple9Op::Umin),
+        ("apple9.umax", Apple9Op::Umax),
+        ("apple9.select", Apple9Op::Select),
+        ("apple9.i2f", Apple9Op::I2f),
+        ("apple9.f2i", Apple9Op::F2i),
+        ("apple9.fadd", Apple9Op::Fadd),
+        ("apple9.fmul", Apple9Op::Fmul),
+        ("apple9.load", Apple9Op::Load),
+        ("apple9.store", Apple9Op::Store),
+        ("apple9.halt", Apple9Op::Halt),
     ];
 
     /// The form an op name is.
-    pub fn of(name: &str) -> Option<G16Op> {
-        G16Op::ALL.iter().find(|(n, _)| *n == name).map(|(_, o)| *o)
+    pub fn of(name: &str) -> Option<Apple9Op> {
+        Apple9Op::ALL.iter().find(|(n, _)| *n == name).map(|(_, o)| *o)
     }
 
     /// Its op name.
     pub fn name(self) -> &'static str {
-        G16Op::ALL.iter().find(|(_, o)| *o == self).map(|(n, _)| *n).expect("every form is named")
+        Apple9Op::ALL.iter().find(|(_, o)| *o == self).map(|(n, _)| *n).expect("every form is named")
     }
 
     /// The attributes its SSA operands become, in order (a store's `data` a run of `components` registers).
     pub fn sources(self) -> &'static [&'static str] {
-        use G16Op::*;
+        use Apple9Op::*;
         match self {
             GetSr | GetSr16 | MovImm | Halt => &[],
             Mov | I2f | F2i => &["a"],
@@ -115,26 +116,26 @@ impl G16Op {
 
     /// Whether it writes `dst` (a load: `components` registers from it).
     pub fn has_dst(self) -> bool {
-        !matches!(self, G16Op::Store | G16Op::Halt)
+        !matches!(self, Apple9Op::Store | Apple9Op::Halt)
     }
 
     /// The slot its result completes on when that is later than the instruction (a load's own `slot`).
     pub fn completes(self) -> Option<u8> {
         match self {
-            G16Op::GetSr | G16Op::GetSr16 => Some(1),
-            G16Op::Load => Some(6),
+            Apple9Op::GetSr | Apple9Op::GetSr16 => Some(1),
+            Apple9Op::Load => Some(6),
             _ => None,
         }
     }
 
     /// Whether it carries a wait itself (the six-bit mask at bits 12 ..= 17); else a wait goes before it.
     pub fn waits(self) -> bool {
-        matches!(self, G16Op::Iadd | G16Op::Isub | G16Op::Load | G16Op::Store)
+        matches!(self, Apple9Op::Iadd | Apple9Op::Isub | Apple9Op::Load | Apple9Op::Store)
     }
 }
 
 /// The 32-bit GPRs.
-pub const AGX_G16_GPRS: u32 = 96;
+pub const APPLE9_GPRS: u32 = 96;
 
 /// A load's completion token per slot (agx_apple9_ir.c `apple9_scalar_load_token_for_slot`).
 const LOAD_TOKEN: [u16; 6] = [0x1100, 0x5100, 0x9100, 0xd100, 0x1101, 0x5101];
@@ -152,8 +153,8 @@ impl Fields<'_, '_> {
 
     fn reg(&self, name: &str) -> Result<u32, Error> {
         let r = self.int(name)?;
-        if r >= AGX_G16_GPRS {
-            return Err(Error(format!("{name} = r{r}: past r{}", AGX_G16_GPRS - 1)));
+        if r >= APPLE9_GPRS {
+            return Err(Error(format!("{name} = r{r}: past r{}", APPLE9_GPRS - 1)));
         }
         Ok(r)
     }
@@ -170,10 +171,10 @@ impl Fields<'_, '_> {
     }
 }
 
-/// ⭐ The G16 encoder.
-pub struct G16;
+/// ⭐ The Apple9 encoder.
+pub struct Apple9Isa;
 
-impl G16 {
+impl Apple9Isa {
     /// `width` bits from bit `start` (little-endian bit order across the bytes) set to `value`.
     fn set(b: &mut [u8], start: u32, width: u32, value: u32) {
         for i in 0..width {
@@ -229,12 +230,12 @@ impl G16 {
         Ok(())
     }
 
-    /// ⭐ Instruction `name` (`agx.g16.<form>`) with fields `attrs` ⇒ its bytes.
+    /// ⭐ Instruction `name` (`apple9.<form>`) with fields `attrs` ⇒ its bytes.
     pub fn encode(name: &str, attrs: &[NamedAttr<'_>]) -> Result<Vec<u8>, Error> {
-        let op = G16Op::of(name).ok_or_else(|| Error(format!("{name}: not a G16 instruction")))?;
+        let op = Apple9Op::of(name).ok_or_else(|| Error(format!("{name}: not an Apple9 instruction")))?;
         let f = Fields(attrs);
         let err = |m: &str| Error(format!("{name}: {m}"));
-        use G16Op::*;
+        use Apple9Op::*;
         Ok(match op {
             // agx_apple9_pack_get_sr / _zext16
             GetSr | GetSr16 => {
@@ -426,7 +427,7 @@ impl G16 {
                 let n = f.int("components")?.max(1);
                 let (dst, slot) = (f.reg("dst")?, f.int("slot")?);
                 let slot = if slot == 0 { 6 } else { slot };
-                if !(1..=4).contains(&n) || dst + n > AGX_G16_GPRS || !(1..=6).contains(&slot) {
+                if !(1..=4).contains(&n) || dst + n > APPLE9_GPRS || !(1..=6).contains(&slot) {
                     return Err(err("1 ..= 4 components, slot 1 ..= 6"));
                 }
                 let token = LOAD_TOKEN[slot as usize - 1];
@@ -442,7 +443,7 @@ impl G16 {
             Store => {
                 let n = f.int("components")?.max(1);
                 let data = f.reg("data")?;
-                if !(1..=4).contains(&n) || data + n > AGX_G16_GPRS {
+                if !(1..=4).contains(&n) || data + n > APPLE9_GPRS {
                     return Err(err("1 ..= 4 components"));
                 }
                 let mut b = vec![0xe7, 0x00, 0x54, (data << 1) as u8, f.int("binding")? as u8, f.reg("index")? as u8, 0x20, 0x00, 0x11 | [0x00, 0x08, 0x0c, 0x06][n as usize - 1], 0x00, 0x00, 0x10, [0x11, 0x12, 0x10, 0x10][n as usize - 1], 0x00];
