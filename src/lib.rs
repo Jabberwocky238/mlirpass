@@ -16,6 +16,7 @@ mod aliases;
 #[cfg(feature = "dialect.bufferization")]
 mod bufferize;
 mod conversion;
+mod diag;
 mod dialects;
 mod interfaces;
 mod ir;
@@ -33,6 +34,7 @@ mod typed;
 #[cfg(feature = "dialect.bufferization")]
 pub use bufferize::*;
 pub use conversion::*;
+pub use diag::{Diagnostic, Note, Severity};
 // (nothing without a dialect feature)
 #[allow(unused_imports)]
 pub use dialects::*;

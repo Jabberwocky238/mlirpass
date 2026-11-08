@@ -749,6 +749,8 @@ pub struct Body<'a> {
     journal: Journal<'a>,
     /// What a lent body knows of the module it was lent from ([`Body::run_local`]).
     outside: Option<Outside<'a>>,
+    /// What the passes reported ([`Body::report`]); a lent body's come back with it ([`Body::unlend`]).
+    pub(crate) diagnostics: Vec<crate::Diagnostic<'a>>,
 }
 
 /// What a body lent one function knows of the module around it ([`Body::run_local`]): the
@@ -1097,7 +1099,7 @@ impl<'a> Body<'a> {
         let (s, parent) = (op.seg(), Lent(self.links(op)));
         let seg = self.take_seg(s);
         self.seg_mut(s).away = Some(parent.0);
-        let mut sub = Body { ctx: self.ctx, segs: alloc::vec![Seg::default(), seg], seg0: s - 1, home: s - 1, root: OpId::at(s - 1, 0), items: Vec::new(), journal: Journal::default(), outside: None };
+        let mut sub = Body { ctx: self.ctx, segs: alloc::vec![Seg::default(), seg], seg0: s - 1, home: s - 1, root: OpId::at(s - 1, 0), items: Vec::new(), journal: Journal::default(), outside: None, diagnostics: Vec::new() };
         let root = sub.create(OpData::named("builtin.module"), &[]);
         sub.root = root;
         for n in attrs {
@@ -1116,6 +1118,7 @@ impl<'a> Body<'a> {
         debug_assert_eq!(sub.segs.len(), 2, "a lent body makes no seg");
         let seg = sub.segs.pop().expect("the lent seg");
         self.put_seg(op.seg(), seg);
+        self.diagnostics.append(&mut sub.diagnostics);
         self.raw_links(op, at.0);
         // Its order is the lent body's.
         if let Some(b) = at.0.parent {
@@ -1519,7 +1522,7 @@ impl<'a> OpData<'a> {
 impl<'a> Body<'a> {
     /// An empty `builtin.module` with one empty block.
     pub fn new(ctx: Ctx<'a>) -> Self {
-        let mut body = Self { ctx, segs: alloc::vec![Seg::default()], seg0: 0, home: 0, root: OpId::at(0, 0), journal: Journal::default(), items: Vec::new(), outside: None };
+        let mut body = Self { ctx, segs: alloc::vec![Seg::default()], seg0: 0, home: 0, root: OpId::at(0, 0), journal: Journal::default(), items: Vec::new(), outside: None, diagnostics: Vec::new() };
         body.root = body.create(OpData::named("builtin.module"), &[]);
         let region = body.add_region(body.root);
         body.add_block(region, &[]);
@@ -2515,7 +2518,7 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
         seg.blocks.reserve(n[2]);
         seg.regions.reserve(n[3]);
         let s = op.seg();
-        let body = Body { ctx, segs: alloc::vec![seg], seg0: s, home: s, root: op, items: Vec::new(), journal: crate::ir::Journal::default(), outside: None };
+        let body = Body { ctx, segs: alloc::vec![seg], seg0: s, home: s, root: op, items: Vec::new(), journal: crate::ir::Journal::default(), outside: None, diagnostics: Vec::new() };
         let mut im = Import { body, aliases, scopes: alloc::vec![Scope::default()], x };
         for r in regions {
             im.region(op, 0, r)?;
@@ -2615,7 +2618,7 @@ impl<'a> Body<'a> {
                 Item::Op(op) => ops.push(op),
             }
         }
-        let empty = Body { ctx, segs: alloc::vec![Seg::default()], seg0: 0, home: 0, root: OpId::at(0, 0), items, journal: crate::ir::Journal::default(), outside: None };
+        let empty = Body { ctx, segs: alloc::vec![Seg::default()], seg0: 0, home: 0, root: OpId::at(0, 0), items, journal: crate::ir::Journal::default(), outside: None, diagnostics: Vec::new() };
         let mut im = Import { body: empty, aliases: &aliases, scopes: alloc::vec![Scope::default()], x };
         if let [module] = ops.as_slice()
             && module.name == "builtin.module"

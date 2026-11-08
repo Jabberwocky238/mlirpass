@@ -154,12 +154,13 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
 
     // ---- creation --------------------------------------------------------------------
 
-    /// Places detached `op` at the insertion point and tells the listener.
+    /// Places detached `op` at the insertion point and tells the listener. `op` and the ops its
+    /// regions already hold (built with it, [`Self::create_with`]) that have no location take the
+    /// rewriter's ([`Self::loc`]: the matched op's, or what the pattern set), as C++ builds them all
+    /// through one builder at that location; a location set explicitly stays.
     pub fn insert(&mut self, op: OpId) -> OpId {
         let ip = self.ip.expect("no insertion point");
-        if self.body[op].loc.is_none() {
-            self.body[op].loc.clone_from(&self.loc);
-        }
+        self.stamp(op);
         match ip.before {
             Some(b) => self.body.insert_before(op, b),
             None => self.body.insert(op, ip.block, None),
@@ -185,9 +186,7 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
     pub fn create_or_fold(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> Vec<ValueId> {
         let op = self.body.create(data, types);
         let ip = self.ip.expect("no insertion point");
-        if self.body[op].loc.is_none() {
-            self.body[op].loc.clone_from(&self.loc);
-        }
+        self.stamp(op);
         match ip.before {
             Some(b) => self.body.insert_before(op, b),
             None => self.body.insert(op, ip.block, None),
@@ -227,6 +226,20 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         }
         self.listener.inserted(self.body, op);
         self.body[op].results.clone().to_vec()
+    }
+
+    /// Gives `op` and the ops nested in it that have no location the rewriter's.
+    fn stamp(&mut self, op: OpId) {
+        if self.loc.is_none() {
+            return;
+        }
+        let mut bare = Vec::new();
+        self.body.walk(op, &mut |o| bare.push(o));
+        for o in bare {
+            if self.body[o].loc.is_none() {
+                self.body[o].loc.clone_from(&self.loc);
+            }
+        }
     }
 
     /// Builds an op with regions: `regions` fills them (on the body) before it is inserted, so

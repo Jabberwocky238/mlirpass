@@ -869,7 +869,12 @@ impl Invocation {
         match self.pipeline.run_on(&mut body, root, &self.executor()) {
             Ok(()) => Ok(self.print(&mut body)),
             Err(_) if self.verify_diagnostics && chunk.contains("expected-error") => Ok(String::new()),
-            Err(e) => Err(e),
+            // the passes' diagnostics first, as `mlir-opt` prints them before the failure
+            Err(e) => {
+                let mut text: String = body.take_diagnostics().iter().map(|d| format!("{d}\n")).collect();
+                text.push_str(&e.0);
+                Err(Error(text))
+            }
         }
     }
 
