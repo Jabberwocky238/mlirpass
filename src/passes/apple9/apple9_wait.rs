@@ -1,7 +1,8 @@
-//! ⭐ `apple9-wait`: an asynchronous result is waited for before its register is read or written. A special register
-//! read completes on slot 1, a load on a slot of its own (6, 5, 4, 3, 2 in turn: never one still pending); an
-//! instruction that touches a pending register waits for its slot, in its own wait field when it has one
-//! ([`Apple9Op::waits`]), else by an `iadd` of r63 just before (it only waits).
+//! ⭐ `apple9-wait`: an asynchronous result (a special register read, a load) completes on a slot of its own: the lowest
+//! one with nothing pending (two pending results on one slot are not both waited for by a wait for it: measured, as
+//! Metal gives each its own); with all six pending, the instruction waits for them first. An instruction that touches a
+//! pending register waits for its slot, in its own wait field when it has one ([`Apple9Op::waits`]), else by an `iadd`
+//! of r63 just before (it only waits).
 
 use alloc::collections::BTreeMap;
 use alloc::vec;
@@ -42,23 +43,16 @@ pub fn apple9_wait<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let mut rw = Rewriter::new(body, &mut quiet);
         // pending: register ⇒ the slot its value completes on
         let mut pending: BTreeMap<u32, u32> = BTreeMap::new();
-        let mut next_load = 0usize;
-        const LOAD_SLOTS: [u32; 5] = [6, 5, 4, 3, 2];
         for i in rw.body.block_ops(rw.body.top_block(k)) {
             let Some(inst) = Apple9Op::of(&rw.body[i].name) else { continue };
             let (read, written) = touches(rw.body, i, inst)?;
             let mut mask: u32 = read.iter().chain(&written).filter_map(|r| pending.get(r)).fold(0, |m, s| m | 1 << (s - 1));
-            // a load's own slot, not one still pending
-            let slot = (inst == Apple9Op::Load).then(|| {
-                let s = LOAD_SLOTS[next_load % LOAD_SLOTS.len()];
-                next_load += 1;
-                s
-            });
-            if let Some(s) = slot
-                && pending.values().any(|p| *p == s)
-            {
-                mask |= 1 << (s - 1);
+            // its own slot: the lowest free one; none free, everything pending is waited for first
+            let free = (1..=6).find(|s| !pending.values().any(|p| p == s));
+            if inst.completes() && free.is_none() {
+                mask |= pending.values().fold(0, |m, s| m | 1 << (s - 1));
             }
+            let slot = inst.completes().then(|| free.unwrap_or(1));
             if mask != 0 {
                 if inst.waits() {
                     let have = Attrs(&rw.body[i].all_attrs()).get("wait").map(Attrs::as_int).transpose()?.unwrap_or(0) as u32;
@@ -77,7 +71,7 @@ pub fn apple9_wait<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
             if let Some(s) = slot {
                 rw.modify(i, |b| b[i].set("slot", Attribute::from(A::from(s))));
             }
-            if let Some(s) = slot.or(inst.completes().map(u32::from)) {
+            if let Some(s) = slot {
                 for r in written {
                     pending.insert(r, s);
                 }

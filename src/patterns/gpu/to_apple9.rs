@@ -1,7 +1,8 @@
 //! ⭐ Compute shaders ⇒ `apple9.kernel`s of virtual Apple9 instructions (dialect conversion).
 //!
 //! ```text
-//!   gpu.func {gpu.kernel}           ⇒ apple9.kernel {stage = "compute", params}: a workgroup of 16 threads
+//!   gpu.func {gpu.kernel}           ⇒ apple9.kernel {stage = "compute", params}: a workgroup of 32 threads (the SIMD
+//!                                     width: a workgroup of 16 is not one in the hardware's ids, measured)
 //!   i32, i1, index, !llvm.ptr<1>, f32, vector<N x ...> ⇒ 1, N × !apple9.r<i32 | f32>: a 32-bit GPR a component, a
 //!                                     thread each (an i1: 0 or 1; an index and a global pointer: 32 bits, a byte
 //!                                     address in the memory, binding 0)
@@ -10,7 +11,12 @@
 //!   arith.andi / ori / xori, shli / shrui / shrsi, min* / max* ⇒ and / or / xor, shl / shr / asr, smin ... umax
 //!   arith.cmpi                      ⇒ 1 or 0 by select (the less / greater relations; eq, ne, le, ge of two)
 //!   arith.select, extui / extsi (of i1) ⇒ select of the condition against 0, the value itself / 0 - it
-//!   arith.addf / mulf, math.absf    ⇒ fadd / fmul, fmul |x| * 1.0
+//!   arith.addf / subf / mulf, math.fma ⇒ fadd / fsub / fmul / fma: IEEE, one rounding (fp32 denormals flush to zero)
+//!   arith.divf, math.sqrt           ⇒ rcp / rsq refined with fmas to the correctly rounded result ([`Exact`])
+//!   arith.minnumf / maxnumf         ⇒ fmin / fmax (a NaN operand gives the other)
+//!   arith.negf, math.absf           ⇒ xor / and of the sign bit (exact, NaN too)
+//!   math.floor / ceil / trunc / roundeven ⇒ the special function's roundings
+//!   arith.cmpf                      ⇒ 1 or 0 by select (flt / fgt / feq: false on a NaN; the rest of two or three)
 //!   arith.sitofp / uitofp / fptosi / fptoui ⇒ i2f / f2i (toward zero)
 //!   arith.bitcast                   ⇒ or of the value with itself (the same bits, the other type)
 //!   arith.index_cast(ui), llvm.inttoptr ⇒ the value itself
@@ -22,13 +28,13 @@
 //! ```
 //!
 //! The parameters (32-bit words) are read from the parameter buffer (binding 1) at the kernel's start
-//! (`convert-gpu-to-apple9`). Refused: f32 division, square root, min / max, fma, subtraction, comparisons; loads and
-//! stores of other than whole dwords.
+//! (`convert-gpu-to-apple9`). Refused: loads and stores of other than whole dwords, control flow, f32 minimum / maximum
+//! (NaN-propagating).
 
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirformat::arith::{CmpI, CmpIPredicate};
+use mlirformat::arith::{CmpF, CmpFPredicate, CmpI, CmpIPredicate};
 use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, Const, FloatKind, Scalar, ShapedKind, Type};
 
@@ -39,8 +45,9 @@ type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
 /// Parameters of a compute shader (32-bit words).
 pub const APPLE9_PARAMS: usize = 8;
-/// Threads of a workgroup.
-pub const APPLE9_WORKGROUP: u32 = 16;
+/// Threads of a workgroup: the SIMD width. (Dispatched in workgroups of 16, the hardware still groups 32 threads:
+/// threadgroup_position_in_grid and thread_position_in_threadgroup count those, measured on an M4.)
+pub const APPLE9_WORKGROUP: u32 = 32;
 /// The bindings: the memory (byte addresses), the parameter buffer.
 pub const APPLE9_MEMORY: u32 = 0;
 pub const APPLE9_PARAMETERS: u32 = 1;
@@ -175,6 +182,45 @@ impl GpuToApple9 {
         }
     }
 
+    /// A float comparison as 1 / 0: flt, fgt and feq (each false on a NaN) and their combinations.
+    fn fcompare(cr: &mut Cr<'_, '_, '_>, op: OpId, pred: CmpFPredicate, a: ValueId, b: ValueId) -> ValueId {
+        use CmpFPredicate as P;
+        let one = Self::imm(cr, op, 1, Self::i32());
+        let zero = Self::imm(cr, op, 0, Self::i32());
+        // `cond(x, y) ? t : f`
+        let sel = |cr: &mut Cr<'_, '_, '_>, cond: &str, x: ValueId, y: ValueId, t: ValueId, f: ValueId| Self::select(cr, op, cond, [x, y], [t, f], Self::i32());
+        // the ordered relation `cond` or equality as `yes` / `no`
+        let or_eq = |cr: &mut Cr<'_, '_, '_>, cond: &str, yes: ValueId, no: ValueId| {
+            let eq = sel(cr, "feq", a, b, yes, no);
+            sel(cr, cond, a, b, yes, eq)
+        };
+        match pred {
+            P::AlwaysFalse => zero,
+            P::AlwaysTrue => one,
+            P::oeq => sel(cr, "feq", a, b, one, zero),
+            P::une => sel(cr, "feq", a, b, zero, one),
+            P::ogt => sel(cr, "fgt", a, b, one, zero),
+            P::ule => sel(cr, "fgt", a, b, zero, one),
+            P::olt => sel(cr, "flt", a, b, one, zero),
+            P::uge => sel(cr, "flt", a, b, zero, one),
+            P::oge => or_eq(cr, "fgt", one, zero),
+            P::ult => or_eq(cr, "fgt", zero, one),
+            P::ole => or_eq(cr, "flt", one, zero),
+            P::ugt => or_eq(cr, "flt", zero, one),
+            P::one | P::ueq => {
+                let (yes, no) = if pred == P::one { (one, zero) } else { (zero, one) };
+                let gt = sel(cr, "fgt", a, b, yes, no);
+                sel(cr, "flt", a, b, yes, gt)
+            }
+            P::ord | P::uno => {
+                // a number equals itself; a NaN does not
+                let (yes, no) = if pred == P::ord { (one, zero) } else { (zero, one) };
+                let bb = sel(cr, "feq", b, b, yes, no);
+                sel(cr, "feq", a, a, bb, no)
+            }
+        }
+    }
+
     fn constant_bits(value: &Attribute<'_>, n: usize) -> Option<Vec<u32>> {
         let c = Const::try_from(value).ok()?;
         let bits = |s: Scalar| match s {
@@ -217,6 +263,14 @@ impl GpuToApple9 {
 #[map("arith.maxui" => "apple9.umax", via = Self::lanes(Apple9Op::Umax))]
 #[map("arith.addf" => "apple9.fadd", via = Self::lanes(Apple9Op::Fadd))]
 #[map("arith.mulf" => "apple9.fmul", via = Self::lanes(Apple9Op::Fmul))]
+#[map("arith.subf" => "apple9.fsub", via = Self::lanes(Apple9Op::Fsub))]
+#[map("math.fma" => "apple9.fma", via = Self::lanes(Apple9Op::Fma))]
+#[map("arith.minnumf" => "apple9.fmin", via = Self::lanes(Apple9Op::Fmin))]
+#[map("arith.maxnumf" => "apple9.fmax", via = Self::lanes(Apple9Op::Fmax))]
+#[map("math.floor" => "apple9.floor", via = Self::lanes(Apple9Op::Floor))]
+#[map("math.ceil" => "apple9.ceil", via = Self::lanes(Apple9Op::Ceil))]
+#[map("math.trunc" => "apple9.trunc", via = Self::lanes(Apple9Op::Trunc))]
+#[map("math.roundeven" => "apple9.roundeven", via = Self::lanes(Apple9Op::Roundeven))]
 #[map("arith.sitofp" => "apple9.i2f", via = Self::convert(Apple9Op::I2f, true))]
 #[map("arith.uitofp" => "apple9.i2f", via = Self::convert(Apple9Op::I2f, false))]
 #[map("arith.fptosi" => "apple9.f2i", via = Self::convert(Apple9Op::F2i, true))]
@@ -327,13 +381,38 @@ impl GpuToApple9 {
         })
     }
 
-    /// `|x|`: |x| * 1.0.
+    /// `|x|`: the sign bit cleared (exact for every value, NaN included).
     #[convert("math.absf")]
     fn absf(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         Self::each(cr, op, o, |cr, x| {
-            let one = Self::imm(cr, op, 1f32.to_bits(), Self::f32());
-            Self::one(cr, op, Apple9Op::Fmul, &[x[0], one], vec![("abs", A::from(1u32))], Self::f32())
+            let m = Self::imm(cr, op, 0x7fff_ffff, Self::i32());
+            Self::one(cr, op, Apple9Op::And, &[x[0], m], Vec::new(), Self::f32())
         })
+    }
+
+    /// `-x`: the sign bit flipped.
+    #[convert("arith.negf")]
+    fn negf(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        Self::each(cr, op, o, |cr, x| {
+            let m = Self::imm(cr, op, 0x8000_0000, Self::i32());
+            Self::one(cr, op, Apple9Op::Xor, &[x[0], m], Vec::new(), Self::f32())
+        })
+    }
+
+    #[convert("arith.cmpf")]
+    fn cmpf(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let Ok(c) = cr.rw.body.head::<CmpF>(op) else { return false };
+        Self::each(cr, op, o, |cr, x| Self::fcompare(cr, op, c.predicate, x[0], x[1]))
+    }
+
+    #[convert("arith.divf")]
+    fn divf(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        Self::each(cr, op, o, |cr, x| Exact { cr, at: op }.div(x[0], x[1]))
+    }
+
+    #[convert("math.sqrt")]
+    fn sqrt(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        Self::each(cr, op, o, |cr, x| Exact { cr, at: op }.sqrt(x[0]))
     }
 
     /// The same bits as the other type.
@@ -446,5 +525,110 @@ impl GpuToApple9 {
         let Some(values) = mask.iter().map(|i| all.get(*i).copied()).collect::<Option<Vec<_>>>() else { return false };
         cr.replace(op, vec![values]);
         true
+    }
+}
+
+/// ⭐ Correctly rounded f32 division and square root from the reciprocal / reciprocal square root (within 1 ulp) and
+/// the single-rounding fma (both measured on an M4: 4096 random operands each, 0 wrong), as acgpu's Xe3 does it (the
+/// IA-64 sequences: Markstein; Cornea, Harrison, Tang, "Scientific Computing on Itanium-based Systems"): one Newton
+/// step, then the residual corrects the rounded result. A tiny operand (under 2^-100) is scaled by 2^64 first (a
+/// square root back by 2^-32) so no residual leaves the normal range; where the sequence is not finite (a zero or
+/// infinite divisor or radicand, a NaN) the hardware's own result is taken, as for a zero dividend and sqrt(±0) /
+/// sqrt(+inf). The fp32 denormals flush to zero on Apple9, so a denormal result is ±0 (checked on the M4: every
+/// result of the 4096 random divisions and square roots and 20 special operands correctly rounded).
+struct Exact<'c, 'r, 'a, 'p> {
+    cr: &'c mut Cr<'r, 'a, 'p>,
+    at: OpId,
+}
+
+impl Exact<'_, '_, '_, '_> {
+    fn f32(&mut self, v: f32) -> ValueId {
+        GpuToApple9::imm(self.cr, self.at, v.to_bits(), GpuToApple9::f32())
+    }
+
+    fn i32(&mut self, v: u32) -> ValueId {
+        GpuToApple9::imm(self.cr, self.at, v, GpuToApple9::i32())
+    }
+
+    fn op(&mut self, inst: Apple9Op, x: &[ValueId], attrs: Vec<(&str, A)>) -> ValueId {
+        GpuToApple9::one(self.cr, self.at, inst, x, attrs, GpuToApple9::f32())
+    }
+
+    /// `a + b c`, `a - b c` with `neg`, rounded once.
+    fn mad(&mut self, a: ValueId, b: ValueId, c: ValueId, neg: bool) -> ValueId {
+        self.op(Apple9Op::Fma, &[b, c, a], if neg { vec![("neg_product", A::Bool(true))] } else { Vec::new() })
+    }
+
+    fn mul(&mut self, a: ValueId, b: ValueId) -> ValueId {
+        self.op(Apple9Op::Fmul, &[a, b], Vec::new())
+    }
+
+    fn sel(&mut self, cond: &str, x: ValueId, y: ValueId, t: ValueId, f: ValueId) -> ValueId {
+        GpuToApple9::select(self.cr, self.at, cond, [x, y], [t, f], GpuToApple9::f32())
+    }
+
+    /// `v` where it is finite (v - v is 0), else `fallback`.
+    fn finite_or(&mut self, v: ValueId, fallback: ValueId) -> ValueId {
+        let d = self.op(Apple9Op::Fsub, &[v, v], Vec::new());
+        let z = self.f32(0.0);
+        self.sel("feq", d, z, v, fallback)
+    }
+
+    /// `then` where |x| < `bound`, else `other`.
+    fn below(&mut self, x: ValueId, bound: f32, then: ValueId, other: ValueId) -> ValueId {
+        let m = self.i32(0x7fff_ffff);
+        let ax = self.op(Apple9Op::And, &[x, m], Vec::new());
+        let b = self.f32(bound);
+        self.sel("flt", ax, b, then, other)
+    }
+
+    /// 2^`e` (a normal f32).
+    fn pow2(e: i32) -> f32 {
+        f32::from_bits(((127 + e) as u32) << 23)
+    }
+
+    fn div(&mut self, a: ValueId, b: ValueId) -> ValueId {
+        let one = self.f32(1.0);
+        let up = self.f32(Self::pow2(64));
+        let small = self.below(a, Self::pow2(-100), up, one);
+        let s = self.below(b, Self::pow2(-100), up, small);
+        let a = self.mul(a, s);
+        let b = self.mul(b, s);
+        let y0 = self.op(Apple9Op::Rcp, &[b], Vec::new());
+        let e = self.mad(one, b, y0, true);
+        let y1 = self.mad(y0, e, y0, false);
+        let q0 = self.mul(a, y1);
+        let r = self.mad(a, b, q0, true);
+        let q1 = self.mad(q0, r, y1, false);
+        let rough = self.mul(a, y0);
+        let q = self.finite_or(q1, rough);
+        let z = self.f32(0.0);
+        self.sel("feq", a, z, rough, q)
+    }
+
+    fn sqrt(&mut self, a: ValueId) -> ValueId {
+        let one = self.f32(1.0);
+        let up = self.f32(Self::pow2(64));
+        let down = self.f32(Self::pow2(-32));
+        let s = self.below(a, Self::pow2(-100), up, one);
+        let back = self.below(a, Self::pow2(-100), down, one);
+        let a = self.mul(a, s);
+        let half = self.f32(0.5);
+        let y0 = self.op(Apple9Op::Rsq, &[a], Vec::new());
+        let g0 = self.mul(a, y0);
+        let h0 = self.mul(half, y0);
+        let d = self.mad(half, g0, h0, true);
+        let g1 = self.mad(g0, g0, d, false);
+        let h1 = self.mad(h0, h0, d, false);
+        let r = self.mad(a, g1, g1, true);
+        let g2 = self.mad(g1, r, h1, false);
+        let rough = self.mul(a, y0);
+        let root = self.finite_or(g2, rough);
+        // sqrt(±0) is ±0, sqrt(+inf) +inf (a rsq(a): 0 inf, inf 0 are NaN)
+        let z = self.f32(0.0);
+        let root = self.sel("feq", a, z, a, root);
+        let inf = self.f32(f32::INFINITY);
+        let root = self.sel("feq", a, inf, a, root);
+        self.mul(root, back)
     }
 }

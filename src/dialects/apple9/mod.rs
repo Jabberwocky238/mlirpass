@@ -95,5 +95,8 @@ crate::attr_ops! { "apple9" IsaOps;
     Apple9Shr "apple9.shr", Apple9Asr "apple9.asr", Apple9And "apple9.and", Apple9Or "apple9.or", Apple9Xor "apple9.xor",
     Apple9Smin "apple9.smin", Apple9Smax "apple9.smax", Apple9Umin "apple9.umin", Apple9Umax "apple9.umax",
     Apple9Select "apple9.select", Apple9I2f "apple9.i2f", Apple9F2i "apple9.f2i", Apple9Fadd "apple9.fadd",
-    Apple9Fmul "apple9.fmul", Apple9Load "apple9.load", Apple9Store "apple9.store", Apple9Halt "apple9.halt",
+    Apple9Fmul "apple9.fmul", Apple9Fsub "apple9.fsub", Apple9Fma "apple9.fma", Apple9Fmin "apple9.fmin",
+    Apple9Fmax "apple9.fmax", Apple9Rcp "apple9.rcp", Apple9Rsq "apple9.rsq", Apple9Floor "apple9.floor",
+    Apple9Ceil "apple9.ceil", Apple9Trunc "apple9.trunc", Apple9Roundeven "apple9.roundeven", Apple9Load "apple9.load",
+    Apple9Store "apple9.store", Apple9Halt "apple9.halt",
 }

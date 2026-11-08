@@ -19,7 +19,8 @@
 //!
 //! Every source is retained (its release bit clear): a source released while still used reads back as zero, so a
 //! release is the allocator's business (not done yet, nothing is released). Completions: a special register read
-//! (`get_sr`, `get_sr16`) completes on slot 1, a load on its `slot`; a reader waits first (`agx-wait`).
+//! (`get_sr`, `get_sr16`) and a load complete on their `slot`, one slot to one pending result (`apple9-wait` picks
+//! them); a reader waits first.
 
 use alloc::format;
 use alloc::vec;
@@ -55,14 +56,27 @@ pub enum Apple9Op {
     I2f,
     F2i,
     Fadd,
+    Fsub,
     Fmul,
+    /// dst = a * b + c, one rounding (`neg_product`: -(a * b) + c, `neg_c`: a * b - c).
+    Fma,
+    /// minNum / maxNum: a NaN operand gives the other.
+    Fmin,
+    Fmax,
+    /// The reciprocal and the reciprocal square root (within 1 ulp, measured), the roundings to an integer.
+    Rcp,
+    Rsq,
+    Floor,
+    Ceil,
+    Trunc,
+    Roundeven,
     Load,
     Store,
     Halt,
 }
 
 impl Apple9Op {
-    const ALL: [(&'static str, Apple9Op); 25] = [
+    const ALL: [(&'static str, Apple9Op); 35] = [
         ("apple9.get_sr", Apple9Op::GetSr),
         ("apple9.get_sr16", Apple9Op::GetSr16),
         ("apple9.mov", Apple9Op::Mov),
@@ -85,6 +99,16 @@ impl Apple9Op {
         ("apple9.f2i", Apple9Op::F2i),
         ("apple9.fadd", Apple9Op::Fadd),
         ("apple9.fmul", Apple9Op::Fmul),
+        ("apple9.fsub", Apple9Op::Fsub),
+        ("apple9.fma", Apple9Op::Fma),
+        ("apple9.fmin", Apple9Op::Fmin),
+        ("apple9.fmax", Apple9Op::Fmax),
+        ("apple9.rcp", Apple9Op::Rcp),
+        ("apple9.rsq", Apple9Op::Rsq),
+        ("apple9.floor", Apple9Op::Floor),
+        ("apple9.ceil", Apple9Op::Ceil),
+        ("apple9.trunc", Apple9Op::Trunc),
+        ("apple9.roundeven", Apple9Op::Roundeven),
         ("apple9.load", Apple9Op::Load),
         ("apple9.store", Apple9Op::Store),
         ("apple9.halt", Apple9Op::Halt),
@@ -105,9 +129,9 @@ impl Apple9Op {
         use Apple9Op::*;
         match self {
             GetSr | GetSr16 | MovImm | Halt => &[],
-            Mov | I2f | F2i => &["a"],
-            Iadd | Isub | Shl | Shr | Asr | And | Or | Xor | Smin | Smax | Umin | Umax | Fadd | Fmul => &["a", "b"],
-            Imad => &["a", "b", "c"],
+            Mov | I2f | F2i | Rcp | Rsq | Floor | Ceil | Trunc | Roundeven => &["a"],
+            Iadd | Isub | Shl | Shr | Asr | And | Or | Xor | Smin | Smax | Umin | Umax | Fadd | Fsub | Fmul | Fmin | Fmax => &["a", "b"],
+            Imad | Fma => &["a", "b", "c"],
             Select => &["a", "b", "t", "f"],
             Load => &["index"],
             Store => &["data", "index"],
@@ -119,13 +143,9 @@ impl Apple9Op {
         !matches!(self, Apple9Op::Store | Apple9Op::Halt)
     }
 
-    /// The slot its result completes on when that is later than the instruction (a load's own `slot`).
-    pub fn completes(self) -> Option<u8> {
-        match self {
-            Apple9Op::GetSr | Apple9Op::GetSr16 => Some(1),
-            Apple9Op::Load => Some(6),
-            _ => None,
-        }
+    /// Whether its result completes later than the instruction, on its `slot`.
+    pub fn completes(self) -> bool {
+        matches!(self, Apple9Op::GetSr | Apple9Op::GetSr16 | Apple9Op::Load)
     }
 
     /// Whether it carries a wait itself (the six-bit mask at bits 12 ..= 17); else a wait goes before it.
@@ -243,7 +263,14 @@ impl Apple9Isa {
                 if dst >= 64 || sel > 0xff {
                     return Err(err("dst past r63 or selector past 0xff"));
                 }
-                let head = [((dst & 0xf) << 4) as u8 | if op == GetSr { 0x0c } else { 0x04 }, sel as u8, 0x10 | ((dst >> 4) << 6) as u8, 0x06];
+                // byte 3 bits 5 ..= 7: the completion slot - 1 (Metal gives reads in flight together slots of their own:
+                // 0x06, 0x26, 0x46; two on one slot, a wait for it waits for one of them only: measured)
+                let slot = f.int("slot")?;
+                let slot = if slot == 0 { 1 } else { slot };
+                if !(1..=6).contains(&slot) {
+                    return Err(err("slot 1 ..= 6"));
+                }
+                let head = [((dst & 0xf) << 4) as u8 | if op == GetSr { 0x0c } else { 0x04 }, sel as u8, 0x10 | ((dst >> 4) << 6) as u8, 0x06 | ((slot - 1) << 5) as u8];
                 let mut b = head.to_vec();
                 if op == GetSr16 {
                     b.extend([((dst & 15) << 4) as u8 | 0x03, 0x00, ((dst >> 4) << 6) as u8, 0x01]);
@@ -355,14 +382,19 @@ impl Apple9Isa {
             }
             // pack_select (SELECT_GPR_WIDE): dst = a <cond> b ? t : f
             Select => {
-                let cond = match f.str("cond")? {
-                    "ugt" => 0x04,
-                    "ult" => 0x05,
-                    "igt" => 0x06,
-                    "ilt" => 0x07,
-                    c => return Err(err(&format!("condition {c} (ugt / ult / igt / ilt)"))),
+                // AGX_APPLE9_SELECT_*; feq with the equality family's bit (byte 4 bit 2); an ordered compare is false
+                // on a NaN (measured)
+                let (cond, equality) = match f.str("cond")? {
+                    "feq" => (0x00, true),
+                    "fgt" => (0x02, false),
+                    "flt" => (0x03, false),
+                    "ugt" => (0x04, false),
+                    "ult" => (0x05, false),
+                    "igt" => (0x06, false),
+                    "ilt" => (0x07, false),
+                    c => return Err(err(&format!("condition {c} (feq / fgt / flt / ugt / ult / igt / ilt)"))),
                 };
-                let mut b = vec![0x02, 0x01, 0x1f, 0x01, 0x82, 0x00, cond, 0x00, 0x80, 0x00];
+                let mut b = vec![0x02, 0x01, 0x1f, 0x01, 0x82 | if equality { 0x04 } else { 0 }, 0x00, cond, 0x00, 0x80, 0x00];
                 // each source retained: its live bit set, its hold bit clear
                 for (live, hold) in [(15, 19), (31, 20), (47, 39), (79, 71)] {
                     Self::set(&mut b, live, 1, 1);
@@ -403,13 +435,62 @@ impl Apple9Isa {
                     ]
                 }
             }
-            // pack_float2: FLOAT2_COMPACT, or FLOAT2_MUL_ABS_EXTENDED with `abs` (a mask of the sources taken absolute)
-            Fadd | Fmul => {
+            // pack_minmax (MINMAX_COMPACT): fmax 0, fmin 1
+            Fmin | Fmax => {
+                let mut b = vec![0x02, 0x01, 0x1e, 0x05, if op == Fmax { 0 } else { 1 }, 0x00];
+                Self::set(&mut b, 21, 1, 1);
+                Self::retain2(&mut b);
+                Self::compact(&mut b, f.reg("dst")?, f.reg("a")?, f.reg("b")?);
+                b
+            }
+            // pack_fma (FLOAT3_EXTENDED, 8 bytes)
+            Fma => {
+                let mut b = vec![0x09, 0x01, 0x1e, 0x05, 0x81, 0x08, 0x02, 0x00];
+                Self::set(&mut b, 21, 1, 1);
+                for (live, hold) in [(15, 19), (31, 20), (47, 39)] {
+                    Self::set(&mut b, live, 1, 1);
+                    Self::set(&mut b, hold, 1, 0);
+                }
+                let (dst, a, bb, c) = (f.reg("dst")?, f.reg("a")?, f.reg("b")?, f.reg("c")?);
+                Self::set(&mut b, 4, 4, dst & 0xf);
+                Self::set(&mut b, 22, 2, (dst >> 4) & 3);
+                Self::set(&mut b, 60, 1, dst >> 6);
+                Self::set(&mut b, 9, 6, a & 0x3f);
+                Self::set(&mut b, 56, 1, a >> 6);
+                Self::set(&mut b, 25, 6, bb & 0x3f);
+                Self::set(&mut b, 58, 1, bb >> 6);
+                Self::set(&mut b, 41, 6, c & 0x3f);
+                Self::set(&mut b, 38, 1, c >> 6);
+                Self::set(&mut b, 35, 1, 0);
+                Self::set(&mut b, 36, 1, u32::from(f.flag("neg_c")));
+                Self::set(&mut b, 59, 1, u32::from(f.flag("neg_product")));
+                b
+            }
+            // pack_fspecial (FLOAT_SPECIAL, FP32: the source's type bits 0x90 / the reciprocal's datapath), the source
+            // retained
+            Rcp | Rsq | Floor | Ceil | Trunc | Roundeven => {
+                let (family, function, precision, rounding) = match op {
+                    Rcp => (1, 0, 0x48, 0x20),
+                    Rsq => (1, 1, 0x40, 0),
+                    Floor => (0, 0, 0x40, 2),
+                    Ceil => (0, 0, 0x40, 4),
+                    Trunc => (0, 0, 0x40, 6),
+                    _ => (0, 0, 0x40, 0),
+                };
+                let (dst, a) = (f.reg("dst")?, f.reg("a")?);
+                vec![0x2f | (family << 7), function, 0x54, (dst << 1) as u8, 0x02, ((a & 63) << 2) as u8, (a >> 6) as u8 | if op == Rcp { 0x00 } else { 0x90 }, precision, rounding, 0]
+            }
+            // pack_float2: FLOAT2_COMPACT (fsub: bit 43 negates b), or FLOAT2_MUL_ABS_EXTENDED with `abs` (a mask of
+            // the sources taken absolute)
+            Fadd | Fsub | Fmul => {
                 let mut b = vec![0x09, 0x05, 0x1c, 0x01, 0x00, 0x00, 0, 0, 0, 0, 0, 0];
                 Self::set(&mut b, 16, 3, if op == Fmul { 5 } else { 4 });
                 Self::set(&mut b, 21, 1, 1);
                 Self::retain2(&mut b);
                 Self::compact(&mut b, f.reg("dst")?, f.reg("a")?, f.reg("b")?);
+                if op == Fsub {
+                    Self::set(&mut b, 43, 1, 1);
+                }
                 let abs = f.int("abs")?;
                 if abs != 0 {
                     if op != Fmul || abs > 3 {

@@ -2,7 +2,7 @@
 //! it needs ([`Apple9Code`]).
 //!
 //! How it runs (the Metal compute ABI this target assumes; scripts/apple9_metal.swift puts it there): a workgroup of
-//! 16 threads; binding 0 the memory (a load's / store's address is a byte offset into it), binding 1 the parameter
+//! 32 threads (APPLE9_WORKGROUP); binding 0 the memory (a load's / store's address is a byte offset into it), binding 1 the parameter
 //! buffer (the kernel reads parameter k at byte 4k at its start).
 
 use alloc::borrow::ToOwned;

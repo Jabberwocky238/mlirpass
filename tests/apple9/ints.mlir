@@ -1,4 +1,4 @@
-// acgpu's examples/compute/ints.mlir in upstream dialects (as tests/agx/ints.mlir), for Apple9: the i32 arithmetic, one
+// acgpu's examples/compute/ints.mlir in upstream dialects (as tests/agx/ints.mlir; workgroups of 32 here), for Apple9: the i32 arithmetic, one
 // operand pair (a, b) per invocation: invocation i reads 8 bytes at src + 8 i and writes twenty results (four dwords at a
 // time) at dst + 80 i.
 module attributes {gpu.container_module} {
@@ -8,8 +8,8 @@ gpu.module @shaders [#apple9.target<chip = "m4">] {
   %g = arith.index_cast %g_ix : index to i32
   %l_ix = gpu.thread_id x
   %l = arith.index_cast %l_ix : index to i32
-  %c16 = arith.constant 16 : i32
-  %base = arith.muli %g, %c16 : i32
+  %c32 = arith.constant 32 : i32
+  %base = arith.muli %g, %c32 : i32
   %i = arith.addi %base, %l : i32
   %c8 = arith.constant 8 : i32
   %in = arith.muli %i, %c8 : i32

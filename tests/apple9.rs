@@ -57,14 +57,16 @@ fn kernels(src: &str) -> String {
     out
 }
 
-/// acgpu's `ints` kernel (tests/apple9/ints.mlir) through the Apple9 backend: its bytes as the M4 ran them right
-/// (tests/apple9/ints.expected; scripts/apple9_check.py runs it).
+/// Kernels through the Apple9 backend (tests/apple9/{ints,floats}.mlir): their bytes as the M4 ran them right
+/// (tests/apple9/*.expected; scripts/apple9_check.py runs them and checks every result).
 #[cfg(feature = "target.apple9")]
 #[test]
-fn ints_as_the_m4_ran_it() {
-    let got = kernels(include_str!("apple9/ints.mlir"));
-    if let Ok(path) = std::env::var("APPLE9_WRITE") {
-        std::fs::write(path, &got).unwrap();
+fn kernels_as_the_m4_ran_them() {
+    for (name, src, want) in [("ints", include_str!("apple9/ints.mlir"), include_str!("apple9/ints.expected")), ("floats", include_str!("apple9/floats.mlir"), include_str!("apple9/floats.expected"))] {
+        let got = kernels(src);
+        if let Ok(dir) = std::env::var("APPLE9_WRITE") {
+            std::fs::write(format!("{dir}/{name}.expected"), &got).unwrap();
+        }
+        assert_eq!(got, want, "{name}");
     }
-    assert_eq!(got, include_str!("apple9/ints.expected"));
 }
