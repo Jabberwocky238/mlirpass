@@ -47,10 +47,33 @@ impl GpuCanon {
     #[rewrite("gpu.barrier")]
     fn erase_redundant_barrier(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
-        if !b.next_op(op).is_some_and(|n| b[n].name == "gpu.barrier") {
+        let Some(next) = b.next_op(op).filter(|n| b[*n].name == "gpu.barrier") else { return false };
+        // (only barriers of one scope, on the same named barrier if any)
+        if b[op].get("scope") != b[next].get("scope") || b[op].operands != b[next].operands {
             return false;
         }
-        rw.erase_op(op);
+        let spaces = |o: OpId| match b[o].get("address_spaces") {
+            Some(Attribute::Array(a)) => Some(a.clone()),
+            _ => None,
+        };
+        // The first fences what both do: everything if either does.
+        if let Some(mut mine) = spaces(op) {
+            match spaces(next) {
+                None => rw.modify(op, |b| {
+                    b[op].remove("address_spaces");
+                }),
+                Some(theirs) if theirs != mine => {
+                    for a in theirs {
+                        if !mine.contains(&a) {
+                            mine.push(a);
+                        }
+                    }
+                    rw.modify(op, |b| b[op].set("address_spaces", Attribute::Array(mine)));
+                }
+                Some(_) => {}
+            }
+        }
+        rw.erase_op(next);
         true
     }
 

@@ -7,6 +7,11 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
+/// `spirv::kGeneratorNumber`: MLIR's SPIR-V generator id (the header's upper half).
+const GENERATOR_NUMBER: u32 = 22;
+/// `LLVM_VERSION_MAJOR` of the MLIR this serializes as (the header's lower half).
+const LLVM_MAJOR: u32 = 23;
+
 use mlirformat::spirv_types::{SpirvDecoration, SpirvType};
 use mlirformat::{Attribute, Const, Error, FloatKind, NamedAttr, Scalar, ShapedKind, Signedness, Type};
 
@@ -255,7 +260,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
 
     fn collect(self) -> Vec<u32> {
         let (minor, ..) = self.vce().unwrap_or((0, Vec::new(), Vec::new()));
-        let mut out = vec![0x0723_0203, (1 << 16) | (minor << 8), (22 << 16) | 22, self.next_id, 0];
+        let mut out = vec![0x0723_0203, (1 << 16) | (minor << 8), (GENERATOR_NUMBER << 16) | LLVM_MAJOR, self.next_id, 0];
         for part in [&self.capabilities, &self.extensions, &self.extended_sets, &self.memory_model, &self.entry_points, &self.execution_modes, &self.names, &self.decorations, &self.types_globals, &self.functions, &self.graphs] {
             out.extend_from_slice(part);
         }

@@ -102,11 +102,17 @@ impl crate::Run for GpuKernelOutlining {
                 let mut work = vec![func];
                 while let Some(o) = work.pop() {
                     for u in body.symbol_uses(o).unwrap_or_default() {
-                        let Some(leaf) = u.path.last().map(|s| String::from(&**s)) else { continue };
-                        if body.lookup(kmod, &leaf).is_some() {
+                        let Some(root) = u.path.first().map(|s| String::from(&**s)) else { continue };
+                        // A nested reference into a symbol of the parent does not resolve in the
+                        // kernel module.
+                        if u.path.len() > 1 && body.lookup(module, &root).is_some() {
+                            let path: Vec<String> = u.path.iter().map(|s| format!("@{s}")).collect();
+                            return Err(Error(format!("nested symbol reference '{}' cannot be resolved inside the outlined kernel module; gpu-kernel-outlining does not support cross-module symbol references inside gpu.launch bodies", path.join("::"))));
+                        }
+                        if body.lookup(kmod, &root).is_some() {
                             continue;
                         }
-                        let Some(def) = body.lookup(module, &leaf) else { continue };
+                        let Some(def) = body.lookup(module, &root) else { continue };
                         let c = body.clone_op(def, &mut Mapping::default());
                         body.insert(c, kblock, None);
                         work.push(c);

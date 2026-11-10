@@ -155,6 +155,9 @@ impl<'a> Body<'a> {
         if let Some(g) = self.constant_dims(&self.launch_group(launch, GRID)) {
             data.set("known_grid_size", g);
         }
+        if cluster && let Some(c) = self.constant_dims(&self.launch_group(launch, CLUSTER)) {
+            data.set("known_cluster_size", c);
+        }
         data.set("kernel", Attribute::Unit);
         data.set("sym_name", Attribute::str(name));
         data.set("workgroup_attributions", Attribute::integer(workgroup as i128, Type::int(64)));
@@ -219,6 +222,9 @@ impl<'a> Body<'a> {
         let seg: Vec<i32> = sizes.iter().map(|n| *n as i32).collect();
         let mut data = OpData::build("gpu.launch_func").operands(&ops).with("kernel", Attribute::SymbolRef(vec![String::from(module).into(), String::from(func).into()])).with("operandSegmentSizes", Attribute::dense_i32(&seg));
         data.loc = self[launch].loc.clone();
+        if self[launch].get("cooperative").is_some() {
+            data.set("cooperative", Attribute::Unit);
+        }
         let types = self.types(&self[launch].results);
         let lf = self.create(data, &types);
         self.insert_before(lf, launch);
