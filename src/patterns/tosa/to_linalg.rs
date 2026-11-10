@@ -1328,14 +1328,15 @@ impl TosaToLinalg {
                 }
                 let m = cr.bin("arith.muli", v, sd);
                 let val = cr.bin("arith.addi", m, off);
+                let index = cr.bin("arith.floordivsi", val, sn);
                 if fp {
-                    let index = cr.bin("arith.floordivsi", val, sn);
-                    let r = cr.bin("arith.remsi", val, sn);
+                    // (x - ix * scale_n: x % scale_n for positive x)
+                    let scaled = cr.bin("arith.muli", index, sn);
+                    let r = cr.bin("arith.subi", val, scaled);
                     let rf = cr.op1("arith.sitofp", &[r], re.clone());
                     let sf = cr.op1("arith.uitofp", &[sn], re.clone());
                     return (index, cr.bin("arith.divf", rf, sf));
                 }
-                let index = cr.bin("arith.divsi", val, sn);
                 let d = cr.bin("arith.muli", index, sn);
                 (index, cr.bin("arith.subi", val, d))
             };

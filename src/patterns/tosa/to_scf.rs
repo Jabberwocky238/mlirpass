@@ -62,6 +62,9 @@ impl TosaToScf {
     #[convert("tosa.scatter")]
     fn scatter(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let &[values_in, indices, input] = &cr.rw.body[op].operands[..] else { return false };
+        if [values_in, indices, input].iter().any(|v| cr.rw.body[*v].ty.shape().is_none()) {
+            return false;
+        }
         let rw = &mut cr.rw;
         let [n, w, c] = [0, 1, 2].map(|d| Self::tensor_dim(rw, input, d));
         let (zero, one) = (Self::cidx(rw, 0), Self::cidx(rw, 1));
