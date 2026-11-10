@@ -2437,6 +2437,9 @@ struct Import<'i, 'a, X> {
     aliases: &'i Aliases<'a>,
     scopes: Vec<Scope<'a>>,
     x: &'i X,
+    /// An isolated op's regions imported on their own ([`Import::alone`]): its root is that
+    /// op, and the isolated ops in its block stay in its seg (as [`Import::isolate`] keeps them).
+    lone: bool,
 }
 
 impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
@@ -2531,7 +2534,7 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
     /// entry 0: everything in it is imported there ([`Import::finish`]).
     fn place(&mut self, block: BlockId, ops: Vec<Operation<'a>>, pending: &mut Vec<Pending<'a>>) -> Result<(), Error> {
         pending.reserve(ops.len());
-        let top = self.body.block_owner(block) == Some(self.body.root);
+        let top = !self.lone && self.body.block_owner(block) == Some(self.body.root);
         for op in ops {
             let home = self.body.home;
             if top && self.body.ctx.opt.op_info(&op.name).is_some_and(|i| i.has(crate::Trait::IsIsolatedFromAbove)) {
@@ -2622,7 +2625,7 @@ impl<'i, 'a, X: moremath::Executor + Sync> Import<'i, 'a, X> {
         seg.regions.reserve(n[3]);
         let s = op.seg();
         let body = Body { ctx, segs: alloc::vec![seg], seg0: s, home: s, root: op, items: Vec::new(), journal: crate::ir::Journal::default(), outside: None, diagnostics: Vec::new() };
-        let mut im = Import { body, aliases, scopes: alloc::vec![Scope::default()], x };
+        let mut im = Import { body, aliases, scopes: alloc::vec![Scope::default()], x, lone: true };
         for r in regions {
             im.region(op, 0, r)?;
         }
@@ -2722,7 +2725,7 @@ impl<'a> Body<'a> {
             }
         }
         let empty = Body { ctx, segs: alloc::vec![Seg::default()], seg0: 0, home: 0, root: OpId::at(0, 0), items, journal: crate::ir::Journal::default(), outside: None, diagnostics: Vec::new() };
-        let mut im = Import { body: empty, aliases: &aliases, scopes: alloc::vec![Scope::default()], x };
+        let mut im = Import { body: empty, aliases: &aliases, scopes: alloc::vec![Scope::default()], x, lone: false };
         if let [module] = ops.as_slice()
             && module.name == "builtin.module"
         {
