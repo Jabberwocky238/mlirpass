@@ -117,3 +117,52 @@ impl TryFrom<&Attribute<'_>> for BroadcastType {
         case_of(a, "broadcast", &Self::NAMES).ok_or(())
     }
 }
+
+/// The case of a `#gpu.<mnemonic><case>` attribute among `names`.
+fn mnemonic_case_of<T: Copy>(a: &Attribute<'_>, name: &str, names: &[(&'static str, T)]) -> Option<T> {
+    let Attribute::Extended { ext, .. } = a else { return None };
+    if ext.name != name {
+        return None;
+    }
+    let case = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?.trim();
+    names.iter().find(|(n, _)| *n == case).map(|(_, v)| *v)
+}
+
+/// `gpu::BarrierScope` (`#gpu.barrier_scope<..>`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BarrierScope {
+    Subgroup,
+    Workgroup,
+    Cluster,
+}
+
+impl BarrierScope {
+    const NAMES: [(&'static str, Self); 3] = [("subgroup", Self::Subgroup), ("workgroup", Self::Workgroup), ("cluster", Self::Cluster)];
+}
+
+impl TryFrom<&Attribute<'_>> for BarrierScope {
+    type Error = ();
+    fn try_from(a: &Attribute<'_>) -> Result<Self, ()> {
+        mnemonic_case_of(a, "gpu.barrier_scope", &Self::NAMES).ok_or(())
+    }
+}
+
+/// `gpu::AddressSpace` (`#gpu.address_space<..>`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddressSpace {
+    Global,
+    Workgroup,
+    Private,
+    Constant,
+}
+
+impl AddressSpace {
+    const NAMES: [(&'static str, Self); 4] = [("global", Self::Global), ("workgroup", Self::Workgroup), ("private", Self::Private), ("constant", Self::Constant)];
+}
+
+impl TryFrom<&Attribute<'_>> for AddressSpace {
+    type Error = ();
+    fn try_from(a: &Attribute<'_>) -> Result<Self, ()> {
+        mnemonic_case_of(a, "gpu.address_space", &Self::NAMES).ok_or(())
+    }
+}

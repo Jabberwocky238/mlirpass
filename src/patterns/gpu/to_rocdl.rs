@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, FloatKind, ShapedKind, Type};
 
-use super::attrs::{BroadcastType, ShuffleMode};
+use super::attrs::{AddressSpace, BarrierScope, BroadcastType, Dimension, ShuffleMode};
 use super::index::{constant_range, IndexKind};
 use crate::patterns;
 use crate::{AmdChipset, ConversionRewriter, LlvmOptions, OpData, OpId, ValueId};
@@ -20,6 +20,21 @@ pub struct GpuRocdlOptions {
     pub llvm: LlvmOptions,
     pub chipset: AmdChipset,
 }
+
+/// The first chipset generation with split barriers and `wave.id`.
+const GFX12: u32 = 12;
+/// The first chipset with cluster barriers (gfx1250).
+const CLUSTER_BARRIERS: AmdChipset = AmdChipset { major: 12, minor: 5, stepping: 0 };
+/// The barrier id of the whole workgroup / the whole cluster.
+const WHOLE_WORKGROUP_BARRIER: i64 = -1;
+const WHOLE_CLUSTER_BARRIER: i64 = -3;
+/// `LLVM::AtomicOrdering::release` / `acquire`.
+const ORDERING_RELEASE: i64 = 5;
+const ORDERING_ACQUIRE: i64 = 4;
+/// `IntegerOverflowFlags::nsw | nuw` of the llvm ops.
+const LLVM_NSW_NUW: i64 = 3;
+/// The most threads per block dimension on AMD GPUs.
+const MAX_THREADS_PER_BLOCK_DIM: i64 = 1024;
 
 /// The gpu ⇒ rocdl patterns (`populateGpuToROCDLConversionPatterns`, but `gpu.func` /
 /// `gpu.return` / `gpu.printf`: [`GpuToLlvm`](crate::GpuToLlvm), math: [`MathToRocdl`](crate::MathToRocdl)).
@@ -37,20 +52,103 @@ impl GpuToRocdl {
         cr.gpu_index(op, o.llvm, "rocdl.workgroup.id", IndexKind::Grid, false)
     }
 
+    /// `GPUDimOpToOcklCall<gpu::BlockDimOp>`.
     #[convert("gpu.block_dim")]
     fn block_dim(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
-        cr.gpu_index(op, o.llvm, "rocdl.workgroup.dim", IndexKind::Block, true)
+        Self::dim_call(cr, op, o, IndexKind::Block)
     }
 
+    /// `GPUDimOpToOcklCall<gpu::GridDimOp>`.
     #[convert("gpu.grid_dim")]
     fn grid_dim(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
-        cr.gpu_index(op, o.llvm, "rocdl.grid.dim", IndexKind::Grid, true)
+        Self::dim_call(cr, op, o, IndexKind::Grid)
     }
 
-    /// `gpu.barrier` ⇒ `rocdl.barrier` (`GPUToROCDL.td`).
+    /// `GPUBarrierOpLowering`: fences around the barrier for the address spaces it orders
+    /// (all of them when none are named), `wave.barrier` for a subgroup, `s.barrier` (gfx12+:
+    /// signal / wait -1) for a workgroup, signal / wait -3 for a cluster (gfx1250+).
     #[convert("gpu.barrier")]
-    fn barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: GpuRocdlOptions) -> bool {
-        cr.replace_new(op, OpData::build("rocdl.barrier"), &[]);
+    fn barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
+        let b = &*cr.rw.body;
+        let scope = b[op].get("scope").and_then(|a| BarrierScope::try_from(a).ok()).unwrap_or(BarrierScope::Workgroup);
+        let spaces: Option<Vec<AddressSpace>> = match b[op].get("address_spaces") {
+            Some(Attribute::Array(xs)) => xs.iter().map(|x| AddressSpace::try_from(x).ok()).collect(),
+            _ => None,
+        };
+        if operands.iter().any(|v| !v.is_empty()) {
+            // (named barriers are not ported)
+            return false;
+        }
+        let gfx12 = o.chipset.major >= GFX12;
+        let (sync, ops): (&str, Vec<OpData<'_>>) = match scope {
+            BarrierScope::Subgroup => ("wavefront", vec![OpData::build("rocdl.wave.barrier")]),
+            BarrierScope::Cluster => {
+                if o.chipset < CLUSTER_BARRIERS {
+                    return false;
+                }
+                ("cluster", Self::signal_wait(WHOLE_CLUSTER_BARRIER))
+            }
+            BarrierScope::Workgroup if gfx12 => ("workgroup", Self::signal_wait(WHOLE_WORKGROUP_BARRIER)),
+            BarrierScope::Workgroup => ("workgroup", vec![OpData::build("rocdl.s.barrier")]),
+        };
+        cr.rw.set_before(op);
+        Self::fence(cr, spaces.as_deref(), sync, ORDERING_RELEASE);
+        for d in ops {
+            cr.rw.create(d, &[]);
+        }
+        Self::fence(cr, spaces.as_deref(), sync, ORDERING_ACQUIRE);
+        cr.erase(op);
+        true
+    }
+
+    /// `GPUSubgroupIdOpToROCDL`: gfx12+ reads `wave.id`; before, the linearized thread id over
+    /// the wavefront size.
+    #[convert("gpu.subgroup_id")]
+    fn subgroup_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
+        let i32t = Type::int(32);
+        cr.rw.set_before(op);
+        let id = if o.chipset.major >= GFX12 {
+            let mut d = OpData::build("rocdl.wave.id");
+            if let Some(Attribute::Int { lit, .. }) = cr.rw.body[op].get("upper_bound") {
+                d.set("range", constant_range(0, lit.parse().unwrap_or(0)));
+            }
+            cr.build(d, i32t.clone())
+        } else {
+            let mut tid = Vec::new();
+            for (axis, d) in [("x", Dimension::X), ("y", Dimension::Y), ("z", Dimension::Z)] {
+                let mut data = OpData::build(&alloc::format!("rocdl.workitem.id.{axis}"));
+                if let Some(ub) = cr.known_bound(op, IndexKind::Block, d) {
+                    data.set("range", constant_range(0, ub));
+                }
+                tid.push(cr.build(data, i32t.clone()));
+            }
+            let flags = || Attribute::of_int(LLVM_NSW_NUW.into(), Type::int(32));
+            let mut dim = Vec::new();
+            for d in [Dimension::X, Dimension::Y] {
+                let v = Self::known_or_ockl(cr, op, IndexKind::Block, d, None);
+                dim.push(cr.build(OpData::build("llvm.trunc").operands(&[v]).with("overflowFlags", flags()), i32t.clone()));
+            }
+            let arith = |cr: &mut Cr<'_, '_, '_>, name: &str, a: ValueId, b: ValueId| cr.build(OpData::build(name).operands(&[a, b]).with("overflowFlags", flags()), Type::int(32));
+            let yz = arith(cr, "llvm.mul", dim[1], tid[2]);
+            let inner = arith(cr, "llvm.add", tid[1], yz);
+            let xi = arith(cr, "llvm.mul", dim[0], inner);
+            let linear = arith(cr, "llvm.add", tid[0], xi);
+            let size = cr.build(OpData::build("rocdl.wavefrontsize"), i32t.clone());
+            cr.build(OpData::build("llvm.udiv").operands(&[linear, size]), i32t)
+        };
+        let r = cr.fit_index(id, o.llvm);
+        cr.replace(op, vec![vec![r]]);
+        true
+    }
+
+    /// `GPUBallotOpToROCDL`: `rocdl.ballot` of an `i32` or `i64`.
+    #[convert("gpu.ballot")]
+    fn ballot(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuRocdlOptions) -> bool {
+        let t = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
+        if !matches!(t.bit_width(), Some(32 | 64)) || !matches!(t, Type::Integer { .. }) {
+            return false;
+        }
+        cr.replace_new(op, OpData::build("rocdl.ballot").operands(&[operands[0][0]]), &[t]);
         true
     }
 
@@ -161,6 +259,83 @@ impl GpuToRocdl {
         let ty = cr.rw.body[value].ty.clone();
         let r = cr.compose(&swizzled, ty);
         cr.replace(op, vec![vec![r], vec![active]]);
+        true
+    }
+}
+
+impl GpuToRocdl {
+    /// `rocdl.s.barrier.signal` and `rocdl.s.barrier.wait` of barrier `id`.
+    fn signal_wait<'a>(id: i64) -> Vec<OpData<'a>> {
+        vec![
+            OpData::build("rocdl.s.barrier.signal").with("id", Attribute::of_int(id.into(), Type::int(32))),
+            OpData::build("rocdl.s.barrier.wait").with("id", Attribute::of_int(id.into(), Type::int(16))),
+        ]
+    }
+
+    /// `emitFences`: an `llvm.fence` at `scope` for `spaces` (global and LDS when none), tagged
+    /// with the one it is limited to.
+    fn fence(cr: &mut Cr<'_, '_, '_>, spaces: Option<&[AddressSpace]>, scope: &str, ordering: i64) {
+        let (global, lds) = match spaces {
+            Some(s) => (s.contains(&AddressSpace::Global), s.contains(&AddressSpace::Workgroup)),
+            None => (true, true),
+        };
+        if !global && !lds {
+            return;
+        }
+        let mut d = OpData::build("llvm.fence").with("ordering", Attribute::i64(ordering)).with("syncscope", Attribute::str(scope));
+        match (global, lds) {
+            (false, true) => d.set("llvm.mmra", Attribute::dialect("llvm.mmra_tag", "<\"amdgpu-synchronize-as\":\"local\">")),
+            (true, false) => d.set("llvm.mmra", Attribute::dialect("llvm.mmra_tag", "<\"amdgpu-synchronize-as\":\"global\">")),
+            _ => {}
+        }
+        cr.rw.create(d, &[]);
+    }
+
+    /// `getKnownOrOcklDim`: a known size as an `i64` constant, else a call of
+    /// `__ockl_get_local_size` / `__ockl_get_num_groups` ranged by the op's bound (a block's
+    /// by the hardware limit).
+    fn known_or_ockl(cr: &mut Cr<'_, '_, '_>, op: OpId, kind: IndexKind, d: Dimension, bound: Option<i64>) -> ValueId {
+        let i64t = Type::int(64);
+        if let Some(k) = cr.known_bound(op, kind, d) {
+            return cr.llvm_constant(Attribute::of_int(k.into(), i64t.clone()), i64t);
+        }
+        let name = if kind == IndexKind::Block { "__ockl_get_local_size" } else { "__ockl_get_num_groups" };
+        if let Some(module) = cr.module_of(op) {
+            if cr.rw.body.lookup(module, name).is_none() {
+                let loc = cr.rw.body[op].loc.clone();
+                if let Some(f) = cr.llvm_func(module, name, vec![Type::int(32)], i64t.clone(), false) {
+                    cr.rw.body[f].loc = loc;
+                }
+            }
+        }
+        let arg = cr.llvm_constant(Attribute::of_int((d as i64).into(), Type::int(32)), Type::int(32));
+        let call = cr.llvm_call(name, &[arg], &[i64t]);
+        let hi = match (bound, kind) {
+            (Some(b), _) => Some(b + 1),
+            (None, IndexKind::Block) => Some(MAX_THREADS_PER_BLOCK_DIM + 1),
+            _ => None,
+        };
+        if let Some(hi) = hi {
+            let range = Attribute::dialect("llvm.constant_range", &alloc::format!("<i64, 1, {hi}>"));
+            cr.rw.body[call].set("res_attrs", Attribute::Array(vec![Attribute::Dict(vec![mlirformat::NamedAttr { name: "llvm.range".into(), value: Some(range) }])]));
+        }
+        cr.rw.body[call].results[0]
+    }
+
+    /// `GPUDimOpToOcklCall`: the size, fitted to the index width.
+    fn dim_call(cr: &mut Cr<'_, '_, '_>, op: OpId, o: GpuRocdlOptions, kind: IndexKind) -> bool {
+        let Some(d) = cr.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok()) else { return false };
+        let bound = match cr.rw.body[op].get("upper_bound") {
+            Some(Attribute::Int { lit, .. }) => lit.parse().ok(),
+            _ => None,
+        };
+        cr.rw.set_before(op);
+        let v = Self::known_or_ockl(cr, op, kind, d, bound);
+        let r = match o.llvm.index_bitwidth {
+            64 => v,
+            w => cr.build(OpData::build("llvm.trunc").operands(&[v]), Type::int(w)),
+        };
+        cr.replace(op, vec![vec![r]]);
         true
     }
 }

@@ -100,6 +100,20 @@ impl<'k> AllReduce<'k> {
         }
     }
 
+    /// `gpu::BarrierOp(memrefToFence)`: a workgroup barrier fencing the buffer's GPU address
+    /// space.
+    fn barrier(rw: &mut Rewriter<'_, '_>, buffer: ValueId) {
+        let space = match &rw.body[buffer].ty {
+            Type::Shaped(s) => s.extras.iter().find(|a| matches!(a, Attribute::Extended { ext, .. } if ext.name == "gpu.address_space")).map(Attribute::owned),
+            _ => None,
+        };
+        let mut d = OpData::build("gpu.barrier").with("scope", Attribute::dialect("gpu.barrier_scope", "<workgroup>"));
+        if let Some(sp) = space {
+            d.set("address_spaces", Attribute::Array(alloc::vec![sp]));
+        }
+        rw.create(d, &[]);
+    }
+
     fn predicated<'a>(rw: &mut Rw<'_, 'a>, cond: ValueId, f: &mut dyn FnMut(&mut Rw<'_, 'a>)) {
         Self::create_if(
             rw,
@@ -267,7 +281,7 @@ impl<'k> AllReduce<'k> {
             let idx = mk(rw, OpData::build("arith.index_cast").operands(&[sid]), Type::Index);
             rw.create(OpData::build("memref.store").operands(&[reduced, buffer, idx]), &[]);
         });
-        rw.create(OpData::build("gpu.barrier"), &[]);
+        Self::barrier(rw, buffer);
         let biased = bin(rw, "arith.addi", wg_size, mask);
         let n_sub = Self::div_subgroup(rw, biased);
         let valid = cmp(rw, 2, invocation, n_sub);
@@ -278,7 +292,7 @@ impl<'k> AllReduce<'k> {
             let r = self.subgroup_reduce(rw, n_sub, v);
             rw.create(OpData::build("memref.store").operands(&[r, buffer, zero]), &[]);
         });
-        rw.create(OpData::build("gpu.barrier"), &[]);
+        Self::barrier(rw, buffer);
         let r = mk(rw, OpData::build("memref.load").operands(&[buffer, zero]), self.value_ty.clone());
         rw.replace_op(self.op, &[r]);
     }

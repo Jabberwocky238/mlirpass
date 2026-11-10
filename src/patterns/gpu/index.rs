@@ -48,7 +48,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     }
 
     /// The known size bound of `kind` on the function around `op`, in dimension `d`.
-    fn known_bound(&self, op: OpId, kind: IndexKind, d: Dimension) -> Option<i64> {
+    pub(crate) fn known_bound(&self, op: OpId, kind: IndexKind, d: Dimension) -> Option<i64> {
         let (attr, prop) = kind.known()?;
         let f = self.parent_function(op)?;
         let b = &*self.rw.body;

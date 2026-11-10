@@ -59,9 +59,6 @@ pub struct GpuLlvmOptions {
 /// The gpu ⇒ llvm patterns every vendor shares.
 pub struct GpuToLlvm;
 
-/// The `gpu.func` attributes that do not carry over (`GPUFuncOpLowering`).
-const DROPPED: [&str; 8] = ["sym_name", "function_type", "workgroup_attributions", "workgroup_attrib_attrs", "private_attrib_attrs", "known_block_size", "known_grid_size", "known_cluster_size"];
-
 /// The argument attributes copied onto every argument an input becomes, and those copied onto
 /// its pointers only.
 const COPIED: [&str; 3] = ["llvm.returned", "llvm.noundef", "llvm.inreg"];
@@ -144,8 +141,16 @@ impl GpuToLlvm {
         let mut data = OpData::build("llvm.func").with("sym_name", Attribute::str(&name)).with("function_type", Attribute::Type(sig.llvm.clone())).with("linkage", Attribute::dialect("llvm.linkage", "<external>")).with("CConv", (if kernel { o.kernel_cconv } else { o.func_cconv }).into());
         let known = |n: &str| b[op].get(n).cloned();
         let (block, grid, cluster) = (known("known_block_size"), known("known_grid_size"), known("known_cluster_size"));
-        for a in cr.all_attrs(op).into_iter().filter(|a| !DROPPED.contains(&&*a.name) && a.name != "arg_attrs") {
-            data.set(&a.name, a.value.unwrap_or(Attribute::Unit));
+        // `lowerDiscardableAttrsForLLVMFunc`: of the discardable attributes, an `llvm.X` with X
+        // an `llvm.func` attribute becomes that attribute, a bare X is dropped, the rest carry
+        // over.
+        let llvm_func = cr.rw.body.ctx.opt.op_info("llvm.func").map_or(&[][..], |i| i.inherent);
+        for a in cr.rw.body.discardable(op) {
+            if llvm_func.contains(&&*a.name) {
+                continue;
+            }
+            let name = a.name.strip_prefix("llvm.").filter(|n| llvm_func.contains(n)).unwrap_or(&a.name);
+            data.set(name, a.value.unwrap_or(Attribute::Unit));
         }
         for (n, v) in [("gpu.known_block_size", &block), ("gpu.known_grid_size", &grid), ("gpu.known_cluster_size", &cluster)] {
             if let Some(v) = v {
@@ -153,6 +158,7 @@ impl GpuToLlvm {
             }
         }
         if kernel {
+            data.set("gpu.kernel", Attribute::Unit);
             if let Some(k) = o.kernel_attr {
                 data.set(k, Attribute::Unit);
             }
