@@ -750,30 +750,34 @@ impl Ofr {
 /// `LoadOp::fold`: a load from a `memref.get_global` of a constant global with a splat
 /// initial value is that value.
 fn fold_load_of_global<'a>(b: &Body<'a>, op: OpId) -> Fold<'a> {
-    let Some(get) = b.def_named(b[op].operands[0], "memref.get_global") else { return Fold::Failed };
-    let Some(Attribute::SymbolRef(path)) = b[get].get("name") else { return Fold::Failed };
-    let [name] = &path[..] else { return Fold::Failed };
-    let mut table = get;
-    let table = loop {
-        match b.parent_op(table) {
-            Some(p) if b.is_symbol_table(p) => break p,
-            Some(p) => table = p,
-            None => return Fold::Failed,
-        }
-    };
-    let global = match b.find_symbol(table, name) {
-        Some(g) => &b[g],
-        None => match b.outside_symbol(table, name) {
-            Some(g) => g,
-            None => return Fold::Failed,
-        },
-    };
-    if global.name != "memref.global" || global.get("constant").is_none() {
-        return Fold::Failed;
-    }
-    match global.get("initial_value").and_then(|a| mlirformat::Const::try_from(a).ok()) {
-        Some(c) if c.elements && c.is_splat() => Folded::Attr(mlirformat::Const::scalar(c.values[0], c.ty.element_type().clone()).into()).into(),
+    match b.constant_global(b[op].operands[0]) {
+        Some(c) if c.is_splat() => Folded::Attr(mlirformat::Const::scalar(c.values[0], c.ty.element_type().clone()).into()).into(),
         _ => Fold::Failed,
+    }
+}
+
+impl<'a> Body<'a> {
+    /// The initial value of the constant `memref.global` that `memref`'s `memref.get_global`
+    /// names (looked up from the nearest symbol table, then outside).
+    pub(crate) fn constant_global(&self, memref: ValueId) -> Option<mlirformat::Const<'a>> {
+        let get = self.def_named(memref, "memref.get_global")?;
+        let Some(Attribute::SymbolRef(path)) = self[get].get("name") else { return None };
+        let [name] = &path[..] else { return None };
+        let mut table = get;
+        let table = loop {
+            match self.parent_op(table)? {
+                p if self.is_symbol_table(p) => break p,
+                p => table = p,
+            }
+        };
+        let global = match self.find_symbol(table, name) {
+            Some(g) => &self[g],
+            None => self.outside_symbol(table, name)?,
+        };
+        if global.name != "memref.global" || global.get("constant").is_none() {
+            return None;
+        }
+        mlirformat::Const::try_from(global.get("initial_value")?).ok().filter(|c| c.elements)
     }
 }
 

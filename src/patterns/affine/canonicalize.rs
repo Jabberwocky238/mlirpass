@@ -917,6 +917,51 @@ fn empty_loop_folder(b: &Body<'_>, f: OpId) -> Option<Vec<ValueId>> {
 }
 
 /// `AffineIfOp::fold`: compose and canonicalize the condition and its operands.
+/// `AffineLoadOp::fold`: through a `memref.cast`, or an element of a constant global (any of a
+/// splat, else at constant indices).
+fn fold_load<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
+    if b.fold_memref_cast(op, None) {
+        return Fold::InPlace;
+    }
+    let Some(c) = b.constant_global(b[op].operands[0]) else { return Fold::Failed };
+    let elem = c.ty.element_type().clone();
+    if c.is_splat() {
+        return Folded::Attr(crate::Const::scalar(c.values[0], elem).into()).into();
+    }
+    let Some(map) = b.affine_map(op, "map") else { return Fold::Failed };
+    let Some(indices) = map.results.iter().map(AffineExpr::as_const).collect::<Option<Vec<i64>>>() else { return Fold::Failed };
+    let Some(shape) = c.ty.shape().map(|s| s.iter().map(|d| if let mlirformat::Dim::Static(n) = d { *n } else { 1 }).collect::<Vec<i64>>()) else { return Fold::Failed };
+    let at = indices.iter().zip(&shape).fold(0i64, |acc, (i, d)| acc * d + i);
+    Folded::Attr(crate::Const::scalar(c.at(at as usize), elem).into()).into()
+}
+
+/// `AffineParallelOp::fold` (`canonicalizeLoopBounds`): each bound map composed with the
+/// `affine.apply`s and constants feeding it.
+fn fold_parallel<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
+    let (Some(lbm), Some(ubm)) = (b.affine_map(op, "lowerBoundsMap"), b.affine_map(op, "upperBoundsMap")) else { return Fold::Failed };
+    let n = (lbm.dims + lbm.syms) as usize;
+    let all = b[op].operands.clone();
+    let (lbo, ubo) = all.split_at(n.min(all.len()));
+    let mut changed = false;
+    let mut bounds = Vec::new();
+    for (map, ops) in [(lbm, lbo), (ubm, ubo)] {
+        let (mut m, mut o): (AffineMap, crate::Ids<ValueId>) = (map.clone(), ops.to_vec().into());
+        b.compose_map(&mut m, &mut o);
+        changed |= m != map || o[..] != ops[..];
+        bounds.push((m, o));
+    }
+    if !changed {
+        return Fold::Failed;
+    }
+    let [(lm, lo), (um, uo)] = <[_; 2]>::try_from(bounds).ok().expect("two bounds");
+    let mut ops = lo.to_vec();
+    ops.extend(uo.iter().copied());
+    b.set_operands(op, ops);
+    b[op].set("lowerBoundsMap", Attribute::from(&lm));
+    b[op].set("upperBoundsMap", Attribute::from(&um));
+    Fold::InPlace
+}
+
 fn fold_if<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let Some(old) = b.integer_set(op, "condition") else { return Fold::Failed };
     let old_ops = b[op].operands.clone();
@@ -1063,9 +1108,15 @@ impl<'a> Body<'a> {
     fn ofr_const(&self, o: Ofr) -> Option<i64> {
         match o {
             Ofr::C(c) => Some(c),
-            Ofr::V(v) => self.const_index(v),
+            Ofr::V(v) => self.const_int_or_splat(v),
             Ofr::None => None,
         }
+    }
+
+    /// `getConstantIntValue`: an integer constant, or a splat of one.
+    fn const_int_or_splat(&self, v: ValueId) -> Option<i64> {
+        let c = crate::Const::try_from(&self.constant_of(v)?).ok()?;
+        Some(c.as_int()?.signed() as i64)
     }
 
     /// `foldCstValueToCstAttrBasis`: constant dynamic basis entries become static.
@@ -1194,14 +1245,21 @@ impl<'a> crate::Rewriter<'_, 'a> {
             .with("static_basis", Attribute::dense_i64(&statics))
     }
 
+    /// The linearized index: of the multi-index's type (`index` or a vector of them).
     fn linearize(&mut self, multi: &[ValueId], basis: &[Ofr], disjoint: bool) -> ValueId {
         let d = self.linearize_data(multi, basis, disjoint);
-        let o = self.create(d, &[Type::Index]);
+        let ty = multi.first().map_or(Type::Index, |v| self.body[*v].ty.clone());
+        let o = self.create(d, &[ty]);
         self.body[o].results[0]
     }
 
-    fn index_constant(&mut self, v: i64) -> ValueId {
-        let o = self.emit(&arith::Constant::new(Attribute::index(v), Type::Index));
+    /// `getZeroAttr(ty)` as a constant: `ty` is `index` or a vector of them.
+    fn zero_of(&mut self, ty: &Type<'a>) -> ValueId {
+        let value = match ty {
+            Type::Index => Attribute::index(0),
+            t => crate::Const::splat(crate::Scalar::Int(crate::ApInt::zero(64)), t.clone()).into(),
+        };
+        let o = self.emit(&arith::Constant::new(value, ty.clone()));
         self.body[o].results[0]
     }
 
@@ -1320,7 +1378,8 @@ impl AffineCanon {
         let mut repl = vec![None; n];
         for (i, u) in unit.iter().enumerate() {
             if *u {
-                let z = *zero.get_or_insert_with(|| rw.index_constant(0));
+                let ty = rw.body[index].ty.clone();
+                let z = *zero.get_or_insert_with(|| rw.zero_of(&ty));
                 repl[i] = Some(z);
             }
         }
@@ -1464,7 +1523,8 @@ impl AffineCanon {
         new_index.extend(&multi[prev..]);
         new_basis.extend(&lin_basis[prev..]);
         let data = rw.linearize_data(&new_index, &new_basis, disjoint);
-        rw.replace_with(op, data, &[Type::Index]);
+        let ty = rw.body[rw.body[op].results[0]].ty.clone();
+        rw.replace_with(op, data, &[ty]);
         for (m, r) in matches.iter().zip(repls) {
             if !r.is_empty() {
                 rw.replace_op(m.d, &r);
@@ -1479,7 +1539,7 @@ impl AffineCanon {
         let b = &*rw.body;
         let multi = b.multi_index(op);
         let Some(&lead) = multi.first() else { return false };
-        if b.const_index(lead) != Some(0) {
+        if b.const_int_or_splat(lead) != Some(0) {
             return false;
         }
         if multi.len() == 1 {
@@ -1492,7 +1552,8 @@ impl AffineCanon {
         }
         let disjoint = b.disjoint(op);
         let data = rw.linearize_data(&multi[1..], &basis, disjoint);
-        rw.replace_with(op, data, &[Type::Index]);
+        let ty = rw.body[rw.body[op].results[0]].ty.clone();
+        rw.replace_with(op, data, &[ty]);
         true
     }
 
@@ -1515,7 +1576,7 @@ impl AffineCanon {
                 basis.push(e);
                 continue;
             }
-            if !disjoint && b.const_index(*i) != Some(0) {
+            if !disjoint && b.const_int_or_splat(*i) != Some(0) {
                 idx.push(*i);
                 basis.push(e);
             }
@@ -1523,12 +1584,15 @@ impl AffineCanon {
         if idx.len() == n {
             return false;
         }
+        let ty = rw.body[rw.body[op].results[0]].ty.clone();
         if idx.is_empty() {
-            rw.replace_by(op, &arith::Constant::new(Attribute::index(0), Type::Index));
+            rw.set_before(op);
+            let z = rw.zero_of(&ty);
+            rw.replace_op(op, &[z]);
             return true;
         }
         let data = rw.linearize_data(&idx, &basis, disjoint);
-        rw.replace_with(op, data, &[Type::Index]);
+        rw.replace_with(op, data, &[ty]);
         true
     }
 
@@ -1683,6 +1747,8 @@ impl AffineCanon {
             "affine.for" => fold_for(b, op),
             "affine.if" => fold_if(b, op),
             "affine.linearize_index" => fold_linearize(b, op),
+            "affine.load" => fold_load(b, op),
+            "affine.parallel" => fold_parallel(b, op),
             _ => Fold::Failed,
         }
     }
