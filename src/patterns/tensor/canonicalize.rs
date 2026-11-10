@@ -240,7 +240,8 @@ impl<'a> Body<'a> {
     pub fn dps_inits(&self, op: OpId) -> Option<core::ops::Range<usize>> {
         let n = self[op].operands.len();
         match &*self[op].name {
-            "tensor.insert_slice" | "tensor.insert" | "bufferization.materialize_in_destination" => Some(1..2),
+            // The destination is the second operand (pack / unpack: before the padding and tiles).
+            "tensor.insert_slice" | "tensor.insert" | "bufferization.materialize_in_destination" | "linalg.pack" | "linalg.unpack" => Some(1..2),
             _ if !self.has(op, Trait::DestinationStyleOpInterface) => None,
             "test.destination_style_op" => {
                 let s = self.segments(op, "operandSegmentSizes")?;

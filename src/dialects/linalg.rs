@@ -140,7 +140,10 @@ impl OpInterfaces for LinalgDialect {
     /// written (and read when the payload uses them).
     fn effects(&self, b: &Body<'_>, op: OpId) -> Option<Vec<EffectInstance>> {
         use EffectKind::{Read, Write};
-        let (ins, outs) = (b.operand_group(op, 0), b.operand_group(op, 1));
+        // The inits by `DestinationStyleOpInterface` (`linalg.map` has no segment sizes).
+        let n = b[op].operands.len();
+        let inits = b.dps_inits(op).unwrap_or(n..n);
+        let (ins, outs) = (&b[op].operands[..inits.start], &b[op].operands[inits]);
         let entry = b[op].regions.first().and_then(|r| b[*r].blocks.first()).map(|blk| &b[*blk].args);
         let mut out: Vec<_> = ins.iter().filter(|v| b.is_memref(**v)).map(|v| EffectInstance::on(Read, Some(*v))).collect();
         for (j, v) in outs.iter().enumerate().filter(|(_, v)| b.is_memref(**v)) {
