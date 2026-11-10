@@ -24,6 +24,8 @@ use crate::UbToLlvm;
 use crate::{VectorOptions, VectorToLlvm};
 #[cfg(feature = "dialect.nvvm")]
 use crate::NvvmToLlvm;
+#[cfg(feature = "dialect.ptr")]
+use crate::PtrToLlvm;
 
 /// What `convert-to-llvm` builds its patterns with.
 pub struct LlvmEnv<'p> {
@@ -111,6 +113,10 @@ impl Default for ToLlvmInterfaces {
         fn nvvm<'p>(p: &mut ConversionPatterns<'p>, _: usize, _: &LlvmEnv<'p>) {
             NvvmToLlvm::populate(p);
         }
+        #[cfg(feature = "dialect.ptr")]
+        fn ptr<'p>(p: &mut ConversionPatterns<'p>, i: usize, e: &LlvmEnv<'p>) {
+            PtrToLlvm::populate(p, i, e.llvm);
+        }
         // (none without a dialect feature)
         #[allow(unused_mut)]
         let mut s = Self::new();
@@ -134,6 +140,8 @@ impl Default for ToLlvmInterfaces {
         s.register("vector", vector);
         #[cfg(feature = "dialect.nvvm")]
         s.register("nvvm", nvvm);
+        #[cfg(feature = "dialect.ptr")]
+        s.register("ptr", ptr);
         s
     }
 }

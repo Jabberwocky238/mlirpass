@@ -71,8 +71,13 @@ impl ConvertToLlvm {
 impl Run for ConvertToLlvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let nvvm = self.dynamic && Self::nvvm_target(body, op);
-        let llvm = LlvmOptions { gpu_spaces: Self::gpu_spaces(nvvm), ..LlvmOptions::derived() }.at(body, op);
-        let tc = LlvmConverter::build(llvm);
+        // (the ptr dialect's interface converts `#ptr.generic_space` and its types)
+        let llvm = LlvmOptions { gpu_spaces: Self::gpu_spaces(nvvm), ptr_spaces: cfg!(feature = "dialect.ptr"), ..LlvmOptions::derived() }.at(body, op);
+        let registry = LlvmConverter::identified_in(body, op);
+        let mut tc = LlvmConverter::build(llvm);
+        LlvmConverter::with_identified(&mut tc, llvm, &registry);
+        #[cfg(feature = "dialect.ptr")]
+        crate::PtrToLlvm::convert(&mut tc, llvm, body.ctx.opt);
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         let dialects: Vec<&str> = if self.filter.is_empty() { self.interfaces.dialects() } else { self.filter.iter().map(String::as_str).collect() };

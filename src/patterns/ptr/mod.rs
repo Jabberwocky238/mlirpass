@@ -2,6 +2,11 @@
 
 use mlirformat::{Attribute, Const, Type};
 
+#[cfg(feature = "target.llvm")]
+mod to_llvm;
+#[cfg(feature = "target.llvm")]
+pub use to_llvm::PtrToLlvm;
+
 use crate::{Body, Fold, Folded, OpId, ValueId};
 
 /// The `ptr` ops that fold.

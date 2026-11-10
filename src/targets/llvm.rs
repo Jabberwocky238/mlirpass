@@ -31,11 +31,13 @@ pub struct LlvmOptions {
     pub gpu_spaces: Option<GpuSpaces>,
     /// `populateAMDGPUTypeAndAttributeConversions`: `#amdgpu.address_space`s as 7 / 8 / 9.
     pub amdgpu_spaces: bool,
+    /// `populatePtrToLLVMConversionPatterns`: `#ptr.generic_space` as 0.
+    pub ptr_spaces: bool,
 }
 
 impl Default for LlvmOptions {
     fn default() -> Self {
-        Self { index_bitwidth: 64, bare_ptr: false, gpu_spaces: None, amdgpu_spaces: false }
+        Self { index_bitwidth: 64, bare_ptr: false, gpu_spaces: None, amdgpu_spaces: false, ptr_spaces: false }
     }
 }
 
@@ -169,6 +171,7 @@ impl LlvmOptions {
             // `getMemRefAddressSpace`: a signless or index integer.
             Some(Attribute::Int { lit, ty: None | Some(Type::Index | Type::Integer { signedness: Signedness::Signless, .. }) }) => lit.parse().ok(),
             Some(a) if self.amdgpu_spaces && AmdgpuAddressSpace::try_from(a).is_ok() => AmdgpuAddressSpace::try_from(a).ok().map(|s| s as u32),
+            Some(Attribute::Extended { ext, .. }) if self.ptr_spaces && ext.name == "ptr.generic_space" => Some(0),
             Some(a) => Some(self.gpu_spaces?.of(GpuAddressSpace::try_from(a).ok()?)),
         }
     }
@@ -200,6 +203,84 @@ impl LlvmOptions {
 
 /// The `LLVMTypeConverter`'s rules, registered in the same order.
 pub struct LlvmConverter;
+
+/// `LLVMStructType::getIdentified` is context-wide: each identified struct's body (packed,
+/// and its element types printed), once set.
+pub type IdentifiedStructs = core::cell::RefCell<alloc::collections::BTreeMap<String, (bool, String)>>;
+
+impl LlvmConverter {
+    /// The identified structs with a body that the ops under `top` use (in result, block
+    /// argument and type attribute types).
+    pub fn identified_in(body: &crate::Body<'_>, top: OpId) -> IdentifiedStructs {
+        fn visit(t: &Type<'_>, out: &mut alloc::collections::BTreeMap<String, (bool, String)>) {
+            match t {
+                Type::Function(f) => f.inputs.iter().chain(&f.results).for_each(|x| visit(x, out)),
+                Type::Shaped(s) => visit(&s.elem, out),
+                _ => {}
+            }
+            match LlvmType::try_from(t) {
+                Ok(LlvmType::Struct { name, packed, body: Some(b), .. }) => {
+                    if let Some(n) = name {
+                        out.entry(n).or_insert((packed, LlvmConverter::body_text(&b)));
+                    }
+                    b.iter().for_each(|x| visit(x, out));
+                }
+                Ok(LlvmType::Array(_, e)) => visit(&e, out),
+                Ok(LlvmType::Func { ret, params, .. }) => core::iter::once(&*ret).chain(&params).for_each(|x| visit(x, out)),
+                _ => {}
+            }
+        }
+        let mut out = alloc::collections::BTreeMap::new();
+        for o in body.ops_in(top) {
+            let d = &body[o];
+            d.results.iter().for_each(|r| visit(&body[*r].ty, &mut out));
+            for r in &d.regions {
+                for blk in &body[*r].blocks {
+                    body[*blk].args.iter().for_each(|a| visit(&body[*a].ty, &mut out));
+                }
+            }
+            for a in d.all_attrs() {
+                if let Some(Attribute::Type(t)) = &a.value {
+                    visit(t, &mut out);
+                }
+            }
+        }
+        core::cell::RefCell::new(out)
+    }
+
+    fn body_text(b: &[Type<'_>]) -> String {
+        b.iter().map(|t| format!("{t}")).collect::<Vec<_>>().join(", ")
+    }
+
+    /// The identified struct conversion against `registry`: `_Converted.<name>` takes the
+    /// converted body unless the module already gave that name another one, which fails.
+    pub fn with_identified<'c>(tc: &mut TypeConverter<'c>, options: LlvmOptions, registry: &'c IdentifiedStructs) {
+        tc.conversion(move |t| match LlvmType::try_from(t).ok()? {
+            LlvmType::Struct { name: Some(n), packed, body: Some(b), opaque } if !LlvmType::compatible(t) => {
+                let converted = format!("_Converted.{n}");
+                let body = b
+                    .iter()
+                    .map(|e| match LlvmType::try_from(e) {
+                        Ok(LlvmType::Struct { name: Some(m), body: None, packed, opaque }) if m == n => Some(LlvmType::Struct { name: Some(converted.clone()), packed, body: None, opaque }.into()),
+                        _ => Self::scalar(e, options),
+                    })
+                    .collect::<Option<Vec<_>>>();
+                let Some(body) = body else { return Some(None) };
+                let text = Self::body_text(&body);
+                let mut reg = registry.borrow_mut();
+                match reg.get(&converted) {
+                    Some((p, b)) if *p != packed || *b != text => return Some(None),
+                    Some(_) => {}
+                    None => {
+                        reg.insert(converted.clone(), (packed, text));
+                    }
+                }
+                Some(Some(vec![LlvmType::Struct { name: Some(converted), packed, body: Some(body), opaque }.into()]))
+            }
+            _ => None,
+        });
+    }
+}
 
 impl LlvmConverter {
     /// The type converter for `options`, with the unrealized-cast materializations.
