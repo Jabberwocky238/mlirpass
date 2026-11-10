@@ -87,6 +87,7 @@ impl crate::Run for ConvertGpuToLlvmSpv {
             func_cconv: CConv::SpirFunc,
             workgroup_args: true,
             printf: Some(Printf::Call(PrintfCall { space: 2, cconv: CConv::SpirFunc, name: "_Z6printfPU3AS2Kcz" })),
+            dynamic_shmem_align: None,
         };
         GpuToLlvmSpv::populate(&mut patterns, i, llvm);
         GpuToLlvm::populate(&mut patterns, i, gpu);

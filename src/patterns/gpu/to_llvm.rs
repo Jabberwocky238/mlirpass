@@ -11,7 +11,7 @@ use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, Dim, NamedAttr, Shaped, ShapedKind, Type};
 
 use crate::patterns;
-use crate::{CConv, ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, ValueId};
+use crate::{CConv, ConversionRewriter, LlvmConverter, LlvmOptions, MemrefToLlvm, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -54,6 +54,8 @@ pub struct GpuLlvmOptions {
     /// `encodeWorkgroupAttributionsAsArguments`: `llvm.ptr` arguments instead of globals.
     pub workgroup_args: bool,
     pub printf: Option<Printf>,
+    /// `GPUDynamicSharedMemoryOpLowering`'s alignment in bits, where it is used.
+    pub dynamic_shmem_align: Option<u32>,
 }
 
 /// The gpu ⇒ llvm patterns every vendor shares.
@@ -91,6 +93,63 @@ impl<'a> Attribution<'a> {
 
 #[patterns(converter, options = GpuLlvmOptions)]
 impl GpuToLlvm {
+    /// `GPUDynamicSharedMemoryOpLowering`: the `memref<0xT>` of a zero-sized global of the
+    /// module (one already there with the space and alignment, else a new
+    /// `__dynamic_shmem__<n>` at the module's start).
+    #[convert("gpu.dynamic_shared_memory")]
+    fn dynamic_shared_memory(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuLlvmOptions) -> bool {
+        let Some(bits) = o.dynamic_shmem_align else { return false };
+        let b = &*cr.rw.body;
+        let Type::Shaped(s) = b[b[op].results[0]].ty.clone() else { return false };
+        let Some(elem) = MemrefToLlvm::elem(cr, &s.elem) else { return false };
+        let zero = Shaped { shape: Some(vec![mlirformat::Dim::Static(0)]), elem: elem.clone().into(), extras: s.extras.iter().filter(|x| !x.is_layout()).cloned().collect(), ..s.clone() };
+        let Some(desc_ty) = cr.converted(&Type::Shaped(zero.clone())) else { return false };
+        let Some(LlvmType::Ptr(space)) = LlvmType::try_from(&desc_ty).ok().and_then(|t| if let LlvmType::Struct { body: Some(f), .. } = t { f.first().and_then(|p| LlvmType::try_from(p).ok()) } else { None }) else { return false };
+        let align = i64::from(bits / zero.elem.bit_width().unwrap_or(8).max(1));
+        let b = &*cr.rw.body;
+        let mut module = b.parent_op(op);
+        while let Some(m) = module.filter(|m| b[*m].name != "gpu.module") {
+            module = b.parent_op(m);
+        }
+        let Some(module) = module else { return false };
+        let top = b.top_block(module);
+        let array = LlvmType::array(0, elem.clone());
+        let globals: Vec<OpId> = b.ops(top).filter(|g| b[*g].name == "llvm.mlir.global").collect();
+        let int = |a: Option<&Attribute<'_>>| a.and_then(MemrefToLlvm::int).unwrap_or(0);
+        let existing = globals.iter().copied().find(|g| b[*g].get("global_type") == Some(&Attribute::Type(array.clone())) && int(b[*g].get("addr_space")) == i64::from(space) && int(b[*g].get("alignment")) == align);
+        let name = match existing {
+            Some(g) => String::from(b.sym_name(g).unwrap_or("")),
+            None => {
+                let taken: Vec<&str> = globals.iter().filter_map(|g| b.sym_name(*g)).collect();
+                let name = (0..).map(|i| format!("__dynamic_shmem__{i}")).find(|n| !taken.contains(&n.as_str())).expect("a free name");
+                let loc = b[op].loc.clone();
+                let saved = cr.rw.ip;
+                cr.rw.set_start(top);
+                let mut data = OpData { loc, ..OpData::build("llvm.mlir.global") }
+                    .with("addr_space", Attribute::of_int(space.into(), Type::int(32)))
+                    .with("global_type", Attribute::Type(array))
+                    .with("linkage", Attribute::dialect("llvm.linkage", "<internal>"))
+                    .with("sym_name", Attribute::str(&name));
+                if align != 0 {
+                    data.set("alignment", Attribute::i64(align));
+                }
+                cr.rw.create_with(data, &[], |b, g| {
+                    b.add_region(g);
+                });
+                cr.rw.ip = saved;
+                name
+            }
+        };
+        cr.rw.set_before(op);
+        let ptr: Type<'_> = LlvmType::Ptr(space).into();
+        let base = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![name.into()])), ptr.clone());
+        let shmem = MemrefToLlvm::gep(cr, ptr, elem, base, &[crate::patterns::LlvmGep::C(0)], 0);
+        let Some((sizes, strides, _)) = MemrefToLlvm::desc_sizes(cr, o.llvm, &zero, &[], true) else { return false };
+        let Some(d) = MemrefToLlvm::create_desc(cr, o.llvm, &zero, shmem, shmem, &sizes, &strides) else { return false };
+        cr.replace(op, vec![vec![d]]);
+        true
+    }
+
     fn count(a: Option<&Attribute<'_>>) -> usize {
         match a {
             Some(Attribute::Int { lit, .. }) => lit.parse().unwrap_or(0),

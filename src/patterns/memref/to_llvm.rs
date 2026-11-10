@@ -137,7 +137,7 @@ impl MemrefToLlvm {
 
     /// `getMemRefDescriptorSizes`: sizes, row-major strides, and the element count (or byte
     /// size).
-    fn desc_sizes<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, dynamic: &[ValueId], bytes: bool) -> Option<(Vec<ValueId>, Vec<ValueId>, ValueId)> {
+    pub(crate) fn desc_sizes<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, dynamic: &[ValueId], bytes: bool) -> Option<(Vec<ValueId>, Vec<ValueId>, ValueId)> {
         let shape = s.dims().unwrap_or_default();
         let mut dynamic = dynamic.iter();
         let mut sizes = Vec::new();
@@ -183,7 +183,7 @@ impl MemrefToLlvm {
     }
 
     /// `createMemRefDescriptor`.
-    fn create_desc<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, allocated: ValueId, aligned: ValueId, sizes: &[ValueId], strides: &[ValueId]) -> Option<ValueId> {
+    pub(crate) fn create_desc<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, allocated: ValueId, aligned: ValueId, sizes: &[ValueId], strides: &[ValueId]) -> Option<ValueId> {
         let ty = LlvmConverter::convert_memref(opts, &s.clone())?;
         let mut d = cr.poison(ty);
         d = cr.insert_value(d, allocated, &[0]);

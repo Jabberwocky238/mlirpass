@@ -133,6 +133,7 @@ impl crate::Run for ConvertGpuToRocdl {
             func_cconv: CConv::C,
             workgroup_args: false,
             printf,
+            dynamic_shmem_align: Some(0),
         };
         GpuToLlvm::populate(&mut patterns, i, gpu);
         // `configureGpuToROCDLConversionLegality`.

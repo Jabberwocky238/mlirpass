@@ -226,7 +226,7 @@ impl AmdgpuToRocdl {
         let src = operands[0][0];
         let (Some(and), Some(or), Some(xor)) = (Self::int_attr(cr, op, "and_mask"), Self::int_attr(cr, op, "or_mask"), Self::int_attr(cr, op, "xor_mask")) else { return false };
         cr.rw.set_before(op);
-        let parts = cr.decompose(src, Type::int(32));
+        let Some(parts) = cr.decompose(src, Type::int(32), false) else { return false };
         let mask = cr.llvm_constant(Attribute::of_int((and | (or << 5) | (xor << 10)).into(), Type::int(32)), Type::int(32));
         let swizzled: Vec<ValueId> = parts.iter().map(|v| {
             let t = cr.rw.body[*v].ty.clone();
@@ -249,7 +249,7 @@ impl AmdgpuToRocdl {
         let name = if Self::flag(cr, op, "cross") { "rocdl.permlanex16.var" } else { "rocdl.permlane16.var" };
         let (fi, bound) = (Self::flag(cr, op, "fetch_inactive"), Self::flag(cr, op, "bound_ctrl"));
         cr.rw.set_before(op);
-        let parts = cr.decompose(src, Type::int(32));
+        let Some(parts) = cr.decompose(src, Type::int(32), false) else { return false };
         let permuted: Vec<ValueId> = parts.into_iter().map(|v| cr.build(OpData::build(name).operands(&[v, v, selector]).with("fi", Attribute::Bool(fi)).with("boundControl", Attribute::Bool(bound)), Type::int(32))).collect();
         let ty = cr.rw.body[src].ty.clone();
         let r = cr.compose(&permuted, ty);
@@ -272,7 +272,7 @@ impl AmdgpuToRocdl {
         };
         let (fi, bound) = (Self::flag(cr, op, "fetch_inactive"), Self::flag(cr, op, "bound_ctrl"));
         cr.rw.set_before(op);
-        let parts = cr.decompose(src, Type::int(32));
+        let Some(parts) = cr.decompose(src, Type::int(32), false) else { return false };
         let mut permuted = Vec::new();
         for v in parts {
             let t = cr.rw.body[v].ty.clone();

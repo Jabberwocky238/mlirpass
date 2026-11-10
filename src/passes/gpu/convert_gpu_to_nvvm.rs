@@ -32,6 +32,7 @@ pub fn configure_nvvm<'p>(patterns: &mut ConversionPatterns<'p>, i: usize, llvm:
         func_cconv: CConv::C,
         workgroup_args: false,
         printf: Some(Printf::VPrintf),
+        dynamic_shmem_align: Some(128),
     };
     GpuToLlvm::populate(patterns, i, gpu);
     target.illegal_op("func.func").illegal_op("cf.assert").legal_dialect("llvm").legal_dialect("nvvm");
