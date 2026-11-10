@@ -202,6 +202,9 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
         "index" => crate::IndexCanon::materialize(value, ty),
         #[cfg(feature = "dialect.complex")]
         "complex" => crate::ComplexCanon::materialize(value, ty),
+        // `EmitCDialect::materializeConstant`: any attribute.
+        #[cfg(feature = "dialect.emitc")]
+        "emitc" => Some(OpData::build("emitc.constant").with("value", value.clone())),
         #[cfg(feature = "dialect.ub")]
         "ub" => value.is_poison().then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,

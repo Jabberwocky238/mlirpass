@@ -38,13 +38,14 @@ cli = ["std"]
 # One feature per dialect: its op interfaces, folds, canonicalization patterns, its own
 # transforms and its lowerings to other dialects (`dialect.scf`). A lowering into a backend
 # also needs that `target.*`.
-all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bufferization", "dialect.cf", "dialect.complex", "dialect.func", "dialect.gpu", "dialect.index", "dialect.linalg", "dialect.llvm", "dialect.math", "dialect.memref", "dialect.ml_program", "dialect.nvgpu", "dialect.nvvm", "dialect.ptr", "dialect.quant", "dialect.scf", "dialect.shape", "dialect.spirv", "dialect.tensor", "dialect.test", "dialect.tosa", "dialect.ub", "dialect.vector", "dialect.x86", "dialect.xegpu", "dialect.xevm"]
+all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bufferization", "dialect.cf", "dialect.complex", "dialect.emitc", "dialect.func", "dialect.gpu", "dialect.index", "dialect.linalg", "dialect.llvm", "dialect.math", "dialect.memref", "dialect.ml_program", "dialect.nvgpu", "dialect.nvvm", "dialect.ptr", "dialect.quant", "dialect.scf", "dialect.shape", "dialect.spirv", "dialect.tensor", "dialect.test", "dialect.tosa", "dialect.ub", "dialect.vector", "dialect.x86", "dialect.xegpu", "dialect.xevm"]
 "dialect.affine" = ["dialect.arith"]
 "dialect.amdgpu" = ["dialect.memref"]
 "dialect.arith" = []
 "dialect.bufferization" = ["dialect.memref"]
 "dialect.cf" = []
 "dialect.complex" = ["dialect.arith"]
+"dialect.emitc" = []
 "dialect.func" = []
 "dialect.gpu" = ["dialect.arith", "dialect.memref"]
 "dialect.index" = ["dialect.arith"]
@@ -80,7 +81,7 @@ all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bu
 # into it, and what it emits.
 all-targets = ["target.llvm", "target.emitc", "target.spirv"]
 "target.llvm" = ["dialect.llvm"]
-"target.emitc" = []
+"target.emitc" = ["dialect.emitc"]
 "target.spirv" = ["dialect.spirv"]
 # The GPUs' own machine code, one feature each (not in `all-targets`): SPIR-V and the upstream dialects ⇒ the
 # instruction set ⇒ registers ⇒ bytes (`gpu-module-to-binary`). Apple AGX (G13), Apple9 (M3 / M4), AMD RDNA2 (GFX10.3), Intel Xe3.
