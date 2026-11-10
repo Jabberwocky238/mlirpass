@@ -245,6 +245,18 @@ impl LlvmConverter {
                 let body = b.iter().map(|e| Self::scalar(e, options)).collect::<Option<Vec<_>>>();
                 Some(body.map(|b| vec![LlvmType::Struct { name: None, packed, body: Some(b), opaque: false }.into()]))
             }
+            // An identified struct becomes `_Converted.<name>`, its references to itself too.
+            LlvmType::Struct { name: Some(n), packed, body: Some(b), opaque } if !LlvmType::compatible(t) => {
+                let converted = alloc::format!("_Converted.{n}");
+                let body = b
+                    .iter()
+                    .map(|e| match LlvmType::try_from(e) {
+                        Ok(LlvmType::Struct { name: Some(m), body: None, packed, opaque }) if m == n => Some(LlvmType::Struct { name: Some(converted.clone()), packed, body: None, opaque }.into()),
+                        _ => Self::scalar(e, options),
+                    })
+                    .collect::<Option<Vec<_>>>();
+                Some(body.map(|b| vec![LlvmType::Struct { name: Some(converted.clone()), packed, body: Some(b), opaque }.into()]))
+            }
             _ => None,
         });
         tc.conversion(move |t| match LlvmType::try_from(t).ok()? {
