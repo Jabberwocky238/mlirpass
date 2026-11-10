@@ -514,6 +514,10 @@ impl ShapeCanon {
         let Some(s) = b.def_named(b[op].operands[0], "shape.shape_of") else { return false };
         let Some(&i) = b[op].operands.get(1) else { return false };
         let arg = b[s].operands[0];
+        // (only of a tensor: a memref would need `memref.dim`)
+        if !matches!(&b[arg].ty, Type::Shaped(sh) if sh.kind == mlirformat::ShapedKind::Tensor) {
+            return false;
+        }
         rw.replace_with(op, OpData::build("tensor.dim").operands(&[arg, i]), &[Type::Index]);
         true
     }
@@ -526,7 +530,8 @@ impl ShapeCanon {
         let Some(d) = arg.dims().filter(|d| !d.contains(&Dim::DYNAMIC)) else { return false };
         let ty = b[b[op].results[0]].ty.clone();
         rw.set_before(op);
-        let ct = Type::tensor(&[d.len() as i64], Type::Index);
+        // (a `!shape.shape` result takes the constant as it is)
+        let ct = if Shp::is(&ty, "shape") { ty.clone() } else { Type::tensor(&[d.len() as i64], Type::Index) };
         let mut c = rw.one(OpData::build("shape.const_shape").with("shape", Shp::index_tensor(&d)), ct.clone());
         if ct != ty {
             c = rw.one(OpData::build("tensor.cast").operands(&[c]), ty);
