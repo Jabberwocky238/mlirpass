@@ -17,6 +17,9 @@ pub fn convert_xegpu_to_xevm<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Er
         target.legal_dialect(d);
     }
     target.dialect("xegpu", Action::Illegal);
+    // (arith.extf / truncf between MX narrow floats and f16 / bf16 become xevm's)
+    target.dynamic_op("arith.extf", |b: &Body<'_>, o: OpId| Some(!XegpuToXevm::is_xevm_extf(b, o)));
+    target.dynamic_op("arith.truncf", |b: &Body<'_>, o: OpId| Some(!XegpuToXevm::is_xevm_truncf(b, o)));
     // `populateSCFStructuralTypeConversionsAndLegality`'s legality: scf ops on converted types.
     let tcr = &tc;
     target.dialect("scf", Action::Dynamic(alloc::boxed::Box::new(move |b: &Body<'_>, o: OpId| Some(tcr.is_legal_op(b, o)))));

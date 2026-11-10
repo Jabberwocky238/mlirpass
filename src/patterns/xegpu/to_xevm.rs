@@ -72,6 +72,19 @@ fn space_int(s: &Shaped<'_>) -> u32 {
     }
 }
 
+/// `getExtfNarrowType` / `getTruncfNarrowType`: an MX narrow float's xevm name.
+fn mx_name(t: &Type<'_>) -> Option<&'static str> {
+    Some(match t {
+        Type::Float(FloatKind::F8E5M2) => "bf8",
+        Type::Float(FloatKind::F8E4M3FN) => "f8",
+        Type::Float(FloatKind::F4E2M1FN) => "e2m1",
+        _ => return None,
+    })
+}
+
+/// How many f16 / bf16 values xevm.extf / xevm.truncf convert.
+const MX_CONVERT_ELEMS: i64 = 16;
+
 /// `translateLoadXeGPUCacheHint`: no hints, the default; a missing one cached.
 fn load_cache(l1: Option<CachePolicy>, l3: Option<CachePolicy>) -> Option<LoadCacheControl> {
     use CachePolicy::*;
@@ -156,13 +169,32 @@ impl<'a> Build<'a> for Cr<'_, 'a, '_> {
 pub struct XegpuToXevm;
 
 impl XegpuToXevm {
+    /// `isXeVMExtf`: rank 1, 16 f16 / bf16 out of an MX narrow float.
+    pub fn is_xevm_extf(b: &crate::Body<'_>, op: OpId) -> bool {
+        let (src, dst) = (&b[b[op].operands[0]].ty, &b[b[op].results[0]].ty);
+        let (Some((ss, se)), Some((ds, de))) = (vector_of(src), vector_of(dst)) else { return false };
+        ss.len() == 1 && ds.len() == 1 && ds[0] == MX_CONVERT_ELEMS && matches!(de, Type::Float(FloatKind::F16 | FloatKind::BF16)) && mx_name(se).is_some()
+    }
+
+    /// `isXeVMTruncf`: rank 1, 16 f16 / bf16 into an MX narrow float.
+    pub fn is_xevm_truncf(b: &crate::Body<'_>, op: OpId) -> bool {
+        let (src, dst) = (&b[b[op].operands[0]].ty, &b[b[op].results[0]].ty);
+        let (Some((ss, se)), Some((ds, de))) = (vector_of(src), vector_of(dst)) else { return false };
+        ss.len() == 1 && ds.len() == 1 && ss[0] == MX_CONVERT_ELEMS && matches!(se, Type::Float(FloatKind::F16 | FloatKind::BF16)) && mx_name(de).is_some()
+    }
+
     /// `ConvertXeGPUToXeVMPass`'s type converter: LLVM's, vectors flattened (a single element
     /// as the scalar), descriptors and memrefs as integer addresses; and its materializations.
     pub fn converter<'c>() -> TypeConverter<'c> {
         let mut tc = LlvmConverter::build(LlvmOptions::default());
         tc.conversion(|t| {
             let (shape, elem) = vector_of(t)?;
-            let elem = if matches!(elem, Type::Index) { Type::int(64) } else { elem.clone() };
+            // (the element converted: an index as i64, a float LLVM has no type for as the integer of its width)
+            let elem = match elem {
+                Type::Index => Type::int(64),
+                Type::Float(k) if !matches!(k, FloatKind::F16 | FloatKind::BF16 | FloatKind::F32 | FloatKind::F64 | FloatKind::F80 | FloatKind::F128) => Type::int(elem.bit_width()?),
+                e => e.clone(),
+            };
             let n: i64 = shape.iter().product();
             Some(Some(vec![if shape.is_empty() || n == 1 { elem } else { vector(n, elem) }]))
         });
@@ -791,6 +823,54 @@ impl XegpuToXevm {
             Type::Integer { width: 32, .. } => ("s32", 0),
             _ => return None,
         })
+    }
+
+    /// `ExtfToXeVMPattern`: a widening of 16 MX narrow floats to f16 / bf16 is `xevm.extf` (fp4 packed in
+    /// bytes).
+    #[convert("arith.extf")]
+    fn extf<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        if !Self::is_xevm_extf(cr.rw.body, op) {
+            return false;
+        }
+        let b = &*cr.rw.body;
+        let (src_t, dst_t) = (b[b[op].operands[0]].ty.clone(), b[b[op].results[0]].ty.clone());
+        let (Some((_, se)), Some((_, de))) = (vector_of(&src_t), vector_of(&dst_t)) else { return false };
+        let Some(narrow) = mx_name(se) else { return false };
+        let wide = if *de == Type::Float(FloatKind::F16) { "f16" } else { "bf16" };
+        let mut src = operands[0][0];
+        let conv = cr.rw.body[src].ty.clone();
+        if let Some((shape, e)) = vector_of(&conv).filter(|(_, e)| e.bit_width() == Some(4)) {
+            let n: i64 = shape.iter().product();
+            let _ = e;
+            src = cr.unary("vector.bitcast", src, vector(n / 2, Type::int(8)));
+        }
+        let Some(rt) = cr.converted(&dst_t) else { return false };
+        let data = OpData::build("xevm.extf").operands(&[src]).with("src_etype", Attribute::dialect("xevm", &alloc::format!("<ext_src_etype src_etype = {narrow}>"))).with("dst_etype", Attribute::dialect("xevm", &alloc::format!("<ext_dst_etype dst_etype = {wide}>")));
+        let r = cr.mk(data, rt);
+        cr.replace(op, vec![vec![r]]);
+        true
+    }
+
+    /// `TruncfToXeVMPattern`: a truncation of 16 f16 / bf16 to an MX narrow float is `xevm.truncf` into bytes.
+    #[convert("arith.truncf")]
+    fn truncf<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        if !Self::is_xevm_truncf(cr.rw.body, op) {
+            return false;
+        }
+        let b = &*cr.rw.body;
+        let (src_t, dst_t) = (b[b[op].operands[0]].ty.clone(), b[b[op].results[0]].ty.clone());
+        let (Some((_, se)), Some((ds, de))) = (vector_of(&src_t), vector_of(&dst_t)) else { return false };
+        let Some(narrow) = mx_name(de) else { return false };
+        let wide = if *se == Type::Float(FloatKind::F16) { "f16" } else { "bf16" };
+        let bits = ds.iter().product::<i64>() * i64::from(de.bit_width().unwrap_or(8));
+        let data = OpData::build("xevm.truncf").operands(&[operands[0][0]]).with("src_etype", Attribute::dialect("xevm", &alloc::format!("<src_etype src_etype = {wide}>"))).with("dst_etype", Attribute::dialect("xevm", &alloc::format!("<dst_etype dst_etype = {narrow}>")));
+        let mut r = cr.mk(data, vector(bits / 8, Type::int(8)));
+        let Some(rt) = cr.converted(&dst_t) else { return false };
+        if cr.rw.body[r].ty != rt {
+            r = cr.unary("vector.bitcast", r, rt);
+        }
+        cr.replace(op, vec![vec![r]]);
+        true
     }
 
     /// `DpasToXeVMPattern`.
