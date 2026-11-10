@@ -32,6 +32,7 @@ mod memref;
 mod nvgpu;
 #[cfg(all(feature = "dialect.nvvm", feature = "target.llvm"))]
 mod nvvm;
+mod broadcast;
 mod build;
 #[cfg(any(feature = "dialect.math", feature = "dialect.complex"))]
 mod libm;
@@ -62,6 +63,7 @@ mod xegpu;
 #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
 mod xevm;
 
+pub use broadcast::Broadcast;
 pub use canonicalize::{fold, materialize, memref_cast_compatible, memref_cast_foldable, patterns as canonicalization_patterns, Fold, Folded};
 #[cfg(any(all(feature = "dialect.tensor", feature = "dialect.linalg"), feature = "dialect.tosa"))]
 pub(crate) use build::{Named, RegionLocs};

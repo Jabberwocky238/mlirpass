@@ -44,61 +44,6 @@ impl Shp {
     fn int(a: &Attribute<'_>) -> Option<i64> {
         Const::try_from(a).ok().filter(|c| !c.elements)?.as_int().map(|x| x.signed() as i64)
     }
-
-    /// `OpTrait::util::getBroadcastedShape`.
-    fn broadcasted(a: &[i64], b: &[i64]) -> Option<Vec<i64>> {
-        let mut r = if a.len() > b.len() { a.to_vec() } else { b.to_vec() };
-        let n = r.len();
-        for (k, (x, y)) in a.iter().rev().zip(b.iter().rev()).enumerate() {
-            let (x, y) = (*x, *y);
-            r[n - 1 - k] = if x == Dim::DYNAMIC || y == Dim::DYNAMIC {
-                if x > 1 {
-                    x
-                } else if y > 1 {
-                    y
-                } else if x == 1 {
-                    y
-                } else if y == 1 {
-                    x
-                } else {
-                    Dim::DYNAMIC
-                }
-            } else if x == y || y == 1 {
-                x
-            } else if x == 1 {
-                y
-            } else {
-                return None;
-            };
-        }
-        Some(r)
-    }
-
-    /// `OpTrait::util::staticallyKnownBroadcastable`.
-    fn known_broadcastable(shapes: &[Vec<i64>]) -> bool {
-        let rank = shapes.iter().map(Vec::len).max().unwrap_or(0);
-        for i in 0..rank {
-            let mut dynamic = false;
-            let mut non_one: Option<i64> = None;
-            for e in shapes {
-                let d = if i >= e.len() { 1 } else { e[e.len() - i - 1] };
-                if d == 1 {
-                    continue;
-                }
-                if d == Dim::DYNAMIC {
-                    if dynamic || non_one.is_some() {
-                        return false;
-                    }
-                    dynamic = true;
-                }
-                if non_one.is_some_and(|n| n != d) {
-                    return false;
-                }
-                non_one = Some(d);
-            }
-        }
-        true
-    }
 }
 
 impl<'a> Body<'a> {
@@ -385,7 +330,7 @@ impl ShapeCanon {
         let mut kept = Vec::new();
         for v in &b[op].operands {
             if let Some(s) = b.def_named(*v, "shape.const_shape").and_then(|c| b[c].get("shape")).and_then(Shp::ints)
-                && let Some(n) = Shp::broadcasted(&folded, &s)
+                && let Some(n) = crate::patterns::Broadcast::shape(&folded, &s)
             {
                 folded = n;
                 continue;
@@ -667,7 +612,7 @@ impl ShapeCanon {
                 let Some(mut res) = ints(0) else { return Fold::Failed };
                 for k in 1..ops.len() {
                     let Some(next) = ints(k) else { return Fold::Failed };
-                    let Some(r) = Shp::broadcasted(&res, &next) else { return Fold::Failed };
+                    let Some(r) = crate::patterns::Broadcast::shape(&res, &next) else { return Fold::Failed };
                     res = r;
                 }
                 attr(Shp::index_tensor(&res))
@@ -686,11 +631,11 @@ impl ShapeCanon {
                     return attr(Attribute::Bool(true));
                 }
                 let consts: Option<Vec<Vec<i64>>> = (0..ops.len()).map(ints).collect();
-                if consts.is_some_and(|e| Shp::known_broadcastable(&e)) {
+                if consts.is_some_and(|e| crate::patterns::Broadcast::known(&e)) {
                     return attr(Attribute::Bool(true));
                 }
                 let vecs: Option<Vec<Vec<i64>>> = ops.iter().map(|v| b.shape_vec(*v)).collect();
-                if vecs.is_some_and(|e| Shp::known_broadcastable(&e)) {
+                if vecs.is_some_and(|e| crate::patterns::Broadcast::known(&e)) {
                     return attr(Attribute::Bool(true));
                 }
                 Fold::Failed
