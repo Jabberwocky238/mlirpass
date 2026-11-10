@@ -127,6 +127,8 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("vector") => crate::VectorFolder { b: body, op, c: consts }.fold(),
         #[cfg(feature = "dialect.index")]
         Some("index") => crate::IndexCanon::fold(body, op, consts),
+        #[cfg(feature = "dialect.ptr")]
+        Some("ptr") => crate::PtrCanon::fold(body, op, consts),
         #[cfg(feature = "dialect.quant")]
         Some("quant") => crate::QuantCanon::fold(body, op),
         #[cfg(feature = "dialect.complex")]
