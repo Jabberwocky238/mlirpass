@@ -722,6 +722,15 @@ impl<'a> Folder<'_, 'a> {
         if step(s1[0], s2[0]) {
             return Self::value(self.b[op].operands[1]);
         }
+        // `foldShufflePoisonOperandToMask`: indices into a poison operand are poison.
+        let (q1, q2) = (self.cst(0).is_some_and(Attribute::is_poison), self.cst(1).is_some_and(Attribute::is_poison));
+        if q1 || q2 {
+            let new: Vec<i64> = mask.iter().map(|&m| if m != POISON && ((q1 && m < s1[0]) || (q2 && m >= s1[0])) { POISON } else { m }).collect();
+            if new != mask {
+                self.b.set_dense_array(op, "mask", &new);
+                return Fold::InPlace;
+            }
+        }
         let (Some(a1), Some(a2)) = (self.cst(0), self.cst(1)) else { return Fold::Failed };
         let (p1, p2) = (a1.is_poison(), a2.is_poison());
         if p1 && p2 {
@@ -1659,6 +1668,35 @@ impl VectorCanon {
         let rt = b.result_ty(op);
         rw.replace_with(op, OpData::build("vector.from_elements").operands(&elems), &[rt]);
         true
+    }
+
+    /// `FoldUnusedShuffleOperand`: an all-poison mask is poison; an operand no index uses is
+    /// replaced by poison.
+    #[rewrite("vector.shuffle")]
+    fn fold_unused_shuffle_operand(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let mask = b.dense_array(op, "mask");
+        let rt = b.result_ty(op);
+        let poison = || OpData::build("ub.poison").with("value", Attribute::dialect("ub.poison", ""));
+        if mask.iter().all(|m| *m == POISON) {
+            rw.replace_with(op, poison(), &[rt]);
+            return true;
+        }
+        let lead = vshape(&b.operand_ty(op, 0)).and_then(|(s, _)| s.first().copied()).unwrap_or(1);
+        let is_poison = |v: ValueId| b.def_named(v, "ub.poison").is_some();
+        let used = [mask.iter().any(|m| *m != POISON && *m < lead), mask.iter().any(|m| *m != POISON && *m >= lead)];
+        for i in 0..2 {
+            let v = b[op].operands[i];
+            if !used[i] && !is_poison(v) {
+                let t = b[v].ty.clone();
+                rw.set_before(op);
+                let p = rw.create(poison(), &[t]);
+                let p = rw.body[p].results[0];
+                rw.modify(op, |b| b.set_operand(op, i, p));
+                return true;
+            }
+        }
+        false
     }
 
     /// `foldExtractFromShapeCastToShapeCast`.
@@ -2655,6 +2693,7 @@ impl VectorCanon {
         set.add(ShuffleSplat);
         set.add(ShuffleInterleave);
         set.add(Canonicalize0DShuffleOp);
+        set.add(FoldUnusedShuffleOperand);
         set.add(InsertToBroadcast);
         set.add(InsertSplatToSplat);
         set.add(InsertChainFullyInitialized);
