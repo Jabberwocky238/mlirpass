@@ -1,5 +1,8 @@
 //! `amdgpu` rule sets.
 
+mod canonicalize;
+pub use canonicalize::AmdgpuCanon;
+
 #[cfg(feature = "target.llvm")]
 mod buffer_to_rocdl;
 #[cfg(feature = "target.llvm")]

@@ -201,6 +201,8 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
 #[allow(unused_mut)]
 pub fn patterns() -> PatternSet {
     let mut set = PatternSet::default();
+    #[cfg(feature = "dialect.amdgpu")]
+    crate::AmdgpuCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.affine")]
     crate::AffineCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.arith")]

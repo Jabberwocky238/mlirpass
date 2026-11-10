@@ -78,6 +78,8 @@ pub use reshape::{Ofr as MemrefOfr, Reshape, ComposeCollapseOfExpand, ComposeExp
 pub use affine::*;
 #[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
 pub use amdgpu::*;
+#[cfg(all(feature = "dialect.amdgpu", not(feature = "target.llvm")))]
+pub use amdgpu::AmdgpuCanon;
 #[cfg(feature = "dialect.arith")]
 pub use arith::*;
 #[cfg(feature = "dialect.bufferization")]
