@@ -20,6 +20,8 @@ mod func;
 mod gpu;
 #[cfg(feature = "dialect.index")]
 mod index;
+#[cfg(feature = "dialect.quant")]
+mod quant;
 #[cfg(feature = "dialect.linalg")]
 mod linalg;
 #[cfg(feature = "dialect.llvm")]
@@ -94,6 +96,8 @@ pub use func::*;
 pub use gpu::*;
 #[cfg(feature = "dialect.index")]
 pub use index::*;
+#[cfg(feature = "dialect.quant")]
+pub use quant::*;
 #[cfg(feature = "dialect.linalg")]
 pub use linalg::*;
 #[cfg(feature = "dialect.llvm")]
