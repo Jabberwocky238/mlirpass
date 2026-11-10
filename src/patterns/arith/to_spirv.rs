@@ -271,7 +271,7 @@ impl ArithToSpirv {
                         Some(j) => Scalar::Int(j),
                         None => return false,
                     },
-                    Scalar::Complex(..) | Scalar::ComplexFloat(..) => return false,
+                    Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => return false,
                 });
             }
             values = out;

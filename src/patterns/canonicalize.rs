@@ -228,8 +228,12 @@ pub fn patterns() -> PatternSet {
     crate::CfCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.complex")]
     crate::ComplexCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.acc")]
+    crate::AccCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.mpi")]
     crate::MpiCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.omp")]
+    crate::OmpCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.sparse_tensor")]
     crate::SparseTensorCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.func")]

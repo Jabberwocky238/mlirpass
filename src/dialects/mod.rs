@@ -47,6 +47,8 @@ mod tensor;
 mod test;
 #[cfg(feature = "dialect.tosa")]
 mod tosa;
+#[cfg(feature = "dialect.acc")]
+mod acc;
 #[cfg(feature = "dialect.emitc")]
 mod emitc;
 #[cfg(feature = "dialect.ub")]
@@ -109,6 +111,8 @@ pub use tosa::TosaDialect;
 pub use ub::UbDialect;
 #[cfg(feature = "dialect.emitc")]
 pub use emitc::EmitcDialect;
+#[cfg(feature = "dialect.acc")]
+pub use acc::AccDialect;
 #[cfg(feature = "dialect.vector")]
 pub use vector::VectorDialect;
 

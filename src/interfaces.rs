@@ -375,6 +375,11 @@ pub enum Resource {
     TestNonAddressableSubB,
     TestNonAddressableA,
     TestNonAddressableB,
+    /// OpenACC's runtime state: `acc::RuntimeCounters`, `acc::ConstructResource`,
+    /// `acc::CurrentDeviceIdResource` (none addressable).
+    AccRuntimeCounters,
+    AccConstruct,
+    AccCurrentDeviceId,
 }
 
 impl Resource {
@@ -383,6 +388,9 @@ impl Resource {
         ("DefaultResource", Resource::Default),
         ("AutomaticAllocationScopeResource", Resource::AutomaticAllocationScope),
         ("TestResource", Resource::Test),
+        ("RuntimeCounters", Resource::AccRuntimeCounters),
+        ("ConstructResource", Resource::AccConstruct),
+        ("CurrentDeviceIdResource", Resource::AccCurrentDeviceId),
     ];
 
     /// `getParent`: every resource not saying otherwise sits under `Default`.
@@ -399,7 +407,14 @@ impl Resource {
     pub fn addressable(self) -> bool {
         !matches!(
             self,
-            Resource::TestNonAddressable | Resource::TestNonAddressableSubA | Resource::TestNonAddressableSubB | Resource::TestNonAddressableA | Resource::TestNonAddressableB
+            Resource::TestNonAddressable
+                | Resource::TestNonAddressableSubA
+                | Resource::TestNonAddressableSubB
+                | Resource::TestNonAddressableA
+                | Resource::TestNonAddressableB
+                | Resource::AccRuntimeCounters
+                | Resource::AccConstruct
+                | Resource::AccCurrentDeviceId
         )
     }
 

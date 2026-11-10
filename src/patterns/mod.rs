@@ -20,8 +20,12 @@ mod func;
 mod gpu;
 #[cfg(feature = "dialect.index")]
 mod index;
+#[cfg(feature = "dialect.acc")]
+mod acc;
 #[cfg(feature = "dialect.mpi")]
 mod mpi;
+#[cfg(feature = "dialect.omp")]
+mod omp;
 #[cfg(feature = "dialect.ptr")]
 mod ptr;
 #[cfg(feature = "dialect.sparse_tensor")]
@@ -102,8 +106,12 @@ pub use func::*;
 pub use gpu::*;
 #[cfg(feature = "dialect.index")]
 pub use index::*;
+#[cfg(feature = "dialect.acc")]
+pub use acc::*;
 #[cfg(feature = "dialect.mpi")]
 pub use mpi::*;
+#[cfg(feature = "dialect.omp")]
+pub use omp::*;
 #[cfg(feature = "dialect.ptr")]
 pub use ptr::*;
 #[cfg(feature = "dialect.sparse_tensor")]

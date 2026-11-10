@@ -761,6 +761,10 @@ impl<'x, 'a> Folder<'x, 'a> {
         let ty = self.ty();
         let Some(k) = self.float_kind(self.res()) else { return Fold::Failed };
         self.unary(ty, move |a| {
+            // `f80` / `f128`: exactly an `f64`, converted without loss or not at all.
+            if matches!(a, Scalar::Wide(_)) || mlirformat::WideFloat::wide(k) {
+                return a.convert_float(k);
+            }
             let f = a.float()?;
             if f.is_nan() {
                 return nan_convert(f, k).map(Scalar::Float);
@@ -807,7 +811,7 @@ impl<'x, 'a> Folder<'x, 'a> {
             let bits = match s {
                 Scalar::Int(i) => i.bits(),
                 Scalar::Float(f) => f.bits as u128,
-                Scalar::Complex(..) | Scalar::ComplexFloat(..) => return None,
+                Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => return None,
             };
             Some(match &elem {
                 Type::Float(k) => Scalar::Float(ApFloat::from_bits(*k, bits as u64)?),

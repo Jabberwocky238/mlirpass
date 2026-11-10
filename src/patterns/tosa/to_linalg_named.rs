@@ -36,7 +36,7 @@ impl TosaToLinalgNamed {
         match c.at(0) {
             Scalar::Float(f) => Some(if f.is_zero() { 0 } else { -1 }),
             Scalar::Int(i) => Some(i.signed() as i64),
-            Scalar::Complex(..) | Scalar::ComplexFloat(..) => None,
+            Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => None,
         }
     }
 

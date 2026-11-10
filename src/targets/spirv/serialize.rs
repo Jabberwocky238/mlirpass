@@ -638,7 +638,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
             (_, Ok(c)) if !c.elements => match c.values[0] {
                 Scalar::Int(i) => ConstKey::Int(format!("{}", c.ty), i.bits()),
                 Scalar::Float(f) => ConstKey::Float(format!("{}", c.ty), f.bits),
-                Scalar::Complex(..) | Scalar::ComplexFloat(..) => ConstKey::Text(format!("{a}")),
+                Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => ConstKey::Text(format!("{a}")),
             },
             _ => ConstKey::Text(format!("{a}")),
         }
@@ -713,7 +713,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
                 Scalar::Int(i) if elem == Type::I1 => self.bool_const(i.bits() != 0, false),
                 Scalar::Int(i) => self.const_int(elem, i.bits(), false),
                 Scalar::Float(f) => self.const_float(elem, f.bits, false),
-                Scalar::Complex(..) | Scalar::ComplexFloat(..) => err("spirv: no complex constants"),
+                Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => err("spirv: no complex constants"),
             };
         }
         let tid = self.type_id(ty)?;
@@ -749,7 +749,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
         match s {
             Scalar::Int(i) => i.bits() == 0,
             Scalar::Float(f) => f.bits << 1 == 0 || f.to_f64() == 0.0,
-            Scalar::Complex(..) | Scalar::ComplexFloat(..) => s.parts().is_some_and(|p| p.iter().all(Self::is_zero)),
+            Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => s.parts().is_some_and(|p| p.iter().all(Self::is_zero)),
         }
     }
 
@@ -766,7 +766,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
             Scalar::Int(i) if c.ty == Type::I1 => self.bool_const(i.bits() != 0, spec).map(Some),
             Scalar::Int(i) => self.const_int(c.ty.clone(), i.bits(), spec).map(Some),
             Scalar::Float(f) => self.const_float(c.ty.clone(), f.bits, spec).map(Some),
-            Scalar::Complex(..) | Scalar::ComplexFloat(..) => Ok(None),
+            Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => Ok(None),
         }
     }
 

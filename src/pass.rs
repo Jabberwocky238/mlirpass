@@ -1001,6 +1001,8 @@ impl crate::Interfaces<'_> {
         i.register(&CfDialect);
         #[cfg(feature = "dialect.complex")]
         i.register(&ComplexDialect);
+        #[cfg(feature = "dialect.acc")]
+        i.register(&AccDialect);
         #[cfg(feature = "dialect.emitc")]
         i.register(&EmitcDialect);
         #[cfg(feature = "dialect.func")]
