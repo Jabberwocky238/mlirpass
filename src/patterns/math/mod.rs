@@ -15,7 +15,7 @@ pub use to_llvm::MathToLlvm;
 #[cfg(feature = "target.spirv")]
 mod to_spirv;
 #[cfg(feature = "target.spirv")]
-pub use to_spirv::MathToSpirv;
+pub use to_spirv::{MathSpirvOptions, MathToSpirv};
 
 #[cfg(feature = "target.emitc")]
 mod to_emitc;

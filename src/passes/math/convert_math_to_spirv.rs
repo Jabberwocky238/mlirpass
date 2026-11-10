@@ -1,6 +1,6 @@
 //! `convert-math-to-spirv`.
 
-use crate::{MathToSpirv, SpirvOptions, SpirvTypes, TargetEnv};
+use crate::{MathSpirvOptions, MathToSpirv, SpirvOptions, SpirvTypes, TargetEnv};
 
 /// `convert-math-to-spirv`.
 #[crate::pass("convert-math-to-spirv")]
@@ -10,7 +10,7 @@ pub fn convert_math_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) ->
     let tc = types.converter();
     let mut patterns = crate::ConversionPatterns::default();
     let i = patterns.converter(&tc);
-    MathToSpirv::populate(&mut patterns, i);
+    MathToSpirv::populate(&mut patterns, i, MathSpirvOptions { shader: env.allows_cap("Shader") });
     let mut target = env.conversion_target();
     target.legal_op("builtin.unrealized_conversion_cast");
     crate::Converter::new(&target, &patterns, crate::ConversionConfig::default()).apply(body, &[op], crate::Mode::Partial)
