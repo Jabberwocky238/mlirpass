@@ -31,6 +31,8 @@ pub struct ConvertVectorToLlvm {
     arm_i8mm: bool,
     #[opt("enable-arm-bf16")]
     arm_bf16: bool,
+    #[opt("enable-gep-inbounds-nuw")]
+    gep_inbounds_nuw: bool,
     #[opt("enable-x86")]
     x86: bool,
     counter: core::sync::atomic::AtomicU32,
@@ -74,7 +76,7 @@ impl Run for ConvertVectorToLlvm {
         let i = patterns.converter(&tc);
         patterns.add(Lowering { root: "vector.transfer_read", benefit: 1, f: |cr, op, _| transfer_read_to_load(cr, op, None) });
         patterns.add(Lowering { root: "vector.transfer_write", benefit: 1, f: |cr, op, _| transfer_write_to_store(cr, op, None) });
-        VectorToLlvm::populate(&mut patterns, i, VectorOptions { llvm: opts, reassociate_fp_reductions: self.reassociate, force_32bit_indices: self.force32, use_vector_alignment: self.vector_alignment, counter: &self.counter });
+        VectorToLlvm::populate(&mut patterns, i, VectorOptions { llvm: opts, reassociate_fp_reductions: self.reassociate, force_32bit_indices: self.force32, use_vector_alignment: self.vector_alignment, gep_inbounds_nuw: self.gep_inbounds_nuw, counter: &self.counter });
         // The CPU dialect (`enable-x86`) lowers to intrinsic calls.
         #[cfg(feature = "dialect.x86")]
         if self.x86 {

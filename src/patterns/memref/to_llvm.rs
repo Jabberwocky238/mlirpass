@@ -25,8 +25,6 @@ pub struct MemrefOptions {
     pub generic: bool,
 }
 
-/// `kNoWrapFlags`: `inbounds | nuw`.
-const NO_WRAP: i64 = 7;
 /// `GEPOp::kDynamicIndex`.
 const GEP_DYNAMIC: i64 = i32::MIN as i64;
 
@@ -206,6 +204,9 @@ impl MemrefToLlvm {
         let ty = cr.rw.body[ptr].ty.clone();
         Some(Self::gep(cr, ty, elem, ptr, &[Gep::V(off)], 0))
     }
+
+    /// `kNoWrapFlags`: `inbounds | nuw`.
+    pub const NO_WRAP: i64 = 7;
 
     /// `getStridedElementPtr`.
     pub fn strided_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId, indices: &[ValueId], flags: i64) -> Option<ValueId> {
@@ -700,7 +701,7 @@ impl MemrefToLlvm {
     fn load_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let Some(s) = Self::operand_memref(cr, op, 0) else { return false };
         let indices: Vec<ValueId> = operands[1..].iter().flatten().copied().collect();
-        let Some(ptr) = Self::strided_ptr(cr, o.llvm, &s, operands[0][0], &indices, NO_WRAP) else { return false };
+        let Some(ptr) = Self::strided_ptr(cr, o.llvm, &s, operands[0][0], &indices, Self::NO_WRAP) else { return false };
         let Some(elem) = Self::elem(cr, &s.elem) else { return false };
         let data = Self::access(cr, op, OpData::build("llvm.load").operands(&[ptr]));
         cr.replace_new(op, data, &[elem]);
@@ -711,7 +712,7 @@ impl MemrefToLlvm {
     fn store_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let Some(s) = Self::operand_memref(cr, op, 1) else { return false };
         let indices: Vec<ValueId> = operands[2..].iter().flatten().copied().collect();
-        let Some(ptr) = Self::strided_ptr(cr, o.llvm, &s, operands[1][0], &indices, NO_WRAP) else { return false };
+        let Some(ptr) = Self::strided_ptr(cr, o.llvm, &s, operands[1][0], &indices, Self::NO_WRAP) else { return false };
         let data = Self::access(cr, op, OpData::build("llvm.store").operands(&[operands[0][0], ptr]));
         cr.replace_new(op, data, &[]);
         true

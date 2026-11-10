@@ -107,7 +107,7 @@ impl Default for ToLlvmInterfaces {
         }
         #[cfg(feature = "dialect.vector")]
         fn vector<'p>(p: &mut ConversionPatterns<'p>, i: usize, e: &LlvmEnv<'p>) {
-            VectorToLlvm::populate(p, i, VectorOptions { llvm: e.llvm, reassociate_fp_reductions: false, force_32bit_indices: true, use_vector_alignment: false, counter: e.counter });
+            VectorToLlvm::populate(p, i, VectorOptions { llvm: e.llvm, reassociate_fp_reductions: false, force_32bit_indices: true, use_vector_alignment: false, gep_inbounds_nuw: false, counter: e.counter });
         }
         #[cfg(feature = "dialect.nvvm")]
         fn nvvm<'p>(p: &mut ConversionPatterns<'p>, _: usize, _: &LlvmEnv<'p>) {

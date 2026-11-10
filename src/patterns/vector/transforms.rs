@@ -242,10 +242,19 @@ fn vector_comparison<'a>(rw: &mut Rewriter<'_, 'a>, dim: i64, bound: ValueId, of
         let ov = rw.broadcast(vt.clone(), o);
         indices = rw.make1(OpData::build("arith.addi").operands(&[ov, indices]), vt.clone());
     }
+    // With 32-bit indices the bound is capped at INT32_MAX before the cast (no signed wrap).
+    let bound = if force32 { min_i32_max(rw, bound) } else { bound };
     let bnd = cast_index_like(rw, &it, bound);
     let bounds = rw.broadcast(vt.clone(), bnd);
     let mt = Type::vector(&shape, &[], Type::int(1));
     rw.make1(OpData::build("arith.cmpi").operands(&[indices, bounds]).with("predicate", Attribute::i64(2)), mt)
+}
+
+/// `arith.minsi v, INT32_MAX`: a bound cast to `i32` afterwards keeps its sign.
+fn min_i32_max<'a>(rw: &mut Rewriter<'_, 'a>, v: ValueId) -> ValueId {
+    let ty = rw.body[v].ty.clone();
+    let max = rw.constant(Attribute::integer(i128::from(i32::MAX), Type::Index), Type::Index);
+    rw.make1(OpData::build("arith.minsi").operands(&[v, max]), ty)
 }
 
 /// `getValueOrCreateCastToIndexLike`.
@@ -364,11 +373,12 @@ impl Rules {
         let b = &*rw.body;
         let src = b[op].operands[0];
         let dt = b[b[op].results[0]].ty.clone();
-        let Some((ss, _)) = vshape(&b[src].ty) else { return false };
+        let Some((ss, ssc)) = vshape(&b[src].ty) else { return false };
         let Some((ds, dsc)) = vshape(&dt) else { return false };
         let (sr, dr) = (ss.len(), ds.len());
         rw.set_before(op);
-        if sr <= 1 && dr == 1 {
+        // A single-element fixed-size source: its scalar broadcast.
+        if ss.iter().product::<i64>() == 1 && !ssc.iter().any(|s| *s) {
             let e = rw.vextract_(src, &vec![0; sr]);
             rw.replace_with(op, OpData::build("vector.broadcast").operands(&[e]), &[dt]);
             return true;
@@ -970,7 +980,6 @@ pub fn pre_patterns(force32: bool) -> PatternSet {
     set.add(MaterializeTransferMask("vector.transfer_write", Force32(force32)));
     set.add(FoldI1Select);
     set.add(Convert1DExtractStridedSliceIntoExtractInsertChain);
-    set.add(StepToArithConstantOpRewrite);
     set.add(VectorFMAOpNDRewritePattern);
     set.add(UnrollGather);
     set.add(UnrollFromElements);

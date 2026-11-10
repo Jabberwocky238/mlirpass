@@ -24,6 +24,8 @@ pub struct VectorOptions<'c> {
     pub reassociate_fp_reductions: bool,
     pub force_32bit_indices: bool,
     pub use_vector_alignment: bool,
+    /// `enable-gep-inbounds-nuw`: `vector.load` / `vector.store` address with `inbounds | nuw`.
+    pub gep_inbounds_nuw: bool,
     /// `ensureSymbolNameIsUnique`'s counter, for `vector.print` strings.
     pub counter: &'c AtomicU32,
 }
@@ -169,7 +171,9 @@ impl VectorToLlvm {
         let Some(lt) = Self::convert(cr, &vt) else { return false };
         let rank = M::rank(&m);
         let indices: Vec<ValueId> = operands[base_at + 1..base_at + 1 + rank].iter().flatten().copied().collect();
-        let Some(ptr) = M::strided_ptr(cr, o.llvm, &m, operands[base_at][0], &indices, 0) else { return false };
+        let plain = matches!(&*name, "vector.load" | "vector.store");
+        let flags = if plain && o.gep_inbounds_nuw { M::NO_WRAP } else { 0 };
+        let Some(ptr) = M::strided_ptr(cr, o.llvm, &m, operands[base_at][0], &indices, flags) else { return false };
         let rest: Vec<ValueId> = operands[base_at + 1 + rank..].iter().flatten().copied().collect();
         let nontemporal = matches!(cr.rw.body[op].get("nontemporal"), Some(Attribute::Bool(true)));
         let mem = |mut d: OpData<'a>| -> OpData<'a> {
@@ -687,6 +691,14 @@ impl VectorToLlvm {
         let vt = Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(vec![d]), elem: it.clone().into(), extras: Vec::new() });
         let indices = cr.build(OpData::build("llvm.intr.stepvector"), vt.clone());
         let bound = operands[0][0];
+        // (capped at INT32_MAX before the cast to 32 bits)
+        let bound = if o.force_32bit_indices {
+            let max = cr.build(OpData::build("arith.constant").with("value", Attribute::integer(i128::from(i32::MAX), Type::Index)), Type::Index);
+            let bt = cr.rw.body[bound].ty.clone();
+            cr.build(OpData::build("arith.minsi").operands(&[bound, max]), bt)
+        } else {
+            bound
+        };
         let bt = cr.rw.body[bound].ty.clone();
         let bound = match (bt.bit_width(), &bt) {
             (_, Type::Index) => cr.build(OpData::build("arith.index_cast").operands(&[bound]), it.clone()),
@@ -924,9 +936,6 @@ impl VectorToLlvm {
     #[convert("vector.step")]
     fn step<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let rt = Self::result_type(cr, op);
-        if Self::vector(&rt).is_none_or(|s| !Self::scalable(s)) {
-            return false;
-        }
         let Some(lt) = Self::convert(cr, &rt) else { return false };
         cr.replace_new(op, OpData::build("llvm.intr.stepvector"), &[lt]);
         true
