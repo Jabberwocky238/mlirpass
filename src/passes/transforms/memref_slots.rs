@@ -248,10 +248,108 @@ impl TestSlots {
     }
 }
 
+/// The test ops promotion goes through (`TestOps.td`, "Test Mem2Reg & SROA").
+#[cfg(feature = "dialect.test")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TestUser {
+    /// `test.transparent_alias`: the same slot, the same type.
+    Alias,
+    /// `test.transparent_cast_alias`: the same slot as another type, through casts.
+    CastAlias,
+    /// `test.transparent_dual_alias`: two aliases (signed and unsigned) of one slot.
+    DualAlias,
+    /// `test.partial_alias`: a sub-value, extracted and inserted by casts.
+    PartialAlias,
+    /// `test.slot_tracker`: marks each stored value with `test.tracked_value`.
+    Tracker,
+}
+
+#[cfg(feature = "dialect.test")]
+impl TestUser {
+    const TABLE: &[(&str, TestUser)] = &[
+        ("test.transparent_alias", TestUser::Alias),
+        ("test.transparent_cast_alias", TestUser::CastAlias),
+        ("test.transparent_dual_alias", TestUser::DualAlias),
+        ("test.partial_alias", TestUser::PartialAlias),
+        ("test.slot_tracker", TestUser::Tracker),
+    ];
+
+    fn of(b: &Body<'_>, op: OpId) -> Option<Self> {
+        Self::TABLE.iter().find(|(n, _)| *n == b[op].name).map(|(_, k)| *k)
+    }
+
+    /// `builtin.unrealized_conversion_cast` of `inputs` to `ty`, located at `op`.
+    fn cast<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, inputs: &[ValueId], ty: &Type<'a>) -> ValueId {
+        let loc = rw.body[op].loc.clone();
+        let c = rw.create(OpData { loc, ..OpData::build("builtin.unrealized_conversion_cast").operands(inputs) }, core::slice::from_ref(ty));
+        rw.body[c].results[0]
+    }
+
+    /// `value` as `ty`: itself if it is one already (a full alias), else a cast.
+    fn cast_if_needed<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, value: ValueId, ty: &Type<'a>) -> ValueId {
+        if rw.body[value].ty == *ty { value } else { Self::cast(rw, op, &[value], ty) }
+    }
+}
+
 #[cfg(feature = "dialect.test")]
 impl Promotable for TestSlots {
     fn dialect(&self) -> &str {
         "test"
+    }
+
+    /// The aliasers' uses of their results go too; the tracker's one use must be its source.
+    fn can_uses_be_removed<'a>(&self, b: &Body<'a>, op: OpId, slot: Option<&MemorySlot<'a>>, blocking: &[Use], new_blocking: &mut Vec<Use>) -> Option<bool> {
+        let k = TestUser::of(b, op).filter(|_| slot.is_none())?;
+        if k == TestUser::Tracker {
+            let [u] = blocking else { return Some(false) };
+            return Some(u.index == 0);
+        }
+        for r in &b[op].results {
+            new_blocking.extend(b.use_list(*r));
+        }
+        Some(true)
+    }
+
+    fn remove_blocking_uses<'a>(&self, rw: &mut Rewriter<'_, 'a>, op: OpId, _: Option<&MemorySlot<'a>>, _: &[Use], _: Option<ValueId>) -> Deletion {
+        if TestUser::of(rw.body, op).is_some() { Deletion::Delete } else { Deletion::Keep }
+    }
+
+    fn requires_replaced_values(&self, b: &Body<'_>, op: OpId) -> bool {
+        TestUser::of(b, op) == Some(TestUser::Tracker)
+    }
+
+    /// A `test.tracked_value` after each storing op.
+    fn visit_replaced_values<'a>(&self, rw: &mut Rewriter<'_, 'a>, op: OpId, replaced: &[(OpId, ValueId)]) {
+        let (loc, name) = (rw.body[op].loc.clone(), rw.body[op].get("name").cloned().unwrap_or(Attribute::Unit));
+        for (at, v) in replaced {
+            rw.set_after(*at);
+            rw.create(OpData { loc: loc.clone(), ..OpData::build("test.tracked_value").operands(&[*v]).with("name", name.clone()) }, &[]);
+        }
+    }
+
+    fn slot_aliases<'a>(&self, b: &Body<'a>, op: OpId, operand: usize, _: &MemorySlot<'a>) -> Option<Vec<MemorySlot<'a>>> {
+        let k = TestUser::of(b, op).filter(|k| *k != TestUser::Tracker)?;
+        if operand != 0 {
+            return Some(Vec::new());
+        }
+        let n = if k == TestUser::DualAlias { 2 } else { 1 };
+        Some(b[op].results.iter().take(n).map(|r| MemorySlot { ptr: *r, elem: b[*r].ty.element_type().clone() }).collect())
+    }
+
+    fn project_to_alias<'a>(&self, rw: &mut Rewriter<'_, 'a>, op: OpId, _: &MemorySlot<'a>, alias: &MemorySlot<'a>, value: ValueId) -> ValueId {
+        match TestUser::of(rw.body, op) {
+            Some(TestUser::CastAlias | TestUser::DualAlias) => TestUser::cast_if_needed(rw, op, value, &alias.elem),
+            Some(TestUser::PartialAlias) => TestUser::cast(rw, op, &[value], &alias.elem),
+            _ => value,
+        }
+    }
+
+    fn project_to_slot<'a>(&self, rw: &mut Rewriter<'_, 'a>, op: OpId, parent: &MemorySlot<'a>, _: &MemorySlot<'a>, value: ValueId, reaching: ValueId) -> ValueId {
+        match TestUser::of(rw.body, op) {
+            Some(TestUser::CastAlias | TestUser::DualAlias) => TestUser::cast_if_needed(rw, op, value, &parent.elem),
+            Some(TestUser::PartialAlias) => TestUser::cast(rw, op, &[value, reaching], &parent.elem),
+            _ => value,
+        }
     }
 
     fn promotable_slots<'a>(&self, b: &Body<'a>, op: OpId) -> Option<Vec<MemorySlot<'a>>> {

@@ -12,6 +12,8 @@ mod llvm_slots;
 #[cfg(feature = "dialect.memref")]
 mod memref_slots;
 mod memslot;
+#[cfg(feature = "dialect.scf")]
+mod scf_slots;
 mod remove_dead_values;
 mod sccp;
 mod sroa;
@@ -32,6 +34,8 @@ pub use memref_slots::TestSlots;
 #[cfg(feature = "dialect.memref")]
 pub use memslot::MemrefSlots;
 pub use memslot::{Deletion, Destructurable, DestructurableMemorySlot, MemorySlot, Promotable, Slots};
+#[cfg(feature = "dialect.scf")]
+pub use scf_slots::ScfSlots;
 pub use remove_dead_values::RemoveDeadValues;
 pub use sccp::Sccp;
 pub use sroa::Sroa;

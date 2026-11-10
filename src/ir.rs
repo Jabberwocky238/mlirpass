@@ -2075,6 +2075,11 @@ impl<'a> Body<'a> {
         self[block].parent.map(|r| self[r].parent)
     }
 
+    /// The region holding `op`.
+    pub fn op_region(&self, op: OpId) -> Option<RegionId> {
+        self[op].parent.and_then(|b| self[b].parent)
+    }
+
     /// The op whose region holds `op`.
     pub fn parent_op(&self, op: OpId) -> Option<OpId> {
         self[op].parent.and_then(|b| self.block_owner(b))

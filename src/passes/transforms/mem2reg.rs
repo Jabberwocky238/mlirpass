@@ -25,7 +25,7 @@ use crate::{BlockId, Body, DomTree, OpId, Quiet, RegionId, Rewriter, Use, ValueI
 /// `region-simplify` is accepted and, as in `Mem2Reg.cpp`, unused.
 #[pass("mem2reg", ty = Mem2Reg, extra = ["region-simplify"])]
 pub fn mem2reg<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-    let dialects: &[&dyn Promotable] = &[#[cfg(feature = "dialect.llvm")] &crate::LlvmSlots, #[cfg(feature = "dialect.memref")] &crate::MemrefSlots, #[cfg(all(feature = "dialect.memref", feature = "dialect.test"))] &crate::TestSlots];
+    let dialects: &[&dyn Promotable] = &[#[cfg(feature = "dialect.llvm")] &crate::LlvmSlots, #[cfg(feature = "dialect.memref")] &crate::MemrefSlots, #[cfg(feature = "dialect.scf")] &crate::ScfSlots, #[cfg(all(feature = "dialect.memref", feature = "dialect.test"))] &crate::TestSlots];
     let promotion = Promotion { dialects };
     for r in body[op].regions.clone() {
         if body[r].blocks.is_empty() {
@@ -37,37 +37,99 @@ pub fn mem2reg<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     Ok(())
 }
 
-/// `MemorySlotPromotionInfo`, and the promoter's state once promotion starts.
-#[derive(Default)]
-struct Info {
-    /// Blocks where two definitions of the slot meet.
-    merge_points: BTreeSet<BlockId>,
-    /// Each user that must drop uses, in the order they were found, with those uses.
-    blocking: Vec<(OpId, Vec<Use>)>,
-    /// The slot pointer's region.
-    region: Option<RegionId>,
-    /// The slot's value before any store.
-    default: Option<ValueId>,
-    /// The slot's value just before each blocking memory op.
-    reaching: BTreeMap<OpId, ValueId>,
-    /// The value each storing op stores.
-    replaced: BTreeMap<OpId, ValueId>,
+/// `PromotableSlotAliasInfo`: a slot an aliaser exposes, and the operand it aliases through.
+#[derive(Clone)]
+struct Alias<'a> {
+    slot: MemorySlot<'a>,
+    op: OpId,
+    operand: usize,
 }
 
-impl Info {
-    fn uses_of(&mut self, op: OpId) -> &mut Vec<Use> {
-        let i = match self.blocking.iter().position(|(o, _)| *o == op) {
+/// `MemorySlotPromotionInfo`.
+#[derive(Default)]
+struct Info<'a> {
+    /// Blocks where two definitions of the slot meet.
+    merge_points: BTreeSet<BlockId>,
+    /// Per region (in the order found), each user that must drop uses, with those uses.
+    blocking: Vec<(RegionId, Vec<(OpId, Vec<Use>)>)>,
+    /// The nested regions to follow the slot into, and whether they store to it.
+    regions: BTreeMap<RegionId, bool>,
+    /// Transitive aliases of the slot pointer, by alias pointer.
+    aliases: Vec<(ValueId, Alias<'a>)>,
+    /// Whether a blocking user wants to see the replaced values.
+    visit_replaced: bool,
+}
+
+impl<'a> Info<'a> {
+    fn users_in(&mut self, region: RegionId) -> &mut Vec<(OpId, Vec<Use>)> {
+        let i = match self.blocking.iter().position(|(r, _)| *r == region) {
             Some(i) => i,
             None => {
-                self.blocking.push((op, Vec::new()));
+                self.blocking.push((region, Vec::new()));
                 self.blocking.len() - 1
             }
         };
         &mut self.blocking[i].1
     }
 
-    fn get(&self, op: OpId) -> &[Use] {
-        self.blocking.iter().find(|(o, _)| *o == op).map_or(&[], |(_, u)| u)
+    fn uses_of(&mut self, region: RegionId, op: OpId) -> &mut Vec<Use> {
+        let users = self.users_in(region);
+        let i = match users.iter().position(|(o, _)| *o == op) {
+            Some(i) => i,
+            None => {
+                users.push((op, Vec::new()));
+                users.len() - 1
+            }
+        };
+        &mut users[i].1
+    }
+
+    fn blocking_of(&self, region: RegionId, op: OpId) -> Option<&Vec<Use>> {
+        self.blocking.iter().find(|(r, _)| *r == region)?.1.iter().find(|(o, _)| *o == op).map(|(_, u)| u)
+    }
+
+    fn alias(&self, ptr: ValueId) -> Option<&Alias<'a>> {
+        self.aliases.iter().find(|(p, _)| *p == ptr).map(|(_, a)| a)
+    }
+
+    /// `getParentSlot`: the root slot, a known alias, or nothing.
+    fn parent_slot(&self, root: &MemorySlot<'a>, ptr: ValueId) -> Option<MemorySlot<'a>> {
+        if ptr == root.ptr {
+            return Some(root.clone());
+        }
+        self.alias(ptr).map(|a| a.slot.clone())
+    }
+
+    /// `getOpAliasSlot`: the slot of `op`'s first operand that is the slot or an alias.
+    fn op_slot(&self, b: &Body<'a>, root: &MemorySlot<'a>, op: OpId) -> MemorySlot<'a> {
+        b[op].operands.iter().find_map(|v| self.parent_slot(root, *v)).unwrap_or_else(|| root.clone())
+    }
+
+    /// `referencesAtMostOneAliasOfSlot`.
+    fn one_alias(&self, b: &Body<'a>, root: &MemorySlot<'a>, op: OpId) -> bool {
+        let mut seen: Option<ValueId> = None;
+        for v in &b[op].operands {
+            let Some(s) = self.parent_slot(root, *v) else { continue };
+            if seen.is_some_and(|p| p != s.ptr) {
+                return false;
+            }
+            seen = Some(s.ptr);
+        }
+        true
+    }
+
+    /// `buildAliasChain`: leaf to root, each step's aliaser, its parent slot and its slot.
+    fn chain(&self, b: &Body<'a>, root: &MemorySlot<'a>, alias: &MemorySlot<'a>) -> Vec<(OpId, MemorySlot<'a>, MemorySlot<'a>)> {
+        let mut out = Vec::new();
+        let mut at = alias.ptr;
+        while at != root.ptr {
+            let Some(a) = self.alias(at) else { break };
+            let through = b[a.op].operands[a.operand];
+            let Some(parent) = self.parent_slot(root, through) else { break };
+            out.push((a.op, parent, a.slot.clone()));
+            at = through;
+        }
+        out
     }
 }
 
@@ -98,8 +160,8 @@ impl<'d> Promotion<'d> {
         out
     }
 
-    fn is_mem_op(&self, b: &Body<'_>, op: OpId) -> bool {
-        self.at(b, op).is_some_and(|d| d.is_mem_op(b, op))
+    fn mem_op(&self, b: &Body<'_>, op: OpId) -> Option<&'d dyn Promotable> {
+        self.at(b, op).filter(|d| d.is_mem_op(b, op))
     }
 
     /// `tryToPromoteMemorySlots`: whether any slot was promoted.
@@ -116,7 +178,11 @@ impl<'d> Promotion<'d> {
                         continue;
                     }
                     let Some(info) = self.analyze(body, &slot) else { continue };
-                    if let Some(new) = self.promote(body, alloc, &slot, info) {
+                    let d = self.at(body, alloc).expect("an allocator's dialect");
+                    let mut quiet = Quiet;
+                    let rw = Rewriter::new(body, &mut quiet);
+                    let promoter = Promoter { p: self, d, alloc, slot: &slot, info, default: None, reaching: BTreeMap::new(), replaced: Vec::new(), at_end: BTreeMap::new(), post_order: Vec::new(), erase: Vec::new(), rw };
+                    if let Some(new) = promoter.promote() {
                         next.push(new);
                     }
                     changed = true;
@@ -139,87 +205,120 @@ impl<'d> Promotion<'d> {
     // ---- analysis ---------------------------------------------------------------------------
 
     /// `MemorySlotPromotionAnalyzer::computeInfo`.
-    fn analyze<'a>(&self, b: &Body<'a>, slot: &MemorySlot<'a>) -> Option<Info> {
-        let region = b.value_region(slot.ptr)?;
-        let mut info = Info { region: Some(region), ..Info::default() };
+    fn analyze<'a>(&self, b: &Body<'a>, slot: &MemorySlot<'a>) -> Option<Info<'a>> {
+        let mut info = Info::default();
         self.blocking_uses(b, slot, &mut info)?;
-        info.merge_points = self.merge_points(b, slot, region);
+        // The blocks storing to the slot, per region: directly, or by a nested region.
+        let mut defining: Vec<(RegionId, BTreeSet<BlockId>)> = Vec::new();
+        let mut add = |r: RegionId, blk: BlockId| match defining.iter_mut().find(|(x, _)| *x == r) {
+            Some((_, s)) => {
+                s.insert(blk);
+            }
+            None => defining.push((r, BTreeSet::from([blk]))),
+        };
+        let ptrs: Vec<(ValueId, MemorySlot<'a>)> = core::iter::once((slot.ptr, slot.clone())).chain(info.aliases.iter().map(|(p, a)| (*p, a.slot.clone()))).collect();
+        for (ptr, s) in &ptrs {
+            for u in b.use_list(*ptr) {
+                if self.mem_op(b, u.op).is_some_and(|d| d.stores_to(b, u.op, s))
+                    && let Some(blk) = b[u.op].parent
+                    && let Some(r) = b[blk].parent
+                {
+                    add(r, blk);
+                }
+            }
+        }
+        for (region, stores) in &info.regions {
+            if *stores
+                && let op = b[*region].parent
+                && let Some(blk) = b[op].parent
+                && let Some(r) = b[blk].parent
+            {
+                add(r, blk);
+            }
+        }
+        for (region, blocks) in &defining {
+            info.merge_points.extend(self.merge_points(b, *region, blocks));
+        }
         // Every predecessor of a merge point must be able to forward a value.
         let usable = info.merge_points.iter().all(|m| b.predecessors(*m).iter().all(|(t, _)| b.is_branch(*t)));
         usable.then_some(info)
     }
 
     /// `computeBlockingUses`.
-    fn blocking_uses<'a>(&self, b: &Body<'a>, slot: &MemorySlot<'a>, info: &mut Info) -> Option<()> {
-        let region = b.value_region(slot.ptr)?;
-        if !b.has_ssa_dominance(region) {
+    fn blocking_uses<'a>(&self, b: &Body<'a>, slot: &MemorySlot<'a>, info: &mut Info<'a>) -> Option<()> {
+        let home = b.value_region(slot.ptr)?;
+        if !b.has_ssa_dominance(home) {
             return None;
         }
-        // MLIR's use lists are most-recent-first.
-        for u in b[slot.ptr].uses.iter().rev() {
-            info.uses_of(u.op).push(*u);
+        for u in b.use_list(slot.ptr) {
+            let r = b.op_region(u.op)?;
+            info.uses_of(r, u.op).push(u);
         }
+        let (mut with_use, mut with_store) = (Vec::new(), Vec::new());
         for user in b.forward_slice(slot.ptr) {
-            let Some(uses) = info.blocking.iter().find(|(o, _)| *o == user).map(|(_, u)| u.clone()) else { continue };
-            let mut sorted = uses;
-            sorted.sort_by_key(|u| u.index);
+            let Some(region) = b.op_region(user) else { continue };
+            let Some(mut uses) = info.blocking_of(region, user).cloned() else { continue };
+            uses.sort_by_key(|u| u.index);
             let d = self.at(b, user)?;
+            for i in 0..b[user].operands.len() {
+                let Some(parent) = info.parent_slot(slot, b[user].operands[i]) else { continue };
+                for alias in d.slot_aliases(b, user, i, &parent).unwrap_or_default() {
+                    if info.alias(alias.ptr).is_none() {
+                        info.aliases.push((alias.ptr, Alias { slot: alias, op: user, operand: i }));
+                    }
+                }
+            }
             let mut new = Vec::new();
-            let mem = d.is_mem_op(b, user);
-            if !d.can_uses_be_removed(b, user, mem.then_some(slot), &sorted, &mut new)? {
-                return None;
+            if d.is_mem_op(b, user) {
+                if !info.one_alias(b, slot, user) {
+                    return None;
+                }
+                let s = info.op_slot(b, slot, user);
+                if !d.can_uses_be_removed(b, user, Some(&s), &uses, &mut new)? {
+                    return None;
+                }
+                let at = if d.stores_to(b, user, &s) { &mut with_store } else { &mut with_use };
+                if !at.contains(&region) {
+                    at.push(region);
+                }
+            } else {
+                if !d.can_uses_be_removed(b, user, None, &uses, &mut new)? {
+                    return None;
+                }
+                if !with_use.contains(&region) {
+                    with_use.push(region);
+                }
+                info.visit_replaced |= d.requires_replaced_values(b, user);
             }
             for u in new {
-                info.uses_of(u.op).push(u);
+                let r = b.op_region(u.op)?;
+                info.uses_of(r, u.op).push(u);
             }
         }
-        // Only the slot pointer's own region is analysed.
-        let outside = info.blocking.iter().any(|(o, _)| self.is_mem_op(b, *o) && b[*o].parent.and_then(|k| b[k].parent) != Some(region));
-        (!outside).then_some(())
+        // The regions needed must be promotable, and so on up to the slot's own.
+        for (from, stores) in [(with_store, true), (with_use, false)] {
+            let mut work = from;
+            while let Some(region) = work.pop() {
+                if region == home || info.regions.contains_key(&region) {
+                    continue;
+                }
+                info.regions.insert(region, stores);
+                let op = b[region].parent;
+                let d = self.at(b, op).filter(|d| d.is_region_op(b, op))?;
+                if !d.region_promotable(b, op, slot, region, stores)? {
+                    return None;
+                }
+                work.push(b.op_region(op)?);
+            }
+        }
+        Some(())
     }
 
-    /// `computeSlotLiveIn`: blocks entered with the slot's value still to be read.
-    fn live_in<'a>(&self, b: &Body<'a>, slot: &MemorySlot<'a>, defining: &BTreeSet<BlockId>) -> BTreeSet<BlockId> {
-        let mut work = Vec::new();
-        let mut seen = BTreeSet::new();
-        for u in b[slot.ptr].uses.iter().rev() {
-            let Some(block) = b[u.op].parent else { continue };
-            if !seen.insert(block) {
-                continue;
-            }
-            for op in &b.block_ops(block) {
-                let Some(d) = self.at(b, *op).filter(|d| d.is_mem_op(b, *op)) else { continue };
-                if d.loads_from(b, *op, slot) {
-                    work.push(block);
-                    break;
-                }
-                if d.stores_to(b, *op, slot) {
-                    break;
-                }
-            }
-        }
-        let mut live = BTreeSet::new();
-        while let Some(block) = work.pop() {
-            if !live.insert(block) {
-                continue;
-            }
-            for (t, _) in b.predecessors(block) {
-                if let Some(p) = b[t].parent.filter(|p| !defining.contains(p)) {
-                    work.push(p);
-                }
-            }
-        }
-        live
-    }
-
-    /// `computeMergePoints`: the iterated dominance frontier of the stores, pruned to live-in
-    /// blocks.
-    fn merge_points<'a>(&self, b: &Body<'a>, slot: &MemorySlot<'a>, region: RegionId) -> BTreeSet<BlockId> {
+    /// `computeMergePoints`: the iterated dominance frontier of the defining blocks.
+    fn merge_points(&self, b: &Body<'_>, region: RegionId, defining: &BTreeSet<BlockId>) -> BTreeSet<BlockId> {
         if b[region].blocks.len() == 1 {
             return BTreeSet::new();
         }
-        let defining: BTreeSet<BlockId> = b[slot.ptr].uses.iter().filter(|u| self.at(b, u.op).is_some_and(|d| d.is_mem_op(b, u.op) && d.stores_to(b, u.op, slot))).filter_map(|u| b[u.op].parent).collect();
-        let live = self.live_in(b, slot, &defining);
         let tree = b.dom_tree(region);
         let frontier = b.dominance_frontiers(region, &tree);
         let mut merge = BTreeSet::new();
@@ -227,7 +326,7 @@ impl<'d> Promotion<'d> {
         let mut queued: BTreeSet<BlockId> = defining.clone();
         while let Some(x) = work.pop() {
             for y in frontier.get(&x).into_iter().flatten() {
-                if !live.contains(y) || !merge.insert(*y) {
+                if !merge.insert(*y) {
                     continue;
                 }
                 if queued.insert(*y) {
@@ -237,121 +336,297 @@ impl<'d> Promotion<'d> {
         }
         merge
     }
+}
 
-    // ---- mutation ---------------------------------------------------------------------------
+/// `MemorySlotPromoter`.
+struct Promoter<'p, 'd, 's, 'r, 'a> {
+    p: &'p Promotion<'d>,
+    d: &'d dyn Promotable,
+    alloc: OpId,
+    slot: &'s MemorySlot<'a>,
+    info: Info<'a>,
+    /// The lazily made value of the slot before any store.
+    default: Option<ValueId>,
+    /// The slot's value just before each blocking memory op (none: the default).
+    reaching: BTreeMap<OpId, Option<ValueId>>,
+    /// The value each storing op stores, as its slot sees it.
+    replaced: Vec<(OpId, ValueId)>,
+    /// The slot's value at the end of each block visited.
+    at_end: BTreeMap<BlockId, Option<ValueId>>,
+    /// The regions visited, inner before outer.
+    post_order: Vec<RegionId>,
+    /// Ops to erase at the end.
+    erase: Vec<OpId>,
+    rw: Rewriter<'r, 'a>,
+}
 
-    /// `MemorySlotPromoter::promoteSlot`; the new allocator, if any.
-    fn promote<'a>(&self, body: &mut Body<'a>, alloc: OpId, slot: &MemorySlot<'a>, mut info: Info) -> Option<OpId> {
-        let d = self.at(body, alloc).expect("an allocator's dialect");
-        let mut quiet = Quiet;
-        let mut rw = Rewriter::new(body, &mut quiet);
-        // `getOrCreateDefaultValue`, at the start of the slot pointer's block.
-        rw.set_start(rw.body.value_block(slot.ptr).expect("a placed slot"));
-        let default = d.default_value(&mut rw, alloc, slot);
-        info.default = Some(default);
-        self.reaching_defs(&mut rw, d, alloc, slot, &mut info);
-        self.remove_blocking_uses(&mut rw, slot, &info);
-        // Branches of dead predecessors forward the default.
-        for m in &info.merge_points {
-            let n = rw.body[*m].args.len();
-            for (t, i) in rw.body.predecessors(*m) {
-                if rw.body.successor_operands(t, i).is_some_and(|r| r.len() + 1 == n) {
-                    rw.body.append_successor_operands(t, i, &[default]);
-                }
+impl<'a> Promoter<'_, '_, '_, '_, 'a> {
+    /// `promoteSlot`; the new allocator, if any.
+    fn promote(mut self) -> Option<OpId> {
+        let home = self.rw.body.value_region(self.slot.ptr).expect("a placed slot");
+        self.promote_region(home, None);
+        if self.info.visit_replaced {
+            for region in self.post_order.clone() {
+                self.visit_replaced(region);
             }
         }
-        d.handle_promotion_complete(&mut rw, alloc, slot, Some(default))
+        for region in self.post_order.clone() {
+            self.remove_blocking_uses(region);
+        }
+        self.remove_unused();
+        let default = self.default;
+        self.d.handle_promotion_complete(&mut self.rw, self.alloc, self.slot, default)
     }
 
-    /// `computeReachingDefInRegion`: down the dominator tree, depth first.
-    fn reaching_defs<'a>(&self, rw: &mut Rewriter<'_, 'a>, d: &dyn Promotable, alloc: OpId, slot: &MemorySlot<'a>, info: &mut Info) {
-        let (region, default) = (info.region.expect("analysed"), info.default.expect("created"));
-        let entry = rw.body[region].blocks[0];
-        if rw.body[region].blocks.len() == 1 {
-            self.reaching_in_block(rw, slot, info, entry, default);
+    /// `getOrCreateDefaultValue`: at the start of the slot pointer's region.
+    fn default(&mut self) -> ValueId {
+        if let Some(d) = self.default {
+            return d;
+        }
+        let ip = self.rw.ip;
+        let home = self.rw.body.value_region(self.slot.ptr).expect("a placed slot");
+        let entry = self.rw.body[home].blocks[0];
+        self.rw.set_start(entry);
+        let d = self.d.default_value(&mut self.rw, self.alloc, self.slot);
+        self.rw.ip = ip;
+        self.default = Some(d);
+        d
+    }
+
+    /// `convertSlotValueToAliasValue`: root to leaf.
+    fn to_alias(&mut self, value: ValueId, alias: &MemorySlot<'a>) -> ValueId {
+        let chain = self.info.chain(self.rw.body, self.slot, alias);
+        let mut v = value;
+        for (op, parent, a) in chain.iter().rev() {
+            let d = self.p.at(self.rw.body, *op).expect("an aliaser");
+            v = d.project_to_alias(&mut self.rw, *op, parent, a, v);
+        }
+        v
+    }
+
+    /// `convertAliasValueToSlotValue`: the root's value projected down each step first, then
+    /// leaf to root.
+    fn to_slot(&mut self, value: ValueId, alias: &MemorySlot<'a>, reaching: ValueId) -> ValueId {
+        let chain = self.info.chain(self.rw.body, self.slot, alias);
+        let mut per_step = alloc::vec![reaching; chain.len()];
+        let mut cur = reaching;
+        for (i, (op, parent, a)) in chain.iter().enumerate().rev() {
+            per_step[i] = cur;
+            let d = self.p.at(self.rw.body, *op).expect("an aliaser");
+            cur = d.project_to_alias(&mut self.rw, *op, parent, a, cur);
+        }
+        let mut v = value;
+        for ((op, parent, a), r) in chain.iter().zip(per_step) {
+            let d = self.p.at(self.rw.body, *op).expect("an aliaser");
+            v = d.project_to_slot(&mut self.rw, *op, parent, a, v, r);
+        }
+        v
+    }
+
+    /// `promoteInBlock`: the definition reaching the end of `block`.
+    fn promote_block(&mut self, block: BlockId, mut def: Option<ValueId>) -> Option<ValueId> {
+        for op in self.rw.body.block_ops(block) {
+            if let Some(d) = self.p.mem_op(self.rw.body, op) {
+                let region = self.rw.body.op_region(op);
+                if region.is_some_and(|r| self.info.blocking_of(r, op).is_some()) {
+                    self.reaching.entry(op).or_insert(def);
+                }
+                let s = self.info.op_slot(self.rw.body, self.slot, op);
+                if d.stores_to(self.rw.body, op, &s) {
+                    self.rw.set_before(op);
+                    let root = match def {
+                        Some(v) => v,
+                        None => self.default(),
+                    };
+                    self.rw.set_before(op);
+                    let at_store = if s.ptr != self.slot.ptr { self.to_alias(root, &s) } else { root };
+                    let mut stored = d.stored(&mut self.rw, op, &s, at_store);
+                    match self.replaced.iter_mut().find(|(o, _)| *o == op) {
+                        Some(e) => e.1 = stored,
+                        None => self.replaced.push((op, stored)),
+                    }
+                    if s.ptr != self.slot.ptr {
+                        stored = self.to_slot(stored, &s, root);
+                    }
+                    def = Some(stored);
+                }
+            }
+            if let Some(d) = self.p.at(self.rw.body, op).filter(|d| d.is_region_op(self.rw.body, op)) {
+                let regions = self.rw.body[op].regions.to_vec();
+                let wanted: Vec<bool> = regions.iter().filter_map(|r| self.info.regions.get(r).copied()).collect();
+                if wanted.is_empty() {
+                    continue;
+                }
+                let stores = wanted.contains(&true);
+                let root = match def {
+                    Some(v) => v,
+                    None => self.default(),
+                };
+                let process = d.setup_promotion(&mut self.rw, op, self.slot, root, stores);
+                for (r, entry) in process {
+                    if self.info.regions.contains_key(&r) {
+                        self.promote_region(r, Some(entry));
+                    }
+                }
+                self.rw.set_after(op);
+                let at_end = core::mem::take(&mut self.at_end);
+                def = Some(d.finalize_promotion(&mut self.rw, op, self.slot, root, stores, &at_end));
+                self.at_end = at_end;
+            }
+        }
+        self.at_end.insert(block, def);
+        def
+    }
+
+    /// `promoteInRegion`: down the dominator tree, depth first.
+    fn promote_region(&mut self, region: RegionId, def: Option<ValueId>) {
+        let entry = self.rw.body[region].blocks[0];
+        if self.rw.body[region].blocks.len() == 1 {
+            self.promote_block(entry, def);
+            self.post_order.push(region);
             return;
         }
-        let tree = rw.body.dom_tree(region);
-        let mut stack = vec![(entry, default)];
+        let tree = self.rw.body.dom_tree(region);
+        let mut stack = vec![(entry, def)];
         while let Some((block, mut def)) = stack.pop() {
-            if info.merge_points.contains(&block) {
-                let arg = rw.body.add_arg(block, slot.elem.clone());
-                rw.body[arg].loc = rw.body[slot.ptr].loc.clone();
-                rw.set_start(block);
-                d.handle_block_argument(rw, alloc, slot, arg);
-                def = arg;
+            if self.info.merge_points.contains(&block) {
+                let arg = self.rw.body.add_arg(block, self.slot.elem.clone());
+                self.rw.body[arg].loc = self.rw.body[self.slot.ptr].loc.clone();
+                def = Some(arg);
             }
-            def = self.reaching_in_block(rw, slot, info, block, def);
-            if let Some(t) = rw.body.last_op(block)
-                && rw.body.is_branch(t)
+            def = self.promote_block(block, def);
+            if let Some(t) = self.rw.body.last_op(block)
+                && self.rw.body.is_branch(t)
             {
-                for (i, s) in rw.body[t].successors.clone().into_iter().enumerate() {
-                    if info.merge_points.contains(&s) {
-                        rw.body.append_successor_operands(t, i, &[def]);
+                for (i, s) in self.rw.body[t].successors.clone().into_iter().enumerate() {
+                    if self.info.merge_points.contains(&s) {
+                        let v = match def {
+                            Some(v) => v,
+                            None => self.default(),
+                        };
+                        def = Some(v);
+                        self.rw.body.append_successor_operands(t, i, &[v]);
                     }
                 }
             }
             stack.extend(tree.children(block).iter().map(|c| (*c, def)));
         }
+        self.post_order.push(region);
     }
 
-    /// `computeReachingDefInBlock`: the definition reaching the end of `block`.
-    fn reaching_in_block<'a>(&self, rw: &mut Rewriter<'_, 'a>, slot: &MemorySlot<'a>, info: &mut Info, block: BlockId, mut def: ValueId) -> ValueId {
-        for op in rw.body.block_ops(block) {
-            let Some(d) = self.at(rw.body, op).filter(|d| d.is_mem_op(rw.body, op)) else { continue };
-            if info.blocking.iter().any(|(o, _)| *o == op) {
-                info.reaching.entry(op).or_insert(def);
-            }
-            if d.stores_to(rw.body, op, slot) {
-                rw.set_after(op);
-                def = d.stored(rw, op, slot, def);
-                info.replaced.insert(op, def);
-            }
-        }
-        def
-    }
-
-    /// `removeBlockingUses`: users in reverse dominance order, then the scheduled erasures.
-    fn remove_blocking_uses<'a>(&self, rw: &mut Rewriter<'_, 'a>, slot: &MemorySlot<'a>, info: &Info) {
-        let order = rw.body.blocks_by_dominance(info.region.expect("analysed"));
-        let mut users: Vec<OpId> = info.blocking.iter().map(|(o, _)| *o).collect();
-        let rank = |o: &OpId| order.iter().position(|b| Some(*b) == rw.body[*o].parent).unwrap_or(usize::MAX);
-        users.sort_by(|x, y| rank(x).cmp(&rank(y)).then_with(|| if x == y { core::cmp::Ordering::Equal } else if rw.body.is_before(*x, *y) { core::cmp::Ordering::Less } else { core::cmp::Ordering::Greater }));
-        let mut erase = Vec::new();
-        let mut replaced_list = Vec::new();
-        let mut visit = Vec::new();
-        for op in users.into_iter().rev() {
-            let d = self.at(rw.body, op).expect("a promotable user");
-            let mut uses = info.get(op).to_vec();
-            uses.sort_by_key(|u| u.index);
-            rw.set_after(op);
-            if d.is_mem_op(rw.body, op) {
-                let def = info.reaching.get(&op).copied().or(info.default).expect("created");
-                if d.remove_blocking_uses(rw, op, Some(slot), &uses, Some(def)) == Deletion::Delete {
-                    erase.push(op);
-                }
-                if d.stores_to(rw.body, op, slot)
-                    && let Some(v) = info.replaced.get(&op)
-                {
-                    replaced_list.push((op, *v));
-                }
+    /// `visitReplacedValuesForRegion`.
+    fn visit_replaced(&mut self, region: RegionId) {
+        let Some((_, users)) = self.info.blocking.iter().find(|(r, _)| *r == region) else { return };
+        for (op, _) in users.clone() {
+            let Some(d) = self.p.at(self.rw.body, op) else { continue };
+            if d.is_mem_op(self.rw.body, op) || !d.requires_replaced_values(self.rw.body, op) {
                 continue;
             }
-            if d.remove_blocking_uses(rw, op, None, &uses, None) == Deletion::Delete {
-                erase.push(op);
+            self.rw.set_after(op);
+            let replaced = self.replaced.clone();
+            d.visit_replaced_values(&mut self.rw, op, &replaced);
+        }
+    }
+
+    /// `removeBlockingUses`: the region's users (where they are now) in reverse dominance order.
+    fn remove_blocking_uses(&mut self, region: RegionId) {
+        let Some((_, users)) = self.info.blocking.iter().find(|(r, _)| *r == region) else { return };
+        let Some(&(first, _)) = users.first() else { return };
+        let users = users.clone();
+        let Some(now) = self.rw.body.op_region(first) else { return };
+        let order = self.rw.body.blocks_by_dominance(now);
+        let mut ops: Vec<OpId> = users.iter().map(|(o, _)| *o).collect();
+        let b = &*self.rw.body;
+        let rank = |o: &OpId| order.iter().position(|x| Some(*x) == b[*o].parent).unwrap_or(usize::MAX);
+        ops.sort_by(|x, y| rank(x).cmp(&rank(y)).then_with(|| if x == y { core::cmp::Ordering::Equal } else if b.is_before(*x, *y) { core::cmp::Ordering::Less } else { core::cmp::Ordering::Greater }));
+        for op in ops.into_iter().rev() {
+            let d = self.p.at(self.rw.body, op).expect("a promotable user");
+            let mut uses = users.iter().find(|(o, _)| *o == op).map(|(_, u)| u.clone()).unwrap_or_default();
+            uses.sort_by_key(|u| u.index);
+            let kind = if d.is_mem_op(self.rw.body, op) {
+                let root = match self.reaching.get(&op).copied().flatten() {
+                    Some(v) => v,
+                    None => self.default(),
+                };
+                self.rw.set_after(op);
+                let s = self.info.op_slot(self.rw.body, self.slot, op);
+                let at_use = if s.ptr != self.slot.ptr { self.to_alias(root, &s) } else { root };
+                d.remove_blocking_uses(&mut self.rw, op, Some(&s), &uses, Some(at_use))
+            } else {
+                self.rw.set_after(op);
+                d.remove_blocking_uses(&mut self.rw, op, None, &uses, None)
+            };
+            if kind == Deletion::Delete && !self.erase.contains(&op) {
+                self.erase.push(op);
             }
-            if d.requires_replaced_values(rw.body, op) {
-                visit.push((d, op));
+        }
+    }
+
+    /// `removeUnusedItems`: erases the ops to go, and the merge point arguments that only feed
+    /// one another.
+    fn remove_unused(&mut self) {
+        let merge: Vec<BlockId> = self.info.merge_points.iter().copied().collect();
+        let last_arg = |b: &Body<'_>, m: BlockId| *b[m].args.last().expect("a merge point argument");
+        let mut unused: BTreeSet<ValueId> = BTreeSet::new();
+        let mut used: Vec<ValueId> = Vec::new();
+        for m in &merge {
+            let arg = last_arg(self.rw.body, *m);
+            if self.definitely_used(arg) {
+                used.push(arg);
+            } else {
+                unused.insert(arg);
             }
         }
-        for (d, op) in visit {
-            rw.set_after(op);
-            d.visit_replaced_values(rw, op, &replaced_list);
+        while let Some(arg) = used.pop() {
+            let m = self.rw.body.value_block(arg).expect("a block argument");
+            let n = self.rw.body[m].args.len();
+            for (t, i) in self.rw.body.predecessors(m) {
+                let mut range = self.rw.body.successor_operands(t, i).expect("a branch");
+                if range.len() + 1 == n {
+                    let d = self.default();
+                    self.rw.body.append_successor_operands(t, i, &[d]);
+                    range = self.rw.body.successor_operands(t, i).expect("a branch");
+                }
+                let v = self.rw.body[t].operands[range.start + n - 1];
+                if unused.remove(&v) {
+                    used.push(v);
+                }
+            }
+            self.rw.set_start(m);
+            self.d.handle_block_argument(&mut self.rw, self.alloc, self.slot, arg);
         }
-        for op in erase {
-            rw.body.drop_result_uses(op);
-            rw.body.erase(op);
+        for op in core::mem::take(&mut self.erase) {
+            self.rw.body.drop_result_uses(op);
+            self.rw.body.erase(op);
         }
+        for arg in &unused {
+            let m = self.rw.body.value_block(*arg).expect("a block argument");
+            let n = self.rw.body[m].args.len();
+            for (t, i) in self.rw.body.predecessors(m) {
+                if self.rw.body.successor_operands(t, i).is_some_and(|r| r.len() == n) {
+                    self.rw.body.erase_successor_operand(t, i, n - 1);
+                }
+            }
+        }
+        for arg in unused {
+            let m = self.rw.body.value_block(arg).expect("a block argument");
+            let n = self.rw.body[m].args.len();
+            self.rw.body.erase_arg(m, n - 1);
+        }
+    }
+
+    /// Whether merge point argument `arg` has a use other than feeding the slot argument of a
+    /// merge point (or an op going away).
+    fn definitely_used(&self, arg: ValueId) -> bool {
+        let b = &*self.rw.body;
+        b.use_list(arg).iter().any(|u| {
+            if self.erase.contains(&u.op) {
+                return false;
+            }
+            let Some(succ) = b.successor_of_operand(u.op, u.index as usize) else { return true };
+            let (block, at) = succ;
+            !self.info.merge_points.contains(&block) || at + 1 != b[block].args.len()
+        })
     }
 }
 
@@ -359,6 +634,18 @@ impl Body<'_> {
     /// The region defining `v`.
     fn value_region(&self, v: ValueId) -> Option<RegionId> {
         self.value_block(v).and_then(|b| self[b].parent)
+    }
+
+    /// `getSuccessorBlockArgument`: the successor block and argument operand `index` of branch
+    /// `op` feeds, if any.
+    fn successor_of_operand(&self, op: OpId, index: usize) -> Option<(BlockId, usize)> {
+        if !self.is_branch(op) {
+            return None;
+        }
+        self[op].successors.iter().enumerate().find_map(|(i, s)| {
+            let r = self.successor_operands(op, i)?;
+            r.contains(&index).then(|| (*s, index - r.start))
+        })
     }
 
     /// Dominance frontiers of `region`'s reachable blocks (Cooper, Harvey & Kennedy).

@@ -637,7 +637,8 @@ impl Destructurable for LlvmSlots {
     fn subelements<'a>(&self, ty: &Type<'a>) -> Option<Vec<(Attribute<'a>, Type<'a>)>> {
         let index = |(i, t)| (Subslot::from(i as u64).0, t);
         match LlvmType::try_from(ty).ok()? {
-            LlvmType::Struct { body, .. } => Some(body.unwrap_or_default().into_iter().enumerate().map(index).collect()),
+            // (an empty struct has no subelements: not destructurable)
+            LlvmType::Struct { body, .. } => Some(body.filter(|b| !b.is_empty())?.into_iter().enumerate().map(index).collect()),
             // `maxArraySizeForDestructuring`.
             LlvmType::Array(n, _) if n > 16 => None,
             LlvmType::Array(n, et) => Some((0..n as usize).map(|i| index((i, (*et).clone()))).collect()),
@@ -677,7 +678,8 @@ impl Destructurable for LlvmSlots {
             allocators.push(op);
             (at.clone(), MemorySlot { ptr: rw.body[op].results[0], elem })
         };
-        used.iter().map(&mut sub).collect()
+        // (in the order of the subelements in the type)
+        slot.subelements.iter().map(|(at, _)| at).filter(|at| used.contains(at)).map(&mut sub).collect()
     }
 
     fn handle_destructuring_complete<'a>(&self, rw: &mut Rewriter<'_, 'a>, alloc: OpId, _: &DestructurableMemorySlot<'a>) -> Option<OpId> {

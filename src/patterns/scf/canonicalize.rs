@@ -99,10 +99,6 @@ impl<'a> Body<'a> {
             }
         }
     }
-
-    fn op_region(&self, op: OpId) -> Option<RegionId> {
-        self[op].parent.and_then(|b| self[b].parent)
-    }
 }
 
 impl<'a> Rewriter<'_, 'a> {

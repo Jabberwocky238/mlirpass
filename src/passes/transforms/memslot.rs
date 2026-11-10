@@ -14,7 +14,7 @@
 //! is: after the op for use removal and `getStored`, at the start of the block for block
 //! arguments and default values.
 
-use alloc::collections::BTreeSet;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Type};
@@ -115,6 +115,48 @@ pub trait Promotable {
 
     /// `visitReplacedValues`: each memory op that stored to the slot, and the value it stored.
     fn visit_replaced_values<'a>(&self, rw: &mut Rewriter<'_, 'a>, op: OpId, replaced: &[(OpId, ValueId)]) {}
+
+    // ---- PromotableAliaserInterface -------------------------------------------------------
+
+    /// `getPromotableSlotAliases`: the slots `op` exposes by aliasing `parent` through operand
+    /// `operand`; `None`: `op` is no aliaser.
+    fn slot_aliases<'a>(&self, b: &Body<'a>, op: OpId, operand: usize, parent: &MemorySlot<'a>) -> Option<Vec<MemorySlot<'a>>> {
+        None
+    }
+
+    /// `projectSlotValueToAliasValue`: `value` of `parent` seen as `alias`.
+    fn project_to_alias<'a>(&self, rw: &mut Rewriter<'_, 'a>, op: OpId, parent: &MemorySlot<'a>, alias: &MemorySlot<'a>, value: ValueId) -> ValueId {
+        value
+    }
+
+    /// `projectAliasValueToSlotValue`: `value` stored to `alias` seen as `parent`, whose value
+    /// was `reaching`.
+    fn project_to_slot<'a>(&self, rw: &mut Rewriter<'_, 'a>, op: OpId, parent: &MemorySlot<'a>, alias: &MemorySlot<'a>, value: ValueId, reaching: ValueId) -> ValueId {
+        value
+    }
+
+    // ---- PromotableRegionOpInterface ------------------------------------------------------
+
+    /// Whether `op` implements `PromotableRegionOpInterface`.
+    fn is_region_op(&self, b: &Body<'_>, op: OpId) -> bool {
+        false
+    }
+
+    /// `isRegionPromotable`; `None`: `op` does not implement the interface.
+    fn region_promotable<'a>(&self, b: &Body<'a>, op: OpId, slot: &MemorySlot<'a>, region: RegionId, stores: bool) -> Option<bool> {
+        None
+    }
+
+    /// `setupPromotion`: the slot's value at the entry of each region to process, in order.
+    fn setup_promotion<'a>(&self, rw: &mut Rewriter<'_, 'a>, op: OpId, slot: &MemorySlot<'a>, reaching: ValueId, stores: bool) -> Vec<(RegionId, ValueId)> {
+        Vec::new()
+    }
+
+    /// `finalizePromotion`: the slot's value right after `op` (`rw` there), given the values
+    /// reaching the ends of its blocks.
+    fn finalize_promotion<'a>(&self, rw: &mut Rewriter<'_, 'a>, op: OpId, slot: &MemorySlot<'a>, reaching: ValueId, stores: bool, at_end: &BTreeMap<BlockId, Option<ValueId>>) -> ValueId {
+        reaching
+    }
 }
 
 impl Body<'_> {

@@ -1004,6 +1004,31 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
         }
     }
 
+    /// `memoryslot::replaceWithNewResults`: `op` rebuilt with results of `extra` types added at
+    /// the end, its regions moved over; the old results' uses go to the new ones.
+    pub fn with_extra_results(&mut self, op: OpId, extra: &[Type<'a>]) -> OpId {
+        let d = &self.body[op];
+        let types: Vec<_> = d.results.iter().map(|r| self.body[*r].ty.clone()).chain(extra.iter().cloned()).collect();
+        let data = OpData { regions: crate::Ids::new(), results: crate::Ids::new(), parent: None, ..d.clone() };
+        let old_regions = d.regions.clone();
+        let ip = self.ip;
+        self.set_before(op);
+        let new = self.create_with(data, &types, |b, new| {
+            for _ in 0..old_regions.len() {
+                b.add_region(new);
+            }
+        });
+        self.ip = ip;
+        for (i, r) in old_regions.into_iter().enumerate() {
+            let into = self.body[new].regions[i];
+            self.inline_region_before(r, into, None);
+        }
+        let n = self.body[op].results.len();
+        let replacements: Vec<ValueId> = self.body[new].results[..n].to_vec();
+        self.replace_op(op, &replacements);
+        new
+    }
+
     /// `eraseOpResults`: `op` rebuilt without the results in `erase`, its regions moved over.
     pub fn erase_op_results(&mut self, op: OpId, erase: &[usize]) -> OpId {
         let d = &self.body[op];
