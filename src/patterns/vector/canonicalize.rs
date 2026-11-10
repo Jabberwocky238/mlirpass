@@ -179,8 +179,8 @@ impl<'a> Folder<'_, 'a> {
             "constant_mask" => self.constant_mask(),
             "mask" => self.mask(),
             "multi_reduction" => {
-                let reduced = self.b.dense_array(self.op, "reduction_dims");
-                if vrank(&self.b.operand_ty(self.op, 0)) == Some(1) && !reduced.contains(&0) {
+                // No reduction dims: the source, whatever the rank.
+                if self.b.dense_array(self.op, "reduction_dims").is_empty() {
                     return Self::value(self.b[self.op].operands[0]);
                 }
                 Fold::Failed
@@ -2604,7 +2604,7 @@ impl VectorCanon {
         let (Some((rshape, rscal)), Some((wshape, _))) = (vshape(&read_ty), vshape(&b[written].ty)) else { return false };
         // `getTransferChunkAccessed`.
         let chunk = |p: &Perm, shape: &[i64]| {
-            let mut c = vec![0i64; p.dims];
+            let mut c = vec![1i64; p.dims];
             for (r, n) in p.results.iter().zip(shape) {
                 if let Some(d) = r {
                     c[*d] = *n;
@@ -2641,6 +2641,65 @@ impl VectorCanon {
         let bc = rw.create(OpData::build("vector.broadcast").operands(&[written]), &[bty]);
         let bv = rw.body[bc].results[0];
         rw.replace_with(op, OpData::build("vector.transpose").operands(&[bv]).with("permutation", Attribute::dense_i64(&perm)), &[read_ty]);
+        true
+    }
+
+    /// `SwapExtractSliceOfTransferWrite`: inserting a zero-offset slice of a full transfer write
+    /// writes into the matching slice of the insert's destination instead.
+    #[rewrite("tensor.insert_slice")]
+    fn swap_extract_slice_of_transfer_write(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let unit = |l: &[crate::MemrefOfr]| l.iter().all(|x| b.ofr_int(*x) == Some(1));
+        let ins = b.slice_lists(op);
+        if !unit(&ins[2]) {
+            return false;
+        }
+        let Some(ext) = b.def_named(b[op].operands[0], "tensor.extract_slice") else { return false };
+        let exl = b.slice_lists(ext);
+        let ext_r = b[ext].results[0];
+        if !unit(&exl[2]) || b[ext_r].uses.len() != 1 {
+            return false;
+        }
+        let Some(write) = b.def_named(b[ext].operands[0], "vector.transfer_write") else { return false };
+        if b[write].results.first().is_none_or(|r| b[*r].uses.len() != 1) {
+            return false;
+        }
+        let src_ty = b[b[op].operands[0]].ty.clone();
+        if vrank(&src_ty) != Some(b.transfer_rank(write)) && src_ty.shape().map(|s| s.len()) != Some(b.transfer_rank(write)) {
+            return false;
+        }
+        if !exl[0].iter().all(|x| b.ofr_int(*x) == Some(0)) || !b.transfer_indices(write).iter().all(|v| const_int(b, *v) == Some(0)) {
+            return false;
+        }
+        if ins[1].len() != exl[1].len() || ins[1].iter().zip(&exl[1]).any(|(x, y)| x != y && (b.ofr_int(*x).is_none() || b.ofr_int(*x) != b.ofr_int(*y))) {
+            return false;
+        }
+        // The write must cover its whole tensor.
+        let Some(perm) = b.perm(write) else { return false };
+        let base_ty = b[b[write].operands[1]].ty.clone();
+        let Some(tshape) = base_ty.shape().map(|d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { Dim::DYNAMIC }).collect::<Vec<i64>>()) else { return false };
+        let written: Vec<i64> = perm.results.iter().map(|r| r.map_or(0, |d| tshape[d])).collect();
+        let vec = b[write].operands[0];
+        if b.transfer_mask(write).is_some() || vshape(&b[vec].ty).map(|s| s.0) != Some(written) {
+            return false;
+        }
+        let indices = b.transfer_indices(write);
+        let pmap = b[write].get("permutation_map").cloned().unwrap_or(Attribute::Unit);
+        let dest = b[op].operands[1];
+        rw.set_before(op);
+        let slice = rw.create(OpData::sliced("tensor.extract_slice", &[dest], &ins), &[src_ty.clone()]);
+        let sv = rw.body[slice].results[0];
+        let mut ops = vec![vec, sv];
+        ops.extend(&indices);
+        let n = indices.len();
+        let data = OpData::build("vector.transfer_write")
+            .operands(&ops)
+            .with("permutation_map", pmap)
+            .with("in_bounds", Attribute::Array(vec![Attribute::Bool(false); perm.results.len()]))
+            .segments(&[1, 1, n, 0]);
+        let w = rw.create(data, &[src_ty]);
+        let wv = rw.body[w].results[0];
+        rw.modify(op, |b| b.set_operand(op, 0, wv));
         true
     }
 
@@ -2805,6 +2864,7 @@ impl VectorCanon {
         set.add(StridedSliceFolder);
         set.add(InterleaveDeinterleaveFolder);
         set.add(TransferReadAfterWriteToBroadcast);
+        set.add(SwapExtractSliceOfTransferWrite);
         set.add(StridedSliceCreateMaskFolder);
         set.add(StridedSliceConstantMaskFolder);
         set.add(StridedSliceBroadcast);
