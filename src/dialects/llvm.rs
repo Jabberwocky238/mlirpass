@@ -22,6 +22,10 @@ impl OpInterfaces for LlvmDialect {
         "llvm"
     }
 
+    fn inliner(&self) -> Option<&dyn crate::DialectInliner> {
+        Some(self)
+    }
+
     fn constant_value<'a>(&self, b: &Body<'a>, op: OpId) -> Option<Attribute<'a>> {
         let d = &b[op];
         match &*d.name {
@@ -82,6 +86,68 @@ impl OpInterfaces for LlvmDialect {
             "llvm.br" => Some(succ[0]),
             "llvm.cond_br" => Body::selector_of(&c[0]).map(|v| if v & 1 == 1 { succ[0] } else { succ[1] }),
             _ => None,
+        }
+    }
+}
+
+/// `LLVMInlinerInterface`, for the callees it needs nothing more for: the
+/// `processInlinedCallBlocks` work (allocas, alias scopes, access groups, argument and result
+/// attributes) is not ported, so a callee that would need it is not inlined.
+impl crate::DialectInliner for LlvmDialect {
+    fn legal_call(&self, b: &Body<'_>, call: OpId, callable: OpId) -> bool {
+        /// Function attributes that forbid inlining.
+        const DISALLOWED: [&str; 4] = ["noduplicate", "presplitcoroutine", "returns_twice", "strictfp"];
+        let f = &b[callable];
+        if b[call].name != "llvm.call" || b[call].get("no_inline").is_some() || f.name != "llvm.func" || f.get("no_inline").is_some() {
+            return false;
+        }
+        let vararg = matches!(f.get("function_type"), Some(Attribute::Type(t)) if alloc::format!("{t}").contains("..."));
+        if vararg || f.get("personality").is_some() || f.get("arg_attrs").is_some() || f.get("res_attrs").is_some() {
+            return false;
+        }
+        if let Some(Attribute::Array(pass)) = f.get("passthrough")
+            && pass.iter().any(|a| matches!(a, Attribute::Str { lit, .. } if DISALLOWED.contains(&&**lit)))
+        {
+            return false;
+        }
+        let Some(&region) = f.regions.first() else { return false };
+        // (every block ends with a terminator)
+        if !b[region].blocks.iter().all(|k| b.last_op(*k).is_some_and(|t| b.has(t, crate::Trait::IsTerminator))) {
+            return false;
+        }
+        let ops = b.ops_in(callable);
+        const SCOPED: [&str; 4] = ["access_groups", "alias_scopes", "noalias_scopes", "loop_annotation"];
+        !ops.iter().any(|o| b[*o].name == "llvm.alloca" || SCOPED.iter().any(|a| b[*o].get(a).is_some()))
+    }
+
+    fn legal_region(&self, _: &Body<'_>, _: crate::RegionId) -> bool {
+        true
+    }
+
+    /// Not `va_start` or a block tag.
+    fn legal_op(&self, b: &Body<'_>, op: OpId) -> bool {
+        !matches!(&*b[op].name, "llvm.intr.vastart" | "llvm.blocktag")
+    }
+
+    /// `llvm.return` as an `llvm.br` to `dest`.
+    fn branch_terminator(&self, b: &mut Body<'_>, op: OpId, dest: BlockId) {
+        if b[op].name != "llvm.return" {
+            return;
+        }
+        let mut data = crate::OpData::build("llvm.br").operands(&b[op].operands.clone());
+        data.successors = smallvec::smallvec![dest];
+        data.loc = b[op].loc.clone();
+        let br = b.create(data, &[]);
+        b.insert_before(br, op);
+        b.erase(op);
+    }
+
+    fn replace_with_terminator(&self, b: &mut Body<'_>, op: OpId, results: &[crate::ValueId]) {
+        if b[op].name != "llvm.return" {
+            return;
+        }
+        for (r, v) in results.iter().zip(b[op].operands.clone()) {
+            b.replace_all_uses(*r, v);
         }
     }
 }

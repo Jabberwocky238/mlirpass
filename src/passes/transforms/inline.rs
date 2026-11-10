@@ -549,8 +549,14 @@ fn split_callsite(loc: &str) -> Option<(String, String)> {
 
 /// The result types a callable promises (`getResultTypes`).
 fn callable_results<'a>(body: &Body<'a>, callable: OpId) -> Option<Vec<Type<'a>>> {
+    use mlirformat::llvm_types::LlvmType;
     match body[callable].get("function_type") {
         Some(Attribute::Type(Type::Function(f))) => Some(f.results.clone()),
+        // `!llvm.func<ret (params)>`: no result for `void`.
+        Some(Attribute::Type(t)) => match LlvmType::try_from(t).ok()? {
+            LlvmType::Func { ret, .. } => Some(if matches!(LlvmType::try_from(&*ret), Ok(LlvmType::Void)) { Vec::new() } else { alloc::vec![*ret] }),
+            _ => None,
+        },
         _ => match body[callable].results.first().map(|r| &body[*r].ty) {
             Some(Type::Function(f)) => Some(f.results.clone()),
             _ => None,

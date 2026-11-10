@@ -100,8 +100,22 @@ impl DialectInliner for TestDialect {
         b[op].name != "test.functional_region_op"
     }
 
-    fn replace_with_terminator(&self, b: &mut Body<'_>, op: OpId, results: &[ValueId]) {
+    /// `test.return` as a `cf.br` to `dest`.
+    fn branch_terminator(&self, b: &mut Body<'_>, op: OpId, dest: crate::BlockId) {
         if b[op].name != "test.return" {
+            return;
+        }
+        let mut data = crate::OpData::build("cf.br").operands(&b[op].operands.clone());
+        data.successors = smallvec::smallvec![dest];
+        data.loc = b[op].loc.clone();
+        let br = b.create(data, &[]);
+        b.insert_before(br, op);
+        b.erase(op);
+    }
+
+    /// `test.return`'s operands for the results (none when their counts differ).
+    fn replace_with_terminator(&self, b: &mut Body<'_>, op: OpId, results: &[ValueId]) {
+        if b[op].name != "test.return" || b[op].operands.len() != results.len() {
             return;
         }
         for (r, v) in results.iter().zip(b[op].operands.clone()) {
