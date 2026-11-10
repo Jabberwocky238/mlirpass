@@ -1310,7 +1310,9 @@ impl TensorCanon {
                 }
             }
             "tensor.extract" => {
-                if let Some(k) = c[0].as_ref().and_then(|a| Const::try_from(a).ok()).filter(|k| k.elements && k.is_splat()) {
+                // `ElementsAttr`: dense or sparse.
+                let elements = c[0].as_ref().and_then(Const::elements_attr);
+                if let Some(k) = elements.as_ref().filter(|k| k.is_splat()) {
                     return Folded::Attr(Const::scalar(k.values[0], k.ty.element_type().clone()).into()).into();
                 }
                 let mut idx = Vec::new();
@@ -1330,7 +1332,7 @@ impl TensorCanon {
                     }
                     return Folded::Value(b[fe].operands[flat as usize]).into();
                 }
-                if let Some(k) = c[0].as_ref().and_then(|a| Const::try_from(a).ok()).filter(|k| k.elements) {
+                if let Some(k) = elements {
                     let dims = k.ty.dims().unwrap_or_default();
                     if idx.len() == dims.len() && idx.iter().zip(&dims).all(|(i, d)| *i >= 0 && i < d) {
                         let flat = idx.iter().zip(&dims).fold(0i64, |acc, (i, d)| acc * d + i);

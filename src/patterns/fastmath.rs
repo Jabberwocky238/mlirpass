@@ -13,22 +13,18 @@ pub struct Fmf(u8);
 impl Fmf {
     const NAMES: [&'static str; 7] = ["reassoc", "nnan", "ninf", "nsz", "arcp", "contract", "afn"];
     pub const NONE: Fmf = Fmf(0);
+    const NNAN: u8 = 0b10;
     const NNAN_NINF: u8 = 0b110;
     const AFN: u8 = 0b100_0000;
     const CONTRACT: u8 = 0b10_0000;
 
     pub fn of(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Self {
-        let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("fastmath") else { return Self::NONE };
-        let body = ext.body.as_deref().unwrap_or("<none>");
-        let mut bits = 0u8;
-        for f in body.trim_matches(|c| c == '<' || c == '>').split(',').map(str::trim) {
-            if f == "fast" {
-                bits = 0x7f;
-            } else if let Some(i) = Self::NAMES.iter().position(|n| *n == f) {
-                bits |= 1 << i;
-            }
-        }
-        Self(bits)
+        cr.rw.body[op].get("fastmath").into()
+    }
+
+    /// `bitEnumContainsAll(fmf, nnan)`.
+    pub fn nnan(self) -> bool {
+        self.0 & Self::NNAN != 0
     }
 
     /// `bitEnumClear(fmf, nnan | ninf)`.
@@ -58,5 +54,22 @@ impl Fmf {
     /// `bitEnumContainsAll(fmf, afn)`.
     pub fn afn(self) -> bool {
         self.0 & Self::AFN != 0
+    }
+}
+
+impl From<Option<&Attribute<'_>>> for Fmf {
+    /// An op's `fastmath` attribute (none: no flags).
+    fn from(a: Option<&Attribute<'_>>) -> Self {
+        let Some(Attribute::Extended { ext, .. }) = a else { return Self::NONE };
+        let body = ext.body.as_deref().unwrap_or("<none>");
+        let mut bits = 0u8;
+        for f in body.trim_matches(|c| c == '<' || c == '>').split(',').map(str::trim) {
+            if f == "fast" {
+                bits = 0x7f;
+            } else if let Some(i) = Self::NAMES.iter().position(|n| *n == f) {
+                bits |= 1 << i;
+            }
+        }
+        Self(bits)
     }
 }

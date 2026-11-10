@@ -39,6 +39,8 @@ impl OpInterfaces for LlvmDialect {
             "llvm.mlir.poison" => Some(Self::ext("llvm.poison")),
             // `AddressOfOp::fold`: the global's symbol.
             "llvm.mlir.addressof" => d.get("global_name").cloned(),
+            // `MetadataAsValueOp::fold`: its metadata.
+            "llvm.mlir.metadata_as_value" => d.get("metadata").cloned(),
             _ => d.get("value").cloned(),
         }
     }

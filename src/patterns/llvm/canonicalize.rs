@@ -72,7 +72,7 @@ fn element_at(attr: Attribute<'_>, i: i64) -> Option<Attribute<'_>> {
         Attribute::Array(xs) => xs.into_iter().nth(i),
         Attribute::Extended { ref ext, .. } if matches!(&*ext.name, "llvm.zero" | "llvm.undef" | "llvm.poison") => Some(attr),
         a => {
-            let c = Const::try_from(&a).ok().filter(|c| c.elements)?;
+            let c = Const::elements_attr(&a)?;
             if c.ty.shape().is_none_or(|d| d.len() != 1) || i >= c.ty.element_count()? {
                 return None;
             }
@@ -176,6 +176,9 @@ fn gep<'a>(b: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold
 /// `llvm` canonicalization: folds and constant materialization.
 pub struct LlvmCanon;
 
+/// The metadata attributes `llvm.mlir.metadata_as_value` materializes.
+const METADATA_ATTRS: [&str; 4] = ["llvm.md_string", "llvm.md_constant", "llvm.md_func", "llvm.md_node"];
+
 impl LlvmCanon {
     /// `LLVMDialect::materializeConstant`.
     pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
@@ -184,6 +187,9 @@ impl LlvmCanon {
             Attribute::Extended { ext, .. } if ext.name == "llvm.undef" => Some(OpData::build("llvm.mlir.undef")),
             Attribute::Extended { ext, .. } if ext.name == "llvm.poison" => Some(OpData::build("llvm.mlir.poison")),
             Attribute::Extended { ext, .. } if ext.name == "llvm.zero" => Some(OpData::build("llvm.mlir.zero")),
+            Attribute::Extended { ext, .. } if METADATA_ATTRS.contains(&&*ext.name) && matches!(LlvmType::try_from(ty), Ok(LlvmType::Metadata)) => {
+                Some(OpData::build("llvm.mlir.metadata_as_value").with("metadata", value.clone()))
+            }
             // `LLVM::ConstantOp::materialize`: integers, floats and elements of the type.
             Attribute::Int { .. } | Attribute::Float { .. } | Attribute::Bool(_) | Attribute::Builtin { .. } => Some(OpData::build("llvm.mlir.constant").with("value", value.clone())),
             _ => None,
@@ -211,6 +217,10 @@ impl LlvmCanon {
                 };
                 Folded::Attr(zero.unwrap_or_else(|| Attribute::dialect("llvm.zero", ""))).into()
             }
+            "llvm.mlir.metadata_as_value" => match b[op].get("metadata") {
+                Some(a) => Folded::Attr(a.clone()).into(),
+                None => Fold::Failed,
+            },
             "llvm.mlir.constant" => match b[op].get("value") {
                 Some(a) => Folded::Attr(a.clone()).into(),
                 None => Fold::Failed,

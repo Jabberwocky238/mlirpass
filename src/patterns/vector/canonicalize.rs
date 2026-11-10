@@ -2778,6 +2778,7 @@ fn contract_add(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
         let zero = b[k].get("value").and_then(|a| Const::try_from(a).ok()).is_some_and(|c| c.values.iter().all(|s| match s {
             Scalar::Int(i) => i.is_zero(),
             Scalar::Float(f) => f.bits == 0,
+            Scalar::Complex(..) | Scalar::ComplexFloat(..) => false,
         }));
         if !zero {
             continue;

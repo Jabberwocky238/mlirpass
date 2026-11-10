@@ -1,8 +1,10 @@
 //! `complex` rule sets.
 
+mod canonicalize;
 mod to_libm;
 mod to_std;
 
+pub use canonicalize::ComplexCanon;
 pub use to_libm::ComplexToLibm;
 pub use to_std::{ComplexToStd, Cx as ComplexCx};
 

@@ -554,6 +554,7 @@ impl<'a> Tf<'_, '_, 'a> {
         Const::try_from(&a).ok().is_some_and(|k| k.values.iter().all(|s| match s {
             Scalar::Int(i) => i.is_zero(),
             Scalar::Float(f) => f.is_zero(),
+            Scalar::Complex(..) | Scalar::ComplexFloat(..) => false,
         }))
     }
 

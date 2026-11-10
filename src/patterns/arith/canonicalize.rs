@@ -807,6 +807,7 @@ impl<'x, 'a> Folder<'x, 'a> {
             let bits = match s {
                 Scalar::Int(i) => i.bits(),
                 Scalar::Float(f) => f.bits as u128,
+                Scalar::Complex(..) | Scalar::ComplexFloat(..) => return None,
             };
             Some(match &elem {
                 Type::Float(k) => Scalar::Float(ApFloat::from_bits(*k, bits as u64)?),

@@ -129,6 +129,8 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("index") => crate::IndexCanon::fold(body, op, consts),
         #[cfg(feature = "dialect.quant")]
         Some("quant") => crate::QuantCanon::fold(body, op),
+        #[cfg(feature = "dialect.complex")]
+        Some("complex") => crate::ComplexCanon::fold(body, op, consts),
         #[cfg(feature = "dialect.shape")]
         Some("shape") => crate::ShapeCanon::fold(body, op, consts),
         #[cfg(feature = "dialect.tensor")]
@@ -189,13 +191,15 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
         #[cfg(feature = "dialect.shape")]
         "shape" => crate::ShapeCanon::materialize(value, ty),
         #[cfg(any(feature = "dialect.tensor", feature = "dialect.linalg"))]
-        "tensor" | "linalg" => crate::ArithCanon::materialize(value, ty),
+        "tensor" | "linalg" => crate::ArithCanon::materialize(value, ty).or_else(|| Body::complex_constant(value, ty)),
         #[cfg(feature = "dialect.tosa")]
         "tosa" => crate::TosaCanon::materialize(value, ty),
         #[cfg(feature = "dialect.spirv")]
         "spirv" => crate::SpirvCanon::materialize(value, ty),
         #[cfg(feature = "dialect.index")]
         "index" => crate::IndexCanon::materialize(value, ty),
+        #[cfg(feature = "dialect.complex")]
+        "complex" => crate::ComplexCanon::materialize(value, ty),
         #[cfg(feature = "dialect.ub")]
         "ub" => value.is_poison().then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,
@@ -217,6 +221,8 @@ pub fn patterns() -> PatternSet {
     crate::BufferizationCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.cf")]
     crate::CfCanon::canonicalization(&mut set);
+    #[cfg(feature = "dialect.complex")]
+    crate::ComplexCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.func")]
     crate::FuncCanon::canonicalization(&mut set);
     #[cfg(feature = "dialect.gpu")]
@@ -306,6 +312,14 @@ impl<'a> Body<'a> {
         let (Type::Shaped(s), Type::Shaped(t)) = (source, target) else { return false };
         let (Some(ss), Some(ts)) = (&s.shape, &t.shape) else { return false };
         s.kind == ShapedKind::Tensor && t.kind == s.kind && s.elem == t.elem && s.extras == t.extras && ss.len() == ts.len() && !ss.iter().zip(ts).any(|(a, b)| matches!(a, Dim::Static(_)) && !matches!(b, Dim::Static(_)))
+    }
+
+    /// `complex::ConstantOp::isBuildableWith`: a `[re, im]` of `ty`'s part type, as a
+    /// `complex.constant`.
+    pub fn complex_constant(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
+        let (Attribute::Array(parts), Type::Complex(part)) = (value, ty) else { return None };
+        let typed = |a: &Attribute<'a>| matches!(a, Attribute::Int { ty: Some(t), .. } | Attribute::Float { ty: Some(t), .. } if t == &**part);
+        (parts.len() == 2 && parts.iter().all(typed)).then(|| OpData::build("complex.constant").with("value", value.clone()))
     }
 
     /// The constant behind `v`, if its defining op is one.

@@ -70,6 +70,7 @@ impl TosaToLinalg {
         match c.at(0) {
             Scalar::Float(f) => Some(if f.is_zero() { 0 } else { -1 }),
             Scalar::Int(i) => Some(i.signed() as i64),
+            Scalar::Complex(..) | Scalar::ComplexFloat(..) => None,
         }
     }
 
@@ -106,7 +107,7 @@ impl TosaToLinalg {
     fn attr_f64(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> Option<ApFloat> {
         match Const::try_from(cr.rw.body[op].get(name)?).ok()?.values[0] {
             Scalar::Float(f) => Some(f),
-            Scalar::Int(_) => None,
+            _ => None,
         }
     }
 
@@ -1016,6 +1017,7 @@ impl TosaToLinalg {
             Some(match c.at(0) {
                 Scalar::Float(f) => if f.is_zero() { 0 } else { -1 },
                 Scalar::Int(x) => if unsigned { x.unsigned() as i64 } else { x.signed() as i64 },
+                Scalar::Complex(..) | Scalar::ComplexFloat(..) => return None,
             })
         };
         let (izp, ozp) = (zp(cr, 3, in_unsigned), zp(cr, 4, out_unsigned));
