@@ -16,6 +16,7 @@ pub struct MathToEmitc;
 #[patterns(options = bool)]
 #[map("math.floor" => "floor", via = Self::call_opaque)]
 #[map("math.round" => "round", via = Self::call_opaque)]
+#[map("math.roundeven" => "roundeven", via = Self::call_opaque)]
 #[map("math.exp" => "exp", via = Self::call_opaque)]
 #[map("math.cos" => "cos", via = Self::call_opaque)]
 #[map("math.sin" => "sin", via = Self::call_opaque)]
@@ -25,6 +26,7 @@ pub struct MathToEmitc;
 #[map("math.ceil" => "ceil", via = Self::call_opaque)]
 #[map("math.absf" => "fabs", via = Self::call_opaque)]
 #[map("math.powf" => "pow", via = Self::call_opaque)]
+#[map("math.sqrt" => "sqrt", via = Self::call_opaque)]
 impl MathToEmitc {
     /// `LowerToEmitCCallOpaque`: `emitc.call_opaque` of `callee` on f32 / f64.
     fn call_opaque(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], callee: &str, cpp11: bool) -> bool {
