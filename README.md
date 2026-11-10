@@ -4,13 +4,14 @@ MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion, the pass
 upstream lowerings and transforms — on top of [mlirformat](https://github.com/Jabberwocky238/mlirformat),
 which owns the syntax (MLIR text ⇄ IR ⇄ typed Rust ops).
 
-MLIR behavior follows **MLIR 22.1.8** (llvm-project `llvmorg-22.1.8`): every pass is checked against
-what `mlir-opt` 22.1.8 prints for the same input and pipeline.
+MLIR behavior follows **MLIR 23.1.5** (llvm-project `llvmorg-23.1.5`): every pass is checked against
+what `mlir-opt` 23.1.5 prints for the same input and pipeline.
 
 ## Status
 
-`0.8.11`: 6741 of the 7333 fixture cases match `mlir-opt` 22.1.8 byte for byte
-(`cargo test --test passes -- --nocapture` counts them per group), MLIR's own `Dialect/SPIRV`,
+`0.9.0`: every fixture case of a ported pass matches `mlir-opt` 23.1.5 byte for byte (7616; the
+other 671 of the 8287 run passes not ported yet; `cargo test --test passes -- --nocapture` counts
+them per group), MLIR's own `Dialect/SPIRV`,
 `Dialect/GPU` and `*ToSPIRV` tests included, and the three GPU vendors' lowerings: Intel
 (`convert-xegpu-to-xevm`, `convert-vector-to-xegpu`, `convert-gpu-to-llvm-spv`,
 `convert-math-to-xevm`, xevm ⇒ llvm), NVIDIA (`convert-gpu-to-nvvm`, `convert-nvgpu-to-nvvm`,
@@ -186,9 +187,9 @@ speculatability, branch and region-branch successors, calls), so core names no d
 
 ## Fixtures
 
-`tests/fixtures/` holds `mlir-opt` 22.1.8's own output for llvm-project's `mlir/test/Conversion`,
+`tests/fixtures/` holds `mlir-opt` 23.1.5's own output for llvm-project's `mlir/test/Conversion`,
 `mlir/test/Transforms` and the dialects' `canonicalize*.mlir`, `mem2reg*.mlir` and `sroa*.mlir`, one `RUN:` line each, so the tests
-need no LLVM. Regenerate with a vanilla 22.1.8 build:
+need no LLVM. Regenerate with a vanilla 23.1.5 build:
 
 ```sh
 python3 scripts/fixtures.py --llvm $LLVM --mlir-opt $LLVM_BUILD/bin/mlir-opt
@@ -197,12 +198,12 @@ python3 scripts/fixtures.py --llvm $LLVM --mlir-opt $LLVM_BUILD/bin/mlir-opt
 ## Fuzzing
 
 `fuzz/` (a crate of its own) generates random valid IR and runs it through mlirpass and
-`mlir-opt` 22.1.8 side by side, every non-exact case saved; it also times both on big modules
+`mlir-opt` 23.1.5 (`MLIR_OPT`) side by side, every non-exact case saved; it also times both on big modules
 (`fuzz/README.md`).
 
 ## Performance
 
-Against `mlir-opt` 22.1.8 on a 54 MB module (`BENCHMARK.md`), 16 CPUs, both threaded, jemalloc
+Measured with 0.8.1 against `mlir-opt` 22.1.8 on a 54 MB module (`BENCHMARK.md`), 16 CPUs, both threaded, jemalloc
 (mlirformat's global allocator with `std` since 0.8.1): as whole processes every pipeline is
 4.1–4.9× faster (canonicalize + cse 430 against 1,790 ms, the `-to-llvm` pipeline 1,160 against
 5,690 ms; 2.8–3.0× with custom text in); parse + passes + print in process 8.3–10.7×, the

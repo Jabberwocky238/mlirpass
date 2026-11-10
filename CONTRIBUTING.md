@@ -6,7 +6,7 @@ required — open an issue or a pull request whenever you like.
 
 ## Issues
 
-Anything goes. For a bug, the MLIR text, the pipeline, and what `mlir-opt` 22.1.8 prints help the most.
+Anything goes. For a bug, the MLIR text, the pipeline, and what `mlir-opt` 23.1.5 prints help the most.
 
 ## Pull requests
 
