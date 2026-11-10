@@ -8,7 +8,7 @@ use mlirformat::Error;
 use crate::{AmdChipset, AmdgpuRocdlOptions, AmdgpuToRocdl, Body, ConversionConfig, ConversionPatterns, Converter, GpuSpaces, LlvmConverter, LlvmOptions, Mode, OpId};
 
 /// `amdgpu::populateCommonGPUTypeAndAttributeConversions`: global 1, shared 3, private 5.
-const ROCDL_SPACES: GpuSpaces = GpuSpaces { global: 1, workgroup: 3, private: 5 };
+const ROCDL_SPACES: GpuSpaces = GpuSpaces { global: 1, workgroup: 3, private: 5, constant: 4 };
 
 /// `convert-amdgpu-to-rocdl`, as `ConvertAMDGPUToROCDLPass`.
 #[crate::pass("convert-amdgpu-to-rocdl")]

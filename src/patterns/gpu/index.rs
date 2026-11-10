@@ -60,14 +60,21 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     pub fn gpu_index(&mut self, op: OpId, o: LlvmOptions, name: &str, kind: IndexKind, dim: bool) -> bool {
         let Some(d) = self.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok()) else { return false };
         let axis = ["x", "y", "z"][d as usize];
-        let mut bound = self.known_bound(op, kind, d);
-        if let Some(Attribute::Int { lit, .. }) = self.rw.body[op].get("upper_bound") {
-            bound = lit.parse().ok();
-        }
+        // `getIndexOpRange`: a size known around the op is exact; else the op's bound, then the
+        // known one, bounds it (saturating at `u32::MAX`).
+        let known = self.known_bound(op, kind, d);
         let mut data = OpData::build(&format!("{name}.{axis}"));
-        if let Some(ub) = bound {
-            let hi = if ub == i64::from(i32::MAX) { ub } else { ub + i64::from(dim) };
-            data.set("range", constant_range(i64::from(dim), hi));
+        match known {
+            Some(k) if dim && k < i64::from(u32::MAX) => data.set("range", constant_range(k, k + 1)),
+            _ => {
+                let bound = match self.rw.body[op].get("upper_bound") {
+                    Some(Attribute::Int { lit, .. }) => lit.parse().ok(),
+                    _ => known,
+                };
+                if let Some(ub) = bound {
+                    data.set("range", constant_range(i64::from(dim), (ub + i64::from(dim)).min(i64::from(u32::MAX))));
+                }
+            }
         }
         self.rw.set_before(op);
         let r = self.build(data, Type::int(32));

@@ -45,10 +45,11 @@ pub enum GpuAddressSpace {
     Global,
     Workgroup,
     Private,
+    Constant,
 }
 
 impl GpuAddressSpace {
-    const NAMES: [(&'static str, Self); 3] = [("global", Self::Global), ("workgroup", Self::Workgroup), ("private", Self::Private)];
+    const NAMES: [(&'static str, Self); 4] = [("global", Self::Global), ("workgroup", Self::Workgroup), ("private", Self::Private), ("constant", Self::Constant)];
 }
 
 impl TryFrom<&Attribute<'_>> for GpuAddressSpace {
@@ -117,17 +118,20 @@ pub struct GpuSpaces {
     pub global: u32,
     pub workgroup: u32,
     pub private: u32,
+    pub constant: u32,
 }
 
 impl GpuSpaces {
-    /// `gpuAddressSpaceToOCLAddressSpace`: CrossWorkgroup, Workgroup, Function in OpenCL.
-    pub const OPENCL: Self = Self { global: 1, workgroup: 3, private: 0 };
+    /// `gpuAddressSpaceToOCLAddressSpace`: CrossWorkgroup, Workgroup, Function, UniformConstant
+    /// in OpenCL.
+    pub const OPENCL: Self = Self { global: 1, workgroup: 3, private: 0, constant: 2 };
 
     pub fn of(self, s: GpuAddressSpace) -> u32 {
         match s {
             GpuAddressSpace::Global => self.global,
             GpuAddressSpace::Workgroup => self.workgroup,
             GpuAddressSpace::Private => self.private,
+            GpuAddressSpace::Constant => self.constant,
         }
     }
 }

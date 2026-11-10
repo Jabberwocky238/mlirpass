@@ -9,7 +9,7 @@ use mlirformat::{Attribute, Error};
 use crate::{Body, CConv, ConversionConfig, ConversionPatterns, Converter, DialectInterfaces, GpuLlvmOptions, GpuSpaces, GpuToLlvm, GpuToNvvm, LlvmConverter, LlvmEnv, LlvmOptions, Mode, OpId, Printf, ToLlvmInterfaces};
 
 /// `nvgpu::populateCommonGPUTypeAndAttributeConversions`: global 1, shared 3, private 0.
-const NVVM_SPACES: GpuSpaces = GpuSpaces { global: 1, workgroup: 3, private: 0 };
+const NVVM_SPACES: GpuSpaces = GpuSpaces { global: 1, workgroup: 3, private: 0, constant: 4 };
 
 /// The llvm intrinsics `configureGpuToNVVMConversionLegality` keeps out (libdevice instead).
 const ILLEGAL_LLVM: [&str; 17] = [

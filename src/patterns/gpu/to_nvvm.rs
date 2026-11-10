@@ -1,5 +1,5 @@
 //! `gpu` ⇒ `nvvm`, as `LowerGpuOpsToNVVMOps.cpp`: launch configuration as the PTX special
-//! registers, shuffles as `nvvm.shfl.sync`, `gpu.barrier` as `nvvm.barrier0`, math as libdevice
+//! registers, shuffles as `nvvm.shfl.sync`, `gpu.barrier` as `nvvm.barrier`, math as libdevice
 //! calls (`populateLibDeviceConversionPatterns`).
 
 use alloc::format;
@@ -9,11 +9,14 @@ use alloc::vec::Vec;
 use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, Type};
 
-use super::attrs::{AllReduceOp, ShuffleMode};
+use super::attrs::{AllReduceOp, BarrierScope, ShuffleMode};
 use super::index::IndexKind;
 use crate::LibFns;
 use crate::patterns;
 use crate::{ConversionRewriter, LlvmOptions, OpData, OpId, ValueId};
+
+/// Every lane of a warp.
+const FULL_WARP_MASK: i64 = -1;
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -204,10 +207,44 @@ impl GpuToNvvm {
         true
     }
 
-    /// `gpu.barrier` ⇒ `nvvm.barrier0` (`GPUToNVVM.td`).
+    /// `GPUBarrierOpToNVVMLowering`: a workgroup barrier is `nvvm.barrier`, a subgroup one
+    /// `__syncwarp(0xFFFFFFFF)` (named barriers are not ported).
     #[convert("gpu.barrier", benefit = 10)]
-    fn barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: LlvmOptions) -> bool {
-        cr.replace_new(op, OpData::build("nvvm.barrier0"), &[]);
+    fn barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
+        if operands.iter().any(|v| !v.is_empty()) {
+            return false;
+        }
+        match cr.rw.body[op].get("scope").and_then(|a| BarrierScope::try_from(a).ok()).unwrap_or(BarrierScope::Workgroup) {
+            BarrierScope::Workgroup => {
+                cr.replace_new(op, OpData::build("nvvm.barrier").with("aligned", Attribute::Bool(true)).segments(&[0, 0]), &[]);
+                true
+            }
+            BarrierScope::Subgroup => {
+                cr.rw.set_before(op);
+                let mask = cr.llvm_constant(Attribute::of_int(FULL_WARP_MASK.into(), Type::int(32)), Type::int(32));
+                cr.replace_new(op, OpData::build("nvvm.bar.warp.sync").operands(&[mask]), &[]);
+                true
+            }
+            BarrierScope::Cluster => false,
+        }
+    }
+
+    /// `GPUBallotOpToNVVM`: `nvvm.vote.sync ballot` of the full warp, zero-extended to `i64`.
+    #[convert("gpu.ballot")]
+    fn ballot(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
+        let t = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
+        let w = match t {
+            Type::Integer { width: w @ (32 | 64), .. } => w,
+            _ => return false,
+        };
+        cr.rw.set_before(op);
+        let mask = cr.llvm_constant(Attribute::of_int(FULL_WARP_MASK.into(), Type::int(32)), Type::int(32));
+        let vote = OpData::build("nvvm.vote.sync").operands(&[mask, operands[0][0]]).with("kind", Attribute::dialect("nvvm", "<vote_sync_kind ballot>"));
+        let mut r = cr.build(vote, Type::int(32));
+        if w == 64 {
+            r = cr.build(OpData::build("llvm.zext").operands(&[r]), t);
+        }
+        cr.replace(op, vec![vec![r]]);
         true
     }
 
