@@ -55,9 +55,17 @@ impl ArithToSpirv {
     }
 
     /// `getScalarOrVectorConstInt`.
-    fn const_int<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>, v: u64) -> ValueId {
+    /// `getScalarOrVectorConstInt`: an integer or a vector of integers only.
+    fn const_int<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>, v: u64) -> Option<ValueId> {
+        let int_or_vector = match ty {
+            Type::Shaped(s) => s.kind == ShapedKind::Vector,
+            t => matches!(t, Type::Integer { .. }),
+        };
+        if !int_or_vector {
+            return None;
+        }
         let attr = Self::splat(ty, |e| Scalar::Int(ApInt::from_bits(e.bit_width().unwrap_or(32), u128::from(v))));
-        cr.spirv_const(ty.clone(), attr)
+        Some(cr.spirv_const(ty.clone(), attr))
     }
 
     fn result_ty<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Option<Type<'a>> {
@@ -128,6 +136,10 @@ impl ArithToSpirv {
     /// decorations, `ElementwiseArithOpPattern`).
     #[convert("arith.addi", "arith.subi", "arith.muli", "arith.shli", "arith.divui", "arith.divsi", "arith.remui", "arith.shrui", "arith.shrsi", "arith.negf", "arith.addf", "arith.subf", "arith.mulf", "arith.divf", "arith.remf")]
     fn one_to_one_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: ArithSpirvOptions) -> bool {
+        // (`i1` integer ops are the boolean patterns')
+        if operands.first().and_then(|v| v.first()).is_some_and(|v| Self::is_bool(&cr.rw.body[*v].ty)) {
+            return false;
+        }
         let (target, wrap) = match &*cr.rw.body[op].name {
             "arith.addi" => ("spirv.IAdd", true),
             "arith.subi" => ("spirv.ISub", true),
@@ -146,6 +158,50 @@ impl ArithToSpirv {
             _ => ("spirv.FRem", false),
         };
         Self::elementwise(cr, op, operands, target, ArithSpirvOptions { no_wrap: o.no_wrap && wrap, ..o })
+    }
+
+    /// `BoolIOpPattern`: integer ops on `i1` by their truth tables (add / sub: xor, mul / div
+    /// / maxsi / minui: and, maxui / minsi: or).
+    #[convert("arith.addi", "arith.subi", "arith.muli", "arith.divui", "arith.divsi", "arith.maxsi", "arith.maxui", "arith.minsi", "arith.minui", benefit = 2)]
+    fn bool_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        if !Self::is_bool(&cr.rw.body[ops[0]].ty) {
+            return false;
+        }
+        let Some(dst) = Self::result_ty(cr, op) else { return false };
+        let target = match &*cr.rw.body[op].name {
+            "arith.addi" | "arith.subi" => "spirv.LogicalNotEqual",
+            "arith.maxui" | "arith.minsi" => "spirv.LogicalOr",
+            _ => "spirv.LogicalAnd",
+        };
+        let v = cr.build(OpData::build(target).operands(&ops), dst);
+        cr.replace_values(op, &[v]);
+        true
+    }
+
+    /// `BoolIOpAndNotPattern`: shli / shrui / remui / remsi on `i1` are `a & !b`.
+    #[convert("arith.shli", "arith.shrui", "arith.remui", "arith.remsi", benefit = 2)]
+    fn bool_and_not<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        if !Self::is_bool(&cr.rw.body[ops[0]].ty) {
+            return false;
+        }
+        let Some(dst) = Self::result_ty(cr, op) else { return false };
+        let not = cr.build(OpData::build("spirv.LogicalNot").operands(&[ops[1]]), dst.clone());
+        let v = cr.build(OpData::build("spirv.LogicalAnd").operands(&[ops[0], not]), dst);
+        cr.replace_values(op, &[v]);
+        true
+    }
+
+    /// `ShRSIBoolPattern`: an arithmetic shift of an `i1` is the value.
+    #[convert("arith.shrsi", benefit = 2)]
+    fn bool_shrsi<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        if !Self::is_bool(&cr.rw.body[ops[0]].ty) {
+            return false;
+        }
+        cr.replace_values(op, &[ops[0]]);
+        true
     }
 
     /// Integer min / max: the GLSL extended instruction, else the OpenCL one.
@@ -275,8 +331,8 @@ impl ArithToSpirv {
         true
     }
 
-    /// `emulateSignedRemainder`: `RemSIOpGLPattern` (with `spirv.CL.s_abs`) and
-    /// `RemSIOpCLPattern` (with `spirv.GL.SAbs`), whichever the target allows.
+    /// `emulateSignedRemainder`: `RemSIOpGLPattern` (with `spirv.GL.SAbs`) and
+    /// `RemSIOpCLPattern` (with `spirv.CL.s_abs`), whichever the target allows.
     fn remsi<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], abs: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let (lhs, rhs) = (ops[0], ops[1]);
@@ -302,12 +358,12 @@ impl ArithToSpirv {
 
     #[convert("arith.remsi")]
     fn remsi_gl<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
-        Self::remsi(cr, op, operands, "spirv.CL.s_abs")
+        Self::remsi(cr, op, operands, "spirv.GL.SAbs")
     }
 
     #[convert("arith.remsi")]
     fn remsi_cl<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
-        Self::remsi(cr, op, operands, "spirv.GL.SAbs")
+        Self::remsi(cr, op, operands, "spirv.CL.s_abs")
     }
 
     /// `BitwiseOpPattern`.
@@ -394,7 +450,7 @@ impl ArithToSpirv {
             return false;
         }
         let Some(dst) = Self::result_ty(cr, op) else { return false };
-        let ones = Self::const_int(cr, &dst, u64::MAX);
+        let Some(ones) = Self::const_int(cr, &dst, u64::MAX) else { return false };
         let zero = cr.spirv_int_like(&dst, 0);
         let v = cr.build(OpData::build("spirv.Select").operands(&[ops[0], ones, zero]), dst);
         cr.replace_values(op, &[v]);
@@ -414,7 +470,7 @@ impl ArithToSpirv {
             let src_bw = Self::src_ty(cr, op, 0).element_type().bit_width().unwrap_or(32);
             let r = cr.rw.body[op].results[0];
             let dst_bw = cr.rw.body[r].ty.element_type().bit_width().unwrap_or(32);
-            let shift = Self::const_int(cr, &dst, u64::from(dst_bw - src_bw));
+            let Some(shift) = Self::const_int(cr, &dst, u64::from(dst_bw - src_bw)) else { return false };
             let l = cr.build(OpData::build("spirv.ShiftLeftLogical").operands(&[ops[0], shift]), dst.clone());
             cr.build(OpData::build("spirv.ShiftRightArithmetic").operands(&[l, shift]), dst)
         } else {
@@ -436,7 +492,7 @@ impl ArithToSpirv {
         }
         let v = if dst == src {
             let bw = if ext { Self::src_ty(cr, op, 0) } else { cr.rw.body[cr.rw.body[op].results[0]].ty.clone() }.element_type().bit_width().unwrap_or(32);
-            let mask = Self::const_int(cr, &dst, if bw >= 64 { u64::MAX } else { (1u64 << bw) - 1 });
+            let Some(mask) = Self::const_int(cr, &dst, if bw >= 64 { u64::MAX } else { (1u64 << bw) - 1 }) else { return false };
             cr.build(OpData::build("spirv.BitwiseAnd").operands(&[ops[0], mask]), dst)
         } else {
             cr.build(OpData::build(if ext { "spirv.UConvert" } else { "spirv.SConvert" }).operands(&ops), dst)
@@ -483,6 +539,23 @@ impl ArithToSpirv {
             "arith.index_castui" => "spirv.UConvert",
             _ => "spirv.Bitcast",
         };
+        // `IntToFPPattern`: an integer source widened by the conversion has its upper bits
+        // cleaned first (masked for unsigned, shifted out and back for signed).
+        let mut ops = ops;
+        if matches!(target, "spirv.ConvertUToF" | "spirv.ConvertSToF") {
+            let orig = cr.rw.body[cr.rw.body[op].operands[0]].ty.element_type().bit_width().unwrap_or(0);
+            let conv = src.element_type().bit_width().unwrap_or(0);
+            if orig < conv {
+                ops[0] = if target == "spirv.ConvertSToF" {
+                    let amount = cr.spirv_int_like(&src, i64::from(conv - orig));
+                    let shl = cr.build(OpData::build("spirv.ShiftLeftLogical").operands(&[ops[0], amount]), src.clone());
+                    cr.build(OpData::build("spirv.ShiftRightArithmetic").operands(&[shl, amount]), src.clone())
+                } else {
+                    let mask = cr.spirv_int_like(&src, (1i64 << orig) - 1);
+                    cr.build(OpData::build("spirv.BitwiseAnd").operands(&[ops[0], mask]), src.clone())
+                };
+            }
+        }
         let mut data = OpData::build(target).operands(&ops);
         // `arith::RoundingMode`: to_nearest_even, downward, upward, toward_zero, to_nearest_away.
         if let Some(m) = cr.rw.body[op].get("roundingmode").and_then(|a| Const::try_from(a).ok()).and_then(|c| c.as_int()) {
@@ -634,13 +707,14 @@ impl ArithToSpirv {
         true
     }
 
-    /// `AddUIExtendedOpPattern`.
-    #[convert("arith.addui_extended")]
+    /// `BinaryExtendedOpPattern`: `IAddCarry` / `ISubBorrow`, the flag as a bool.
+    #[convert("arith.addui_extended", "arith.subui_extended")]
     fn addui_extended<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ty = cr.rw.body[ops[0]].ty.clone();
         let st = Self::pair_struct(&ty);
-        let res = cr.build(OpData::build("spirv.IAddCarry").operands(&ops), st);
+        let target = if cr.rw.body[op].name == "arith.addui_extended" { "spirv.IAddCarry" } else { "spirv.ISubBorrow" };
+        let res = cr.build(OpData::build(target).operands(&ops), st);
         let sum = Self::extract(cr, res, 0, ty.clone());
         let carry = Self::extract(cr, res, 1, ty.clone());
         let one = cr.spirv_int_like(&ty, 1);
@@ -710,8 +784,9 @@ impl ArithToSpirv {
 
     #[convert("arith.maxnumf", "arith.minnumf")]
     fn minnum_maxnum_gl<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
-        let t = if cr.rw.body[op].name == "arith.maxnumf" { "spirv.GL.FMax" } else { "spirv.GL.FMin" };
-        Self::min_max(cr, op, operands, t, true, false)
+        // (`GL.NMax` / `NMin` treat a NaN as missing: no guards)
+        let t = if cr.rw.body[op].name == "arith.maxnumf" { "spirv.GL.NMax" } else { "spirv.GL.NMin" };
+        Self::min_max(cr, op, operands, t, false, false)
     }
 
     #[convert("arith.maximumf", "arith.minimumf")]
