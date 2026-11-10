@@ -1,7 +1,7 @@
-//! The x86 CPU dialects ⇒ `llvm` intrinsic calls, as `X86Vector` / `AMX`
-//! `LegalizeForLLVMExport.cpp`: each op is `llvm.call_intrinsic` of the intrinsic its ODS names
-//! (`X86IntrinsicOpInterface` / `AMXIntrinsicOpInterface`), with the operands its
-//! `getIntrinsicOperands` builds. `!amx.tile<..>` is `!llvm.x86_amx`.
+//! The x86 CPU dialect ⇒ `llvm` intrinsic calls, as `X86` `LegalizeForLLVMExport.cpp`: each op
+//! is `llvm.call_intrinsic` of the intrinsic its ODS names (`X86IntrinsicOpInterface`), with
+//! the operands its
+//! `getIntrinsicOperands` builds. `!x86.amx.tile<..>` is `!llvm.x86_amx`.
 
 use alloc::format;
 use alloc::string::String;
@@ -9,7 +9,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::llvm_types::LlvmType;
-use mlirformat::{Attribute, Const, Scalar, Shaped, Type};
+use mlirformat::{Attribute, Const, FloatKind, Scalar, Shaped, Type};
 
 use crate::patterns;
 
@@ -17,15 +17,14 @@ use crate::{ConversionRewriter, LlvmOptions, MemrefLayout, MemrefToLlvm, OpData,
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The x86vector and amx ⇒ llvm patterns (`populateX86VectorLegalizeForLLVMExportPatterns`,
-/// `populateAMXLegalizeForLLVMExportPatterns`).
+/// The x86 ⇒ llvm patterns (`populateX86LegalizeForLLVMExportPatterns`).
 pub struct X86ToLlvm;
 
 impl X86ToLlvm {
-    /// `!amx.tile<..>` as `!llvm.x86_amx`.
+    /// `!x86.amx.tile<..>` as `!llvm.x86_amx`.
     pub fn convert_tiles(tc: &mut TypeConverter<'_>) {
         tc.conversion(|t| match t {
-            Type::Extended(e) if e.name == "amx.tile" => Some(Some(vec![LlvmType::X86Amx.into()])),
+            Type::Extended(e) if e.name == "x86.amx.tile" => Some(Some(vec![LlvmType::X86Amx.into()])),
             _ => None,
         });
     }
@@ -52,23 +51,39 @@ impl X86ToLlvm {
             _ => String::new(),
         };
         Some(match &*b[op].name {
-            "x86vector.avx512.mask.compress" => String::from("llvm.x86.avx512.mask.compress"),
-            "x86vector.avx512.mask.rndscale" => format!("llvm.x86.avx512.mask.rndscale.{}{}", pspd(&operand(0)), suffix(&operand(0))?),
-            "x86vector.avx512.mask.scalef" => format!("llvm.x86.avx512.mask.scalef.{}{}", pspd(&operand(0)), suffix(&operand(0))?),
-            "x86vector.avx512.vp2intersect" => format!("llvm.x86.avx512.vp2intersect.{}{}", if *operand(0).element_type() == Type::int(32) { "d" } else { "q" }, suffix(&operand(0))?),
-            "x86vector.avx512.dot" => format!("llvm.x86.avx512bf16.dpbf16ps{}", suffix(&operand(0))?),
-            "x86vector.avx512.cvt.packed.f32_to_bf16" => format!("llvm.x86.avx512bf16.cvtneps2bf16{}", suffix(&operand(0))?),
-            "x86vector.avx.rsqrt" => String::from("llvm.x86.avx.rsqrt.ps.256"),
-            "x86vector.avx.intr.dot" => String::from("llvm.x86.avx.dp.ps.256"),
-            "x86vector.avx.dot.i8" => format!("llvm.x86.avx2.vpdpbssd{}", suffix(&operand(0))?),
-            "x86vector.avx.bcst_to_f32.packed" => format!("llvm.x86.{}{}", half(&operand(0), "vbcstnebf162ps", "vbcstnesh2ps"), Self::bits(&result())?),
-            "x86vector.avx.cvt.packed.even.indexed_to_f32" => format!("llvm.x86.{}{}", half(&operand(0), "vcvtneebf162ps", "vcvtneeph2ps"), Self::bits(&result())?),
-            "x86vector.avx.cvt.packed.odd.indexed_to_f32" => format!("llvm.x86.{}{}", half(&operand(0), "vcvtneobf162ps", "vcvtneoph2ps"), Self::bits(&result())?),
-            "amx.tile_zero" => String::from("llvm.x86.tilezero.internal"),
-            "amx.tile_load" => String::from("llvm.x86.tileloadd64.internal"),
-            "amx.tile_store" => String::from("llvm.x86.tilestored64.internal"),
-            "amx.tile_mulf" => format!("llvm.x86.tdp{}ps.internal", if Self::with_tile(&operand(0), |t| Some(*t.element_type() == Type::Float(mlirformat::FloatKind::F16)))? { "fp16" } else { "bf16" }),
-            "amx.tile_muli" => format!("llvm.x86.tdpb{}{}d.internal", if b[op].get("isZextLhs").is_some() { "u" } else { "s" }, if b[op].get("isZextRhs").is_some() { "u" } else { "s" }),
+            "x86.avx512.mask.compress" => String::from("llvm.x86.avx512.mask.compress"),
+            "x86.avx512.mask.rndscale" => format!("llvm.x86.avx512.mask.rndscale.{}{}", pspd(&operand(0)), suffix(&operand(0))?),
+            "x86.avx512.mask.scalef" => format!("llvm.x86.avx512.mask.scalef.{}{}", pspd(&operand(0)), suffix(&operand(0))?),
+            "x86.avx512.vp2intersect" => format!("llvm.x86.avx512.vp2intersect.{}{}", if *operand(0).element_type() == Type::int(32) { "d" } else { "q" }, suffix(&operand(0))?),
+            "x86.avx512.dot" => format!("llvm.x86.avx512bf16.dpbf16ps{}", suffix(&operand(0))?),
+            "x86.avx512.cvt.packed.f32_to_bf16" => format!("llvm.x86.avx512bf16.cvtneps2bf16{}", suffix(&operand(0))?),
+            "x86.avx10.dot.i8" => String::from("llvm.x86.avx10.vpdpbssd.512"),
+            "x86.avx.rsqrt" => String::from("llvm.x86.avx.rsqrt.ps.256"),
+            "x86.avx.intr.dot" => String::from("llvm.x86.avx.dp.ps.256"),
+            "x86.avx.dot.i8" => format!("llvm.x86.avx2.vpdpbssd{}", suffix(&operand(0))?),
+            "x86.avx.bcst_to_f32.packed" => format!("llvm.x86.{}{}", half(&operand(0), "vbcstnebf162ps", "vbcstnesh2ps"), Self::bits(&result())?),
+            "x86.avx.cvt.packed.even.indexed_to_f32" => format!("llvm.x86.{}{}", half(&operand(0), "vcvtneebf162ps", "vcvtneeph2ps"), Self::bits(&result())?),
+            "x86.avx.cvt.packed.odd.indexed_to_f32" => format!("llvm.x86.{}{}", half(&operand(0), "vcvtneobf162ps", "vcvtneoph2ps"), Self::bits(&result())?),
+            "x86.amx.tile_zero" => String::from("llvm.x86.tilezero.internal"),
+            "x86.amx.tile_load" => String::from("llvm.x86.tileloadd64.internal"),
+            "x86.amx.tile_store" => String::from("llvm.x86.tilestored64.internal"),
+            "x86.amx.tile_mulf" => {
+                let elem = |i: usize| Self::with_tile(&operand(i), |t| match t.element_type() {
+                    Type::Float(k) => Some(*k),
+                    _ => None,
+                });
+                let (lhs, rhs) = (elem(0)?, elem(1)?);
+                let fp8 = |k: FloatKind| if k == FloatKind::F8E4M3FN { "b" } else { "h" };
+                let kind = match lhs {
+                    FloatKind::F16 => String::from("fp16"),
+                    FloatKind::BF16 => String::from("bf16"),
+                    FloatKind::F8E4M3FN | FloatKind::F8E5M2 if lhs == rhs => format!("{}f8", fp8(lhs)),
+                    FloatKind::F8E4M3FN | FloatKind::F8E5M2 => format!("{}{}f8", fp8(lhs), fp8(rhs)),
+                    _ => String::new(),
+                };
+                format!("llvm.x86.tdp{kind}ps.internal")
+            }
+            "x86.amx.tile_muli" => format!("llvm.x86.tdpb{}{}d.internal", if b[op].get("isZextLhs").is_some() { "u" } else { "s" }, if b[op].get("isZextRhs").is_some() { "u" } else { "s" }),
             _ => return None,
         })
     }
@@ -77,9 +92,9 @@ impl X86ToLlvm {
         cr.llvm_constant(Attribute::integer(v, Type::int(width)), Type::int(width))
     }
 
-    /// The `[rows, columns in bytes]` of an `!amx.tile<RxCxT>`, as `i16` constants
+    /// The `[rows, columns in bytes]` of an `!x86.amx.tile<RxCxT>`, as `i16` constants
     /// (`getTileSizes`).
-    /// `!amx.tile<RxCxT>` read as `vector<RxCxT>`, handed to `f`.
+    /// `!x86.amx.tile<RxCxT>` read as `vector<RxCxT>`, handed to `f`.
     fn with_tile<R>(tile: &Type<'_>, f: impl FnOnce(&Type<'_>) -> Option<R>) -> Option<R> {
         let Type::Extended(e) = tile else { return None };
         let vector = format!("vector<{}>", e.body.as_deref()?.trim_matches(['<', '>']));
@@ -114,7 +129,7 @@ impl X86ToLlvm {
     fn transfer(cr: &mut Cr<'_, '_, '_>, op: OpId, ops: &[ValueId], opts: LlvmOptions) -> Option<Vec<ValueId>> {
         let b = &cr.rw.body;
         let segs = b.segments(op, "operandSegmentSizes")?;
-        let store = b[op].name == "amx.tile_store";
+        let store = b[op].name == "x86.amx.tile_store";
         let mem = b[b[op].operands[0]].ty.clone();
         let tile = if store { b[b[op].operands[1 + segs[1]]].ty.clone() } else { b[b[op].results[0]].ty.clone() };
         let Type::Shaped(s) = mem else { return None };
@@ -136,7 +151,7 @@ impl X86ToLlvm {
     fn operands(cr: &mut Cr<'_, '_, '_>, op: OpId, ops: Vec<ValueId>, opts: LlvmOptions) -> Option<Vec<ValueId>> {
         let name = cr.rw.body[op].name.clone();
         Some(match &*name {
-            "x86vector.avx512.mask.compress" => {
+            "x86.avx512.mask.compress" => {
                 let ty = Self::ty(cr, ops[1]);
                 let src = match ops.get(2) {
                     Some(s) => *s,
@@ -153,20 +168,20 @@ impl X86ToLlvm {
                 };
                 vec![ops[1], src, ops[0]]
             }
-            "x86vector.avx.intr.dot" => {
+            "x86.avx.intr.dot" => {
                 let scale = Self::int(cr, 8, -1);
                 vec![ops[0], ops[1], scale]
             }
-            "x86vector.avx.bcst_to_f32.packed" | "x86vector.avx.cvt.packed.even.indexed_to_f32" | "x86vector.avx.cvt.packed.odd.indexed_to_f32" => {
+            "x86.avx.bcst_to_f32.packed" | "x86.avx.cvt.packed.even.indexed_to_f32" | "x86.avx.cvt.packed.odd.indexed_to_f32" => {
                 let Type::Shaped(s) = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone() else { return None };
                 vec![MemrefToLlvm::buffer_ptr(cr, opts, &s, ops[0])?]
             }
-            "amx.tile_zero" => {
+            "x86.amx.tile_zero" => {
                 let t = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
                 Vec::from(Self::tile_sizes(cr, &t)?)
             }
-            "amx.tile_load" | "amx.tile_store" => Self::transfer(cr, op, &ops, opts)?,
-            "amx.tile_mulf" | "amx.tile_muli" => {
+            "x86.amx.tile_load" | "x86.amx.tile_store" => Self::transfer(cr, op, &ops, opts)?,
+            "x86.amx.tile_mulf" | "x86.amx.tile_muli" => {
                 let (lt, rt) = (cr.rw.body[cr.rw.body[op].operands[0]].ty.clone(), cr.rw.body[cr.rw.body[op].operands[1]].ty.clone());
                 let a = Self::tile_sizes(cr, &lt)?;
                 let b = Self::tile_sizes(cr, &rt)?;
@@ -177,22 +192,16 @@ impl X86ToLlvm {
     }
 }
 
-#[patterns(converter, options = LlvmOptions, x86vector: bool, amx: bool)]
+#[patterns(converter, options = LlvmOptions)]
 impl X86ToLlvm {
-    /// `X86IntrinsicOpConversion` (`enable-x86vector`).
+    /// `X86IntrinsicOpConversion`.
     #[convert(
-        "x86vector.avx512.mask.compress", "x86vector.avx512.mask.rndscale", "x86vector.avx512.mask.scalef", "x86vector.avx512.vp2intersect",
-        "x86vector.avx512.dot", "x86vector.avx512.cvt.packed.f32_to_bf16", "x86vector.avx.rsqrt", "x86vector.avx.intr.dot", "x86vector.avx.dot.i8",
-        "x86vector.avx.bcst_to_f32.packed", "x86vector.avx.cvt.packed.even.indexed_to_f32", "x86vector.avx.cvt.packed.odd.indexed_to_f32",
-        when = x86vector
+        "x86.avx512.mask.compress", "x86.avx512.mask.rndscale", "x86.avx512.mask.scalef", "x86.avx512.vp2intersect",
+        "x86.avx512.dot", "x86.avx512.cvt.packed.f32_to_bf16", "x86.avx10.dot.i8", "x86.avx.rsqrt", "x86.avx.intr.dot", "x86.avx.dot.i8",
+        "x86.avx.bcst_to_f32.packed", "x86.avx.cvt.packed.even.indexed_to_f32", "x86.avx.cvt.packed.odd.indexed_to_f32",
+        "x86.amx.tile_zero", "x86.amx.tile_load", "x86.amx.tile_store", "x86.amx.tile_mulf", "x86.amx.tile_muli"
     )]
-    fn x86vector_call(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], opts: LlvmOptions) -> bool {
-        Self::intrinsic_call(cr, op, operands, opts)
-    }
-
-    /// `AMXIntrinsicOpConversion` (`enable-amx`).
-    #[convert("amx.tile_zero", "amx.tile_load", "amx.tile_store", "amx.tile_mulf", "amx.tile_muli", when = amx)]
-    fn amx_call(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], opts: LlvmOptions) -> bool {
+    fn call(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], opts: LlvmOptions) -> bool {
         Self::intrinsic_call(cr, op, operands, opts)
     }
 }
@@ -200,7 +209,8 @@ impl X86ToLlvm {
 impl X86ToLlvm {
     /// `LLVM::detail::intrinsicRewrite`: the call, the op's attributes carried over, several
     /// results packed in a struct and extracted.
-    fn intrinsic_call(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], opts: LlvmOptions) -> bool {        let Some(ops) = Cr::one_to_one(operands) else { return false };
+    fn intrinsic_call(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], opts: LlvmOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(name) = Self::intrinsic(cr, op) else { return false };
         let Some(args) = Self::operands(cr, op, ops, opts) else { return false };
         if !args.iter().all(|v| LlvmType::compatible(&cr.rw.body[*v].ty)) {

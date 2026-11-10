@@ -38,7 +38,7 @@ cli = ["std"]
 # One feature per dialect: its op interfaces, folds, canonicalization patterns, its own
 # transforms and its lowerings to other dialects (`dialect.scf`). A lowering into a backend
 # also needs that `target.*`.
-all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bufferization", "dialect.cf", "dialect.complex", "dialect.func", "dialect.gpu", "dialect.index", "dialect.linalg", "dialect.llvm", "dialect.math", "dialect.memref", "dialect.ml_program", "dialect.nvgpu", "dialect.nvvm", "dialect.scf", "dialect.shape", "dialect.spirv", "dialect.tensor", "dialect.test", "dialect.tosa", "dialect.ub", "dialect.vector", "dialect.x86vector", "dialect.xegpu", "dialect.xevm"]
+all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bufferization", "dialect.cf", "dialect.complex", "dialect.func", "dialect.gpu", "dialect.index", "dialect.linalg", "dialect.llvm", "dialect.math", "dialect.memref", "dialect.ml_program", "dialect.nvgpu", "dialect.nvvm", "dialect.scf", "dialect.shape", "dialect.spirv", "dialect.tensor", "dialect.test", "dialect.tosa", "dialect.ub", "dialect.vector", "dialect.x86", "dialect.xegpu", "dialect.xevm"]
 "dialect.affine" = ["dialect.arith"]
 "dialect.amdgpu" = ["dialect.memref"]
 "dialect.arith" = []
@@ -67,7 +67,7 @@ scf-for-trip-count = ["dialect.scf"]
 "dialect.tosa" = []
 "dialect.ub" = []
 "dialect.vector" = ["dialect.affine", "dialect.arith", "dialect.memref", "dialect.ub"]
-"dialect.x86vector" = ["dialect.memref"]
+"dialect.x86" = ["dialect.memref"]
 "dialect.xegpu" = ["dialect.xevm", "dialect.vector", "dialect.memref", "dialect.arith", "dialect.index", "dialect.scf", "dialect.gpu"]
 "dialect.xevm" = []
 # The GPU instruction sets mlirpass encodes itself (not upstream dialects; not in `all-dialects`): their ops, types

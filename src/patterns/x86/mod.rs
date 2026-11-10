@@ -1,4 +1,4 @@
-//! `x86vector` rule sets.
+//! `x86` rule sets.
 
 #[cfg(feature = "target.llvm")]
 mod to_llvm;

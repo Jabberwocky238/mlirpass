@@ -55,8 +55,8 @@ mod tosa;
 mod ub;
 #[cfg(feature = "dialect.vector")]
 mod vector;
-#[cfg(all(feature = "dialect.x86vector", feature = "target.llvm"))]
-mod x86vector;
+#[cfg(all(feature = "dialect.x86", feature = "target.llvm"))]
+mod x86;
 #[cfg(feature = "dialect.xegpu")]
 mod xegpu;
 #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
@@ -114,8 +114,8 @@ pub use tosa::*;
 pub use ub::*;
 #[cfg(feature = "dialect.vector")]
 pub use vector::*;
-#[cfg(all(feature = "dialect.x86vector", feature = "target.llvm"))]
-pub use x86vector::*;
+#[cfg(all(feature = "dialect.x86", feature = "target.llvm"))]
+pub use x86::*;
 #[cfg(all(feature = "dialect.nvgpu", feature = "target.llvm"))]
 pub use nvgpu::*;
 #[cfg(all(feature = "dialect.nvvm", feature = "target.llvm"))]

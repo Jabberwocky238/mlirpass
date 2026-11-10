@@ -77,7 +77,7 @@ const ODS_RESULT_NAMES: &[(&str, &[(&str, bool)])] = &[
     ("tosa.rfft2d", &[("output_real", false), ("output_imag", false)]),
     ("vector.deinterleave", &[("res1", false), ("res2", false)]),
     ("vector.scan", &[("dest", false), ("accumulated_value", false)]),
-    ("x86vector.avx512.vp2intersect", &[("k1", false), ("k2", false)]),
+    ("x86.avx512.vp2intersect", &[("k1", false), ("k2", false)]),
 ];
 
 /// How a branch lays out its successor operands (`BranchOpInterface::getSuccessorOperands`).

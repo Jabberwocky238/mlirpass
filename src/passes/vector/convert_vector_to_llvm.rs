@@ -2,7 +2,7 @@
 
 use crate::{llvm_target};
 use crate::{LlvmConverter, LlvmOptions, VectorOptions, VectorToLlvm};
-#[cfg(feature = "dialect.x86vector")]
+#[cfg(feature = "dialect.x86")]
 use crate::X86ToLlvm;
 use alloc::format;
 use alloc::string::String;
@@ -23,8 +23,6 @@ pub struct ConvertVectorToLlvm {
     contract_lowering: String,
     #[opt("vector-transpose-lowering", default = "eltwise".into())]
     transpose_lowering: String,
-    #[opt("enable-amx")]
-    amx: bool,
     #[opt("enable-arm-neon")]
     arm_neon: bool,
     #[opt("enable-arm-sve")]
@@ -33,8 +31,8 @@ pub struct ConvertVectorToLlvm {
     arm_i8mm: bool,
     #[opt("enable-arm-bf16")]
     arm_bf16: bool,
-    #[opt("enable-x86vector")]
-    x86vector: bool,
+    #[opt("enable-x86")]
+    x86: bool,
     counter: core::sync::atomic::AtomicU32,
 }
 
@@ -61,15 +59,15 @@ impl Run for ConvertVectorToLlvm {
             body.apply_greedily(r, &pre, &crate::GreedyConfig::default());
         }
         let opts = LlvmOptions::default();
-        // (the CPU dialects' lowerings are x86vector's: without it, asking for them is an error)
-        #[cfg(not(feature = "dialect.x86vector"))]
-        if self.x86vector || self.amx {
-            return Err(Error(alloc::string::String::from("convert-vector-to-llvm: enable-x86vector / enable-amx need the dialect.x86vector feature")));
+        // (without the x86 lowerings, asking for them is an error)
+        #[cfg(not(feature = "dialect.x86"))]
+        if self.x86 {
+            return Err(Error(alloc::string::String::from("convert-vector-to-llvm: enable-x86 needs the dialect.x86 feature")));
         }
         #[allow(unused_mut)]
         let mut tc = LlvmConverter::build(opts);
-        #[cfg(feature = "dialect.x86vector")]
-        if self.amx {
+        #[cfg(feature = "dialect.x86")]
+        if self.x86 {
             X86ToLlvm::convert_tiles(&mut tc);
         }
         let mut patterns = ConversionPatterns::default();
@@ -77,16 +75,15 @@ impl Run for ConvertVectorToLlvm {
         patterns.add(Lowering { root: "vector.transfer_read", benefit: 1, f: |cr, op, _| transfer_read_to_load(cr, op, None) });
         patterns.add(Lowering { root: "vector.transfer_write", benefit: 1, f: |cr, op, _| transfer_write_to_store(cr, op, None) });
         VectorToLlvm::populate(&mut patterns, i, VectorOptions { llvm: opts, reassociate_fp_reductions: self.reassociate, force_32bit_indices: self.force32, use_vector_alignment: self.vector_alignment, counter: &self.counter });
-        // The CPU dialects (`enable-x86vector`, `enable-amx`) lower to intrinsic calls.
-        #[cfg(feature = "dialect.x86vector")]
-        X86ToLlvm::populate(&mut patterns, i, opts, self.x86vector, self.amx);
+        // The CPU dialect (`enable-x86`) lowers to intrinsic calls.
+        #[cfg(feature = "dialect.x86")]
+        if self.x86 {
+            X86ToLlvm::populate(&mut patterns, i, opts);
+        }
         let mut target = llvm_target();
         target.legal_dialect("arith").legal_dialect("memref");
-        if self.x86vector {
-            target.illegal_dialect("x86vector");
-        }
-        if self.amx {
-            target.illegal_dialect("amx");
+        if self.x86 {
+            target.illegal_dialect("x86");
         }
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)
     }
