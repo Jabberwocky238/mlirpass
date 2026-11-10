@@ -7,8 +7,8 @@ use crate::{Action, Body, ConversionConfig, ConversionPatterns, Converter, GpuSp
 /// `nvgpu::populateCommonGPUTypeAndAttributeConversions`: global 1, shared 3, private 0.
 const NVVM_SPACES: GpuSpaces = GpuSpaces { global: 1, workgroup: 3, private: 0, constant: 4 };
 
-/// `convert-nvgpu-to-nvvm`, as `ConvertNVGPUToNVVMPass`: nvgpu illegal; llvm, arith, memref and
-/// nvvm legal; scf legal on converted types.
+/// `convert-nvgpu-to-nvvm`, as `ConvertNVGPUToNVVMPass`: nvgpu illegal; llvm, arith, memref, nvvm
+/// and vector legal; scf legal on converted types.
 #[crate::pass("convert-nvgpu-to-nvvm")]
 pub fn convert_nvgpu_to_nvvm<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let llvm = LlvmOptions { gpu_spaces: Some(NVVM_SPACES), ..LlvmOptions::default() };
@@ -18,7 +18,7 @@ pub fn convert_nvgpu_to_nvvm<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Er
     let i = patterns.converter(&tc);
     NvgpuToNvvm::populate(&mut patterns, i, llvm);
     let mut target = crate::llvm_target();
-    for d in ["llvm", "arith", "memref", "nvvm"] {
+    for d in ["llvm", "arith", "memref", "nvvm", "vector"] {
         target.legal_dialect(d);
     }
     target.dialect("nvgpu", Action::Illegal);

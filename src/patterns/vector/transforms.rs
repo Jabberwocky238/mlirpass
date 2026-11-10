@@ -744,6 +744,93 @@ impl Rules {
         true
     }
 
+    /// `ShapeCastOpRewritePattern` (`LowerVectorShapeCast.cpp`): through extracts and inserts
+    /// of the largest slices the shapes share (their common suffix with the gcd of the first
+    /// dimension before it), with strided slices when that gcd is not 1.
+    #[rewrite("vector.shape_cast", name = "ShapeCastOpRewritePattern")]
+    fn shape_cast_op_rewrite_pattern(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let (source, rt) = (b[op].operands[0], b[b[op].results[0]].ty.clone());
+        let (Some((ss, sscal)), Some((rs, rscal))) = (vshape(&b[source].ty), vshape(&rt)) else { return false };
+        if sscal.iter().chain(&rscal).any(|s| *s) {
+            return false;
+        }
+        let et = elem(&rt).clone();
+        // The first dimension, from the end, where the shapes differ.
+        let (mut sd, mut rd) = (ss.len() as i64 - 1, rs.len() as i64 - 1);
+        while sd >= 0 && rd >= 0 && ss[sd as usize] == rs[rd as usize] {
+            sd -= 1;
+            rd -= 1;
+        }
+        rw.set_before(op);
+        if sd < 0 || rd < 0 {
+            // `leadingOnesLowering`.
+            let delta = ss.len() as i64 - rs.len() as i64;
+            let poison = rw.poison(rt);
+            let x = rw.vextract_(source, &vec![0; delta.max(0) as usize]);
+            let r = rw.vinsert(x, poison, &vec![0; (-delta).max(0) as usize]);
+            rw.replace_op(op, &[r]);
+            return true;
+        }
+        let (sd, rd) = (sd as usize, rd as usize);
+        let gcd = {
+            let (mut a, mut c) = (ss[sd], rs[rd]);
+            while c != 0 {
+                (a, c) = (c, a % c);
+            }
+            a
+        };
+        let n: i64 = ss.iter().product();
+        if gcd == 1 {
+            // `noStridedSliceLowering`: whole suffix slices.
+            let (sd, rd) = (sd + 1, rd + 1);
+            let slices: i64 = ss[..sd].iter().product();
+            let (mut ei, mut ii) = (vec![0i64; sd], vec![0i64; rd]);
+            let mut result = rw.poison(rt);
+            for _ in 0..slices {
+                let x = rw.vextract_(source, &ei);
+                result = rw.vinsert(x, result, &ii);
+                Self::mixed_add(&ss[..sd], &mut ei);
+                Self::mixed_add(&rs[..rd], &mut ii);
+            }
+            rw.replace_op(op, &[result]);
+            return true;
+        }
+        let rank = ss.len() - sd;
+        let (extract_period, insert_period) = (ss[sd] / gcd, rs[rd] / gcd);
+        let mut atomic = ss[sd..].to_vec();
+        atomic[0] = gcd;
+        let slices = n / atomic.iter().product::<i64>();
+        let part_ty = Type::vector(&rs[rd..], &vec![false; rs.len() - rd], et.clone());
+        let (mut ei, mut ii) = (vec![0i64; sd], vec![0i64; rd]);
+        let (mut eoff, mut ioff) = (vec![0i64; rank], vec![0i64; rank]);
+        let ones = vec![1i64; rank];
+        let mut result = rw.poison(rt);
+        let part = rw.poison(part_ty.clone());
+        let (mut extracted, mut inserted) = (source, part);
+        for i in 0..slices {
+            let (ep, ip) = (i % extract_period, i % insert_period);
+            if ep == 0 {
+                extracted = rw.vextract_(source, &ei);
+                Self::mixed_add(&ss[..sd], &mut ei);
+            }
+            eoff[0] = ep * gcd;
+            let at = Type::vector(&atomic, &vec![false; rank], et.clone());
+            let strided = rw.make1(OpData::build("vector.extract_strided_slice").operands(&[extracted]).with("offsets", arr(&eoff)).with("sizes", arr(&atomic)).with("strides", arr(&ones)), at);
+            if ip == 0 {
+                inserted = part;
+            }
+            ioff[0] = ip * gcd;
+            inserted = rw.make1(OpData::build("vector.insert_strided_slice").operands(&[strided, inserted]).with("offsets", arr(&ioff)).with("strides", arr(&ones)), part_ty.clone());
+            if ip + 1 == insert_period {
+                result = rw.vinsert(inserted, result, &ii);
+                Self::mixed_add(&rs[..rd], &mut ii);
+            }
+        }
+        rw.replace_op(op, &[result]);
+        true
+    }
+
     /// `DecomposeNDExtractStridedSlice`.
     #[rewrite("vector.extract_strided_slice", name = "DecomposeNDExtractStridedSlice")]
     fn decompose_nd_extract_strided_slice(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
@@ -968,6 +1055,7 @@ pub fn pre_patterns(force32: bool) -> PatternSet {
     set.add(CreateMaskOpLowering);
     set.add(ConstantMaskOpLowering);
     set.add(DecomposeDifferentRankInsertStridedSlice);
+    set.add(ShapeCastOpRewritePattern);
     set.add(DecomposeNDExtractStridedSlice);
     set.add(ConvertSameRankInsertStridedSliceIntoShuffle);
     set.add(Convert1DExtractStridedSliceIntoShuffle);
@@ -985,4 +1073,18 @@ pub fn pre_patterns(force32: bool) -> PatternSet {
     set.add(UnrollFromElements);
     set.add(UnrollToElements);
     set
+}
+
+impl Rules {
+    /// `inplaceAdd(1, base, index)`: the next index in mixed radix `base` (most significant
+    /// first).
+    fn mixed_add(base: &[i64], index: &mut [i64]) {
+        for d in (0..index.len()).rev() {
+            index[d] += 1;
+            if index[d] < base[d] {
+                return;
+            }
+            index[d] = 0;
+        }
+    }
 }

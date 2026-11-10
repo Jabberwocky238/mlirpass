@@ -145,7 +145,7 @@ impl NvgpuToNvvm {
         matches!(cr.rw.body[op].get(name), Some(Attribute::Unit | Attribute::Bool(true)))
     }
 
-    fn c<'a>(cr: &mut Cr<'_, 'a, '_>, v: i64, w: u32) -> ValueId {
+    pub(super) fn c<'a>(cr: &mut Cr<'_, 'a, '_>, v: i64, w: u32) -> ValueId {
         cr.llvm_constant(Attribute::of_int(v.into(), Type::int(w)), Type::int(w))
     }
 
@@ -996,6 +996,33 @@ impl NvgpuToNvvm {
         }
         cr.replace(op, vec![vec![packed]]);
         true
+    }
+
+    // The canonicalizations come before the lowerings: upstream's legalization graph tries the
+    // pattern added last first among equals.
+    /// `NVGPUTruncfCanonicalizePattern`.
+    #[rewrite("nvgpu.truncf", name = "NvgpuTruncfCanonicalize")]
+    fn truncf_canonicalize(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
+        Self::canonicalize_fp(rw, op, true)
+    }
+
+    /// `NVGPUExtfCanonicalizePattern`.
+    #[rewrite("nvgpu.extf", name = "NvgpuExtfCanonicalize")]
+    fn extf_canonicalize(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
+        Self::canonicalize_fp(rw, op, false)
+    }
+
+    /// `NVGPUTruncfOpLowering`.
+    #[convert("nvgpu.truncf")]
+    fn truncf(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
+        let random = operands.get(1).and_then(|g| g.first().copied());
+        Self::lower_truncf(cr, op, operands[0][0], random)
+    }
+
+    /// `NVGPUExtfOpLowering`.
+    #[convert("nvgpu.extf")]
+    fn extf(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
+        Self::lower_extf(cr, op, operands[0][0])
     }
 
     /// `rcp.approx.ftz.f` of each element of the 1-D vector `v`.

@@ -1,5 +1,6 @@
 //! `nvgpu` rule sets.
 
+mod fp;
 mod to_nvvm;
 mod types;
 
