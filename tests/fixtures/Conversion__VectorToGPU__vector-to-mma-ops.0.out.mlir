@@ -1,4 +1,20 @@
 module {
+}
+
+// -----
+module {
+  func.func @no_convert_3d(%arg0: memref<2x2x2xf16>) {
+    %c0 = arith.constant 0 : index
+    %cst = arith.constant 0.000000e+00 : f16
+    %0 = vector.transfer_read %arg0[%c0, %c0, %c0], %cst {in_bounds = [true, true, true]} : memref<2x2x2xf16>, vector<2x2x2xf16>
+    %1 = arith.addf %0, %0 : vector<2x2x2xf16>
+    vector.transfer_write %1, %arg0[%c0, %c0, %c0] {in_bounds = [true, true, true]} : vector<2x2x2xf16>, memref<2x2x2xf16>
+    return
+  }
+}
+
+// -----
+module {
   func.func @matmul(%arg0: memref<16x16xf16>, %arg1: memref<16x16xf16>, %arg2: memref<16x16xf16>) {
     %c0 = arith.constant 0 : index
     %0 = gpu.subgroup_mma_load_matrix %arg0[%c0, %c0] {leadDimension = 16 : index} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "AOp">
@@ -66,7 +82,7 @@ module {
     %2 = gpu.subgroup_mma_load_matrix %arg0[%c0, %c0] {leadDimension = 16 : index} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "AOp">
     %3 = gpu.subgroup_mma_load_matrix %arg1[%c0, %c0] {leadDimension = 16 : index} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "BOp">
     %4 = gpu.subgroup_mma_compute %2, %3, %0 : !gpu.mma_matrix<16x16xf16, "AOp">, !gpu.mma_matrix<16x16xf16, "BOp"> -> !gpu.mma_matrix<16x16xf16, "COp">
-    %5 = gpu.subgroup_mma_elementwise  addf %4, %1 : (!gpu.mma_matrix<16x16xf16, "COp">, !gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf16, "COp">
+    %5 = gpu.subgroup_mma_elementwise addf %4, %1 : (!gpu.mma_matrix<16x16xf16, "COp">, !gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf16, "COp">
     gpu.subgroup_mma_store_matrix %5, %arg2[%c0, %c0] {leadDimension = 16 : index} : !gpu.mma_matrix<16x16xf16, "COp">, memref<16x16xf16>
     return
   }
@@ -82,7 +98,7 @@ module {
     %2 = gpu.subgroup_mma_load_matrix %arg1[%c0, %c0] {leadDimension = 16 : index} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "BOp">
     %3 = gpu.subgroup_mma_compute %1, %2, %0 : !gpu.mma_matrix<16x16xf16, "AOp">, !gpu.mma_matrix<16x16xf16, "BOp"> -> !gpu.mma_matrix<16x16xf16, "COp">
     %4 = gpu.subgroup_mma_load_matrix %arg3[%c0, %c0, %c0, %c0] {leadDimension = 0 : index} : memref<16x16x16x16xf16> -> !gpu.mma_matrix<16x16xf16, "COp">
-    %5 = gpu.subgroup_mma_elementwise  divf %3, %4 : (!gpu.mma_matrix<16x16xf16, "COp">, !gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf16, "COp">
+    %5 = gpu.subgroup_mma_elementwise divf %3, %4 : (!gpu.mma_matrix<16x16xf16, "COp">, !gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf16, "COp">
     gpu.subgroup_mma_store_matrix %5, %arg2[%c0, %c0] {leadDimension = 16 : index} : !gpu.mma_matrix<16x16xf16, "COp">, memref<16x16xf16>
     return
   }
@@ -219,8 +235,22 @@ module {
     %1 = gpu.subgroup_mma_load_matrix %arg2[%c0, %c0] {leadDimension = 16 : index} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "COp">
     %2 = gpu.subgroup_mma_load_matrix %arg1[%c0, %c0] {leadDimension = 16 : index, transpose} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "BOp">
     %3 = gpu.subgroup_mma_compute %0, %2, %1 : !gpu.mma_matrix<16x16xf16, "AOp">, !gpu.mma_matrix<16x16xf16, "BOp"> -> !gpu.mma_matrix<16x16xf16, "COp">
-    %4 = gpu.subgroup_mma_elementwise  extf %3 : (!gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
+    %4 = gpu.subgroup_mma_elementwise extf %3 : (!gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
     gpu.subgroup_mma_store_matrix %4, %arg3[%c0, %c0] {leadDimension = 16 : index} : !gpu.mma_matrix<16x16xf32, "COp">, memref<16x16xf32>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @cast_f32_to_f16_write(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf32>, %arg2: memref<16x16xf32>, %arg3: memref<16x16xf16>) {
+    %c0 = arith.constant 0 : index
+    %0 = gpu.subgroup_mma_load_matrix %arg0[%c0, %c0] {leadDimension = 16 : index} : memref<16x16xf32> -> !gpu.mma_matrix<16x16xf32, "AOp">
+    %1 = gpu.subgroup_mma_load_matrix %arg2[%c0, %c0] {leadDimension = 16 : index} : memref<16x16xf32> -> !gpu.mma_matrix<16x16xf32, "COp">
+    %2 = gpu.subgroup_mma_load_matrix %arg1[%c0, %c0] {leadDimension = 16 : index, transpose} : memref<16x16xf32> -> !gpu.mma_matrix<16x16xf32, "BOp">
+    %3 = gpu.subgroup_mma_compute %0, %2, %1 : !gpu.mma_matrix<16x16xf32, "AOp">, !gpu.mma_matrix<16x16xf32, "BOp"> -> !gpu.mma_matrix<16x16xf32, "COp">
+    %4 = gpu.subgroup_mma_elementwise truncf %3 : (!gpu.mma_matrix<16x16xf32, "COp">) -> !gpu.mma_matrix<16x16xf16, "COp">
+    gpu.subgroup_mma_store_matrix %4, %arg3[%c0, %c0] {leadDimension = 16 : index} : !gpu.mma_matrix<16x16xf16, "COp">, memref<16x16xf16>
     return
   }
 }
@@ -250,10 +280,10 @@ module {
     %c0 = arith.constant 0 : index
     %0 = gpu.subgroup_mma_load_matrix %arg0[%c0, %c0] {leadDimension = 16 : index} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "AOp">
     %1 = gpu.subgroup_mma_load_matrix %arg2[%c0, %c0] {leadDimension = 16 : index} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "COp">
-    %2 = gpu.subgroup_mma_elementwise  extf %0 : (!gpu.mma_matrix<16x16xf16, "AOp">) -> !gpu.mma_matrix<16x16xf32, "AOp">
-    %3 = gpu.subgroup_mma_elementwise  extf %1 : (!gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
+    %2 = gpu.subgroup_mma_elementwise extf %0 : (!gpu.mma_matrix<16x16xf16, "AOp">) -> !gpu.mma_matrix<16x16xf32, "AOp">
+    %3 = gpu.subgroup_mma_elementwise extf %1 : (!gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
     %4 = gpu.subgroup_mma_load_matrix %arg1[%c0, %c0] {leadDimension = 16 : index, transpose} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "BOp">
-    %5 = gpu.subgroup_mma_elementwise  extf %4 : (!gpu.mma_matrix<16x16xf16, "BOp">) -> !gpu.mma_matrix<16x16xf32, "BOp">
+    %5 = gpu.subgroup_mma_elementwise extf %4 : (!gpu.mma_matrix<16x16xf16, "BOp">) -> !gpu.mma_matrix<16x16xf32, "BOp">
     %6 = gpu.subgroup_mma_compute %2, %5, %3 : !gpu.mma_matrix<16x16xf32, "AOp">, !gpu.mma_matrix<16x16xf32, "BOp"> -> !gpu.mma_matrix<16x16xf32, "COp">
     gpu.subgroup_mma_store_matrix %6, %arg3[%c0, %c0] {leadDimension = 16 : index} : !gpu.mma_matrix<16x16xf32, "COp">, memref<16x16xf32>
     return
@@ -279,8 +309,82 @@ module {
     %c0 = arith.constant 0 : index
     %0 = gpu.subgroup_mma_load_matrix %arg0[%c0, %c0] {leadDimension = 16 : index} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "COp">
     %1 = gpu.subgroup_mma_load_matrix %arg1[%c0, %c0] {leadDimension = 16 : index, transpose} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "COp">
-    %2 = gpu.subgroup_mma_elementwise  addf %0, %1 : (!gpu.mma_matrix<16x16xf16, "COp">, !gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf16, "COp">
+    %2 = gpu.subgroup_mma_elementwise addf %0, %1 : (!gpu.mma_matrix<16x16xf16, "COp">, !gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf16, "COp">
     gpu.subgroup_mma_store_matrix %2, %arg2[%c0, %c0] {leadDimension = 16 : index} : !gpu.mma_matrix<16x16xf16, "COp">, memref<16x16xf16>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @matmul_with_strides(%arg0: memref<16x16xf16>, %arg1: memref<16x6x16xf16>, %arg2: memref<16x9x16xf16>) {
+    %c0 = arith.constant 0 : index
+    %0 = gpu.subgroup_mma_load_matrix %arg0[%c0, %c0] {leadDimension = 16 : index} : memref<16x16xf16> -> !gpu.mma_matrix<16x16xf16, "AOp">
+    %1 = gpu.subgroup_mma_load_matrix %arg1[%c0, %c0, %c0] {leadDimension = 96 : index} : memref<16x6x16xf16> -> !gpu.mma_matrix<16x16xf16, "BOp">
+    %2 = gpu.subgroup_mma_load_matrix %arg2[%c0, %c0, %c0] {leadDimension = 144 : index} : memref<16x9x16xf16> -> !gpu.mma_matrix<16x16xf16, "COp">
+    %3 = gpu.subgroup_mma_compute %0, %1, %2 : !gpu.mma_matrix<16x16xf16, "AOp">, !gpu.mma_matrix<16x16xf16, "BOp"> -> !gpu.mma_matrix<16x16xf16, "COp">
+    gpu.subgroup_mma_store_matrix %3, %arg2[%c0, %c0, %c0] {leadDimension = 144 : index} : !gpu.mma_matrix<16x16xf16, "COp">, memref<16x9x16xf16>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @read_transpose_with_strides_3d(%arg0: memref<5x7x3xf16>, %arg1: memref<2x5x3xf16>, %arg2: memref<3x5xf16>) {
+    %c0 = arith.constant 0 : index
+    %0 = gpu.subgroup_mma_load_matrix %arg0[%c0, %c0, %c0] {leadDimension = 21 : index, transpose} : memref<5x7x3xf16> -> !gpu.mma_matrix<3x5xf16, "COp">
+    %1 = gpu.subgroup_mma_load_matrix %arg1[%c0, %c0, %c0] {leadDimension = 3 : index, transpose} : memref<2x5x3xf16> -> !gpu.mma_matrix<3x5xf16, "COp">
+    %2 = gpu.subgroup_mma_elementwise addf %0, %1 : (!gpu.mma_matrix<3x5xf16, "COp">, !gpu.mma_matrix<3x5xf16, "COp">) -> !gpu.mma_matrix<3x5xf16, "COp">
+    gpu.subgroup_mma_store_matrix %2, %arg2[%c0, %c0] {leadDimension = 5 : index} : !gpu.mma_matrix<3x5xf16, "COp">, memref<3x5xf16>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @read_transpose_with_strides_4d(%arg0: memref<5x7x11x3xf16>, %arg1: memref<2x5x11x3xf16>, %arg2: memref<3x5xf16>) {
+    %c0 = arith.constant 0 : index
+    %0 = gpu.subgroup_mma_load_matrix %arg0[%c0, %c0, %c0, %c0] {leadDimension = 231 : index, transpose} : memref<5x7x11x3xf16> -> !gpu.mma_matrix<3x5xf16, "COp">
+    %1 = gpu.subgroup_mma_load_matrix %arg1[%c0, %c0, %c0, %c0] {leadDimension = 33 : index, transpose} : memref<2x5x11x3xf16> -> !gpu.mma_matrix<3x5xf16, "COp">
+    %2 = gpu.subgroup_mma_elementwise addf %0, %1 : (!gpu.mma_matrix<3x5xf16, "COp">, !gpu.mma_matrix<3x5xf16, "COp">) -> !gpu.mma_matrix<3x5xf16, "COp">
+    gpu.subgroup_mma_store_matrix %2, %arg2[%c0, %c0] {leadDimension = 5 : index} : !gpu.mma_matrix<3x5xf16, "COp">, memref<3x5xf16>
+    return
+  }
+}
+
+// -----
+#map = affine_map<(d0, d1, d2) -> (d1, d0)>
+module {
+  func.func @no_convert_read_transpose_not_last_dim(%arg0: memref<2x2x2xf16>, %arg1: memref<2x2xf16>) {
+    %c0 = arith.constant 0 : index
+    %cst = arith.constant 0.000000e+00 : f16
+    %0 = vector.transfer_read %arg0[%c0, %c0, %c0], %cst {in_bounds = [true, true], permutation_map = #map} : memref<2x2x2xf16>, vector<2x2xf16>
+    %1 = arith.addf %0, %0 : vector<2x2xf16>
+    vector.transfer_write %1, %arg1[%c0, %c0] {in_bounds = [true, true]} : vector<2x2xf16>, memref<2x2xf16>
+    return
+  }
+}
+
+// -----
+#map = affine_map<(d0, d1) -> (d1, d0)>
+module {
+  func.func @no_convert_write_transpose(%arg0: memref<2x2xf16>) {
+    %c0 = arith.constant 0 : index
+    %cst = arith.constant 0.000000e+00 : f16
+    %0 = vector.transfer_read %arg0[%c0, %c0], %cst {in_bounds = [true, true]} : memref<2x2xf16>, vector<2x2xf16>
+    %1 = arith.addf %0, %0 : vector<2x2xf16>
+    vector.transfer_write %1, %arg0[%c0, %c0] {in_bounds = [true, true], permutation_map = #map} : vector<2x2xf16>, memref<2x2xf16>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @read_transpose_with_broadcast_3d(%arg0: memref<2x2x2xf16>, %arg1: memref<2x2xf16>) {
+    %c0 = arith.constant 0 : index
+    %0 = gpu.subgroup_mma_load_matrix %arg0[%c0, %c0, %c0] {leadDimension = 0 : index, transpose} : memref<2x2x2xf16> -> !gpu.mma_matrix<2x2xf16, "COp">
+    %1 = gpu.subgroup_mma_elementwise addf %0, %0 : (!gpu.mma_matrix<2x2xf16, "COp">, !gpu.mma_matrix<2x2xf16, "COp">) -> !gpu.mma_matrix<2x2xf16, "COp">
+    gpu.subgroup_mma_store_matrix %1, %arg1[%c0, %c0] {leadDimension = 2 : index} : !gpu.mma_matrix<2x2xf16, "COp">, memref<2x2xf16>
     return
   }
 }

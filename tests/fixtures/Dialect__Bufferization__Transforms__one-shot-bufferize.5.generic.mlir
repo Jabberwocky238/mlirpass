@@ -80,7 +80,7 @@
     "memref.copy"(%1, %2) : (memref<10xf32, strided<[?], offset: ?>>, memref<10xf32>) -> ()
     "memref.store"(%arg0, %2, %arg2) <{nontemporal = false}> : (f32, memref<10xf32>, index) -> ()
     %3 = "test.some_use"(%0) : (tensor<10xf32>) -> f32
-    %4 = "memref.load"(%2, %arg1) <{nontemporal = false}> : (memref<10xf32>, index) -> f32
+    %4 = "memref.load"(%2, %arg1) <{invariant = false, nontemporal = false}> : (memref<10xf32>, index) -> f32
     "func.return"(%3, %4) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -102,7 +102,7 @@
     %1 = "memref.alloc"(%arg1) <{alignment = 64 : i64, operandSegmentSizes = array<i32: 1, 0>}> : (index) -> memref<?xf32>
     %2 = "memref.cast"(%1) : (memref<?xf32>) -> memref<?xf32, strided<[?], offset: ?>>
     %3 = "arith.select"(%arg3, %2, %0) : (i1, memref<?xf32, strided<[?], offset: ?>>, memref<?xf32, strided<[?], offset: ?>>) -> memref<?xf32, strided<[?], offset: ?>>
-    %4 = "memref.load"(%3, %arg2) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %4 = "memref.load"(%3, %arg2) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%4) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -138,8 +138,8 @@
     "memref.copy"(%1, %2) : (memref<100xf32, strided<[?], offset: ?>>, memref<100xf32>) -> ()
     "memref.store"(%arg6, %2, %arg1) <{nontemporal = false}> : (f32, memref<100xf32>, index) -> ()
     %3 = "memref.subview"(%0, %arg2, %arg5) <{operandSegmentSizes = array<i32: 1, 1, 1, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: -9223372036854775808>, static_strides = array<i64: 1>}> : (memref<100xf32, strided<[?], offset: ?>>, index, index) -> memref<?xf32, strided<[?], offset: ?>>
-    %4 = "memref.load"(%3, %arg3) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
-    %5 = "memref.load"(%2, %arg3) <{nontemporal = false}> : (memref<100xf32>, index) -> f32
+    %4 = "memref.load"(%3, %arg3) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %5 = "memref.load"(%2, %arg3) <{invariant = false, nontemporal = false}> : (memref<100xf32>, index) -> f32
     "func.return"(%4, %5) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -208,29 +208,8 @@
     %2 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<5xf32>
     "memref.copy"(%1, %2) : (memref<5xf32>, memref<5xf32>) -> ()
     %3 = "bufferization.to_tensor"(%2) : (memref<5xf32>) -> tensor<5xf32>
-    %4 = "memref.load"(%0, %arg2) <{nontemporal = false}> : (memref<5xf32>, index) -> f32
+    %4 = "memref.load"(%0, %arg2) <{invariant = false, nontemporal = false}> : (memref<5xf32>, index) -> f32
     "func.return"(%3, %4) : (tensor<5xf32>, f32) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (!test.test_tensor<[32, 64], f64>) -> !test.test_tensor<[32, 128], f64>, sym_name = "custom_op"}> ({
-  ^bb0(%arg0: !test.test_tensor<[32, 64], f64>):
-    %0 = "bufferization.to_buffer"(%arg0) : (!test.test_tensor<[32, 64], f64>) -> !test.test_memref<[32, 64], f64>
-    %1 = "test.dummy_memref_op"(%0) : (!test.test_memref<[32, 64], f64>) -> !test.test_memref<[32, 128], f64>
-    %2 = "bufferization.to_tensor"(%1) : (!test.test_memref<[32, 128], f64>) -> !test.test_tensor<[32, 128], f64>
-    "func.return"(%2) : (!test.test_tensor<[32, 128], f64>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = () -> !test.test_tensor<[42], f64>, sym_name = "custom_origin_op"}> ({
-    %0 = "test.create_memref_op"() : () -> !test.test_memref<[21], f64>
-    %1 = "test.dummy_memref_op"(%0) : (!test.test_memref<[21], f64>) -> !test.test_memref<[42], f64>
-    %2 = "bufferization.to_tensor"(%1) : (!test.test_memref<[42], f64>) -> !test.test_tensor<[42], f64>
-    "func.return"(%2) : (!test.test_tensor<[42], f64>) -> ()
   }) : () -> ()
 }) : () -> ()
 

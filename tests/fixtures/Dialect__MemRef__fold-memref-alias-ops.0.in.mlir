@@ -95,6 +95,17 @@
 }) : () -> ()
 
 // -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<?x?x?x?xf32, strided<[?, ?, ?, ?], offset: ?>>, index, index, index, index) -> f32, sym_name = "fold_rank_reducing_subview_1x8x1x3_to_1x8x3_drop_middle_unit_dim"}> ({
+  ^bb0(%arg0: memref<?x?x?x?xf32, strided<[?, ?, ?, ?], offset: ?>>, %arg1: index, %arg2: index, %arg3: index, %arg4: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.subview"(%arg0) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>, static_offsets = array<i64: 0, 0, 0, 0>, static_sizes = array<i64: 1, 8, 1, 3>, static_strides = array<i64: 1, 1, 1, 1>}> : (memref<?x?x?x?xf32, strided<[?, ?, ?, ?], offset: ?>>) -> memref<1x8x3xf32, strided<[?, ?, ?], offset: ?>>
+    %2 = "memref.load"(%1, %0, %arg1, %arg2) : (memref<1x8x3xf32, strided<[?, ?, ?], offset: ?>>, index, index, index) -> f32
+    "func.return"(%2) : (f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
 #map = affine_map<(d0, d1) -> (d1)>
 "builtin.module"() ({
   "func.func"() <{function_type = (memref<?x?x?xf32, strided<[?, ?, ?], offset: ?>>, index, index, index, index, index, index) -> vector<4xf32>, sym_name = "fold_vector_transfer_read_with_rank_reduced_subview"}> ({
@@ -256,6 +267,26 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<8x8xf32, strided<[8, 1]>>) -> memref<2x2xf32, strided<[32, 4], offset: 27>>, sym_name = "subview_of_subview_no_unit_stride"}> ({
+  ^bb0(%arg0: memref<8x8xf32, strided<[8, 1]>>):
+    %0 = "memref.subview"(%arg0) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>, static_offsets = array<i64: 1, 1>, static_sizes = array<i64: 4, 4>, static_strides = array<i64: 2, 2>}> : (memref<8x8xf32, strided<[8, 1]>>) -> memref<4x4xf32, strided<[16, 2], offset: 9>>
+    %1 = "memref.subview"(%0) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>, static_offsets = array<i64: 1, 1>, static_sizes = array<i64: 2, 2>, static_strides = array<i64: 2, 2>}> : (memref<4x4xf32, strided<[16, 2], offset: 9>>) -> memref<2x2xf32, strided<[32, 4], offset: 27>>
+    "func.return"(%1) : (memref<2x2xf32, strided<[32, 4], offset: 27>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<8x8xf32, strided<[8, 1]>>) -> memref<2xf32, strided<[4], offset: 27>>, sym_name = "subview_of_subview_rank_reducing_no_unit_stride"}> ({
+  ^bb0(%arg0: memref<8x8xf32, strided<[8, 1]>>):
+    %0 = "memref.subview"(%arg0) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>, static_offsets = array<i64: 1, 1>, static_sizes = array<i64: 4, 4>, static_strides = array<i64: 2, 2>}> : (memref<8x8xf32, strided<[8, 1]>>) -> memref<4x4xf32, strided<[16, 2], offset: 9>>
+    %1 = "memref.subview"(%0) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>, static_offsets = array<i64: 1, 1>, static_sizes = array<i64: 1, 2>, static_strides = array<i64: 2, 2>}> : (memref<4x4xf32, strided<[16, 2], offset: 9>>) -> memref<2xf32, strided<[4], offset: 27>>
+    "func.return"(%1) : (memref<2xf32, strided<[4], offset: 27>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<12x32xf32>, index, index, index, index) -> f32, sym_name = "fold_load_keep_nontemporal"}> ({
   ^bb0(%arg0: memref<12x32xf32>, %arg1: index, %arg2: index, %arg3: index, %arg4: index):
     %0 = "memref.subview"(%arg0, %arg1, %arg2) <{operandSegmentSizes = array<i32: 1, 2, 0, 0>, static_offsets = array<i64: -9223372036854775808, -9223372036854775808>, static_sizes = array<i64: 4, 4>, static_strides = array<i64: 2, 3>}> : (memref<12x32xf32>, index, index) -> memref<4x4xf32, strided<[64, 3], offset: ?>>
@@ -270,6 +301,16 @@
   ^bb0(%arg0: memref<12x32xf32>, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: f32):
     %0 = "memref.subview"(%arg0, %arg1, %arg2) <{operandSegmentSizes = array<i32: 1, 2, 0, 0>, static_offsets = array<i64: -9223372036854775808, -9223372036854775808>, static_sizes = array<i64: 4, 4>, static_strides = array<i64: 2, 3>}> : (memref<12x32xf32>, index, index) -> memref<4x4xf32, strided<[64, 3], offset: ?>>
     "memref.store"(%arg5, %0, %arg3, %arg4) <{nontemporal = true}> : (f32, memref<4x4xf32, strided<[64, 3], offset: ?>>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>, index, index) -> (), sym_name = "fold_prefetch_expand_shape"}> ({
+  ^bb0(%arg0: memref<32xf32>, %arg1: index, %arg2: index):
+    %0 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
+    "memref.prefetch"(%0, %arg1, %arg2) <{isDataCache = true, isWrite = false, localityHint = 2 : i32}> : (memref<4x8xf32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -316,59 +357,6 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (memref<2x128x768xf16>, index, index, index) -> (), sym_name = "fold_nvgpu_device_async_copy_zero_sub_idx"}> ({
-  ^bb0(%arg0: memref<2x128x768xf16>, %arg1: index, %arg2: index, %arg3: index):
-    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %1 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<5x1x64x64xf16, #gpu.address_space<workgroup>>
-    %2 = "memref.subview"(%arg0, %arg1, %arg2, %arg3) <{operandSegmentSizes = array<i32: 1, 3, 0, 0>, static_offsets = array<i64: -9223372036854775808, -9223372036854775808, -9223372036854775808>, static_sizes = array<i64: 1, 1, 8>, static_strides = array<i64: 1, 1, 1>}> : (memref<2x128x768xf16>, index, index, index) -> memref<1x8xf16, strided<[98304, 1], offset: ?>>
-    %3 = "nvgpu.device_async_copy"(%1, %0, %0, %0, %0, %2, %0, %0) <{bypassL1, dstElements = 8 : index, operandSegmentSizes = array<i32: 1, 4, 1, 2, 0>}> : (memref<5x1x64x64xf16, #gpu.address_space<workgroup>>, index, index, index, index, memref<1x8xf16, strided<[98304, 1], offset: ?>>, index, index) -> !nvgpu.device.async.token
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<2x128x768xf16>, index, index, index, index, index) -> (), sym_name = "fold_src_nvgpu_device_async_copy"}> ({
-  ^bb0(%arg0: memref<2x128x768xf16>, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index):
-    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %1 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<5x1x64x64xf16, #gpu.address_space<workgroup>>
-    %2 = "memref.subview"(%arg0, %arg1, %arg2, %arg3) <{operandSegmentSizes = array<i32: 1, 3, 0, 0>, static_offsets = array<i64: -9223372036854775808, -9223372036854775808, -9223372036854775808>, static_sizes = array<i64: 1, 1, 8>, static_strides = array<i64: 1, 1, 1>}> : (memref<2x128x768xf16>, index, index, index) -> memref<1x8xf16, strided<[98304, 1], offset: ?>>
-    %3 = "nvgpu.device_async_copy"(%1, %0, %0, %0, %0, %2, %arg4, %arg5) <{bypassL1, dstElements = 8 : index, operandSegmentSizes = array<i32: 1, 4, 1, 2, 0>}> : (memref<5x1x64x64xf16, #gpu.address_space<workgroup>>, index, index, index, index, memref<1x8xf16, strided<[98304, 1], offset: ?>>, index, index) -> !nvgpu.device.async.token
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<2x128x768xf16>, index, index, index, index, index, index, index, index, index, index, index) -> (), sym_name = "fold_src_fold_dest_nvgpu_device_async_copy"}> ({
-  ^bb0(%arg0: memref<2x128x768xf16>, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index):
-    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %1 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<5x1x64x64xf16, #gpu.address_space<workgroup>>
-    %2 = "memref.subview"(%arg0, %arg1, %arg2, %arg3) <{operandSegmentSizes = array<i32: 1, 3, 0, 0>, static_offsets = array<i64: -9223372036854775808, -9223372036854775808, -9223372036854775808>, static_sizes = array<i64: 1, 1, 8>, static_strides = array<i64: 1, 1, 1>}> : (memref<2x128x768xf16>, index, index, index) -> memref<1x8xf16, strided<[98304, 1], offset: ?>>
-    %3 = "memref.subview"(%1, %arg6, %arg7, %arg8, %arg9) <{operandSegmentSizes = array<i32: 1, 4, 0, 0>, static_offsets = array<i64: -9223372036854775808, -9223372036854775808, -9223372036854775808, -9223372036854775808>, static_sizes = array<i64: 1, 1, 1, 8>, static_strides = array<i64: 1, 1, 1, 1>}> : (memref<5x1x64x64xf16, #gpu.address_space<workgroup>>, index, index, index, index) -> memref<1x8xf16, strided<[4096, 1], offset: ?>, #gpu.address_space<workgroup>>
-    %4 = "nvgpu.device_async_copy"(%3, %arg10, %arg11, %2, %arg4, %arg5) <{bypassL1, dstElements = 8 : index, operandSegmentSizes = array<i32: 1, 2, 1, 2, 0>}> : (memref<1x8xf16, strided<[4096, 1], offset: ?>, #gpu.address_space<workgroup>>, index, index, memref<1x8xf16, strided<[98304, 1], offset: ?>>, index, index) -> !nvgpu.device.async.token
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-#map = affine_map<()[s0] -> (-s0 + 4)>
-#map1 = affine_map<()[s0] -> (-s0 + 32)>
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<4x32x32xf16, 3>, index, index, index) -> vector<4x2xf16>, sym_name = "test_ldmatrix"}> ({
-  ^bb0(%arg0: memref<4x32x32xf16, 3>, %arg1: index, %arg2: index, %arg3: index):
-    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %1 = "affine.apply"(%arg1) <{map = #map}> : (index) -> index
-    %2 = "affine.apply"(%arg2) <{map = #map1}> : (index) -> index
-    %3 = "affine.apply"(%arg3) <{map = #map1}> : (index) -> index
-    %4 = "memref.subview"(%arg0, %arg1, %arg2, %arg3, %1, %2, %3) <{operandSegmentSizes = array<i32: 1, 3, 3, 0>, static_offsets = array<i64: -9223372036854775808, -9223372036854775808, -9223372036854775808>, static_sizes = array<i64: -9223372036854775808, -9223372036854775808, -9223372036854775808>, static_strides = array<i64: 1, 1, 1>}> : (memref<4x32x32xf16, 3>, index, index, index, index, index, index) -> memref<?x?x?xf16, strided<[1024, 32, 1], offset: ?>, 3>
-    %5 = "nvgpu.ldmatrix"(%4, %0, %0, %0) <{numTiles = 4 : i32, transpose = false}> : (memref<?x?x?xf16, strided<[1024, 32, 1], offset: ?>, 3>, index, index, index) -> vector<4x2xf16>
-    "func.return"(%5) : (vector<4x2xf16>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
   "func.func"() <{function_type = (memref<24x64xf32>, index, index, index, index, index) -> vector<12x32xf32>, sym_name = "fold_vector_load_subview"}> ({
   ^bb0(%arg0: memref<24x64xf32>, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index):
     %0 = "memref.subview"(%arg0, %arg1, %arg2, %arg3, %arg4) <{operandSegmentSizes = array<i32: 1, 2, 2, 0>, static_offsets = array<i64: -9223372036854775808, -9223372036854775808>, static_sizes = array<i64: -9223372036854775808, -9223372036854775808>, static_strides = array<i64: 1, 1>}> : (memref<24x64xf32>, index, index, index, index) -> memref<?x?xf32, strided<[64, 1], offset: ?>>
@@ -379,11 +367,31 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<16xf32>, index, index) -> vector<1xf32>, sym_name = "fold_scalar_equivalent_vector_load_subview"}> ({
+  ^bb0(%arg0: memref<16xf32>, %arg1: index, %arg2: index):
+    %0 = "memref.subview"(%arg0, %arg1) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 4>, static_strides = array<i64: 2>}> : (memref<16xf32>, index) -> memref<4xf32, strided<[2], offset: ?>>
+    %1 = "vector.load"(%0, %arg2) : (memref<4xf32, strided<[2], offset: ?>>, index) -> vector<1xf32>
+    "func.return"(%1) : (vector<1xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<12x32xf32>, index, index, vector<32xi1>, vector<32xf32>) -> vector<32xf32>, sym_name = "fold_vector_maskedload_subview"}> ({
   ^bb0(%arg0: memref<12x32xf32>, %arg1: index, %arg2: index, %arg3: vector<32xi1>, %arg4: vector<32xf32>):
     %0 = "memref.subview"(%arg0, %arg1, %arg2) <{operandSegmentSizes = array<i32: 1, 2, 0, 0>, static_offsets = array<i64: -9223372036854775808, -9223372036854775808>, static_sizes = array<i64: 1, 1>, static_strides = array<i64: 1, 1>}> : (memref<12x32xf32>, index, index) -> memref<f32, strided<[], offset: ?>>
     %1 = "vector.maskedload"(%0, %arg3, %arg4) : (memref<f32, strided<[], offset: ?>>, vector<32xi1>, vector<32xf32>) -> vector<32xf32>
     "func.return"(%1) : (vector<32xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<8xf32>, index, vector<2x2x2xi1>, vector<2x2x2xf32>) -> vector<2x2x2xf32>, sym_name = "no_fold_vector_maskedload_subview_high_rank_vector"}> ({
+  ^bb0(%arg0: memref<8xf32>, %arg1: index, %arg2: vector<2x2x2xi1>, %arg3: vector<2x2x2xf32>):
+    %0 = "memref.subview"(%arg0, %arg1) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 1>, static_strides = array<i64: 1>}> : (memref<8xf32>, index) -> memref<1xf32, strided<[1], offset: ?>>
+    %1 = "vector.maskedload"(%0, %arg1, %arg2, %arg3) : (memref<1xf32, strided<[1], offset: ?>>, index, vector<2x2x2xi1>, vector<2x2x2xf32>) -> vector<2x2x2xf32>
+    "func.return"(%1) : (vector<2x2x2xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -420,12 +428,67 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>, index) -> vector<1x8xf32>, sym_name = "fold_vector_load_expand_shape_leading_unit"}> ({
+  ^bb0(%arg0: memref<32xf32>, %arg1: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
+    %2 = "vector.load"(%1, %arg1, %0) : (memref<4x8xf32>, index, index) -> vector<1x8xf32>
+    "func.return"(%2) : (vector<1x8xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<f32>) -> vector<1xf32>, sym_name = "fold_vector_load_expand_shape_all_unit"}> ({
+  ^bb0(%arg0: memref<f32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [], static_output_shape = array<i64: 1>}> : (memref<f32>) -> memref<1xf32>
+    %2 = "vector.load"(%1, %0) : (memref<1xf32>, index) -> vector<1xf32>
+    "func.return"(%2) : (vector<1xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<32xf32>, index, vector<8xi1>, vector<8xf32>) -> vector<8xf32>, sym_name = "fold_vector_maskedload_expand_shape"}> ({
   ^bb0(%arg0: memref<32xf32>, %arg1: index, %arg2: vector<8xi1>, %arg3: vector<8xf32>):
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
     %1 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
     %2 = "vector.maskedload"(%1, %arg1, %0, %arg2, %arg3) : (memref<4x8xf32>, index, index, vector<8xi1>, vector<8xf32>) -> vector<8xf32>
     "func.return"(%2) : (vector<8xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>, index, vector<1x8xi1>, vector<1x8xf32>) -> vector<1x8xf32>, sym_name = "fold_vector_maskedload_expand_shape_leading_unit"}> ({
+  ^bb0(%arg0: memref<32xf32>, %arg1: index, %arg2: vector<1x8xi1>, %arg3: vector<1x8xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
+    %2 = "vector.maskedload"(%1, %arg1, %0, %arg2, %arg3) : (memref<4x8xf32>, index, index, vector<1x8xi1>, vector<1x8xf32>) -> vector<1x8xf32>
+    "func.return"(%2) : (vector<1x8xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<f32>, vector<1xi1>, vector<1xf32>) -> vector<1xf32>, sym_name = "negative_fold_vector_maskedload_expand_shape_all_unit"}> ({
+  ^bb0(%arg0: memref<f32>, %arg1: vector<1xi1>, %arg2: vector<1xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [], static_output_shape = array<i64: 1>}> : (memref<f32>) -> memref<1xf32>
+    %2 = "vector.maskedload"(%1, %0, %arg1, %arg2) : (memref<1xf32>, index, vector<1xi1>, vector<1xf32>) -> vector<1xf32>
+    "func.return"(%2) : (vector<1xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>, index, vector<2x2x2xi1>, vector<2x2x2xf32>) -> vector<2x2x2xf32>, sym_name = "no_fold_vector_maskedload_expand_shape_high_rank_vector"}> ({
+  ^bb0(%arg0: memref<32xf32>, %arg1: index, %arg2: vector<2x2x2xi1>, %arg3: vector<2x2x2xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
+    %2 = "vector.maskedload"(%1, %arg1, %0, %arg2, %arg3) : (memref<4x8xf32>, index, index, vector<2x2x2xi1>, vector<2x2x2xf32>) -> vector<2x2x2xf32>
+    "func.return"(%2) : (vector<2x2x2xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -442,11 +505,99 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>, index, vector<1x8xf32>) -> (), sym_name = "fold_vector_store_expand_shape_leading_unit"}> ({
+  ^bb0(%arg0: memref<32xf32>, %arg1: index, %arg2: vector<1x8xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
+    "vector.store"(%arg2, %1, %arg1, %0) : (vector<1x8xf32>, memref<4x8xf32>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<f32>, vector<1xf32>) -> (), sym_name = "fold_vector_store_expand_shape_all_unit"}> ({
+  ^bb0(%arg0: memref<f32>, %arg1: vector<1xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [], static_output_shape = array<i64: 1>}> : (memref<f32>) -> memref<1xf32>
+    "vector.store"(%arg1, %1, %0) : (vector<1xf32>, memref<1xf32>, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<32xf32>, index, vector<8xi1>, vector<8xf32>) -> (), sym_name = "fold_vector_maskedstore_expand_shape"}> ({
   ^bb0(%arg0: memref<32xf32>, %arg1: index, %arg2: vector<8xi1>, %arg3: vector<8xf32>):
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
     %1 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
     "vector.maskedstore"(%1, %arg1, %0, %arg2, %arg3) : (memref<4x8xf32>, index, index, vector<8xi1>, vector<8xf32>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>, index, vector<1x8xi1>, vector<1x8xf32>) -> (), sym_name = "fold_vector_maskedstore_expand_shape_leading_unit"}> ({
+  ^bb0(%arg0: memref<32xf32>, %arg1: index, %arg2: vector<1x8xi1>, %arg3: vector<1x8xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
+    "vector.maskedstore"(%1, %arg1, %0, %arg2, %arg3) : (memref<4x8xf32>, index, index, vector<1x8xi1>, vector<1x8xf32>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<f32>, vector<1xi1>, vector<1xf32>) -> (), sym_name = "no_fold_vector_maskedstore_expand_shape_all_unit"}> ({
+  ^bb0(%arg0: memref<f32>, %arg1: vector<1xi1>, %arg2: vector<1xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [], static_output_shape = array<i64: 1>}> : (memref<f32>) -> memref<1xf32>
+    "vector.maskedstore"(%1, %0, %arg1, %arg2) : (memref<1xf32>, index, vector<1xi1>, vector<1xf32>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>, index, vector<8xi1>, vector<8xf32>) -> vector<8xf32>, sym_name = "fold_vector_expandload_expand_shape"}> ({
+  ^bb0(%arg0: memref<32xf32>, %arg1: index, %arg2: vector<8xi1>, %arg3: vector<8xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
+    %2 = "vector.expandload"(%1, %arg1, %0, %arg2, %arg3) : (memref<4x8xf32>, index, index, vector<8xi1>, vector<8xf32>) -> vector<8xf32>
+    "func.return"(%2) : (vector<8xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<f32>, vector<1xi1>, vector<1xf32>) -> vector<1xf32>, sym_name = "no_fold_vector_expandload_expand_shape_all_unit"}> ({
+  ^bb0(%arg0: memref<f32>, %arg1: vector<1xi1>, %arg2: vector<1xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [], static_output_shape = array<i64: 1>}> : (memref<f32>) -> memref<1xf32>
+    %2 = "vector.expandload"(%1, %0, %arg1, %arg2) : (memref<1xf32>, index, vector<1xi1>, vector<1xf32>) -> vector<1xf32>
+    "func.return"(%2) : (vector<1xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>, index, vector<8xi1>, vector<8xf32>) -> (), sym_name = "fold_vector_compressstore_expand_shape"}> ({
+  ^bb0(%arg0: memref<32xf32>, %arg1: index, %arg2: vector<8xi1>, %arg3: vector<8xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
+    "vector.compressstore"(%1, %arg1, %0, %arg2, %arg3) : (memref<4x8xf32>, index, index, vector<8xi1>, vector<8xf32>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<f32>, vector<1xi1>, vector<1xf32>) -> (), sym_name = "negative_fold_vector_compressstore_expand_shape_all_unit"}> ({
+  ^bb0(%arg0: memref<f32>, %arg1: vector<1xi1>, %arg2: vector<1xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "memref.expand_shape"(%arg0) <{reassociation = [], static_output_shape = array<i64: 1>}> : (memref<f32>) -> memref<1xf32>
+    "vector.compressstore"(%1, %0, %arg1, %arg2) : (memref<1xf32>, index, vector<1xi1>, vector<1xf32>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -461,6 +612,32 @@
     %2 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
     %3 = "vector.transfer_read"(%2, %arg1, %0, %1) <{in_bounds = [true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<4x8xf32>, index, index, f32) -> vector<8xf32>
     "func.return"(%3) : (vector<8xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2, d3) -> (d1, d3)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<32x32xf32>, index, index) -> vector<8x8xf32>, sym_name = "fold_vector_transfer_read_expand_shape_non_identity"}> ({
+  ^bb0(%arg0: memref<32x32xf32>, %arg1: index, %arg2: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "ub.poison"() <{value = #ub.poison}> : () -> f32
+    %2 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1], [2, 3]], static_output_shape = array<i64: 4, 8, 4, 8>}> : (memref<32x32xf32>) -> memref<4x8x4x8xf32>
+    %3 = "vector.transfer_read"(%2, %arg1, %0, %arg2, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 4, 1, 0>, permutation_map = #map}> : (memref<4x8x4x8xf32>, index, index, index, index, f32) -> vector<8x8xf32>
+    "func.return"(%3) : (vector<8x8xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2, d3) -> (d0, d3)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<32x32xf32>, index, index) -> vector<8x8xf32>, sym_name = "fold_vector_transfer_read_expand_shape_non_identity_non_contiguous"}> ({
+  ^bb0(%arg0: memref<32x32xf32>, %arg1: index, %arg2: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "ub.poison"() <{value = #ub.poison}> : () -> f32
+    %2 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1], [2, 3]], static_output_shape = array<i64: 4, 8, 4, 8>}> : (memref<32x32xf32>) -> memref<4x8x4x8xf32>
+    %3 = "vector.transfer_read"(%2, %arg1, %0, %arg2, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 4, 1, 0>, permutation_map = #map}> : (memref<4x8x4x8xf32>, index, index, index, index, f32) -> vector<8x8xf32>
+    "func.return"(%3) : (vector<8x8xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -492,6 +669,16 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<4x8xf32>, index) -> f32, sym_name = "fold_memref_load_collapse_shape"}> ({
+  ^bb0(%arg0: memref<4x8xf32>, %arg1: index):
+    %0 = "memref.collapse_shape"(%arg0) <{reassociation = [[0, 1]]}> : (memref<4x8xf32>) -> memref<32xf32>
+    %1 = "memref.load"(%0, %arg1) <{nontemporal = true}> : (memref<32xf32>, index) -> f32
+    "func.return"(%1) : (f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<4x8xf32>, index) -> vector<8xf32>, sym_name = "fold_vector_load_collapse_shape"}> ({
   ^bb0(%arg0: memref<4x8xf32>, %arg1: index):
     %0 = "memref.collapse_shape"(%arg0) <{reassociation = [[0, 1]]}> : (memref<4x8xf32>) -> memref<32xf32>
@@ -512,6 +699,16 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<4x8xf32>, index, f32) -> (), sym_name = "fold_memref_store_collapse_shape"}> ({
+  ^bb0(%arg0: memref<4x8xf32>, %arg1: index, %arg2: f32):
+    %0 = "memref.collapse_shape"(%arg0) <{reassociation = [[0, 1]]}> : (memref<4x8xf32>) -> memref<32xf32>
+    "memref.store"(%arg2, %0, %arg1) <{nontemporal = true}> : (f32, memref<32xf32>, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<4x8xf32>, index, vector<8xf32>) -> (), sym_name = "fold_vector_store_collapse_shape"}> ({
   ^bb0(%arg0: memref<4x8xf32>, %arg1: index, %arg2: vector<8xf32>):
     %0 = "memref.collapse_shape"(%arg0) <{reassociation = [[0, 1]]}> : (memref<4x8xf32>) -> memref<32xf32>
@@ -526,6 +723,104 @@
   ^bb0(%arg0: memref<4x8xf32>, %arg1: index, %arg2: vector<8xi1>, %arg3: vector<8xf32>):
     %0 = "memref.collapse_shape"(%arg0) <{reassociation = [[0, 1]]}> : (memref<4x8xf32>) -> memref<32xf32>
     "vector.maskedstore"(%0, %arg1, %arg2, %arg3) : (memref<32xf32>, index, vector<8xi1>, vector<8xf32>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1) -> (d0, d1)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<4x4x8xf32>, index) -> vector<4x8xf32>, sym_name = "no_fold_collapse_shape_transfer_read"}> ({
+  ^bb0(%arg0: memref<4x4x8xf32>, %arg1: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "ub.poison"() <{value = #ub.poison}> : () -> f32
+    %2 = "memref.collapse_shape"(%arg0) <{reassociation = [[0, 1], [2]]}> : (memref<4x4x8xf32>) -> memref<16x8xf32>
+    %3 = "vector.transfer_read"(%2, %arg1, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x8xf32>, index, index, f32) -> vector<4x8xf32>
+    "func.return"(%3) : (vector<4x8xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1) -> (d1)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<4x4x8xf32>, index) -> vector<8xf32>, sym_name = "fold_collapse_shape_transfer_read"}> ({
+  ^bb0(%arg0: memref<4x4x8xf32>, %arg1: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "ub.poison"() <{value = #ub.poison}> : () -> f32
+    %2 = "memref.collapse_shape"(%arg0) <{reassociation = [[0, 1], [2]]}> : (memref<4x4x8xf32>) -> memref<16x8xf32>
+    %3 = "vector.transfer_read"(%2, %arg1, %0, %1) <{in_bounds = [true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x8xf32>, index, index, f32) -> vector<8xf32>
+    "func.return"(%3) : (vector<8xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<128x64xf32>, memref<32xf32, 1>, memref<1xi32>, index, index) -> (), sym_name = "fold_dma_start_subview_src"}> ({
+  ^bb0(%arg0: memref<128x64xf32>, %arg1: memref<32xf32, 1>, %arg2: memref<1xi32>, %arg3: index, %arg4: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 32 : index}> : () -> index
+    %2 = "memref.subview"(%arg0, %arg3, %arg4) <{operandSegmentSizes = array<i32: 1, 2, 0, 0>, static_offsets = array<i64: -9223372036854775808, -9223372036854775808>, static_sizes = array<i64: 32, 32>, static_strides = array<i64: 1, 1>}> : (memref<128x64xf32>, index, index) -> memref<32x32xf32, strided<[64, 1], offset: ?>>
+    "memref.dma_start"(%2, %0, %0, %arg1, %0, %1, %arg2, %0) : (memref<32x32xf32, strided<[64, 1], offset: ?>>, index, index, memref<32xf32, 1>, index, index, memref<1xi32>, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>, memref<128x64xf32, 1>, memref<1xi32>, index, index) -> (), sym_name = "fold_dma_start_subview_dst"}> ({
+  ^bb0(%arg0: memref<32xf32>, %arg1: memref<128x64xf32, 1>, %arg2: memref<1xi32>, %arg3: index, %arg4: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 32 : index}> : () -> index
+    %2 = "memref.subview"(%arg1, %arg3, %arg4) <{operandSegmentSizes = array<i32: 1, 2, 0, 0>, static_offsets = array<i64: -9223372036854775808, -9223372036854775808>, static_sizes = array<i64: 32, 32>, static_strides = array<i64: 1, 1>}> : (memref<128x64xf32, 1>, index, index) -> memref<32x32xf32, strided<[64, 1], offset: ?>, 1>
+    "memref.dma_start"(%arg0, %0, %2, %0, %0, %1, %arg2, %0) : (memref<32xf32>, index, memref<32x32xf32, strided<[64, 1], offset: ?>, 1>, index, index, index, memref<1xi32>, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>, memref<8xf32, 1>, memref<1xi32>, index) -> (), sym_name = "fold_dma_start_expand_shape_src"}> ({
+  ^bb0(%arg0: memref<32xf32>, %arg1: memref<8xf32, 1>, %arg2: memref<1xi32>, %arg3: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 8 : index}> : () -> index
+    %2 = "memref.expand_shape"(%arg0) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32>) -> memref<4x8xf32>
+    "memref.dma_start"(%2, %arg3, %0, %arg1, %0, %1, %arg2, %0) : (memref<4x8xf32>, index, index, memref<8xf32, 1>, index, index, memref<1xi32>, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<8xf32>, memref<32xf32, 1>, memref<1xi32>, index) -> (), sym_name = "fold_dma_start_expand_shape_dst"}> ({
+  ^bb0(%arg0: memref<8xf32>, %arg1: memref<32xf32, 1>, %arg2: memref<1xi32>, %arg3: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 8 : index}> : () -> index
+    %2 = "memref.expand_shape"(%arg1) <{reassociation = [[0, 1]], static_output_shape = array<i64: 4, 8>}> : (memref<32xf32, 1>) -> memref<4x8xf32, 1>
+    "memref.dma_start"(%arg0, %0, %2, %arg3, %0, %1, %arg2, %0) : (memref<8xf32>, index, memref<4x8xf32, 1>, index, index, index, memref<1xi32>, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<4x8xf32>, memref<8xf32, 1>, memref<1xi32>, index) -> (), sym_name = "fold_dma_start_collapse_shape_src"}> ({
+  ^bb0(%arg0: memref<4x8xf32>, %arg1: memref<8xf32, 1>, %arg2: memref<1xi32>, %arg3: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 8 : index}> : () -> index
+    %2 = "memref.collapse_shape"(%arg0) <{reassociation = [[0, 1]]}> : (memref<4x8xf32>) -> memref<32xf32>
+    "memref.dma_start"(%2, %arg3, %arg1, %0, %1, %arg2, %0) : (memref<32xf32>, index, memref<8xf32, 1>, index, index, memref<1xi32>, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<8xf32>, memref<4x8xf32, 1>, memref<1xi32>, index) -> (), sym_name = "fold_dma_start_collapse_shape_dst"}> ({
+  ^bb0(%arg0: memref<8xf32>, %arg1: memref<4x8xf32, 1>, %arg2: memref<1xi32>, %arg3: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 8 : index}> : () -> index
+    %2 = "memref.collapse_shape"(%arg1) <{reassociation = [[0, 1]]}> : (memref<4x8xf32, 1>) -> memref<32xf32, 1>
+    "memref.dma_start"(%arg0, %0, %2, %arg3, %1, %arg2, %0) : (memref<8xf32>, index, memref<32xf32, 1>, index, index, memref<1xi32>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

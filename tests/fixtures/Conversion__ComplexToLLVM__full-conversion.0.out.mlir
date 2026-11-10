@@ -28,11 +28,11 @@ module {
     %4 = llvm.mlir.poison : !llvm.struct<(f32, f32)>
     %5 = llvm.fmul %2, %0 : f32
     %6 = llvm.fmul %3, %1 : f32
-    %7 = llvm.fsub %5, %6 : f32
-    %8 = llvm.fmul %1, %2 : f32
-    %9 = llvm.fmul %0, %3 : f32
-    %10 = llvm.fadd %8, %9 : f32
-    %11 = llvm.insertvalue %7, %4[0] : !llvm.struct<(f32, f32)> 
+    %7 = llvm.fmul %1, %2 : f32
+    %8 = llvm.fmul %0, %3 : f32
+    %9 = llvm.fsub %5, %6 : f32
+    %10 = llvm.fadd %7, %8 : f32
+    %11 = llvm.insertvalue %9, %4[0] : !llvm.struct<(f32, f32)> 
     %12 = llvm.insertvalue %10, %11[1] : !llvm.struct<(f32, f32)> 
     llvm.return %12 : !llvm.struct<(f32, f32)>
   }

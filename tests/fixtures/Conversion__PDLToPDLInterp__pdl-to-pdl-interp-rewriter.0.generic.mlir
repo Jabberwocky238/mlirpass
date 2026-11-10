@@ -389,3 +389,26 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() <{sym_name = "named_pattern"}> ({
+  "pdl_interp.func"() <{function_type = (!pdl.operation) -> (), sym_name = "matcher"}> ({
+  ^bb0(%arg1: !pdl.operation):
+    "pdl_interp.check_operation_name"(%arg1)[^bb2, ^bb1] <{name = "foo.op"}> : (!pdl.operation) -> ()
+  ^bb1:  // 4 preds: ^bb0, ^bb2, ^bb3, ^bb4
+    "pdl_interp.finalize"() : () -> ()
+  ^bb2:  // pred: ^bb0
+    "pdl_interp.check_operand_count"(%arg1)[^bb3, ^bb1] <{count = 0 : i32}> : (!pdl.operation) -> ()
+  ^bb3:  // pred: ^bb2
+    "pdl_interp.check_result_count"(%arg1)[^bb4, ^bb1] <{count = 0 : i32}> : (!pdl.operation) -> ()
+  ^bb4:  // pred: ^bb3
+    "pdl_interp.record_match"(%arg1, %arg1)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 1, 1>, rewriter = @rewriters::@my_pattern, rootKind = "foo.op"}> : (!pdl.operation, !pdl.operation) -> ()
+  }) : () -> ()
+  "builtin.module"() <{sym_name = "rewriters"}> ({
+    "pdl_interp.func"() <{function_type = (!pdl.operation) -> (), sym_name = "my_pattern"}> ({
+    ^bb0(%arg0: !pdl.operation):
+      "pdl_interp.apply_rewrite"(%arg0) <{name = "rewriter"}> : (!pdl.operation) -> ()
+      "pdl_interp.finalize"() : () -> ()
+    }) : () -> ()
+  }) : () -> ()
+}) : () -> ()
+

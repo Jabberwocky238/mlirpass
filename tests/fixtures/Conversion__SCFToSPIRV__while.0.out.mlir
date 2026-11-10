@@ -75,5 +75,23 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %1 = spirv.Load "Function" %0 : i32
     spirv.ReturnValue %1 : i32
   }
+  spirv.func @while_loop_unroll(%arg0: i32, %arg1: i32) -> i32 "None" {
+    %cst2_i32 = spirv.Constant 2 : i32
+    %0 = spirv.Variable : !spirv.ptr<i32, Function>
+    spirv.mlir.loop control(Unroll) {
+      spirv.Branch ^bb1(%arg0 : i32)
+    ^bb1(%2: i32):  // 2 preds: ^bb0, ^bb2
+      %3 = spirv.SLessThan %2, %arg1 : i32
+      spirv.Store "Function" %0, %2 : i32
+      spirv.BranchConditional %3, ^bb2(%2 : i32), ^bb3
+    ^bb2(%4: i32):  // pred: ^bb1
+      %5 = spirv.IMul %4, %cst2_i32 : i32
+      spirv.Branch ^bb1(%5 : i32)
+    ^bb3:  // pred: ^bb1
+      spirv.mlir.merge
+    }
+    %1 = spirv.Load "Function" %0 : i32
+    spirv.ReturnValue %1 : i32
+  }
 }
 

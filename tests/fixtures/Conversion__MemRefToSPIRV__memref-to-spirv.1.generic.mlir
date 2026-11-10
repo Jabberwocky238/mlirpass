@@ -1,156 +1,186 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (memref<f32, #spirv.storage_class<StorageBuffer>>, memref<f32, #spirv.storage_class<StorageBuffer>>) -> (), sym_name = "load_store_zero_rank_float"}> ({
-  ^bb0(%arg24: memref<f32, #spirv.storage_class<StorageBuffer>>, %arg25: memref<f32, #spirv.storage_class<StorageBuffer>>):
-    %78 = "builtin.unrealized_conversion_cast"(%arg25) : (memref<f32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, StorageBuffer>
-    %79 = "builtin.unrealized_conversion_cast"(%arg24) : (memref<f32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, StorageBuffer>
-    %80 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %81 = "spirv.AccessChain"(%79, %80, %80) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<f32, StorageBuffer>
-    %82 = "spirv.Load"(%81) : (!spirv.ptr<f32, StorageBuffer>) -> f32
-    %83 = "spirv.AccessChain"(%78, %80, %80) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<f32, StorageBuffer>
-    "spirv.Store"(%83, %82) : (!spirv.ptr<f32, StorageBuffer>, f32) -> ()
+  ^bb0(%arg30: memref<f32, #spirv.storage_class<StorageBuffer>>, %arg31: memref<f32, #spirv.storage_class<StorageBuffer>>):
+    %93 = "builtin.unrealized_conversion_cast"(%arg31) : (memref<f32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, StorageBuffer>
+    %94 = "builtin.unrealized_conversion_cast"(%arg30) : (memref<f32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, StorageBuffer>
+    %95 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %96 = "spirv.AccessChain"(%94, %95, %95) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<f32, StorageBuffer>
+    %97 = "spirv.Load"(%96) : (!spirv.ptr<f32, StorageBuffer>) -> f32
+    %98 = "spirv.AccessChain"(%93, %95, %95) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<f32, StorageBuffer>
+    "spirv.Store"(%98, %97) : (!spirv.ptr<f32, StorageBuffer>, f32) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<i32, #spirv.storage_class<StorageBuffer>>, memref<i32, #spirv.storage_class<StorageBuffer>>) -> (), sym_name = "load_store_zero_rank_int"}> ({
-  ^bb0(%arg22: memref<i32, #spirv.storage_class<StorageBuffer>>, %arg23: memref<i32, #spirv.storage_class<StorageBuffer>>):
-    %72 = "builtin.unrealized_conversion_cast"(%arg23) : (memref<i32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, StorageBuffer>
-    %73 = "builtin.unrealized_conversion_cast"(%arg22) : (memref<i32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, StorageBuffer>
-    %74 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %75 = "spirv.AccessChain"(%73, %74, %74) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i32, StorageBuffer>
-    %76 = "spirv.Load"(%75) : (!spirv.ptr<i32, StorageBuffer>) -> i32
-    %77 = "spirv.AccessChain"(%72, %74, %74) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i32, StorageBuffer>
-    "spirv.Store"(%77, %76) : (!spirv.ptr<i32, StorageBuffer>, i32) -> ()
+  ^bb0(%arg28: memref<i32, #spirv.storage_class<StorageBuffer>>, %arg29: memref<i32, #spirv.storage_class<StorageBuffer>>):
+    %87 = "builtin.unrealized_conversion_cast"(%arg29) : (memref<i32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, StorageBuffer>
+    %88 = "builtin.unrealized_conversion_cast"(%arg28) : (memref<i32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, StorageBuffer>
+    %89 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %90 = "spirv.AccessChain"(%88, %89, %89) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i32, StorageBuffer>
+    %91 = "spirv.Load"(%90) : (!spirv.ptr<i32, StorageBuffer>) -> i32
+    %92 = "spirv.AccessChain"(%87, %89, %89) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i32, StorageBuffer>
+    "spirv.Store"(%92, %91) : (!spirv.ptr<i32, StorageBuffer>, i32) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, memref<?xi32, #spirv.storage_class<StorageBuffer>>, memref<?xi32, #spirv.storage_class<StorageBuffer>>) -> (), sym_name = "load_store_unknown_dim"}> ({
-  ^bb0(%arg19: index, %arg20: memref<?xi32, #spirv.storage_class<StorageBuffer>>, %arg21: memref<?xi32, #spirv.storage_class<StorageBuffer>>):
-    %65 = "builtin.unrealized_conversion_cast"(%arg21) : (memref<?xi32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>
-    %66 = "builtin.unrealized_conversion_cast"(%arg19) : (index) -> i64
-    %67 = "builtin.unrealized_conversion_cast"(%arg20) : (memref<?xi32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>
-    %68 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %69 = "spirv.AccessChain"(%67, %68, %66) : (!spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i32, StorageBuffer>
-    %70 = "spirv.Load"(%69) : (!spirv.ptr<i32, StorageBuffer>) -> i32
-    %71 = "spirv.AccessChain"(%65, %68, %66) : (!spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i32, StorageBuffer>
-    "spirv.Store"(%71, %70) : (!spirv.ptr<i32, StorageBuffer>, i32) -> ()
+  ^bb0(%arg25: index, %arg26: memref<?xi32, #spirv.storage_class<StorageBuffer>>, %arg27: memref<?xi32, #spirv.storage_class<StorageBuffer>>):
+    %80 = "builtin.unrealized_conversion_cast"(%arg27) : (memref<?xi32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>
+    %81 = "builtin.unrealized_conversion_cast"(%arg25) : (index) -> i64
+    %82 = "builtin.unrealized_conversion_cast"(%arg26) : (memref<?xi32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>
+    %83 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %84 = "spirv.AccessChain"(%82, %83, %81) : (!spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i32, StorageBuffer>
+    %85 = "spirv.Load"(%84) : (!spirv.ptr<i32, StorageBuffer>) -> i32
+    %86 = "spirv.AccessChain"(%80, %83, %81) : (!spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i32, StorageBuffer>
+    "spirv.Store"(%86, %85) : (!spirv.ptr<i32, StorageBuffer>, i32) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1, sym_name = "load_i1"}> ({
-  ^bb0(%arg17: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg18: index):
-    %58 = "builtin.unrealized_conversion_cast"(%arg18) : (index) -> i64
-    %59 = "builtin.unrealized_conversion_cast"(%arg17) : (memref<4xi1, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>
-    %60 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %61 = "spirv.AccessChain"(%59, %60, %58) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i8, StorageBuffer>
-    %62 = "spirv.Load"(%61) : (!spirv.ptr<i8, StorageBuffer>) -> i8
-    %63 = "spirv.Constant"() <{value = 0 : i8}> : () -> i8
-    %64 = "spirv.INotEqual"(%62, %63) : (i8, i8) -> i1
-    "func.return"(%64) : (i1) -> ()
+  ^bb0(%arg23: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg24: index):
+    %73 = "builtin.unrealized_conversion_cast"(%arg24) : (index) -> i64
+    %74 = "builtin.unrealized_conversion_cast"(%arg23) : (memref<4xi1, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>
+    %75 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %76 = "spirv.AccessChain"(%74, %75, %73) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i8, StorageBuffer>
+    %77 = "spirv.Load"(%76) : (!spirv.ptr<i8, StorageBuffer>) -> i8
+    %78 = "spirv.Constant"() <{value = 0 : i8}> : () -> i8
+    %79 = "spirv.INotEqual"(%77, %78) : (i8, i8) -> i1
+    "func.return"(%79) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1, sym_name = "load_aligned"}> ({
-  ^bb0(%arg15: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg16: index):
-    %51 = "builtin.unrealized_conversion_cast"(%arg16) : (index) -> i64
-    %52 = "builtin.unrealized_conversion_cast"(%arg15) : (memref<4xi1, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>
-    %53 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %54 = "spirv.AccessChain"(%52, %53, %51) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i8, StorageBuffer>
-    %55 = "spirv.Load"(%54) <{alignment = 32 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, StorageBuffer>) -> i8
-    %56 = "spirv.Constant"() <{value = 0 : i8}> : () -> i8
-    %57 = "spirv.INotEqual"(%55, %56) : (i8, i8) -> i1
-    "func.return"(%57) : (i1) -> ()
+  ^bb0(%arg21: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg22: index):
+    %66 = "builtin.unrealized_conversion_cast"(%arg22) : (index) -> i64
+    %67 = "builtin.unrealized_conversion_cast"(%arg21) : (memref<4xi1, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>
+    %68 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %69 = "spirv.AccessChain"(%67, %68, %66) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i8, StorageBuffer>
+    %70 = "spirv.Load"(%69) <{alignment = 32 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, StorageBuffer>) -> i8
+    %71 = "spirv.Constant"() <{value = 0 : i8}> : () -> i8
+    %72 = "spirv.INotEqual"(%70, %71) : (i8, i8) -> i1
+    "func.return"(%72) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1, sym_name = "load_aligned_nontemporal"}> ({
-  ^bb0(%arg13: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg14: index):
-    %44 = "builtin.unrealized_conversion_cast"(%arg14) : (index) -> i64
-    %45 = "builtin.unrealized_conversion_cast"(%arg13) : (memref<4xi1, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>
-    %46 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %47 = "spirv.AccessChain"(%45, %46, %44) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i8, StorageBuffer>
-    %48 = "spirv.Load"(%47) <{alignment = 32 : i32, memory_access = #spirv.memory_access<Aligned|Nontemporal>}> : (!spirv.ptr<i8, StorageBuffer>) -> i8
-    %49 = "spirv.Constant"() <{value = 0 : i8}> : () -> i8
-    %50 = "spirv.INotEqual"(%48, %49) : (i8, i8) -> i1
-    "func.return"(%50) : (i1) -> ()
+  ^bb0(%arg19: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg20: index):
+    %59 = "builtin.unrealized_conversion_cast"(%arg20) : (index) -> i64
+    %60 = "builtin.unrealized_conversion_cast"(%arg19) : (memref<4xi1, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>
+    %61 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %62 = "spirv.AccessChain"(%60, %61, %59) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i8, StorageBuffer>
+    %63 = "spirv.Load"(%62) <{alignment = 32 : i32, memory_access = #spirv.memory_access<Aligned|Nontemporal>}> : (!spirv.ptr<i8, StorageBuffer>) -> i8
+    %64 = "spirv.Constant"() <{value = 0 : i8}> : () -> i8
+    %65 = "spirv.INotEqual"(%63, %64) : (i8, i8) -> i1
+    "func.return"(%65) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xi1, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> i1, sym_name = "load_aligned_psb"}> ({
-  ^bb0(%arg11: memref<4xi1, #spirv.storage_class<PhysicalStorageBuffer>>, %arg12: index):
-    %37 = "builtin.unrealized_conversion_cast"(%arg12) : (index) -> i64
-    %38 = "builtin.unrealized_conversion_cast"(%arg11) : (memref<4xi1, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, PhysicalStorageBuffer>
-    %39 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %40 = "spirv.AccessChain"(%38, %39, %37) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<i8, PhysicalStorageBuffer>
-    %41 = "spirv.Load"(%40) <{alignment = 32 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, PhysicalStorageBuffer>) -> i8
-    %42 = "spirv.Constant"() <{value = 0 : i8}> : () -> i8
-    %43 = "spirv.INotEqual"(%41, %42) : (i8, i8) -> i1
-    "func.return"(%43) : (i1) -> ()
+  ^bb0(%arg17: memref<4xi1, #spirv.storage_class<PhysicalStorageBuffer>>, %arg18: index):
+    %52 = "builtin.unrealized_conversion_cast"(%arg18) : (index) -> i64
+    %53 = "builtin.unrealized_conversion_cast"(%arg17) : (memref<4xi1, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, PhysicalStorageBuffer>
+    %54 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %55 = "spirv.AccessChain"(%53, %54, %52) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<i8, PhysicalStorageBuffer>
+    %56 = "spirv.Load"(%55) <{alignment = 32 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, PhysicalStorageBuffer>) -> i8
+    %57 = "spirv.Constant"() <{value = 0 : i8}> : () -> i8
+    %58 = "spirv.INotEqual"(%56, %57) : (i8, i8) -> i1
+    "func.return"(%58) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> (), sym_name = "store_i1"}> ({
-  ^bb0(%arg9: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg10: index):
-    %32 = "builtin.unrealized_conversion_cast"(%arg10) : (index) -> i64
-    %33 = "builtin.unrealized_conversion_cast"(%arg9) : (memref<4xi1, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>
-    %34 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %35 = "spirv.AccessChain"(%33, %34, %32) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i8, StorageBuffer>
-    %36 = "spirv.Constant"() <{value = 1 : i8}> : () -> i8
-    "spirv.Store"(%35, %36) : (!spirv.ptr<i8, StorageBuffer>, i8) -> ()
+  ^bb0(%arg15: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg16: index):
+    %47 = "builtin.unrealized_conversion_cast"(%arg16) : (index) -> i64
+    %48 = "builtin.unrealized_conversion_cast"(%arg15) : (memref<4xi1, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>
+    %49 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %50 = "spirv.AccessChain"(%48, %49, %47) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i8, stride=1> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i8, StorageBuffer>
+    %51 = "spirv.Constant"() <{value = 1 : i8}> : () -> i8
+    "spirv.Store"(%50, %51) : (!spirv.ptr<i8, StorageBuffer>, i8) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<i16, #spirv.storage_class<StorageBuffer>>) -> (), sym_name = "load_i16"}> ({
-  ^bb0(%arg8: memref<i16, #spirv.storage_class<StorageBuffer>>):
-    %28 = "builtin.unrealized_conversion_cast"(%arg8) : (memref<i16, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i16, stride=2> [0])>, StorageBuffer>
-    %29 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %30 = "spirv.AccessChain"(%28, %29, %29) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i16, stride=2> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i16, StorageBuffer>
-    %31 = "spirv.Load"(%30) : (!spirv.ptr<i16, StorageBuffer>) -> i16
+  ^bb0(%arg14: memref<i16, #spirv.storage_class<StorageBuffer>>):
+    %43 = "builtin.unrealized_conversion_cast"(%arg14) : (memref<i16, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i16, stride=2> [0])>, StorageBuffer>
+    %44 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %45 = "spirv.AccessChain"(%43, %44, %44) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i16, stride=2> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i16, StorageBuffer>
+    %46 = "spirv.Load"(%45) : (!spirv.ptr<i16, StorageBuffer>) -> i16
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<10xi16, #spirv.storage_class<StorageBuffer>>, index, i16) -> (), sym_name = "store_i16"}> ({
-  ^bb0(%arg5: memref<10xi16, #spirv.storage_class<StorageBuffer>>, %arg6: index, %arg7: i16):
-    %24 = "builtin.unrealized_conversion_cast"(%arg6) : (index) -> i64
-    %25 = "builtin.unrealized_conversion_cast"(%arg5) : (memref<10xi16, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<10 x i16, stride=2> [0])>, StorageBuffer>
-    %26 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %27 = "spirv.AccessChain"(%25, %26, %24) : (!spirv.ptr<!spirv.struct<(!spirv.array<10 x i16, stride=2> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i16, StorageBuffer>
-    "spirv.Store"(%27, %arg7) : (!spirv.ptr<i16, StorageBuffer>, i16) -> ()
+  ^bb0(%arg11: memref<10xi16, #spirv.storage_class<StorageBuffer>>, %arg12: index, %arg13: i16):
+    %39 = "builtin.unrealized_conversion_cast"(%arg12) : (index) -> i64
+    %40 = "builtin.unrealized_conversion_cast"(%arg11) : (memref<10xi16, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<10 x i16, stride=2> [0])>, StorageBuffer>
+    %41 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %42 = "spirv.AccessChain"(%40, %41, %39) : (!spirv.ptr<!spirv.struct<(!spirv.array<10 x i16, stride=2> [0])>, StorageBuffer>, i64, i64) -> !spirv.ptr<i16, StorageBuffer>
+    "spirv.Store"(%42, %arg13) : (!spirv.ptr<i16, StorageBuffer>, i16) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>) -> (), sym_name = "load_store_i32_physical"}> ({
-  ^bb0(%arg4: memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>):
-    %20 = "builtin.unrealized_conversion_cast"(%arg4) : (memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, PhysicalStorageBuffer>
-    %21 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %22 = "spirv.AccessChain"(%20, %21, %21) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<i32, PhysicalStorageBuffer>
-    %23 = "spirv.Load"(%22) <{alignment = 4 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i32, PhysicalStorageBuffer>) -> i32
-    "spirv.Store"(%22, %23) <{alignment = 4 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i32, PhysicalStorageBuffer>, i32) -> ()
+  ^bb0(%arg10: memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>):
+    %35 = "builtin.unrealized_conversion_cast"(%arg10) : (memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, PhysicalStorageBuffer>
+    %36 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %37 = "spirv.AccessChain"(%35, %36, %36) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<i32, PhysicalStorageBuffer>
+    %38 = "spirv.Load"(%37) <{alignment = 4 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i32, PhysicalStorageBuffer>) -> i32
+    "spirv.Store"(%37, %38) <{alignment = 4 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i32, PhysicalStorageBuffer>, i32) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>) -> (), sym_name = "load_store_i8_physical"}> ({
-  ^bb0(%arg3: memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>):
-    %16 = "builtin.unrealized_conversion_cast"(%arg3) : (memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i8, stride=1> [0])>, PhysicalStorageBuffer>
-    %17 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %18 = "spirv.AccessChain"(%16, %17, %17) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i8, stride=1> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<i8, PhysicalStorageBuffer>
-    %19 = "spirv.Load"(%18) <{alignment = 1 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, PhysicalStorageBuffer>) -> i8
-    "spirv.Store"(%18, %19) <{alignment = 1 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, PhysicalStorageBuffer>, i8) -> ()
+  ^bb0(%arg9: memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>):
+    %31 = "builtin.unrealized_conversion_cast"(%arg9) : (memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i8, stride=1> [0])>, PhysicalStorageBuffer>
+    %32 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %33 = "spirv.AccessChain"(%31, %32, %32) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i8, stride=1> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<i8, PhysicalStorageBuffer>
+    %34 = "spirv.Load"(%33) <{alignment = 1 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, PhysicalStorageBuffer>) -> i8
+    "spirv.Store"(%33, %34) <{alignment = 1 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, PhysicalStorageBuffer>, i8) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>) -> (), sym_name = "load_store_i1_physical"}> ({
-  ^bb0(%arg2: memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>):
-    %8 = "builtin.unrealized_conversion_cast"(%arg2) : (memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i8, stride=1> [0])>, PhysicalStorageBuffer>
-    %9 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %10 = "spirv.AccessChain"(%8, %9, %9) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i8, stride=1> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<i8, PhysicalStorageBuffer>
-    %11 = "spirv.Load"(%10) <{alignment = 1 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, PhysicalStorageBuffer>) -> i8
-    %12 = "spirv.Constant"() <{value = 0 : i8}> : () -> i8
-    %13 = "spirv.INotEqual"(%11, %12) : (i8, i8) -> i1
-    %14 = "spirv.Constant"() <{value = 1 : i8}> : () -> i8
-    %15 = "spirv.Select"(%13, %14, %12) : (i1, i8, i8) -> i8
-    "spirv.Store"(%10, %15) <{alignment = 1 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, PhysicalStorageBuffer>, i8) -> ()
+  ^bb0(%arg8: memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>):
+    %23 = "builtin.unrealized_conversion_cast"(%arg8) : (memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x i8, stride=1> [0])>, PhysicalStorageBuffer>
+    %24 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %25 = "spirv.AccessChain"(%23, %24, %24) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x i8, stride=1> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<i8, PhysicalStorageBuffer>
+    %26 = "spirv.Load"(%25) <{alignment = 1 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, PhysicalStorageBuffer>) -> i8
+    %27 = "spirv.Constant"() <{value = 0 : i8}> : () -> i8
+    %28 = "spirv.INotEqual"(%26, %27) : (i8, i8) -> i1
+    %29 = "spirv.Constant"() <{value = 1 : i8}> : () -> i8
+    %30 = "spirv.Select"(%28, %29, %27) : (i1, i8, i8) -> i8
+    "spirv.Store"(%25, %30) <{alignment = 1 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<i8, PhysicalStorageBuffer>, i8) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>) -> (), sym_name = "load_store_f32_physical"}> ({
-  ^bb0(%arg1: memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>):
-    %4 = "builtin.unrealized_conversion_cast"(%arg1) : (memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, PhysicalStorageBuffer>
-    %5 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %6 = "spirv.AccessChain"(%4, %5, %5) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<f32, PhysicalStorageBuffer>
-    %7 = "spirv.Load"(%6) <{alignment = 4 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<f32, PhysicalStorageBuffer>) -> f32
-    "spirv.Store"(%6, %7) <{alignment = 4 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<f32, PhysicalStorageBuffer>, f32) -> ()
+  ^bb0(%arg7: memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>):
+    %19 = "builtin.unrealized_conversion_cast"(%arg7) : (memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, PhysicalStorageBuffer>
+    %20 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %21 = "spirv.AccessChain"(%19, %20, %20) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<f32, PhysicalStorageBuffer>
+    %22 = "spirv.Load"(%21) <{alignment = 4 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<f32, PhysicalStorageBuffer>) -> f32
+    "spirv.Store"(%21, %22) <{alignment = 4 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<f32, PhysicalStorageBuffer>, f32) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>) -> (), sym_name = "load_store_f16_physical"}> ({
-  ^bb0(%arg0: memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>):
-    %0 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x f16, stride=2> [0])>, PhysicalStorageBuffer>
-    %1 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
-    %2 = "spirv.AccessChain"(%0, %1, %1) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x f16, stride=2> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<f16, PhysicalStorageBuffer>
-    %3 = "spirv.Load"(%2) <{alignment = 2 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<f16, PhysicalStorageBuffer>) -> f16
-    "spirv.Store"(%2, %3) <{alignment = 2 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<f16, PhysicalStorageBuffer>, f16) -> ()
+  ^bb0(%arg6: memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>):
+    %15 = "builtin.unrealized_conversion_cast"(%arg6) : (memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<1 x f16, stride=2> [0])>, PhysicalStorageBuffer>
+    %16 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %17 = "spirv.AccessChain"(%15, %16, %16) : (!spirv.ptr<!spirv.struct<(!spirv.array<1 x f16, stride=2> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<f16, PhysicalStorageBuffer>
+    %18 = "spirv.Load"(%17) <{alignment = 2 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<f16, PhysicalStorageBuffer>) -> f16
+    "spirv.Store"(%17, %18) <{alignment = 2 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<f16, PhysicalStorageBuffer>, f16) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (memref<5xvector<4xf16>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> (), sym_name = "load_store_vec4f16_physical"}> ({
+  ^bb0(%arg4: memref<5xvector<4xf16>, #spirv.storage_class<PhysicalStorageBuffer>>, %arg5: index):
+    %10 = "builtin.unrealized_conversion_cast"(%arg5) : (index) -> i64
+    %11 = "builtin.unrealized_conversion_cast"(%arg4) : (memref<5xvector<4xf16>, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<5 x vector<4xf16>, stride=8> [0])>, PhysicalStorageBuffer>
+    %12 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %13 = "spirv.AccessChain"(%11, %12, %10) : (!spirv.ptr<!spirv.struct<(!spirv.array<5 x vector<4xf16>, stride=8> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<vector<4xf16>, PhysicalStorageBuffer>
+    %14 = "spirv.Load"(%13) <{alignment = 8 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<vector<4xf16>, PhysicalStorageBuffer>) -> vector<4xf16>
+    "spirv.Store"(%13, %14) <{alignment = 8 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<vector<4xf16>, PhysicalStorageBuffer>, vector<4xf16>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (memref<8xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> (), sym_name = "load_store_vec4f32_physical"}> ({
+  ^bb0(%arg2: memref<8xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, %arg3: index):
+    %5 = "builtin.unrealized_conversion_cast"(%arg3) : (index) -> i64
+    %6 = "builtin.unrealized_conversion_cast"(%arg2) : (memref<8xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<8 x vector<4xf32>, stride=16> [0])>, PhysicalStorageBuffer>
+    %7 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %8 = "spirv.AccessChain"(%6, %7, %5) : (!spirv.ptr<!spirv.struct<(!spirv.array<8 x vector<4xf32>, stride=16> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<vector<4xf32>, PhysicalStorageBuffer>
+    %9 = "spirv.Load"(%8) <{alignment = 16 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<vector<4xf32>, PhysicalStorageBuffer>) -> vector<4xf32>
+    "spirv.Store"(%8, %9) <{alignment = 16 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<vector<4xf32>, PhysicalStorageBuffer>, vector<4xf32>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (memref<?xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> (), sym_name = "load_store_vec4f32_dynamic_physical"}> ({
+  ^bb0(%arg0: memref<?xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, %arg1: index):
+    %0 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
+    %1 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<?xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.rtarray<vector<4xf32>, stride=16> [0])>, PhysicalStorageBuffer>
+    %2 = "spirv.Constant"() <{value = 0 : i64}> : () -> i64
+    %3 = "spirv.AccessChain"(%1, %2, %0) : (!spirv.ptr<!spirv.struct<(!spirv.rtarray<vector<4xf32>, stride=16> [0])>, PhysicalStorageBuffer>, i64, i64) -> !spirv.ptr<vector<4xf32>, PhysicalStorageBuffer>
+    %4 = "spirv.Load"(%3) <{alignment = 16 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<vector<4xf32>, PhysicalStorageBuffer>) -> vector<4xf32>
+    "spirv.Store"(%3, %4) <{alignment = 16 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<vector<4xf32>, PhysicalStorageBuffer>, vector<4xf32>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.5, [Shader, Int8, Int16, Int64, Float16, Float64, StorageBuffer16BitAccess, StorageUniform16, StoragePushConstant16, StorageBuffer8BitAccess, UniformAndStorageBuffer8BitAccess, StoragePushConstant8, PhysicalStorageBufferAddresses], [SPV_KHR_16bit_storage, SPV_KHR_8bit_storage, SPV_KHR_storage_buffer_storage_class, SPV_KHR_physical_storage_buffer]>, #spirv.resource_limits<>>} : () -> ()

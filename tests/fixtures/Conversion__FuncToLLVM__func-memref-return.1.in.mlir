@@ -1,22 +1,18 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (memref<32x18xf32>) -> memref<32x18xf32>, sym_name = "check_static_return"}> ({
-  ^bb0(%arg7: memref<32x18xf32>):
-    "func.return"(%arg7) : (memref<32x18xf32>) -> ()
+  ^bb0(%arg6: memref<32x18xf32>):
+    "func.return"(%arg6) : (memref<32x18xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<32x18xf32, strided<[22, 1], offset: 7>>) -> memref<32x18xf32, strided<[22, 1], offset: 7>>, sym_name = "check_static_return_with_offset"}> ({
-  ^bb0(%arg6: memref<32x18xf32, strided<[22, 1], offset: 7>>):
-    "func.return"(%arg6) : (memref<32x18xf32, strided<[22, 1], offset: 7>>) -> ()
+  ^bb0(%arg5: memref<32x18xf32, strided<[22, 1], offset: 7>>):
+    "func.return"(%arg5) : (memref<32x18xf32, strided<[22, 1], offset: 7>>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<10xi8>) -> memref<20xi8>, sym_name = "foo", sym_visibility = "private"}> ({
   }) : () -> ()
   "func.func"() <{function_type = (memref<10xi8>) -> memref<20xi8>, sym_name = "check_memref_func_call"}> ({
-  ^bb0(%arg5: memref<10xi8>):
-    %1 = "func.call"(%arg5) <{callee = @foo}> : (memref<10xi8>) -> memref<20xi8>
+  ^bb0(%arg4: memref<10xi8>):
+    %1 = "func.call"(%arg4) <{callee = @foo}> : (memref<10xi8>) -> memref<20xi8>
     "func.return"(%1) : (memref<20xi8>) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = (memref<?xi8>) -> memref<?xi8>, sym_name = "check_return"}> ({
-  ^bb0(%arg4: memref<?xi8>):
-    "func.return"(%arg4) : (memref<?xi8>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<?xf32>, memref<?xf32>) -> (memref<?xf32>, memref<?xf32>), sym_name = "unconvertible_multiresult"}> ({
   ^bb0(%arg2: memref<?xf32>, %arg3: memref<?xf32>):

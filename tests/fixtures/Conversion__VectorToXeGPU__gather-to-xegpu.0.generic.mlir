@@ -15,7 +15,7 @@
       %10 = "xegpu.load"(%9, %7, %arg5) : (i64, vector<8xindex>, vector<8xi1>) -> vector<8xf32>
       %11 = "arith.select"(%arg5, %10, %arg6) : (vector<8xi1>, vector<8xf32>, vector<8xf32>) -> vector<8xf32>
       "gpu.return"(%11) : (vector<8xf32>) -> ()
-    }) {sym_name = "load_1D_vector", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "load_1D_vector"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -34,7 +34,7 @@
       %7 = "xegpu.load"(%6, %4, %arg4) : (i64, vector<8xindex>, vector<8xi1>) -> vector<8xf32>
       %8 = "arith.select"(%arg4, %7, %arg5) : (vector<8xi1>, vector<8xf32>, vector<8xf32>) -> vector<8xf32>
       "gpu.return"(%8) : (vector<8xf32>) -> ()
-    }) {sym_name = "load_2D_memref", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "load_2D_memref"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -56,7 +56,7 @@
       %10 = "xegpu.load"(%9, %7, %arg5) : (i64, vector<8x16xindex>, vector<8x16xi1>) -> vector<8x16xf32>
       %11 = "arith.select"(%arg5, %10, %arg6) : (vector<8x16xi1>, vector<8x16xf32>, vector<8x16xf32>) -> vector<8x16xf32>
       "gpu.return"(%11) : (vector<8x16xf32>) -> ()
-    }) {sym_name = "load_2D_vector", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "load_2D_vector"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -77,7 +77,7 @@
       %9 = "xegpu.load"(%8, %6, %arg5) : (i64, vector<8x16xindex>, vector<8x16xi1>) -> vector<8x16xf32>
       %10 = "arith.select"(%arg5, %9, %arg6) : (vector<8x16xi1>, vector<8x16xf32>, vector<8x16xf32>) -> vector<8x16xf32>
       "gpu.return"(%10) : (vector<8x16xf32>) -> ()
-    }) {sym_name = "load_dynamic_source", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "load_dynamic_source"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -99,7 +99,7 @@
       %10 = "xegpu.load"(%9, %7, %arg5) : (i64, vector<8x16xindex>, vector<8x16xi1>) -> vector<8x16xf32>
       %11 = "arith.select"(%arg5, %10, %arg6) : (vector<8x16xi1>, vector<8x16xf32>, vector<8x16xf32>) -> vector<8x16xf32>
       "gpu.return"(%11) : (vector<8x16xf32>) -> ()
-    }) {sym_name = "load_dynamic_source2", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "load_dynamic_source2"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -110,7 +110,7 @@
     ^bb0(%arg0: tensor<32x64xf32>, %arg1: index, %arg2: vector<8x16xindex>, %arg3: vector<8x16xi1>, %arg4: vector<8x16xf32>):
       %0 = "vector.gather"(%arg0, %arg1, %arg1, %arg2, %arg3, %arg4) : (tensor<32x64xf32>, index, index, vector<8x16xindex>, vector<8x16xi1>, vector<8x16xf32>) -> vector<8x16xf32>
       "gpu.return"(%0) : (vector<8x16xf32>) -> ()
-    }) {sym_name = "no_load_tensor", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "no_load_tensor"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -132,7 +132,7 @@
       %10 = "xegpu.load"(%9, %7, %arg5) : (i64, vector<8xindex>, vector<8xi1>) -> vector<8xf16>
       %11 = "arith.select"(%arg5, %10, %arg6) : (vector<8xi1>, vector<8xf16>, vector<8xf16>) -> vector<8xf16>
       "gpu.return"(%11) : (vector<8xf16>) -> ()
-    }) {sym_name = "gather_from_subview", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "gather_from_subview"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -153,7 +153,7 @@
       %9 = "xegpu.load"(%8, %6, %arg3) : (i64, vector<8xindex>, vector<8xi1>) -> vector<8xf32>
       %10 = "arith.select"(%arg3, %9, %arg4) : (vector<8xi1>, vector<8xf32>, vector<8xf32>) -> vector<8xf32>
       "gpu.return"(%10) : (vector<8xf32>) -> ()
-    }) {sym_name = "non_unit_inner_stride_1D", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "non_unit_inner_stride_1D"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -180,7 +180,7 @@
       %15 = "xegpu.load"(%14, %12, %arg5) : (i64, vector<8xindex>, vector<8xi1>) -> vector<8xf32>
       %16 = "arith.select"(%arg5, %15, %arg6) : (vector<8xi1>, vector<8xf32>, vector<8xf32>) -> vector<8xf32>
       "gpu.return"(%16) : (vector<8xf32>) -> ()
-    }) {sym_name = "non_unit_inner_stride_3D", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "non_unit_inner_stride_3D"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 

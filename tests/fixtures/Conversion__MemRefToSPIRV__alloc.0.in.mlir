@@ -99,3 +99,15 @@
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader], [SPV_KHR_storage_buffer_storage_class]>, #spirv.resource_limits<>>} : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index, index) -> (), sym_name = "alloc_dealloc_workgroup_mem_complex_f32"}> ({
+  ^bb0(%arg0: index, %arg1: index):
+    %0 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<4x5xcomplex<f32>, #spirv.storage_class<Workgroup>>
+    %1 = "memref.load"(%0, %arg0, %arg1) : (memref<4x5xcomplex<f32>, #spirv.storage_class<Workgroup>>, index, index) -> complex<f32>
+    "memref.store"(%1, %0, %arg0, %arg1) : (complex<f32>, memref<4x5xcomplex<f32>, #spirv.storage_class<Workgroup>>, index, index) -> ()
+    "memref.dealloc"(%0) : (memref<4x5xcomplex<f32>, #spirv.storage_class<Workgroup>>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader], [SPV_KHR_storage_buffer_storage_class]>, #spirv.resource_limits<>>} : () -> ()
+

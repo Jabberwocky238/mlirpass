@@ -71,3 +71,11 @@ module {
   }
 }
 
+// -----
+module {
+  func.func @no_store_vec_element_memref(%arg0: vector<4xf32>, %arg1: memref<?xvector<4xf32>>, %arg2: index) {
+    vector.store %arg0, %arg1[%arg2] : memref<?xvector<4xf32>>, vector<4xf32>
+    return
+  }
+}
+

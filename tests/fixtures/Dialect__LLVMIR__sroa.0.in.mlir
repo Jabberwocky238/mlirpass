@@ -345,3 +345,13 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<struct<()> ()>, linkage = #llvm.linkage<external>, sym_name = "empty_struct_not_destructured", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+    %0 = "llvm.mlir.constant"() <{value = 1 : i32}> : () -> i32
+    %1 = "llvm.alloca"(%0) <{elem_type = !llvm.struct<()>}> : (i32) -> !llvm.ptr
+    %2 = "llvm.load"(%1) <{ordering = 0 : i64}> : (!llvm.ptr) -> !llvm.struct<()>
+    "llvm.return"(%2) : (!llvm.struct<()>) -> ()
+  }) : () -> ()
+}) : () -> ()
+

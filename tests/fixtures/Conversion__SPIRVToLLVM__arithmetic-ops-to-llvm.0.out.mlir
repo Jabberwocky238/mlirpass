@@ -103,5 +103,15 @@ module {
     %0 = llvm.srem %arg0, %arg1 : vector<4xi32>
     llvm.return
   }
+  llvm.func @snegate_scalar(%arg0: i32) {
+    %0 = llvm.mlir.constant(0 : i32) : i32
+    %1 = llvm.sub %0, %arg0 : i32
+    llvm.return
+  }
+  llvm.func @snegate_vector(%arg0: vector<4xi32>) {
+    %0 = llvm.mlir.constant(dense<0> : vector<4xi32>) : vector<4xi32>
+    %1 = llvm.sub %0, %arg0 : vector<4xi32>
+    llvm.return
+  }
 }
 

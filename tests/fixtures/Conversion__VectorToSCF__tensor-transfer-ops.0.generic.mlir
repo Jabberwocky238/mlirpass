@@ -36,7 +36,7 @@
     %5 = "scf.for"(%2, %1, %0, %arg0) ({
     ^bb0(%arg4: index, %arg5: tensor<?x?xf32>):
       %6 = "affine.apply"(%arg4, %arg2) <{map = #map}> : (index, index) -> index
-      %7 = "memref.load"(%4, %arg4) <{nontemporal = false}> : (memref<2xvector<3xf32>>, index) -> vector<3xf32>
+      %7 = "memref.load"(%4, %arg4) <{invariant = false, nontemporal = false}> : (memref<2xvector<3xf32>>, index) -> vector<3xf32>
       %8 = "vector.transfer_write"(%7, %arg5, %6, %arg3) <{in_bounds = [true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<3xf32>, tensor<?x?xf32>, index, index) -> tensor<?x?xf32>
       "scf.yield"(%8) : (tensor<?x?xf32>) -> ()
     }) : (index, index, index, tensor<?x?xf32>) -> tensor<?x?xf32>

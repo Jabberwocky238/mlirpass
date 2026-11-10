@@ -361,3 +361,24 @@ module @range_op {
   }
 }
 
+// -----
+module @named_pattern {
+  pdl_interp.func @matcher(%arg0: !pdl.operation) {
+    pdl_interp.check_operation_name of %arg0 is "foo.op" -> ^bb2, ^bb1
+  ^bb1:  // 4 preds: ^bb0, ^bb2, ^bb3, ^bb4
+    pdl_interp.finalize
+  ^bb2:  // pred: ^bb0
+    pdl_interp.check_operand_count of %arg0 is 0 -> ^bb3, ^bb1
+  ^bb3:  // pred: ^bb2
+    pdl_interp.check_result_count of %arg0 is 0 -> ^bb4, ^bb1
+  ^bb4:  // pred: ^bb3
+    pdl_interp.record_match @rewriters::@my_pattern(%arg0 : !pdl.operation) : benefit(1), loc([%arg0]), root("foo.op") -> ^bb1
+  }
+  module @rewriters {
+    pdl_interp.func @my_pattern(%arg0: !pdl.operation) {
+      pdl_interp.apply_rewrite "rewriter"(%arg0 : !pdl.operation)
+      pdl_interp.finalize
+    }
+  }
+}
+

@@ -172,19 +172,18 @@ module {
 module {
   func.func @broadcast_vec2d_from_vec0d(%arg0: vector<f32>) -> vector<3x2xf32> {
     %0 = builtin.unrealized_conversion_cast %arg0 : vector<f32> to vector<1xf32>
-    %1 = ub.poison : vector<3x2xf32>
-    %2 = builtin.unrealized_conversion_cast %1 : vector<3x2xf32> to !llvm.array<3 x vector<2xf32>>
-    %3 = llvm.mlir.constant(0 : i64) : i64
-    %4 = llvm.extractelement %0[%3 : i64] : vector<1xf32>
-    %5 = llvm.mlir.poison : vector<2xf32>
-    %6 = llvm.mlir.constant(0 : i32) : i32
-    %7 = llvm.insertelement %4, %5[%6 : i32] : vector<2xf32>
-    %8 = llvm.shufflevector %7, %5 [0, 0] : vector<2xf32> 
-    %9 = llvm.insertvalue %8, %2[0] : !llvm.array<3 x vector<2xf32>> 
-    %10 = llvm.insertvalue %8, %9[1] : !llvm.array<3 x vector<2xf32>> 
-    %11 = llvm.insertvalue %8, %10[2] : !llvm.array<3 x vector<2xf32>> 
-    %12 = builtin.unrealized_conversion_cast %11 : !llvm.array<3 x vector<2xf32>> to vector<3x2xf32>
-    return %12 : vector<3x2xf32>
+    %1 = llvm.mlir.constant(0 : i64) : i64
+    %2 = llvm.extractelement %0[%1 : i64] : vector<1xf32>
+    %3 = llvm.mlir.poison : !llvm.array<3 x vector<2xf32>>
+    %4 = llvm.mlir.poison : vector<2xf32>
+    %5 = llvm.mlir.constant(0 : i32) : i32
+    %6 = llvm.insertelement %2, %4[%5 : i32] : vector<2xf32>
+    %7 = llvm.shufflevector %6, %6 [0, 0] : vector<2xf32> 
+    %8 = llvm.insertvalue %7, %3[0] : !llvm.array<3 x vector<2xf32>> 
+    %9 = llvm.insertvalue %7, %8[1] : !llvm.array<3 x vector<2xf32>> 
+    %10 = llvm.insertvalue %7, %9[2] : !llvm.array<3 x vector<2xf32>> 
+    %11 = builtin.unrealized_conversion_cast %10 : !llvm.array<3 x vector<2xf32>> to vector<3x2xf32>
+    return %11 : vector<3x2xf32>
   }
 }
 
@@ -1405,13 +1404,15 @@ module {
 module {
   func.func @create_mask_0d(%arg0: index) -> vector<i1> {
     %cst = arith.constant dense<0> : vector<i32>
-    %0 = arith.index_cast %arg0 : index to i32
-    %1 = llvm.mlir.poison : vector<1xi32>
-    %2 = llvm.mlir.constant(0 : i32) : i32
-    %3 = llvm.insertelement %0, %1[%2 : i32] : vector<1xi32>
-    %4 = builtin.unrealized_conversion_cast %3 : vector<1xi32> to vector<i32>
-    %5 = arith.cmpi sgt, %4, %cst : vector<i32>
-    return %5 : vector<i1>
+    %c2147483647 = arith.constant 2147483647 : index
+    %0 = arith.minsi %arg0, %c2147483647 : index
+    %1 = arith.index_cast %0 : index to i32
+    %2 = llvm.mlir.poison : vector<1xi32>
+    %3 = llvm.mlir.constant(0 : i32) : i32
+    %4 = llvm.insertelement %1, %2[%3 : i32] : vector<1xi32>
+    %5 = builtin.unrealized_conversion_cast %4 : vector<1xi32> to vector<i32>
+    %6 = arith.cmpi sgt, %5, %cst : vector<i32>
+    return %6 : vector<i1>
   }
 }
 
@@ -1419,13 +1420,15 @@ module {
 module {
   func.func @create_mask_1d(%arg0: index) -> vector<4xi1> {
     %cst = arith.constant dense<[0, 1, 2, 3]> : vector<4xi32>
-    %0 = arith.index_cast %arg0 : index to i32
-    %1 = llvm.mlir.poison : vector<4xi32>
-    %2 = llvm.mlir.constant(0 : i32) : i32
-    %3 = llvm.insertelement %0, %1[%2 : i32] : vector<4xi32>
-    %4 = llvm.shufflevector %3, %1 [0, 0, 0, 0] : vector<4xi32> 
-    %5 = arith.cmpi sgt, %4, %cst : vector<4xi32>
-    return %5 : vector<4xi1>
+    %c2147483647 = arith.constant 2147483647 : index
+    %0 = arith.minsi %arg0, %c2147483647 : index
+    %1 = arith.index_cast %0 : index to i32
+    %2 = llvm.mlir.poison : vector<4xi32>
+    %3 = llvm.mlir.constant(0 : i32) : i32
+    %4 = llvm.insertelement %1, %2[%3 : i32] : vector<4xi32>
+    %5 = llvm.shufflevector %4, %2 [0, 0, 0, 0] : vector<4xi32> 
+    %6 = arith.cmpi sgt, %5, %cst : vector<4xi32>
+    return %6 : vector<4xi1>
   }
 }
 
@@ -1433,13 +1436,15 @@ module {
 module {
   func.func @create_mask_1d_scalable(%arg0: index) -> vector<[4]xi1> {
     %0 = llvm.intr.stepvector : vector<[4]xi32>
-    %1 = arith.index_cast %arg0 : index to i32
-    %2 = llvm.mlir.poison : vector<[4]xi32>
-    %3 = llvm.mlir.constant(0 : i32) : i32
-    %4 = llvm.insertelement %1, %2[%3 : i32] : vector<[4]xi32>
-    %5 = llvm.shufflevector %4, %2 [0, 0, 0, 0] : vector<[4]xi32> 
-    %6 = arith.cmpi slt, %0, %5 : vector<[4]xi32>
-    return %6 : vector<[4]xi1>
+    %c2147483647 = arith.constant 2147483647 : index
+    %1 = arith.minsi %arg0, %c2147483647 : index
+    %2 = arith.index_cast %1 : index to i32
+    %3 = llvm.mlir.poison : vector<[4]xi32>
+    %4 = llvm.mlir.constant(0 : i32) : i32
+    %5 = llvm.insertelement %2, %3[%4 : i32] : vector<[4]xi32>
+    %6 = llvm.shufflevector %5, %3 [0, 0, 0, 0] : vector<[4]xi32> 
+    %7 = arith.cmpi slt, %0, %6 : vector<[4]xi32>
+    return %7 : vector<[4]xi1>
   }
 }
 
@@ -1622,14 +1627,6 @@ module {
     %14 = llvm.insertvalue %11, %7[1] : !llvm.array<2 x vector<[4]xf32>> 
     %15 = builtin.unrealized_conversion_cast %14 : !llvm.array<2 x vector<[4]xf32>> to vector<2x[4]xf32>
     return %13, %15 : vector<2x[4]xf32>, vector<2x[4]xf32>
-  }
-}
-
-// -----
-module {
-  func.func @step() -> vector<4xindex> {
-    %cst = arith.constant dense<[0, 1, 2, 3]> : vector<4xindex>
-    return %cst : vector<4xindex>
   }
 }
 

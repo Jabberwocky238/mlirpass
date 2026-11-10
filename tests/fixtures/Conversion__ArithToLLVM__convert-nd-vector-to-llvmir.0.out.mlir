@@ -115,6 +115,20 @@ module {
     %8 = builtin.unrealized_conversion_cast %7 : !llvm.array<1 x array<2 x vector<3xf16>>> to vector<1x2x3xf16>
     return %8 : vector<1x2x3xf16>
   }
+  func.func @convertf_vector(%arg0: vector<1x2x3xf16>) -> vector<1x2x3xbf16> {
+    %0 = builtin.unrealized_conversion_cast %arg0 : vector<1x2x3xf16> to !llvm.array<1 x array<2 x vector<3xf16>>>
+    %1 = llvm.mlir.poison : !llvm.array<1 x array<2 x vector<3xbf16>>>
+    %2 = llvm.extractvalue %0[0, 0] : !llvm.array<1 x array<2 x vector<3xf16>>> 
+    %3 = llvm.fpext %2 : vector<3xf16> to vector<3xf32>
+    %4 = llvm.fptrunc %3 : vector<3xf32> to vector<3xbf16>
+    %5 = llvm.insertvalue %4, %1[0, 0] : !llvm.array<1 x array<2 x vector<3xbf16>>> 
+    %6 = llvm.extractvalue %0[0, 1] : !llvm.array<1 x array<2 x vector<3xf16>>> 
+    %7 = llvm.fpext %6 : vector<3xf16> to vector<3xf32>
+    %8 = llvm.fptrunc %7 : vector<3xf32> to vector<3xbf16>
+    %9 = llvm.insertvalue %8, %5[0, 1] : !llvm.array<1 x array<2 x vector<3xbf16>>> 
+    %10 = builtin.unrealized_conversion_cast %9 : !llvm.array<1 x array<2 x vector<3xbf16>>> to vector<1x2x3xbf16>
+    return %10 : vector<1x2x3xbf16>
+  }
   func.func @trunci_vector(%arg0: vector<1x2x3xi64>) -> vector<1x2x3xi16> {
     %0 = builtin.unrealized_conversion_cast %arg0 : vector<1x2x3xi64> to !llvm.array<1 x array<2 x vector<3xi64>>>
     %1 = llvm.mlir.poison : !llvm.array<1 x array<2 x vector<3xi16>>>
@@ -227,13 +241,6 @@ module {
     %5 = llvm.extractvalue %0[0, 1] : !llvm.array<1 x array<2 x vector<3xi1>>> 
     %6 = llvm.sext %5 : vector<3xi1> to vector<3xi64>
     %7 = llvm.insertvalue %6, %4[0, 1] : !llvm.array<1 x array<2 x vector<3xi64>>> 
-    %8 = llvm.mlir.poison : !llvm.array<1 x array<2 x vector<3xi1>>>
-    %9 = llvm.extractvalue %7[0, 0] : !llvm.array<1 x array<2 x vector<3xi64>>> 
-    %10 = llvm.trunc %9 : vector<3xi64> to vector<3xi1>
-    %11 = llvm.insertvalue %10, %8[0, 0] : !llvm.array<1 x array<2 x vector<3xi1>>> 
-    %12 = llvm.extractvalue %7[0, 1] : !llvm.array<1 x array<2 x vector<3xi64>>> 
-    %13 = llvm.trunc %12 : vector<3xi64> to vector<3xi1>
-    %14 = llvm.insertvalue %13, %11[0, 1] : !llvm.array<1 x array<2 x vector<3xi1>>> 
     return
   }
 }

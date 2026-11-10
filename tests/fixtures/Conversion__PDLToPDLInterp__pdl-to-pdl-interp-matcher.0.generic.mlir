@@ -705,11 +705,11 @@
       %11 = "pdl_interp.get_value_type"(%7) : (!pdl.value) -> !pdl.type
       "pdl_interp.are_equal"(%10, %11)[^bb21, ^bb1] : (!pdl.type, !pdl.type) -> ()
     ^bb21:  // pred: ^bb20
-      "pdl_interp.record_match"(%arg2, %arg3, %1, %4, %arg2, %arg3)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 2, 4>, rewriter = @rewriters::@pdl_generated_rewriter}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
+      "pdl_interp.record_match"(%arg2, %arg3, %1, %4, %arg2, %arg3)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 2, 4>, rewriter = @rewriters::@rewrite_multi_root}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
     }) : (!pdl.range<operation>) -> ()
   }) : () -> ()
   "builtin.module"() <{sym_name = "rewriters"}> ({
-    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation) -> (), sym_name = "pdl_generated_rewriter"}> ({
+    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation) -> (), sym_name = "rewrite_multi_root"}> ({
     ^bb0(%arg0: !pdl.operation, %arg1: !pdl.operation):
       "pdl_interp.apply_rewrite"(%arg0, %arg1) <{name = "rewriter"}> : (!pdl.operation, !pdl.operation) -> ()
       "pdl_interp.finalize"() : () -> ()
@@ -748,10 +748,10 @@
   ^bb10:  // pred: ^bb9
     "pdl_interp.are_equal"(%4, %0)[^bb11, ^bb1] : (!pdl.value, !pdl.value) -> ()
   ^bb11:  // pred: ^bb10
-    "pdl_interp.record_match"(%arg1, %1, %arg1)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 1, 2>, rewriter = @rewriters::@pdl_generated_rewriter}> : (!pdl.operation, !pdl.operation, !pdl.operation) -> ()
+    "pdl_interp.record_match"(%arg1, %1, %arg1)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 1, 2>, rewriter = @rewriters::@rewrite_overlapping_roots}> : (!pdl.operation, !pdl.operation, !pdl.operation) -> ()
   }) : () -> ()
   "builtin.module"() <{sym_name = "rewriters"}> ({
-    "pdl_interp.func"() <{function_type = (!pdl.operation) -> (), sym_name = "pdl_generated_rewriter"}> ({
+    "pdl_interp.func"() <{function_type = (!pdl.operation) -> (), sym_name = "rewrite_overlapping_roots"}> ({
     ^bb0(%arg0: !pdl.operation):
       "pdl_interp.apply_rewrite"(%arg0) <{name = "rewriter"}> : (!pdl.operation) -> ()
       "pdl_interp.finalize"() : () -> ()
@@ -792,11 +792,11 @@
       %4 = "pdl_interp.get_operand"(%arg3) <{index = 0 : i32}> : (!pdl.operation) -> !pdl.value
       "pdl_interp.are_equal"(%4, %2)[^bb5, ^bb1] : (!pdl.value, !pdl.value) -> ()
     ^bb5:  // pred: ^bb4
-      "pdl_interp.record_match"(%arg2, %arg3, %arg2, %arg3)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 2, 2>, rewriter = @rewriters::@pdl_generated_rewriter}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
+      "pdl_interp.record_match"(%arg2, %arg3, %arg2, %arg3)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 2, 2>, rewriter = @rewriters::@rewrite_forced_overlapped_root}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
     }) : (!pdl.range<operation>) -> ()
   }) : () -> ()
   "builtin.module"() <{sym_name = "rewriters"}> ({
-    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation) -> (), sym_name = "pdl_generated_rewriter"}> ({
+    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation) -> (), sym_name = "rewrite_forced_overlapped_root"}> ({
     ^bb0(%arg0: !pdl.operation, %arg1: !pdl.operation):
       "pdl_interp.apply_rewrite"(%arg0, %arg1) <{name = "rewriter"}> : (!pdl.operation, !pdl.operation) -> ()
       "pdl_interp.finalize"() : () -> ()
@@ -826,11 +826,11 @@
       %3 = "pdl_interp.get_operands"(%arg3) : (!pdl.operation) -> !pdl.range<value>
       "pdl_interp.are_equal"(%3, %0)[^bb4, ^bb1] : (!pdl.range<value>, !pdl.range<value>) -> ()
     ^bb4:  // pred: ^bb3
-      "pdl_interp.record_match"(%arg2, %arg3, %arg2, %arg3)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 2, 2>, rewriter = @rewriters::@pdl_generated_rewriter}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
+      "pdl_interp.record_match"(%arg2, %arg3, %arg2, %arg3)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 2, 2>, rewriter = @rewriters::@variadic_results_all}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
     }) : (!pdl.range<operation>) -> ()
   }) : () -> ()
   "builtin.module"() <{sym_name = "rewriters"}> ({
-    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation) -> (), sym_name = "pdl_generated_rewriter"}> ({
+    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation) -> (), sym_name = "variadic_results_all"}> ({
     ^bb0(%arg0: !pdl.operation, %arg1: !pdl.operation):
       "pdl_interp.apply_rewrite"(%arg0, %arg1) <{name = "rewriter"}> : (!pdl.operation, !pdl.operation) -> ()
       "pdl_interp.finalize"() : () -> ()
@@ -887,11 +887,11 @@
     ^bb10:  // pred: ^bb9
       "pdl_interp.are_equal"(%7, %0)[^bb11, ^bb1] : (!pdl.range<value>, !pdl.range<value>) -> ()
     ^bb11:  // pred: ^bb10
-      "pdl_interp.record_match"(%arg2, %arg3, %1, %arg2, %arg3)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 2, 3>, rewriter = @rewriters::@pdl_generated_rewriter}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
+      "pdl_interp.record_match"(%arg2, %arg3, %1, %arg2, %arg3)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 2, 3>, rewriter = @rewriters::@variadic_results_at}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
     }) : (!pdl.range<operation>) -> ()
   }) : () -> ()
   "builtin.module"() <{sym_name = "rewriters"}> ({
-    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation) -> (), sym_name = "pdl_generated_rewriter"}> ({
+    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation) -> (), sym_name = "variadic_results_at"}> ({
     ^bb0(%arg0: !pdl.operation, %arg1: !pdl.operation):
       "pdl_interp.apply_rewrite"(%arg0, %arg1) <{name = "rewriter"}> : (!pdl.operation, !pdl.operation) -> ()
       "pdl_interp.finalize"() : () -> ()
@@ -1025,12 +1025,12 @@
         %12 = "pdl_interp.get_operand"(%arg5) <{index = 0 : i32}> : (!pdl.operation) -> !pdl.value
         "pdl_interp.are_equal"(%12, %5)[^bb8, ^bb1] : (!pdl.value, !pdl.value) -> ()
       ^bb8:  // pred: ^bb7
-        "pdl_interp.record_match"(%arg4, %arg5, %arg3, %1, %3, %arg3, %arg4, %arg5)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 3, 5>, rewriter = @rewriters::@pdl_generated_rewriter}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
+        "pdl_interp.record_match"(%arg4, %arg5, %arg3, %1, %3, %arg3, %arg4, %arg5)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 3, 5>, rewriter = @rewriters::@common_connector}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
       }) : (!pdl.range<operation>) -> ()
     }) : (!pdl.range<operation>) -> ()
   }) : () -> ()
   "builtin.module"() <{sym_name = "rewriters"}> ({
-    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation, !pdl.operation) -> (), sym_name = "pdl_generated_rewriter"}> ({
+    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation, !pdl.operation) -> (), sym_name = "common_connector"}> ({
     ^bb0(%arg0: !pdl.operation, %arg1: !pdl.operation, %arg2: !pdl.operation):
       "pdl_interp.apply_rewrite"(%arg0, %arg1, %arg2) <{name = "rewriter"}> : (!pdl.operation, !pdl.operation, !pdl.operation) -> ()
       "pdl_interp.finalize"() : () -> ()
@@ -1093,12 +1093,12 @@
         %10 = "pdl_interp.get_operands"(%arg5) : (!pdl.operation) -> !pdl.range<value>
         "pdl_interp.are_equal"(%10, %5)[^bb6, ^bb1] : (!pdl.range<value>, !pdl.range<value>) -> ()
       ^bb6:  // pred: ^bb5
-        "pdl_interp.record_match"(%arg4, %arg5, %arg3, %1, %3, %arg3, %arg4, %arg5)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 3, 5>, rewriter = @rewriters::@pdl_generated_rewriter}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
+        "pdl_interp.record_match"(%arg4, %arg5, %arg3, %1, %3, %arg3, %arg4, %arg5)[^bb1] <{benefit = 1 : i16, operandSegmentSizes = array<i32: 3, 5>, rewriter = @rewriters::@common_connector_range}> : (!pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation, !pdl.operation) -> ()
       }) : (!pdl.range<operation>) -> ()
     }) : (!pdl.range<operation>) -> ()
   }) : () -> ()
   "builtin.module"() <{sym_name = "rewriters"}> ({
-    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation, !pdl.operation) -> (), sym_name = "pdl_generated_rewriter"}> ({
+    "pdl_interp.func"() <{function_type = (!pdl.operation, !pdl.operation, !pdl.operation) -> (), sym_name = "common_connector_range"}> ({
     ^bb0(%arg0: !pdl.operation, %arg1: !pdl.operation, %arg2: !pdl.operation):
       "pdl_interp.apply_rewrite"(%arg0, %arg1, %arg2) <{name = "rewriter"}> : (!pdl.operation, !pdl.operation, !pdl.operation) -> ()
       "pdl_interp.finalize"() : () -> ()

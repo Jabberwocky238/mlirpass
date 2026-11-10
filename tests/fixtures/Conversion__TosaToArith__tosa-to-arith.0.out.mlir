@@ -99,6 +99,52 @@ module {
 
 // -----
 module {
+  func.func @apply_scale_test_vector_rank_0(%arg0: vector<i32>, %arg1: vector<i32>, %arg2: vector<i8>) -> vector<i32> {
+    %0 = arith.extui %arg2 : vector<i8> to vector<i32>
+    %cst = arith.constant dense<0> : vector<i32>
+    %cst_0 = arith.constant dense<1> : vector<i32>
+    %cst_1 = arith.constant dense<2> : vector<i32>
+    %cst_2 = arith.constant dense<30> : vector<i32>
+    %cst_3 = arith.constant dense<32> : vector<i32>
+    %low, %high = arith.mulsi_extended %arg0, %arg1 : vector<i32>
+    %1 = arith.cmpi sge, %0, %cst_3 : vector<i32>
+    %2 = arith.cmpi sgt, %0, %cst_3 : vector<i32>
+    %3 = arith.subi %cst_3, %0 : vector<i32>
+    %4 = arith.subi %0, %cst_3 : vector<i32>
+    %5 = arith.select %1, %cst, %3 : vector<i1>, vector<i32>
+    %6 = arith.select %1, %4, %cst : vector<i1>, vector<i32>
+    %cst_4 = arith.constant dense<-1> : vector<i32>
+    %7 = arith.cmpi sge, %arg0, %cst : vector<i32>
+    %8 = arith.select %7, %cst_0, %cst_4 : vector<i1>, vector<i32>
+    %9 = arith.select %1, %8, %cst : vector<i1>, vector<i32>
+    %10 = arith.shrui %low, %cst_2 : vector<i32>
+    %11 = arith.addi %10, %9 : vector<i32>
+    %12 = arith.shrsi %11, %cst_1 : vector<i32>
+    %13 = arith.shli %9, %cst_2 : vector<i32>
+    %14 = arith.addi %low, %13 : vector<i32>
+    %15 = arith.addi %high, %12 : vector<i32>
+    %16 = arith.subi %0, %cst_0 : vector<i32>
+    %17 = arith.shli %cst_0, %16 : vector<i32>
+    %18 = arith.select %2, %cst, %17 : vector<i1>, vector<i32>
+    %19 = arith.addi %14, %18 : vector<i32>
+    %20 = arith.cmpi ugt, %14, %19 : vector<i32>
+    %21 = arith.extui %20 : vector<i1> to vector<i32>
+    %22 = arith.addi %15, %21 : vector<i32>
+    %23 = arith.subi %6, %cst_0 : vector<i32>
+    %24 = arith.shli %cst_0, %23 : vector<i32>
+    %25 = arith.select %2, %24, %cst : vector<i1>, vector<i32>
+    %26 = arith.addi %22, %25 : vector<i32>
+    %27 = arith.shli %26, %5 : vector<i32>
+    %28 = arith.shrsi %27, %6 : vector<i32>
+    %29 = arith.shrui %19, %0 : vector<i32>
+    %30 = arith.select %1, %cst, %29 : vector<i1>, vector<i32>
+    %31 = arith.addi %30, %28 : vector<i32>
+    return %31 : vector<i32>
+  }
+}
+
+// -----
+module {
   func.func @apply_scale_test_i48(%arg0: i48, %arg1: i32, %arg2: i8) -> i32 {
     %c0_i48 = arith.constant 0 : i48
     %c1_i64 = arith.constant 1 : i64

@@ -364,6 +364,15 @@ module {
 
 // -----
 module {
+  func.func @remove_while_zero_iteration_loop() -> i64 {
+    %0 = "test.init"() : () -> i32
+    %1 = "test.before"(%0) : (i32) -> i64
+    return %1 : i64
+  }
+}
+
+// -----
+module {
   func.func @remove_zero_iteration_loop_vals(%arg0: index) {
     %0 = "test.init"() : () -> i32
     "test.consume"(%0) : (i32) -> ()
@@ -504,6 +513,29 @@ module {
       scf.yield %1 : index
     }
     return %0 : index
+  }
+}
+
+// -----
+module {
+  func.func @cond_prop_then(%arg0: i1) {
+    %true = arith.constant true
+    scf.if %arg0 {
+      "test.use"(%true) : (i1) -> ()
+    }
+    return
+  }
+}
+
+// -----
+module {
+  func.func @cond_prop_else(%arg0: i1) {
+    %false = arith.constant false
+    scf.if %arg0 {
+    } else {
+      "test.use"(%false) : (i1) -> ()
+    }
+    return
   }
 }
 
@@ -1202,6 +1234,9 @@ module {
 // -----
 module {
   func.func @scf_for_all_step_size_0() {
+    scf.forall (%arg0) = (0) to (1) step (0) {
+      vector.print %arg0 : index
+    }
     return
   }
 }
@@ -1243,6 +1278,24 @@ module {
       scf.yield %arg4 : i32
     }
     return %0, %arg4, %arg4 : i32, i32, i32
+  }
+}
+
+// -----
+module {
+  func.func @fold_tensor_cast_into_forall_non_sequential_writes(%arg0: tensor<8x32xf32>, %arg1: tensor<8x32xf32>) -> (tensor<?x32xf32>, tensor<?x32xf32>) {
+    %c8 = arith.constant 8 : index
+    %0 = tensor.empty() : tensor<32x32xf32>
+    %1:2 = scf.forall (%arg2) in (4) shared_outs(%arg3 = %0, %arg4 = %0) -> (tensor<32x32xf32>, tensor<32x32xf32>) {
+      %2 = arith.muli %arg2, %c8 : index
+      scf.forall.in_parallel {
+        tensor.parallel_insert_slice %arg0 into %arg4[%2, 0] [8, 32] [1, 1] : tensor<8x32xf32> into tensor<32x32xf32>
+        tensor.parallel_insert_slice %arg1 into %arg3[%2, 0] [8, 32] [1, 1] : tensor<8x32xf32> into tensor<32x32xf32>
+      }
+    }
+    %cast = tensor.cast %1#0 : tensor<32x32xf32> to tensor<?x32xf32>
+    %cast_0 = tensor.cast %1#1 : tensor<32x32xf32> to tensor<?x32xf32>
+    return %cast, %cast_0 : tensor<?x32xf32>, tensor<?x32xf32>
   }
 }
 

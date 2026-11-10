@@ -1,240 +1,258 @@
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "test_module_0"}> ({
     "func.func"() <{function_type = () -> (index, index, index, index, index, index, index, index, index, index, index, index, index), sym_name = "gpu_index_ops"}> ({
-      %151 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index
-      %152 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index
-      %153 = "gpu.thread_id"() <{dimension = #gpu<dim z>}> : () -> index
-      %154 = "gpu.block_dim"() <{dimension = #gpu<dim x>}> : () -> index
-      %155 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
-      %156 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
-      %157 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
-      %158 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
-      %159 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
-      %160 = "gpu.grid_dim"() <{dimension = #gpu<dim x>}> : () -> index
-      %161 = "gpu.grid_dim"() <{dimension = #gpu<dim y>}> : () -> index
-      %162 = "gpu.grid_dim"() <{dimension = #gpu<dim z>}> : () -> index
-      %163 = "gpu.lane_id"() : () -> index
-      "func.return"(%151, %152, %153, %154, %155, %156, %157, %158, %159, %160, %161, %162, %163) : (index, index, index, index, index, index, index, index, index, index, index, index, index) -> ()
+      %154 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index
+      %155 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index
+      %156 = "gpu.thread_id"() <{dimension = #gpu<dim z>}> : () -> index
+      %157 = "gpu.block_dim"() <{dimension = #gpu<dim x>}> : () -> index
+      %158 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
+      %159 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
+      %160 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
+      %161 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
+      %162 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
+      %163 = "gpu.grid_dim"() <{dimension = #gpu<dim x>}> : () -> index
+      %164 = "gpu.grid_dim"() <{dimension = #gpu<dim y>}> : () -> index
+      %165 = "gpu.grid_dim"() <{dimension = #gpu<dim z>}> : () -> index
+      %166 = "gpu.lane_id"() : () -> index
+      "func.return"(%154, %155, %156, %157, %158, %159, %160, %161, %162, %163, %164, %165, %166) : (index, index, index, index, index, index, index, index, index, index, index, index, index) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_1"}> ({
     "func.func"() <{function_type = (index) -> index, sym_name = "gpu_index_comp"}> ({
-    ^bb0(%arg112: index):
-      %150 = "arith.addi"(%arg112, %arg112) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      "func.return"(%150) : (index) -> ()
+    ^bb0(%arg120: index):
+      %153 = "arith.addi"(%arg120, %arg120) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      "func.return"(%153) : (index) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_2"}> ({
     "gpu.func"() <{function_type = () -> ()}> ({
-      %148 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-      %149 = "gpu.all_reduce"(%148) <{op = #gpu<all_reduce_op add>, uniform}> ({
+      %151 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+      %152 = "gpu.all_reduce"(%151) <{op = #gpu<all_reduce_op add>, uniform}> ({
       }) : (f32) -> f32
       "gpu.return"() : () -> ()
-    }) {sym_name = "gpu_all_reduce_op", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "gpu_all_reduce_op"} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_3"}> ({
     "gpu.func"() <{function_type = () -> ()}> ({
-      %145 = "arith.constant"() <{value = 1 : i32}> : () -> i32
-      %146 = "gpu.all_reduce"(%145) <{uniform}> ({
-      ^bb0(%arg110: i32, %arg111: i32):
-        %147 = "arith.xori"(%arg110, %arg111) : (i32, i32) -> i32
-        "gpu.yield"(%147) : (i32) -> ()
+      %148 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+      %149 = "gpu.all_reduce"(%148) <{uniform}> ({
+      ^bb0(%arg118: i32, %arg119: i32):
+        %150 = "arith.xori"(%arg118, %arg119) : (i32, i32) -> i32
+        "gpu.yield"(%150) : (i32) -> ()
       }) : (i32) -> i32
       "gpu.return"() : () -> ()
-    }) {sym_name = "gpu_all_reduce_region", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "gpu_all_reduce_region"} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_4"}> ({
     "func.func"() <{function_type = () -> (f32, f32, f32, f32, i1, i1, i1, i1), sym_name = "gpu_shuffle"}> ({
-      %138 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-      %139 = "arith.constant"() <{value = 4 : i32}> : () -> i32
-      %140 = "arith.constant"() <{value = 23 : i32}> : () -> i32
-      %141:2 = "gpu.shuffle"(%138, %139, %140) <{mode = #gpu<shuffle_mode xor>}> : (f32, i32, i32) -> (f32, i1)
-      %142:2 = "gpu.shuffle"(%138, %139, %140) <{mode = #gpu<shuffle_mode up>}> : (f32, i32, i32) -> (f32, i1)
-      %143:2 = "gpu.shuffle"(%138, %139, %140) <{mode = #gpu<shuffle_mode down>}> : (f32, i32, i32) -> (f32, i1)
-      %144:2 = "gpu.shuffle"(%138, %139, %140) <{mode = #gpu<shuffle_mode idx>}> : (f32, i32, i32) -> (f32, i1)
-      "func.return"(%141#0, %142#0, %143#0, %144#0, %141#1, %142#1, %143#1, %144#1) : (f32, f32, f32, f32, i1, i1, i1, i1) -> ()
+      %141 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+      %142 = "arith.constant"() <{value = 4 : i32}> : () -> i32
+      %143 = "arith.constant"() <{value = 23 : i32}> : () -> i32
+      %144:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode xor>}> : (f32, i32, i32) -> (f32, i1)
+      %145:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode up>}> : (f32, i32, i32) -> (f32, i1)
+      %146:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode down>}> : (f32, i32, i32) -> (f32, i1)
+      %147:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode idx>}> : (f32, i32, i32) -> (f32, i1)
+      "func.return"(%144#0, %145#0, %146#0, %147#0, %144#1, %145#1, %146#1, %147#1) : (f32, f32, f32, f32, i1, i1, i1, i1) -> ()
     }) : () -> ()
     "func.func"() <{function_type = () -> (f32, f32, f32, f32), sym_name = "gpu_shuffle_unused_pred"}> ({
-      %131 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-      %132 = "arith.constant"() <{value = 4 : i32}> : () -> i32
-      %133 = "arith.constant"() <{value = 23 : i32}> : () -> i32
-      %134:2 = "gpu.shuffle"(%131, %132, %133) <{mode = #gpu<shuffle_mode xor>}> : (f32, i32, i32) -> (f32, i1)
-      %135:2 = "gpu.shuffle"(%131, %132, %133) <{mode = #gpu<shuffle_mode up>}> : (f32, i32, i32) -> (f32, i1)
-      %136:2 = "gpu.shuffle"(%131, %132, %133) <{mode = #gpu<shuffle_mode down>}> : (f32, i32, i32) -> (f32, i1)
-      %137:2 = "gpu.shuffle"(%131, %132, %133) <{mode = #gpu<shuffle_mode idx>}> : (f32, i32, i32) -> (f32, i1)
-      "func.return"(%134#0, %135#0, %136#0, %137#0) : (f32, f32, f32, f32) -> ()
+      %134 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+      %135 = "arith.constant"() <{value = 4 : i32}> : () -> i32
+      %136 = "arith.constant"() <{value = 23 : i32}> : () -> i32
+      %137:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode xor>}> : (f32, i32, i32) -> (f32, i1)
+      %138:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode up>}> : (f32, i32, i32) -> (f32, i1)
+      %139:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode down>}> : (f32, i32, i32) -> (f32, i1)
+      %140:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode idx>}> : (f32, i32, i32) -> (f32, i1)
+      "func.return"(%137#0, %138#0, %139#0, %140#0) : (f32, f32, f32, f32) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_5"}> ({
     "func.func"() <{function_type = () -> (), sym_name = "gpu_sync"}> ({
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+      "func.return"() : () -> ()
+    }) : () -> ()
+    "func.func"() <{function_type = () -> (), sym_name = "gpu_sync_subgroup"}> ({
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<subgroup>}> : () -> ()
+      "func.return"() : () -> ()
+    }) : () -> ()
+    "func.func"() <{function_type = (i32) -> (), sym_name = "gpu_named_barriers"}> ({
+    ^bb0(%arg117: i32):
+      %131 = "gpu.initialize_named_barrier"(%arg117) : (i32) -> !gpu.named_barrier
+      %132 = "arith.constant"() <{value = 2 : i32}> : () -> i32
+      %133 = "gpu.initialize_named_barrier"(%132) : (i32) -> !gpu.named_barrier
+      "gpu.barrier"(%131) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> ()
+      "gpu.barrier"(%133) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> ()
+      "func.return"() : () -> ()
+    }) : () -> ()
+    "func.func"() <{function_type = (!gpu.named_barrier) -> (), sym_name = "gpu_named_barrier_arg"}> ({
+    ^bb0(%arg116: !gpu.named_barrier):
+      "gpu.barrier"(%arg116) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> ()
       "func.return"() : () -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_6"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_fabs"}> ({
-    ^bb0(%arg108: f32, %arg109: f64):
-      %129 = "math.absf"(%arg108) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %130 = "math.absf"(%arg109) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    ^bb0(%arg114: f32, %arg115: f64):
+      %129 = "math.absf"(%arg114) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %130 = "math.absf"(%arg115) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
       "func.return"(%129, %130) : (f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_7"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_cbrt"}> ({
-    ^bb0(%arg106: f32, %arg107: f64):
-      %127 = "math.cbrt"(%arg106) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %128 = "math.cbrt"(%arg107) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    ^bb0(%arg112: f32, %arg113: f64):
+      %127 = "math.cbrt"(%arg112) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %128 = "math.cbrt"(%arg113) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
       "func.return"(%127, %128) : (f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_8"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_ceil"}> ({
-    ^bb0(%arg104: f32, %arg105: f64):
-      %125 = "math.ceil"(%arg104) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %126 = "math.ceil"(%arg105) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    ^bb0(%arg110: f32, %arg111: f64):
+      %125 = "math.ceil"(%arg110) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %126 = "math.ceil"(%arg111) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
       "func.return"(%125, %126) : (f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_9"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_floor"}> ({
-    ^bb0(%arg102: f32, %arg103: f64):
-      %123 = "math.floor"(%arg102) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %124 = "math.floor"(%arg103) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    ^bb0(%arg108: f32, %arg109: f64):
+      %123 = "math.floor"(%arg108) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %124 = "math.floor"(%arg109) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
       "func.return"(%123, %124) : (f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_10"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_cos"}> ({
-    ^bb0(%arg100: f32, %arg101: f64):
-      %120 = "math.cos"(%arg100) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %121 = "math.cos"(%arg101) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %122 = "math.cos"(%arg100) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
+    ^bb0(%arg106: f32, %arg107: f64):
+      %120 = "math.cos"(%arg106) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %121 = "math.cos"(%arg107) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+      %122 = "math.cos"(%arg106) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
       "func.return"(%120, %121, %122) : (f32, f64, f32) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_11"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_exp"}> ({
-    ^bb0(%arg98: f32, %arg99: f64):
-      %117 = "math.exp"(%arg98) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %118 = "math.exp"(%arg99) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %119 = "math.exp"(%arg98) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
+    ^bb0(%arg104: f32, %arg105: f64):
+      %117 = "math.exp"(%arg104) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %118 = "math.exp"(%arg105) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+      %119 = "math.exp"(%arg104) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
       "func.return"(%117, %118, %119) : (f32, f64, f32) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_12"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_exp2"}> ({
-    ^bb0(%arg96: f32, %arg97: f64):
-      %115 = "math.exp2"(%arg96) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %116 = "math.exp2"(%arg97) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    ^bb0(%arg102: f32, %arg103: f64):
+      %115 = "math.exp2"(%arg102) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %116 = "math.exp2"(%arg103) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
       "func.return"(%115, %116) : (f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_13"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_log"}> ({
-    ^bb0(%arg94: f32, %arg95: f64):
-      %112 = "math.log"(%arg94) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %113 = "math.log"(%arg95) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %114 = "math.log"(%arg94) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
+    ^bb0(%arg100: f32, %arg101: f64):
+      %112 = "math.log"(%arg100) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %113 = "math.log"(%arg101) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+      %114 = "math.log"(%arg100) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
       "func.return"(%112, %113, %114) : (f32, f64, f32) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_14"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_log10"}> ({
-    ^bb0(%arg92: f32, %arg93: f64):
-      %109 = "math.log10"(%arg92) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %110 = "math.log10"(%arg93) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %111 = "math.log10"(%arg92) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
+    ^bb0(%arg98: f32, %arg99: f64):
+      %109 = "math.log10"(%arg98) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %110 = "math.log10"(%arg99) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+      %111 = "math.log10"(%arg98) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
       "func.return"(%109, %110, %111) : (f32, f64, f32) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_15"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_log1p"}> ({
-    ^bb0(%arg90: f32, %arg91: f64):
-      %107 = "math.log1p"(%arg90) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %108 = "math.log1p"(%arg91) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    ^bb0(%arg96: f32, %arg97: f64):
+      %107 = "math.log1p"(%arg96) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %108 = "math.log1p"(%arg97) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
       "func.return"(%107, %108) : (f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_16"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_log2"}> ({
-    ^bb0(%arg88: f32, %arg89: f64):
-      %104 = "math.log2"(%arg88) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %105 = "math.log2"(%arg89) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %106 = "math.log2"(%arg88) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
+    ^bb0(%arg94: f32, %arg95: f64):
+      %104 = "math.log2"(%arg94) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %105 = "math.log2"(%arg95) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+      %106 = "math.log2"(%arg94) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
       "func.return"(%104, %105, %106) : (f32, f64, f32) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_17"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_sin"}> ({
-    ^bb0(%arg86: f32, %arg87: f64):
-      %101 = "math.sin"(%arg86) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %102 = "math.sin"(%arg87) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %103 = "math.sin"(%arg86) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
+    ^bb0(%arg92: f32, %arg93: f64):
+      %101 = "math.sin"(%arg92) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %102 = "math.sin"(%arg93) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+      %103 = "math.sin"(%arg92) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
       "func.return"(%101, %102, %103) : (f32, f64, f32) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_18"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64, f32), sym_name = "gpu_tan"}> ({
-    ^bb0(%arg83: f16, %arg84: f32, %arg85: f64):
-      %97 = "math.tan"(%arg83) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
-      %98 = "math.tan"(%arg84) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %99 = "math.tan"(%arg85) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %100 = "math.tan"(%arg84) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
+    ^bb0(%arg89: f16, %arg90: f32, %arg91: f64):
+      %97 = "math.tan"(%arg89) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
+      %98 = "math.tan"(%arg90) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %99 = "math.tan"(%arg91) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+      %100 = "math.tan"(%arg90) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
       "func.return"(%97, %98, %99, %100) : (f16, f32, f64, f32) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_19"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64), sym_name = "gpu_tanh"}> ({
-    ^bb0(%arg80: f16, %arg81: f32, %arg82: f64):
-      %94 = "math.tanh"(%arg80) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
-      %95 = "math.tanh"(%arg81) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %96 = "math.tanh"(%arg82) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    ^bb0(%arg86: f16, %arg87: f32, %arg88: f64):
+      %94 = "math.tanh"(%arg86) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
+      %95 = "math.tanh"(%arg87) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %96 = "math.tanh"(%arg88) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
       "func.return"(%94, %95, %96) : (f16, f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_20"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64), sym_name = "gpu_rsqrt"}> ({
-    ^bb0(%arg77: f16, %arg78: f32, %arg79: f64):
-      %91 = "math.rsqrt"(%arg77) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
-      %92 = "math.rsqrt"(%arg78) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %93 = "math.rsqrt"(%arg79) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    ^bb0(%arg83: f16, %arg84: f32, %arg85: f64):
+      %91 = "math.rsqrt"(%arg83) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
+      %92 = "math.rsqrt"(%arg84) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %93 = "math.rsqrt"(%arg85) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
       "func.return"(%91, %92, %93) : (f16, f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_21"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64), sym_name = "gpu_sqrt"}> ({
-    ^bb0(%arg74: f16, %arg75: f32, %arg76: f64):
-      %88 = "math.sqrt"(%arg74) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
-      %89 = "math.sqrt"(%arg75) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %90 = "math.sqrt"(%arg76) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    ^bb0(%arg80: f16, %arg81: f32, %arg82: f64):
+      %88 = "math.sqrt"(%arg80) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
+      %89 = "math.sqrt"(%arg81) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %90 = "math.sqrt"(%arg82) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
       "func.return"(%88, %89, %90) : (f16, f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_22"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64), sym_name = "gpu_atan"}> ({
-    ^bb0(%arg71: f16, %arg72: f32, %arg73: f64):
-      %85 = "math.atan"(%arg71) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
-      %86 = "math.atan"(%arg72) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %87 = "math.atan"(%arg73) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    ^bb0(%arg77: f16, %arg78: f32, %arg79: f64):
+      %85 = "math.atan"(%arg77) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
+      %86 = "math.atan"(%arg78) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %87 = "math.atan"(%arg79) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
       "func.return"(%85, %86, %87) : (f16, f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_23"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64), sym_name = "gpu_atan2"}> ({
-    ^bb0(%arg68: f16, %arg69: f32, %arg70: f64):
-      %82 = "math.atan2"(%arg68, %arg68) <{fastmath = #arith.fastmath<none>}> : (f16, f16) -> f16
-      %83 = "math.atan2"(%arg69, %arg69) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %84 = "math.atan2"(%arg70, %arg70) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64
+    ^bb0(%arg74: f16, %arg75: f32, %arg76: f64):
+      %82 = "math.atan2"(%arg74, %arg74) <{fastmath = #arith.fastmath<none>}> : (f16, f16) -> f16
+      %83 = "math.atan2"(%arg75, %arg75) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %84 = "math.atan2"(%arg76, %arg76) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64
       "func.return"(%82, %83, %84) : (f16, f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_24"}> ({
     "test.symbol_scope"() ({
       "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_exp"}> ({
-      ^bb0(%arg66: f32, %arg67: f64):
-        %79 = "math.exp"(%arg66) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-        %80 = "math.exp"(%arg67) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-        %81 = "math.exp"(%arg66) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
+      ^bb0(%arg72: f32, %arg73: f64):
+        %79 = "math.exp"(%arg72) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+        %80 = "math.exp"(%arg73) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+        %81 = "math.exp"(%arg72) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
         "func.return"(%79, %80, %81) : (f32, f64, f32) -> ()
       }) : () -> ()
       "test.finish"() : () -> ()
@@ -242,76 +260,82 @@
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_25"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_expm1"}> ({
-    ^bb0(%arg64: f32, %arg65: f64):
-      %77 = "math.expm1"(%arg64) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %78 = "math.expm1"(%arg65) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    ^bb0(%arg70: f32, %arg71: f64):
+      %77 = "math.expm1"(%arg70) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+      %78 = "math.expm1"(%arg71) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
       "func.return"(%77, %78) : (f32, f64) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_26"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_pow"}> ({
-    ^bb0(%arg62: f32, %arg63: f64):
-      %74 = "math.powf"(%arg62, %arg62) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %75 = "math.powf"(%arg63, %arg63) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64
-      %76 = "math.powf"(%arg62, %arg62) <{fastmath = #arith.fastmath<fast>}> : (f32, f32) -> f32
+    ^bb0(%arg68: f32, %arg69: f64):
+      %74 = "math.powf"(%arg68, %arg68) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %75 = "math.powf"(%arg69, %arg69) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64
+      %76 = "math.powf"(%arg68, %arg68) <{fastmath = #arith.fastmath<fast>}> : (f32, f32) -> f32
       "func.return"(%74, %75, %76) : (f32, f64, f32) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_27"}> ({
     "func.func"() <{function_type = (vector<4xf32>) -> vector<4xf32>, sym_name = "gpu_unroll"}> ({
-    ^bb0(%arg61: vector<4xf32>):
-      %73 = "math.exp"(%arg61) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    ^bb0(%arg67: vector<4xf32>):
+      %73 = "math.exp"(%arg67) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
       "func.return"(%73) : (vector<4xf32>) -> ()
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_28"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "kernel_func", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "kernel_func"} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_29"}> ({
     "gpu.func"() <{function_type = () -> ()}> ({
       "gpu.printf"() <{format = "Hello, world\0A"}> : () -> ()
       "gpu.printf"() <{format = "Hello, world\0A"}> : () -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "test_const_printf", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "test_const_printf"} : () -> ()
     "gpu.func"() <{function_type = (i32, f32) -> ()}> ({
-    ^bb0(%arg59: i32, %arg60: f32):
-      "gpu.printf"(%arg59, %arg60) <{format = "Hello: %d\0A"}> : (i32, f32) -> ()
+    ^bb0(%arg65: i32, %arg66: f32):
+      "gpu.printf"(%arg65, %arg66) <{format = "Hello: %d\0A"}> : (i32, f32) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "test_printf", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "test_printf"} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_30"}> ({
-    "gpu.func"() <{function_type = (i32) -> ()}> ({
-    ^bb0(%arg58: i32):
-      %72 = "gpu.subgroup_reduce"(%arg58) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op add>, uniform}> : (i32) -> i32
+    "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
+    ^bb0(%arg63: i32, %arg64: memref<i32>):
+      %72 = "gpu.subgroup_reduce"(%arg63) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op add>, uniform}> : (i32) -> i32
+      "memref.store"(%72, %arg64) : (i32, memref<i32>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_add", workgroup_attributions = 0 : i64} : () -> ()
-    "gpu.func"() <{function_type = (i32) -> ()}> ({
-    ^bb0(%arg57: i32):
-      %71 = "gpu.subgroup_reduce"(%arg57) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op minsi>, uniform}> : (i32) -> i32
+    }) {sym_name = "subgroup_reduce_add"} : () -> ()
+    "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
+    ^bb0(%arg61: i32, %arg62: memref<i32>):
+      %71 = "gpu.subgroup_reduce"(%arg61) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op minsi>, uniform}> : (i32) -> i32
+      "memref.store"(%71, %arg62) : (i32, memref<i32>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_minsi", workgroup_attributions = 0 : i64} : () -> ()
-    "gpu.func"() <{function_type = (i32) -> ()}> ({
-    ^bb0(%arg56: i32):
-      %70 = "gpu.subgroup_reduce"(%arg56) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op maxsi>, uniform}> : (i32) -> i32
+    }) {sym_name = "subgroup_reduce_minsi"} : () -> ()
+    "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
+    ^bb0(%arg59: i32, %arg60: memref<i32>):
+      %70 = "gpu.subgroup_reduce"(%arg59) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op maxsi>, uniform}> : (i32) -> i32
+      "memref.store"(%70, %arg60) : (i32, memref<i32>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_maxsi", workgroup_attributions = 0 : i64} : () -> ()
-    "gpu.func"() <{function_type = (i32) -> ()}> ({
-    ^bb0(%arg55: i32):
-      %69 = "gpu.subgroup_reduce"(%arg55) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op and>, uniform}> : (i32) -> i32
+    }) {sym_name = "subgroup_reduce_maxsi"} : () -> ()
+    "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
+    ^bb0(%arg57: i32, %arg58: memref<i32>):
+      %69 = "gpu.subgroup_reduce"(%arg57) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op and>, uniform}> : (i32) -> i32
+      "memref.store"(%69, %arg58) : (i32, memref<i32>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_and", workgroup_attributions = 0 : i64} : () -> ()
-    "gpu.func"() <{function_type = (i32) -> ()}> ({
-    ^bb0(%arg54: i32):
-      %68 = "gpu.subgroup_reduce"(%arg54) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op or>, uniform}> : (i32) -> i32
+    }) {sym_name = "subgroup_reduce_and"} : () -> ()
+    "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
+    ^bb0(%arg55: i32, %arg56: memref<i32>):
+      %68 = "gpu.subgroup_reduce"(%arg55) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op or>, uniform}> : (i32) -> i32
+      "memref.store"(%68, %arg56) : (i32, memref<i32>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_or", workgroup_attributions = 0 : i64} : () -> ()
-    "gpu.func"() <{function_type = (i32) -> ()}> ({
-    ^bb0(%arg53: i32):
+    }) {sym_name = "subgroup_reduce_or"} : () -> ()
+    "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
+    ^bb0(%arg53: i32, %arg54: memref<i32>):
       %67 = "gpu.subgroup_reduce"(%arg53) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op xor>, uniform}> : (i32) -> i32
+      "memref.store"(%67, %arg54) : (i32, memref<i32>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_xor", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "subgroup_reduce_xor"} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_31"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_fmod"}> ({
@@ -330,7 +354,7 @@
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_33"}> ({
-    "gpu.func"() <{function_type = (!llvm.ptr) -> (), known_block_size = array<i32: 32, 4, 2>}> ({
+    "gpu.func"() <{function_type = (!llvm.ptr) -> (), kernel, known_block_size = array<i32: 32, 4, 2>}> ({
     ^bb0(%arg48: !llvm.ptr):
       %57 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index
       %58 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -340,13 +364,13 @@
       %62 = "arith.index_cast"(%61) : (index) -> i64
       "llvm.store"(%62, %arg48) <{ordering = 0 : i64}> : (i64, !llvm.ptr) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "kernel_with_block_size", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "kernel_with_block_size"} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_34"}> ({
     "gpu.func"() <{function_type = (memref<2xf32>, f32) -> (memref<2xf32>, f32)}> ({
     ^bb0(%arg46: memref<2xf32>, %arg47: f32):
       "gpu.return"(%arg46, %arg47) : (memref<2xf32>, f32) -> ()
-    }) {sym_name = "memref_signature", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "memref_signature"} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_35"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_acos"}> ({
@@ -471,7 +495,7 @@
     }) : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_50"}> ({
-    "gpu.func"() <{function_type = (!llvm.ptr) -> (), known_grid_size = array<i32: 32, 4, 2>}> ({
+    "gpu.func"() <{function_type = (!llvm.ptr) -> (), kernel, known_grid_size = array<i32: 32, 4, 2>}> ({
     ^bb0(%arg16: !llvm.ptr):
       %18 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %19 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -481,14 +505,14 @@
       %23 = "arith.index_cast"(%22) : (index) -> i64
       "llvm.store"(%23, %arg16) <{ordering = 0 : i64}> : (i64, !llvm.ptr) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "kernel_with_grid_size", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "kernel_with_grid_size"} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module_51"}> ({
-    "gpu.func"() <{function_type = (i1) -> ()}> ({
+    "gpu.func"() <{function_type = (i1) -> (), kernel}> ({
     ^bb0(%arg15: i1):
       "cf.assert"(%arg15) <{msg = "assert message"}> : (i1) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "test_assert", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "test_assert"} : () -> ()
   }) : () -> ()
   "builtin.module"() ({
     "transform.named_sequence"() <{arg_attrs = [{transform.readonly}], function_type = (!transform.any_op) -> (), sym_name = "__transform_main"}> ({
@@ -497,7 +521,7 @@
       "transform.apply_patterns"(%17) <{max_iterations = -1 : i64, max_num_rewrites = -1 : i64}> ({
         "transform.apply_patterns.gpu.gpu_rewrite_patterns"() : () -> ()
       }) : (!transform.any_op) -> ()
-      "transform.apply_conversion_patterns"(%17) <{illegal_dialects = ["gpu"], illegal_ops = ["llvm.copysign", "llvm.cos", "llvm.exp", "llvm.exp2", "llvm.fabs", "llvm.fceil", "llvm.ffloor", "llvm.frem", "llvm.log", "llvm.log10", "llvm.log2", "llvm.pow", "llvm.roundeven", "llvm.round", "llvm.sin", "llvm.sqrt"], legal_dialects = ["llvm", "memref", "nvvm", "test"], legal_ops = ["func.func", "gpu.module", "gpu.yield"], partial_conversion}> ({
+      "transform.apply_conversion_patterns"(%17) <{illegal_dialects = ["gpu"], illegal_ops = ["llvm.copysign", "llvm.cos", "llvm.exp", "llvm.exp2", "llvm.fabs", "llvm.fceil", "llvm.ffloor", "llvm.frem", "llvm.log", "llvm.log10", "llvm.log2", "llvm.pow", "llvm.roundeven", "llvm.round", "llvm.sin", "llvm.sqrt"], legal_dialects = ["llvm", "memref", "nvvm", "test"], legal_ops = ["gpu.module", "gpu.yield"], partial_conversion}> ({
         "transform.apply_conversion_patterns.dialect_to_llvm"() <{dialect_name = "arith"}> : () -> ()
         "transform.apply_conversion_patterns.dialect_to_llvm"() <{dialect_name = "cf"}> : () -> ()
         "transform.apply_conversion_patterns.vector.vector_to_llvm"() <{force_32bit_vector_indices = true, reassociate_fp_reductions = false, use_vector_alignment = false}> : () -> ()
@@ -569,16 +593,16 @@
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "test_module_cluster_size"}> ({
-    "gpu.func"() <{function_type = () -> (), known_cluster_size = array<i32: 8, 2, 4>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_cluster_size = array<i32: 8, 2, 4>}> ({
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "kernel_with_cluster_size", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "kernel_with_cluster_size"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "test_module_cluster_block_ops"}> ({
-    "gpu.func"() <{function_type = (!llvm.ptr) -> (), known_cluster_size = array<i32: 8, 4, 2>}> ({
+    "gpu.func"() <{function_type = (!llvm.ptr) -> (), kernel, known_cluster_size = array<i32: 8, 4, 2>}> ({
     ^bb0(%arg0: !llvm.ptr):
       %0 = "gpu.cluster_block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.cluster_block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -594,7 +618,19 @@
       %11 = "arith.index_cast"(%10) : (index) -> i64
       "llvm.store"(%11, %arg0) <{ordering = 0 : i64}> : (i64, !llvm.ptr) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "kernel_with_cluster_size", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "kernel_with_cluster_size"} : () -> ()
   }) : () -> ()
 }) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "gpu.module"() <{sym_name = "kernels"}> ({
+    "gpu.func"() <{function_type = (i1) -> (i32, i64)}> ({
+    ^bb0(%arg0: i1):
+      %0 = "gpu.ballot"(%arg0) : (i1) -> i32
+      %1 = "gpu.ballot"(%arg0) : (i1) -> i64
+      "gpu.return"(%0, %1) : (i32, i64) -> ()
+    }) {sym_name = "gpu_ballot"} : () -> ()
+  }) : () -> ()
+}) {gpu.container_module} : () -> ()
 

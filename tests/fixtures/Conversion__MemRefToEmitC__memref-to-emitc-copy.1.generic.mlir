@@ -18,3 +18,18 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<i32>, memref<i32>) -> (), sym_name = "copying_rank0"}> ({
+  ^bb0(%arg0: memref<i32>, %arg1: memref<i32>):
+    %0 = "builtin.unrealized_conversion_cast"(%arg1) : (memref<i32>) -> !emitc.ptr<i32>
+    %1 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<i32>) -> !emitc.ptr<i32>
+    %2 = "emitc.constant"() <{value = 0 : index}> : () -> index
+    %3 = "emitc.subscript"(%1, %2) : (!emitc.ptr<i32>, index) -> !emitc.lvalue<i32>
+    %4 = "emitc.load"(%3) : (!emitc.lvalue<i32>) -> i32
+    %5 = "emitc.subscript"(%0, %2) : (!emitc.ptr<i32>, index) -> !emitc.lvalue<i32>
+    "emitc.assign"(%5, %4) : (!emitc.lvalue<i32>, i32) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+

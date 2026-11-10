@@ -1,4 +1,4 @@
-module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int64], []>, #spirv.resource_limits<>>} {
+module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} {
   func.func @trivial_ops(%arg0: index, %arg1: index) {
     %0 = builtin.unrealized_conversion_cast %arg1 : index to i32
     %1 = builtin.unrealized_conversion_cast %arg0 : index to i32
@@ -119,6 +119,19 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int64]
     %3 = spirv.UConvert %arg1 : i64 to i32
     %4 = builtin.unrealized_conversion_cast %3 : i32 to index
     return %0, %2, %0, %4 : index, index, index, index
+  }
+}
+
+// -----
+module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Kernel, Int64], []>, #spirv.resource_limits<>>} {
+  func.func @min_max_ops(%arg0: index, %arg1: index) {
+    %0 = builtin.unrealized_conversion_cast %arg1 : index to i32
+    %1 = builtin.unrealized_conversion_cast %arg0 : index to i32
+    %2 = spirv.CL.s_max %1, %0 : i32
+    %3 = spirv.CL.u_max %1, %0 : i32
+    %4 = spirv.CL.s_min %1, %0 : i32
+    %5 = spirv.CL.u_min %1, %0 : i32
+    return
   }
 }
 

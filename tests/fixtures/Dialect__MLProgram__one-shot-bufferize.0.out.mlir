@@ -31,3 +31,24 @@ module {
   }
 }
 
+// -----
+module {
+  memref.global "private" @state_tensor : memref<4x75xf32> = dense<0.000000e+00>
+  func.func @global_load_store_tensor() -> tensor<4x75xf32> {
+    %c0 = arith.constant 0 : index
+    %cst = arith.constant 1.000000e+00 : f32
+    %0 = memref.get_global @state_tensor : memref<4x75xf32>
+    %1 = memref.load %0[%c0, %c0] : memref<4x75xf32>
+    %2 = arith.addf %1, %cst : f32
+    %alloc = memref.alloc() {alignment = 64 : i64} : memref<4x75xf32>
+    memref.copy %0, %alloc : memref<4x75xf32> to memref<4x75xf32>
+    memref.store %2, %alloc[%c0, %c0] : memref<4x75xf32>
+    %3 = bufferization.to_tensor %alloc : memref<4x75xf32> to tensor<4x75xf32>
+    %alloc_0 = memref.alloc() {alignment = 64 : i64} : memref<4x75xf32>
+    memref.copy %alloc, %alloc_0 : memref<4x75xf32> to memref<4x75xf32>
+    %4 = memref.get_global @state_tensor : memref<4x75xf32>
+    memref.copy %alloc_0, %4 : memref<4x75xf32> to memref<4x75xf32>
+    return %3 : tensor<4x75xf32>
+  }
+}
+

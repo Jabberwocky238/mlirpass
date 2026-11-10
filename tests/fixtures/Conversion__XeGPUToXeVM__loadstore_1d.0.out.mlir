@@ -11,10 +11,10 @@ module {
       %1 = arith.index_castui %intptr_1 : index to i64
       %2 = arith.addi %0, %c384_i64 : i64
       %3 = llvm.inttoptr %2 : i64 to !llvm.ptr<1>
-      %4 = xevm.blockload %3 <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>}> : (!llvm.ptr<1>) -> vector<2xi32>
+      %4 = xevm.blockload %3 <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>}> : (!llvm.ptr<1>) -> vector<2xi32>
       %5 = arith.addi %1, %c512_i64 : i64
       %6 = llvm.inttoptr %5 : i64 to !llvm.ptr<1>
-      xevm.blockstore %6, %4 <{cache_control = #xevm.store_cache_control<L1wb_L2uc_L3uc>}> : (!llvm.ptr<1>, vector<2xi32>)
+      xevm.blockstore %6, %4 <{cache_control = #xevm.store_cache_control<L1wb_L2uc_L3wb>}> : (!llvm.ptr<1>, vector<2xi32>)
       gpu.return
     }
   }

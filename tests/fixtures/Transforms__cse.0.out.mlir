@@ -331,3 +331,75 @@ module {
   }
 }
 
+// -----
+module {
+  func.func @cse_non_addressable_write_blocks_non_pointer_read() -> i32 {
+    %0 = "test.op_with_memread"() : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", test_nonaddressable_resource}]} : () -> i32
+    %2 = "test.op_with_memread"() : () -> i32
+    %3 = arith.addi %0, %2 : i32
+    return %3 : i32
+  }
+}
+
+// -----
+module {
+  func.func @cse_non_addressable_write_does_not_block_pointer_read() -> i32 {
+    %0 = "test.side_effect_op"() {effects = [{effect = "read", on_result}]} : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", test_nonaddressable_resource}]} : () -> i32
+    %2 = arith.addi %0, %0 : i32
+    return %2 : i32
+  }
+}
+
+// -----
+module {
+  func.func @cse_reads_on_same_nonaddressable_resource() -> i32 {
+    %0 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource}]} : () -> i32
+    %1 = arith.addi %0, %0 : i32
+    return %1 : i32
+  }
+}
+
+// -----
+module {
+  func.func @cse_write_same_nonaddressable_resource_blocks() -> i32 {
+    %0 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource}]} : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", test_nonaddressable_resource}]} : () -> i32
+    %2 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource}]} : () -> i32
+    %3 = arith.addi %0, %2 : i32
+    return %3 : i32
+  }
+}
+
+// -----
+module {
+  func.func @cse_write_disjoint_nonaddressable_subresource_allows() -> i32 {
+    %0 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource_a}]} : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", test_nonaddressable_resource_b}]} : () -> i32
+    %2 = arith.addi %0, %0 : i32
+    return %2 : i32
+  }
+}
+
+// -----
+module {
+  func.func @cse_addressable_custom_resource_write_blocks() -> i32 {
+    %0 = "test.op_with_memread"() : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", test_resource}]} : () -> i32
+    %2 = "test.op_with_memread"() : () -> i32
+    %3 = arith.addi %0, %2 : i32
+    return %3 : i32
+  }
+}
+
+// -----
+module {
+  func.func @cse_pointer_write_does_not_block_non_addressable_read() -> i32 {
+    %0 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource}]} : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", on_result}]} : () -> i32
+    %2 = arith.addi %0, %0 : i32
+    return %2 : i32
+  }
+}
+

@@ -15,7 +15,7 @@
       %8 = "memref.reinterpret_cast"(%3#0, %7) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64>, static_strides = array<i64>}> : (memref<f32>, index) -> memref<f32, strided<[], offset: ?>>
       "memref.store"(%arg0, %8) : (f32, memref<f32, strided<[], offset: ?>>) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -38,7 +38,7 @@
       %8 = "memref.reinterpret_cast"(%3#0, %7) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64>, static_strides = array<i64>}> : (memref<f32>, index) -> memref<f32, strided<[], offset: ?>>
       "memref.store"(%arg0, %8) : (f32, memref<f32, strided<[], offset: ?>>) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -62,7 +62,7 @@
       %9 = "memref.load"(%8) : (memref<f32, strided<[], offset: ?>>) -> f32
       "test.test"(%9) : (f32) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -85,7 +85,7 @@
       %8 = "memref.reinterpret_cast"(%3#0, %7, %0, %0, %0, %3#5, %3#6) <{operandSegmentSizes = array<i32: 1, 1, 3, 2>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: -9223372036854775808, -9223372036854775808, -9223372036854775808>, static_strides = array<i64: -9223372036854775808, -9223372036854775808, 1>}> : (memref<f32>, index, index, index, index, index, index) -> memref<?x?x?xf32, strided<[?, ?, ?], offset: ?>>
       "test.test"(%8) : (memref<?x?x?xf32, strided<[?, ?, ?], offset: ?>>) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -112,7 +112,7 @@
       %10 = "memref.reinterpret_cast"(%3#0, %9, %0, %0, %0, %7, %8) <{operandSegmentSizes = array<i32: 1, 1, 3, 2>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: -9223372036854775808, -9223372036854775808, -9223372036854775808>, static_strides = array<i64: -9223372036854775808, -9223372036854775808, 4>}> : (memref<f32>, index, index, index, index, index, index) -> memref<?x?x?xf32, strided<[?, ?, 4], offset: ?>>
       "test.test"(%10) : (memref<?x?x?xf32, strided<[?, ?, 4], offset: ?>>) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

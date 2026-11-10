@@ -1,6 +1,6 @@
 module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.4, [Shader, GroupNonUniformShuffle], []>, #spirv.resource_limits<subgroup_size = 16>>} {
   spirv.module @__spv__kernels Logical GLSL450 {
-    spirv.func @shuffle_xor() "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, workgroup_attributions = 0 : i64} {
+    spirv.func @shuffle_xor() "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} {
       %cst8_i32 = spirv.Constant 8 : i32
       %cst16_i32 = spirv.Constant 16 : i32
       %cst_f32 = spirv.Constant 4.200000e+01 : f32
@@ -14,7 +14,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
       %c8_i32 = arith.constant 8 : i32
       %c16_i32 = arith.constant 16 : i32
       %cst = arith.constant 4.200000e+01 : f32
-      %shuffleResult, %valid = gpu.shuffle  xor %cst, %c8_i32, %c16_i32 : f32
+      %shuffleResult, %valid = gpu.shuffle xor %cst, %c8_i32, %c16_i32 : f32
       gpu.return
     }
   }
@@ -24,7 +24,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
 // -----
 module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.4, [Shader, GroupNonUniformShuffle], []>, #spirv.resource_limits<subgroup_size = 16>>} {
   spirv.module @__spv__kernels Logical GLSL450 {
-    spirv.func @shuffle_idx() "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, workgroup_attributions = 0 : i64} {
+    spirv.func @shuffle_idx() "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} {
       %cst8_i32 = spirv.Constant 8 : i32
       %cst16_i32 = spirv.Constant 16 : i32
       %cst_f32 = spirv.Constant 4.200000e+01 : f32
@@ -38,7 +38,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
       %c8_i32 = arith.constant 8 : i32
       %c16_i32 = arith.constant 16 : i32
       %cst = arith.constant 4.200000e+01 : f32
-      %shuffleResult, %valid = gpu.shuffle  idx %cst, %c8_i32, %c16_i32 : f32
+      %shuffleResult, %valid = gpu.shuffle idx %cst, %c8_i32, %c16_i32 : f32
       gpu.return
     }
   }
@@ -48,7 +48,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
 module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.4, [Shader, GroupNonUniformShuffle, GroupNonUniformShuffleRelative], []>, #spirv.resource_limits<subgroup_size = 16>>} {
   spirv.module @__spv__kernels Logical GLSL450 {
     spirv.GlobalVariable @__builtin__SubgroupLocalInvocationId__ built_in("SubgroupLocalInvocationId") : !spirv.ptr<i32, Input>
-    spirv.func @shuffle_down() "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, workgroup_attributions = 0 : i64} {
+    spirv.func @shuffle_down() "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} {
       %cst4_i32 = spirv.Constant 4 : i32
       %cst16_i32 = spirv.Constant 16 : i32
       %cst_f32 = spirv.Constant 4.200000e+01 : f32
@@ -65,7 +65,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
       %c4_i32 = arith.constant 4 : i32
       %c16_i32 = arith.constant 16 : i32
       %cst = arith.constant 4.200000e+01 : f32
-      %shuffleResult, %valid = gpu.shuffle  down %cst, %c4_i32, %c16_i32 : f32
+      %shuffleResult, %valid = gpu.shuffle down %cst, %c4_i32, %c16_i32 : f32
       gpu.return
     }
   }
@@ -75,7 +75,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
 module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.4, [Shader, GroupNonUniformShuffle, GroupNonUniformShuffleRelative], []>, #spirv.resource_limits<subgroup_size = 16>>} {
   spirv.module @__spv__kernels Logical GLSL450 {
     spirv.GlobalVariable @__builtin__SubgroupLocalInvocationId__ built_in("SubgroupLocalInvocationId") : !spirv.ptr<i32, Input>
-    spirv.func @shuffle_up() "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, workgroup_attributions = 0 : i64} {
+    spirv.func @shuffle_up() "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} {
       %cst4_i32 = spirv.Constant 4 : i32
       %cst16_i32 = spirv.Constant 16 : i32
       %cst_f32 = spirv.Constant 4.200000e+01 : f32
@@ -93,7 +93,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
       %c4_i32 = arith.constant 4 : i32
       %c16_i32 = arith.constant 16 : i32
       %cst = arith.constant 4.200000e+01 : f32
-      %shuffleResult, %valid = gpu.shuffle  up %cst, %c4_i32, %c16_i32 : f32
+      %shuffleResult, %valid = gpu.shuffle up %cst, %c4_i32, %c16_i32 : f32
       gpu.return
     }
   }

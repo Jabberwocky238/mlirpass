@@ -1,6 +1,6 @@
 module attributes {gpu.container_module} {
   spirv.module @__spv__kernels Logical GLSL450 {
-    spirv.func @basic_module_structure(%arg0: f32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 0), StorageBuffer>}, %arg1: !spirv.ptr<!spirv.struct<(!spirv.array<12 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 1)>}) "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, workgroup_attributions = 0 : i64} {
+    spirv.func @basic_module_structure(%arg0: f32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 0), StorageBuffer>}, %arg1: !spirv.ptr<!spirv.struct<(!spirv.array<12 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 1)>}) "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>} {
       spirv.Return
     }
   }
@@ -21,7 +21,7 @@ module attributes {gpu.container_module} {
 // -----
 module attributes {gpu.container_module} {
   spirv.module @__spv__kernels Logical GLSL450 {
-    spirv.func @basic_module_structure_preset_ABI(%arg0: f32 {spirv.interface_var_abi = #spirv.interface_var_abi<(1, 2), StorageBuffer>}, %arg1: !spirv.ptr<!spirv.struct<(!spirv.array<12 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(3, 0)>}) "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, workgroup_attributions = 0 : i64} {
+    spirv.func @basic_module_structure_preset_ABI(%arg0: f32 {spirv.interface_var_abi = #spirv.interface_var_abi<(1, 2), StorageBuffer>}, %arg1: !spirv.ptr<!spirv.struct<(!spirv.array<12 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(3, 0)>}) "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>} {
       spirv.Return
     }
   }
@@ -38,7 +38,7 @@ module attributes {gpu.container_module} {
 // -----
 module attributes {gpu.container_module} {
   spirv.module @__spv__kernels Logical GLSL450 {
-    spirv.func @barrier(%arg0: f32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 0), StorageBuffer>}, %arg1: !spirv.ptr<!spirv.struct<(!spirv.array<12 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 1)>}) "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, workgroup_attributions = 0 : i64} {
+    spirv.func @barrier(%arg0: f32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 0), StorageBuffer>}, %arg1: !spirv.ptr<!spirv.struct<(!spirv.array<12 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 1)>}) "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>} {
       spirv.ControlBarrier <Workgroup>, <Workgroup>, <AcquireRelease|WorkgroupMemory>
       spirv.Return
     }
@@ -55,6 +55,37 @@ module attributes {gpu.container_module} {
     %c1 = arith.constant 1 : index
     gpu.launch_func  @kernels::@barrier blocks in (%c1, %c1, %c1) threads in (%c1, %c1, %c1)  args(%0 : f32, %1 : memref<12xf32, #spirv.storage_class<StorageBuffer>>)
     return
+  }
+}
+
+// -----
+module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.1, [Kernel, Addresses, NamedBarrier], []>, #spirv.resource_limits<>>} {
+  gpu.module @kernels {
+    spirv.module @__spv__kernels Physical32 OpenCL {
+      spirv.func @barrier_subgroup_scope() "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 1, 1]>} {
+        spirv.ControlBarrier <Subgroup>, <Workgroup>, <AcquireRelease|WorkgroupMemory>
+        spirv.Return
+      }
+    }
+    func.func @barrier_subgroup_scope() attributes {gpu.kernel} {
+      return
+    }
+  }
+}
+
+// -----
+module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.1, [Kernel, Addresses, NamedBarrier], []>, #spirv.resource_limits<>>} {
+  gpu.module @kernels {
+    spirv.module @__spv__kernels Physical32 OpenCL {
+      spirv.func @named_barrier(%arg0: i32) "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 1, 1]>} {
+        %0 = spirv.NamedBarrierInitialize %arg0 : i32 -> !spirv.named_barrier
+        spirv.MemoryNamedBarrier %0, <Workgroup>, <AcquireRelease|WorkgroupMemory> : !spirv.named_barrier
+        spirv.Return
+      }
+    }
+    func.func @named_barrier(%arg0: i32) attributes {gpu.kernel} {
+      return
+    }
   }
 }
 

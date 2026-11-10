@@ -12,7 +12,7 @@
       %6 = "memref.load"(%arg0, %5) : (memref<?xf32>, index) -> f32
       "memref.store"(%6, %arg1, %5) : (f32, memref<?xf32>, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

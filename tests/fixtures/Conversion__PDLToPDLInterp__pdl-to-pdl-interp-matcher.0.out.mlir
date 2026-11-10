@@ -655,11 +655,11 @@ module @multi_root {
       %11 = pdl_interp.get_value_type of %7 : !pdl.type
       pdl_interp.are_equal %10, %11 : !pdl.type -> ^bb21, ^bb1
     ^bb21:  // pred: ^bb20
-      pdl_interp.record_match @rewriters::@pdl_generated_rewriter(%arg0, %arg1 : !pdl.operation, !pdl.operation) : benefit(1), loc([%1, %4, %arg0, %arg1]) -> ^bb1
+      pdl_interp.record_match @rewriters::@rewrite_multi_root(%arg0, %arg1 : !pdl.operation, !pdl.operation) : benefit(1), loc([%1, %4, %arg0, %arg1]) -> ^bb1
     } -> ^bb1
   }
   module @rewriters {
-    pdl_interp.func @pdl_generated_rewriter(%arg0: !pdl.operation, %arg1: !pdl.operation) {
+    pdl_interp.func @rewrite_multi_root(%arg0: !pdl.operation, %arg1: !pdl.operation) {
       pdl_interp.apply_rewrite "rewriter"(%arg0, %arg1 : !pdl.operation, !pdl.operation)
       pdl_interp.finalize
     }
@@ -696,10 +696,10 @@ module @overlapping_roots {
   ^bb10:  // pred: ^bb9
     pdl_interp.are_equal %4, %0 : !pdl.value -> ^bb11, ^bb1
   ^bb11:  // pred: ^bb10
-    pdl_interp.record_match @rewriters::@pdl_generated_rewriter(%arg0 : !pdl.operation) : benefit(1), loc([%1, %arg0]) -> ^bb1
+    pdl_interp.record_match @rewriters::@rewrite_overlapping_roots(%arg0 : !pdl.operation) : benefit(1), loc([%1, %arg0]) -> ^bb1
   }
   module @rewriters {
-    pdl_interp.func @pdl_generated_rewriter(%arg0: !pdl.operation) {
+    pdl_interp.func @rewrite_overlapping_roots(%arg0: !pdl.operation) {
       pdl_interp.apply_rewrite "rewriter"(%arg0 : !pdl.operation)
       pdl_interp.finalize
     }
@@ -737,11 +737,11 @@ module @force_overlapped_root {
       %4 = pdl_interp.get_operand 0 of %arg1
       pdl_interp.are_equal %4, %2 : !pdl.value -> ^bb5, ^bb1
     ^bb5:  // pred: ^bb4
-      pdl_interp.record_match @rewriters::@pdl_generated_rewriter(%arg0, %arg1 : !pdl.operation, !pdl.operation) : benefit(1), loc([%arg0, %arg1]) -> ^bb1
+      pdl_interp.record_match @rewriters::@rewrite_forced_overlapped_root(%arg0, %arg1 : !pdl.operation, !pdl.operation) : benefit(1), loc([%arg0, %arg1]) -> ^bb1
     } -> ^bb1
   }
   module @rewriters {
-    pdl_interp.func @pdl_generated_rewriter(%arg0: !pdl.operation, %arg1: !pdl.operation) {
+    pdl_interp.func @rewrite_forced_overlapped_root(%arg0: !pdl.operation, %arg1: !pdl.operation) {
       pdl_interp.apply_rewrite "rewriter"(%arg0, %arg1 : !pdl.operation, !pdl.operation)
       pdl_interp.finalize
     }
@@ -768,11 +768,11 @@ module @variadic_results_all {
       %3 = pdl_interp.get_operands of %arg1 : !pdl.range<value>
       pdl_interp.are_equal %3, %0 : !pdl.range<value> -> ^bb4, ^bb1
     ^bb4:  // pred: ^bb3
-      pdl_interp.record_match @rewriters::@pdl_generated_rewriter(%arg0, %arg1 : !pdl.operation, !pdl.operation) : benefit(1), loc([%arg0, %arg1]) -> ^bb1
+      pdl_interp.record_match @rewriters::@variadic_results_all(%arg0, %arg1 : !pdl.operation, !pdl.operation) : benefit(1), loc([%arg0, %arg1]) -> ^bb1
     } -> ^bb1
   }
   module @rewriters {
-    pdl_interp.func @pdl_generated_rewriter(%arg0: !pdl.operation, %arg1: !pdl.operation) {
+    pdl_interp.func @variadic_results_all(%arg0: !pdl.operation, %arg1: !pdl.operation) {
       pdl_interp.apply_rewrite "rewriter"(%arg0, %arg1 : !pdl.operation, !pdl.operation)
       pdl_interp.finalize
     }
@@ -826,11 +826,11 @@ module @variadic_results_at {
     ^bb10:  // pred: ^bb9
       pdl_interp.are_equal %7, %0 : !pdl.range<value> -> ^bb11, ^bb1
     ^bb11:  // pred: ^bb10
-      pdl_interp.record_match @rewriters::@pdl_generated_rewriter(%arg0, %arg1 : !pdl.operation, !pdl.operation) : benefit(1), loc([%1, %arg0, %arg1]) -> ^bb1
+      pdl_interp.record_match @rewriters::@variadic_results_at(%arg0, %arg1 : !pdl.operation, !pdl.operation) : benefit(1), loc([%1, %arg0, %arg1]) -> ^bb1
     } -> ^bb1
   }
   module @rewriters {
-    pdl_interp.func @pdl_generated_rewriter(%arg0: !pdl.operation, %arg1: !pdl.operation) {
+    pdl_interp.func @variadic_results_at(%arg0: !pdl.operation, %arg1: !pdl.operation) {
       pdl_interp.apply_rewrite "rewriter"(%arg0, %arg1 : !pdl.operation, !pdl.operation)
       pdl_interp.finalize
     }
@@ -956,12 +956,12 @@ module @common_connector {
         %12 = pdl_interp.get_operand 0 of %arg2
         pdl_interp.are_equal %12, %5 : !pdl.value -> ^bb8, ^bb1
       ^bb8:  // pred: ^bb7
-        pdl_interp.record_match @rewriters::@pdl_generated_rewriter(%arg1, %arg2, %arg0 : !pdl.operation, !pdl.operation, !pdl.operation) : benefit(1), loc([%1, %3, %arg0, %arg1, %arg2]) -> ^bb1
+        pdl_interp.record_match @rewriters::@common_connector(%arg1, %arg2, %arg0 : !pdl.operation, !pdl.operation, !pdl.operation) : benefit(1), loc([%1, %3, %arg0, %arg1, %arg2]) -> ^bb1
       } -> ^bb1
     } -> ^bb1
   }
   module @rewriters {
-    pdl_interp.func @pdl_generated_rewriter(%arg0: !pdl.operation, %arg1: !pdl.operation, %arg2: !pdl.operation) {
+    pdl_interp.func @common_connector(%arg0: !pdl.operation, %arg1: !pdl.operation, %arg2: !pdl.operation) {
       pdl_interp.apply_rewrite "rewriter"(%arg0, %arg1, %arg2 : !pdl.operation, !pdl.operation, !pdl.operation)
       pdl_interp.finalize
     }
@@ -1020,12 +1020,12 @@ module @common_connector_range {
         %10 = pdl_interp.get_operands of %arg2 : !pdl.range<value>
         pdl_interp.are_equal %10, %5 : !pdl.range<value> -> ^bb6, ^bb1
       ^bb6:  // pred: ^bb5
-        pdl_interp.record_match @rewriters::@pdl_generated_rewriter(%arg1, %arg2, %arg0 : !pdl.operation, !pdl.operation, !pdl.operation) : benefit(1), loc([%1, %3, %arg0, %arg1, %arg2]) -> ^bb1
+        pdl_interp.record_match @rewriters::@common_connector_range(%arg1, %arg2, %arg0 : !pdl.operation, !pdl.operation, !pdl.operation) : benefit(1), loc([%1, %3, %arg0, %arg1, %arg2]) -> ^bb1
       } -> ^bb1
     } -> ^bb1
   }
   module @rewriters {
-    pdl_interp.func @pdl_generated_rewriter(%arg0: !pdl.operation, %arg1: !pdl.operation, %arg2: !pdl.operation) {
+    pdl_interp.func @common_connector_range(%arg0: !pdl.operation, %arg1: !pdl.operation, %arg2: !pdl.operation) {
       pdl_interp.apply_rewrite "rewriter"(%arg0, %arg1, %arg2 : !pdl.operation, !pdl.operation, !pdl.operation)
       pdl_interp.finalize
     }

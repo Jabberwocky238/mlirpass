@@ -122,3 +122,86 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "unused_alloca_store_loop"}> ({
+    %0 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    %1 = "memref.alloca"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<i32>
+    "cf.br"()[^bb1] : () -> ()
+  ^bb1:  // 2 preds: ^bb0, ^bb1
+    "memref.store"(%0, %1) : (i32, memref<i32>) -> ()
+    "cf.br"()[^bb1] : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1) -> i32, sym_name = "store_back_to_alloca"}> ({
+  ^bb0(%arg0: i1):
+    %0 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    %1 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    %2 = "memref.alloca"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<i32>
+    "memref.store"(%0, %2) : (i32, memref<i32>) -> ()
+    %3 = "memref.load"(%2) : (memref<i32>) -> i32
+    "cf.cond_br"(%arg0)[^bb1, ^bb2] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb1:  // pred: ^bb0
+    "memref.store"(%3, %2) : (i32, memref<i32>) -> ()
+    "cf.br"()[^bb3] : () -> ()
+  ^bb2:  // pred: ^bb0
+    "memref.store"(%1, %2) : (i32, memref<i32>) -> ()
+    "cf.br"()[^bb3] : () -> ()
+  ^bb3:  // 2 preds: ^bb1, ^bb2
+    %4 = "memref.load"(%2) : (memref<i32>) -> i32
+    "func.return"(%4) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1) -> i32, sym_name = "merge_point_used_by_erased_op"}> ({
+  ^bb0(%arg0: i1):
+    %0 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    %1 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    %2 = "memref.alloca"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<i32>
+    "cf.cond_br"(%arg0)[^bb1, ^bb2] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb1:  // pred: ^bb0
+    "memref.store"(%0, %2) : (i32, memref<i32>) -> ()
+    "cf.br"()[^bb3] : () -> ()
+  ^bb2:  // pred: ^bb0
+    "memref.store"(%1, %2) : (i32, memref<i32>) -> ()
+    "cf.br"()[^bb3] : () -> ()
+  ^bb3:  // 2 preds: ^bb1, ^bb2
+    %3 = "memref.load"(%2) : (memref<i32>) -> i32
+    "memref.store"(%3, %2) : (i32, memref<i32>) -> ()
+    "func.return"(%0) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1, i1) -> i32, sym_name = "two_consecutive_merge_points"}> ({
+  ^bb0(%arg0: i1, %arg1: i1):
+    %0 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    %1 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    %2 = "arith.constant"() <{value = 2 : i32}> : () -> i32
+    %3 = "memref.alloca"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<i32>
+    "cf.cond_br"(%arg0)[^bb2, ^bb1] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb1:  // pred: ^bb0
+    "cf.cond_br"(%arg1)[^bb3, ^bb5] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb2:  // pred: ^bb0
+    "memref.store"(%0, %3) : (i32, memref<i32>) -> ()
+    "cf.br"()[^bb4] : () -> ()
+  ^bb3:  // pred: ^bb1
+    "memref.store"(%1, %3) : (i32, memref<i32>) -> ()
+    "cf.br"()[^bb4] : () -> ()
+  ^bb4:  // 2 preds: ^bb2, ^bb3
+    "cf.br"()[^bb6] : () -> ()
+  ^bb5:  // pred: ^bb1
+    "memref.store"(%2, %3) : (i32, memref<i32>) -> ()
+    "cf.br"()[^bb6] : () -> ()
+  ^bb6:  // 2 preds: ^bb4, ^bb5
+    %4 = "memref.load"(%3) : (memref<i32>) -> i32
+    "func.return"(%4) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+

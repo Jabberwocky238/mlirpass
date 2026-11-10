@@ -9,10 +9,10 @@
     "spirv.ExecutionMode"() <{execution_mode = #spirv.execution_mode<LocalSize>, fn = @bar, values = [1 : i32, 1 : i32, 1 : i32]}> : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "foo"}> ({
-    "gpu.func"() <{function_type = (memref<6xi32>) -> ()}> ({
+    "gpu.func"() <{function_type = (memref<6xi32>) -> (), kernel}> ({
     ^bb0(%arg0: memref<6xi32>):
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [1, 1, 1]>, sym_name = "bar", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [1, 1, 1]>, sym_name = "bar"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "main"}> ({
     %0 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<6xi32>

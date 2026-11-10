@@ -8,7 +8,7 @@
     %4 = "arith.muli"(%2#1, %0) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %5 = "arith.addi"(%3, %4) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %6 = "arith.index_cast"(%5) : (index) -> i64
-    %7 = "xegpu.create_nd_tdesc"(%6) <{const_offsets = array<i64>, const_shape = array<i64: 32>, const_strides = array<i64: 1>, operandSegmentSizes = array<i32: 1, 0, 0, 0>}> : (i64) -> !xegpu.tensor_desc<8xf32, #xegpu.block_tdesc_attr<boundary_check = false>>
+    %7 = "xegpu.create_nd_tdesc"(%6) <{const_shape = array<i64: 32>, const_strides = array<i64: 1>, operandSegmentSizes = array<i32: 1, 0, 0>}> : (i64) -> !xegpu.tensor_desc<8xf32, #xegpu.block_tdesc_attr<boundary_check = false>>
     "xegpu.store_nd"(%arg0, %7, %arg2) <{const_offsets = array<i64: -9223372036854775808>}> : (vector<8xf32>, !xegpu.tensor_desc<8xf32, #xegpu.block_tdesc_attr<boundary_check = false>>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -25,7 +25,7 @@
     %4 = "arith.muli"(%2#1, %0) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %5 = "arith.addi"(%3, %4) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %6 = "arith.index_cast"(%5) : (index) -> i64
-    %7 = "xegpu.create_nd_tdesc"(%6) <{const_offsets = array<i64>, const_shape = array<i64: 16, 32>, const_strides = array<i64: 32, 1>, operandSegmentSizes = array<i32: 1, 0, 0, 0>}> : (i64) -> !xegpu.tensor_desc<8x16xf32>
+    %7 = "xegpu.create_nd_tdesc"(%6) <{const_shape = array<i64: 16, 32>, const_strides = array<i64: 32, 1>, operandSegmentSizes = array<i32: 1, 0, 0>}> : (i64) -> !xegpu.tensor_desc<8x16xf32>
     "xegpu.store_nd"(%arg0, %7, %arg2, %arg2) <{const_offsets = array<i64: -9223372036854775808, -9223372036854775808>}> : (vector<8x16xf32>, !xegpu.tensor_desc<8x16xf32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -43,7 +43,7 @@
     %5 = "arith.muli"(%3#1, %0) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %6 = "arith.addi"(%4, %5) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %7 = "arith.index_cast"(%6) : (index) -> i64
-    %8 = "xegpu.create_nd_tdesc"(%7, %3#2, %3#3, %3#4) <{const_offsets = array<i64>, const_shape = array<i64: -9223372036854775808, -9223372036854775808>, const_strides = array<i64: -9223372036854775808, 1>, operandSegmentSizes = array<i32: 1, 0, 2, 1>}> : (i64, index, index, index) -> !xegpu.tensor_desc<8x16xf32>
+    %8 = "xegpu.create_nd_tdesc"(%7, %3#2, %3#3, %3#4) <{const_shape = array<i64: -9223372036854775808, -9223372036854775808>, const_strides = array<i64: -9223372036854775808, 1>, operandSegmentSizes = array<i32: 1, 2, 1>}> : (i64, index, index, index) -> !xegpu.tensor_desc<8x16xf32>
     "xegpu.store_nd"(%arg0, %8, %arg3, %arg4) <{const_offsets = array<i64: -9223372036854775808, -9223372036854775808>}> : (vector<8x16xf32>, !xegpu.tensor_desc<8x16xf32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -53,7 +53,7 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<8x16xf32>, memref<7x64xf32>, index) -> (), sym_name = "store_out_of_bounds"}> ({
   ^bb0(%arg0: vector<8x16xf32>, %arg1: memref<7x64xf32>, %arg2: index):
-    %0 = "xegpu.create_nd_tdesc"(%arg1) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>}> : (memref<7x64xf32>) -> !xegpu.tensor_desc<8x16xf32>
+    %0 = "xegpu.create_nd_tdesc"(%arg1) <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (memref<7x64xf32>) -> !xegpu.tensor_desc<8x16xf32>
     "xegpu.store_nd"(%arg0, %0, %arg2, %arg2) <{const_offsets = array<i64: -9223372036854775808, -9223372036854775808>}> : (vector<8x16xf32>, !xegpu.tensor_desc<8x16xf32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -73,6 +73,15 @@
   "func.func"() <{function_type = (vector<f32>, memref<64xf32>, index) -> (), sym_name = "no_store_zero_dim_vector"}> ({
   ^bb0(%arg0: vector<f32>, %arg1: memref<64xf32>, %arg2: index):
     "vector.store"(%arg0, %arg1, %arg2) : (vector<f32>, memref<64xf32>, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xf32>, memref<?xvector<4xf32>>, index) -> (), sym_name = "no_store_vec_element_memref"}> ({
+  ^bb0(%arg0: vector<4xf32>, %arg1: memref<?xvector<4xf32>>, %arg2: index):
+    "vector.store"(%arg0, %arg1, %arg2) : (vector<4xf32>, memref<?xvector<4xf32>>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

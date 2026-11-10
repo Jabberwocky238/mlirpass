@@ -101,6 +101,53 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (vector<i32>, vector<i32>, vector<i8>) -> vector<i32>, sym_name = "apply_scale_test_vector_rank_0"}> ({
+  ^bb0(%arg0: vector<i32>, %arg1: vector<i32>, %arg2: vector<i8>):
+    %0 = "arith.extui"(%arg2) : (vector<i8>) -> vector<i32>
+    %1 = "arith.constant"() <{value = dense<0> : vector<i32>}> : () -> vector<i32>
+    %2 = "arith.constant"() <{value = dense<1> : vector<i32>}> : () -> vector<i32>
+    %3 = "arith.constant"() <{value = dense<2> : vector<i32>}> : () -> vector<i32>
+    %4 = "arith.constant"() <{value = dense<30> : vector<i32>}> : () -> vector<i32>
+    %5 = "arith.constant"() <{value = dense<32> : vector<i32>}> : () -> vector<i32>
+    %6:2 = "arith.mulsi_extended"(%arg0, %arg1) : (vector<i32>, vector<i32>) -> (vector<i32>, vector<i32>)
+    %7 = "arith.cmpi"(%0, %5) <{predicate = 5 : i64}> : (vector<i32>, vector<i32>) -> vector<i1>
+    %8 = "arith.cmpi"(%0, %5) <{predicate = 4 : i64}> : (vector<i32>, vector<i32>) -> vector<i1>
+    %9 = "arith.subi"(%5, %0) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %10 = "arith.subi"(%0, %5) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %11 = "arith.select"(%7, %1, %9) : (vector<i1>, vector<i32>, vector<i32>) -> vector<i32>
+    %12 = "arith.select"(%7, %10, %1) : (vector<i1>, vector<i32>, vector<i32>) -> vector<i32>
+    %13 = "arith.constant"() <{value = dense<-1> : vector<i32>}> : () -> vector<i32>
+    %14 = "arith.cmpi"(%arg0, %1) <{predicate = 5 : i64}> : (vector<i32>, vector<i32>) -> vector<i1>
+    %15 = "arith.select"(%14, %2, %13) : (vector<i1>, vector<i32>, vector<i32>) -> vector<i32>
+    %16 = "arith.select"(%7, %15, %1) : (vector<i1>, vector<i32>, vector<i32>) -> vector<i32>
+    %17 = "arith.shrui"(%6#0, %4) : (vector<i32>, vector<i32>) -> vector<i32>
+    %18 = "arith.addi"(%17, %16) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %19 = "arith.shrsi"(%18, %3) : (vector<i32>, vector<i32>) -> vector<i32>
+    %20 = "arith.shli"(%16, %4) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %21 = "arith.addi"(%6#0, %20) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %22 = "arith.addi"(%6#1, %19) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %23 = "arith.subi"(%0, %2) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %24 = "arith.shli"(%2, %23) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %25 = "arith.select"(%8, %1, %24) : (vector<i1>, vector<i32>, vector<i32>) -> vector<i32>
+    %26 = "arith.addi"(%21, %25) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %27 = "arith.cmpi"(%21, %26) <{predicate = 8 : i64}> : (vector<i32>, vector<i32>) -> vector<i1>
+    %28 = "arith.extui"(%27) : (vector<i1>) -> vector<i32>
+    %29 = "arith.addi"(%22, %28) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %30 = "arith.subi"(%12, %2) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %31 = "arith.shli"(%2, %30) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %32 = "arith.select"(%8, %31, %1) : (vector<i1>, vector<i32>, vector<i32>) -> vector<i32>
+    %33 = "arith.addi"(%29, %32) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %34 = "arith.shli"(%33, %11) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    %35 = "arith.shrsi"(%34, %12) : (vector<i32>, vector<i32>) -> vector<i32>
+    %36 = "arith.shrui"(%26, %0) : (vector<i32>, vector<i32>) -> vector<i32>
+    %37 = "arith.select"(%7, %1, %36) : (vector<i1>, vector<i32>, vector<i32>) -> vector<i32>
+    %38 = "arith.addi"(%37, %35) <{overflowFlags = #arith.overflow<none>}> : (vector<i32>, vector<i32>) -> vector<i32>
+    "func.return"(%38) : (vector<i32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (i48, i32, i8) -> i32, sym_name = "apply_scale_test_i48"}> ({
   ^bb0(%arg0: i48, %arg1: i32, %arg2: i8):
     %0 = "arith.constant"() <{value = 0 : i48}> : () -> i48

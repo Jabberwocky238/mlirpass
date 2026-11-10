@@ -8,6 +8,24 @@
 
 // -----
 "builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<vector<8xi16> (ptr<1>, i32, i32, i32, i32, i32)>, linkage = #llvm.linkage<external>, sym_name = "blockload2d_8bit_32column", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg0: !llvm.ptr<1>, %arg1: i32, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32):
+    %0 = "xevm.blockload2d"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) <{elem_size_in_bits = 8 : i32, pack_register = false, tile_height = 8 : i32, tile_width = 32 : i32, transpose = false, v_blocks = 1 : i32}> : (!llvm.ptr<1>, i32, i32, i32, i32, i32) -> vector<8xi16>
+    "llvm.return"(%0) : (vector<8xi16>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<vector<8xi16> (ptr<1>, i32, i32, i32, i32, i32)>, linkage = #llvm.linkage<external>, sym_name = "blockload2d_default_cache_control", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg0: !llvm.ptr<1>, %arg1: i32, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32):
+    %0 = "xevm.blockload2d"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) <{cache_control = #xevm.load_cache_control<Use_Default>, elem_size_in_bits = 16 : i32, pack_register = false, tile_height = 8 : i32, tile_width = 16 : i32, transpose = false, v_blocks = 1 : i32}> : (!llvm.ptr<1>, i32, i32, i32, i32, i32) -> vector<8xi16>
+    "llvm.return"(%0) : (vector<8xi16>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<vector<8xi16> (ptr<1>, i32, i32, i32, i32, i32)>, linkage = #llvm.linkage<external>, sym_name = "blockload2d_cache_control", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
   ^bb0(%arg0: !llvm.ptr<1>, %arg1: i32, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32):
     %0 = "xevm.blockload2d"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) <{cache_control = #xevm.load_cache_control<L1uc_L2uc_L3uc>, elem_size_in_bits = 16 : i32, pack_register = false, tile_height = 8 : i32, tile_width = 16 : i32, transpose = false, v_blocks = 1 : i32}> : (!llvm.ptr<1>, i32, i32, i32, i32, i32) -> vector<8xi16>

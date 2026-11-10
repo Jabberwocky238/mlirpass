@@ -29,6 +29,15 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (vector<4x3xi32>) -> (), sym_name = "absi_2dvector"}> ({
+  ^bb0(%arg0: vector<4x3xi32>):
+    %0 = "math.absi"(%arg0) : (vector<4x3xi32>) -> vector<4x3xi32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (f32) -> (), sym_name = "log1p"}> ({
   ^bb0(%arg0: f32):
     %0 = "math.log1p"(%arg0) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
@@ -493,6 +502,37 @@
     %0 = "math.absf"(%arg0) <{fastmath = #arith.fastmath<none>}> : (f4E2M1FN) -> f4E2M1FN
     %1 = "math.cos"(%arg0) <{fastmath = #arith.fastmath<none>}> : (f4E2M1FN) -> f4E2M1FN
     %2 = "math.fma"(%arg1, %arg1, %arg2) <{fastmath = #arith.fastmath<none>}> : (f4E2M1FN, f4E2M1FN, f4E2M1FN) -> f4E2M1FN
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64, f64) -> (), sym_name = "experimental_constrained_fma"}> ({
+  ^bb0(%arg0: f64, %arg1: f64, %arg2: f64):
+    %0 = "math.fma"(%arg0, %arg1, %arg2) <{fastmath = #arith.fastmath<none>, roundingmode = 0 : i32}> : (f64, f64, f64) -> f64
+    %1 = "math.fma"(%arg0, %arg1, %arg2) <{fastmath = #arith.fastmath<none>, roundingmode = 1 : i32}> : (f64, f64, f64) -> f64
+    %2 = "math.fma"(%arg0, %arg1, %arg2) <{fastmath = #arith.fastmath<none>, roundingmode = 2 : i32}> : (f64, f64, f64) -> f64
+    %3 = "math.fma"(%arg0, %arg1, %arg2) <{fastmath = #arith.fastmath<none>, roundingmode = 3 : i32}> : (f64, f64, f64) -> f64
+    %4 = "math.fma"(%arg0, %arg1, %arg2) <{fastmath = #arith.fastmath<none>, roundingmode = 4 : i32}> : (f64, f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xf32>, vector<4xf32>, vector<4xf32>) -> (), sym_name = "experimental_constrained_fma_vector"}> ({
+  ^bb0(%arg0: vector<4xf32>, %arg1: vector<4xf32>, %arg2: vector<4xf32>):
+    %0 = "math.fma"(%arg0, %arg1, %arg2) <{fastmath = #arith.fastmath<none>, roundingmode = 0 : i32}> : (vector<4xf32>, vector<4xf32>, vector<4xf32>) -> vector<4xf32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64, f64) -> (), sym_name = "constrained_fma_with_fastmath"}> ({
+  ^bb0(%arg0: f64, %arg1: f64, %arg2: f64):
+    %0 = "math.fma"(%arg0, %arg1, %arg2) <{fastmath = #arith.fastmath<fast>, roundingmode = 0 : i32}> : (f64, f64, f64) -> f64
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

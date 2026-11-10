@@ -43,11 +43,11 @@ module {
     cf.assert %2, "Awaited async operand is in error state"
     return
   }
-  func.func private @async_execute_fn(%arg0: f32, %arg1: memref<1xf32>) -> !llvm.ptr attributes {passthrough = ["presplitcoroutine"]} {
+  func.func private @async_execute_fn(%arg0: f32, %arg1: memref<1xf32>) -> !llvm.ptr attributes {llvm.passthrough = ["presplitcoroutine"]} {
     %0 = call @mlirAsyncRuntimeCreateToken() : () -> !llvm.ptr
     %1 = llvm.mlir.constant(0 : i32) : i32
     %2 = llvm.mlir.zero : !llvm.ptr
-    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %4 = llvm.intr.coro.size : i64
     %5 = llvm.intr.coro.align : i64
     %6 = llvm.add %4, %5 : i64
@@ -57,8 +57,8 @@ module {
     %10 = llvm.sub %9, %5 : i64
     %11 = llvm.and %8, %10 : i64
     %12 = llvm.call @aligned_alloc(%5, %11) : (i64, i64) -> !llvm.ptr
-    %13 = llvm.intr.coro.begin %3, %12 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %13 = llvm.intr.coro.begin %3, %12 : (token, !llvm.ptr) -> !llvm.ptr
+    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %15 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeExecute(%13, %15) : (!llvm.ptr, !llvm.ptr) -> ()
     %16 = llvm.mlir.constant(false) : i1
@@ -74,17 +74,17 @@ module {
     call @mlirAsyncRuntimeEmplaceToken(%0) : (!llvm.ptr) -> ()
     cf.br ^bb2
   ^bb2:  // pred: ^bb1
-    %19 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %19 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%19) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb3:  // pred: ^bb0
-    %20 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %20 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%20) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb4:  // 3 preds: ^bb0, ^bb2, ^bb3
     %21 = llvm.mlir.constant(false) : i1
-    %22 = llvm.mlir.none : !llvm.token
-    %23 = llvm.intr.coro.end %13, %21, %22 : (!llvm.ptr, i1, !llvm.token) -> i1
+    %22 = llvm.mlir.none : token
+    %23 = llvm.intr.coro.end %13, %21, %22 : (!llvm.ptr, i1, token) -> i1
     return %0 : !llvm.ptr
   }
   func.func private @mlirAsyncRuntimeAddRef(!llvm.ptr, i64)
@@ -128,11 +128,11 @@ module {
     cf.assert %2, "Awaited async operand is in error state"
     return
   }
-  func.func private @async_execute_fn(%arg0: f32, %arg1: memref<1xf32>) -> !llvm.ptr attributes {passthrough = ["presplitcoroutine"]} {
+  func.func private @async_execute_fn(%arg0: f32, %arg1: memref<1xf32>) -> !llvm.ptr attributes {llvm.passthrough = ["presplitcoroutine"]} {
     %0 = call @mlirAsyncRuntimeCreateToken() : () -> !llvm.ptr
     %1 = llvm.mlir.constant(0 : i32) : i32
     %2 = llvm.mlir.zero : !llvm.ptr
-    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %4 = llvm.intr.coro.size : i64
     %5 = llvm.intr.coro.align : i64
     %6 = llvm.add %4, %5 : i64
@@ -142,8 +142,8 @@ module {
     %10 = llvm.sub %9, %5 : i64
     %11 = llvm.and %8, %10 : i64
     %12 = llvm.call @aligned_alloc(%5, %11) : (i64, i64) -> !llvm.ptr
-    %13 = llvm.intr.coro.begin %3, %12 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %13 = llvm.intr.coro.begin %3, %12 : (token, !llvm.ptr) -> !llvm.ptr
+    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %15 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeExecute(%13, %15) : (!llvm.ptr, !llvm.ptr) -> ()
     %16 = llvm.mlir.constant(false) : i1
@@ -160,24 +160,24 @@ module {
     call @mlirAsyncRuntimeEmplaceToken(%0) : (!llvm.ptr) -> ()
     cf.br ^bb2
   ^bb2:  // pred: ^bb1
-    %19 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %19 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%19) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb3:  // pred: ^bb0
-    %20 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %20 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%20) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb4:  // 3 preds: ^bb0, ^bb2, ^bb3
     %21 = llvm.mlir.constant(false) : i1
-    %22 = llvm.mlir.none : !llvm.token
-    %23 = llvm.intr.coro.end %13, %21, %22 : (!llvm.ptr, i1, !llvm.token) -> i1
+    %22 = llvm.mlir.none : token
+    %23 = llvm.intr.coro.end %13, %21, %22 : (!llvm.ptr, i1, token) -> i1
     return %0 : !llvm.ptr
   }
-  func.func private @async_execute_fn_0(%arg0: f32, %arg1: memref<1xf32>, %arg2: f32) -> !llvm.ptr attributes {passthrough = ["presplitcoroutine"]} {
+  func.func private @async_execute_fn_0(%arg0: f32, %arg1: memref<1xf32>, %arg2: f32) -> !llvm.ptr attributes {llvm.passthrough = ["presplitcoroutine"]} {
     %0 = call @mlirAsyncRuntimeCreateToken() : () -> !llvm.ptr
     %1 = llvm.mlir.constant(0 : i32) : i32
     %2 = llvm.mlir.zero : !llvm.ptr
-    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %4 = llvm.intr.coro.size : i64
     %5 = llvm.intr.coro.align : i64
     %6 = llvm.add %4, %5 : i64
@@ -187,8 +187,8 @@ module {
     %10 = llvm.sub %9, %5 : i64
     %11 = llvm.and %8, %10 : i64
     %12 = llvm.call @aligned_alloc(%5, %11) : (i64, i64) -> !llvm.ptr
-    %13 = llvm.intr.coro.begin %3, %12 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %13 = llvm.intr.coro.begin %3, %12 : (token, !llvm.ptr) -> !llvm.ptr
+    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %15 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeExecute(%13, %15) : (!llvm.ptr, !llvm.ptr) -> ()
     %16 = llvm.mlir.constant(false) : i1
@@ -201,7 +201,7 @@ module {
   ^bb1:  // pred: ^bb0
     %c0 = arith.constant 0 : index
     %19 = call @async_execute_fn(%arg0, %arg1) : (f32, memref<1xf32>) -> !llvm.ptr
-    %20 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %20 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %21 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeAwaitTokenAndExecute(%19, %13, %21) : (!llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
     %22 = llvm.mlir.constant(false) : i1
@@ -222,17 +222,17 @@ module {
     call @mlirAsyncRuntimeSetTokenError(%0) : (!llvm.ptr) -> ()
     cf.br ^bb5
   ^bb5:  // 2 preds: ^bb3, ^bb4
-    %26 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %26 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%26) : (!llvm.ptr) -> ()
     cf.br ^bb7
   ^bb6:  // 2 preds: ^bb0, ^bb1
-    %27 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %27 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%27) : (!llvm.ptr) -> ()
     cf.br ^bb7
   ^bb7:  // 4 preds: ^bb0, ^bb1, ^bb5, ^bb6
     %28 = llvm.mlir.constant(false) : i1
-    %29 = llvm.mlir.none : !llvm.token
-    %30 = llvm.intr.coro.end %13, %28, %29 : (!llvm.ptr, i1, !llvm.token) -> i1
+    %29 = llvm.mlir.none : token
+    %30 = llvm.intr.coro.end %13, %28, %29 : (!llvm.ptr, i1, token) -> i1
     return %0 : !llvm.ptr
   }
   func.func private @mlirAsyncRuntimeAddRef(!llvm.ptr, i64)
@@ -272,11 +272,11 @@ module {
     %1 = call @async_execute_fn_0(%0, %arg0, %arg1) : (!llvm.ptr, f32, memref<1xf32>) -> !llvm.ptr
     return
   }
-  func.func private @async_execute_fn(%arg0: f32, %arg1: memref<1xf32>) -> !llvm.ptr attributes {passthrough = ["presplitcoroutine"]} {
+  func.func private @async_execute_fn(%arg0: f32, %arg1: memref<1xf32>) -> !llvm.ptr attributes {llvm.passthrough = ["presplitcoroutine"]} {
     %0 = call @mlirAsyncRuntimeCreateToken() : () -> !llvm.ptr
     %1 = llvm.mlir.constant(0 : i32) : i32
     %2 = llvm.mlir.zero : !llvm.ptr
-    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %4 = llvm.intr.coro.size : i64
     %5 = llvm.intr.coro.align : i64
     %6 = llvm.add %4, %5 : i64
@@ -286,8 +286,8 @@ module {
     %10 = llvm.sub %9, %5 : i64
     %11 = llvm.and %8, %10 : i64
     %12 = llvm.call @aligned_alloc(%5, %11) : (i64, i64) -> !llvm.ptr
-    %13 = llvm.intr.coro.begin %3, %12 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %13 = llvm.intr.coro.begin %3, %12 : (token, !llvm.ptr) -> !llvm.ptr
+    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %15 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeExecute(%13, %15) : (!llvm.ptr, !llvm.ptr) -> ()
     %16 = llvm.mlir.constant(false) : i1
@@ -303,24 +303,24 @@ module {
     call @mlirAsyncRuntimeEmplaceToken(%0) : (!llvm.ptr) -> ()
     cf.br ^bb2
   ^bb2:  // pred: ^bb1
-    %19 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %19 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%19) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb3:  // pred: ^bb0
-    %20 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %20 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%20) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb4:  // 3 preds: ^bb0, ^bb2, ^bb3
     %21 = llvm.mlir.constant(false) : i1
-    %22 = llvm.mlir.none : !llvm.token
-    %23 = llvm.intr.coro.end %13, %21, %22 : (!llvm.ptr, i1, !llvm.token) -> i1
+    %22 = llvm.mlir.none : token
+    %23 = llvm.intr.coro.end %13, %21, %22 : (!llvm.ptr, i1, token) -> i1
     return %0 : !llvm.ptr
   }
-  func.func private @async_execute_fn_0(%arg0: !llvm.ptr, %arg1: f32, %arg2: memref<1xf32>) -> !llvm.ptr attributes {passthrough = ["presplitcoroutine"]} {
+  func.func private @async_execute_fn_0(%arg0: !llvm.ptr, %arg1: f32, %arg2: memref<1xf32>) -> !llvm.ptr attributes {llvm.passthrough = ["presplitcoroutine"]} {
     %0 = call @mlirAsyncRuntimeCreateToken() : () -> !llvm.ptr
     %1 = llvm.mlir.constant(0 : i32) : i32
     %2 = llvm.mlir.zero : !llvm.ptr
-    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %4 = llvm.intr.coro.size : i64
     %5 = llvm.intr.coro.align : i64
     %6 = llvm.add %4, %5 : i64
@@ -330,8 +330,8 @@ module {
     %10 = llvm.sub %9, %5 : i64
     %11 = llvm.and %8, %10 : i64
     %12 = llvm.call @aligned_alloc(%5, %11) : (i64, i64) -> !llvm.ptr
-    %13 = llvm.intr.coro.begin %3, %12 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %13 = llvm.intr.coro.begin %3, %12 : (token, !llvm.ptr) -> !llvm.ptr
+    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %15 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeExecute(%13, %15) : (!llvm.ptr, !llvm.ptr) -> ()
     %16 = llvm.mlir.constant(false) : i1
@@ -342,7 +342,7 @@ module {
       1: ^bb6
     ]
   ^bb1:  // pred: ^bb0
-    %19 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %19 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %20 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeAwaitTokenAndExecute(%arg0, %13, %20) : (!llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
     %21 = llvm.mlir.constant(false) : i1
@@ -364,17 +364,17 @@ module {
     call @mlirAsyncRuntimeSetTokenError(%0) : (!llvm.ptr) -> ()
     cf.br ^bb5
   ^bb5:  // 2 preds: ^bb3, ^bb4
-    %25 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %25 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%25) : (!llvm.ptr) -> ()
     cf.br ^bb7
   ^bb6:  // 2 preds: ^bb0, ^bb1
-    %26 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %26 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%26) : (!llvm.ptr) -> ()
     cf.br ^bb7
   ^bb7:  // 4 preds: ^bb0, ^bb1, ^bb5, ^bb6
     %27 = llvm.mlir.constant(false) : i1
-    %28 = llvm.mlir.none : !llvm.token
-    %29 = llvm.intr.coro.end %13, %27, %28 : (!llvm.ptr, i1, !llvm.token) -> i1
+    %28 = llvm.mlir.none : token
+    %29 = llvm.intr.coro.end %13, %27, %28 : (!llvm.ptr, i1, token) -> i1
     return %0 : !llvm.ptr
   }
   func.func private @mlirAsyncRuntimeAddRef(!llvm.ptr, i64)
@@ -423,11 +423,11 @@ module {
     cf.assert %6, "Awaited async operand is in error state"
     return
   }
-  func.func private @async_execute_fn() -> !llvm.ptr attributes {passthrough = ["presplitcoroutine"]} {
+  func.func private @async_execute_fn() -> !llvm.ptr attributes {llvm.passthrough = ["presplitcoroutine"]} {
     %0 = call @mlirAsyncRuntimeCreateToken() : () -> !llvm.ptr
     %1 = llvm.mlir.constant(0 : i32) : i32
     %2 = llvm.mlir.zero : !llvm.ptr
-    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %4 = llvm.intr.coro.size : i64
     %5 = llvm.intr.coro.align : i64
     %6 = llvm.add %4, %5 : i64
@@ -437,8 +437,8 @@ module {
     %10 = llvm.sub %9, %5 : i64
     %11 = llvm.and %8, %10 : i64
     %12 = llvm.call @aligned_alloc(%5, %11) : (i64, i64) -> !llvm.ptr
-    %13 = llvm.intr.coro.begin %3, %12 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %13 = llvm.intr.coro.begin %3, %12 : (token, !llvm.ptr) -> !llvm.ptr
+    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %15 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeExecute(%13, %15) : (!llvm.ptr, !llvm.ptr) -> ()
     %16 = llvm.mlir.constant(false) : i1
@@ -452,24 +452,24 @@ module {
     call @mlirAsyncRuntimeEmplaceToken(%0) : (!llvm.ptr) -> ()
     cf.br ^bb2
   ^bb2:  // pred: ^bb1
-    %19 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %19 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%19) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb3:  // pred: ^bb0
-    %20 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %20 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%20) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb4:  // 3 preds: ^bb0, ^bb2, ^bb3
     %21 = llvm.mlir.constant(false) : i1
-    %22 = llvm.mlir.none : !llvm.token
-    %23 = llvm.intr.coro.end %13, %21, %22 : (!llvm.ptr, i1, !llvm.token) -> i1
+    %22 = llvm.mlir.none : token
+    %23 = llvm.intr.coro.end %13, %21, %22 : (!llvm.ptr, i1, token) -> i1
     return %0 : !llvm.ptr
   }
-  func.func private @async_execute_fn_0(%arg0: !llvm.ptr) -> !llvm.ptr attributes {passthrough = ["presplitcoroutine"]} {
+  func.func private @async_execute_fn_0(%arg0: !llvm.ptr) -> !llvm.ptr attributes {llvm.passthrough = ["presplitcoroutine"]} {
     %0 = call @mlirAsyncRuntimeCreateToken() : () -> !llvm.ptr
     %1 = llvm.mlir.constant(0 : i32) : i32
     %2 = llvm.mlir.zero : !llvm.ptr
-    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %4 = llvm.intr.coro.size : i64
     %5 = llvm.intr.coro.align : i64
     %6 = llvm.add %4, %5 : i64
@@ -479,8 +479,8 @@ module {
     %10 = llvm.sub %9, %5 : i64
     %11 = llvm.and %8, %10 : i64
     %12 = llvm.call @aligned_alloc(%5, %11) : (i64, i64) -> !llvm.ptr
-    %13 = llvm.intr.coro.begin %3, %12 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %13 = llvm.intr.coro.begin %3, %12 : (token, !llvm.ptr) -> !llvm.ptr
+    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %15 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeExecute(%13, %15) : (!llvm.ptr, !llvm.ptr) -> ()
     %16 = llvm.mlir.constant(false) : i1
@@ -491,7 +491,7 @@ module {
       1: ^bb6
     ]
   ^bb1:  // pred: ^bb0
-    %19 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %19 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %20 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeAwaitAllInGroupAndExecute(%arg0, %13, %20) : (!llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
     %21 = llvm.mlir.constant(false) : i1
@@ -511,17 +511,17 @@ module {
     call @mlirAsyncRuntimeSetTokenError(%0) : (!llvm.ptr) -> ()
     cf.br ^bb5
   ^bb5:  // 2 preds: ^bb3, ^bb4
-    %25 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %25 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%25) : (!llvm.ptr) -> ()
     cf.br ^bb7
   ^bb6:  // 2 preds: ^bb0, ^bb1
-    %26 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %26 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%26) : (!llvm.ptr) -> ()
     cf.br ^bb7
   ^bb7:  // 4 preds: ^bb0, ^bb1, ^bb5, ^bb6
     %27 = llvm.mlir.constant(false) : i1
-    %28 = llvm.mlir.none : !llvm.token
-    %29 = llvm.intr.coro.end %13, %27, %28 : (!llvm.ptr, i1, !llvm.token) -> i1
+    %28 = llvm.mlir.none : token
+    %29 = llvm.intr.coro.end %13, %27, %28 : (!llvm.ptr, i1, token) -> i1
     return %0 : !llvm.ptr
   }
   func.func private @mlirAsyncRuntimeAddRef(!llvm.ptr, i64)
@@ -567,7 +567,7 @@ module {
     %4 = llvm.load %3 : !llvm.ptr -> f32
     return %4 : f32
   }
-  func.func private @async_execute_fn() -> (!llvm.ptr, !llvm.ptr) attributes {passthrough = ["presplitcoroutine"]} {
+  func.func private @async_execute_fn() -> (!llvm.ptr, !llvm.ptr) attributes {llvm.passthrough = ["presplitcoroutine"]} {
     %0 = call @mlirAsyncRuntimeCreateToken() : () -> !llvm.ptr
     %1 = llvm.mlir.zero : !llvm.ptr
     %2 = llvm.getelementptr %1[1] : (!llvm.ptr) -> !llvm.ptr, f32
@@ -575,7 +575,7 @@ module {
     %4 = call @mlirAsyncRuntimeCreateValue(%3) : (i64) -> !llvm.ptr
     %5 = llvm.mlir.constant(0 : i32) : i32
     %6 = llvm.mlir.zero : !llvm.ptr
-    %7 = llvm.intr.coro.id %5, %6, %6, %6 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %7 = llvm.intr.coro.id %5, %6, %6, %6 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %8 = llvm.intr.coro.size : i64
     %9 = llvm.intr.coro.align : i64
     %10 = llvm.add %8, %9 : i64
@@ -585,8 +585,8 @@ module {
     %14 = llvm.sub %13, %9 : i64
     %15 = llvm.and %12, %14 : i64
     %16 = llvm.call @aligned_alloc(%9, %15) : (i64, i64) -> !llvm.ptr
-    %17 = llvm.intr.coro.begin %7, %16 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %18 = llvm.intr.coro.save %17 : (!llvm.ptr) -> !llvm.token
+    %17 = llvm.intr.coro.begin %7, %16 : (token, !llvm.ptr) -> !llvm.ptr
+    %18 = llvm.intr.coro.save %17 : (!llvm.ptr) -> token
     %19 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeExecute(%17, %19) : (!llvm.ptr, !llvm.ptr) -> ()
     %20 = llvm.mlir.constant(false) : i1
@@ -604,17 +604,17 @@ module {
     call @mlirAsyncRuntimeEmplaceToken(%0) : (!llvm.ptr) -> ()
     cf.br ^bb2
   ^bb2:  // pred: ^bb1
-    %24 = llvm.intr.coro.free %7, %17 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %24 = llvm.intr.coro.free %7, %17 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%24) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb3:  // pred: ^bb0
-    %25 = llvm.intr.coro.free %7, %17 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %25 = llvm.intr.coro.free %7, %17 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%25) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb4:  // 3 preds: ^bb0, ^bb2, ^bb3
     %26 = llvm.mlir.constant(false) : i1
-    %27 = llvm.mlir.none : !llvm.token
-    %28 = llvm.intr.coro.end %17, %26, %27 : (!llvm.ptr, i1, !llvm.token) -> i1
+    %27 = llvm.mlir.none : token
+    %28 = llvm.intr.coro.end %17, %26, %27 : (!llvm.ptr, i1, token) -> i1
     return %0, %4 : !llvm.ptr, !llvm.ptr
   }
   func.func private @mlirAsyncRuntimeAddRef(!llvm.ptr, i64)
@@ -659,7 +659,7 @@ module {
     cf.assert %3, "Awaited async operand is in error state"
     return
   }
-  func.func private @async_execute_fn() -> (!llvm.ptr, !llvm.ptr) attributes {passthrough = ["presplitcoroutine"]} {
+  func.func private @async_execute_fn() -> (!llvm.ptr, !llvm.ptr) attributes {llvm.passthrough = ["presplitcoroutine"]} {
     %0 = call @mlirAsyncRuntimeCreateToken() : () -> !llvm.ptr
     %1 = llvm.mlir.zero : !llvm.ptr
     %2 = llvm.getelementptr %1[1] : (!llvm.ptr) -> !llvm.ptr, f32
@@ -667,7 +667,7 @@ module {
     %4 = call @mlirAsyncRuntimeCreateValue(%3) : (i64) -> !llvm.ptr
     %5 = llvm.mlir.constant(0 : i32) : i32
     %6 = llvm.mlir.zero : !llvm.ptr
-    %7 = llvm.intr.coro.id %5, %6, %6, %6 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %7 = llvm.intr.coro.id %5, %6, %6, %6 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %8 = llvm.intr.coro.size : i64
     %9 = llvm.intr.coro.align : i64
     %10 = llvm.add %8, %9 : i64
@@ -677,8 +677,8 @@ module {
     %14 = llvm.sub %13, %9 : i64
     %15 = llvm.and %12, %14 : i64
     %16 = llvm.call @aligned_alloc(%9, %15) : (i64, i64) -> !llvm.ptr
-    %17 = llvm.intr.coro.begin %7, %16 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %18 = llvm.intr.coro.save %17 : (!llvm.ptr) -> !llvm.token
+    %17 = llvm.intr.coro.begin %7, %16 : (token, !llvm.ptr) -> !llvm.ptr
+    %18 = llvm.intr.coro.save %17 : (!llvm.ptr) -> token
     %19 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeExecute(%17, %19) : (!llvm.ptr, !llvm.ptr) -> ()
     %20 = llvm.mlir.constant(false) : i1
@@ -696,24 +696,24 @@ module {
     call @mlirAsyncRuntimeEmplaceToken(%0) : (!llvm.ptr) -> ()
     cf.br ^bb2
   ^bb2:  // pred: ^bb1
-    %24 = llvm.intr.coro.free %7, %17 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %24 = llvm.intr.coro.free %7, %17 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%24) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb3:  // pred: ^bb0
-    %25 = llvm.intr.coro.free %7, %17 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %25 = llvm.intr.coro.free %7, %17 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%25) : (!llvm.ptr) -> ()
     cf.br ^bb4
   ^bb4:  // 3 preds: ^bb0, ^bb2, ^bb3
     %26 = llvm.mlir.constant(false) : i1
-    %27 = llvm.mlir.none : !llvm.token
-    %28 = llvm.intr.coro.end %17, %26, %27 : (!llvm.ptr, i1, !llvm.token) -> i1
+    %27 = llvm.mlir.none : token
+    %28 = llvm.intr.coro.end %17, %26, %27 : (!llvm.ptr, i1, token) -> i1
     return %0, %4 : !llvm.ptr, !llvm.ptr
   }
-  func.func private @async_execute_fn_0(%arg0: !llvm.ptr) -> !llvm.ptr attributes {passthrough = ["presplitcoroutine"]} {
+  func.func private @async_execute_fn_0(%arg0: !llvm.ptr) -> !llvm.ptr attributes {llvm.passthrough = ["presplitcoroutine"]} {
     %0 = call @mlirAsyncRuntimeCreateToken() : () -> !llvm.ptr
     %1 = llvm.mlir.constant(0 : i32) : i32
     %2 = llvm.mlir.zero : !llvm.ptr
-    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %4 = llvm.intr.coro.size : i64
     %5 = llvm.intr.coro.align : i64
     %6 = llvm.add %4, %5 : i64
@@ -723,8 +723,8 @@ module {
     %10 = llvm.sub %9, %5 : i64
     %11 = llvm.and %8, %10 : i64
     %12 = llvm.call @aligned_alloc(%5, %11) : (i64, i64) -> !llvm.ptr
-    %13 = llvm.intr.coro.begin %3, %12 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %13 = llvm.intr.coro.begin %3, %12 : (token, !llvm.ptr) -> !llvm.ptr
+    %14 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %15 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeExecute(%13, %15) : (!llvm.ptr, !llvm.ptr) -> ()
     %16 = llvm.mlir.constant(false) : i1
@@ -735,7 +735,7 @@ module {
       1: ^bb6
     ]
   ^bb1:  // pred: ^bb0
-    %19 = llvm.intr.coro.save %13 : (!llvm.ptr) -> !llvm.token
+    %19 = llvm.intr.coro.save %13 : (!llvm.ptr) -> token
     %20 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeAwaitValueAndExecute(%arg0, %13, %20) : (!llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
     %21 = llvm.mlir.constant(false) : i1
@@ -758,17 +758,17 @@ module {
     call @mlirAsyncRuntimeSetTokenError(%0) : (!llvm.ptr) -> ()
     cf.br ^bb5
   ^bb5:  // 2 preds: ^bb3, ^bb4
-    %28 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %28 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%28) : (!llvm.ptr) -> ()
     cf.br ^bb7
   ^bb6:  // 2 preds: ^bb0, ^bb1
-    %29 = llvm.intr.coro.free %3, %13 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %29 = llvm.intr.coro.free %3, %13 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%29) : (!llvm.ptr) -> ()
     cf.br ^bb7
   ^bb7:  // 4 preds: ^bb0, ^bb1, ^bb5, ^bb6
     %30 = llvm.mlir.constant(false) : i1
-    %31 = llvm.mlir.none : !llvm.token
-    %32 = llvm.intr.coro.end %13, %30, %31 : (!llvm.ptr, i1, !llvm.token) -> i1
+    %31 = llvm.mlir.none : token
+    %32 = llvm.intr.coro.end %13, %30, %31 : (!llvm.ptr, i1, token) -> i1
     return %0 : !llvm.ptr
   }
   func.func private @mlirAsyncRuntimeAddRef(!llvm.ptr, i64)

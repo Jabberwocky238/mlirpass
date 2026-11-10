@@ -22,6 +22,24 @@ module {
 }
 
 // -----
+module {
+  func.func @gemm_transpose_a(%arg0: vector<16x8xf16>, %arg1: vector<16x16xf16>, %arg2: vector<8x16xf32>) -> vector<8x16xf32> {
+    %0 = vector.transpose %arg0, [1, 0] : vector<16x8xf16> to vector<8x16xf16>
+    %1 = xegpu.dpas %0, %arg1, %arg2 : vector<8x16xf16>, vector<16x16xf16>, vector<8x16xf32> -> vector<8x16xf32>
+    return %1 : vector<8x16xf32>
+  }
+}
+
+// -----
+module {
+  func.func @gemm_transpose_b(%arg0: vector<8x16xf16>, %arg1: vector<16x16xf16>, %arg2: vector<8x16xf32>) -> vector<8x16xf32> {
+    %0 = vector.transpose %arg1, [1, 0] : vector<16x16xf16> to vector<16x16xf16>
+    %1 = xegpu.dpas %arg0, %0, %arg2 : vector<8x16xf16>, vector<16x16xf16>, vector<8x16xf32> -> vector<8x16xf32>
+    return %1 : vector<8x16xf32>
+  }
+}
+
+// -----
 #map = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3)>
 #map1 = affine_map<(d0, d1, d2, d3) -> (d2, d1, d3)>
 #map2 = affine_map<(d0, d1, d2, d3) -> (d0, d1)>
@@ -51,28 +69,6 @@ module {
   func.func @negative_accumulator_shape(%arg0: vector<8x16xf16>, %arg1: vector<16x16xf16>, %arg2: vector<f32>) -> vector<f32> {
     %0 = vector.contract {indexing_maps = [#map, #map1, #map2], iterator_types = ["reduction", "reduction", "reduction"], kind = #vector.kind<add>} %arg0, %arg1, %arg2 : vector<8x16xf16>, vector<16x16xf16> into vector<f32>
     return %0 : vector<f32>
-  }
-}
-
-// -----
-#map = affine_map<(d0, d1, d2) -> (d2, d0)>
-#map1 = affine_map<(d0, d1, d2) -> (d2, d1)>
-#map2 = affine_map<(d0, d1, d2) -> (d0, d1)>
-module {
-  func.func @negative_gemm_transpose_a(%arg0: vector<16x8xf16>, %arg1: vector<16x16xf16>, %arg2: vector<8x16xf32>) -> vector<8x16xf32> {
-    %0 = vector.contract {indexing_maps = [#map, #map1, #map2], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %arg0, %arg1, %arg2 : vector<16x8xf16>, vector<16x16xf16> into vector<8x16xf32>
-    return %0 : vector<8x16xf32>
-  }
-}
-
-// -----
-#map = affine_map<(d0, d1, d2) -> (d0, d2)>
-#map1 = affine_map<(d0, d1, d2) -> (d1, d2)>
-#map2 = affine_map<(d0, d1, d2) -> (d0, d1)>
-module {
-  func.func @negative_gemm_transpose_b(%arg0: vector<8x16xf16>, %arg1: vector<16x16xf16>, %arg2: vector<8x16xf32>) -> vector<8x16xf32> {
-    %0 = vector.contract {indexing_maps = [#map, #map1, #map2], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %arg0, %arg1, %arg2 : vector<8x16xf16>, vector<16x16xf16> into vector<8x16xf32>
-    return %0 : vector<8x16xf32>
   }
 }
 

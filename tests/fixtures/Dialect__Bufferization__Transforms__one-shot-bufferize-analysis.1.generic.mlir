@@ -147,3 +147,11 @@
   }) {__bbarg_alias_set_attr__ = [[[["%arg0"]]]]} : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>), sym_name = "shorter_inplace_attr"}> ({
+  ^bb0(%arg0: tensor<4xi32>):
+    "func.return"(%arg0, %arg0) {__inplace_operands_attr__ = ["false", "false"]} : (tensor<4xi32>, tensor<4xi32>) -> ()
+  }) {__bbarg_alias_set_attr__ = [[[["%arg0"]]]]} : () -> ()
+}) : () -> ()
+

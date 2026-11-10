@@ -92,8 +92,9 @@ module {
 
 // -----
 module {
-  func.func @dead_atomic_add(%arg0: memref<4xf32>, %arg1: f32) {
-    return
+  func.func @oob_atomic_add(%arg0: memref<4xf32>, %arg1: f32) -> f32 {
+    %cst = arith.constant 0.000000e+00 : f32
+    return %cst : f32
   }
 }
 
@@ -111,6 +112,22 @@ module {
   func.func @fold_gather_to_lds_of_cast_dest(%arg0: memref<128x72xf32, 1>, %arg1: memref<64x64xf32, 3>) {
     %c0 = arith.constant 0 : index
     amdgpu.gather_to_lds %arg0[%c0, %c0], %arg1[%c0, %c0] : f32, memref<128x72xf32, 1>, memref<64x64xf32, 3>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @global_load_async_to_lds_true_mask(%arg0: memref<16xf32, #gpu.address_space<global>>, %arg1: memref<16xf32, #gpu.address_space<workgroup>>) {
+    %c0 = arith.constant 0 : index
+    amdgpu.global_load_async_to_lds %arg0[%c0], %arg1[%c0] : f32, memref<16xf32, #gpu.address_space<global>>, memref<16xf32, #gpu.address_space<workgroup>>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @global_load_async_to_lds_false_mask(%arg0: memref<16xf32, #gpu.address_space<global>>, %arg1: memref<16xf32, #gpu.address_space<workgroup>>) {
     return
   }
 }
@@ -144,6 +161,15 @@ module {
     %3 = vector.insert %2, %cst_0 [0] : f8E8M0FNU into vector<4xf8E8M0FNU>
     %4 = amdgpu.scaled_mfma 16x16x128 (%1[0] * %arg0) * (%3[0] * %arg1) + %cst : vector<4xf8E8M0FNU>, vector<32xf4E2M1FN>, vector<4xf8E8M0FNU>, vector<32xf4E2M1FN>, vector<4xf32>
     return %4 : vector<4xf32>
+  }
+}
+
+// -----
+module {
+  func.func @scaled_mfma_exactly_4(%arg0: vector<32xf4E2M1FN>, %arg1: vector<32xf4E2M1FN>, %arg2: vector<4xf8E8M0FNU>, %arg3: vector<4xf8E8M0FNU>) -> vector<4xf32> {
+    %cst = arith.constant dense<0.000000e+00> : vector<4xf32>
+    %0 = amdgpu.scaled_mfma 16x16x128 (%arg2[0] * %arg0) * (%arg3[1] * %arg1) + %cst : vector<4xf8E8M0FNU>, vector<32xf4E2M1FN>, vector<4xf8E8M0FNU>, vector<32xf4E2M1FN>, vector<4xf32>
+    return %0 : vector<4xf32>
   }
 }
 

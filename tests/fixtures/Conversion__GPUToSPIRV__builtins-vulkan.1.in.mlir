@@ -5,10 +5,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_workgroup_id_x", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_workgroup_id_x"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -21,10 +21,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_workgroup_id_y", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_workgroup_id_y"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -36,10 +36,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_workgroup_id_z", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_workgroup_id_z"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -51,10 +51,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.block_dim"() <{dimension = #gpu<dim x>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 1, 1]>, sym_name = "builtin_workgroup_size_x", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 1, 1]>, sym_name = "builtin_workgroup_size_x"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -66,10 +66,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "builtin_workgroup_size_y", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "builtin_workgroup_size_y"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -81,10 +81,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "builtin_workgroup_size_z", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "builtin_workgroup_size_z"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -96,10 +96,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_local_id_x", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_local_id_x"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -111,30 +111,30 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.grid_dim"() <{dimension = #gpu<dim x>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_num_workgroups_x", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_num_workgroups_x"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.subgroup_id"() : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_subgroup_id", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_subgroup_id"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.num_subgroups"() : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_num_subgroups", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_num_subgroups"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -146,10 +146,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.block_dim"() <{dimension = #gpu<dim x>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<>, sym_name = "builtin_workgroup_size_x", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<>, sym_name = "builtin_workgroup_size_x"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -161,10 +161,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<>, sym_name = "builtin_workgroup_size_y", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<>, sym_name = "builtin_workgroup_size_y"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -176,10 +176,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<>, sym_name = "builtin_workgroup_size_z", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<>, sym_name = "builtin_workgroup_size_z"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -191,10 +191,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.global_id"() <{dimension = #gpu<dim x>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_global_id_x", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_global_id_x"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -206,10 +206,10 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.global_id"() <{dimension = #gpu<dim y>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_global_id_y", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_global_id_y"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
@@ -221,20 +221,20 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.global_id"() <{dimension = #gpu<dim z>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_global_id_z", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_global_id_z"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.subgroup_size"() : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_subgroup_size", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "builtin_subgroup_size"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 

@@ -341,3 +341,19 @@
   }) : () -> ()
 }) {dlti.dl_spec = #dlti.dl_spec<index = 256 : i64>} : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "huge_static_memref"}> ({
+    %0 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<3090540x3090540x3090540xi32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "nestedMemref"}> ({
+    %0 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<1xmemref<2xf32>>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+

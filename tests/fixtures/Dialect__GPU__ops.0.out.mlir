@@ -7,6 +7,12 @@ module {
       }
       return
     }
+    func.func @launch_cooperative(%arg0: index) {
+      gpu.launch blocks(%arg1, %arg2, %arg3) in (%arg7 = %arg0, %arg8 = %arg0, %arg9 = %arg0) threads(%arg4, %arg5, %arg6) in (%arg10 = %arg0, %arg11 = %arg0, %arg12 = %arg0) cooperative {
+        gpu.terminator
+      }
+      return
+    }
     func.func @launch_with_module_func_attr(%arg0: index) {
       gpu.launch blocks(%arg1, %arg2, %arg3) in (%arg7 = %arg0, %arg8 = %arg0, %arg9 = %arg0) threads(%arg4, %arg5, %arg6) in (%arg10 = %arg0, %arg11 = %arg0, %arg12 = %arg0) module(@test_module) function(@test_kernel_func) {
         gpu.terminator
@@ -50,46 +56,53 @@ module {
     }
     gpu.module @kernels {
       gpu.func @kernel_1(%arg0: f32, %arg1: memref<?xf32, 1>) kernel {
-        %thread_id_x = gpu.thread_id  x
-        %thread_id_y = gpu.thread_id  y
-        %thread_id_z = gpu.thread_id  z
-        %block_dim_x = gpu.block_dim  x
-        %block_dim_y = gpu.block_dim  y
-        %block_dim_z = gpu.block_dim  z
-        %block_id_x = gpu.block_id  x
-        %block_id_y = gpu.block_id  y
-        %block_id_z = gpu.block_id  z
-        %grid_dim_x = gpu.grid_dim  x
-        %grid_dim_y = gpu.grid_dim  y
-        %grid_dim_z = gpu.grid_dim  z
-        %global_id_x = gpu.global_id  x
-        %global_id_y = gpu.global_id  y
-        %global_id_z = gpu.global_id  z
+        %thread_id_x = gpu.thread_id x
+        %thread_id_y = gpu.thread_id y
+        %thread_id_z = gpu.thread_id z
+        %block_dim_x = gpu.block_dim x
+        %block_dim_y = gpu.block_dim y
+        %block_dim_z = gpu.block_dim z
+        %block_id_x = gpu.block_id x
+        %block_id_y = gpu.block_id y
+        %block_id_z = gpu.block_id z
+        %grid_dim_x = gpu.grid_dim x
+        %grid_dim_y = gpu.grid_dim y
+        %grid_dim_z = gpu.grid_dim z
+        %global_id_x = gpu.global_id x
+        %global_id_y = gpu.global_id y
+        %global_id_z = gpu.global_id z
         %0 = gpu.subgroup_id : index
         %1 = gpu.num_subgroups : index
         %2 = gpu.subgroup_size : index
         %cst = arith.constant 1.000000e+00 : f32
         %3 = vector.broadcast %arg0 : f32 to vector<4xf32>
-        %4 = gpu.all_reduce  add %cst {
+        %4 = gpu.all_reduce add %cst {
         } : (f32) -> f32
-        %5 = gpu.all_reduce  add %cst uniform {
+        %5 = gpu.all_reduce add %cst uniform {
         } : (f32) -> f32
         %6 = gpu.all_reduce  %cst {
         ^bb0(%arg2: f32, %arg3: f32):
           %11 = arith.addf %arg2, %arg3 : f32
           gpu.yield %11 : f32
         } : (f32) -> f32
-        %7 = gpu.subgroup_reduce  add %cst : (f32) -> f32
-        %8 = gpu.subgroup_reduce  add %cst uniform : (f32) -> f32
-        %9 = gpu.subgroup_reduce  add %3 : (vector<4xf32>) -> vector<4xf32>
+        %7 = gpu.subgroup_reduce add %cst : (f32) -> f32
+        %8 = gpu.subgroup_reduce add %cst uniform : (f32) -> f32
+        %9 = gpu.subgroup_reduce add %3 : (vector<4xf32>) -> vector<4xf32>
         %c7_i32 = arith.constant 7 : i32
         %c3_i32 = arith.constant 3 : i32
-        %shuffleResult, %valid = gpu.shuffle  xor %arg0, %c3_i32, %c7_i32 : f32
-        %shuffleResult_0, %valid_1 = gpu.shuffle  up %arg0, %c3_i32, %c7_i32 : f32
-        %shuffleResult_2, %valid_3 = gpu.shuffle  down %arg0, %c3_i32, %c7_i32 : f32
-        %shuffleResult_4, %valid_5 = gpu.shuffle  idx %arg0, %c3_i32, %c7_i32 : f32
+        %shuffleResult, %valid = gpu.shuffle xor %arg0, %c3_i32, %c7_i32 : f32
+        %shuffleResult_0, %valid_1 = gpu.shuffle up %arg0, %c3_i32, %c7_i32 : f32
+        %shuffleResult_2, %valid_3 = gpu.shuffle down %arg0, %c3_i32, %c7_i32 : f32
+        %shuffleResult_4, %valid_5 = gpu.shuffle idx %arg0, %c3_i32, %c7_i32 : f32
         %rotateResult, %valid_6 = gpu.rotate %arg0, 3, 16 : f32
         gpu.barrier
+        gpu.barrier
+        gpu.barrier memfence [#gpu.address_space<workgroup>]
+        gpu.barrier memfence [#gpu.address_space<global>]
+        gpu.barrier memfence [#gpu.address_space<global>, #gpu.address_space<workgroup>]
+        gpu.barrier memfence [#gpu.address_space<private>]
+        gpu.barrier memfence [#gpu.address_space<constant>]
+        gpu.barrier memfence []
         "some_op"(%block_id_x, %thread_id_x) : (index, index) -> ()
         %10 = memref.load %arg1[%block_id_x] : memref<?xf32, 1>
         gpu.return
@@ -114,6 +127,8 @@ module {
       %3 = llvm.mlir.zero : !llvm.ptr
       gpu.launch_func  @kernels::@kernel_1 blocks in (%c8, %c8, %c8) threads in (%c8, %c8, %c8)  args(%0 : f32, %1 : memref<?xf32, 1>)
       gpu.launch_func  @kernels::@kernel_1 clusters in (%c8, %c8, %c8) blocks in (%c8, %c8, %c8) threads in (%c8, %c8, %c8)  args(%0 : f32, %1 : memref<?xf32, 1>)
+      gpu.launch_func  @kernels::@kernel_1 blocks in (%c8, %c8, %c8) threads in (%c8, %c8, %c8)  cooperative args(%0 : f32, %1 : memref<?xf32, 1>)
+      gpu.launch_func  @kernels::@kernel_1 clusters in (%c8, %c8, %c8) blocks in (%c8, %c8, %c8) threads in (%c8, %c8, %c8)  cooperative args(%0 : f32, %1 : memref<?xf32, 1>)
       gpu.launch_func  @kernels::@kernel_1 blocks in (%c8, %c8, %c8) threads in (%c8, %c8, %c8)  dynamic_shared_memory_size %c0_i32 args(%0 : f32, %1 : memref<?xf32, 1>)
       gpu.launch_func  @kernels::@kernel_2 blocks in (%c8, %c8, %c8) threads in (%c8, %c8, %c8)  
       %4 = gpu.launch_func async [%2] @kernels::@kernel_2 blocks in (%c8, %c8, %c8) threads in (%c8, %c8, %c8)  
@@ -204,8 +219,8 @@ module {
       %0 = gpu.subgroup_mma_load_matrix %alloca[%c16, %c16] {leadDimension = 32 : index} : memref<32x32xf16, 3> -> !gpu.mma_matrix<16x16xf16, "AOp">
       %1 = gpu.subgroup_mma_load_matrix %arg0[%c16, %c16] {leadDimension = 64 : index} : memref<32x32xf16, #map> -> !gpu.mma_matrix<16x16xf16, "AOp">
       %2 = gpu.subgroup_mma_constant_matrix %cst : !gpu.mma_matrix<16x16xf32, "COp">
-      %3 = gpu.subgroup_mma_elementwise  addf %2, %2 : (!gpu.mma_matrix<16x16xf32, "COp">, !gpu.mma_matrix<16x16xf32, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
-      %4 = gpu.subgroup_mma_elementwise  maxf %3, %2 : (!gpu.mma_matrix<16x16xf32, "COp">, !gpu.mma_matrix<16x16xf32, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
+      %3 = gpu.subgroup_mma_elementwise addf %2, %2 : (!gpu.mma_matrix<16x16xf32, "COp">, !gpu.mma_matrix<16x16xf32, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
+      %4 = gpu.subgroup_mma_elementwise maxf %3, %2 : (!gpu.mma_matrix<16x16xf32, "COp">, !gpu.mma_matrix<16x16xf32, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
       return
     }
     func.func @mmamatrix_valid_vector_element_type(%arg0: memref<32x4xvector<4xf32>>, %arg1: index) {
@@ -288,9 +303,14 @@ module {
     return %0 : vector<4xi32>
   }
   func.func @subgroup_broadcast(%arg0: f32, %arg1: i32) -> (f32, f32) {
-    %0 = gpu.subgroup_broadcast %arg0,  first_active_lane : f32
-    %1 = gpu.subgroup_broadcast %arg0,  specific_lane %arg1 : f32
+    %0 = gpu.subgroup_broadcast %arg0, first_active_lane : f32
+    %1 = gpu.subgroup_broadcast %arg0, specific_lane %arg1 : f32
     return %0, %1 : f32, f32
+  }
+  func.func @ballot(%arg0: i1) -> (i32, i64) {
+    %0 = gpu.ballot %arg0 : i32
+    %1 = gpu.ballot %arg0 : i64
+    return %0, %1 : i32, i64
   }
 }
 

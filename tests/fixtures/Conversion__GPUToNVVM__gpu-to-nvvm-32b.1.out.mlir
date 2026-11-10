@@ -1,6 +1,6 @@
 module {
   gpu.module @test_module_0 {
-    func.func @gpu_index_ops() -> (index, index, index, index, index, index, index, index, index, index, index, index, index) {
+    llvm.func @gpu_index_ops() -> !llvm.struct<(i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32)> {
       %0 = nvvm.read.ptx.sreg.tid.x : i32
       %1 = nvvm.read.ptx.sreg.tid.y : i32
       %2 = nvvm.read.ptx.sreg.tid.z : i32
@@ -32,10 +32,9 @@ module {
     }
   }
   gpu.module @test_module_1 {
-    func.func @gpu_index_comp(%arg0: index) -> index {
-      %0 = builtin.unrealized_conversion_cast %arg0 : index to i32
-      %1 = llvm.add %0, %0 : i32
-      llvm.return %1 : i32
+    llvm.func @gpu_index_comp(%arg0: i32) -> i32 {
+      %0 = llvm.add %arg0, %arg0 : i32
+      llvm.return %0 : i32
     }
   }
   module attributes {transform.with_named_sequence} {
@@ -53,7 +52,7 @@ module {
         transform.apply_conversion_patterns.nvgpu.nvgpu_to_nvvm
       } with type_converter {
         transform.apply_conversion_patterns.memref.memref_to_llvm_type_converter {index_bitwidth = 32 : i64, use_opaque_pointers = true}
-      } {illegal_dialects = ["gpu"], illegal_ops = ["llvm.cos", "llvm.exp", "llvm.exp2", "llvm.fabs", "llvm.fceil", "llvm.ffloor", "llvm.log", "llvm.log10", "llvm.log2", "llvm.pow", "llvm.sin", "llvm.sqrt"], legal_dialects = ["llvm", "memref", "nvvm"], legal_ops = ["func.func", "gpu.module", "gpu.yield"], partial_conversion} : !transform.any_op
+      } {illegal_dialects = ["gpu"], illegal_ops = ["llvm.cos", "llvm.exp", "llvm.exp2", "llvm.fabs", "llvm.fceil", "llvm.ffloor", "llvm.log", "llvm.log10", "llvm.log2", "llvm.pow", "llvm.sin", "llvm.sqrt"], legal_dialects = ["llvm", "memref", "nvvm"], legal_ops = ["gpu.module", "gpu.yield"], partial_conversion} : !transform.any_op
       transform.yield 
     }
   }

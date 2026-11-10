@@ -467,9 +467,17 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (f8E5M2, f8E4M3, f8E4M3FN, f8E5M2FNUZ, f8E4M3FNUZ, f8E4M3B11FNUZ, f8E3M4, f8E8M0FNU, vector<4xf8E4M3B11FNUZ>, memref<8xf8E4M3, #spirv.storage_class<StorageBuffer>>, tensor<4xf8E5M2>) -> (), sym_name = "float8_to_integer8"}> ({
-  ^bb0(%arg0: f8E5M2, %arg1: f8E4M3, %arg2: f8E4M3FN, %arg3: f8E5M2FNUZ, %arg4: f8E4M3FNUZ, %arg5: f8E4M3B11FNUZ, %arg6: f8E3M4, %arg7: f8E8M0FNU, %arg8: vector<4xf8E4M3B11FNUZ>, %arg9: memref<8xf8E4M3, #spirv.storage_class<StorageBuffer>>, %arg10: tensor<4xf8E5M2>):
+  "func.func"() <{function_type = (f8E4M3, f8E5M2FNUZ, f8E4M3FNUZ, f8E4M3B11FNUZ, f8E3M4, f8E8M0FNU, vector<4xf8E4M3B11FNUZ>, memref<8xf8E4M3, #spirv.storage_class<StorageBuffer>>, tensor<4xf8E4M3>) -> (), sym_name = "float8_to_integer8"}> ({
+  ^bb0(%arg0: f8E4M3, %arg1: f8E5M2FNUZ, %arg2: f8E4M3FNUZ, %arg3: f8E4M3B11FNUZ, %arg4: f8E3M4, %arg5: f8E8M0FNU, %arg6: vector<4xf8E4M3B11FNUZ>, %arg7: memref<8xf8E4M3, #spirv.storage_class<StorageBuffer>>, %arg8: tensor<4xf8E4M3>):
     "func.return"() : () -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int8], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xf8E5M2>, vector<4xf8E4M3FN>, tensor<4xf8E5M2>, tensor<4xf8E4M3FN>) -> (), sym_name = "supported_float8_types"}> ({
+  ^bb0(%arg0: vector<4xf8E5M2>, %arg1: vector<4xf8E4M3FN>, %arg2: tensor<4xf8E5M2>, %arg3: tensor<4xf8E4M3FN>):
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Float8EXT], [SPV_EXT_float8]>, #spirv.resource_limits<>>} : () -> ()
 

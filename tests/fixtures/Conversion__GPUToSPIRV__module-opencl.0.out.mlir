@@ -1,7 +1,7 @@
 module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Kernel, Addresses], []>, #spirv.resource_limits<>>} {
   gpu.module @kernels {
     spirv.module @__spv__kernels Physical64 OpenCL {
-      spirv.func @basic_module_structure(%arg0: f32, %arg1: !spirv.ptr<!spirv.array<12 x f32>, CrossWorkgroup>) "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, workgroup_attributions = 0 : i64} {
+      spirv.func @basic_module_structure(%arg0: f32, %arg1: !spirv.ptr<!spirv.array<12 x f32>, CrossWorkgroup>) "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>} {
         spirv.Return
       }
     }
@@ -22,7 +22,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
 module attributes {gpu.container_module} {
   gpu.module @kernels attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Kernel, Addresses], []>, #spirv.resource_limits<>>} {
     spirv.module @__spv__kernels Physical64 OpenCL attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Kernel, Addresses], []>, #spirv.resource_limits<>>} {
-      spirv.func @basic_module_structure(%arg0: f32, %arg1: !spirv.ptr<!spirv.array<12 x f32>, CrossWorkgroup>) "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, workgroup_attributions = 0 : i64} {
+      spirv.func @basic_module_structure(%arg0: f32, %arg1: !spirv.ptr<!spirv.array<12 x f32>, CrossWorkgroup>) "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>} {
         spirv.Return
       }
     }

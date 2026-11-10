@@ -317,3 +317,19 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<index = 256 : i64>} {
   }
 }
 
+// -----
+module {
+  func.func @huge_static_memref() {
+    %alloc = memref.alloc() : memref<3090540x3090540x3090540xi32>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @nestedMemref() {
+    %alloc = memref.alloc() : memref<1xmemref<2xf32>>
+    return
+  }
+}
+

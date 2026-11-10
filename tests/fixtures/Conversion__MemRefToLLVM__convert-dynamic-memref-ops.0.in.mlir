@@ -291,3 +291,14 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2000xf32>) -> f32, sym_name = "memref_load_neg_stride"}> ({
+  ^bb0(%arg0: memref<2000xf32>):
+    %0 = "memref.reinterpret_cast"(%arg0) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>, static_offsets = array<i64: 1000>, static_sizes = array<i64: 100>, static_strides = array<i64: -1>}> : (memref<2000xf32>) -> memref<100xf32, strided<[-1], offset: 1000>>
+    %1 = "arith.constant"() <{value = 5 : index}> : () -> index
+    %2 = "memref.load"(%0, %1) : (memref<100xf32, strided<[-1], offset: 1000>>, index) -> f32
+    "func.return"(%2) : (f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+

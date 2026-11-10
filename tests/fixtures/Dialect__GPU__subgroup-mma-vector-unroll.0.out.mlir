@@ -12,8 +12,8 @@ module {
     %c16 = arith.constant 16 : index
     %c32 = arith.constant 32 : index
     %cst_0 = arith.constant 0.000000e+00 : f32
-    %thread_id_x = gpu.thread_id  x
-    %thread_id_y = gpu.thread_id  y
+    %thread_id_x = gpu.thread_id x
+    %thread_id_y = gpu.thread_id y
     %0 = affine.apply #map()[%thread_id_y]
     %1 = affine.apply #map1()[%thread_id_x]
     %2 = scf.for %arg3 = %c0 to %c32 step %c16 iter_args(%arg4 = %cst) -> (vector<16x16xf32>) {
@@ -69,8 +69,8 @@ module {
     %cst_3 = arith.constant dense<[0, 1, 2, 3]> : vector<4xindex>
     %cst_4 = arith.constant dense<1> : vector<4x4xindex>
     %alloc = memref.alloc() {alignment = 64 : i64} : memref<32x32xf32>
-    %thread_id_x = gpu.thread_id  x
-    %thread_id_y = gpu.thread_id  y
+    %thread_id_x = gpu.thread_id x
+    %thread_id_y = gpu.thread_id y
     %0 = affine.apply #map()[%thread_id_y]
     %1 = affine.apply #map1()[%thread_id_x]
     %2 = scf.for %arg3 = %c0 to %c32 step %c16 iter_args(%arg4 = %cst) -> (vector<16x16xf32>) {

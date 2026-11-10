@@ -23,7 +23,7 @@
     %350 = "arith.constant"() <{value = 2 : index}> : () -> index
     %351 = "scf.for"(%348, %349, %350, %347) ({
     ^bb0(%arg101: index, %arg102: f32):
-      %352 = "memref.load"(%arg100, %arg101) <{nontemporal = false}> : (memref<1024xf32>, index) -> f32
+      %352 = "memref.load"(%arg100, %arg101) <{invariant = false, nontemporal = false}> : (memref<1024xf32>, index) -> f32
       %353 = "arith.addf"(%arg102, %352) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
       "scf.yield"(%353) : (f32) -> ()
     }) : (index, index, index, f32) -> f32
@@ -432,7 +432,7 @@
       %147 = "arith.addi"(%arg61, %arg60) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
       %148 = "arith.constant"() <{value = 7 : index}> : () -> index
       %149 = "arith.addi"(%147, %148) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %150 = "memref.load"(%143, %149) <{nontemporal = false}> : (memref<10xf32>, index) -> f32
+      %150 = "memref.load"(%143, %149) <{invariant = false, nontemporal = false}> : (memref<10xf32>, index) -> f32
       "scf.yield"() : () -> ()
     }) : (index, index, index) -> ()
     "func.return"() : () -> ()
@@ -458,7 +458,7 @@
   }) : () -> ()
   "func.func"() <{function_type = (memref<i32>, memref<i32>) -> (), sym_name = "affine_load_store_zero_dim"}> ({
   ^bb0(%arg56: memref<i32>, %arg57: memref<i32>):
-    %132 = "memref.load"(%arg56) <{nontemporal = false}> : (memref<i32>) -> i32
+    %132 = "memref.load"(%arg56) <{invariant = false, nontemporal = false}> : (memref<i32>) -> i32
     "memref.store"(%132, %arg57) <{nontemporal = false}> : (i32, memref<i32>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -576,8 +576,8 @@
       %81 = "arith.constant"() <{value = 1 : index}> : () -> index
       "scf.parallel"(%arg36, %arg37, %arg38, %74, %76, %78, %79, %80, %81) <{operandSegmentSizes = array<i32: 3, 3, 3, 0>}> ({
       ^bb0(%arg39: index, %arg40: index, %arg41: index):
-        %82 = "memref.load"(%arg34, %arg39, %arg41) <{nontemporal = false}> : (memref<100x100xf32>, index, index) -> f32
-        %83 = "memref.load"(%arg35, %arg41, %arg40) <{nontemporal = false}> : (memref<100x100xf32>, index, index) -> f32
+        %82 = "memref.load"(%arg34, %arg39, %arg41) <{invariant = false, nontemporal = false}> : (memref<100x100xf32>, index, index) -> f32
+        %83 = "memref.load"(%arg35, %arg41, %arg40) <{invariant = false, nontemporal = false}> : (memref<100x100xf32>, index, index) -> f32
         %84 = "arith.mulf"(%82, %83) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
         "scf.reduce"() : () -> ()
       }) : (index, index, index, index, index, index, index, index, index) -> ()
@@ -596,8 +596,8 @@
     %60 = "arith.constant"() <{value = 1 : index}> : () -> index
     "scf.parallel"(%55, %57, %56, %58, %59, %60) <{operandSegmentSizes = array<i32: 2, 2, 2, 0>}> ({
     ^bb0(%arg31: index, %arg32: index):
-      %61 = "memref.load"(%arg29, %arg31, %arg32) <{nontemporal = false}> : (memref<3x3xf32>, index, index) -> f32
-      %62 = "memref.load"(%arg30, %arg31, %arg32) <{nontemporal = false}> : (memref<3x3xf32>, index, index) -> f32
+      %61 = "memref.load"(%arg29, %arg31, %arg32) <{invariant = false, nontemporal = false}> : (memref<3x3xf32>, index, index) -> f32
+      %62 = "memref.load"(%arg30, %arg31, %arg32) <{invariant = false, nontemporal = false}> : (memref<3x3xf32>, index, index) -> f32
       %63 = "arith.mulf"(%61, %62) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
       "memref.store"(%63, %54, %arg31, %arg32) <{nontemporal = false}> : (f32, memref<3x3xf32>, index, index) -> ()
       "scf.reduce"() : () -> ()
@@ -614,8 +614,8 @@
     %50 = "arith.constant"() <{value = 1 : index}> : () -> index
     "scf.parallel"(%47, %48, %46, %46, %49, %50) <{operandSegmentSizes = array<i32: 2, 2, 2, 0>}> ({
     ^bb0(%arg27: index, %arg28: index):
-      %51 = "memref.load"(%arg24, %arg27, %arg28) <{nontemporal = false}> : (memref<?x?xf32>, index, index) -> f32
-      %52 = "memref.load"(%arg25, %arg27, %arg28) <{nontemporal = false}> : (memref<?x?xf32>, index, index) -> f32
+      %51 = "memref.load"(%arg24, %arg27, %arg28) <{invariant = false, nontemporal = false}> : (memref<?x?xf32>, index, index) -> f32
+      %52 = "memref.load"(%arg25, %arg27, %arg28) <{invariant = false, nontemporal = false}> : (memref<?x?xf32>, index, index) -> f32
       %53 = "arith.mulf"(%51, %52) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
       "memref.store"(%53, %arg26, %arg27, %arg28) <{nontemporal = false}> : (f32, memref<?x?xf32>, index, index) -> ()
       "scf.reduce"() : () -> ()
@@ -634,8 +634,8 @@
     %37 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
     %38:2 = "scf.parallel"(%30, %32, %31, %33, %34, %35, %36, %37) <{operandSegmentSizes = array<i32: 2, 2, 2, 2>}> ({
     ^bb0(%arg18: index, %arg19: index):
-      %39 = "memref.load"(%arg16, %arg18, %arg19) <{nontemporal = false}> : (memref<3x3xf32>, index, index) -> f32
-      %40 = "memref.load"(%arg17, %arg18, %arg19) <{nontemporal = false}> : (memref<3x3xf32>, index, index) -> f32
+      %39 = "memref.load"(%arg16, %arg18, %arg19) <{invariant = false, nontemporal = false}> : (memref<3x3xf32>, index, index) -> f32
+      %40 = "memref.load"(%arg17, %arg18, %arg19) <{invariant = false, nontemporal = false}> : (memref<3x3xf32>, index, index) -> f32
       %41 = "arith.mulf"(%39, %40) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
       %42 = "arith.addf"(%39, %40) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
       "scf.reduce"(%41, %42) ({
@@ -662,8 +662,8 @@
     %22 = "arith.constant"() <{value = 1.000000e+00 : f64}> : () -> f64
     %23:2 = "scf.parallel"(%15, %17, %16, %18, %19, %20, %21, %22) <{operandSegmentSizes = array<i32: 2, 2, 2, 2>}> ({
     ^bb0(%arg10: index, %arg11: index):
-      %24 = "memref.load"(%arg8, %arg10, %arg11) <{nontemporal = false}> : (memref<3x3xf64>, index, index) -> f64
-      %25 = "memref.load"(%arg9, %arg10, %arg11) <{nontemporal = false}> : (memref<3x3xf64>, index, index) -> f64
+      %24 = "memref.load"(%arg8, %arg10, %arg11) <{invariant = false, nontemporal = false}> : (memref<3x3xf64>, index, index) -> f64
+      %25 = "memref.load"(%arg9, %arg10, %arg11) <{invariant = false, nontemporal = false}> : (memref<3x3xf64>, index, index) -> f64
       %26 = "arith.mulf"(%24, %25) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64
       %27 = "arith.addf"(%24, %25) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64
       "scf.reduce"(%26, %27) ({
@@ -690,8 +690,8 @@
     %7 = "arith.constant"() <{value = 1 : i64}> : () -> i64
     %8:2 = "scf.parallel"(%0, %2, %1, %3, %4, %5, %6, %7) <{operandSegmentSizes = array<i32: 2, 2, 2, 2>}> ({
     ^bb0(%arg2: index, %arg3: index):
-      %9 = "memref.load"(%arg0, %arg2, %arg3) <{nontemporal = false}> : (memref<3x3xi64>, index, index) -> i64
-      %10 = "memref.load"(%arg1, %arg2, %arg3) <{nontemporal = false}> : (memref<3x3xi64>, index, index) -> i64
+      %9 = "memref.load"(%arg0, %arg2, %arg3) <{invariant = false, nontemporal = false}> : (memref<3x3xi64>, index, index) -> i64
+      %10 = "memref.load"(%arg1, %arg2, %arg3) <{invariant = false, nontemporal = false}> : (memref<3x3xi64>, index, index) -> i64
       %11 = "arith.muli"(%9, %10) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
       %12 = "arith.addi"(%9, %10) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
       "scf.reduce"(%11, %12) ({

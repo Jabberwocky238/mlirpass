@@ -1,6 +1,6 @@
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = (memref<8xf32>, memref<8xf32>, memref<8xf32>) -> ()}> ({
+    "gpu.func"() <{function_type = (memref<8xf32>, memref<8xf32>, memref<8xf32>) -> (), kernel}> ({
     ^bb0(%arg0: memref<8xf32>, %arg1: memref<8xf32>, %arg2: memref<8xf32>):
       %15 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %16 = "memref.load"(%arg0, %15) : (memref<8xf32>, index) -> f32
@@ -8,7 +8,7 @@
       %18 = "arith.addf"(%16, %17) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
       "memref.store"(%18, %arg2, %15) : (f32, memref<8xf32>, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [1, 1, 1]>, sym_name = "kernel_add", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [1, 1, 1]>, sym_name = "kernel_add"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "main"}> ({
     %0 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<8xf32>

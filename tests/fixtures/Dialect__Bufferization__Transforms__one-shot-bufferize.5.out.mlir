@@ -190,23 +190,3 @@ module {
   }
 }
 
-// -----
-module {
-  func.func @custom_op(%arg0: !test.test_tensor<[32, 64], f64>) -> !test.test_tensor<[32, 128], f64> {
-    %0 = bufferization.to_buffer %arg0 : !test.test_tensor<[32, 64], f64> to !test.test_memref<[32, 64], f64>
-    %1 = "test.dummy_memref_op"(%0) : (!test.test_memref<[32, 64], f64>) -> !test.test_memref<[32, 128], f64>
-    %2 = bufferization.to_tensor %1 : !test.test_memref<[32, 128], f64> to !test.test_tensor<[32, 128], f64>
-    return %2 : !test.test_tensor<[32, 128], f64>
-  }
-}
-
-// -----
-module {
-  func.func @custom_origin_op() -> !test.test_tensor<[42], f64> {
-    %0 = "test.create_memref_op"() : () -> !test.test_memref<[21], f64>
-    %1 = "test.dummy_memref_op"(%0) : (!test.test_memref<[21], f64>) -> !test.test_memref<[42], f64>
-    %2 = bufferization.to_tensor %1 : !test.test_memref<[42], f64> to !test.test_tensor<[42], f64>
-    return %2 : !test.test_tensor<[42], f64>
-  }
-}
-

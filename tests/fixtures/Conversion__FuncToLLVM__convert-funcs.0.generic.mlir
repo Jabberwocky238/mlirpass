@@ -18,7 +18,7 @@
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i32)>, linkage = #llvm.linkage<extern_weak>, sym_name = "llvmlinkage", sym_visibility = "private", visibility_ = 0 : i64}> ({
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i32)>, linkage = #llvm.linkage<external>, memory_effects = #llvm.memory_effects<other = none, argMem = none, inaccessibleMem = none, errnoMem = none, targetMem0 = none, targetMem1 = none>, sym_name = "llvmreadnone", sym_visibility = "private", visibility_ = 0 : i64}> ({
-  }) : () -> ()
+  }) {llvm.readnone} : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i32)>, linkage = #llvm.linkage<external>, sym_name = "body", sym_visibility = "private", visibility_ = 0 : i64}> ({
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i32)>, linkage = #llvm.linkage<external>, sym_name = "indirect_const_call", visibility_ = 0 : i64}> ({
@@ -35,10 +35,12 @@
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i32, ...)>, linkage = #llvm.linkage<external>, sym_name = "variadic_func", visibility_ = 0 : i64}> ({
   ^bb0(%arg0: i32):
     "llvm.return"() : () -> ()
-  }) : () -> ()
+  }) {func.varargs = true} : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<external>, sym_name = "target_cpu", sym_visibility = "private", target_cpu = "gfx90a", visibility_ = 0 : i64}> ({
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<external>, sym_name = "target_features", sym_visibility = "private", target_features = #llvm.target_features<["+sme", "+sve"]>, visibility_ = 0 : i64}> ({
+  }) : () -> ()
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<external>, passthrough = ["presplitcoroutine"], sym_name = "passthrough_attr", sym_visibility = "private", visibility_ = 0 : i64}> ({
   }) : () -> ()
 }) : () -> ()
 
@@ -68,5 +70,24 @@
   ^bb0(%arg0: i32):
     "llvm.return"() : () -> ()
   }) {func.varargs = true, llvm.emit_c_interface} : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<external>, sym_name = "empty_res_attrs", visibility_ = 0 : i64}> ({
+    "llvm.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<internal>, sym_name = "host_next_to_gpu_module", visibility_ = 0 : i64}> ({
+    "llvm.return"() : () -> ()
+  }) : () -> ()
+  "gpu.module"() <{sym_name = "gpu_mod"}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
+      "gpu.return"() : () -> ()
+    }) {sym_name = "gpu_kernel"} : () -> ()
+  }) : () -> ()
 }) : () -> ()
 

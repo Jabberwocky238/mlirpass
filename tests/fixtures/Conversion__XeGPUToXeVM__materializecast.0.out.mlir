@@ -16,7 +16,7 @@ module {
       %6 = arith.addi %3, %5 : i64
       %7 = llvm.inttoptr %6 : i64 to !llvm.ptr<1>
       %8 = scf.if %true -> (f32) {
-        %9 = llvm.load %7 {cache_control = #xevm.load_cache_control<L1uc_L2uc_L3uc>} : !llvm.ptr<1> -> f32
+        %9 = llvm.load %7 {cache_control = #xevm.load_cache_control<Use_Default>} : !llvm.ptr<1> -> f32
         scf.yield %9 : f32
       } else {
         %cst = arith.constant 0.000000e+00 : f32
@@ -41,7 +41,7 @@ module {
       %4 = arith.addi %1, %3 : i64
       %5 = llvm.inttoptr %4 : i64 to !llvm.ptr<1>
       %6 = scf.if %true -> (f32) {
-        %7 = llvm.load %5 {cache_control = #xevm.load_cache_control<L1uc_L2uc_L3uc>} : !llvm.ptr<1> -> f32
+        %7 = llvm.load %5 {cache_control = #xevm.load_cache_control<Use_Default>} : !llvm.ptr<1> -> f32
         scf.yield %7 : f32
       } else {
         %cst = arith.constant 0.000000e+00 : f32
@@ -67,7 +67,7 @@ module {
       %5 = arith.addi %3, %4 : i64
       %6 = llvm.inttoptr %5 : i64 to !llvm.ptr<1>
       %7 = scf.if %true -> (f32) {
-        %8 = llvm.load %6 {cache_control = #xevm.load_cache_control<L1uc_L2uc_L3uc>} : !llvm.ptr<1> -> f32
+        %8 = llvm.load %6 {cache_control = #xevm.load_cache_control<Use_Default>} : !llvm.ptr<1> -> f32
         scf.yield %8 : f32
       } else {
         %cst = arith.constant 0.000000e+00 : f32
@@ -99,12 +99,78 @@ module {
       %8 = arith.addi %3, %7 : i64
       %9 = llvm.inttoptr %8 : i64 to !llvm.ptr<1>
       %10 = scf.if %6 -> (f32) {
-        %11 = llvm.load %9 {cache_control = #xevm.load_cache_control<L1uc_L2uc_L3uc>} : !llvm.ptr<1> -> f32
+        %11 = llvm.load %9 {cache_control = #xevm.load_cache_control<Use_Default>} : !llvm.ptr<1> -> f32
         scf.yield %11 : f32
       } else {
         %cst_2 = arith.constant 0.000000e+00 : f32
         scf.yield %cst_2 : f32
       }
+      gpu.return
+    }
+  }
+}
+
+// -----
+module {
+  gpu.module @materializecast [#xevm.target<chip = "pvc">] {
+    gpu.func @materialize_element_to_2D_single_element_vector(%arg0: memref<128xf32>) kernel {
+      %c0 = arith.constant 0 : index
+      %alloca = memref.alloca() : memref<512xi8, 3>
+      %intptr = memref.extract_aligned_pointer_as_index %alloca : memref<512xi8, 3> -> index
+      %c0_0 = arith.constant 0 : index
+      %0 = arith.index_castui %intptr : index to i32
+      %1 = arith.index_castui %c0_0 : index to i32
+      %c1_i32 = arith.constant 1 : i32
+      %2 = arith.muli %1, %c1_i32 : i32
+      %3 = arith.addi %0, %2 : i32
+      %c0_1 = arith.constant 0 : index
+      %c16 = arith.constant 16 : index
+      %4 = arith.muli %c0, %c16 : index
+      %5 = arith.addi %4, %c0_1 : index
+      %c1 = arith.constant 1 : index
+      %6 = arith.muli %c0, %c1 : index
+      %7 = arith.addi %6, %5 : index
+      %8 = arith.index_castui %7 : index to i32
+      %c4_i32 = arith.constant 4 : i32
+      %9 = arith.muli %8, %c4_i32 : i32
+      %10 = arith.addi %3, %9 : i32
+      %11 = llvm.inttoptr %10 : i32 to !llvm.ptr<3>
+      %12 = llvm.load %11 : !llvm.ptr<3> -> f32
+      %13 = vector.broadcast %12 : f32 to vector<1x1xf32>
+      %14 = vector.shape_cast %13 : vector<1x1xf32> to vector<1xf32>
+      vector.store %14, %arg0[%c0] : memref<128xf32>, vector<1xf32>
+      gpu.return
+    }
+  }
+}
+
+// -----
+module {
+  gpu.module @materializecast [#xevm.target<chip = "pvc">] {
+    gpu.func @materialize_2D_single_element_vector_to_element(%arg0: memref<512xi8, 3>) kernel {
+      %intptr = memref.extract_aligned_pointer_as_index %arg0 : memref<512xi8, 3> -> index
+      %c0 = arith.constant 0 : index
+      %0 = arith.index_castui %intptr : index to i32
+      %1 = arith.index_castui %c0 : index to i32
+      %c1_i32 = arith.constant 1 : i32
+      %2 = arith.muli %1, %c1_i32 : i32
+      %3 = arith.addi %0, %2 : i32
+      %c0_0 = arith.constant 0 : index
+      %cst = arith.constant dense<0.000000e+00> : vector<1x1xf32>
+      %4 = vector.extract %cst[0, 0] : f32 from vector<1x1xf32>
+      %c0_1 = arith.constant 0 : index
+      %c16 = arith.constant 16 : index
+      %5 = arith.muli %c0_0, %c16 : index
+      %6 = arith.addi %5, %c0_1 : index
+      %c1 = arith.constant 1 : index
+      %7 = arith.muli %c0_0, %c1 : index
+      %8 = arith.addi %7, %6 : index
+      %9 = arith.index_castui %8 : index to i32
+      %c4_i32 = arith.constant 4 : i32
+      %10 = arith.muli %9, %c4_i32 : i32
+      %11 = arith.addi %3, %10 : i32
+      %12 = llvm.inttoptr %11 : i32 to !llvm.ptr<3>
+      llvm.store %4, %12 : f32, !llvm.ptr<3>
       gpu.return
     }
   }

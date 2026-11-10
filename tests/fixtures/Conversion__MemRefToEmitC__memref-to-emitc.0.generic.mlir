@@ -7,6 +7,15 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "alloca_rank0"}> ({
+    %0 = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.lvalue<f32>
+    %1 = "emitc.address_of"(%0) : (!emitc.lvalue<f32>) -> !emitc.ptr<f32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<4x8xf32>, f32, index, index) -> (), sym_name = "memref_store"}> ({
   ^bb0(%arg0: memref<4x8xf32>, %arg1: f32, %arg2: index, %arg3: index):
     %0 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<4x8xf32>) -> !emitc.array<4x8xf32>
@@ -39,5 +48,11 @@
     %2 = "emitc.address_of"(%1) : (!emitc.lvalue<i32>) -> !emitc.ptr<i32>
     "func.return"() : () -> ()
   }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() <{sym_name = "rank0_globals"}> ({
+  "emitc.global"() <{extern_specifier, sym_name = "extern_global", type = f32}> : () -> ()
+  "emitc.global"() <{extern_specifier, sym_name = "uninitialized_global", type = f32}> : () -> ()
 }) : () -> ()
 

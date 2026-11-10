@@ -107,11 +107,9 @@ module {
 
 // -----
 module {
-  func.func @extract(%arg0: vector<2xf32>) -> (vector<1xf32>, f32) {
-    %0 = spirv.CompositeExtract %arg0[0 : i32] : vector<2xf32>
-    %1 = builtin.unrealized_conversion_cast %0 : f32 to vector<1xf32>
-    %2 = spirv.CompositeExtract %arg0[1 : i32] : vector<2xf32>
-    return %1, %2 : vector<1xf32>, f32
+  func.func @extract(%arg0: vector<2xf32>) -> f32 {
+    %0 = spirv.CompositeExtract %arg0[1 : i32] : vector<2xf32>
+    return %0 : f32
   }
 }
 
@@ -649,6 +647,137 @@ module {
 }
 
 // -----
+module {
+  func.func @reduction_and(%arg0: vector<4xi32>) -> i32 {
+    %0 = spirv.CompositeExtract %arg0[0 : i32] : vector<4xi32>
+    %1 = spirv.CompositeExtract %arg0[1 : i32] : vector<4xi32>
+    %2 = spirv.CompositeExtract %arg0[2 : i32] : vector<4xi32>
+    %3 = spirv.CompositeExtract %arg0[3 : i32] : vector<4xi32>
+    %4 = spirv.BitwiseAnd %0, %1 : i32
+    %5 = spirv.BitwiseAnd %4, %2 : i32
+    %6 = spirv.BitwiseAnd %5, %3 : i32
+    return %6 : i32
+  }
+}
+
+// -----
+module {
+  func.func @reduction_and_acc(%arg0: vector<3xi32>, %arg1: i32) -> i32 {
+    %0 = spirv.CompositeExtract %arg0[0 : i32] : vector<3xi32>
+    %1 = spirv.CompositeExtract %arg0[1 : i32] : vector<3xi32>
+    %2 = spirv.CompositeExtract %arg0[2 : i32] : vector<3xi32>
+    %3 = spirv.BitwiseAnd %0, %1 : i32
+    %4 = spirv.BitwiseAnd %3, %2 : i32
+    %5 = spirv.BitwiseAnd %4, %arg1 : i32
+    return %5 : i32
+  }
+}
+
+// -----
+module {
+  func.func @reduction_or(%arg0: vector<4xi32>) -> i32 {
+    %0 = spirv.CompositeExtract %arg0[0 : i32] : vector<4xi32>
+    %1 = spirv.CompositeExtract %arg0[1 : i32] : vector<4xi32>
+    %2 = spirv.CompositeExtract %arg0[2 : i32] : vector<4xi32>
+    %3 = spirv.CompositeExtract %arg0[3 : i32] : vector<4xi32>
+    %4 = spirv.BitwiseOr %0, %1 : i32
+    %5 = spirv.BitwiseOr %4, %2 : i32
+    %6 = spirv.BitwiseOr %5, %3 : i32
+    return %6 : i32
+  }
+}
+
+// -----
+module {
+  func.func @reduction_or_acc(%arg0: vector<3xi32>, %arg1: i32) -> i32 {
+    %0 = spirv.CompositeExtract %arg0[0 : i32] : vector<3xi32>
+    %1 = spirv.CompositeExtract %arg0[1 : i32] : vector<3xi32>
+    %2 = spirv.CompositeExtract %arg0[2 : i32] : vector<3xi32>
+    %3 = spirv.BitwiseOr %0, %1 : i32
+    %4 = spirv.BitwiseOr %3, %2 : i32
+    %5 = spirv.BitwiseOr %4, %arg1 : i32
+    return %5 : i32
+  }
+}
+
+// -----
+module {
+  func.func @reduction_xor(%arg0: vector<4xi32>) -> i32 {
+    %0 = spirv.CompositeExtract %arg0[0 : i32] : vector<4xi32>
+    %1 = spirv.CompositeExtract %arg0[1 : i32] : vector<4xi32>
+    %2 = spirv.CompositeExtract %arg0[2 : i32] : vector<4xi32>
+    %3 = spirv.CompositeExtract %arg0[3 : i32] : vector<4xi32>
+    %4 = spirv.BitwiseXor %0, %1 : i32
+    %5 = spirv.BitwiseXor %4, %2 : i32
+    %6 = spirv.BitwiseXor %5, %3 : i32
+    return %6 : i32
+  }
+}
+
+// -----
+module {
+  func.func @reduction_xor_acc(%arg0: vector<3xi32>, %arg1: i32) -> i32 {
+    %0 = spirv.CompositeExtract %arg0[0 : i32] : vector<3xi32>
+    %1 = spirv.CompositeExtract %arg0[1 : i32] : vector<3xi32>
+    %2 = spirv.CompositeExtract %arg0[2 : i32] : vector<3xi32>
+    %3 = spirv.BitwiseXor %0, %1 : i32
+    %4 = spirv.BitwiseXor %3, %2 : i32
+    %5 = spirv.BitwiseXor %4, %arg1 : i32
+    return %5 : i32
+  }
+}
+
+// -----
+module {
+  func.func @reduction_or_bool(%arg0: vector<4xi1>) -> i1 {
+    %0 = spirv.CompositeExtract %arg0[0 : i32] : vector<4xi1>
+    %1 = spirv.CompositeExtract %arg0[1 : i32] : vector<4xi1>
+    %2 = spirv.CompositeExtract %arg0[2 : i32] : vector<4xi1>
+    %3 = spirv.CompositeExtract %arg0[3 : i32] : vector<4xi1>
+    %4 = spirv.Any %arg0 : vector<4xi1>
+    return %4 : i1
+  }
+}
+
+// -----
+module {
+  func.func @reduction_and_bool(%arg0: vector<4xi1>) -> i1 {
+    %0 = spirv.CompositeExtract %arg0[0 : i32] : vector<4xi1>
+    %1 = spirv.CompositeExtract %arg0[1 : i32] : vector<4xi1>
+    %2 = spirv.CompositeExtract %arg0[2 : i32] : vector<4xi1>
+    %3 = spirv.CompositeExtract %arg0[3 : i32] : vector<4xi1>
+    %4 = spirv.All %arg0 : vector<4xi1>
+    return %4 : i1
+  }
+}
+
+// -----
+module {
+  func.func @reduction_or_bool_acc(%arg0: vector<4xi1>, %arg1: i1) -> i1 {
+    %0 = spirv.CompositeExtract %arg0[0 : i32] : vector<4xi1>
+    %1 = spirv.CompositeExtract %arg0[1 : i32] : vector<4xi1>
+    %2 = spirv.CompositeExtract %arg0[2 : i32] : vector<4xi1>
+    %3 = spirv.CompositeExtract %arg0[3 : i32] : vector<4xi1>
+    %4 = spirv.Any %arg0 : vector<4xi1>
+    %5 = spirv.LogicalOr %4, %arg1 : i1
+    return %5 : i1
+  }
+}
+
+// -----
+module {
+  func.func @reduction_and_bool_acc(%arg0: vector<4xi1>, %arg1: i1) -> i1 {
+    %0 = spirv.CompositeExtract %arg0[0 : i32] : vector<4xi1>
+    %1 = spirv.CompositeExtract %arg0[1 : i32] : vector<4xi1>
+    %2 = spirv.CompositeExtract %arg0[2 : i32] : vector<4xi1>
+    %3 = spirv.CompositeExtract %arg0[3 : i32] : vector<4xi1>
+    %4 = spirv.All %arg0 : vector<4xi1>
+    %5 = spirv.LogicalAnd %4, %arg1 : i1
+    return %5 : i1
+  }
+}
+
+// -----
 module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [BFloat16DotProductKHR], [SPV_KHR_bfloat16]>, #spirv.resource_limits<>>} {
   func.func @reduction_bf16_addf_mulf(%arg0: vector<4xbf16>, %arg1: vector<4xbf16>) -> bf16 {
     %0 = arith.mulf %arg0, %arg1 : vector<4xbf16>
@@ -692,6 +821,27 @@ module {
     %cst0_i32 = spirv.Constant 0 : i32
     %0 = builtin.unrealized_conversion_cast %cst0_i32 : i32 to vector<1xindex>
     return %0 : vector<1xindex>
+  }
+}
+
+// -----
+module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int8, Shader], []>, #spirv.resource_limits<>>} {
+  func.func @step_i8() -> vector<4xi8> {
+    %cst0_i8 = spirv.Constant 0 : i8
+    %cst1_i8 = spirv.Constant 1 : i8
+    %cst2_i8 = spirv.Constant 2 : i8
+    %cst3_i8 = spirv.Constant 3 : i8
+    %0 = spirv.CompositeConstruct %cst0_i8, %cst1_i8, %cst2_i8, %cst3_i8 : (i8, i8, i8, i8) -> vector<4xi8>
+    return %0 : vector<4xi8>
+  }
+}
+
+// -----
+module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int16, Shader], []>, #spirv.resource_limits<>>} {
+  func.func @step_size1_i16() -> vector<1xi16> {
+    %cst0_i16 = spirv.Constant 0 : i16
+    %0 = builtin.unrealized_conversion_cast %cst0_i16 : i16 to vector<1xi16>
+    return %0 : vector<1xi16>
   }
 }
 
@@ -803,6 +953,19 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %5 = spirv.AccessChain %0[%cst0_i32, %4] : !spirv.ptr<!spirv.struct<(!spirv.array<16 x f32, stride=4> [0])>, StorageBuffer>, i32, i32 -> !spirv.ptr<f32, StorageBuffer>
     %6 = spirv.Bitcast %5 : !spirv.ptr<f32, StorageBuffer> to !spirv.ptr<vector<4xf32>, StorageBuffer>
     spirv.Store "StorageBuffer" %6, %arg1 : vector<4xf32>
+    return
+  }
+  func.func @vector_store_index(%arg0: memref<4xindex, #spirv.storage_class<StorageBuffer>>, %arg1: vector<4xindex>) {
+    %0 = builtin.unrealized_conversion_cast %arg0 : memref<4xindex, #spirv.storage_class<StorageBuffer>> to !spirv.ptr<!spirv.struct<(!spirv.array<4 x i32, stride=4> [0])>, StorageBuffer>
+    %1 = builtin.unrealized_conversion_cast %arg1 : vector<4xindex> to vector<4xi32>
+    %c0 = arith.constant 0 : index
+    %2 = builtin.unrealized_conversion_cast %c0 : index to i32
+    %cst0_i32 = spirv.Constant 0 : i32
+    %cst0_i32_0 = spirv.Constant 0 : i32
+    %cst1_i32 = spirv.Constant 1 : i32
+    %3 = spirv.AccessChain %0[%cst0_i32, %2] : !spirv.ptr<!spirv.struct<(!spirv.array<4 x i32, stride=4> [0])>, StorageBuffer>, i32, i32 -> !spirv.ptr<i32, StorageBuffer>
+    %4 = spirv.Bitcast %3 : !spirv.ptr<i32, StorageBuffer> to !spirv.ptr<vector<4xi32>, StorageBuffer>
+    spirv.Store "StorageBuffer" %4, %1 : vector<4xi32>
     return
   }
 }

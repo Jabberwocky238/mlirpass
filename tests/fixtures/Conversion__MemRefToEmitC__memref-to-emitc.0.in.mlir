@@ -7,6 +7,14 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "alloca_rank0"}> ({
+    %0 = "memref.alloca"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<f32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<4x8xf32>, f32, index, index) -> (), sym_name = "memref_store"}> ({
   ^bb0(%arg0: memref<4x8xf32>, %arg1: f32, %arg2: index, %arg3: index):
     "memref.store"(%arg1, %arg0, %arg2, %arg3) : (f32, memref<4x8xf32>, index, index) -> ()
@@ -34,5 +42,11 @@
     %1 = "memref.get_global"() <{name = @__constant_xi32}> : () -> memref<i32>
     "func.return"() : () -> ()
   }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() <{sym_name = "rank0_globals"}> ({
+  "memref.global"() <{sym_name = "extern_global", type = memref<f32>}> : () -> ()
+  "memref.global"() <{initial_value, sym_name = "uninitialized_global", type = memref<f32>}> : () -> ()
 }) : () -> ()
 

@@ -12,7 +12,7 @@
         %1 = "spirv.Load"(%0) : (!spirv.ptr<vector<3xi32>, Input>) -> vector<3xi32>
         %2 = "spirv.CompositeExtract"(%1) <{indices = [0 : i32]}> : (vector<3xi32>) -> i32
         "spirv.Return"() : () -> ()
-      }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, workgroup_attributions = 0 : i64} : () -> ()
+      }) {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} : () -> ()
     }) : () -> ()
     "func.func"() <{function_type = () -> (), sym_name = "builtin_workgroup_id_x"}> ({
       "func.return"() : () -> ()
@@ -29,7 +29,7 @@
         %0 = "spirv.mlir.addressof"() <{variable = @__builtin__SubgroupSize__}> : () -> !spirv.ptr<i32, Input>
         %1 = "spirv.Load"(%0) : (!spirv.ptr<i32, Input>) -> i32
         "spirv.Return"() : () -> ()
-      }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, workgroup_attributions = 0 : i64} : () -> ()
+      }) {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} : () -> ()
     }) : () -> ()
     "func.func"() <{function_type = () -> (), sym_name = "builtin_subgroup_size"}> ({
       "func.return"() : () -> ()
@@ -46,7 +46,7 @@
         %0 = "spirv.mlir.addressof"() <{variable = @__builtin__SubgroupLocalInvocationId__}> : () -> !spirv.ptr<i32, Input>
         %1 = "spirv.Load"(%0) : (!spirv.ptr<i32, Input>) -> i32
         "spirv.Return"() : () -> ()
-      }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, workgroup_attributions = 0 : i64} : () -> ()
+      }) {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} : () -> ()
     }) : () -> ()
     "func.func"() <{function_type = () -> (), sym_name = "builtin_laneid"}> ({
       "func.return"() : () -> ()

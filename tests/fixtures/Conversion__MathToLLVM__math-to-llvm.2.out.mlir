@@ -27,6 +27,27 @@ module {
 
 // -----
 module {
+  func.func @absi_2dvector(%arg0: vector<4x3xi32>) {
+    %0 = builtin.unrealized_conversion_cast %arg0 : vector<4x3xi32> to !llvm.array<4 x vector<3xi32>>
+    %1 = llvm.mlir.poison : !llvm.array<4 x vector<3xi32>>
+    %2 = llvm.extractvalue %0[0] : !llvm.array<4 x vector<3xi32>> 
+    %3 = "llvm.intr.abs"(%2) <{is_int_min_poison = false}> : (vector<3xi32>) -> vector<3xi32>
+    %4 = llvm.insertvalue %3, %1[0] : !llvm.array<4 x vector<3xi32>> 
+    %5 = llvm.extractvalue %0[1] : !llvm.array<4 x vector<3xi32>> 
+    %6 = "llvm.intr.abs"(%5) <{is_int_min_poison = false}> : (vector<3xi32>) -> vector<3xi32>
+    %7 = llvm.insertvalue %6, %4[1] : !llvm.array<4 x vector<3xi32>> 
+    %8 = llvm.extractvalue %0[2] : !llvm.array<4 x vector<3xi32>> 
+    %9 = "llvm.intr.abs"(%8) <{is_int_min_poison = false}> : (vector<3xi32>) -> vector<3xi32>
+    %10 = llvm.insertvalue %9, %7[2] : !llvm.array<4 x vector<3xi32>> 
+    %11 = llvm.extractvalue %0[3] : !llvm.array<4 x vector<3xi32>> 
+    %12 = "llvm.intr.abs"(%11) <{is_int_min_poison = false}> : (vector<3xi32>) -> vector<3xi32>
+    %13 = llvm.insertvalue %12, %10[3] : !llvm.array<4 x vector<3xi32>> 
+    return
+  }
+}
+
+// -----
+module {
   func.func @log1p(%arg0: f32) {
     %0 = llvm.mlir.constant(1.000000e+00 : f32) : f32
     %1 = llvm.fadd %0, %arg0 : f32
@@ -570,6 +591,34 @@ module {
     %0 = math.absf %arg0 : f4E2M1FN
     %1 = math.cos %arg0 : f4E2M1FN
     %2 = math.fma %arg1, %arg1, %arg2 : f4E2M1FN
+    return
+  }
+}
+
+// -----
+module {
+  func.func @experimental_constrained_fma(%arg0: f64, %arg1: f64, %arg2: f64) {
+    %0 = llvm.intr.experimental.constrained.fma %arg0, %arg1, %arg2 tonearest ignore : f64
+    %1 = llvm.intr.experimental.constrained.fma %arg0, %arg1, %arg2 downward ignore : f64
+    %2 = llvm.intr.experimental.constrained.fma %arg0, %arg1, %arg2 upward ignore : f64
+    %3 = llvm.intr.experimental.constrained.fma %arg0, %arg1, %arg2 towardzero ignore : f64
+    %4 = llvm.intr.experimental.constrained.fma %arg0, %arg1, %arg2 tonearestaway ignore : f64
+    return
+  }
+}
+
+// -----
+module {
+  func.func @experimental_constrained_fma_vector(%arg0: vector<4xf32>, %arg1: vector<4xf32>, %arg2: vector<4xf32>) {
+    %0 = llvm.intr.experimental.constrained.fma %arg0, %arg1, %arg2 tonearest ignore : vector<4xf32>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @constrained_fma_with_fastmath(%arg0: f64, %arg1: f64, %arg2: f64) {
+    %0 = llvm.intr.experimental.constrained.fma %arg0, %arg1, %arg2 tonearest ignore : f64
     return
   }
 }

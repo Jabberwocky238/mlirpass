@@ -346,3 +346,77 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1) -> i1, sym_name = "no_merge_self_arg_loop"}> ({
+  ^bb0(%arg12: i1):
+    %9 = "arith.constant"() <{value = true}> : () -> i1
+    "cf.br"(%9)[^bb1] : (i1) -> ()
+  ^bb1(%10: i1):  // pred: ^bb0
+    "cf.cond_br"(%10, %9, %arg12, %9)[^bb4, ^bb2] <{operandSegmentSizes = array<i32: 1, 1, 2>}> : (i1, i1, i1, i1) -> ()
+  ^bb2(%11: i1, %12: i1):  // 2 preds: ^bb1, ^bb3
+    "cf.cond_br"(%11, %12)[^bb3, ^bb4] <{operandSegmentSizes = array<i32: 1, 0, 1>}> : (i1, i1) -> ()
+  ^bb3:  // pred: ^bb2
+    "cf.br"(%arg12, %12)[^bb2] : (i1, i1) -> ()
+  ^bb4(%13: i1):  // 2 preds: ^bb1, ^bb2
+    "func.return"(%13) : (i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i1, i32) -> i32, sym_name = "fold_uniform_branch_block_arg"}> ({
+  ^bb0(%arg10: i1, %arg11: i32):
+    "cf.cond_br"(%arg10)[^bb1, ^bb2] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb1:  // pred: ^bb0
+    "foo.op"() : () -> ()
+    "cf.br"(%arg11)[^bb3] : (i32) -> ()
+  ^bb2:  // pred: ^bb0
+    "foo.op"() : () -> ()
+    "cf.br"(%arg11)[^bb3] : (i32) -> ()
+  ^bb3(%8: i32):  // 2 preds: ^bb1, ^bb2
+    "func.return"(%8) : (i32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i1, i32, i32) -> i32, sym_name = "no_fold_non_uniform_block_arg"}> ({
+  ^bb0(%arg7: i1, %arg8: i32, %arg9: i32):
+    "cf.cond_br"(%arg7)[^bb1, ^bb2] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb1:  // pred: ^bb0
+    "foo.op"() : () -> ()
+    "cf.br"(%arg8)[^bb3] : (i32) -> ()
+  ^bb2:  // pred: ^bb0
+    "foo.op"() : () -> ()
+    "cf.br"(%arg9)[^bb3] : (i32) -> ()
+  ^bb3(%7: i32):  // 2 preds: ^bb1, ^bb2
+    "func.return"(%7) : (i32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32, i32) -> i32, sym_name = "no_fold_same_dest_different_args"}> ({
+  ^bb0(%arg5: i32, %arg6: i32):
+    %5 = "test.producing_br"(%arg5, %arg6)[^bb1, ^bb1] <{operandSegmentSizes = array<i32: 1, 1>}> : (i32, i32) -> i32
+  ^bb1(%6: i32):  // 2 preds: ^bb0, ^bb0
+    "func.return"(%6) : (i32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> i32, sym_name = "fold_same_dest_same_args"}> ({
+  ^bb0(%arg4: i32):
+    %3 = "test.producing_br"(%arg4, %arg4)[^bb1, ^bb1] <{operandSegmentSizes = array<i32: 1, 1>}> : (i32, i32) -> i32
+  ^bb1(%4: i32):  // 2 preds: ^bb0, ^bb0
+    "func.return"(%4) : (i32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> i32, sym_name = "no_fold_unknown_terminator"}> ({
+  ^bb0(%arg3: i32):
+    "cf.br"()[^bb1] : () -> ()
+  ^bb1:  // pred: ^bb0
+    "foo.two_successors"()[^bb2, ^bb3] : () -> ()
+  ^bb2:  // pred: ^bb1
+    "cf.br"(%arg3)[^bb3] : (i32) -> ()
+  ^bb3(%2: i32):  // 2 preds: ^bb1, ^bb2
+    "func.return"(%2) : (i32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32, i32, i32) -> i32, sym_name = "skip_unused_block_arg"}> ({
+  ^bb0(%arg0: i32, %arg1: i32, %arg2: i32):
+    "foo.pred"()[^bb1, ^bb2] : () -> ()
+  ^bb1:  // pred: ^bb0
+    "cf.br"(%arg2, %arg1)[^bb3] : (i32, i32) -> ()
+  ^bb2:  // pred: ^bb0
+    "cf.br"(%arg1, %arg1)[^bb3] : (i32, i32) -> ()
+  ^bb3(%0: i32, %1: i32):  // 2 preds: ^bb1, ^bb2
+    "foo.use"(%0) : (i32) -> ()
+    "func.return"(%1) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+

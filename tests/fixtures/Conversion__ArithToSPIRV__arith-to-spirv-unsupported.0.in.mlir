@@ -92,6 +92,15 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (tensor<1xi32>) -> tensor<1xi16>, sym_name = "trunci_tensor_no_crash"}> ({
+  ^bb0(%arg0: tensor<1xi32>):
+    %0 = "arith.trunci"(%arg0) <{overflowFlags = #arith.overflow<none>}> : (tensor<1xi32>) -> tensor<1xi16>
+    "func.return"(%0) : (tensor<1xi16>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = () -> (), sym_name = "constant_dense_resource_non_existant"}> ({
     %0 = "arith.constant"() <{value = dense_resource<non_existant> : tensor<5xf32>}> : () -> tensor<5xf32>
     "func.return"() : () -> ()

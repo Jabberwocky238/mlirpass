@@ -376,7 +376,14 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [], []>
 
 // -----
 module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int8], []>, #spirv.resource_limits<>>} {
-  spirv.func @float8_to_integer8(%arg0: i8, %arg1: i8, %arg2: i8, %arg3: i8, %arg4: i8, %arg5: i8, %arg6: i8, %arg7: i8, %arg8: vector<4xi8>, %arg9: !spirv.ptr<!spirv.struct<(!spirv.array<8 x i8, stride=1> [0])>, StorageBuffer>, %arg10: !spirv.array<4 x i8>) "None" {
+  spirv.func @float8_to_integer8(%arg0: i8, %arg1: i8, %arg2: i8, %arg3: i8, %arg4: i8, %arg5: i8, %arg6: vector<4xi8>, %arg7: !spirv.ptr<!spirv.struct<(!spirv.array<8 x i8, stride=1> [0])>, StorageBuffer>, %arg8: !spirv.array<4 x i8>) "None" {
+    spirv.Return
+  }
+}
+
+// -----
+module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Float8EXT], [SPV_EXT_float8]>, #spirv.resource_limits<>>} {
+  func.func @supported_float8_types(%arg0: vector<4xf8E5M2>, %arg1: vector<4xf8E4M3FN>, %arg2: tensor<4xf8E5M2>, %arg3: tensor<4xf8E4M3FN>) {
     spirv.Return
   }
 }

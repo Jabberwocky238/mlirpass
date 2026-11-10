@@ -1,5 +1,7 @@
 module {
   gpu.module @test_module attributes {llvm.data_layout = "e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9"} {
+    llvm.func @__ockl_get_num_groups(i32) -> i64
+    llvm.func @__ockl_get_local_size(i32) -> i64
     llvm.func @gpu_index_ops() -> !llvm.struct<(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)> attributes {llvm.emit_c_interface} {
       %0 = rocdl.workitem.id.x : i32
       %1 = llvm.sext %0 : i32 to i64
@@ -7,24 +9,24 @@ module {
       %3 = llvm.sext %2 : i32 to i64
       %4 = rocdl.workitem.id.z : i32
       %5 = llvm.sext %4 : i32 to i64
-      %6 = rocdl.workgroup.dim.x : i32
-      %7 = llvm.sext %6 : i32 to i64
-      %8 = rocdl.workgroup.dim.y : i32
-      %9 = llvm.sext %8 : i32 to i64
-      %10 = rocdl.workgroup.dim.z : i32
-      %11 = llvm.sext %10 : i32 to i64
+      %6 = llvm.mlir.constant(0 : i32) : i32
+      %7 = llvm.call @__ockl_get_local_size(%6) : (i32) -> (i64 {llvm.range = #llvm.constant_range<i64, 1, 1025>})
+      %8 = llvm.mlir.constant(1 : i32) : i32
+      %9 = llvm.call @__ockl_get_local_size(%8) : (i32) -> (i64 {llvm.range = #llvm.constant_range<i64, 1, 1025>})
+      %10 = llvm.mlir.constant(2 : i32) : i32
+      %11 = llvm.call @__ockl_get_local_size(%10) : (i32) -> (i64 {llvm.range = #llvm.constant_range<i64, 1, 1025>})
       %12 = rocdl.workgroup.id.x : i32
       %13 = llvm.sext %12 : i32 to i64
       %14 = rocdl.workgroup.id.y : i32
       %15 = llvm.sext %14 : i32 to i64
       %16 = rocdl.workgroup.id.z : i32
       %17 = llvm.sext %16 : i32 to i64
-      %18 = rocdl.grid.dim.x : i32
-      %19 = llvm.sext %18 : i32 to i64
-      %20 = rocdl.grid.dim.y : i32
-      %21 = llvm.sext %20 : i32 to i64
-      %22 = rocdl.grid.dim.z : i32
-      %23 = llvm.sext %22 : i32 to i64
+      %18 = llvm.mlir.constant(0 : i32) : i32
+      %19 = llvm.call @__ockl_get_num_groups(%18) : (i32) -> i64
+      %20 = llvm.mlir.constant(1 : i32) : i32
+      %21 = llvm.call @__ockl_get_num_groups(%20) : (i32) -> i64
+      %22 = llvm.mlir.constant(2 : i32) : i32
+      %23 = llvm.call @__ockl_get_num_groups(%22) : (i32) -> i64
       %24 = llvm.mlir.constant(0 : i32) : i32
       %25 = llvm.mlir.constant(-1 : i32) : i32
       %26 = rocdl.mbcnt.lo %25, %24 {res_attrs = [{llvm.noundef, llvm.range = #llvm.constant_range<i32, 0, 32>}]} : (i32, i32) -> i32
@@ -81,13 +83,25 @@ module {
       %14 = llvm.sext %13 : i32 to i64
       %15 = rocdl.workgroup.id.z range <i32, 0, 28> : i32
       %16 = llvm.sext %15 : i32 to i64
-      %17 = llvm.add %6, %8 : i64
-      %18 = llvm.add %17, %10 : i64
-      %19 = llvm.add %18, %12 : i64
-      %20 = llvm.add %19, %14 : i64
-      %21 = llvm.add %20, %16 : i64
-      %22 = llvm.trunc %21 : i64 to i32
-      memref.store %22, %4[] : memref<i32>
+      %17 = llvm.mlir.constant(8 : i64) : i64
+      %18 = llvm.mlir.constant(12 : i64) : i64
+      %19 = llvm.mlir.constant(16 : i64) : i64
+      %20 = llvm.mlir.constant(20 : i64) : i64
+      %21 = llvm.mlir.constant(24 : i64) : i64
+      %22 = llvm.mlir.constant(28 : i64) : i64
+      %23 = llvm.add %6, %8 : i64
+      %24 = llvm.add %23, %10 : i64
+      %25 = llvm.add %24, %12 : i64
+      %26 = llvm.add %25, %14 : i64
+      %27 = llvm.add %26, %16 : i64
+      %28 = llvm.add %27, %17 : i64
+      %29 = llvm.add %28, %18 : i64
+      %30 = llvm.add %29, %19 : i64
+      %31 = llvm.add %30, %20 : i64
+      %32 = llvm.add %31, %21 : i64
+      %33 = llvm.add %32, %22 : i64
+      %34 = llvm.trunc %33 : i64 to i32
+      memref.store %34, %4[] : memref<i32>
       llvm.return
     }
   }
@@ -103,20 +117,6 @@ module {
     llvm.func @_mlir_ciface_gpu_index_comp(%arg0: i64) -> i64 attributes {llvm.emit_c_interface} {
       %0 = llvm.call @gpu_index_comp(%arg0) : (i64) -> i64
       llvm.return %0 : i64
-    }
-  }
-}
-
-// -----
-module {
-  gpu.module @test_module attributes {llvm.data_layout = "e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9"} {
-    llvm.func @gpu_sync() attributes {llvm.emit_c_interface} {
-      rocdl.barrier
-      llvm.return
-    }
-    llvm.func @_mlir_ciface_gpu_sync() attributes {llvm.emit_c_interface} {
-      llvm.call @gpu_sync() : () -> ()
-      llvm.return
     }
   }
 }
@@ -726,8 +726,10 @@ module {
 }
 
 // -----
+#mmra_tag = #llvm.mmra_tag<"amdgpu-synchronize-as":"local">
 module {
   gpu.module @test_module attributes {llvm.data_layout = "e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9"} {
+    llvm.func @__ockl_get_local_size(i32) -> i64
     llvm.mlir.global internal @__wg_gpu_all_reduce_op_0() {addr_space = 3 : i32} : !llvm.array<32 x f32>
     llvm.func @gpu_all_reduce_op() {
       %0 = llvm.mlir.addressof @__wg_gpu_all_reduce_op_0 : !llvm.ptr<3>
@@ -753,14 +755,14 @@ module {
       %20 = llvm.mlir.constant(0 : i32) : i32
       %21 = llvm.mlir.constant(31 : i32) : i32
       %22 = llvm.mlir.constant(1.000000e+00 : f32) : f32
-      %23 = rocdl.workgroup.dim.x : i32
-      %24 = llvm.sext %23 : i32 to i64
+      %23 = llvm.mlir.constant(0 : i32) : i32
+      %24 = llvm.call @__ockl_get_local_size(%23) : (i32) -> (i64 {llvm.range = #llvm.constant_range<i64, 1, 1025>})
       %25 = llvm.trunc %24 : i64 to i32
-      %26 = rocdl.workgroup.dim.y : i32
-      %27 = llvm.sext %26 : i32 to i64
+      %26 = llvm.mlir.constant(1 : i32) : i32
+      %27 = llvm.call @__ockl_get_local_size(%26) : (i32) -> (i64 {llvm.range = #llvm.constant_range<i64, 1, 1025>})
       %28 = llvm.trunc %27 : i64 to i32
-      %29 = rocdl.workgroup.dim.z : i32
-      %30 = llvm.sext %29 : i32 to i64
+      %29 = llvm.mlir.constant(2 : i32) : i32
+      %30 = llvm.call @__ockl_get_local_size(%29) : (i32) -> (i64 {llvm.range = #llvm.constant_range<i64, 1, 1025>})
       %31 = llvm.trunc %30 : i64 to i32
       %32 = rocdl.workitem.id.x : i32
       %33 = llvm.sext %32 : i32 to i64
@@ -998,7 +1000,9 @@ module {
     ^bb20:  // pred: ^bb18
       cf.br ^bb21
     ^bb21:  // 2 preds: ^bb19, ^bb20
-      rocdl.barrier
+      llvm.fence syncscope("workgroup") release {llvm.mmra = #mmra_tag}
+      rocdl.s.barrier
+      llvm.fence syncscope("workgroup") acquire {llvm.mmra = #mmra_tag}
       %231 = llvm.add %46, %21 : i32
       %232 = llvm.sdiv %231, %19 : i32
       %233 = llvm.icmp "slt" %45, %232 : i32
@@ -1219,15 +1223,19 @@ module {
     ^bb41:  // pred: ^bb21
       cf.br ^bb42
     ^bb42:  // 2 preds: ^bb40, ^bb41
-      rocdl.barrier
+      llvm.fence syncscope("workgroup") release {llvm.mmra = #mmra_tag}
+      rocdl.s.barrier
+      llvm.fence syncscope("workgroup") acquire {llvm.mmra = #mmra_tag}
       llvm.return
     }
   }
 }
 
 // -----
+#mmra_tag = #llvm.mmra_tag<"amdgpu-synchronize-as":"local">
 module {
   gpu.module @test_module attributes {llvm.data_layout = "e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9"} {
+    llvm.func @__ockl_get_local_size(i32) -> i64
     llvm.mlir.global internal @__wg_gpu_all_reduce_region_0() {addr_space = 3 : i32} : !llvm.array<32 x i32>
     llvm.func @gpu_all_reduce_region() {
       %0 = llvm.mlir.addressof @__wg_gpu_all_reduce_region_0 : !llvm.ptr<3>
@@ -1252,14 +1260,14 @@ module {
       %19 = llvm.mlir.constant(0 : i32) : i32
       %20 = llvm.mlir.constant(31 : i32) : i32
       %21 = llvm.mlir.constant(1 : i32) : i32
-      %22 = rocdl.workgroup.dim.x : i32
-      %23 = llvm.sext %22 : i32 to i64
+      %22 = llvm.mlir.constant(0 : i32) : i32
+      %23 = llvm.call @__ockl_get_local_size(%22) : (i32) -> (i64 {llvm.range = #llvm.constant_range<i64, 1, 1025>})
       %24 = llvm.trunc %23 : i64 to i32
-      %25 = rocdl.workgroup.dim.y : i32
-      %26 = llvm.sext %25 : i32 to i64
+      %25 = llvm.mlir.constant(1 : i32) : i32
+      %26 = llvm.call @__ockl_get_local_size(%25) : (i32) -> (i64 {llvm.range = #llvm.constant_range<i64, 1, 1025>})
       %27 = llvm.trunc %26 : i64 to i32
-      %28 = rocdl.workgroup.dim.z : i32
-      %29 = llvm.sext %28 : i32 to i64
+      %28 = llvm.mlir.constant(2 : i32) : i32
+      %29 = llvm.call @__ockl_get_local_size(%28) : (i32) -> (i64 {llvm.range = #llvm.constant_range<i64, 1, 1025>})
       %30 = llvm.trunc %29 : i64 to i32
       %31 = rocdl.workitem.id.x : i32
       %32 = llvm.sext %31 : i32 to i64
@@ -1505,7 +1513,9 @@ module {
     ^bb34:  // pred: ^bb32
       cf.br ^bb35
     ^bb35:  // 2 preds: ^bb33, ^bb34
-      rocdl.barrier
+      llvm.fence syncscope("workgroup") release {llvm.mmra = #mmra_tag}
+      rocdl.s.barrier
+      llvm.fence syncscope("workgroup") acquire {llvm.mmra = #mmra_tag}
       %210 = llvm.add %45, %20 : i32
       %211 = llvm.sdiv %210, %18 : i32
       %212 = llvm.icmp "slt" %44, %211 : i32
@@ -1734,7 +1744,9 @@ module {
     ^bb69:  // pred: ^bb35
       cf.br ^bb70
     ^bb70:  // 2 preds: ^bb68, ^bb69
-      rocdl.barrier
+      llvm.fence syncscope("workgroup") release {llvm.mmra = #mmra_tag}
+      rocdl.s.barrier
+      llvm.fence syncscope("workgroup") acquire {llvm.mmra = #mmra_tag}
       llvm.return
     }
   }
@@ -1922,9 +1934,10 @@ module {
 // -----
 module {
   gpu.module @test_module attributes {llvm.data_layout = "e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9"} {
+    llvm.func @__ockl_get_local_size(i32) -> i64
     llvm.func @gpu_dim_int_max_upper_bound() -> i64 attributes {llvm.emit_c_interface} {
-      %0 = rocdl.workgroup.dim.x range <i32, 1, 2147483647> : i32
-      %1 = llvm.sext %0 : i32 to i64
+      %0 = llvm.mlir.constant(0 : i32) : i32
+      %1 = llvm.call @__ockl_get_local_size(%0) : (i32) -> (i64 {llvm.range = #llvm.constant_range<i64, 1, 2147483648>})
       llvm.return %1 : i64
     }
     llvm.func @_mlir_ciface_gpu_dim_int_max_upper_bound() -> i64 attributes {llvm.emit_c_interface} {
@@ -1986,6 +1999,161 @@ module {
     llvm.func @_mlir_ciface_broadcast_4xi16(%arg0: vector<4xi16>) -> vector<4xi16> attributes {llvm.emit_c_interface} {
       %0 = llvm.call @broadcast_4xi16(%arg0) : (vector<4xi16>) -> vector<4xi16>
       llvm.return %0 : vector<4xi16>
+    }
+    llvm.func @broadcast_2x2xi16(%arg0: !llvm.array<2 x vector<2xi16>>) -> !llvm.array<2 x vector<2xi16>> attributes {llvm.emit_c_interface} {
+      %0 = llvm.extractvalue %arg0[0] : !llvm.array<2 x vector<2xi16>> 
+      %1 = llvm.bitcast %0 : vector<2xi16> to i32
+      %2 = llvm.extractvalue %arg0[1] : !llvm.array<2 x vector<2xi16>> 
+      %3 = llvm.bitcast %2 : vector<2xi16> to i32
+      %4 = rocdl.readfirstlane %1 : i32
+      %5 = rocdl.readfirstlane %3 : i32
+      %6 = llvm.mlir.poison : !llvm.array<2 x vector<2xi16>>
+      %7 = llvm.bitcast %4 : i32 to vector<2xi16>
+      %8 = llvm.insertvalue %7, %6[0] : !llvm.array<2 x vector<2xi16>> 
+      %9 = llvm.bitcast %5 : i32 to vector<2xi16>
+      %10 = llvm.insertvalue %9, %8[1] : !llvm.array<2 x vector<2xi16>> 
+      llvm.return %10 : !llvm.array<2 x vector<2xi16>>
+    }
+    llvm.func @_mlir_ciface_broadcast_2x2xi16(%arg0: !llvm.array<2 x vector<2xi16>>) -> !llvm.array<2 x vector<2xi16>> attributes {llvm.emit_c_interface} {
+      %0 = llvm.call @broadcast_2x2xi16(%arg0) : (!llvm.array<2 x vector<2xi16>>) -> !llvm.array<2 x vector<2xi16>>
+      llvm.return %0 : !llvm.array<2 x vector<2xi16>>
+    }
+    llvm.func @broadcast_memref(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i64, %arg3: i64, %arg4: i64) -> !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> attributes {llvm.emit_c_interface} {
+      %0 = llvm.mlir.poison : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+      %1 = llvm.insertvalue %arg0, %0[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %2 = llvm.insertvalue %arg1, %1[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %3 = llvm.insertvalue %arg2, %2[2] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %4 = llvm.insertvalue %arg3, %3[3, 0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %5 = llvm.insertvalue %arg4, %4[4, 0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %6 = llvm.extractvalue %5[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %7 = llvm.extractvalue %5[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %8 = llvm.extractvalue %5[2] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %9 = llvm.bitcast %8 : i64 to vector<2xi32>
+      %10 = llvm.mlir.constant(0 : i32) : i32
+      %11 = llvm.extractelement %9[%10 : i32] : vector<2xi32>
+      %12 = llvm.mlir.constant(1 : i32) : i32
+      %13 = llvm.extractelement %9[%12 : i32] : vector<2xi32>
+      %14 = llvm.extractvalue %5[3] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %15 = llvm.extractvalue %14[0] : !llvm.array<1 x i64> 
+      %16 = llvm.bitcast %15 : i64 to vector<2xi32>
+      %17 = llvm.mlir.constant(0 : i32) : i32
+      %18 = llvm.extractelement %16[%17 : i32] : vector<2xi32>
+      %19 = llvm.mlir.constant(1 : i32) : i32
+      %20 = llvm.extractelement %16[%19 : i32] : vector<2xi32>
+      %21 = llvm.extractvalue %5[4] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %22 = llvm.extractvalue %21[0] : !llvm.array<1 x i64> 
+      %23 = llvm.bitcast %22 : i64 to vector<2xi32>
+      %24 = llvm.mlir.constant(0 : i32) : i32
+      %25 = llvm.extractelement %23[%24 : i32] : vector<2xi32>
+      %26 = llvm.mlir.constant(1 : i32) : i32
+      %27 = llvm.extractelement %23[%26 : i32] : vector<2xi32>
+      %28 = rocdl.readfirstlane %6 : !llvm.ptr
+      %29 = rocdl.readfirstlane %7 : !llvm.ptr
+      %30 = rocdl.readfirstlane %11 : i32
+      %31 = rocdl.readfirstlane %13 : i32
+      %32 = rocdl.readfirstlane %18 : i32
+      %33 = rocdl.readfirstlane %20 : i32
+      %34 = rocdl.readfirstlane %25 : i32
+      %35 = rocdl.readfirstlane %27 : i32
+      %36 = llvm.mlir.poison : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+      %37 = llvm.insertvalue %28, %36[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %38 = llvm.insertvalue %29, %37[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %39 = llvm.mlir.poison : vector<2xi32>
+      %40 = llvm.mlir.constant(0 : i32) : i32
+      %41 = llvm.insertelement %30, %39[%40 : i32] : vector<2xi32>
+      %42 = llvm.mlir.constant(1 : i32) : i32
+      %43 = llvm.insertelement %31, %41[%42 : i32] : vector<2xi32>
+      %44 = llvm.bitcast %43 : vector<2xi32> to i64
+      %45 = llvm.insertvalue %44, %38[2] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %46 = llvm.mlir.poison : !llvm.array<1 x i64>
+      %47 = llvm.mlir.poison : vector<2xi32>
+      %48 = llvm.mlir.constant(0 : i32) : i32
+      %49 = llvm.insertelement %32, %47[%48 : i32] : vector<2xi32>
+      %50 = llvm.mlir.constant(1 : i32) : i32
+      %51 = llvm.insertelement %33, %49[%50 : i32] : vector<2xi32>
+      %52 = llvm.bitcast %51 : vector<2xi32> to i64
+      %53 = llvm.insertvalue %52, %46[0] : !llvm.array<1 x i64> 
+      %54 = llvm.insertvalue %53, %45[3] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %55 = llvm.mlir.poison : !llvm.array<1 x i64>
+      %56 = llvm.mlir.poison : vector<2xi32>
+      %57 = llvm.mlir.constant(0 : i32) : i32
+      %58 = llvm.insertelement %34, %56[%57 : i32] : vector<2xi32>
+      %59 = llvm.mlir.constant(1 : i32) : i32
+      %60 = llvm.insertelement %35, %58[%59 : i32] : vector<2xi32>
+      %61 = llvm.bitcast %60 : vector<2xi32> to i64
+      %62 = llvm.insertvalue %61, %55[0] : !llvm.array<1 x i64> 
+      %63 = llvm.insertvalue %62, %54[4] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      llvm.return %63 : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+    }
+    llvm.func @_mlir_ciface_broadcast_memref(%arg0: !llvm.ptr, %arg1: !llvm.ptr) attributes {llvm.emit_c_interface} {
+      %0 = llvm.load %arg1 : !llvm.ptr -> !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+      %1 = llvm.extractvalue %0[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %2 = llvm.extractvalue %0[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %3 = llvm.extractvalue %0[2] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %4 = llvm.extractvalue %0[3, 0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %5 = llvm.extractvalue %0[4, 0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+      %6 = llvm.call @broadcast_memref(%1, %2, %3, %4, %5) : (!llvm.ptr, !llvm.ptr, i64, i64, i64) -> !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+      llvm.store %6, %arg0 : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>, !llvm.ptr
+      llvm.return
+    }
+    llvm.func @broadcast_i48(%arg0: i48) -> i48 attributes {llvm.emit_c_interface} {
+      %0 = llvm.zext %arg0 : i48 to i64
+      %1 = llvm.bitcast %0 : i64 to vector<2xi32>
+      %2 = llvm.mlir.constant(0 : i32) : i32
+      %3 = llvm.extractelement %1[%2 : i32] : vector<2xi32>
+      %4 = llvm.mlir.constant(1 : i32) : i32
+      %5 = llvm.extractelement %1[%4 : i32] : vector<2xi32>
+      %6 = rocdl.readfirstlane %3 : i32
+      %7 = rocdl.readfirstlane %5 : i32
+      %8 = llvm.mlir.poison : vector<2xi32>
+      %9 = llvm.mlir.constant(0 : i32) : i32
+      %10 = llvm.insertelement %6, %8[%9 : i32] : vector<2xi32>
+      %11 = llvm.mlir.constant(1 : i32) : i32
+      %12 = llvm.insertelement %7, %10[%11 : i32] : vector<2xi32>
+      %13 = llvm.bitcast %12 : vector<2xi32> to i64
+      %14 = llvm.trunc %13 : i64 to i48
+      llvm.return %14 : i48
+    }
+    llvm.func @_mlir_ciface_broadcast_i48(%arg0: i48) -> i48 attributes {llvm.emit_c_interface} {
+      %0 = llvm.call @broadcast_i48(%arg0) : (i48) -> i48
+      llvm.return %0 : i48
+    }
+    llvm.func @broadcast_3xi16(%arg0: vector<3xi16>) -> vector<3xi16> attributes {llvm.emit_c_interface} {
+      %0 = llvm.bitcast %arg0 : vector<3xi16> to i48
+      %1 = llvm.zext %0 : i48 to i64
+      %2 = llvm.bitcast %1 : i64 to vector<2xi32>
+      %3 = llvm.mlir.constant(0 : i32) : i32
+      %4 = llvm.extractelement %2[%3 : i32] : vector<2xi32>
+      %5 = llvm.mlir.constant(1 : i32) : i32
+      %6 = llvm.extractelement %2[%5 : i32] : vector<2xi32>
+      %7 = rocdl.readfirstlane %4 : i32
+      %8 = rocdl.readfirstlane %6 : i32
+      %9 = llvm.mlir.poison : vector<2xi32>
+      %10 = llvm.mlir.constant(0 : i32) : i32
+      %11 = llvm.insertelement %7, %9[%10 : i32] : vector<2xi32>
+      %12 = llvm.mlir.constant(1 : i32) : i32
+      %13 = llvm.insertelement %8, %11[%12 : i32] : vector<2xi32>
+      %14 = llvm.bitcast %13 : vector<2xi32> to i64
+      %15 = llvm.trunc %14 : i64 to i48
+      %16 = llvm.bitcast %15 : i48 to vector<3xi16>
+      llvm.return %16 : vector<3xi16>
+    }
+    llvm.func @_mlir_ciface_broadcast_3xi16(%arg0: vector<3xi16>) -> vector<3xi16> attributes {llvm.emit_c_interface} {
+      %0 = llvm.call @broadcast_3xi16(%arg0) : (vector<3xi16>) -> vector<3xi16>
+      llvm.return %0 : vector<3xi16>
+    }
+    llvm.func @ballot(%arg0: i1) -> !llvm.struct<(i32, i64)> attributes {llvm.emit_c_interface} {
+      %0 = rocdl.ballot %arg0 : i32
+      %1 = rocdl.ballot %arg0 : i64
+      %2 = llvm.mlir.poison : !llvm.struct<(i32, i64)>
+      %3 = llvm.insertvalue %0, %2[0] : !llvm.struct<(i32, i64)> 
+      %4 = llvm.insertvalue %1, %3[1] : !llvm.struct<(i32, i64)> 
+      llvm.return %4 : !llvm.struct<(i32, i64)>
+    }
+    llvm.func @_mlir_ciface_ballot(%arg0: !llvm.ptr, %arg1: i1) attributes {llvm.emit_c_interface} {
+      %0 = llvm.call @ballot(%arg1) : (i1) -> !llvm.struct<(i32, i64)>
+      llvm.store %0, %arg0 : !llvm.struct<(i32, i64)>, !llvm.ptr
+      llvm.return
     }
   }
 }

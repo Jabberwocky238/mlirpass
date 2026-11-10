@@ -122,3 +122,10 @@ module {
   }
 }
 
+// -----
+module {
+  func.func @shorter_inplace_attr(%arg0: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>) attributes {__bbarg_alias_set_attr__ = [[[["%arg0"]]]]} {
+    return {__inplace_operands_attr__ = ["false", "false"]} %arg0, %arg0 : tensor<4xi32>, tensor<4xi32>
+  }
+}
+

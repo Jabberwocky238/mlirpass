@@ -14,7 +14,7 @@ module {
   }
   gpu.module @nvvm_module_2 {
     llvm.func @kernel_0() -> i64 {
-      %thread_id_x = gpu.thread_id  x
+      %thread_id_x = gpu.thread_id x
       %0 = builtin.unrealized_conversion_cast %thread_id_x : index to i64
       %1 = gpu.lane_id
       %2 = builtin.unrealized_conversion_cast %1 : index to i64

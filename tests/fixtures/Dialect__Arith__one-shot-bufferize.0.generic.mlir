@@ -27,7 +27,7 @@
     %5 = "memref.cast"(%4) : (memref<?xf32>) -> memref<?xf32, strided<[?], offset: ?>>
     %6 = "arith.select"(%arg2, %5, %arg1) : (i1, memref<?xf32, strided<[?], offset: ?>>, memref<?xf32, strided<[?], offset: ?>>) -> memref<?xf32, strided<[?], offset: ?>>
     "memref.store"(%0, %6, %1) <{nontemporal = false}> : (f32, memref<?xf32, strided<[?], offset: ?>>, index) -> ()
-    %7 = "memref.load"(%arg0, %1) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %7 = "memref.load"(%arg0, %1) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%7, %6) : (f32, memref<?xf32, strided<[?], offset: ?>>) -> ()
   }) : () -> ()
 }) : () -> ()

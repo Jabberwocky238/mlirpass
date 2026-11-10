@@ -52,7 +52,8 @@ impl<'a> OpData<'a> {
 /// context, [`MlirOpt::defaults`](mlirformat::MlirOpt::defaults)).
 fn builder_sets<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
     match name {
-        "vector.load" | "vector.store" | "memref.load" | "memref.store" => alloc::vec![("nontemporal", Attribute::Bool(false))],
+        "memref.load" => alloc::vec![("nontemporal", Attribute::Bool(false)), ("invariant", Attribute::Bool(false))],
+        "vector.load" | "vector.store" | "memref.store" => alloc::vec![("nontemporal", Attribute::Bool(false))],
         "llvm.call" | "llvm.call_intrinsic" => alloc::vec![("op_bundle_sizes", Attribute::DenseArray { ty: Type::int(32), values: Vec::new() })],
         _ => Vec::new(),
     }

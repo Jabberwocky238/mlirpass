@@ -30,8 +30,8 @@
       "memref.copy"(%arg1, %9) : (memref<?xf32, strided<[?], offset: ?>>, memref<?xf32>) -> ()
       "scf.yield"(%9) : (memref<?xf32>) -> ()
     }) : (index, index, index, memref<?xf32>) -> memref<?xf32>
-    %6 = "memref.load"(%5, %0) <{nontemporal = false}> : (memref<?xf32>, index) -> f32
-    %7 = "memref.load"(%arg0, %0) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %6 = "memref.load"(%5, %0) <{invariant = false, nontemporal = false}> : (memref<?xf32>, index) -> f32
+    %7 = "memref.load"(%arg0, %0) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%6, %7) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -88,7 +88,7 @@
     %4 = "memref.alloc"(%3) <{alignment = 64 : i64, operandSegmentSizes = array<i32: 1, 0>}> : (index) -> memref<?xf32>
     "memref.copy"(%arg0, %4) : (memref<?xf32, strided<[?], offset: ?>>, memref<?xf32>) -> ()
     "memref.store"(%1, %4, %2) <{nontemporal = false}> : (f32, memref<?xf32>, index) -> ()
-    %5 = "memref.load"(%arg0, %2) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %5 = "memref.load"(%arg0, %2) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%1, %4, %5) : (f32, memref<?xf32>, f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -144,7 +144,7 @@
   "func.func"() <{function_type = (index, index) -> f32, sym_name = "scf_execute_region_yield_non_equivalent"}> ({
   ^bb0(%arg0: index, %arg1: index):
     %0 = "memref.alloc"(%arg0) <{alignment = 64 : i64, operandSegmentSizes = array<i32: 1, 0>}> : (index) -> memref<?xf32>
-    %1 = "memref.load"(%0, %arg1) <{nontemporal = false}> : (memref<?xf32>, index) -> f32
+    %1 = "memref.load"(%0, %arg1) <{invariant = false, nontemporal = false}> : (memref<?xf32>, index) -> f32
     "func.return"(%1) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -202,8 +202,8 @@
       %11 = "memref.cast"(%9) : (memref<?xf32>) -> memref<?xf32, strided<[?], offset: ?>>
       "scf.yield"(%10, %11) : (memref<?xf32, strided<[?], offset: ?>>, memref<?xf32, strided<[?], offset: ?>>) -> ()
     }) : (index, index, index, memref<?xf32, strided<[?], offset: ?>>, memref<?xf32, strided<[?], offset: ?>>) -> (memref<?xf32, strided<[?], offset: ?>>, memref<?xf32, strided<[?], offset: ?>>)
-    %2 = "memref.load"(%1#0, %arg5) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
-    %3 = "memref.load"(%1#1, %arg5) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %2 = "memref.load"(%1#0, %arg5) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %3 = "memref.load"(%1#1, %arg5) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%2, %3) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -213,7 +213,7 @@
   "func.func"() <{function_type = (memref<?xi1, strided<[?], offset: ?>>, index) -> memref<?xi1, strided<[?], offset: ?>>, sym_name = "scf_while"}> ({
   ^bb0(%arg0: memref<?xi1, strided<[?], offset: ?>>, %arg1: index):
     "scf.while"() ({
-      %2 = "memref.load"(%arg0, %arg1) <{nontemporal = false}> : (memref<?xi1, strided<[?], offset: ?>>, index) -> i1
+      %2 = "memref.load"(%arg0, %arg1) <{invariant = false, nontemporal = false}> : (memref<?xi1, strided<[?], offset: ?>>, index) -> i1
       "scf.condition"(%2) : (i1) -> ()
     }, {
       %0 = "dummy.some_op"() : () -> index
@@ -231,7 +231,7 @@
   ^bb0(%arg0: memref<5xi1, strided<[?], offset: ?>>, %arg1: memref<5xi1, strided<[?], offset: ?>>, %arg2: index):
     %0:2 = "scf.while"(%arg0, %arg1) ({
     ^bb0(%arg5: memref<5xi1, strided<[?], offset: ?>>, %arg6: memref<5xi1, strided<[?], offset: ?>>):
-      %5 = "memref.load"(%arg5, %arg2) <{nontemporal = false}> : (memref<5xi1, strided<[?], offset: ?>>, index) -> i1
+      %5 = "memref.load"(%arg5, %arg2) <{invariant = false, nontemporal = false}> : (memref<5xi1, strided<[?], offset: ?>>, index) -> i1
       %6 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<5xi1>
       "memref.copy"(%arg6, %6) : (memref<5xi1, strided<[?], offset: ?>>, memref<5xi1>) -> ()
       %7 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<5xi1>
@@ -256,7 +256,7 @@
   ^bb0(%arg0: memref<5xi1, strided<[?], offset: ?>>, %arg1: memref<5xi1, strided<[?], offset: ?>>, %arg2: index):
     %0:2 = "scf.while"(%arg0, %arg1) ({
     ^bb0(%arg5: memref<5xi1, strided<[?], offset: ?>>, %arg6: memref<5xi1, strided<[?], offset: ?>>):
-      %5 = "memref.load"(%arg5, %arg2) <{nontemporal = false}> : (memref<5xi1, strided<[?], offset: ?>>, index) -> i1
+      %5 = "memref.load"(%arg5, %arg2) <{invariant = false, nontemporal = false}> : (memref<5xi1, strided<[?], offset: ?>>, index) -> i1
       %6 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<5xi1>
       "memref.copy"(%arg6, %6) : (memref<5xi1, strided<[?], offset: ?>>, memref<5xi1>) -> ()
       %7 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<5xi1>
@@ -281,8 +281,8 @@
   ^bb0(%arg0: memref<5xi1, strided<[?], offset: ?>>, %arg1: memref<5xi1, strided<[?], offset: ?>>, %arg2: index):
     "scf.while"(%arg1) ({
     ^bb0(%arg3: memref<5xi1, strided<[?], offset: ?>>):
-      %4 = "memref.load"(%arg0, %arg2) <{nontemporal = false}> : (memref<5xi1, strided<[?], offset: ?>>, index) -> i1
-      %5 = "memref.load"(%arg3, %arg2) <{nontemporal = false}> : (memref<5xi1, strided<[?], offset: ?>>, index) -> i1
+      %4 = "memref.load"(%arg0, %arg2) <{invariant = false, nontemporal = false}> : (memref<5xi1, strided<[?], offset: ?>>, index) -> i1
+      %5 = "memref.load"(%arg3, %arg2) <{invariant = false, nontemporal = false}> : (memref<5xi1, strided<[?], offset: ?>>, index) -> i1
       "dummy.use"(%5) : (i1) -> ()
       "scf.condition"(%4) : (i1) -> ()
     }, {
@@ -315,7 +315,7 @@
       ^bb0:
       }) : () -> ()
     }) {keep_this_attribute} : (index) -> ()
-    %2 = "memref.load"(%arg3, %1) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %2 = "memref.load"(%arg3, %1) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%2) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -340,8 +340,8 @@
       ^bb0:
       }) : () -> ()
     }) : (index) -> ()
-    %4 = "memref.load"(%arg3, %1) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
-    %5 = "memref.load"(%3, %1) <{nontemporal = false}> : (memref<?xf32>, index) -> f32
+    %4 = "memref.load"(%arg3, %1) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %5 = "memref.load"(%3, %1) <{invariant = false, nontemporal = false}> : (memref<?xf32>, index) -> f32
     "func.return"(%5, %4) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -388,13 +388,13 @@
     ^bb0(%arg1: index):
       %4 = "arith.muli"(%arg1, %1) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
       %5 = "memref.subview"(%2, %4) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 5>, static_strides = array<i64: 1>}> : (memref<10xf32>, index) -> memref<5xf32, strided<[1], offset: ?>>
-      %6 = "memref.load"(%arg0, %arg1) <{nontemporal = false}> : (memref<10xf32, strided<[?], offset: ?>>, index) -> f32
+      %6 = "memref.load"(%arg0, %arg1) <{invariant = false, nontemporal = false}> : (memref<10xf32, strided<[?], offset: ?>>, index) -> f32
       "memref.store"(%6, %5, %0) <{nontemporal = false}> : (f32, memref<5xf32, strided<[1], offset: ?>>, index) -> ()
       "scf.forall.in_parallel"() ({
       ^bb0:
       }) : () -> ()
     }) : () -> ()
-    %3 = "memref.load"(%2, %0) <{nontemporal = false}> : (memref<10xf32>, index) -> f32
+    %3 = "memref.load"(%2, %0) <{invariant = false, nontemporal = false}> : (memref<10xf32>, index) -> f32
     "func.return"(%3) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -409,13 +409,13 @@
     ^bb0(%arg2: index):
       %3 = "arith.muli"(%arg2, %1) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
       %4 = "memref.subview"(%arg0, %3) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 5>, static_strides = array<i64: 1>}> : (memref<10xf32, strided<[?], offset: ?>>, index) -> memref<5xf32, strided<[?], offset: ?>>
-      %5 = "memref.load"(%arg1, %arg2) <{nontemporal = false}> : (memref<10xf32, strided<[?], offset: ?>>, index) -> f32
+      %5 = "memref.load"(%arg1, %arg2) <{invariant = false, nontemporal = false}> : (memref<10xf32, strided<[?], offset: ?>>, index) -> f32
       "memref.store"(%5, %4, %0) <{nontemporal = false}> : (f32, memref<5xf32, strided<[?], offset: ?>>, index) -> ()
       "scf.forall.in_parallel"() ({
       ^bb0:
       }) : () -> ()
     }) : () -> ()
-    %2 = "memref.load"(%arg0, %0) <{nontemporal = false}> : (memref<10xf32, strided<[?], offset: ?>>, index) -> f32
+    %2 = "memref.load"(%arg0, %0) <{invariant = false, nontemporal = false}> : (memref<10xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%2) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -438,8 +438,8 @@
       "memref.store"(%arg1, %5, %0) <{nontemporal = false}> : (f32, memref<5xf32, 1>, index) -> ()
       "scf.yield"(%5) : (memref<5xf32, 1>) -> ()
     }) : (i1) -> memref<5xf32, 1>
-    %3 = "memref.load"(%1, %0) <{nontemporal = false}> : (memref<5xf32, 1>, index) -> f32
-    %4 = "memref.load"(%2, %0) <{nontemporal = false}> : (memref<5xf32, 1>, index) -> f32
+    %3 = "memref.load"(%1, %0) <{invariant = false, nontemporal = false}> : (memref<5xf32, 1>, index) -> f32
+    %4 = "memref.load"(%2, %0) <{invariant = false, nontemporal = false}> : (memref<5xf32, 1>, index) -> f32
     "func.return"(%3, %4) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -451,7 +451,7 @@
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
     %1 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<5xf32, 1>
     "memref.store"(%arg0, %1, %0) <{nontemporal = false}> : (f32, memref<5xf32, 1>, index) -> ()
-    %2 = "memref.load"(%1, %0) <{nontemporal = false}> : (memref<5xf32, 1>, index) -> f32
+    %2 = "memref.load"(%1, %0) <{invariant = false, nontemporal = false}> : (memref<5xf32, 1>, index) -> f32
     "func.return"(%2) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -477,8 +477,8 @@
       "memref.copy"(%arg6, %11) : (memref<?xf32, 1>, memref<?xf32, 1>) -> ()
       "scf.yield"(%9, %11) : (memref<?xf32, 1>, memref<?xf32, 1>) -> ()
     }) : (index, index, index, memref<?xf32, 1>, memref<?xf32, 1>) -> (memref<?xf32, 1>, memref<?xf32, 1>)
-    %4 = "memref.load"(%3#0, %arg4) <{nontemporal = false}> : (memref<?xf32, 1>, index) -> f32
-    %5 = "memref.load"(%3#1, %arg4) <{nontemporal = false}> : (memref<?xf32, 1>, index) -> f32
+    %4 = "memref.load"(%3#0, %arg4) <{invariant = false, nontemporal = false}> : (memref<?xf32, 1>, index) -> f32
+    %5 = "memref.load"(%3#1, %arg4) <{invariant = false, nontemporal = false}> : (memref<?xf32, 1>, index) -> f32
     "func.return"(%4, %5) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -501,7 +501,7 @@
     ^bb0(%arg1: index):
       %5 = "arith.subi"(%arg1, %1) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
       %6 = "memref.subview"(%3, %5, %arg0) <{operandSegmentSizes = array<i32: 1, 1, 1, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: -9223372036854775808>, static_strides = array<i64: 1>}> : (memref<?xf32>, index, index) -> memref<?xf32, strided<[1], offset: ?>>
-      %7 = "memref.load"(%6, %0) <{nontemporal = false}> : (memref<?xf32, strided<[1], offset: ?>>, index) -> f32
+      %7 = "memref.load"(%6, %0) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[1], offset: ?>>, index) -> f32
       %8 = "arith.mulf"(%7, %2) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
       "memref.store"(%8, %4, %arg1) <{nontemporal = false}> : (f32, memref<?xf32>, index) -> ()
       "scf.yield"() : () -> ()
@@ -526,7 +526,7 @@
       %9 = "memref.subview"(%arg3, %8) <{operandSegmentSizes = array<i32: 1, 0, 1, 0>, static_offsets = array<i64: 1>, static_sizes = array<i64: -9223372036854775808>, static_strides = array<i64: 1>}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> memref<?xf32, strided<[?], offset: ?>>
       "scf.yield"(%9) : (memref<?xf32, strided<[?], offset: ?>>) -> ()
     }) : (index, index, index, memref<?xf32, strided<[?], offset: ?>>) -> memref<?xf32, strided<[?], offset: ?>>
-    %7 = "memref.load"(%6, %1) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %7 = "memref.load"(%6, %1) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%7) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -555,7 +555,7 @@
       %8 = "memref.cast"(%arg2) : (memref<?xf32>) -> memref<?xf32, strided<[?], offset: ?>>
       "scf.yield"(%8) : (memref<?xf32, strided<[?], offset: ?>>) -> ()
     }) : (memref<?xf32, strided<[?], offset: ?>>) -> memref<?xf32>
-    %6 = "memref.load"(%5, %0) <{nontemporal = false}> : (memref<?xf32>, index) -> f32
+    %6 = "memref.load"(%5, %0) <{invariant = false, nontemporal = false}> : (memref<?xf32>, index) -> f32
     "func.return"(%6) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -627,21 +627,10 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = () -> memref<2xindex>, sym_name = "regression_cast_in_loop"}> ({
-    %0 = "arith.constant"() <{value = false}> : () -> i1
-    %1 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %2 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2xindex>
-    %3 = "scf.while"(%2) ({
-    ^bb0(%arg1: memref<2xindex>):
-      %5 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2xindex>
-      "memref.copy"(%arg1, %5) : (memref<2xindex>, memref<2xindex>) -> ()
-      "scf.condition"(%0, %5) : (i1, memref<2xindex>) -> ()
-    }, {
-    ^bb0(%arg0: memref<2xindex>):
-      %4 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2xindex>
-      "memref.store"(%1, %4, %1) <{nontemporal = false}> : (index, memref<2xindex>, index) -> ()
-      "scf.yield"(%4) : (memref<2xindex>) -> ()
-    }) : (memref<2xindex>) -> memref<2xindex>
-    "func.return"(%3) : (memref<2xindex>) -> ()
+    %0 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2xindex>
+    %1 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2xindex>
+    "memref.copy"(%0, %1) : (memref<2xindex>, memref<2xindex>) -> ()
+    "func.return"(%1) : (memref<2xindex>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -657,7 +646,7 @@
       "scf.yield"(%2) : (memref<10xf32>) -> ()
     }) : (i1) -> memref<10xf32>
     "memref.store"(%arg3, %0, %arg1) <{nontemporal = false}> : (f32, memref<10xf32>, index) -> ()
-    %1 = "memref.load"(%0, %arg2) <{nontemporal = false}> : (memref<10xf32>, index) -> f32
+    %1 = "memref.load"(%0, %arg2) <{invariant = false, nontemporal = false}> : (memref<10xf32>, index) -> f32
     "func.return"(%0, %1) : (memref<10xf32>, f32) -> ()
   }) : () -> ()
 }) : () -> ()

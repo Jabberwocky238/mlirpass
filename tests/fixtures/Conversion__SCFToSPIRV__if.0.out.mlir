@@ -155,5 +155,39 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     }
     spirv.Return
   }
+  spirv.func @selection_flatten(%arg0: !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>, %arg1: i1) "None" {
+    %cst_f32 = spirv.Constant 0.000000e+00 : f32
+    %cst0_i32 = spirv.Constant 0 : i32
+    spirv.mlir.selection control(Flatten) {
+      spirv.BranchConditional %arg1, ^bb1, ^bb2
+    ^bb1:  // pred: ^bb0
+      %cst0_i32_0 = spirv.Constant 0 : i32
+      %cst0_i32_1 = spirv.Constant 0 : i32
+      %cst1_i32 = spirv.Constant 1 : i32
+      %0 = spirv.AccessChain %arg0[%cst0_i32_0, %cst0_i32] : !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>, i32, i32 -> !spirv.ptr<f32, StorageBuffer>
+      spirv.Store "StorageBuffer" %0, %cst_f32 : f32
+      spirv.Branch ^bb2
+    ^bb2:  // 2 preds: ^bb0, ^bb1
+      spirv.mlir.merge
+    }
+    spirv.Return
+  }
+  spirv.func @selection_dont_flatten(%arg0: !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>, %arg1: i1) "None" {
+    %cst_f32 = spirv.Constant 0.000000e+00 : f32
+    %cst0_i32 = spirv.Constant 0 : i32
+    spirv.mlir.selection control(DontFlatten) {
+      spirv.BranchConditional %arg1, ^bb1, ^bb2
+    ^bb1:  // pred: ^bb0
+      %cst0_i32_0 = spirv.Constant 0 : i32
+      %cst0_i32_1 = spirv.Constant 0 : i32
+      %cst1_i32 = spirv.Constant 1 : i32
+      %0 = spirv.AccessChain %arg0[%cst0_i32_0, %cst0_i32] : !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>, i32, i32 -> !spirv.ptr<f32, StorageBuffer>
+      spirv.Store "StorageBuffer" %0, %cst_f32 : f32
+      spirv.Branch ^bb2
+    ^bb2:  // 2 preds: ^bb0, ^bb1
+      spirv.mlir.merge
+    }
+    spirv.Return
+  }
 }
 

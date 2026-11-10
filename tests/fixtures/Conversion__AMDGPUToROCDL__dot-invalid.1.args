@@ -1,0 +1,3 @@
+--convert-amdgpu-to-rocdl=chipset=gfx942
+--split-input-file
+-verify-diagnostics

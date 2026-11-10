@@ -1,42 +1,52 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (i32, i32) -> (), sym_name = "int32_scalar"}> ({
-  ^bb0(%arg29: i32, %arg30: i32):
-    %27 = "arith.addi"(%arg29, %arg30) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    %28 = "arith.subi"(%arg29, %arg30) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    %29 = "arith.muli"(%arg29, %arg30) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    %30 = "arith.divsi"(%arg29, %arg30) : (i32, i32) -> i32
-    %31 = "arith.divui"(%arg29, %arg30) : (i32, i32) -> i32
-    %32 = "arith.remui"(%arg29, %arg30) : (i32, i32) -> i32
+  ^bb0(%arg33: i32, %arg34: i32):
+    %29 = "arith.addi"(%arg33, %arg34) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    %30 = "arith.subi"(%arg33, %arg34) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    %31 = "arith.muli"(%arg33, %arg34) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    %32 = "arith.divsi"(%arg33, %arg34) : (i32, i32) -> i32
+    %33 = "arith.divui"(%arg33, %arg34) : (i32, i32) -> i32
+    %34 = "arith.remui"(%arg33, %arg34) : (i32, i32) -> i32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> (), sym_name = "int32_scalar_srem"}> ({
-  ^bb0(%arg27: i32, %arg28: i32):
-    %26 = "arith.remsi"(%arg27, %arg28) : (i32, i32) -> i32
+  ^bb0(%arg31: i32, %arg32: i32):
+    %28 = "arith.remsi"(%arg31, %arg32) : (i32, i32) -> i32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> (), sym_name = "index_scalar"}> ({
-  ^bb0(%arg25: index, %arg26: index):
-    %20 = "arith.addi"(%arg25, %arg26) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    %21 = "arith.subi"(%arg25, %arg26) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    %22 = "arith.muli"(%arg25, %arg26) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    %23 = "arith.divsi"(%arg25, %arg26) : (index, index) -> index
-    %24 = "arith.divui"(%arg25, %arg26) : (index, index) -> index
-    %25 = "arith.remui"(%arg25, %arg26) : (index, index) -> index
+  ^bb0(%arg29: index, %arg30: index):
+    %22 = "arith.addi"(%arg29, %arg30) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    %23 = "arith.subi"(%arg29, %arg30) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    %24 = "arith.muli"(%arg29, %arg30) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    %25 = "arith.divsi"(%arg29, %arg30) : (index, index) -> index
+    %26 = "arith.divui"(%arg29, %arg30) : (index, index) -> index
+    %27 = "arith.remui"(%arg29, %arg30) : (index, index) -> index
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> (), sym_name = "index_scalar_srem"}> ({
-  ^bb0(%arg23: index, %arg24: index):
-    %19 = "arith.remsi"(%arg23, %arg24) : (index, index) -> index
+  ^bb0(%arg27: index, %arg28: index):
+    %21 = "arith.remsi"(%arg27, %arg28) : (index, index) -> index
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> (i32, i1), sym_name = "int32_scalar_addui_extended"}> ({
-  ^bb0(%arg21: i32, %arg22: i32):
-    %18:2 = "arith.addui_extended"(%arg21, %arg22) : (i32, i32) -> (i32, i1)
-    "func.return"(%18#0, %18#1) : (i32, i1) -> ()
+  ^bb0(%arg25: i32, %arg26: i32):
+    %20:2 = "arith.addui_extended"(%arg25, %arg26) : (i32, i32) -> (i32, i1)
+    "func.return"(%20#0, %20#1) : (i32, i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<4xi32>, vector<4xi32>) -> (vector<4xi32>, vector<4xi1>), sym_name = "int32_vector_addui_extended"}> ({
+  ^bb0(%arg23: vector<4xi32>, %arg24: vector<4xi32>):
+    %19:2 = "arith.addui_extended"(%arg23, %arg24) : (vector<4xi32>, vector<4xi32>) -> (vector<4xi32>, vector<4xi1>)
+    "func.return"(%19#0, %19#1) : (vector<4xi32>, vector<4xi1>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32, i32) -> (i32, i1), sym_name = "int32_scalar_subui_extended"}> ({
+  ^bb0(%arg21: i32, %arg22: i32):
+    %18:2 = "arith.subui_extended"(%arg21, %arg22) : (i32, i32) -> (i32, i1)
+    "func.return"(%18#0, %18#1) : (i32, i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xi32>, vector<4xi32>) -> (vector<4xi32>, vector<4xi1>), sym_name = "int32_vector_subui_extended"}> ({
   ^bb0(%arg19: vector<4xi32>, %arg20: vector<4xi32>):
-    %17:2 = "arith.addui_extended"(%arg19, %arg20) : (vector<4xi32>, vector<4xi32>) -> (vector<4xi32>, vector<4xi1>)
+    %17:2 = "arith.subui_extended"(%arg19, %arg20) : (vector<4xi32>, vector<4xi32>) -> (vector<4xi32>, vector<4xi1>)
     "func.return"(%17#0, %17#1) : (vector<4xi32>, vector<4xi1>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> (i32, i32), sym_name = "int32_scalar_mulsi_extended"}> ({
@@ -105,31 +115,45 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = (i32, i32) -> (), sym_name = "bitwise_scalar"}> ({
-  ^bb0(%arg10: i32, %arg11: i32):
-    %15 = "arith.andi"(%arg10, %arg11) : (i32, i32) -> i32
-    %16 = "arith.ori"(%arg10, %arg11) : (i32, i32) -> i32
-    %17 = "arith.xori"(%arg10, %arg11) : (i32, i32) -> i32
+  ^bb0(%arg14: i32, %arg15: i32):
+    %21 = "arith.andi"(%arg14, %arg15) : (i32, i32) -> i32
+    %22 = "arith.ori"(%arg14, %arg15) : (i32, i32) -> i32
+    %23 = "arith.xori"(%arg14, %arg15) : (i32, i32) -> i32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<4xi32>, vector<4xi32>) -> (), sym_name = "bitwise_vector"}> ({
-  ^bb0(%arg8: vector<4xi32>, %arg9: vector<4xi32>):
-    %12 = "arith.andi"(%arg8, %arg9) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
-    %13 = "arith.ori"(%arg8, %arg9) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
-    %14 = "arith.xori"(%arg8, %arg9) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+  ^bb0(%arg12: vector<4xi32>, %arg13: vector<4xi32>):
+    %18 = "arith.andi"(%arg12, %arg13) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    %19 = "arith.ori"(%arg12, %arg13) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    %20 = "arith.xori"(%arg12, %arg13) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i1, i1) -> (), sym_name = "logical_scalar"}> ({
-  ^bb0(%arg6: i1, %arg7: i1):
-    %9 = "arith.andi"(%arg6, %arg7) : (i1, i1) -> i1
-    %10 = "arith.ori"(%arg6, %arg7) : (i1, i1) -> i1
-    %11 = "arith.xori"(%arg6, %arg7) : (i1, i1) -> i1
+  ^bb0(%arg10: i1, %arg11: i1):
+    %15 = "arith.andi"(%arg10, %arg11) : (i1, i1) -> i1
+    %16 = "arith.ori"(%arg10, %arg11) : (i1, i1) -> i1
+    %17 = "arith.xori"(%arg10, %arg11) : (i1, i1) -> i1
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<4xi1>, vector<4xi1>) -> (), sym_name = "logical_vector"}> ({
+  ^bb0(%arg8: vector<4xi1>, %arg9: vector<4xi1>):
+    %12 = "arith.andi"(%arg8, %arg9) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    %13 = "arith.ori"(%arg8, %arg9) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    %14 = "arith.xori"(%arg8, %arg9) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i1, i1) -> (), sym_name = "bool_arith_scalar"}> ({
+  ^bb0(%arg6: i1, %arg7: i1):
+    %9 = "arith.addi"(%arg6, %arg7) <{overflowFlags = #arith.overflow<none>}> : (i1, i1) -> i1
+    %10 = "arith.subi"(%arg6, %arg7) <{overflowFlags = #arith.overflow<none>}> : (i1, i1) -> i1
+    %11 = "arith.muli"(%arg6, %arg7) <{overflowFlags = #arith.overflow<none>}> : (i1, i1) -> i1
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xi1>, vector<4xi1>) -> (), sym_name = "bool_arith_vector"}> ({
   ^bb0(%arg4: vector<4xi1>, %arg5: vector<4xi1>):
-    %6 = "arith.andi"(%arg4, %arg5) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
-    %7 = "arith.ori"(%arg4, %arg5) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
-    %8 = "arith.xori"(%arg4, %arg5) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    %6 = "arith.addi"(%arg4, %arg5) <{overflowFlags = #arith.overflow<none>}> : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    %7 = "arith.subi"(%arg4, %arg5) <{overflowFlags = #arith.overflow<none>}> : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    %8 = "arith.muli"(%arg4, %arg5) <{overflowFlags = #arith.overflow<none>}> : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> (), sym_name = "shift_scalar"}> ({
@@ -144,6 +168,29 @@
     %0 = "arith.shli"(%arg0, %arg1) <{overflowFlags = #arith.overflow<none>}> : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
     %1 = "arith.shrsi"(%arg0, %arg1) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
     %2 = "arith.shrui"(%arg0, %arg1) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1, i1) -> (), sym_name = "bool_shift_div_rem_scalar"}> ({
+  ^bb0(%arg2: i1, %arg3: i1):
+    %4 = "arith.shli"(%arg2, %arg3) <{overflowFlags = #arith.overflow<none>}> : (i1, i1) -> i1
+    %5 = "arith.shrui"(%arg2, %arg3) : (i1, i1) -> i1
+    %6 = "arith.shrsi"(%arg2, %arg3) : (i1, i1) -> i1
+    %7 = "arith.divui"(%arg2, %arg3) : (i1, i1) -> i1
+    %8 = "arith.divsi"(%arg2, %arg3) : (i1, i1) -> i1
+    %9 = "arith.remui"(%arg2, %arg3) : (i1, i1) -> i1
+    %10 = "arith.remsi"(%arg2, %arg3) : (i1, i1) -> i1
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i1, i1) -> (), sym_name = "bool_minmax_scalar"}> ({
+  ^bb0(%arg0: i1, %arg1: i1):
+    %0 = "arith.maxui"(%arg0, %arg1) : (i1, i1) -> i1
+    %1 = "arith.maxsi"(%arg0, %arg1) : (i1, i1) -> i1
+    %2 = "arith.minui"(%arg0, %arg1) : (i1, i1) -> i1
+    %3 = "arith.minsi"(%arg0, %arg1) : (i1, i1) -> i1
     "func.return"() : () -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [], []>, #spirv.resource_limits<>>} : () -> ()
@@ -778,15 +825,45 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<2xi8>, vector<3xi16>) -> (), sym_name = "int_vector23"}> ({
-  ^bb0(%arg1: vector<2xi8>, %arg2: vector<3xi16>):
-    %1 = "arith.divsi"(%arg1, %arg1) : (vector<2xi8>, vector<2xi8>) -> vector<2xi8>
-    %2 = "arith.divsi"(%arg2, %arg2) : (vector<3xi16>, vector<3xi16>) -> vector<3xi16>
+  ^bb0(%arg7: vector<2xi8>, %arg8: vector<3xi16>):
+    %7 = "arith.divsi"(%arg7, %arg7) : (vector<2xi8>, vector<2xi8>) -> vector<2xi8>
+    %8 = "arith.divsi"(%arg8, %arg8) : (vector<3xi16>, vector<3xi16>) -> vector<3xi16>
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (f16) -> (), sym_name = "float_scalar"}> ({
-  ^bb0(%arg0: f16):
-    %0 = "arith.addf"(%arg0, %arg0) <{fastmath = #arith.fastmath<none>}> : (f16, f16) -> f16
+  ^bb0(%arg6: f16):
+    %6 = "arith.addf"(%arg6, %arg6) <{fastmath = #arith.fastmath<none>}> : (f16, f16) -> f16
     "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8) -> f32, sym_name = "uitofp_i8_emulated_f32"}> ({
+  ^bb0(%arg5: i8):
+    %5 = "arith.uitofp"(%arg5) : (i8) -> f32
+    "func.return"(%5) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i16) -> f32, sym_name = "uitofp_i16_emulated_f32"}> ({
+  ^bb0(%arg4: i16):
+    %4 = "arith.uitofp"(%arg4) : (i16) -> f32
+    "func.return"(%4) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xi8>) -> vector<4xf32>, sym_name = "uitofp_vec_i8_emulated_f32"}> ({
+  ^bb0(%arg3: vector<4xi8>):
+    %3 = "arith.uitofp"(%arg3) : (vector<4xi8>) -> vector<4xf32>
+    "func.return"(%3) : (vector<4xf32>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8) -> f32, sym_name = "sitofp_i8_emulated_f32"}> ({
+  ^bb0(%arg2: i8):
+    %2 = "arith.sitofp"(%arg2) : (i8) -> f32
+    "func.return"(%2) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i16) -> f32, sym_name = "sitofp_i16_emulated_f32"}> ({
+  ^bb0(%arg1: i16):
+    %1 = "arith.sitofp"(%arg1) : (i16) -> f32
+    "func.return"(%1) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xi8>) -> vector<4xf32>, sym_name = "sitofp_vec_i8_emulated_f32"}> ({
+  ^bb0(%arg0: vector<4xi8>):
+    %0 = "arith.sitofp"(%arg0) : (vector<4xi8>) -> vector<4xf32>
+    "func.return"(%0) : (vector<4xf32>) -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [], []>, #spirv.resource_limits<>>} : () -> ()
 

@@ -6,7 +6,7 @@
       %1 = "arith.constant"() <{value = 0 : index}> : () -> index
       "vector.store"(%0, %arg2, %1) : (vector<1xf16>, memref<1xf16>, index) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "load_gather_i64_src_value_offset", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "load_gather_i64_src_value_offset"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -19,7 +19,7 @@
       %1 = "arith.constant"() <{value = 0 : index}> : () -> index
       "vector.store"(%0, %arg2, %1) : (vector<1xf16>, memref<1xf16>, index) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "source_materialize_single_elem_vec", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "source_materialize_single_elem_vec"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -31,7 +31,7 @@
       %0 = "arith.constant"() <{value = dense<2.900000e+00> : vector<1xf32>}> : () -> vector<1xf32>
       "xegpu.store"(%0, %arg0, %arg1, %arg2) <{l1_hint = #xegpu.cache_hint<write_back>, l2_hint = #xegpu.cache_hint<uncached>}> : (vector<1xf32>, i64, vector<1xindex>, vector<1xi1>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "store_scatter_i64_src_value_offset", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "store_scatter_i64_src_value_offset"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -42,7 +42,7 @@
     ^bb0(%arg0: i64, %arg1: vector<1xindex>):
       "xegpu.prefetch"(%arg0, %arg1) <{l1_hint = #xegpu.cache_hint<cached>, l2_hint = #xegpu.cache_hint<uncached>, offset_align_byte = 4 : i64}> : (i64, vector<1xindex>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "prefetch_i64_src_value_offset", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "prefetch_i64_src_value_offset"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -53,7 +53,7 @@
     ^bb0(%arg0: memref<256xf32>, %arg1: vector<1xindex>):
       "xegpu.prefetch"(%arg0, %arg1) <{l1_hint = #xegpu.cache_hint<cached>, l2_hint = #xegpu.cache_hint<uncached>}> : (memref<256xf32>, vector<1xindex>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "prefetch_memref_src_value_offset", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "prefetch_memref_src_value_offset"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -68,7 +68,7 @@
       %3 = "xegpu.load"(%2, %arg1, %arg2) <{l1_hint = #xegpu.cache_hint<cached>, l2_hint = #xegpu.cache_hint<uncached>}> : (memref<16xf16, strided<[1], offset: ?>>, vector<1xindex>, vector<1xi1>) -> vector<1xf16>
       "vector.store"(%3, %arg3, %0) : (vector<1xf16>, memref<1xf16>, index) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "load_gather_from_dyn_memref_subview", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "load_gather_from_dyn_memref_subview"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 

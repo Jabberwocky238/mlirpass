@@ -1,3 +1,22 @@
+"builtin.module"() ({
+^bb0:
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x2x2xf16>) -> (), sym_name = "no_convert_3d"}> ({
+  ^bb0(%arg0: memref<2x2x2xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %0, %1) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (memref<2x2x2xf16>, index, index, index, f16) -> vector<2x2x2xf16>
+    %3 = "arith.addf"(%2, %2) <{fastmath = #arith.fastmath<none>}> : (vector<2x2x2xf16>, vector<2x2x2xf16>) -> vector<2x2x2xf16>
+    "vector.transfer_write"(%3, %arg0, %0, %0, %0) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 1, 3, 0>, permutation_map = #map}> : (vector<2x2x2xf16>, memref<2x2x2xf16>, index, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
 #map = affine_map<(d0, d1) -> (d0, d1)>
 #map1 = affine_map<(d0, d1) -> (d1, d0)>
 #map2 = affine_map<(d0, d1, d2) -> (d0, d2)>
@@ -12,7 +31,7 @@
     %3 = "vector.transfer_read"(%arg0, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
     %4 = "vector.transfer_read"(%arg1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
     %5 = "vector.transfer_read"(%arg2, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
-    %6 = "vector.contract"(%3, %4, %5) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    %6 = "vector.contract"(%3, %4, %5) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%6, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xf16>, memref<16x16xf16>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -32,7 +51,7 @@
     %2 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
     %3 = "vector.transfer_read"(%arg0, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
     %4 = "vector.transfer_read"(%arg1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
-    %5 = "vector.contract"(%3, %4, %0) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    %5 = "vector.contract"(%3, %4, %0) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%5, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xf16>, memref<16x16xf16>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -52,7 +71,7 @@
     %2 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
     %3 = "vector.transfer_read"(%arg0, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
     %4 = "vector.transfer_read"(%arg1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
-    %5 = "vector.contract"(%3, %4, %0) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    %5 = "vector.contract"(%3, %4, %0) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%5, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xf16>, memref<16x16xf16>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -76,7 +95,7 @@
     ^bb0(%arg3: index, %arg4: vector<16x16xf16>):
       %6 = "vector.transfer_read"(%arg0, %0, %arg3, %3) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<128x128xf16>, index, index, f16) -> vector<16x16xf16>
       %7 = "vector.transfer_read"(%arg1, %arg3, %0, %3) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<128x128xf16>, index, index, f16) -> vector<16x16xf16>
-      %8 = "vector.contract"(%6, %7, %arg4) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+      %8 = "vector.contract"(%6, %7, %arg4) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
       "scf.yield"(%8) : (vector<16x16xf16>) -> ()
     }) : (index, index, index, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%5, %arg2, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xf16>, memref<128x128xf16>, index, index) -> ()
@@ -99,7 +118,7 @@
     %3 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
     %4 = "vector.transfer_read"(%arg0, %2, %2, %3) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
     %5 = "vector.transfer_read"(%arg1, %2, %2, %3) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
-    %6 = "vector.contract"(%4, %5, %0) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    %6 = "vector.contract"(%4, %5, %0) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     %7 = "arith.addf"(%6, %1) <{fastmath = #arith.fastmath<none>}> : (vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%7, %arg2, %2, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xf16>, memref<16x16xf16>, index, index) -> ()
     "func.return"() : () -> ()
@@ -121,7 +140,7 @@
     %2 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
     %3 = "vector.transfer_read"(%arg0, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
     %4 = "vector.transfer_read"(%arg1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
-    %5 = "vector.contract"(%3, %4, %0) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    %5 = "vector.contract"(%3, %4, %0) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     %6 = "vector.transfer_read"(%arg3, %1, %1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 4, 1, 0>, permutation_map = #map5}> : (memref<16x16x16x16xf16>, index, index, index, index, f16) -> vector<16x16xf16>
     %7 = "arith.divf"(%5, %6) <{fastmath = #arith.fastmath<none>}> : (vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%7, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xf16>, memref<16x16xf16>, index, index) -> ()
@@ -143,7 +162,7 @@
     %3 = "vector.transfer_read"(%arg0, %1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (memref<2x16x16xf16>, index, index, index, f16) -> vector<16x16xf16>
     %4 = "vector.transfer_read"(%arg1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 1, 0>, permutation_map = #map1}> : (memref<16xf16>, index, f16) -> vector<16x16xf16>
     %5 = "vector.transfer_read"(%arg2, %1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (memref<2x16x16xf16>, index, index, index, f16) -> vector<16x16xf16>
-    %6 = "vector.contract"(%3, %4, %5) <{indexing_maps = [#map2, #map, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    %6 = "vector.contract"(%3, %4, %5) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%6, %arg2, %1, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 3, 0>, permutation_map = #map}> : (vector<16x16xf16>, memref<2x16x16xf16>, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -164,7 +183,7 @@
     %3 = "vector.transfer_read"(%arg0, %1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map1}> : (memref<2x16x16xf16, #map>, index, index, index, f16) -> vector<16x16xf16>
     %4 = "vector.transfer_read"(%arg1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 1, 0>, permutation_map = #map2}> : (memref<16xf16>, index, f16) -> vector<16x16xf16>
     %5 = "vector.transfer_read"(%arg2, %1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map1}> : (memref<2x16x16xf16>, index, index, index, f16) -> vector<16x16xf16>
-    %6 = "vector.contract"(%3, %4, %5) <{indexing_maps = [#map3, #map1, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    %6 = "vector.contract"(%3, %4, %5) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map3, #map1, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%6, %arg2, %1, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 3, 0>, permutation_map = #map1}> : (vector<16x16xf16>, memref<2x16x16xf16>, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -184,7 +203,7 @@
     %3 = "vector.transfer_read"(%arg0, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
     %4 = "vector.transfer_read"(%arg1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
     %5 = "vector.transfer_read"(%arg2, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
-    %6 = "vector.contract"(%3, %4, %5) <{indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    %6 = "vector.contract"(%3, %4, %5) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%6, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xf16>, memref<16x16xf16>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -205,7 +224,7 @@
     %3 = "vector.transfer_read"(%arg0, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 1, 0>, permutation_map = #map}> : (memref<16xf16>, index, f16) -> vector<16x16xf16>
     %4 = "vector.transfer_read"(%arg1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 1, 0>, permutation_map = #map}> : (memref<16xf16>, index, f16) -> vector<16x16xf16>
     %5 = "vector.transfer_read"(%arg2, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
-    %6 = "vector.contract"(%3, %4, %5) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    %6 = "vector.contract"(%3, %4, %5) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%6, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<16x16xf16>, memref<16x16xf16>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -226,7 +245,7 @@
     %3 = "vector.transfer_read"(%arg0, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<32x32xf16>, index, index, f16) -> vector<16x16xf16>
     %4 = "vector.transfer_read"(%arg1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<32x32xf16>, index, index, f16) -> vector<16x16xf16>
     %5 = "vector.transfer_read"(%arg2, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
-    %6 = "vector.contract"(%3, %4, %5) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    %6 = "vector.contract"(%3, %4, %5) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%6, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<16x16xf16>, memref<16x16xf16>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -248,7 +267,7 @@
     %4 = "vector.transfer_read"(%arg0, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xi8>, index, index, i8) -> vector<16x16xi8>
     %5 = "vector.transfer_read"(%arg1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<16x16xi8>, index, index, i8) -> vector<16x16xi8>
     %6 = "vector.transfer_read"(%arg2, %1, %1, %3) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xi32>, index, index, i32) -> vector<16x16xi32>
-    %7 = "vector.contract"(%4, %5, %6) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xi8>, vector<16x16xi8>, vector<16x16xi32>) -> vector<16x16xi32>
+    %7 = "vector.contract"(%4, %5, %6) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xi8>, vector<16x16xi8>, vector<16x16xi32>) -> vector<16x16xi32>
     "vector.transfer_write"(%7, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xi32>, memref<16x16xi32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -272,7 +291,7 @@
     %6 = "vector.transfer_read"(%arg2, %1, %1, %3) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xi32>, index, index, i32) -> vector<16x16xi32>
     %7 = "arith.extsi"(%4) : (vector<16x16xi8>) -> vector<16x16xi32>
     %8 = "arith.extsi"(%5) : (vector<16x16xi8>) -> vector<16x16xi32>
-    %9 = "vector.contract"(%7, %8, %6) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xi32>, vector<16x16xi32>, vector<16x16xi32>) -> vector<16x16xi32>
+    %9 = "vector.contract"(%7, %8, %6) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xi32>, vector<16x16xi32>, vector<16x16xi32>) -> vector<16x16xi32>
     "vector.transfer_write"(%9, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xi32>, memref<16x16xi32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -296,7 +315,7 @@
     %6 = "vector.transfer_read"(%arg2, %1, %1, %3) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xi32>, index, index, i32) -> vector<16x16xi32>
     %7 = "arith.extui"(%4) : (vector<16x16xi8>) -> vector<16x16xi32>
     %8 = "arith.extsi"(%5) : (vector<16x16xi8>) -> vector<16x16xi32>
-    %9 = "vector.contract"(%7, %8, %6) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xi32>, vector<16x16xi32>, vector<16x16xi32>) -> vector<16x16xi32>
+    %9 = "vector.contract"(%7, %8, %6) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xi32>, vector<16x16xi32>, vector<16x16xi32>) -> vector<16x16xi32>
     "vector.transfer_write"(%9, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xi32>, memref<16x16xi32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -320,7 +339,7 @@
     %6 = "vector.transfer_read"(%arg2, %1, %1, %3) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xi32>, index, index, i32) -> vector<16x16xi32>
     %7 = "arith.extui"(%4) : (vector<16x32xi8>) -> vector<16x32xi32>
     %8 = "arith.extsi"(%5) : (vector<16x32xi8>) -> vector<16x32xi32>
-    %9 = "vector.contract"(%7, %8, %6) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x32xi32>, vector<16x32xi32>, vector<16x16xi32>) -> vector<16x16xi32>
+    %9 = "vector.contract"(%7, %8, %6) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x32xi32>, vector<16x32xi32>, vector<16x16xi32>) -> vector<16x16xi32>
     "vector.transfer_write"(%9, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xi32>, memref<16x16xi32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -339,9 +358,29 @@
     %2 = "vector.transfer_read"(%arg0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
     %3 = "vector.transfer_read"(%arg1, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
     %4 = "vector.transfer_read"(%arg2, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
-    %5 = "vector.contract"(%2, %3, %4) <{indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    %5 = "vector.contract"(%2, %3, %4) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     %6 = "arith.extf"(%5) : (vector<16x16xf16>) -> vector<16x16xf32>
     "vector.transfer_write"(%6, %arg3, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xf32>, memref<16x16xf32>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1) -> (d0, d1)>
+#map1 = affine_map<(d0, d1, d2) -> (d0, d2)>
+#map2 = affine_map<(d0, d1, d2) -> (d1, d2)>
+#map3 = affine_map<(d0, d1, d2) -> (d0, d1)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<16x16xf32>, memref<16x16xf32>, memref<16x16xf32>, memref<16x16xf16>) -> (), sym_name = "cast_f32_to_f16_write"}> ({
+  ^bb0(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf32>, %arg2: memref<16x16xf32>, %arg3: memref<16x16xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf32>, index, index, f32) -> vector<16x16xf32>
+    %3 = "vector.transfer_read"(%arg1, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf32>, index, index, f32) -> vector<16x16xf32>
+    %4 = "vector.transfer_read"(%arg2, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf32>, index, index, f32) -> vector<16x16xf32>
+    %5 = "vector.contract"(%2, %3, %4) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf32>, vector<16x16xf32>, vector<16x16xf32>) -> vector<16x16xf32>
+    %6 = "arith.truncf"(%5) : (vector<16x16xf32>) -> vector<16x16xf16>
+    "vector.transfer_write"(%6, %arg3, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xf16>, memref<16x16xf16>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -361,7 +400,7 @@
     %4 = "arith.extf"(%3) : (vector<64x128xf16>) -> vector<64x128xf32>
     %5 = "arith.extf"(%arg1) : (vector<32x128xf16>) -> vector<32x128xf32>
     %6 = "vector.transpose"(%4) <{permutation = array<i64: 1, 0>}> : (vector<64x128xf32>) -> vector<128x64xf32>
-    %7 = "vector.contract"(%5, %6, %2) <{indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<32x128xf32>, vector<128x64xf32>, vector<32x64xf32>) -> vector<32x64xf32>
+    %7 = "vector.contract"(%5, %6, %2) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<32x128xf32>, vector<128x64xf32>, vector<32x64xf32>) -> vector<32x64xf32>
     "vector.transfer_write"(%7, %arg2, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<32x64xf32>, memref<32x64xf32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -383,7 +422,7 @@
     %5 = "arith.extf"(%2) : (vector<16x16xf16>) -> vector<16x16xf32>
     %6 = "arith.extf"(%3) : (vector<16x16xf16>) -> vector<16x16xf32>
     %7 = "arith.extf"(%4) : (vector<16x16xf16>) -> vector<16x16xf32>
-    %8 = "vector.contract"(%5, %6, %7) <{indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf32>, vector<16x16xf32>, vector<16x16xf32>) -> vector<16x16xf32>
+    %8 = "vector.contract"(%5, %6, %7) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf32>, vector<16x16xf32>, vector<16x16xf32>) -> vector<16x16xf32>
     "vector.transfer_write"(%8, %arg3, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xf32>, memref<16x16xf32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -398,7 +437,7 @@
   ^bb0(%arg0: vector<4x4xi32>, %arg1: vector<4x4xi32>, %arg2: vector<4x4xi64>):
     %0 = "arith.extui"(%arg0) : (vector<4x4xi32>) -> vector<4x4xi64>
     %1 = "arith.extui"(%arg1) : (vector<4x4xi32>) -> vector<4x4xi64>
-    %2 = "vector.contract"(%0, %1, %arg2) <{indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<4x4xi64>, vector<4x4xi64>, vector<4x4xi64>) -> vector<4x4xi64>
+    %2 = "vector.contract"(%0, %1, %arg2) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<4x4xi64>, vector<4x4xi64>, vector<4x4xi64>) -> vector<4x4xi64>
     "func.return"(%2) : (vector<4x4xi64>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -415,6 +454,105 @@
     %3 = "vector.transfer_read"(%arg1, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
     %4 = "arith.addf"(%2, %3) <{fastmath = #arith.fastmath<none>}> : (vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
     "vector.transfer_write"(%4, %arg2, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xf16>, memref<16x16xf16>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1) -> (d0, d1)>
+#map1 = affine_map<(d0, d1, d2) -> (d0, d2)>
+#map2 = affine_map<(d0, d1, d2) -> (d2, d1)>
+#map3 = affine_map<(d0, d1, d2) -> (d0, d1)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<16x16xf16>, memref<16x6x16xf16>, memref<16x9x16xf16>) -> (), sym_name = "matmul_with_strides"}> ({
+  ^bb0(%arg0: memref<16x16xf16>, %arg1: memref<16x6x16xf16>, %arg2: memref<16x9x16xf16>):
+    %0 = "arith.constant"() <{value = dense<0.000000e+00> : vector<16x16xf16>}> : () -> vector<16x16xf16>
+    %1 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %2 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
+    %3 = "vector.transfer_read"(%arg0, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xf16>, index, index, f16) -> vector<16x16xf16>
+    %4 = "vector.transfer_read"(%arg1, %1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map1}> : (memref<16x6x16xf16>, index, index, index, f16) -> vector<16x16xf16>
+    %5 = "vector.transfer_read"(%arg2, %1, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map1}> : (memref<16x9x16xf16>, index, index, index, f16) -> vector<16x16xf16>
+    %6 = "vector.contract"(%3, %4, %5) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<16x16xf16>, vector<16x16xf16>) -> vector<16x16xf16>
+    "vector.transfer_write"(%6, %arg2, %1, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 3, 0>, permutation_map = #map1}> : (vector<16x16xf16>, memref<16x9x16xf16>, index, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2) -> (d2, d0)>
+#map1 = affine_map<(d0, d1, d2) -> (d2, d1)>
+#map2 = affine_map<(d0, d1) -> (d0, d1)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<5x7x3xf16>, memref<2x5x3xf16>, memref<3x5xf16>) -> (), sym_name = "read_transpose_with_strides_3d"}> ({
+  ^bb0(%arg0: memref<5x7x3xf16>, %arg1: memref<2x5x3xf16>, %arg2: memref<3x5xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (memref<5x7x3xf16>, index, index, index, f16) -> vector<3x5xf16>
+    %3 = "vector.transfer_read"(%arg1, %0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map1}> : (memref<2x5x3xf16>, index, index, index, f16) -> vector<3x5xf16>
+    %4 = "arith.addf"(%2, %3) <{fastmath = #arith.fastmath<none>}> : (vector<3x5xf16>, vector<3x5xf16>) -> vector<3x5xf16>
+    "vector.transfer_write"(%4, %arg2, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map2}> : (vector<3x5xf16>, memref<3x5xf16>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2, d3) -> (d3, d0)>
+#map1 = affine_map<(d0, d1, d2, d3) -> (d3, d1)>
+#map2 = affine_map<(d0, d1) -> (d0, d1)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<5x7x11x3xf16>, memref<2x5x11x3xf16>, memref<3x5xf16>) -> (), sym_name = "read_transpose_with_strides_4d"}> ({
+  ^bb0(%arg0: memref<5x7x11x3xf16>, %arg1: memref<2x5x11x3xf16>, %arg2: memref<3x5xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 4, 1, 0>, permutation_map = #map}> : (memref<5x7x11x3xf16>, index, index, index, index, f16) -> vector<3x5xf16>
+    %3 = "vector.transfer_read"(%arg1, %0, %0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 4, 1, 0>, permutation_map = #map1}> : (memref<2x5x11x3xf16>, index, index, index, index, f16) -> vector<3x5xf16>
+    %4 = "arith.addf"(%2, %3) <{fastmath = #arith.fastmath<none>}> : (vector<3x5xf16>, vector<3x5xf16>) -> vector<3x5xf16>
+    "vector.transfer_write"(%4, %arg2, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map2}> : (vector<3x5xf16>, memref<3x5xf16>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2) -> (d1, d0)>
+#map1 = affine_map<(d0, d1) -> (d0, d1)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x2x2xf16>, memref<2x2xf16>) -> (), sym_name = "no_convert_read_transpose_not_last_dim"}> ({
+  ^bb0(%arg0: memref<2x2x2xf16>, %arg1: memref<2x2xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (memref<2x2x2xf16>, index, index, index, f16) -> vector<2x2xf16>
+    %3 = "arith.addf"(%2, %2) <{fastmath = #arith.fastmath<none>}> : (vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
+    "vector.transfer_write"(%3, %arg1, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<2x2xf16>, memref<2x2xf16>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1) -> (d0, d1)>
+#map1 = affine_map<(d0, d1) -> (d1, d0)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x2xf16>) -> (), sym_name = "no_convert_write_transpose"}> ({
+  ^bb0(%arg0: memref<2x2xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<2x2xf16>, index, index, f16) -> vector<2x2xf16>
+    %3 = "arith.addf"(%2, %2) <{fastmath = #arith.fastmath<none>}> : (vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
+    "vector.transfer_write"(%3, %arg0, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<2x2xf16>, memref<2x2xf16>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2) -> (d2, 0)>
+#map1 = affine_map<(d0, d1) -> (d0, d1)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x2x2xf16>, memref<2x2xf16>) -> (), sym_name = "read_transpose_with_broadcast_3d"}> ({
+  ^bb0(%arg0: memref<2x2x2xf16>, %arg1: memref<2x2xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (memref<2x2x2xf16>, index, index, index, f16) -> vector<2x2xf16>
+    %3 = "arith.addf"(%2, %2) <{fastmath = #arith.fastmath<none>}> : (vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
+    "vector.transfer_write"(%3, %arg1, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<2x2xf16>, memref<2x2xf16>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

@@ -196,6 +196,73 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<4xi1>, sym_name = "extract_from_constant_mask"}> ({
+    %0 = "vector.constant_mask"() <{mask_dim_sizes = array<i64: 3>}> : () -> vector<4xi1>
+    "func.return"(%0) : (vector<4xi1>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<4xi1>, sym_name = "extract_from_constant_mask_all_false"}> ({
+    %0 = "arith.constant"() <{value = dense<false> : vector<4xi1>}> : () -> vector<4xi1>
+    "func.return"(%0) : (vector<4xi1>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<4xi1>, sym_name = "extract_from_constant_mask_at_boundary"}> ({
+    %0 = "arith.constant"() <{value = dense<false> : vector<4xi1>}> : () -> vector<4xi1>
+    "func.return"(%0) : (vector<4xi1>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<4xi1>, sym_name = "extract_from_constant_mask_multiple_indices"}> ({
+    %0 = "vector.constant_mask"() <{mask_dim_sizes = array<i64: 3>}> : () -> vector<4xi1>
+    "func.return"(%0) : (vector<4xi1>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> vector<4xi1>, sym_name = "extract_from_constant_mask_dynamic_position_all_true"}> ({
+  ^bb0(%arg0: index):
+    %0 = "vector.constant_mask"() <{mask_dim_sizes = array<i64: 3>}> : () -> vector<4xi1>
+    "func.return"(%0) : (vector<4xi1>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> vector<4xi1>, sym_name = "extract_from_constant_mask_dynamic_position_not_all_true"}> ({
+  ^bb0(%arg0: index):
+    %0 = "vector.constant_mask"() <{mask_dim_sizes = array<i64: 2, 3>}> : () -> vector<4x4xi1>
+    %1 = "vector.extract"(%0, %arg0) <{static_position = array<i64: -9223372036854775808>}> : (vector<4x4xi1>, index) -> vector<4xi1>
+    "func.return"(%1) : (vector<4xi1>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i1, sym_name = "extract_scalar_from_constant_mask_within_bounds"}> ({
+    %0 = "arith.constant"() <{value = true}> : () -> i1
+    "func.return"(%0) : (i1) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i1, sym_name = "extract_scalar_from_constant_mask_outside_bounds"}> ({
+    %0 = "arith.constant"() <{value = false}> : () -> i1
+    "func.return"(%0) : (i1) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = () -> vector<2x4xi1>, sym_name = "constant_mask_to_true_splat"}> ({
     %4 = "arith.constant"() <{value = dense<true> : vector<2x4xi1>}> : () -> vector<2x4xi1>
     "func.return"(%4) : (vector<2x4xi1>) -> ()
@@ -491,7 +558,7 @@
   "func.func"() <{function_type = (vector<1x1xf32>) -> vector<4xf32>, sym_name = "negative_fold_extract_broadcast"}> ({
   ^bb0(%arg0: vector<1x1xf32>):
     %0 = "vector.broadcast"(%arg0) : (vector<1x1xf32>) -> vector<1x1x4xf32>
-    %1 = "vector.extract"(%0) <{static_position = array<i64: 0, 0>}> : (vector<1x1x4xf32>) -> vector<4xf32>
+    %1 = "vector.shape_cast"(%0) : (vector<1x1x4xf32>) -> vector<4xf32>
     "func.return"(%1) : (vector<4xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -572,7 +639,7 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<1xf32>, index) -> vector<1x1xf32>, sym_name = "fold_extract_broadcastlike_shape_cast"}> ({
   ^bb0(%arg0: vector<1xf32>, %arg1: index):
-    %0 = "vector.broadcast"(%arg0) : (vector<1xf32>) -> vector<1x1xf32>
+    %0 = "vector.shape_cast"(%arg0) : (vector<1xf32>) -> vector<1x1xf32>
     "func.return"(%0) : (vector<1x1xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -670,6 +737,15 @@
   ^bb0(%arg0: vector<1x1x64xf32>):
     %0 = "vector.shape_cast"(%arg0) : (vector<1x1x64xf32>) -> vector<8x8xf32>
     "func.return"(%0) : (vector<8x8xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f32, f32, f32, f32) -> vector<2x2xf32>, sym_name = "fold_shape_cast_from_elements"}> ({
+  ^bb0(%arg0: f32, %arg1: f32, %arg2: f32, %arg3: f32):
+    %0 = "vector.from_elements"(%arg0, %arg1, %arg2, %arg3) : (f32, f32, f32, f32) -> vector<2x2xf32>
+    "func.return"(%0) : (vector<2x2xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -880,6 +956,15 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<16xi64>, sym_name = "bitcast_index_no_fold"}> ({
+    %0 = "arith.constant"() <{value = dense<0> : vector<16xindex>}> : () -> vector<16xindex>
+    %1 = "vector.bitcast"(%0) : (vector<16xindex>) -> vector<16xi64>
+    "func.return"(%1) : (vector<16xi64>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = () -> vector<4x6xi8>, sym_name = "broadcast_poison"}> ({
     %0 = "ub.poison"() <{value = #ub.poison}> : () -> vector<4x6xi8>
     "func.return"(%0) : (vector<4x6xi8>) -> ()
@@ -1041,8 +1126,8 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<2x3xf32>, vector<3x4xf32>, vector<2x4xf32>, vector<2x3xi8>, vector<3x4xi8>, vector<2x4xi8>) -> (vector<2x4xf32>, vector<2x4xi8>), sym_name = "contractions"}> ({
   ^bb0(%arg0: vector<2x3xf32>, %arg1: vector<3x4xf32>, %arg2: vector<2x4xf32>, %arg3: vector<2x3xi8>, %arg4: vector<3x4xi8>, %arg5: vector<2x4xi8>):
-    %0 = "vector.contract"(%arg0, %arg1, %arg2) <{indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<2x3xf32>, vector<3x4xf32>, vector<2x4xf32>) -> vector<2x4xf32>
-    %1 = "vector.contract"(%arg3, %arg4, %arg5) <{indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<2x3xi8>, vector<3x4xi8>, vector<2x4xi8>) -> vector<2x4xi8>
+    %0 = "vector.contract"(%arg0, %arg1, %arg2) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<2x3xf32>, vector<3x4xf32>, vector<2x4xf32>) -> vector<2x4xf32>
+    %1 = "vector.contract"(%arg3, %arg4, %arg5) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<2x3xi8>, vector<3x4xi8>, vector<2x4xi8>) -> vector<2x4xi8>
     "func.return"(%0, %1) : (vector<2x4xf32>, vector<2x4xi8>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -1053,6 +1138,45 @@
   ^bb0(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x4xf32>):
     %0 = "some_op_that_may_have_side_effects"() : () -> tensor<2x3x4xf32>
     "func.return"(%arg0, %arg0, %arg0) : (tensor<2x3x4xf32>, tensor<2x3x4xf32>, tensor<2x3x4xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<2x3x4xf32>, tensor<2x3x4xf32>, vector<2x3x4xi1>) -> tensor<2x3x4xf32>, sym_name = "negative_transfer_folding_masked_read"}> ({
+  ^bb0(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x4xf32>, %arg2: vector<2x3x4xi1>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %0, %1, %arg2) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 3, 1, 1>, permutation_map = #map}> : (tensor<2x3x4xf32>, index, index, index, f32, vector<2x3x4xi1>) -> vector<2x3x4xf32>
+    %3 = "vector.transfer_write"(%2, %arg1, %0, %0, %0) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 1, 3, 0>, permutation_map = #map}> : (vector<2x3x4xf32>, tensor<2x3x4xf32>, index, index, index) -> tensor<2x3x4xf32>
+    "func.return"(%3) : (tensor<2x3x4xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<2x3x4xf32>, tensor<2x3x4xf32>, vector<2x3x4xi1>) -> tensor<2x3x4xf32>, sym_name = "negative_transfer_folding_masked_write"}> ({
+  ^bb0(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x4xf32>, %arg2: vector<2x3x4xi1>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %0, %1) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (tensor<2x3x4xf32>, index, index, index, f32) -> vector<2x3x4xf32>
+    %3 = "vector.transfer_write"(%2, %arg1, %0, %0, %0, %arg2) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 1, 3, 1>, permutation_map = #map}> : (vector<2x3x4xf32>, tensor<2x3x4xf32>, index, index, index, vector<2x3x4xi1>) -> tensor<2x3x4xf32>
+    "func.return"(%3) : (tensor<2x3x4xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<2x3x4xf32>, tensor<2x3x4xf32>, vector<2x3x4xi1>) -> tensor<2x3x4xf32>, sym_name = "negative_transfer_folding_masked_read_and_write"}> ({
+  ^bb0(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x4xf32>, %arg2: vector<2x3x4xi1>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %0, %1, %arg2) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 3, 1, 1>, permutation_map = #map}> : (tensor<2x3x4xf32>, index, index, index, f32, vector<2x3x4xi1>) -> vector<2x3x4xf32>
+    %3 = "vector.transfer_write"(%2, %arg1, %0, %0, %0, %arg2) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 1, 3, 1>, permutation_map = #map}> : (vector<2x3x4xf32>, tensor<2x3x4xf32>, index, index, index, vector<2x3x4xi1>) -> tensor<2x3x4xf32>
+    "func.return"(%3) : (tensor<2x3x4xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1188,7 +1312,7 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<4x8xf32>, tensor<1x1x4x8xf32>) -> vector<1x1x4x8xf32>, sym_name = "store_to_load_tensor_forwarding_unit_dim_broadcast"}> ({
   ^bb0(%arg0: vector<4x8xf32>, %arg1: tensor<1x1x4x8xf32>):
-    %0 = "vector.broadcast"(%arg0) : (vector<4x8xf32>) -> vector<1x1x4x8xf32>
+    %0 = "vector.shape_cast"(%arg0) : (vector<4x8xf32>) -> vector<1x1x4x8xf32>
     "func.return"(%0) : (vector<1x1x4x8xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -1270,6 +1394,22 @@
   "func.func"() <{function_type = (vector<2xf32>, vector<2xf32>, vector<2xi1>) -> vector<2xf32>, sym_name = "masked_vector_multi_reduction_single_parallel"}> ({
   ^bb0(%arg0: vector<2xf32>, %arg1: vector<2xf32>, %arg2: vector<2xi1>):
     "func.return"(%arg0) : (vector<2xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<2x3xf32>, vector<2x3xf32>) -> vector<2x3xf32>, sym_name = "vector_multi_reduction_no_reduction_dims_nd"}> ({
+  ^bb0(%arg0: vector<2x3xf32>, %arg1: vector<2x3xf32>):
+    "func.return"(%arg0) : (vector<2x3xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<2x3xf32>, vector<2x3xf32>, vector<2x3xi1>) -> vector<2x3xf32>, sym_name = "masked_vector_multi_reduction_no_reduction_dims_nd"}> ({
+  ^bb0(%arg0: vector<2x3xf32>, %arg1: vector<2x3xf32>, %arg2: vector<2x3xi1>):
+    "func.return"(%arg0) : (vector<2x3xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1359,8 +1499,8 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<1x1x4xf32>, vector<4xf32>) -> (vector<4xf32>, vector<1x1x4xf32>), sym_name = "insert_extract_to_broadcast"}> ({
   ^bb0(%arg0: vector<1x1x4xf32>, %arg1: vector<4xf32>):
-    %0 = "vector.extract"(%arg0) <{static_position = array<i64: 0, 0>}> : (vector<1x1x4xf32>) -> vector<4xf32>
-    %1 = "vector.broadcast"(%arg1) : (vector<4xf32>) -> vector<1x1x4xf32>
+    %0 = "vector.shape_cast"(%arg0) : (vector<1x1x4xf32>) -> vector<4xf32>
+    %1 = "vector.shape_cast"(%arg1) : (vector<4xf32>) -> vector<1x1x4xf32>
     "func.return"(%0, %1) : (vector<4xf32>, vector<1x1x4xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -1593,7 +1733,7 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<i32>, vector<i32>) -> vector<1xi32>, sym_name = "shuffle_canonicalize_0d"}> ({
   ^bb0(%arg0: vector<i32>, %arg1: vector<i32>):
-    %0 = "vector.broadcast"(%arg0) : (vector<i32>) -> vector<1xi32>
+    %0 = "vector.shape_cast"(%arg0) : (vector<i32>) -> vector<1xi32>
     "func.return"(%0) : (vector<1xi32>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -1636,6 +1776,83 @@
   ^bb0(%arg0: vector<4xi32>, %arg1: vector<2xi32>):
     %0 = "vector.shuffle"(%arg0, %arg1) <{mask = array<i64: 0, 1, 2, 3, 4>}> : (vector<4xi32>, vector<2xi32>) -> vector<5xi32>
     "func.return"(%0) : (vector<5xi32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi32>, vector<3xi32>) -> vector<2xi32>, sym_name = "shuffle_all_poison_mask"}> ({
+  ^bb0(%arg0: vector<3xi32>, %arg1: vector<3xi32>):
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> vector<2xi32>
+    "func.return"(%0) : (vector<2xi32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi32>, vector<3xi32>) -> vector<2xi32>, sym_name = "shuffle_unused_v1"}> ({
+  ^bb0(%arg0: vector<3xi32>, %arg1: vector<3xi32>):
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> vector<3xi32>
+    %1 = "vector.shuffle"(%0, %arg1) <{mask = array<i64: 4, 3>}> : (vector<3xi32>, vector<3xi32>) -> vector<2xi32>
+    "func.return"(%1) : (vector<2xi32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi32>, vector<3xi32>) -> vector<2xi32>, sym_name = "shuffle_unused_v2"}> ({
+  ^bb0(%arg0: vector<3xi32>, %arg1: vector<3xi32>):
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> vector<3xi32>
+    %1 = "vector.shuffle"(%arg0, %0) <{mask = array<i64: 2, 0>}> : (vector<3xi32>, vector<3xi32>) -> vector<2xi32>
+    "func.return"(%1) : (vector<2xi32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi32>, vector<3xi32>) -> vector<3xi32>, sym_name = "shuffle_unused_v1_with_poison_idx"}> ({
+  ^bb0(%arg0: vector<3xi32>, %arg1: vector<3xi32>):
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> vector<3xi32>
+    %1 = "vector.shuffle"(%0, %arg1) <{mask = array<i64: 4, -1, 3>}> : (vector<3xi32>, vector<3xi32>) -> vector<3xi32>
+    "func.return"(%1) : (vector<3xi32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4x2xf32>, vector<3x2xf32>) -> vector<3x2xf32>, sym_name = "shuffle_unused_v2_multidim"}> ({
+  ^bb0(%arg0: vector<4x2xf32>, %arg1: vector<3x2xf32>):
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> vector<3x2xf32>
+    %1 = "vector.shuffle"(%arg0, %0) <{mask = array<i64: 2, 0, 3>}> : (vector<4x2xf32>, vector<3x2xf32>) -> vector<3x2xf32>
+    "func.return"(%1) : (vector<3x2xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi32>, vector<3xi32>) -> vector<4xi32>, sym_name = "shuffle_both_operands_used"}> ({
+  ^bb0(%arg0: vector<3xi32>, %arg1: vector<3xi32>):
+    %0 = "vector.shuffle"(%arg0, %arg1) <{mask = array<i64: 0, 3, 1, 4>}> : (vector<3xi32>, vector<3xi32>) -> vector<4xi32>
+    "func.return"(%0) : (vector<4xi32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<2xi32>) -> vector<4xi32>, sym_name = "shuffle_poison_unused"}> ({
+  ^bb0(%arg0: vector<2xi32>):
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> vector<4xi32>
+    "func.return"(%0) : (vector<4xi32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<2xi32>) -> vector<4xi32>, sym_name = "fold_poison_into_mask"}> ({
+  ^bb0(%arg0: vector<2xi32>):
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> vector<2xi32>
+    %1 = "vector.shuffle"(%0, %arg0) <{mask = array<i64: -1, -1, 2, -1>}> : (vector<2xi32>, vector<2xi32>) -> vector<4xi32>
+    "func.return"(%1) : (vector<4xi32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1927,7 +2144,7 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<1x1x1xf32>) -> vector<1xf32>, sym_name = "extract_from_broadcast"}> ({
   ^bb0(%arg1: vector<1x1x1xf32>):
-    %1 = "vector.extract"(%arg1) <{static_position = array<i64: 0, 0>}> : (vector<1x1x1xf32>) -> vector<1xf32>
+    %1 = "vector.shape_cast"(%arg1) : (vector<1x1x1xf32>) -> vector<1xf32>
     "func.return"(%1) : (vector<1xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<3x1x2xf32>) -> f32, sym_name = "extract_from_stretch_broadcast"}> ({
@@ -2313,6 +2530,14 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<2xf16>, sym_name = "insert_scalar_poison_idx_dense_dest"}> ({
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> vector<2xf16>
+    "func.return"(%0) : (vector<2xf16>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (vector<4x5xf32>, vector<5xf32>) -> vector<4x5xf32>, sym_name = "no_fold_insert_scalar_idx_oob"}> ({
   ^bb0(%arg0: vector<4x5xf32>, %arg1: vector<5xf32>):
     %0 = "arith.constant"() <{value = -2 : index}> : () -> index
@@ -2550,6 +2775,64 @@
     %0 = "vector.insert"(%arg1, %arg0) <{static_position = array<i64: 0>}> : (f32, vector<4xf32>) -> vector<4xf32>
     %1 = "vector.insert"(%arg1, %0) <{static_position = array<i64: 1>}> : (f32, vector<4xf32>) -> vector<4xf32>
     "func.return"(%1) : (vector<4xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4x8x16xf32>) -> vector<2x2x16xf32>, sym_name = "extract_strided_slice_of_extract_strided_slice"}> ({
+  ^bb0(%arg0: vector<4x8x16xf32>):
+    %0 = "vector.extract_strided_slice"(%arg0) <{offsets = [1, 3], sizes = [2, 2], strides = [1, 1]}> : (vector<4x8x16xf32>) -> vector<2x2x16xf32>
+    "func.return"(%0) : (vector<2x2x16xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4x8x16xf32>) -> vector<2x2x4xf32>, sym_name = "extract_strided_slice_inner_shorter"}> ({
+  ^bb0(%arg0: vector<4x8x16xf32>):
+    %0 = "vector.extract_strided_slice"(%arg0) <{offsets = [1, 1, 2], sizes = [2, 2, 4], strides = [1, 1, 1]}> : (vector<4x8x16xf32>) -> vector<2x2x4xf32>
+    "func.return"(%0) : (vector<2x2x4xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4x8x16xf32>) -> vector<2x4x16xf32>, sym_name = "extract_strided_slice_outer_shorter"}> ({
+  ^bb0(%arg0: vector<4x8x16xf32>):
+    %0 = "vector.extract_strided_slice"(%arg0) <{offsets = [1, 2], sizes = [2, 4], strides = [1, 1]}> : (vector<4x8x16xf32>) -> vector<2x4x16xf32>
+    "func.return"(%0) : (vector<2x4x16xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<1xi1>, i32, i32) -> i32, sym_name = "no_fold_empty_mask_scalar_result_with_passthru"}> ({
+  ^bb0(%arg0: vector<1xi1>, %arg1: i32, %arg2: i32):
+    %0 = "vector.mask"(%arg0, %arg1) ({
+      "vector.yield"(%arg2) : (i32) -> ()
+    }) : (vector<1xi1>, i32) -> i32
+    "func.return"(%0) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32, i32) -> i32, sym_name = "no_fold_alltrue_mask_empty_body_scalar_result"}> ({
+  ^bb0(%arg0: i32, %arg1: i32):
+    %0 = "arith.constant"() <{value = dense<true> : vector<1xi1>}> : () -> vector<1xi1>
+    %1 = "vector.mask"(%0, %arg0) ({
+      "vector.yield"(%arg1) : (i32) -> ()
+    }) : (vector<1xi1>, i32) -> i32
+    "func.return"(%1) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xf32>) -> vector<4xf32>, sym_name = "interleave_deinterleave_fold"}> ({
+  ^bb0(%arg0: vector<4xf32>):
+    "func.return"(%arg0) : (vector<4xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 

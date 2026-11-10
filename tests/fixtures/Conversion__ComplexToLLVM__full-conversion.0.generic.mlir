@@ -30,11 +30,11 @@
     %10 = "llvm.mlir.poison"() : () -> !llvm.struct<(f32, f32)>
     %11 = "llvm.fmul"(%8, %6) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
     %12 = "llvm.fmul"(%9, %7) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
-    %13 = "llvm.fsub"(%11, %12) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
-    %14 = "llvm.fmul"(%7, %8) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
-    %15 = "llvm.fmul"(%6, %9) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
-    %16 = "llvm.fadd"(%14, %15) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
-    %17 = "llvm.insertvalue"(%10, %13) <{position = array<i64: 0>}> : (!llvm.struct<(f32, f32)>, f32) -> !llvm.struct<(f32, f32)>
+    %13 = "llvm.fmul"(%7, %8) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    %14 = "llvm.fmul"(%6, %9) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    %15 = "llvm.fsub"(%11, %12) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    %16 = "llvm.fadd"(%13, %14) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    %17 = "llvm.insertvalue"(%10, %15) <{position = array<i64: 0>}> : (!llvm.struct<(f32, f32)>, f32) -> !llvm.struct<(f32, f32)>
     %18 = "llvm.insertvalue"(%17, %16) <{position = array<i64: 1>}> : (!llvm.struct<(f32, f32)>, f32) -> !llvm.struct<(f32, f32)>
     "llvm.return"(%18) : (!llvm.struct<(f32, f32)>) -> ()
   }) : () -> ()

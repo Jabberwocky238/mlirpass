@@ -99,7 +99,7 @@
     %2 = "arith.constant"() <{value = 0 : index}> : () -> index
     %3 = "arith.constant"() <{value = 1 : index}> : () -> index
     "memref.store"(%1, %arg1, %2) <{nontemporal = false}> : (f32, memref<?xf32, strided<[?], offset: ?>>, index) -> ()
-    %4 = "memref.load"(%arg1, %3) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %4 = "memref.load"(%arg1, %3) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%4) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<?xf32, strided<[?], offset: ?>>) -> f32, sym_name = "call_func_with_non_tensor_return", sym_visibility = "private"}> ({
@@ -117,7 +117,7 @@
     %6 = "arith.constant"() <{value = 0 : index}> : () -> index
     %7 = "arith.constant"() <{value = 1 : index}> : () -> index
     "memref.store"(%5, %arg1, %6) <{nontemporal = false}> : (f32, memref<?xf32, strided<[?], offset: ?>>, index) -> ()
-    %8 = "memref.load"(%arg1, %7) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %8 = "memref.load"(%arg1, %7) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%8) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<?xf32, strided<[?], offset: ?>>) -> (f32, memref<?xf32, strided<[?], offset: ?>>), sym_name = "call_func_with_non_tensor_return"}> ({
@@ -177,7 +177,7 @@
     %3 = "memref.alloc"(%2) <{alignment = 64 : i64, operandSegmentSizes = array<i32: 1, 0>}> : (index) -> memref<?xf32>
     %4 = "memref.cast"(%3) : (memref<?xf32>) -> memref<?xf32, strided<[?], offset: ?>>
     "func.call"(%4) <{callee = @does_not_read}> : (memref<?xf32, strided<[?], offset: ?>>) -> ()
-    %5 = "memref.load"(%4, %0) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %5 = "memref.load"(%4, %0) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%5) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -479,7 +479,7 @@
     "memref.copy"(%arg0, %1) : (memref<5xf32, strided<[?], offset: ?>>, memref<5xf32>) -> ()
     %2 = "memref.cast"(%1) : (memref<5xf32>) -> memref<5xf32, strided<[?], offset: ?>>
     %3 = "func.call"(%2) <{callee = @foo}> : (memref<5xf32, strided<[?], offset: ?>>) -> memref<5xf32, strided<[?], offset: ?>>
-    %4 = "memref.load"(%arg0, %0) <{nontemporal = false}> : (memref<5xf32, strided<[?], offset: ?>>, index) -> f32
+    %4 = "memref.load"(%arg0, %0) <{invariant = false, nontemporal = false}> : (memref<5xf32, strided<[?], offset: ?>>, index) -> f32
     "vector.print"(%4) <{punctuation = #vector.punctuation<newline>}> : (f32) -> ()
     "func.return"(%3) : (memref<5xf32, strided<[?], offset: ?>>) -> ()
   }) : () -> ()
@@ -532,27 +532,14 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (!test.test_memref<[4, 4], f64>) -> (!test.test_memref<[4, 8], f64>, !test.test_memref<[4, 8], f64>), sym_name = "custom_types"}> ({
-  ^bb0(%arg0: !test.test_memref<[4, 4], f64>):
-    %0 = "test.dummy_memref_op"(%arg0) : (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 8], f64>
-    %1 = "test.create_memref_op"() : () -> !test.test_memref<[4, 4], f64>
-    %2 = "test.dummy_memref_op"(%1) : (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 8], f64>
-    "func.return"(%0, %2) : (!test.test_memref<[4, 8], f64>, !test.test_memref<[4, 8], f64>) -> ()
+  "func.func"() <{function_type = (memref<64x20x40xf32, strided<[?, ?, ?], offset: ?>>) -> memref<64x20x40xf32, strided<[?, ?, ?], offset: ?>>, sym_name = "ranked_return_via_unranked_call"}> ({
+  ^bb0(%arg0: memref<64x20x40xf32, strided<[?, ?, ?], offset: ?>>):
+    %0 = "memref.cast"(%arg0) : (memref<64x20x40xf32, strided<[?, ?, ?], offset: ?>>) -> memref<*xf32>
+    %1 = "func.call"(%0) <{callee = @relu_unranked}> : (memref<*xf32>) -> memref<*xf32>
+    %2 = "memref.cast"(%1) : (memref<*xf32>) -> memref<64x20x40xf32, strided<[?, ?, ?], offset: ?>>
+    "func.return"(%2) : (memref<64x20x40xf32, strided<[?, ?, ?], offset: ?>>) -> ()
   }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 4], f64>, sym_name = "custom_types_foo"}> ({
-  ^bb0(%arg1: !test.test_memref<[4, 4], f64>):
-    %2 = "test.dummy_memref_op"(%arg1) : (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 4], f64>
-    "func.return"(%2) : (!test.test_memref<[4, 4], f64>) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 8], f64>, sym_name = "custom_types_bar"}> ({
-  ^bb0(%arg0: !test.test_memref<[4, 4], f64>):
-    %0 = "func.call"(%arg0) <{callee = @custom_types_foo}> : (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 4], f64>
-    %1 = "test.dummy_memref_op"(%0) : (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 8], f64>
-    "func.return"(%1) : (!test.test_memref<[4, 8], f64>) -> ()
+  "func.func"() <{function_type = (memref<*xf32>) -> memref<*xf32>, sym_name = "relu_unranked", sym_visibility = "private"}> ({
   }) : () -> ()
 }) : () -> ()
 

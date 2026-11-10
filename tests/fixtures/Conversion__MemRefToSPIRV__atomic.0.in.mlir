@@ -36,3 +36,30 @@
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.3, [Shader], []>, #spirv.resource_limits<>>} : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i8, memref<16xi8, #spirv.storage_class<StorageBuffer>>, index) -> i8, sym_name = "atomic_ori_i8_storage_buffer"}> ({
+  ^bb0(%arg0: i8, %arg1: memref<16xi8, #spirv.storage_class<StorageBuffer>>, %arg2: index):
+    %0 = "memref.atomic_rmw"(%arg0, %arg1, %arg2) <{kind = 14 : i64}> : (i8, memref<16xi8, #spirv.storage_class<StorageBuffer>>, index) -> i8
+    "func.return"(%0) : (i8) -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.3, [Shader], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i8, memref<16xi8, #spirv.storage_class<StorageBuffer>>, index) -> i8, sym_name = "atomic_andi_i8_storage_buffer"}> ({
+  ^bb0(%arg0: i8, %arg1: memref<16xi8, #spirv.storage_class<StorageBuffer>>, %arg2: index):
+    %0 = "memref.atomic_rmw"(%arg0, %arg1, %arg2) <{kind = 2 : i64}> : (i8, memref<16xi8, #spirv.storage_class<StorageBuffer>>, index) -> i8
+    "func.return"(%0) : (i8) -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.3, [Shader], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f32, memref<2x3x4xf32, #spirv.storage_class<StorageBuffer>>, index, index, index) -> f32, sym_name = "atomic_addf_storage_buffer"}> ({
+  ^bb0(%arg0: f32, %arg1: memref<2x3x4xf32, #spirv.storage_class<StorageBuffer>>, %arg2: index, %arg3: index, %arg4: index):
+    %0 = "memref.atomic_rmw"(%arg0, %arg1, %arg2, %arg3, %arg4) <{kind = 0 : i64}> : (f32, memref<2x3x4xf32, #spirv.storage_class<StorageBuffer>>, index, index, index) -> f32
+    "func.return"(%0) : (f32) -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.3, [Shader, AtomicFloat32AddEXT], [SPV_EXT_shader_atomic_float_add]>, #spirv.resource_limits<>>} : () -> ()
+

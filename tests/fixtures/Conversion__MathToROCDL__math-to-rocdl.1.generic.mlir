@@ -463,9 +463,9 @@
     %0 = "llvm.call"(%arg0) <{CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @__ocml_sin_f16, fastmathFlags = #llvm.fastmath<none>, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>}> : (f16) -> f16
     %1 = "llvm.call"(%arg1) <{CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @__ocml_sin_f32, fastmathFlags = #llvm.fastmath<none>, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>}> : (f32) -> f32
     %2 = "llvm.call"(%arg2) <{CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @__ocml_sin_f64, fastmathFlags = #llvm.fastmath<none>, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>}> : (f64) -> f64
-    %3 = "llvm.fpext"(%arg3) : (bf16) -> f32
+    %3 = "llvm.fpext"(%arg3) <{fastmathFlags = #llvm.fastmath<none>}> : (bf16) -> f32
     %4 = "llvm.call"(%3) <{CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @__ocml_sin_f32, fastmathFlags = #llvm.fastmath<none>, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>}> : (f32) -> f32
-    %5 = "llvm.fptrunc"(%4) : (f32) -> bf16
+    %5 = "llvm.fptrunc"(%4) <{fastmathFlags = #llvm.fastmath<none>}> : (f32) -> bf16
     "func.return"(%0, %1, %2, %5) : (f16, f32, f64, bf16) -> ()
   }) : () -> ()
 }) : () -> ()

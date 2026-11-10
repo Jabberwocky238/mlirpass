@@ -1,317 +1,391 @@
 "builtin.module"() ({
   "func.func"() <{function_type = () -> f32, sym_name = "ceil_fold"}> ({
-    %126 = "arith.constant"() <{value = 3.000000e-01 : f32}> : () -> f32
-    %127 = "math.ceil"(%126) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%127) : (f32) -> ()
+    %161 = "arith.constant"() <{value = 3.000000e-01 : f32}> : () -> f32
+    %162 = "math.ceil"(%161) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%162) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "ceil_fold2"}> ({
-    %124 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %125 = "math.ceil"(%124) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%125) : (f32) -> ()
+    %159 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %160 = "math.ceil"(%159) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%160) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "log2_fold"}> ({
-    %122 = "arith.constant"() <{value = 4.000000e+00 : f32}> : () -> f32
-    %123 = "math.log2"(%122) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%123) : (f32) -> ()
+    %157 = "arith.constant"() <{value = 4.000000e+00 : f32}> : () -> f32
+    %158 = "math.log2"(%157) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%158) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "log2_fold2"}> ({
-    %120 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
-    %121 = "math.log2"(%120) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%121) : (f32) -> ()
+    %155 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %156 = "math.log2"(%155) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%156) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "log2_nofold2"}> ({
-    %118 = "arith.constant"() <{value = -1.000000e+00 : f32}> : () -> f32
-    %119 = "math.log2"(%118) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%119) : (f32) -> ()
+    %153 = "arith.constant"() <{value = -1.000000e+00 : f32}> : () -> f32
+    %154 = "math.log2"(%153) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%154) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f64, sym_name = "log2_fold_64"}> ({
-    %116 = "arith.constant"() <{value = 4.000000e+00 : f64}> : () -> f64
-    %117 = "math.log2"(%116) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-    "func.return"(%117) : (f64) -> ()
+    %151 = "arith.constant"() <{value = 4.000000e+00 : f64}> : () -> f64
+    %152 = "math.log2"(%151) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    "func.return"(%152) : (f64) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f64, sym_name = "log2_fold2_64"}> ({
-    %114 = "arith.constant"() <{value = 0.000000e+00 : f64}> : () -> f64
-    %115 = "math.log2"(%114) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-    "func.return"(%115) : (f64) -> ()
+    %149 = "arith.constant"() <{value = 0.000000e+00 : f64}> : () -> f64
+    %150 = "math.log2"(%149) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    "func.return"(%150) : (f64) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f64, sym_name = "log2_nofold2_64"}> ({
-    %112 = "arith.constant"() <{value = -1.000000e+00 : f64}> : () -> f64
-    %113 = "math.log2"(%112) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-    "func.return"(%113) : (f64) -> ()
+    %147 = "arith.constant"() <{value = -1.000000e+00 : f64}> : () -> f64
+    %148 = "math.log2"(%147) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    "func.return"(%148) : (f64) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "log2_fold_vec"}> ({
-    %110 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %111 = "math.log2"(%110) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%111) : (vector<4xf32>) -> ()
+    %145 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %146 = "math.log2"(%145) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%146) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "powf_fold"}> ({
-    %108 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %109 = "math.powf"(%108, %108) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    "func.return"(%109) : (f32) -> ()
+    %143 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %144 = "math.powf"(%143, %143) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    "func.return"(%144) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "powf_fold_vec"}> ({
-    %105 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %106 = "arith.constant"() <{value = dense<2.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
-    %107 = "math.powf"(%105, %106) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>, vector<4xf32>) -> vector<4xf32>
-    "func.return"(%107) : (vector<4xf32>) -> ()
+    %140 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %141 = "arith.constant"() <{value = dense<2.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
+    %142 = "math.powf"(%140, %141) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>, vector<4xf32>) -> vector<4xf32>
+    "func.return"(%142) : (vector<4xf32>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> f32, sym_name = "rsqrt_fold"}> ({
+    %138 = "arith.constant"() <{value = 4.000000e+00 : f32}> : () -> f32
+    %139 = "math.rsqrt"(%138) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%139) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> vector<2xf32>, sym_name = "rsqrt_fold_vec"}> ({
+    %136 = "arith.constant"() <{value = dense<[1.000000e+00, 4.000000e+00]> : vector<2xf32>}> : () -> vector<2xf32>
+    %137 = "math.rsqrt"(%136) <{fastmath = #arith.fastmath<none>}> : (vector<2xf32>) -> vector<2xf32>
+    "func.return"(%137) : (vector<2xf32>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> f32, sym_name = "rsqrt_poison"}> ({
+    %134 = "ub.poison"() <{value = #ub.poison}> : () -> f32
+    %135 = "math.rsqrt"(%134) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%135) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "sqrt_fold"}> ({
-    %103 = "arith.constant"() <{value = 4.000000e+00 : f32}> : () -> f32
-    %104 = "math.sqrt"(%103) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%104) : (f32) -> ()
+    %132 = "arith.constant"() <{value = 4.000000e+00 : f32}> : () -> f32
+    %133 = "math.sqrt"(%132) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%133) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "sqrt_fold_vec"}> ({
-    %101 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %102 = "math.sqrt"(%101) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%102) : (vector<4xf32>) -> ()
+    %130 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %131 = "math.sqrt"(%130) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%131) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "abs_fold"}> ({
-    %99 = "arith.constant"() <{value = -4.000000e+00 : f32}> : () -> f32
-    %100 = "math.absf"(%99) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%100) : (f32) -> ()
+    %128 = "arith.constant"() <{value = -4.000000e+00 : f32}> : () -> f32
+    %129 = "math.absf"(%128) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%129) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "copysign_fold"}> ({
-    %96 = "arith.constant"() <{value = 4.000000e+00 : f32}> : () -> f32
-    %97 = "arith.constant"() <{value = -9.000000e+00 : f32}> : () -> f32
-    %98 = "math.copysign"(%96, %97) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    "func.return"(%98) : (f32) -> ()
+    %125 = "arith.constant"() <{value = 4.000000e+00 : f32}> : () -> f32
+    %126 = "arith.constant"() <{value = -9.000000e+00 : f32}> : () -> f32
+    %127 = "math.copysign"(%125, %126) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    "func.return"(%127) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "ctlz_fold1"}> ({
-    %94 = "arith.constant"() <{value = 1 : i32}> : () -> i32
-    %95 = "math.ctlz"(%94) : (i32) -> i32
-    "func.return"(%95) : (i32) -> ()
+    %123 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    %124 = "math.ctlz"(%123) : (i32) -> i32
+    "func.return"(%124) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i8, sym_name = "ctlz_fold2"}> ({
-    %92 = "arith.constant"() <{value = 1 : i8}> : () -> i8
-    %93 = "math.ctlz"(%92) : (i8) -> i8
-    "func.return"(%93) : (i8) -> ()
+    %121 = "arith.constant"() <{value = 1 : i8}> : () -> i8
+    %122 = "math.ctlz"(%121) : (i8) -> i8
+    "func.return"(%122) : (i8) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "cttz_fold"}> ({
-    %90 = "arith.constant"() <{value = 256 : i32}> : () -> i32
-    %91 = "math.cttz"(%90) : (i32) -> i32
-    "func.return"(%91) : (i32) -> ()
+    %119 = "arith.constant"() <{value = 256 : i32}> : () -> i32
+    %120 = "math.cttz"(%119) : (i32) -> i32
+    "func.return"(%120) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "ctpop_fold"}> ({
-    %88 = "arith.constant"() <{value = -16776961 : i32}> : () -> i32
-    %89 = "math.ctpop"(%88) : (i32) -> i32
-    "func.return"(%89) : (i32) -> ()
+    %117 = "arith.constant"() <{value = -16776961 : i32}> : () -> i32
+    %118 = "math.ctpop"(%117) : (i32) -> i32
+    "func.return"(%118) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "log10_fold"}> ({
-    %86 = "arith.constant"() <{value = 1.000000e+02 : f32}> : () -> f32
-    %87 = "math.log10"(%86) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%87) : (f32) -> ()
+    %115 = "arith.constant"() <{value = 1.000000e+02 : f32}> : () -> f32
+    %116 = "math.log10"(%115) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%116) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "log10_fold_vec"}> ({
-    %84 = "arith.constant"() <{value = dense<[1.000000e+00, 1.000000e+01, 1.000000e+02, 2.000000e+02]> : vector<4xf32>}> : () -> vector<4xf32>
-    %85 = "math.log10"(%84) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%85) : (vector<4xf32>) -> ()
+    %113 = "arith.constant"() <{value = dense<[1.000000e+00, 1.000000e+01, 1.000000e+02, 2.000000e+02]> : vector<4xf32>}> : () -> vector<4xf32>
+    %114 = "math.log10"(%113) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%114) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "log1p_fold"}> ({
-    %82 = "arith.constant"() <{value = 1.700000e+01 : f32}> : () -> f32
-    %83 = "math.log1p"(%82) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%83) : (f32) -> ()
+    %111 = "arith.constant"() <{value = 1.700000e+01 : f32}> : () -> f32
+    %112 = "math.log1p"(%111) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%112) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "log1p_fold_vec"}> ({
-    %80 = "arith.constant"() <{value = dense<[3.000000e+00, 5.000000e+00, 7.000000e+00, 1.100000e+01]> : vector<4xf32>}> : () -> vector<4xf32>
-    %81 = "math.log1p"(%80) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%81) : (vector<4xf32>) -> ()
+    %109 = "arith.constant"() <{value = dense<[3.000000e+00, 5.000000e+00, 7.000000e+00, 1.100000e+01]> : vector<4xf32>}> : () -> vector<4xf32>
+    %110 = "math.log1p"(%109) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%110) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "log_fold"}> ({
-    %78 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %79 = "math.log"(%78) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%79) : (f32) -> ()
+    %107 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %108 = "math.log"(%107) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%108) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "log_fold_vec"}> ({
-    %76 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %77 = "math.log"(%76) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%77) : (vector<4xf32>) -> ()
+    %105 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %106 = "math.log"(%105) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%106) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "exp_fold"}> ({
-    %74 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %75 = "math.exp"(%74) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%75) : (f32) -> ()
+    %103 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %104 = "math.exp"(%103) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%104) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "exp_fold_vec"}> ({
-    %72 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %73 = "math.exp"(%72) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%73) : (vector<4xf32>) -> ()
+    %101 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %102 = "math.exp"(%101) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%102) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "exp2_fold"}> ({
-    %70 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %71 = "math.exp2"(%70) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%71) : (f32) -> ()
+    %99 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %100 = "math.exp2"(%99) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%100) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "exp2_fold_vec"}> ({
-    %68 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %69 = "math.exp2"(%68) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%69) : (vector<4xf32>) -> ()
+    %97 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %98 = "math.exp2"(%97) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%98) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "expm1_fold"}> ({
-    %66 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %67 = "math.expm1"(%66) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%67) : (f32) -> ()
+    %95 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %96 = "math.expm1"(%95) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%96) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "expm1_fold_vec"}> ({
-    %64 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %65 = "math.expm1"(%64) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%65) : (vector<4xf32>) -> ()
+    %93 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %94 = "math.expm1"(%93) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%94) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "tan_fold"}> ({
-    %62 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %63 = "math.tan"(%62) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%63) : (f32) -> ()
+    %91 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %92 = "math.tan"(%91) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%92) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "tan_fold_vec"}> ({
-    %60 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %61 = "math.tan"(%60) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%61) : (vector<4xf32>) -> ()
+    %89 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %90 = "math.tan"(%89) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%90) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "tanh_fold"}> ({
-    %58 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %59 = "math.tanh"(%58) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%59) : (f32) -> ()
+    %87 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %88 = "math.tanh"(%87) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%88) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "tanh_fold_vec"}> ({
-    %56 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %57 = "math.tanh"(%56) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%57) : (vector<4xf32>) -> ()
+    %85 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %86 = "math.tanh"(%85) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%86) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "atan_fold"}> ({
-    %54 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %55 = "math.atan"(%54) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%55) : (f32) -> ()
+    %83 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %84 = "math.atan"(%83) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%84) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "atan_fold_vec"}> ({
-    %52 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %53 = "math.atan"(%52) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%53) : (vector<4xf32>) -> ()
+    %81 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %82 = "math.atan"(%81) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%82) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "atan2_fold"}> ({
-    %49 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
-    %50 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %51 = "math.atan2"(%49, %50) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    "func.return"(%51) : (f32) -> ()
+    %78 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %79 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %80 = "math.atan2"(%78, %79) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    "func.return"(%80) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "atan2_fold_vec"}> ({
-    %46 = "arith.constant"() <{value = dense<[0.000000e+00, 0.000000e+00, 1.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %47 = "arith.constant"() <{value = dense<[1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %48 = "math.atan2"(%46, %47) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>, vector<4xf32>) -> vector<4xf32>
-    "func.return"(%48) : (vector<4xf32>) -> ()
+    %75 = "arith.constant"() <{value = dense<[0.000000e+00, 0.000000e+00, 1.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %76 = "arith.constant"() <{value = dense<[1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %77 = "math.atan2"(%75, %76) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>, vector<4xf32>) -> vector<4xf32>
+    "func.return"(%77) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "cos_fold"}> ({
-    %44 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %45 = "math.cos"(%44) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%45) : (f32) -> ()
+    %73 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %74 = "math.cos"(%73) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%74) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "cos_fold_vec"}> ({
-    %42 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %43 = "math.cos"(%42) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%43) : (vector<4xf32>) -> ()
+    %71 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %72 = "math.cos"(%71) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%72) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "roundeven_fold"}> ({
-    %40 = "arith.constant"() <{value = 1.500000e+00 : f32}> : () -> f32
-    %41 = "math.roundeven"(%40) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%41) : (f32) -> ()
+    %69 = "arith.constant"() <{value = 1.500000e+00 : f32}> : () -> f32
+    %70 = "math.roundeven"(%69) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%70) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "roundeven_fold_vec"}> ({
-    %38 = "arith.constant"() <{value = dense<[5.000000e-01, -5.000000e-01, 1.500000e+00, -1.500000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %39 = "math.roundeven"(%38) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%39) : (vector<4xf32>) -> ()
+    %67 = "arith.constant"() <{value = dense<[5.000000e-01, -5.000000e-01, 1.500000e+00, -1.500000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %68 = "math.roundeven"(%67) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%68) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "round_fold"}> ({
-    %36 = "arith.constant"() <{value = 1.500000e+00 : f32}> : () -> f32
-    %37 = "math.round"(%36) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%37) : (f32) -> ()
+    %65 = "arith.constant"() <{value = 1.500000e+00 : f32}> : () -> f32
+    %66 = "math.round"(%65) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%66) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "round_fold_vec"}> ({
-    %34 = "arith.constant"() <{value = dense<[5.000000e-01, -5.000000e-01, 1.500000e+00, -1.500000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %35 = "math.round"(%34) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%35) : (vector<4xf32>) -> ()
+    %63 = "arith.constant"() <{value = dense<[5.000000e-01, -5.000000e-01, 1.500000e+00, -1.500000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %64 = "math.round"(%63) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%64) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "floor_fold"}> ({
-    %32 = "arith.constant"() <{value = 3.000000e-01 : f32}> : () -> f32
-    %33 = "math.floor"(%32) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%33) : (f32) -> ()
+    %61 = "arith.constant"() <{value = 3.000000e-01 : f32}> : () -> f32
+    %62 = "math.floor"(%61) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%62) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "floor_fold2"}> ({
-    %30 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %31 = "math.floor"(%30) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%31) : (f32) -> ()
+    %59 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %60 = "math.floor"(%59) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%60) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "trunc_fold"}> ({
-    %28 = "arith.constant"() <{value = 1.100000e+00 : f32}> : () -> f32
-    %29 = "math.trunc"(%28) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%29) : (f32) -> ()
+    %57 = "arith.constant"() <{value = 1.100000e+00 : f32}> : () -> f32
+    %58 = "math.trunc"(%57) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%58) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "trunc_fold_vec"}> ({
-    %26 = "arith.constant"() <{value = dense<[5.000000e-01, -5.000000e-01, 1.500000e+00, -1.500000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %27 = "math.trunc"(%26) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%27) : (vector<4xf32>) -> ()
+    %55 = "arith.constant"() <{value = dense<[5.000000e-01, -5.000000e-01, 1.500000e+00, -1.500000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %56 = "math.trunc"(%55) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%56) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "sin_fold"}> ({
-    %24 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %25 = "math.sin"(%24) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%25) : (f32) -> ()
+    %53 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %54 = "math.sin"(%53) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%54) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "sin_fold_vec"}> ({
-    %22 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %23 = "math.sin"(%22) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%23) : (vector<4xf32>) -> ()
+    %51 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %52 = "math.sin"(%51) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%52) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "erf_fold"}> ({
-    %20 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %21 = "math.erf"(%20) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%21) : (f32) -> ()
+    %49 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %50 = "math.erf"(%49) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%50) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "erf_fold_vec"}> ({
-    %18 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
-    %19 = "math.erf"(%18) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-    "func.return"(%19) : (vector<4xf32>) -> ()
+    %47 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %48 = "math.erf"(%47) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%48) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "abs_poison"}> ({
-    %16 = "ub.poison"() <{value = #ub.poison}> : () -> f32
-    %17 = "math.absf"(%16) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-    "func.return"(%17) : (f32) -> ()
+    %45 = "ub.poison"() <{value = #ub.poison}> : () -> f32
+    %46 = "math.absf"(%45) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%46) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i1, sym_name = "isfinite_fold"}> ({
-    %14 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %15 = "math.isfinite"(%14) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1
-    "func.return"(%15) : (i1) -> ()
+    %43 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %44 = "math.isfinite"(%43) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1
+    "func.return"(%44) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xi1>, sym_name = "isfinite_fold_vec"}> ({
-    %12 = "arith.constant"() <{value = dense<2.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
-    %13 = "math.isfinite"(%12) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xi1>
-    "func.return"(%13) : (vector<4xi1>) -> ()
+    %41 = "arith.constant"() <{value = dense<2.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
+    %42 = "math.isfinite"(%41) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xi1>
+    "func.return"(%42) : (vector<4xi1>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i1, sym_name = "isinf_fold"}> ({
-    %10 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %11 = "math.isinf"(%10) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1
-    "func.return"(%11) : (i1) -> ()
+    %39 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %40 = "math.isinf"(%39) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1
+    "func.return"(%40) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xi1>, sym_name = "isinf_fold_vec"}> ({
-    %8 = "arith.constant"() <{value = dense<2.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
-    %9 = "math.isinf"(%8) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xi1>
-    "func.return"(%9) : (vector<4xi1>) -> ()
+    %37 = "arith.constant"() <{value = dense<2.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
+    %38 = "math.isinf"(%37) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xi1>
+    "func.return"(%38) : (vector<4xi1>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i1, sym_name = "isnan_fold"}> ({
-    %6 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %7 = "math.isnan"(%6) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1
-    "func.return"(%7) : (i1) -> ()
+    %35 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %36 = "math.isnan"(%35) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1
+    "func.return"(%36) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xi1>, sym_name = "isnan_fold_vec"}> ({
-    %4 = "arith.constant"() <{value = dense<2.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
-    %5 = "math.isnan"(%4) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xi1>
-    "func.return"(%5) : (vector<4xi1>) -> ()
+    %33 = "arith.constant"() <{value = dense<2.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
+    %34 = "math.isnan"(%33) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xi1>
+    "func.return"(%34) : (vector<4xi1>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i1, sym_name = "isnormal_fold"}> ({
-    %2 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %3 = "math.isnormal"(%2) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1
-    "func.return"(%3) : (i1) -> ()
+    %31 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %32 = "math.isnormal"(%31) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1
+    "func.return"(%32) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xi1>, sym_name = "isnormal_fold_vec"}> ({
-    %0 = "arith.constant"() <{value = dense<2.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
-    %1 = "math.isnormal"(%0) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xi1>
-    "func.return"(%1) : (vector<4xi1>) -> ()
+    %29 = "arith.constant"() <{value = dense<2.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
+    %30 = "math.isnormal"(%29) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xi1>
+    "func.return"(%30) : (vector<4xi1>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> i1, sym_name = "ipowi_i1_const_pos_exp"}> ({
+    %26 = "arith.constant"() <{value = true}> : () -> i1
+    %27 = "arith.constant"() <{value = false}> : () -> i1
+    %28 = "math.ipowi"(%26, %27) : (i1, i1) -> i1
+    "func.return"(%28) : (i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> i1, sym_name = "ipowi_i1_const_neg_exp"}> ({
+    %23 = "arith.constant"() <{value = true}> : () -> i1
+    %24 = "arith.constant"() <{value = true}> : () -> i1
+    %25 = "math.ipowi"(%23, %24) : (i1, i1) -> i1
+    "func.return"(%25) : (i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (f64, f32), sym_name = "fpowi_fold"}> ({
+    %18 = "arith.constant"() <{value = 2.000000e+00 : f64}> : () -> f64
+    %19 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %20 = "arith.constant"() <{value = 2 : i32}> : () -> i32
+    %21 = "math.fpowi"(%18, %20) <{fastmath = #arith.fastmath<none>}> : (f64, i32) -> f64
+    %22 = "math.fpowi"(%19, %20) <{fastmath = #arith.fastmath<none>}> : (f32, i32) -> f32
+    "func.return"(%21, %22) : (f64, f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "fpowi_fold_vec"}> ({
+    %15 = "arith.constant"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %16 = "arith.constant"() <{value = dense<[2, 4, 2, 2]> : vector<4xi32>}> : () -> vector<4xi32>
+    %17 = "math.fpowi"(%15, %16) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>, vector<4xi32>) -> vector<4xf32>
+    "func.return"(%17) : (vector<4xf32>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> f32, sym_name = "fpowi_fold_failed"}> ({
+    %12 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %13 = "arith.constant"() <{value = 16777217 : i32}> : () -> i32
+    %14 = "math.fpowi"(%12, %13) <{fastmath = #arith.fastmath<none>}> : (f32, i32) -> f32
+    "func.return"(%14) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (f32, f32), sym_name = "sincos_fold_f32"}> ({
+    %10 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %11:2 = "math.sincos"(%10) <{fastmath = #arith.fastmath<none>}> : (f32) -> (f32, f32)
+    "func.return"(%11#0, %11#1) : (f32, f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (f64, f64), sym_name = "sincos_fold_f64"}> ({
+    %8 = "arith.constant"() <{value = 1.000000e+00 : f64}> : () -> f64
+    %9:2 = "math.sincos"(%8) <{fastmath = #arith.fastmath<none>}> : (f64) -> (f64, f64)
+    "func.return"(%9#0, %9#1) : (f64, f64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (vector<4xf32>, vector<4xf32>), sym_name = "sincos_fold_vec"}> ({
+    %6 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00, 0.000000e+00, 1.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %7:2 = "math.sincos"(%6) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> (vector<4xf32>, vector<4xf32>)
+    "func.return"(%7#0, %7#1) : (vector<4xf32>, vector<4xf32>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (f64, f32), sym_name = "cbrt_fold"}> ({
+    %2 = "arith.constant"() <{value = 8.000000e+00 : f64}> : () -> f64
+    %3 = "arith.constant"() <{value = -8.000000e+00 : f32}> : () -> f32
+    %4 = "math.cbrt"(%2) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
+    %5 = "math.cbrt"(%3) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%4, %5) : (f64, f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> vector<4xf32>, sym_name = "cbrt_fold_vec"}> ({
+    %0 = "arith.constant"() <{value = dense<[-1.000000e+00, 0.000000e+00, 1.000000e+00, 8.000000e+00]> : vector<4xf32>}> : () -> vector<4xf32>
+    %1 = "math.cbrt"(%0) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%1) : (vector<4xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 

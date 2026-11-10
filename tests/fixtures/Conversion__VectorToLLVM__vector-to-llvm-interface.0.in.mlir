@@ -184,19 +184,10 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (vector<16xf32>) -> vector<1xf32>, sym_name = "extract_vec_1e_from_vec_1d_f32"}> ({
-  ^bb0(%arg0: vector<16xf32>):
-    %0 = "vector.extract"(%arg0) <{static_position = array<i64: 15>}> : (vector<16xf32>) -> vector<1xf32>
-    "func.return"(%0) : (vector<1xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (vector<[16]xf32>) -> vector<1xf32>, sym_name = "extract_vec_1e_from_vec_1d_f32_scalable"}> ({
+  "func.func"() <{function_type = (vector<[16]xf32>) -> f32, sym_name = "extract_vec_1e_from_vec_1d_f32_scalable"}> ({
   ^bb0(%arg0: vector<[16]xf32>):
-    %0 = "vector.extract"(%arg0) <{static_position = array<i64: 15>}> : (vector<[16]xf32>) -> vector<1xf32>
-    "func.return"(%0) : (vector<1xf32>) -> ()
+    %0 = "vector.extract"(%arg0) <{static_position = array<i64: 15>}> : (vector<[16]xf32>) -> f32
+    "func.return"(%0) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -478,6 +469,15 @@
   ^bb0(%arg0: vector<2x16xf32>, %arg1: f32, %arg2: index):
     %0 = "vector.insert"(%arg1, %arg0, %arg2) <{static_position = array<i64: -9223372036854775808, 0>}> : (f32, vector<2x16xf32>, index) -> vector<2x16xf32>
     "func.return"(%0) : (vector<2x16xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi1>, vector<2x4xi1>, index) -> vector<2x4xi1>, sym_name = "insert_vec_1d_into_vec_2d_dynamic_idx_fail"}> ({
+  ^bb0(%arg0: vector<4xi1>, %arg1: vector<2x4xi1>, %arg2: index):
+    %0 = "vector.insert"(%arg0, %arg1, %arg2) <{static_position = array<i64: -9223372036854775808>}> : (vector<4xi1>, vector<2x4xi1>, index) -> vector<2x4xi1>
+    "func.return"(%0) : (vector<2x4xi1>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1096,157 +1096,6 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<8xf32>, sym_name = "load"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "vector.load"(%arg0, %arg1, %arg2) : (memref<200x100xf32>, index, index) -> vector<8xf32>
-    "func.return"(%0) : (vector<8xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<[8]xf32>, sym_name = "load_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "vector.load"(%arg0, %arg1, %arg2) : (memref<200x100xf32>, index, index) -> vector<[8]xf32>
-    "func.return"(%0) : (vector<[8]xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<8xf32>, sym_name = "load_nontemporal"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "vector.load"(%arg0, %arg1, %arg2) <{nontemporal = true}> : (memref<200x100xf32>, index, index) -> vector<8xf32>
-    "func.return"(%0) : (vector<8xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<[8]xf32>, sym_name = "load_nontemporal_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "vector.load"(%arg0, %arg1, %arg2) <{nontemporal = true}> : (memref<200x100xf32>, index, index) -> vector<[8]xf32>
-    "func.return"(%0) : (vector<[8]xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xindex>, index, index) -> vector<8xindex>, sym_name = "load_index"}> ({
-  ^bb0(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index):
-    %0 = "vector.load"(%arg0, %arg1, %arg2) : (memref<200x100xindex>, index, index) -> vector<8xindex>
-    "func.return"(%0) : (vector<8xindex>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xindex>, index, index) -> vector<[8]xindex>, sym_name = "load_index_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index):
-    %0 = "vector.load"(%arg0, %arg1, %arg2) : (memref<200x100xindex>, index, index) -> vector<[8]xindex>
-    "func.return"(%0) : (vector<[8]xindex>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<f32>, sym_name = "load_0d"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "vector.load"(%arg0, %arg1, %arg2) : (memref<200x100xf32>, index, index) -> vector<f32>
-    "func.return"(%0) : (vector<f32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<8xf32>, sym_name = "load_with_alignment"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "vector.load"(%arg0, %arg1, %arg2) <{alignment = 8 : i64}> : (memref<200x100xf32>, index, index) -> vector<8xf32>
-    "func.return"(%0) : (vector<8xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> (), sym_name = "store"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "arith.constant"() <{value = dense<1.100000e+01> : vector<4xf32>}> : () -> vector<4xf32>
-    "vector.store"(%0, %arg0, %arg1, %arg2) : (vector<4xf32>, memref<200x100xf32>, index, index) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> (), sym_name = "store_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "arith.constant"() <{value = dense<1.100000e+01> : vector<[4]xf32>}> : () -> vector<[4]xf32>
-    "vector.store"(%0, %arg0, %arg1, %arg2) : (vector<[4]xf32>, memref<200x100xf32>, index, index) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> (), sym_name = "store_nontemporal"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "arith.constant"() <{value = dense<1.100000e+01> : vector<4xf32>}> : () -> vector<4xf32>
-    "vector.store"(%0, %arg0, %arg1, %arg2) <{nontemporal = true}> : (vector<4xf32>, memref<200x100xf32>, index, index) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> (), sym_name = "store_nontemporal_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "arith.constant"() <{value = dense<1.100000e+01> : vector<[4]xf32>}> : () -> vector<[4]xf32>
-    "vector.store"(%0, %arg0, %arg1, %arg2) <{nontemporal = true}> : (vector<[4]xf32>, memref<200x100xf32>, index, index) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xindex>, index, index) -> (), sym_name = "store_index"}> ({
-  ^bb0(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index):
-    %0 = "arith.constant"() <{value = dense<11> : vector<4xindex>}> : () -> vector<4xindex>
-    "vector.store"(%0, %arg0, %arg1, %arg2) : (vector<4xindex>, memref<200x100xindex>, index, index) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xindex>, index, index) -> (), sym_name = "store_index_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index):
-    %0 = "arith.constant"() <{value = dense<11> : vector<[4]xindex>}> : () -> vector<[4]xindex>
-    "vector.store"(%0, %arg0, %arg1, %arg2) : (vector<[4]xindex>, memref<200x100xindex>, index, index) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> (), sym_name = "store_0d"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "arith.constant"() <{value = dense<1.100000e+01> : vector<f32>}> : () -> vector<f32>
-    "vector.store"(%0, %arg0, %arg1, %arg2) : (vector<f32>, memref<200x100xf32>, index, index) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index, vector<4xf32>) -> (), sym_name = "store_with_alignment"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index, %arg3: vector<4xf32>):
-    "vector.store"(%arg3, %arg0, %arg1, %arg2) <{alignment = 8 : i64}> : (vector<4xf32>, memref<200x100xf32>, index, index) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
   "func.func"() <{function_type = (memref<?xf32>, vector<16xi1>, vector<16xf32>) -> vector<16xf32>, sym_name = "masked_load"}> ({
   ^bb0(%arg0: memref<?xf32>, %arg1: vector<16xi1>, %arg2: vector<16xf32>):
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
@@ -1434,6 +1283,16 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<?xf32, strided<[2], offset: ?>>, vector<3xi32>, vector<3xi1>, vector<3xf32>) -> vector<3xf32>, sym_name = "negative_gather_on_strided_memref"}> ({
+  ^bb0(%arg0: memref<?xf32, strided<[2], offset: ?>>, %arg1: vector<3xi32>, %arg2: vector<3xi1>, %arg3: vector<3xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "vector.gather"(%arg0, %0, %arg1, %arg2, %arg3) : (memref<?xf32, strided<[2], offset: ?>>, index, vector<3xi32>, vector<3xi1>, vector<3xf32>) -> vector<3xf32>
+    "func.return"(%1) : (vector<3xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<?xf32>, vector<3xi32>, vector<3xi1>, vector<3xf32>) -> (), sym_name = "scatter"}> ({
   ^bb0(%arg0: memref<?xf32>, %arg1: vector<3xi32>, %arg2: vector<3xi1>, %arg3: vector<3xf32>):
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
@@ -1497,6 +1356,16 @@
   "func.func"() <{function_type = (memref<?xf32>, vector<3xi32>, vector<3xi1>, vector<3xf32>, index) -> (), sym_name = "scatter_with_alignment"}> ({
   ^bb0(%arg0: memref<?xf32>, %arg1: vector<3xi32>, %arg2: vector<3xi1>, %arg3: vector<3xf32>, %arg4: index):
     "vector.scatter"(%arg0, %arg4, %arg1, %arg2, %arg3) <{alignment = 8 : i64}> : (memref<?xf32>, index, vector<3xi32>, vector<3xi1>, vector<3xf32>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<?xf32, strided<[2], offset: ?>>, vector<3xi32>, vector<3xi1>, vector<3xf32>) -> (), sym_name = "negative_scatter_on_strided_memref"}> ({
+  ^bb0(%arg0: memref<?xf32, strided<[2], offset: ?>>, %arg1: vector<3xi32>, %arg2: vector<3xi1>, %arg3: vector<3xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    "vector.scatter"(%arg0, %0, %arg1, %arg2, %arg3) : (memref<?xf32, strided<[2], offset: ?>>, index, vector<3xi32>, vector<3xi1>, vector<3xf32>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -1661,9 +1530,21 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<4xindex>, sym_name = "step"}> ({
+    %3 = "vector.step"() : () -> vector<4xindex>
+    "func.return"(%3) : (vector<4xindex>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> vector<4xi8>, sym_name = "step_i8"}> ({
+    %2 = "vector.step"() : () -> vector<4xi8>
+    "func.return"(%2) : (vector<4xi8>) -> ()
+  }) : () -> ()
   "func.func"() <{function_type = () -> vector<[4]xindex>, sym_name = "step_scalable"}> ({
-    %0 = "vector.step"() : () -> vector<[4]xindex>
-    "func.return"(%0) : (vector<[4]xindex>) -> ()
+    %1 = "vector.step"() : () -> vector<[4]xindex>
+    "func.return"(%1) : (vector<[4]xindex>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> vector<[4]xi8>, sym_name = "step_scalable_i8"}> ({
+    %0 = "vector.step"() : () -> vector<[4]xi8>
+    "func.return"(%0) : (vector<[4]xi8>) -> ()
   }) : () -> ()
 }) : () -> ()
 

@@ -224,23 +224,11 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (vector<16xf32>) -> vector<1xf32>, sym_name = "extract_vec_1e_from_vec_1d_f32"}> ({
-  ^bb0(%arg0: vector<16xf32>):
-    %0 = "llvm.mlir.constant"() <{value = 15 : i64}> : () -> i64
-    %1 = "llvm.extractelement"(%arg0, %0) : (vector<16xf32>, i64) -> f32
-    %2 = "builtin.unrealized_conversion_cast"(%1) : (f32) -> vector<1xf32>
-    "func.return"(%2) : (vector<1xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (vector<[16]xf32>) -> vector<1xf32>, sym_name = "extract_vec_1e_from_vec_1d_f32_scalable"}> ({
+  "func.func"() <{function_type = (vector<[16]xf32>) -> f32, sym_name = "extract_vec_1e_from_vec_1d_f32_scalable"}> ({
   ^bb0(%arg0: vector<[16]xf32>):
     %0 = "llvm.mlir.constant"() <{value = 15 : i64}> : () -> i64
     %1 = "llvm.extractelement"(%arg0, %0) : (vector<[16]xf32>, i64) -> f32
-    %2 = "builtin.unrealized_conversion_cast"(%1) : (f32) -> vector<1xf32>
-    "func.return"(%2) : (vector<1xf32>) -> ()
+    "func.return"(%1) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -599,6 +587,15 @@
   ^bb0(%arg0: vector<2x16xf32>, %arg1: f32, %arg2: index):
     %0 = "vector.insert"(%arg1, %arg0, %arg2) <{static_position = array<i64: -9223372036854775808, 0>}> : (f32, vector<2x16xf32>, index) -> vector<2x16xf32>
     "func.return"(%0) : (vector<2x16xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi1>, vector<2x4xi1>, index) -> vector<2x4xi1>, sym_name = "insert_vec_1d_into_vec_2d_dynamic_idx_fail"}> ({
+  ^bb0(%arg0: vector<4xi1>, %arg1: vector<2x4xi1>, %arg2: index):
+    %0 = "vector.insert"(%arg0, %arg1, %arg2) <{static_position = array<i64: -9223372036854775808>}> : (vector<4xi1>, vector<2x4xi1>, index) -> vector<2x4xi1>
+    "func.return"(%0) : (vector<2x4xi1>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1324,291 +1321,6 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<8xf32>, sym_name = "load"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %4 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %5 = "llvm.mul"(%1, %4) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %6 = "llvm.add"(%5, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.getelementptr"(%3, %6) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    %8 = "llvm.load"(%7) <{alignment = 4 : i64, ordering = 0 : i64}> : (!llvm.ptr) -> vector<8xf32>
-    "func.return"(%8) : (vector<8xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<[8]xf32>, sym_name = "load_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %4 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %5 = "llvm.mul"(%1, %4) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %6 = "llvm.add"(%5, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.getelementptr"(%3, %6) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    %8 = "llvm.load"(%7) <{alignment = 4 : i64, ordering = 0 : i64}> : (!llvm.ptr) -> vector<[8]xf32>
-    "func.return"(%8) : (vector<[8]xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<8xf32>, sym_name = "load_nontemporal"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %4 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %5 = "llvm.mul"(%1, %4) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %6 = "llvm.add"(%5, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.getelementptr"(%3, %6) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    %8 = "llvm.load"(%7) <{alignment = 4 : i64, nontemporal, ordering = 0 : i64}> : (!llvm.ptr) -> vector<8xf32>
-    "func.return"(%8) : (vector<8xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<[8]xf32>, sym_name = "load_nontemporal_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %4 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %5 = "llvm.mul"(%1, %4) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %6 = "llvm.add"(%5, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.getelementptr"(%3, %6) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    %8 = "llvm.load"(%7) <{alignment = 4 : i64, nontemporal, ordering = 0 : i64}> : (!llvm.ptr) -> vector<[8]xf32>
-    "func.return"(%8) : (vector<[8]xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xindex>, index, index) -> vector<8xindex>, sym_name = "load_index"}> ({
-  ^bb0(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xindex>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %4 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %5 = "llvm.mul"(%1, %4) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %6 = "llvm.add"(%5, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.getelementptr"(%3, %6) <{elem_type = i64, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    %8 = "llvm.load"(%7) <{alignment = 8 : i64, ordering = 0 : i64}> : (!llvm.ptr) -> vector<8xi64>
-    %9 = "builtin.unrealized_conversion_cast"(%8) : (vector<8xi64>) -> vector<8xindex>
-    "func.return"(%9) : (vector<8xindex>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xindex>, index, index) -> vector<[8]xindex>, sym_name = "load_index_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xindex>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %4 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %5 = "llvm.mul"(%1, %4) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %6 = "llvm.add"(%5, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.getelementptr"(%3, %6) <{elem_type = i64, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    %8 = "llvm.load"(%7) <{alignment = 8 : i64, ordering = 0 : i64}> : (!llvm.ptr) -> vector<[8]xi64>
-    %9 = "builtin.unrealized_conversion_cast"(%8) : (vector<[8]xi64>) -> vector<[8]xindex>
-    "func.return"(%9) : (vector<[8]xindex>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<f32>, sym_name = "load_0d"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %4 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %5 = "llvm.mul"(%1, %4) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %6 = "llvm.add"(%5, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.getelementptr"(%3, %6) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    %8 = "llvm.load"(%7) <{alignment = 4 : i64, ordering = 0 : i64}> : (!llvm.ptr) -> vector<1xf32>
-    %9 = "builtin.unrealized_conversion_cast"(%8) : (vector<1xf32>) -> vector<f32>
-    "func.return"(%9) : (vector<f32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> vector<8xf32>, sym_name = "load_with_alignment"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %4 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %5 = "llvm.mul"(%1, %4) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %6 = "llvm.add"(%5, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.getelementptr"(%3, %6) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    %8 = "llvm.load"(%7) <{alignment = 8 : i64, ordering = 0 : i64}> : (!llvm.ptr) -> vector<8xf32>
-    "func.return"(%8) : (vector<8xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> (), sym_name = "store"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "arith.constant"() <{value = dense<1.100000e+01> : vector<4xf32>}> : () -> vector<4xf32>
-    %4 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %5 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %6 = "llvm.mul"(%1, %5) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.add"(%6, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %8 = "llvm.getelementptr"(%4, %7) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    "llvm.store"(%3, %8) <{alignment = 4 : i64, ordering = 0 : i64}> : (vector<4xf32>, !llvm.ptr) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> (), sym_name = "store_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "arith.constant"() <{value = dense<1.100000e+01> : vector<[4]xf32>}> : () -> vector<[4]xf32>
-    %4 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %5 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %6 = "llvm.mul"(%1, %5) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.add"(%6, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %8 = "llvm.getelementptr"(%4, %7) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    "llvm.store"(%3, %8) <{alignment = 4 : i64, ordering = 0 : i64}> : (vector<[4]xf32>, !llvm.ptr) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> (), sym_name = "store_nontemporal"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "arith.constant"() <{value = dense<1.100000e+01> : vector<4xf32>}> : () -> vector<4xf32>
-    %4 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %5 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %6 = "llvm.mul"(%1, %5) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.add"(%6, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %8 = "llvm.getelementptr"(%4, %7) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    "llvm.store"(%3, %8) <{alignment = 4 : i64, nontemporal, ordering = 0 : i64}> : (vector<4xf32>, !llvm.ptr) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> (), sym_name = "store_nontemporal_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "arith.constant"() <{value = dense<1.100000e+01> : vector<[4]xf32>}> : () -> vector<[4]xf32>
-    %4 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %5 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %6 = "llvm.mul"(%1, %5) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.add"(%6, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %8 = "llvm.getelementptr"(%4, %7) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    "llvm.store"(%3, %8) <{alignment = 4 : i64, nontemporal, ordering = 0 : i64}> : (vector<[4]xf32>, !llvm.ptr) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xindex>, index, index) -> (), sym_name = "store_index"}> ({
-  ^bb0(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xindex>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "arith.constant"() <{value = dense<11> : vector<4xindex>}> : () -> vector<4xindex>
-    %4 = "builtin.unrealized_conversion_cast"(%3) : (vector<4xindex>) -> vector<4xi64>
-    %5 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %6 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %7 = "llvm.mul"(%1, %6) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %8 = "llvm.add"(%7, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %9 = "llvm.getelementptr"(%5, %8) <{elem_type = i64, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    "llvm.store"(%4, %9) <{alignment = 8 : i64, ordering = 0 : i64}> : (vector<4xi64>, !llvm.ptr) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xindex>, index, index) -> (), sym_name = "store_index_scalable"}> ({
-  ^bb0(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xindex>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "arith.constant"() <{value = dense<11> : vector<[4]xindex>}> : () -> vector<[4]xindex>
-    %4 = "builtin.unrealized_conversion_cast"(%3) : (vector<[4]xindex>) -> vector<[4]xi64>
-    %5 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %6 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %7 = "llvm.mul"(%1, %6) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %8 = "llvm.add"(%7, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %9 = "llvm.getelementptr"(%5, %8) <{elem_type = i64, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    "llvm.store"(%4, %9) <{alignment = 8 : i64, ordering = 0 : i64}> : (vector<[4]xi64>, !llvm.ptr) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index) -> (), sym_name = "store_0d"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "arith.constant"() <{value = dense<1.100000e+01> : vector<f32>}> : () -> vector<f32>
-    %4 = "builtin.unrealized_conversion_cast"(%3) : (vector<f32>) -> vector<1xf32>
-    %5 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %6 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %7 = "llvm.mul"(%1, %6) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %8 = "llvm.add"(%7, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %9 = "llvm.getelementptr"(%5, %8) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    "llvm.store"(%4, %9) <{alignment = 4 : i64, ordering = 0 : i64}> : (vector<1xf32>, !llvm.ptr) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (memref<200x100xf32>, index, index, vector<4xf32>) -> (), sym_name = "store_with_alignment"}> ({
-  ^bb0(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index, %arg3: vector<4xf32>):
-    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i64
-    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i64
-    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<200x100xf32>) -> !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = "llvm.extractvalue"(%2) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
-    %4 = "llvm.mlir.constant"() <{value = 100 : index}> : () -> i64
-    %5 = "llvm.mul"(%1, %4) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %6 = "llvm.add"(%5, %0) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
-    %7 = "llvm.getelementptr"(%3, %6) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
-    "llvm.store"(%arg3, %7) <{alignment = 8 : i64, ordering = 0 : i64}> : (vector<4xf32>, !llvm.ptr) -> ()
-    "func.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
   "func.func"() <{function_type = (memref<?xf32>, vector<16xi1>, vector<16xf32>) -> vector<16xf32>, sym_name = "masked_load"}> ({
   ^bb0(%arg0: memref<?xf32>, %arg1: vector<16xi1>, %arg2: vector<16xf32>):
     %0 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<?xf32>) -> !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
@@ -1899,6 +1611,16 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<?xf32, strided<[2], offset: ?>>, vector<3xi32>, vector<3xi1>, vector<3xf32>) -> vector<3xf32>, sym_name = "negative_gather_on_strided_memref"}> ({
+  ^bb0(%arg0: memref<?xf32, strided<[2], offset: ?>>, %arg1: vector<3xi32>, %arg2: vector<3xi1>, %arg3: vector<3xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "vector.gather"(%arg0, %0, %arg1, %arg2, %arg3) : (memref<?xf32, strided<[2], offset: ?>>, index, vector<3xi32>, vector<3xi1>, vector<3xf32>) -> vector<3xf32>
+    "func.return"(%1) : (vector<3xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<?xf32>, vector<3xi32>, vector<3xi1>, vector<3xf32>) -> (), sym_name = "scatter"}> ({
   ^bb0(%arg0: memref<?xf32>, %arg1: vector<3xi32>, %arg2: vector<3xi1>, %arg3: vector<3xf32>):
     %0 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<?xf32>) -> !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
@@ -2007,6 +1729,16 @@
     %3 = "llvm.getelementptr"(%2, %0) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i64) -> !llvm.ptr
     %4 = "llvm.getelementptr"(%3, %arg1) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, vector<3xi32>) -> vector<3x!llvm.ptr>
     "llvm.intr.masked.scatter"(%arg3, %4, %arg2) <{alignment = 8 : i32}> : (vector<3xf32>, vector<3x!llvm.ptr>, vector<3xi1>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<?xf32, strided<[2], offset: ?>>, vector<3xi32>, vector<3xi1>, vector<3xf32>) -> (), sym_name = "negative_scatter_on_strided_memref"}> ({
+  ^bb0(%arg0: memref<?xf32, strided<[2], offset: ?>>, %arg1: vector<3xi32>, %arg2: vector<3xi1>, %arg3: vector<3xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    "vector.scatter"(%arg0, %0, %arg1, %arg2, %arg3) : (memref<?xf32, strided<[2], offset: ?>>, index, vector<3xi32>, vector<3xi1>, vector<3xf32>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -2226,10 +1958,23 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<4xindex>, sym_name = "step"}> ({
+    %4 = "llvm.intr.stepvector"() : () -> vector<4xi64>
+    %5 = "builtin.unrealized_conversion_cast"(%4) : (vector<4xi64>) -> vector<4xindex>
+    "func.return"(%5) : (vector<4xindex>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> vector<4xi8>, sym_name = "step_i8"}> ({
+    %3 = "llvm.intr.stepvector"() : () -> vector<4xi8>
+    "func.return"(%3) : (vector<4xi8>) -> ()
+  }) : () -> ()
   "func.func"() <{function_type = () -> vector<[4]xindex>, sym_name = "step_scalable"}> ({
-    %0 = "llvm.intr.stepvector"() : () -> vector<[4]xi64>
-    %1 = "builtin.unrealized_conversion_cast"(%0) : (vector<[4]xi64>) -> vector<[4]xindex>
-    "func.return"(%1) : (vector<[4]xindex>) -> ()
+    %1 = "llvm.intr.stepvector"() : () -> vector<[4]xi64>
+    %2 = "builtin.unrealized_conversion_cast"(%1) : (vector<[4]xi64>) -> vector<[4]xindex>
+    "func.return"(%2) : (vector<[4]xindex>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> vector<[4]xi8>, sym_name = "step_scalable_i8"}> ({
+    %0 = "llvm.intr.stepvector"() : () -> vector<[4]xi8>
+    "func.return"(%0) : (vector<[4]xi8>) -> ()
   }) : () -> ()
 }) : () -> ()
 

@@ -1,52 +1,62 @@
 "spirv.module"() <{addressing_model = #spirv.addressing_model<Logical>, memory_model = #spirv.memory_model<OpenCL>, vce_triple = #spirv.vce<v1.0, [Kernel, Linkage], []>}> ({
+  "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (vector<4xi1>) -> (), sym_name = "any_vector"}> ({
+  ^bb0(%arg23: vector<4xi1>):
+    %29 = "spirv.Any"(%arg23) : (vector<4xi1>) -> i1
+    "spirv.Return"() : () -> ()
+  }) : () -> ()
+  "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (vector<4xi1>) -> (), sym_name = "all_vector"}> ({
+  ^bb0(%arg22: vector<4xi1>):
+    %28 = "spirv.All"(%arg22) : (vector<4xi1>) -> i1
+    "spirv.Return"() : () -> ()
+  }) : () -> ()
   "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (i32, i32) -> (), sym_name = "iequal_scalar"}> ({
   ^bb0(%arg20: i32, %arg21: i32):
-    %26 = "spirv.IEqual"(%arg20, %arg21) : (i32, i32) -> i1
+    %27 = "spirv.IEqual"(%arg20, %arg21) : (i32, i32) -> i1
     "spirv.Return"() : () -> ()
   }) : () -> ()
   "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (vector<4xi32>, vector<4xi32>) -> (), sym_name = "inotequal_vector"}> ({
   ^bb0(%arg18: vector<4xi32>, %arg19: vector<4xi32>):
-    %25 = "spirv.INotEqual"(%arg18, %arg19) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+    %26 = "spirv.INotEqual"(%arg18, %arg19) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
     "spirv.Return"() : () -> ()
   }) : () -> ()
   "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (vector<4xi32>, vector<4xi32>) -> (), sym_name = "sgt_vector"}> ({
   ^bb0(%arg16: vector<4xi32>, %arg17: vector<4xi32>):
-    %24 = "spirv.SGreaterThan"(%arg16, %arg17) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+    %25 = "spirv.SGreaterThan"(%arg16, %arg17) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
     "spirv.Return"() : () -> ()
   }) : () -> ()
   "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (vector<4xi32>, vector<4xi32>) -> (), sym_name = "sge_vector"}> ({
   ^bb0(%arg14: vector<4xi32>, %arg15: vector<4xi32>):
-    %23 = "spirv.SGreaterThanEqual"(%arg14, %arg15) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+    %24 = "spirv.SGreaterThanEqual"(%arg14, %arg15) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
     "spirv.Return"() : () -> ()
   }) : () -> ()
   "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (vector<4xi32>, vector<4xi32>) -> (), sym_name = "slt_vector"}> ({
   ^bb0(%arg12: vector<4xi32>, %arg13: vector<4xi32>):
-    %22 = "spirv.SLessThan"(%arg12, %arg13) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+    %23 = "spirv.SLessThan"(%arg12, %arg13) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
     "spirv.Return"() : () -> ()
   }) : () -> ()
   "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (vector<4xi32>, vector<4xi32>) -> (), sym_name = "slte_vector"}> ({
   ^bb0(%arg10: vector<4xi32>, %arg11: vector<4xi32>):
-    %21 = "spirv.SLessThanEqual"(%arg10, %arg11) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+    %22 = "spirv.SLessThanEqual"(%arg10, %arg11) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
     "spirv.Return"() : () -> ()
   }) : () -> ()
   "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (vector<4xi32>, vector<4xi32>) -> (), sym_name = "ugt_vector"}> ({
   ^bb0(%arg8: vector<4xi32>, %arg9: vector<4xi32>):
-    %20 = "spirv.UGreaterThan"(%arg8, %arg9) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+    %21 = "spirv.UGreaterThan"(%arg8, %arg9) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
     "spirv.Return"() : () -> ()
   }) : () -> ()
   "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (vector<4xi32>, vector<4xi32>) -> (), sym_name = "ugte_vector"}> ({
   ^bb0(%arg6: vector<4xi32>, %arg7: vector<4xi32>):
-    %19 = "spirv.UGreaterThanEqual"(%arg6, %arg7) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+    %20 = "spirv.UGreaterThanEqual"(%arg6, %arg7) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
     "spirv.Return"() : () -> ()
   }) : () -> ()
   "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (vector<4xi32>, vector<4xi32>) -> (), sym_name = "ult_vector"}> ({
   ^bb0(%arg4: vector<4xi32>, %arg5: vector<4xi32>):
-    %18 = "spirv.ULessThan"(%arg4, %arg5) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+    %19 = "spirv.ULessThan"(%arg4, %arg5) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
     "spirv.Return"() : () -> ()
   }) : () -> ()
   "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (vector<4xi32>, vector<4xi32>) -> (), sym_name = "ulte_vector"}> ({
   ^bb0(%arg2: vector<4xi32>, %arg3: vector<4xi32>):
-    %17 = "spirv.ULessThanEqual"(%arg2, %arg3) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+    %18 = "spirv.ULessThanEqual"(%arg2, %arg3) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
     "spirv.Return"() : () -> ()
   }) : () -> ()
   "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (f32, f32) -> (), sym_name = "cmpf"}> ({
@@ -68,6 +78,7 @@
     %14 = "spirv.IsNan"(%arg0) : (f32) -> i1
     %15 = "spirv.IsInf"(%arg1) : (f32) -> i1
     %16 = "spirv.IsFinite"(%arg0) : (f32) -> i1
+    %17 = "spirv.IsNormal"(%arg0) : (f32) -> i1
     "spirv.Return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

@@ -208,6 +208,19 @@
 
 // -----
 "builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<external>, sym_name = "generic_atomic_rmw_f16", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+    %0 = "test.foo"() : () -> memref<10xf16>
+    %1 = "test.foo"() : () -> index
+    %2 = "memref.generic_atomic_rmw"(%0, %1) ({
+    ^bb0(%arg0: f16):
+      "memref.atomic_yield"(%arg0) : (f16) -> ()
+    }) : (memref<10xf16>, index) -> f16
+    "llvm.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<external>, sym_name = "generic_atomic_rmw_in_alloca_scope", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
     %0 = "arith.constant"() <{value = 1 : index}> : () -> index
     %1 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2x3xi32>
@@ -319,6 +332,16 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>) -> (), sym_name = "load_invariant"}> ({
+  ^bb0(%arg0: memref<32xf32>):
+    %0 = "arith.constant"() <{value = 7 : index}> : () -> index
+    %1 = "memref.load"(%arg0, %0) <{invariant = true}> : (memref<32xf32>, index) -> f32
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<32xf32>, index) -> (), sym_name = "load_with_alignment"}> ({
   ^bb0(%arg0: memref<32xf32>, %arg1: index):
     %0 = "memref.load"(%arg0, %arg1) <{alignment = 32 : i64}> : (memref<32xf32>, index) -> f32
@@ -350,6 +373,15 @@
 "builtin.module"() ({
   "func.func"() <{function_type = () -> (), sym_name = "alloca_unconvertable_memory_space"}> ({
     %0 = "memref.alloca"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<1x32x33xi32, #spirv.storage_class<StorageBuffer>>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> (), sym_name = "alloca_huge"}> ({
+  ^bb0(%arg0: index):
+    %0 = "memref.alloca"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<9223372036854775807x3xi32>
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

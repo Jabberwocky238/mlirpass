@@ -172,3 +172,12 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() <{sym_name = "named_pattern"}> ({
+  "pdl.pattern"() <{benefit = 1 : i16, sym_name = "my_pattern"}> ({
+    %0 = "pdl.operation"() <{attributeValueNames = [], opName = "foo.op", operandSegmentSizes = array<i32: 0, 0, 0>}> : () -> !pdl.operation
+    "pdl.rewrite"(%0) <{name = "rewriter", operandSegmentSizes = array<i32: 1, 0>}> ({
+    }) : (!pdl.operation) -> ()
+  }) : () -> ()
+}) : () -> ()
+

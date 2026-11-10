@@ -1,64 +1,64 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (i32) -> i32, sym_name = "func_with_arg"}> ({
-  ^bb0(%arg26: i32):
-    %48 = "arith.addi"(%arg26, %arg26) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%48) : (i32) -> ()
+  ^bb0(%arg32: i32):
+    %60 = "arith.addi"(%arg32, %arg32) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%60) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "inline_with_arg"}> ({
-  ^bb0(%arg25: i32):
-    %47 = "arith.addi"(%arg25, %arg25) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%47) : (i32) -> ()
+  ^bb0(%arg31: i32):
+    %59 = "arith.addi"(%arg31, %arg31) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%59) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "noinline_with_arg"}> ({
-  ^bb0(%arg24: i32):
-    %46 = "func.call"(%arg24) <{callee = @func_with_arg, no_inline}> : (i32) -> i32
-    "func.return"(%46) : (i32) -> ()
+  ^bb0(%arg30: i32):
+    %58 = "func.call"(%arg30) <{callee = @func_with_arg, no_inline}> : (i32) -> i32
+    "func.return"(%58) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, no_inline, sym_name = "non_inlinable_func_with_arg"}> ({
-  ^bb0(%arg23: i32):
-    %45 = "arith.addi"(%arg23, %arg23) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%45) : (i32) -> ()
+  ^bb0(%arg29: i32):
+    %57 = "arith.addi"(%arg29, %arg29) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%57) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "noinline_with_func_arg"}> ({
-  ^bb0(%arg22: i32):
-    %44 = "func.call"(%arg22) <{callee = @non_inlinable_func_with_arg}> : (i32) -> i32
-    "func.return"(%44) : (i32) -> ()
+  ^bb0(%arg28: i32):
+    %56 = "func.call"(%arg28) <{callee = @non_inlinable_func_with_arg}> : (i32) -> i32
+    "func.return"(%56) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i1) -> i32, sym_name = "func_with_multi_return"}> ({
-  ^bb0(%arg21: i1):
-    %42 = "arith.constant"() <{value = 55 : i32}> : () -> i32
-    %43 = "arith.constant"() <{value = 0 : i32}> : () -> i32
-    "cf.cond_br"(%arg21)[^bb1, ^bb2] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb0(%arg27: i1):
+    %54 = "arith.constant"() <{value = 55 : i32}> : () -> i32
+    %55 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    "cf.cond_br"(%arg27)[^bb1, ^bb2] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
   ^bb1:  // pred: ^bb0
-    "func.return"(%43) : (i32) -> ()
+    "func.return"(%55) : (i32) -> ()
   ^bb2:  // pred: ^bb0
-    "func.return"(%42) : (i32) -> ()
+    "func.return"(%54) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "inline_with_multi_return"}> ({
-    %41 = "arith.constant"() <{value = 55 : i32}> : () -> i32
-    "func.return"(%41) : (i32) -> ()
+    %53 = "arith.constant"() <{value = 55 : i32}> : () -> i32
+    "func.return"(%53) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "func_with_file_locations"}> ({
-  ^bb0(%arg20: i32):
-    %40 = "arith.addi"(%arg20, %arg20) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%40) : (i32) -> ()
+  ^bb0(%arg26: i32):
+    %52 = "arith.addi"(%arg26, %arg26) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%52) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "func_with_callsite_locations"}> ({
-  ^bb0(%arg19: i32):
-    %39 = "arith.addi"(%arg19, %arg19) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%39) : (i32) -> ()
+  ^bb0(%arg25: i32):
+    %51 = "arith.addi"(%arg25, %arg25) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%51) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "inline_func_with_file_locations"}> ({
-  ^bb0(%arg18: i32):
-    %37 = "arith.addi"(%arg18, %arg18) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    %38 = "arith.addi"(%37, %37) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%38) : (i32) -> ()
+  ^bb0(%arg24: i32):
+    %49 = "arith.addi"(%arg24, %arg24) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    %50 = "arith.addi"(%49, %49) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%50) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "inline_func_with_callsite_locations"}> ({
-  ^bb0(%arg17: i32):
-    %35 = "arith.addi"(%arg17, %arg17) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    %36 = "arith.addi"(%35, %35) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%36) : (i32) -> ()
+  ^bb0(%arg23: i32):
+    %47 = "arith.addi"(%arg23, %arg23) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    %48 = "arith.addi"(%47, %47) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%48) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "func_external", sym_visibility = "private"}> ({
   }) : () -> ()
@@ -73,153 +73,183 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "inline_multilevel"}> ({
-    %34 = "test.functional_region_op"() ({
+    %46 = "test.functional_region_op"() ({
       "test.return"() : () -> ()
     }) : () -> (() -> ())
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "no_inline_recursive"}> ({
-    %33 = "test.functional_region_op"() ({
+    %45 = "test.functional_region_op"() ({
       "func.call"() <{callee = @no_inline_recursive}> : () -> ()
       "test.return"() : () -> ()
     }) : () -> (() -> ())
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "convert_callee_fn"}> ({
-  ^bb0(%arg16: i32):
-    "func.return"(%arg16) : (i32) -> ()
+  ^bb0(%arg22: i32):
+    "func.return"(%arg22) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> (), sym_name = "convert_callee_fn_multi_arg"}> ({
-  ^bb0(%arg14: i32, %arg15: i32):
+  ^bb0(%arg20: i32, %arg21: i32):
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (i32, i32), sym_name = "convert_callee_fn_multi_res"}> ({
-    %32 = "arith.constant"() <{value = 0 : i32}> : () -> i32
-    "func.return"(%32, %32) : (i32, i32) -> ()
+    %44 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    "func.return"(%44, %44) : (i32, i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i16, sym_name = "inline_convert_call"}> ({
-    %29 = "arith.constant"() <{value = 0 : i16}> : () -> i16
-    %30 = "test.cast"(%29) : (i16) -> i32
-    %31 = "test.cast"(%30) : (i32) -> i16
-    "func.return"(%31) : (i16) -> ()
+    %41 = "arith.constant"() <{value = 0 : i16}> : () -> i16
+    %42 = "test.cast"(%41) : (i16) -> i32
+    %43 = "test.cast"(%42) : (i32) -> i16
+    "func.return"(%43) : (i16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "convert_callee_fn_multiblock"}> ({
-    %28 = "arith.constant"() <{value = 0 : i32}> : () -> i32
-    "func.return"(%28) : (i32) -> ()
+    %40 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    "func.return"(%40) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i16, sym_name = "inline_convert_result_multiblock"}> ({
-    %26 = "arith.constant"() <{value = 0 : i32}> {inlined_conversion} : () -> i32
-    %27 = "test.cast"(%26) : (i32) -> i16
-    "func.return"(%27) : (i16) -> ()
+    %38 = "arith.constant"() <{value = 0 : i32}> {inlined_conversion} : () -> i32
+    %39 = "test.cast"(%38) : (i32) -> i16
+    "func.return"(%39) : (i16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "no_inline_convert_call"}> ({
-    %23 = "arith.constant"() <{value = 0 : i16}> : () -> i16
-    %24 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-    "test.conversion_call_op"(%23, %24) <{callee = @convert_callee_fn_multi_arg}> : (i16, i64) -> ()
-    %25:2 = "test.conversion_call_op"() <{callee = @convert_callee_fn_multi_res}> : () -> (i16, i64)
+    %35 = "arith.constant"() <{value = 0 : i16}> : () -> i16
+    %36 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+    "test.conversion_call_op"(%35, %36) <{callee = @convert_callee_fn_multi_arg}> : (i16, i64) -> ()
+    %37:2 = "test.conversion_call_op"() <{callee = @convert_callee_fn_multi_res}> : () -> (i16, i64)
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "simplify_return_constant"}> ({
-    %22 = "arith.constant"() <{value = 0 : i32}> : () -> i32
-    "func.return"(%22) : (i32) -> ()
+    %34 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    "func.return"(%34) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (() -> i32), sym_name = "simplify_return_reference"}> ({
-    %21 = "func.constant"() <{value = @simplify_return_constant}> : () -> (() -> i32)
-    "func.return"(%21) : (() -> i32) -> ()
+    %33 = "func.constant"() <{value = @simplify_return_constant}> : () -> (() -> i32)
+    "func.return"(%33) : (() -> i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "inline_simplify"}> ({
-    %20 = "arith.constant"() <{value = 0 : i32}> : () -> i32
-    "func.return"(%20) : (i32) -> ()
+    %32 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    "func.return"(%32) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "no_inline_invalid_call"}> ({
-    %19 = "test.conversion_call_op"() <{callee = @convert_callee_fn_multiblock}> {noinline} : () -> i32
-    "func.return"(%19) : (i32) -> ()
+    %31 = "test.conversion_call_op"() <{callee = @convert_callee_fn_multiblock}> {noinline} : () -> i32
+    "func.return"(%31) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> memref<1024xf32>, sym_name = "gpu_alloc"}> ({
-    %18 = "gpu.alloc"() <{operandSegmentSizes = array<i32: 0, 0, 0>}> : () -> memref<1024xf32>
-    "func.return"(%18) : (memref<1024xf32>) -> ()
+    %30 = "gpu.alloc"() <{operandSegmentSizes = array<i32: 0, 0, 0>}> : () -> memref<1024xf32>
+    "func.return"(%30) : (memref<1024xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> memref<1024xf32>, sym_name = "inline_gpu_ops"}> ({
-    %17 = "gpu.alloc"() <{operandSegmentSizes = array<i32: 0, 0, 0>}> : () -> memref<1024xf32>
-    "func.return"(%17) : (memref<1024xf32>) -> ()
+    %29 = "gpu.alloc"() <{operandSegmentSizes = array<i32: 0, 0, 0>}> : () -> memref<1024xf32>
+    "func.return"(%29) : (memref<1024xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (), sym_name = "func_with_block_args_location"}> ({
-  ^bb0(%arg13: i32):
-    "test.foo"(%arg13) : (i32) -> ()
+  ^bb0(%arg19: i32):
+    "test.foo"(%arg19) : (i32) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (), sym_name = "func_with_block_args_location_callee1"}> ({
-  ^bb0(%arg12: i32):
-    "test.foo"(%arg12) : (i32) -> ()
+  ^bb0(%arg18: i32):
+    "test.foo"(%arg18) : (i32) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (), sym_name = "func_with_block_args_location_callee2"}> ({
-  ^bb0(%arg11: i32):
-    "test.foo"(%arg11) : (i32) -> ()
+  ^bb0(%arg17: i32):
+    "test.foo"(%arg17) : (i32) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (), sym_name = "func_with_multiple_blocks"}> ({
-  ^bb0(%arg10: i32):
-    "test.foo"(%arg10) : (i32) -> ()
+  ^bb0(%arg16: i32):
+    "test.foo"(%arg16) : (i32) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (), sym_name = "func_with_multiple_blocks_callee1"}> ({
-  ^bb0(%arg9: i32):
+  ^bb0(%arg15: i32):
     "test.dummy_op"() ({
-      "test.foo"(%arg9) : (i32) -> ()
+      "test.foo"(%arg15) : (i32) -> ()
       "test.terminator"() : () -> ()
     }) : () -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i1) -> (), sym_name = "func_with_multiple_blocks_callee2"}> ({
-  ^bb0(%arg7: i32, %arg8: i1):
+  ^bb0(%arg13: i32, %arg14: i1):
     "scf.while"() ({
-      "test.foo"(%arg7) : (i32) -> ()
-      "scf.condition"(%arg8) : (i1) -> ()
+      "test.foo"(%arg13) : (i32) -> ()
+      "scf.condition"(%arg14) : (i1) -> ()
     }, {
       "scf.yield"() : () -> ()
     }) : () -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "test.conversion_func_op"() <{arg_attrs = [{}, {test.handle_argument}], function_type = (i16, i16) -> (i16, i16), res_attrs = [{test.handle_result}, {}], sym_name = "handle_attr_callee_fn_multi_arg"}> ({
-  ^bb0(%arg5: i16, %arg6: i16):
-    %15 = "arith.addi"(%arg5, %arg6) <{overflowFlags = #arith.overflow<none>}> : (i16, i16) -> i16
-    %16 = "arith.subi"(%arg5, %arg6) <{overflowFlags = #arith.overflow<none>}> : (i16, i16) -> i16
-    "test.return"(%15, %16) : (i16, i16) -> ()
+  ^bb0(%arg11: i16, %arg12: i16):
+    %27 = "arith.addi"(%arg11, %arg12) <{overflowFlags = #arith.overflow<none>}> : (i16, i16) -> i16
+    %28 = "arith.subi"(%arg11, %arg12) <{overflowFlags = #arith.overflow<none>}> : (i16, i16) -> i16
+    "test.return"(%27, %28) : (i16, i16) -> ()
   }) : () -> ()
   "test.conversion_func_op"() <{arg_attrs = [{test.handle_argument}], function_type = (i32) -> i32, res_attrs = [{test.handle_result}], sym_name = "handle_attr_callee_fn"}> ({
-  ^bb0(%arg4: i32):
-    "test.return"(%arg4) : (i32) -> ()
+  ^bb0(%arg10: i32):
+    "test.return"(%arg10) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i16, i16) -> (i16, i16), sym_name = "inline_handle_attr_call"}> ({
-  ^bb0(%arg2: i16, %arg3: i16):
-    %11 = "test.type_changer"(%arg3) : (i16) -> i16
-    %12 = "arith.addi"(%arg2, %11) <{overflowFlags = #arith.overflow<none>}> {inlined_conversion} : (i16, i16) -> i16
-    %13 = "arith.subi"(%arg2, %11) <{overflowFlags = #arith.overflow<none>}> {inlined_conversion} : (i16, i16) -> i16
-    %14 = "test.type_changer"(%12) : (i16) -> i16
-    "func.return"(%14, %13) : (i16, i16) -> ()
+  ^bb0(%arg8: i16, %arg9: i16):
+    %23 = "test.type_changer"(%arg9) : (i16) -> i16
+    %24 = "arith.addi"(%arg8, %23) <{overflowFlags = #arith.overflow<none>}> {inlined_conversion} : (i16, i16) -> i16
+    %25 = "arith.subi"(%arg8, %23) <{overflowFlags = #arith.overflow<none>}> {inlined_conversion} : (i16, i16) -> i16
+    %26 = "test.type_changer"(%24) : (i16) -> i16
+    "func.return"(%26, %25) : (i16, i16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i16) -> i16, sym_name = "inline_convert_and_handle_attr_call"}> ({
-  ^bb0(%arg1: i16):
-    %7 = "test.cast"(%arg1) : (i16) -> i32
-    %8 = "test.type_changer"(%7) : (i32) -> i32
-    %9 = "test.type_changer"(%8) : (i32) -> i32
-    %10 = "test.cast"(%9) : (i32) -> i16
-    "func.return"(%10) : (i16) -> ()
+  ^bb0(%arg7: i16):
+    %19 = "test.cast"(%arg7) : (i16) -> i32
+    %20 = "test.type_changer"(%19) : (i32) -> i32
+    %21 = "test.type_changer"(%20) : (i32) -> i32
+    %22 = "test.cast"(%21) : (i32) -> i16
+    "func.return"(%22) : (i16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (complex<f32>) -> complex<f32>, sym_name = "double_square_complex"}> ({
-  ^bb0(%arg0: complex<f32>):
-    %5 = "complex.add"(%arg0, %arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>, complex<f32>) -> complex<f32>
-    %6 = "complex.mul"(%5, %5) <{fastmath = #arith.fastmath<none>}> : (complex<f32>, complex<f32>) -> complex<f32>
-    "func.return"(%6) : (complex<f32>) -> ()
+  ^bb0(%arg6: complex<f32>):
+    %17 = "complex.add"(%arg6, %arg6) <{fastmath = #arith.fastmath<none>}> : (complex<f32>, complex<f32>) -> complex<f32>
+    %18 = "complex.mul"(%17, %17) <{fastmath = #arith.fastmath<none>}> : (complex<f32>, complex<f32>) -> complex<f32>
+    "func.return"(%18) : (complex<f32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> complex<f32>, sym_name = "inline_with_complex_ops"}> ({
-    %0 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %1 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-    %2 = "complex.create"(%0, %1) : (f32, f32) -> complex<f32>
-    %3 = "complex.add"(%2, %2) <{fastmath = #arith.fastmath<none>}> : (complex<f32>, complex<f32>) -> complex<f32>
-    %4 = "complex.mul"(%3, %3) <{fastmath = #arith.fastmath<none>}> : (complex<f32>, complex<f32>) -> complex<f32>
-    "func.return"(%4) : (complex<f32>) -> ()
+    %12 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %13 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %14 = "complex.create"(%12, %13) : (f32, f32) -> complex<f32>
+    %15 = "complex.add"(%14, %14) <{fastmath = #arith.fastmath<none>}> : (complex<f32>, complex<f32>) -> complex<f32>
+    %16 = "complex.mul"(%15, %15) <{fastmath = #arith.fastmath<none>}> : (complex<f32>, complex<f32>) -> complex<f32>
+    "func.return"(%16) : (complex<f32>) -> ()
+  }) : () -> ()
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (f16, f16)>, linkage = #llvm.linkage<external>, sym_name = "inline_test_return_arity_mismatch", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg4: f16, %arg5: f16):
+    %10 = "test.op_with_bitcast_type"(%arg4) : (f16) -> tensor<4xf32>
+    %11 = "test.op_with_bitcast_type"(%arg5) : (f16) -> tensor<2xi32>
+    "llvm.return"() : () -> ()
+  }) {llvm.emit_c_interface} : () -> ()
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (f16, f16)>, linkage = #llvm.linkage<external>, sym_name = "inline_test_return_arity_mismatch_callee", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg2: f16, %arg3: f16):
+    %8 = "test.op_with_bitcast_type"(%arg2) : (f16) -> tensor<4xf32>
+    %9 = "test.op_with_bitcast_type"(%arg3) : (f16) -> tensor<2xi32>
+    "test.return"(%8, %9) : (tensor<4xf32>, tensor<2xi32>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> i32, sym_name = "inline_functional_region_multiblock"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "test.functional_region_op"() ({
+    ^bb0(%arg1: i32):
+      %5 = "arith.addi"(%arg1, %arg1) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      "cf.br"(%5)[^bb1] : (i32) -> ()
+    ^bb1(%6: i32):  // pred: ^bb0
+      %7 = "arith.addi"(%6, %6) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      "test.return"(%7) : (i32) -> ()
+    }) : () -> ((i32) -> i32)
+    %1 = "arith.addi"(%arg0, %arg0) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "cf.br"(%1)[^bb1] : (i32) -> ()
+  ^bb1(%2: i32):  // pred: ^bb0
+    %3 = "arith.addi"(%2, %2) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "cf.br"(%3)[^bb2] : (i32) -> ()
+  ^bb2(%4: i32):  // pred: ^bb1
+    "func.return"(%4) : (i32) -> ()
   }) : () -> ()
 }) : () -> ()
 

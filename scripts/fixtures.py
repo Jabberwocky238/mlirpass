@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerates tests/fixtures/ from llvm-project's own mlir tests and a vanilla mlir-opt 22.1.8.
+"""Regenerates tests/fixtures/ from llvm-project's own mlir tests and a vanilla mlir-opt 23.1.5.
 
 For every kept `// RUN: mlir-opt ...` line of a test file it writes, under tests/fixtures/:
 
@@ -35,9 +35,9 @@ def tests(root: Path):
     found += [root / "Dialect/Linalg/loops.mlir", root / "Dialect/Linalg/parallel-loops.mlir", root / "Dialect/Linalg/affine.mlir"]
     # The SPIR-V and GPU dialects whole: their ops, transforms and canonicalization.
     found += list(root.glob("Dialect/SPIRV/**/*.mlir")) + list(root.glob("Dialect/GPU/**/*.mlir"))
-    # The x86 CPU dialects: their LLVM lowering (`convert-vector-to-llvm` `enable-x86vector` /
-    # `enable-amx`) and the rest of their tests.
-    found += list(root.glob("Dialect/X86Vector/*.mlir")) + list(root.glob("Dialect/AMX/*.mlir"))
+    # The x86 CPU dialect (AVX-512, AVX10, AMX): its LLVM lowering (`convert-vector-to-llvm`
+    # `enable-x86`) and the rest of its tests.
+    found += list(root.glob("Dialect/X86/*.mlir")) + list(root.glob("Dialect/X86/AMX/*.mlir"))
     # Bufferization and the linalg / memref transforms before it: one-shot-bufferize,
     # linalg-fold-unit-extent-dims, convert-elementwise-to-linalg, fold-memref-alias-ops.
     found += list(root.glob("Dialect/Bufferization/Transforms/one-shot-*.mlir"))
@@ -113,8 +113,8 @@ def mlir_opt(binary: str, args, input_path: Path, generic: bool):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--llvm", required=True, help="llvm-project checkout at llvmorg-22.1.8")
-    ap.add_argument("--mlir-opt", required=True, help="a vanilla mlir-opt 22.1.8")
+    ap.add_argument("--llvm", required=True, help="llvm-project checkout at llvmorg-23.1.5")
+    ap.add_argument("--mlir-opt", required=True, help="a vanilla mlir-opt 23.1.5")
     ap.add_argument("-o", default=str(Path(__file__).resolve().parent.parent / "tests" / "fixtures"))
     ap.add_argument("--only", action="append", help="regenerate just the tests matching these globs (relative to mlir/test), keeping the rest")
     opts = ap.parse_args()

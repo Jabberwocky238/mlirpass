@@ -446,7 +446,7 @@ impl GpuToXe3 {
     /// The stage of shader `f`: a `gpu.func` kernel's compute, a `func.func`'s its `spirv.execution_model`.
     pub fn stage_of(body: &Body<'_>, f: OpId) -> Option<Stage> {
         match &*body[f].name {
-            "gpu.func" => body[f].get("gpu.kernel").map(|_| Stage::Compute),
+            "gpu.func" => body[f].gpu_kernel().then_some(Stage::Compute),
             "func.func" => match body[f].get(Self::STAGE)? {
                 Attribute::Extended { ext, .. } => match ext.body.as_deref()? {
                     "<Vertex>" => Some(Stage::Vertex),

@@ -25,13 +25,33 @@
 }) : () -> ()
 
 // -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<16x8xf16>, vector<16x16xf16>, vector<8x16xf32>) -> vector<8x16xf32>, sym_name = "gemm_transpose_a"}> ({
+  ^bb0(%arg0: vector<16x8xf16>, %arg1: vector<16x16xf16>, %arg2: vector<8x16xf32>):
+    %0 = "vector.transpose"(%arg0) <{permutation = array<i64: 1, 0>}> : (vector<16x8xf16>) -> vector<8x16xf16>
+    %1 = "xegpu.dpas"(%0, %arg1, %arg2) : (vector<8x16xf16>, vector<16x16xf16>, vector<8x16xf32>) -> vector<8x16xf32>
+    "func.return"(%1) : (vector<8x16xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<8x16xf16>, vector<16x16xf16>, vector<8x16xf32>) -> vector<8x16xf32>, sym_name = "gemm_transpose_b"}> ({
+  ^bb0(%arg0: vector<8x16xf16>, %arg1: vector<16x16xf16>, %arg2: vector<8x16xf32>):
+    %0 = "vector.transpose"(%arg1) <{permutation = array<i64: 1, 0>}> : (vector<16x16xf16>) -> vector<16x16xf16>
+    %1 = "xegpu.dpas"(%arg0, %0, %arg2) : (vector<8x16xf16>, vector<16x16xf16>, vector<8x16xf32>) -> vector<8x16xf32>
+    "func.return"(%1) : (vector<8x16xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
 #map = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3)>
 #map1 = affine_map<(d0, d1, d2, d3) -> (d2, d1, d3)>
 #map2 = affine_map<(d0, d1, d2, d3) -> (d0, d1)>
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<8x8x2xf16>, vector<8x16x2xf16>, vector<8x16xf32>) -> vector<8x16xf32>, sym_name = "negative_vnni_packed"}> ({
   ^bb0(%arg0: vector<8x8x2xf16>, %arg1: vector<8x16x2xf16>, %arg2: vector<8x16xf32>):
-    %0 = "vector.contract"(%arg0, %arg1, %arg2) <{indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<8x8x2xf16>, vector<8x16x2xf16>, vector<8x16xf32>) -> vector<8x16xf32>
+    %0 = "vector.contract"(%arg0, %arg1, %arg2) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<8x8x2xf16>, vector<8x16x2xf16>, vector<8x16xf32>) -> vector<8x16xf32>
     "func.return"(%0) : (vector<8x16xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -43,7 +63,7 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<8x16xf16>, vector<16x16xf16>, vector<8x16xf32>) -> vector<8x16xf32>, sym_name = "negative_combining_kind"}> ({
   ^bb0(%arg0: vector<8x16xf16>, %arg1: vector<16x16xf16>, %arg2: vector<8x16xf32>):
-    %0 = "vector.contract"(%arg0, %arg1, %arg2) <{indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<mul>}> : (vector<8x16xf16>, vector<16x16xf16>, vector<8x16xf32>) -> vector<8x16xf32>
+    %0 = "vector.contract"(%arg0, %arg1, %arg2) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<mul>}> : (vector<8x16xf16>, vector<16x16xf16>, vector<8x16xf32>) -> vector<8x16xf32>
     "func.return"(%0) : (vector<8x16xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -55,32 +75,8 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<8x16xf16>, vector<16x16xf16>, vector<f32>) -> vector<f32>, sym_name = "negative_accumulator_shape"}> ({
   ^bb0(%arg0: vector<8x16xf16>, %arg1: vector<16x16xf16>, %arg2: vector<f32>):
-    %0 = "vector.contract"(%arg0, %arg1, %arg2) <{indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<reduction>, #vector.iterator_type<reduction>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<8x16xf16>, vector<16x16xf16>, vector<f32>) -> vector<f32>
+    %0 = "vector.contract"(%arg0, %arg1, %arg2) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<reduction>, #vector.iterator_type<reduction>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<8x16xf16>, vector<16x16xf16>, vector<f32>) -> vector<f32>
     "func.return"(%0) : (vector<f32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-#map = affine_map<(d0, d1, d2) -> (d2, d0)>
-#map1 = affine_map<(d0, d1, d2) -> (d2, d1)>
-#map2 = affine_map<(d0, d1, d2) -> (d0, d1)>
-"builtin.module"() ({
-  "func.func"() <{function_type = (vector<16x8xf16>, vector<16x16xf16>, vector<8x16xf32>) -> vector<8x16xf32>, sym_name = "negative_gemm_transpose_a"}> ({
-  ^bb0(%arg0: vector<16x8xf16>, %arg1: vector<16x16xf16>, %arg2: vector<8x16xf32>):
-    %0 = "vector.contract"(%arg0, %arg1, %arg2) <{indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x8xf16>, vector<16x16xf16>, vector<8x16xf32>) -> vector<8x16xf32>
-    "func.return"(%0) : (vector<8x16xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-#map = affine_map<(d0, d1, d2) -> (d0, d2)>
-#map1 = affine_map<(d0, d1, d2) -> (d1, d2)>
-#map2 = affine_map<(d0, d1, d2) -> (d0, d1)>
-"builtin.module"() ({
-  "func.func"() <{function_type = (vector<8x16xf16>, vector<16x16xf16>, vector<8x16xf32>) -> vector<8x16xf32>, sym_name = "negative_gemm_transpose_b"}> ({
-  ^bb0(%arg0: vector<8x16xf16>, %arg1: vector<16x16xf16>, %arg2: vector<8x16xf32>):
-    %0 = "vector.contract"(%arg0, %arg1, %arg2) <{indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<8x16xf16>, vector<16x16xf16>, vector<8x16xf32>) -> vector<8x16xf32>
-    "func.return"(%0) : (vector<8x16xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 

@@ -57,7 +57,7 @@
       %4 = "math.exp"(%3) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
       %5 = "math.exp"(%3) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
       "gpu.return"() : () -> ()
-    }) {sym_name = "exp_gpu", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "exp_gpu"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "exp_func"}> ({
     %0 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32

@@ -8,7 +8,7 @@
     }) : () -> ()
     "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<ptr (i64)>, linkage = #llvm.linkage<external>, sym_name = "malloc", visibility_ = 0 : i64}> ({
     }) : () -> ()
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %18 = "llvm.mlir.constant"() <{value = 8 : index}> : () -> i64
       %19 = "llvm.mlir.constant"() <{value = 16 : index}> : () -> i64
       %20 = "llvm.mlir.constant"() <{value = 1 : index}> : () -> i64
@@ -29,7 +29,7 @@
       %35 = "llvm.extractvalue"(%34) <{position = array<i64: 0>}> : (!llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>) -> !llvm.ptr
       "llvm.call"(%35) <{CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @free, fastmathFlags = #llvm.fastmath<none>, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>}> : (!llvm.ptr) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "kernel_1", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "kernel_1"} : () -> ()
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<external>, sym_name = "main", visibility_ = 0 : i64}> ({
     %0 = "llvm.mlir.constant"() <{value = 8 : index}> : () -> i64

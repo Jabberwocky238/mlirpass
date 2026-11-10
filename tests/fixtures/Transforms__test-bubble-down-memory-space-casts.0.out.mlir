@@ -41,6 +41,11 @@ module {
     %memspacecast = memref.memory_space_cast %reshape : memref<?xf32, 1> to memref<?xf32>
     return %memspacecast : memref<?xf32>
   }
+  func.func @reshape_unranked(%arg0: memref<?x?xf32, 1>, %arg1: memref<?xindex>) -> memref<*xf32> {
+    %reshape = memref.reshape %arg0(%arg1) : (memref<?x?xf32, 1>, memref<?xindex>) -> memref<*xf32, 1>
+    %memspacecast = memref.memory_space_cast %reshape : memref<*xf32, 1> to memref<*xf32>
+    return %memspacecast : memref<*xf32>
+  }
   func.func @expand_shape(%arg0: memref<12xf32, 1>) -> memref<3x4xf32> {
     %expand_shape = memref.expand_shape %arg0 [[0, 1]] output_shape [3, 4] : memref<12xf32, 1> into memref<3x4xf32, 1>
     %memspacecast = memref.memory_space_cast %expand_shape : memref<3x4xf32, 1> to memref<3x4xf32>

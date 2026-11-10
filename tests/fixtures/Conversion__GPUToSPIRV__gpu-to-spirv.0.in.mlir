@@ -1,9 +1,9 @@
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> ()}> ({
+    "gpu.func"() <{function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> (), kernel}> ({
     ^bb0(%arg0: f32, %arg1: memref<12xf32, #spirv.storage_class<StorageBuffer>>):
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "basic_module_structure", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "basic_module_structure"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "main"}> ({
     %0 = "op"() : () -> f32
@@ -17,20 +17,20 @@
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{arg_attrs = [{spirv.interface_var_abi = #spirv.interface_var_abi<(1, 2), StorageBuffer>}, {spirv.interface_var_abi = #spirv.interface_var_abi<(3, 0)>}], function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> ()}> ({
+    "gpu.func"() <{arg_attrs = [{spirv.interface_var_abi = #spirv.interface_var_abi<(1, 2), StorageBuffer>}, {spirv.interface_var_abi = #spirv.interface_var_abi<(3, 0)>}], function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> (), kernel}> ({
     ^bb0(%arg0: f32, %arg1: memref<12xf32, #spirv.storage_class<StorageBuffer>>):
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "basic_module_structure_preset_ABI", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "basic_module_structure_preset_ABI"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> ()}> ({
+    "gpu.func"() <{function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> (), kernel}> ({
     ^bb0(%arg0: f32, %arg1: memref<12xf32, #spirv.storage_class<StorageBuffer>>):
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "missing_entry_point_abi", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "missing_entry_point_abi"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "main"}> ({
     %0 = "op"() : () -> f32
@@ -44,31 +44,31 @@
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{arg_attrs = [{spirv.interface_var_abi = #spirv.interface_var_abi<(1, 2), StorageBuffer>}, {}], function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> ()}> ({
+    "gpu.func"() <{arg_attrs = [{spirv.interface_var_abi = #spirv.interface_var_abi<(1, 2), StorageBuffer>}, {}], function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> (), kernel}> ({
     ^bb0(%arg0: f32, %arg1: memref<12xf32, #spirv.storage_class<StorageBuffer>>):
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "missing_entry_point_abi", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "missing_entry_point_abi"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{arg_attrs = [{}, {spirv.interface_var_abi = #spirv.interface_var_abi<(3, 0)>}], function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> ()}> ({
+    "gpu.func"() <{arg_attrs = [{}, {spirv.interface_var_abi = #spirv.interface_var_abi<(3, 0)>}], function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> (), kernel}> ({
     ^bb0(%arg0: f32, %arg1: memref<12xf32, #spirv.storage_class<StorageBuffer>>):
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "missing_entry_point_abi", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "missing_entry_point_abi"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> ()}> ({
+    "gpu.func"() <{function_type = (f32, memref<12xf32, #spirv.storage_class<StorageBuffer>>) -> (), kernel}> ({
     ^bb0(%arg0: f32, %arg1: memref<12xf32, #spirv.storage_class<StorageBuffer>>):
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "barrier", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "barrier"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "main"}> ({
     %0 = "op"() : () -> f32
@@ -78,4 +78,26 @@
     "func.return"() : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "gpu.module"() <{sym_name = "kernels"}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<subgroup>}> : () -> ()
+      "gpu.return"() : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 1, 1]>, sym_name = "barrier_subgroup_scope"} : () -> ()
+  }) : () -> ()
+}) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.1, [Kernel, Addresses, NamedBarrier], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "gpu.module"() <{sym_name = "kernels"}> ({
+    "gpu.func"() <{function_type = (i32) -> (), kernel}> ({
+    ^bb0(%arg0: i32):
+      %0 = "gpu.initialize_named_barrier"(%arg0) : (i32) -> !gpu.named_barrier
+      "gpu.barrier"(%0) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> ()
+      "gpu.return"() : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 1, 1]>, sym_name = "named_barrier"} : () -> ()
+  }) : () -> ()
+}) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.1, [Kernel, Addresses, NamedBarrier], []>, #spirv.resource_limits<>>} : () -> ()
 

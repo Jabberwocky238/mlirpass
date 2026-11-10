@@ -335,6 +335,28 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (tensor<?xf32>) -> tensor<?xf32>, sym_name = "do_not_hoist_multiple_nested_loop_uses"}> ({
+  ^bb0(%arg5: tensor<?xf32>):
+    %4 = "test.foo"() : () -> index
+    %5 = "test.foo"() : () -> index
+    %6 = "test.foo"() : () -> index
+    %7 = "scf.for"(%4, %5, %6, %arg5) ({
+    ^bb0(%arg6: index, %arg7: tensor<?xf32>):
+      %8 = "tensor.extract_slice"(%arg7) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>, static_offsets = array<i64: 0>, static_sizes = array<i64: 5>, static_strides = array<i64: 1>}> : (tensor<?xf32>) -> tensor<5xf32>
+      %9 = "test.foo"(%8) : (tensor<5xf32>) -> tensor<5xf32>
+      %10 = "tensor.insert_slice"(%9, %arg7) <{operandSegmentSizes = array<i32: 1, 1, 0, 0, 0>, static_offsets = array<i64: 0>, static_sizes = array<i64: 5>, static_strides = array<i64: 1>}> : (tensor<5xf32>, tensor<?xf32>) -> tensor<?xf32>
+      %11 = "scf.for"(%4, %5, %6, %10) ({
+      ^bb0(%arg10: index, %arg11: tensor<?xf32>):
+        "scf.yield"(%arg11) : (tensor<?xf32>) -> ()
+      }) : (index, index, index, tensor<?xf32>) -> tensor<?xf32>
+      %12 = "scf.for"(%4, %5, %6, %10) ({
+      ^bb0(%arg8: index, %arg9: tensor<?xf32>):
+        "scf.yield"(%arg9) : (tensor<?xf32>) -> ()
+      }) : (index, index, index, tensor<?xf32>) -> tensor<?xf32>
+      "scf.yield"(%11) : (tensor<?xf32>) -> ()
+    }) : (index, index, index, tensor<?xf32>) -> tensor<?xf32>
+    "func.return"(%7) : (tensor<?xf32>) -> ()
+  }) : () -> ()
   "func.func"() <{function_type = (memref<7x7xf16>) -> (), sym_name = "hoist_buffer"}> ({
   ^bb0(%arg0: memref<7x7xf16>):
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index

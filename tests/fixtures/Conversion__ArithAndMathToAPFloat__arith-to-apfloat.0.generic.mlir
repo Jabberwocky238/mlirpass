@@ -268,6 +268,38 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (i32, i64) -> i64, sym_name = "_mlir_apfloat_flush_denormals", sym_visibility = "private"}> ({
+  }) : () -> ()
+  "func.func"() <{function_type = (f32) -> (), sym_name = "flush_denormals"}> ({
+  ^bb0(%arg0: f32):
+    %0 = "arith.bitcast"(%arg0) : (f32) -> i32
+    %1 = "arith.extui"(%0) : (i32) -> i64
+    %2 = "arith.constant"() <{value = 2 : i32}> : () -> i32
+    %3 = "func.call"(%2, %1) <{callee = @_mlir_apfloat_flush_denormals}> : (i32, i64) -> i64
+    %4 = "arith.trunci"(%3) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i32
+    %5 = "arith.bitcast"(%4) : (i32) -> f32
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32, i64) -> i64, sym_name = "_mlir_apfloat_flush_denormals", sym_visibility = "private"}> ({
+  }) : () -> ()
+  "func.func"() <{function_type = (f8E4M3FN) -> (), sym_name = "flush_denormals_f8"}> ({
+  ^bb0(%arg0: f8E4M3FN):
+    %0 = "arith.bitcast"(%arg0) : (f8E4M3FN) -> i8
+    %1 = "arith.extui"(%0) : (i8) -> i64
+    %2 = "arith.constant"() <{value = 10 : i32}> : () -> i32
+    %3 = "func.call"(%2, %1) <{callee = @_mlir_apfloat_flush_denormals}> : (i32, i64) -> i64
+    %4 = "arith.trunci"(%3) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i8
+    %5 = "arith.bitcast"(%4) : (i8) -> f8E4M3FN
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (i32, i64, i64) -> i64, sym_name = "_mlir_apfloat_minimum", sym_visibility = "private"}> ({
   }) : () -> ()
   "func.func"() <{function_type = (f32, f32) -> (), sym_name = "minimumf"}> ({

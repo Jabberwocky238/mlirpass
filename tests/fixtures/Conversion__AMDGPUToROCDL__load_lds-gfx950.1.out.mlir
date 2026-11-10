@@ -1,14 +1,14 @@
 module {
-  func.func @fat_buffer_load_to_rocdl_f96(%arg0: memref<128x72xf32, 7>) {
-    %0 = builtin.unrealized_conversion_cast %arg0 : memref<128x72xf32, 7> to !llvm.struct<(ptr<7>, ptr<7>, i64, array<2 x i64>, array<2 x i64>)>
+  func.func @fat_buffer_load_to_rocdl_f96(%arg0: memref<128x72xf32, #amdgpu.address_space<fat_raw_buffer>>) {
+    %0 = builtin.unrealized_conversion_cast %arg0 : memref<128x72xf32, #amdgpu.address_space<fat_raw_buffer>> to !llvm.struct<(ptr<7>, ptr<7>, i64, array<2 x i64>, array<2 x i64>)>
     %c0 = arith.constant 0 : index
     %1 = builtin.unrealized_conversion_cast %c0 : index to i64
     %c12 = arith.constant 12 : index
     %2 = builtin.unrealized_conversion_cast %c12 : index to i64
     %c32 = arith.constant 32 : index
     %3 = builtin.unrealized_conversion_cast %c32 : index to i64
-    %alloc = memref.alloc() : memref<64x64xf32, 3>
-    %4 = builtin.unrealized_conversion_cast %alloc : memref<64x64xf32, 3> to !llvm.struct<(ptr<3>, ptr<3>, i64, array<2 x i64>, array<2 x i64>)>
+    %alloc = memref.alloc() : memref<64x64xf32, #gpu.address_space<workgroup>>
+    %4 = builtin.unrealized_conversion_cast %alloc : memref<64x64xf32, #gpu.address_space<workgroup>> to !llvm.struct<(ptr<3>, ptr<3>, i64, array<2 x i64>, array<2 x i64>)>
     %5 = llvm.extractvalue %0[1] : !llvm.struct<(ptr<7>, ptr<7>, i64, array<2 x i64>, array<2 x i64>)> 
     %6 = llvm.mlir.constant(72 : index) : i64
     %7 = llvm.mul %2, %6 : i64
@@ -26,16 +26,16 @@ module {
 
 // -----
 module {
-  func.func @fat_buffer_load_to_rocdl_f128(%arg0: memref<128x72xf32, 7>) {
-    %0 = builtin.unrealized_conversion_cast %arg0 : memref<128x72xf32, 7> to !llvm.struct<(ptr<7>, ptr<7>, i64, array<2 x i64>, array<2 x i64>)>
+  func.func @fat_buffer_load_to_rocdl_f128(%arg0: memref<128x72xf32, #amdgpu.address_space<fat_raw_buffer>>) {
+    %0 = builtin.unrealized_conversion_cast %arg0 : memref<128x72xf32, #amdgpu.address_space<fat_raw_buffer>> to !llvm.struct<(ptr<7>, ptr<7>, i64, array<2 x i64>, array<2 x i64>)>
     %c0 = arith.constant 0 : index
     %1 = builtin.unrealized_conversion_cast %c0 : index to i64
     %c12 = arith.constant 12 : index
     %2 = builtin.unrealized_conversion_cast %c12 : index to i64
     %c32 = arith.constant 32 : index
     %3 = builtin.unrealized_conversion_cast %c32 : index to i64
-    %alloc = memref.alloc() : memref<64x64xf32, 3>
-    %4 = builtin.unrealized_conversion_cast %alloc : memref<64x64xf32, 3> to !llvm.struct<(ptr<3>, ptr<3>, i64, array<2 x i64>, array<2 x i64>)>
+    %alloc = memref.alloc() : memref<64x64xf32, #gpu.address_space<workgroup>>
+    %4 = builtin.unrealized_conversion_cast %alloc : memref<64x64xf32, #gpu.address_space<workgroup>> to !llvm.struct<(ptr<3>, ptr<3>, i64, array<2 x i64>, array<2 x i64>)>
     %5 = llvm.extractvalue %0[1] : !llvm.struct<(ptr<7>, ptr<7>, i64, array<2 x i64>, array<2 x i64>)> 
     %6 = llvm.mlir.constant(72 : index) : i64
     %7 = llvm.mul %2, %6 : i64

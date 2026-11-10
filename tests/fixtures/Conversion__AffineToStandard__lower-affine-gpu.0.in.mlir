@@ -6,7 +6,7 @@
       %0 = "affine.apply"(%arg0) <{map = #map}> : (index) -> index
       %1 = "memref.load"(%arg1, %0) : (memref<?xf32>, index) -> f32
       "gpu.return"(%1) : (f32) -> ()
-    }) {sym_name = "foo", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "foo"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 

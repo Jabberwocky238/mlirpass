@@ -96,6 +96,44 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (i1) -> (), sym_name = "index_castui_nneg"}> ({
+  ^bb0(%arg0: i1):
+    %0 = "llvm.zext"(%arg0) <{nonNeg}> : (i1) -> i64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1) -> (), sym_name = "index_castui_nneg_not_set"}> ({
+  ^bb0(%arg0: i1):
+    %0 = "llvm.zext"(%arg0) : (i1) -> i64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<3xi32>) -> memref<3xindex>, sym_name = "memref_index_cast"}> ({
+  ^bb0(%arg0: memref<3xi32>):
+    %0 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<3xi32>) -> !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+    %1 = "builtin.unrealized_conversion_cast"(%0) : (!llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>) -> memref<3xindex>
+    "func.return"(%1) : (memref<3xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<3xi32>) -> memref<3xindex>, sym_name = "memref_index_castui"}> ({
+  ^bb0(%arg0: memref<3xi32>):
+    %0 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<3xi32>) -> !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+    %1 = "builtin.unrealized_conversion_cast"(%0) : (!llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>) -> memref<3xindex>
+    "func.return"(%1) : (memref<3xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (i32, i64) -> (), sym_name = "sitofp"}> ({
   ^bb0(%arg0: i32, %arg1: i64):
     %0 = "llvm.sitofp"(%arg0) : (i32) -> f32
@@ -136,9 +174,9 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (f16, f32) -> (), sym_name = "fpext"}> ({
   ^bb0(%arg0: f16, %arg1: f32):
-    %0 = "llvm.fpext"(%arg0) : (f16) -> f32
-    %1 = "llvm.fpext"(%arg0) : (f16) -> f64
-    %2 = "llvm.fpext"(%arg1) : (f32) -> f64
+    %0 = "llvm.fpext"(%arg0) <{fastmathFlags = #llvm.fastmath<none>}> : (f16) -> f32
+    %1 = "llvm.fpext"(%arg0) <{fastmathFlags = #llvm.fastmath<none>}> : (f16) -> f64
+    %2 = "llvm.fpext"(%arg1) <{fastmathFlags = #llvm.fastmath<none>}> : (f32) -> f64
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -147,9 +185,9 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<2xf16>, vector<2xf32>) -> (), sym_name = "fpext_vector"}> ({
   ^bb0(%arg0: vector<2xf16>, %arg1: vector<2xf32>):
-    %0 = "llvm.fpext"(%arg0) : (vector<2xf16>) -> vector<2xf32>
-    %1 = "llvm.fpext"(%arg0) : (vector<2xf16>) -> vector<2xf64>
-    %2 = "llvm.fpext"(%arg1) : (vector<2xf32>) -> vector<2xf64>
+    %0 = "llvm.fpext"(%arg0) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf16>) -> vector<2xf32>
+    %1 = "llvm.fpext"(%arg0) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf16>) -> vector<2xf64>
+    %2 = "llvm.fpext"(%arg1) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf32>) -> vector<2xf64>
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -224,9 +262,9 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (f32, f64) -> (), sym_name = "fptrunc"}> ({
   ^bb0(%arg0: f32, %arg1: f64):
-    %0 = "llvm.fptrunc"(%arg0) : (f32) -> f16
-    %1 = "llvm.fptrunc"(%arg1) : (f64) -> f16
-    %2 = "llvm.fptrunc"(%arg1) : (f64) -> f32
+    %0 = "llvm.fptrunc"(%arg0) <{fastmathFlags = #llvm.fastmath<none>}> : (f32) -> f16
+    %1 = "llvm.fptrunc"(%arg1) <{fastmathFlags = #llvm.fastmath<none>}> : (f64) -> f16
+    %2 = "llvm.fptrunc"(%arg1) <{fastmathFlags = #llvm.fastmath<none>}> : (f64) -> f32
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -235,9 +273,9 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<2xf32>, vector<2xf64>) -> (), sym_name = "fptrunc_vector"}> ({
   ^bb0(%arg0: vector<2xf32>, %arg1: vector<2xf64>):
-    %0 = "llvm.fptrunc"(%arg0) : (vector<2xf32>) -> vector<2xf16>
-    %1 = "llvm.fptrunc"(%arg1) : (vector<2xf64>) -> vector<2xf16>
-    %2 = "llvm.fptrunc"(%arg1) : (vector<2xf64>) -> vector<2xf32>
+    %0 = "llvm.fptrunc"(%arg0) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf32>) -> vector<2xf16>
+    %1 = "llvm.fptrunc"(%arg1) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf64>) -> vector<2xf16>
+    %2 = "llvm.fptrunc"(%arg1) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf64>) -> vector<2xf32>
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -252,6 +290,88 @@
     %3 = "llvm.intr.experimental.constrained.fptrunc"(%arg0) <{fpExceptionBehavior = 0 : i64, roundingmode = 0 : i64}> : (f64) -> f32
     %4 = "llvm.intr.experimental.constrained.fptrunc"(%arg0) <{fpExceptionBehavior = 0 : i64, roundingmode = 4 : i64}> : (f64) -> f32
     "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64) -> (), sym_name = "experimental_constrained_addf"}> ({
+  ^bb0(%arg0: f64, %arg1: f64):
+    %0 = "llvm.intr.experimental.constrained.fadd"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 1 : i64}> : (f64, f64) -> f64
+    %1 = "llvm.intr.experimental.constrained.fadd"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 3 : i64}> : (f64, f64) -> f64
+    %2 = "llvm.intr.experimental.constrained.fadd"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 2 : i64}> : (f64, f64) -> f64
+    %3 = "llvm.intr.experimental.constrained.fadd"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 0 : i64}> : (f64, f64) -> f64
+    %4 = "llvm.intr.experimental.constrained.fadd"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 4 : i64}> : (f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64) -> (), sym_name = "experimental_constrained_subf"}> ({
+  ^bb0(%arg0: f64, %arg1: f64):
+    %0 = "llvm.intr.experimental.constrained.fsub"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 1 : i64}> : (f64, f64) -> f64
+    %1 = "llvm.intr.experimental.constrained.fsub"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 3 : i64}> : (f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64) -> (), sym_name = "experimental_constrained_mulf"}> ({
+  ^bb0(%arg0: f64, %arg1: f64):
+    %0 = "llvm.intr.experimental.constrained.fmul"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 2 : i64}> : (f64, f64) -> f64
+    %1 = "llvm.intr.experimental.constrained.fmul"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 0 : i64}> : (f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64) -> (), sym_name = "experimental_constrained_divf"}> ({
+  ^bb0(%arg0: f64, %arg1: f64):
+    %0 = "llvm.intr.experimental.constrained.fdiv"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 1 : i64}> : (f64, f64) -> f64
+    %1 = "llvm.intr.experimental.constrained.fdiv"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 4 : i64}> : (f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64) -> (), sym_name = "constrained_addf_with_fastmath"}> ({
+  ^bb0(%arg0: f64, %arg1: f64):
+    %0 = "llvm.intr.experimental.constrained.fadd"(%arg0, %arg1) <{fpExceptionBehavior = 0 : i64, roundingmode = 1 : i64}> : (f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f16) -> bf16, sym_name = "convertf_f16_to_bf16"}> ({
+  ^bb0(%arg0: f16):
+    %0 = "llvm.fpext"(%arg0) <{fastmathFlags = #llvm.fastmath<none>}> : (f16) -> f32
+    %1 = "llvm.fptrunc"(%0) <{fastmathFlags = #llvm.fastmath<none>}> : (f32) -> bf16
+    "func.return"(%1) : (bf16) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (bf16) -> f16, sym_name = "convertf_bf16_to_f16"}> ({
+  ^bb0(%arg0: bf16):
+    %0 = "llvm.fpext"(%arg0) <{fastmathFlags = #llvm.fastmath<none>}> : (bf16) -> f32
+    %1 = "llvm.fptrunc"(%0) <{fastmathFlags = #llvm.fastmath<none>}> : (f32) -> f16
+    "func.return"(%1) : (f16) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<2xf16>) -> vector<2xbf16>, sym_name = "convertf_vector"}> ({
+  ^bb0(%arg0: vector<2xf16>):
+    %0 = "llvm.fpext"(%arg0) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf16>) -> vector<2xf32>
+    %1 = "llvm.fptrunc"(%0) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf32>) -> vector<2xbf16>
+    "func.return"(%1) : (vector<2xbf16>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -335,6 +455,24 @@
   "func.func"() <{function_type = (vector<3xi16>, vector<3xi16>) -> (vector<3xi16>, vector<3xi1>), sym_name = "addui_extended_vector1d"}> ({
   ^bb0(%arg0: vector<3xi16>, %arg1: vector<3xi16>):
     %0 = "llvm.intr.uadd.with.overflow"(%arg0, %arg1) : (vector<3xi16>, vector<3xi16>) -> !llvm.struct<(vector<3xi16>, vector<3xi1>)>
+    %1 = "llvm.extractvalue"(%0) <{position = array<i64: 0>}> : (!llvm.struct<(vector<3xi16>, vector<3xi1>)>) -> vector<3xi16>
+    %2 = "llvm.extractvalue"(%0) <{position = array<i64: 1>}> : (!llvm.struct<(vector<3xi16>, vector<3xi1>)>) -> vector<3xi1>
+    "func.return"(%1, %2) : (vector<3xi16>, vector<3xi1>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32, i32) -> (i32, i1), sym_name = "subui_extended_scalar"}> ({
+  ^bb0(%arg2: i32, %arg3: i32):
+    %3 = "llvm.intr.usub.with.overflow"(%arg2, %arg3) : (i32, i32) -> !llvm.struct<(i32, i1)>
+    %4 = "llvm.extractvalue"(%3) <{position = array<i64: 0>}> : (!llvm.struct<(i32, i1)>) -> i32
+    %5 = "llvm.extractvalue"(%3) <{position = array<i64: 1>}> : (!llvm.struct<(i32, i1)>) -> i1
+    "func.return"(%4, %5) : (i32, i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<3xi16>, vector<3xi16>) -> (vector<3xi16>, vector<3xi1>), sym_name = "subui_extended_vector1d"}> ({
+  ^bb0(%arg0: vector<3xi16>, %arg1: vector<3xi16>):
+    %0 = "llvm.intr.usub.with.overflow"(%arg0, %arg1) : (vector<3xi16>, vector<3xi16>) -> !llvm.struct<(vector<3xi16>, vector<3xi1>)>
     %1 = "llvm.extractvalue"(%0) <{position = array<i64: 0>}> : (!llvm.struct<(vector<3xi16>, vector<3xi1>)>) -> vector<3xi16>
     %2 = "llvm.extractvalue"(%0) <{position = array<i64: 1>}> : (!llvm.struct<(vector<3xi16>, vector<3xi1>)>) -> vector<3xi1>
     "func.return"(%1, %2) : (vector<3xi16>, vector<3xi1>) -> ()
@@ -594,6 +732,26 @@
     %1 = "llvm.lshr"(%arg0, %arg1) <{isExact}> : (i32, i32) -> i32
     %2 = "llvm.sdiv"(%arg0, %arg1) <{isExact}> : (i32, i32) -> i32
     %3 = "llvm.udiv"(%arg0, %arg1) <{isExact}> : (i32, i32) -> i32
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> (), sym_name = "ops_supporting_nneg"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "llvm.zext"(%arg0) <{nonNeg}> : (i32) -> i64
+    %1 = "llvm.uitofp"(%arg0) <{nonNeg}> : (i32) -> f32
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> (), sym_name = "ops_nneg_not_set"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "llvm.zext"(%arg0) : (i32) -> i64
+    %1 = "llvm.uitofp"(%arg0) : (i32) -> f32
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

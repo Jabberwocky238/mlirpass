@@ -150,6 +150,24 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (f32) -> (), sym_name = "flush_denormals"}> ({
+  ^bb0(%arg0: f32):
+    %0 = "arith.flush_denormals"(%arg0) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f8E4M3FN) -> (), sym_name = "flush_denormals_f8"}> ({
+  ^bb0(%arg0: f8E4M3FN):
+    %0 = "arith.flush_denormals"(%arg0) <{fastmath = #arith.fastmath<none>}> : (f8E4M3FN) -> f8E4M3FN
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (f32, f32) -> (), sym_name = "minimumf"}> ({
   ^bb0(%arg0: f32, %arg1: f32):
     %0 = "arith.minimumf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32

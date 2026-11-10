@@ -10,7 +10,7 @@ module {
     llvm.return %0 : !llvm.ptr
   }
   llvm.func extern_weak @llvmlinkage(i32) attributes {sym_visibility = "private"}
-  llvm.func @llvmreadnone(i32) attributes {memory_effects = #llvm.memory_effects<other = none, argMem = none, inaccessibleMem = none, errnoMem = none, targetMem0 = none, targetMem1 = none>, sym_visibility = "private"}
+  llvm.func @llvmreadnone(i32) attributes {llvm.readnone, memory_effects = #llvm.memory_effects<other = none, argMem = none, inaccessibleMem = none, errnoMem = none, targetMem0 = none, targetMem1 = none>, sym_visibility = "private"}
   llvm.func @body(i32) attributes {sym_visibility = "private"}
   llvm.func @indirect_const_call(%arg0: i32) {
     %0 = llvm.mlir.addressof @body : !llvm.ptr
@@ -21,11 +21,12 @@ module {
     %0 = llvm.call %arg0(%arg1) : !llvm.ptr, (f32) -> i32
     llvm.return %0 : i32
   }
-  llvm.func @variadic_func(%arg0: i32, ...) {
+  llvm.func @variadic_func(%arg0: i32, ...) attributes {func.varargs = true} {
     llvm.return
   }
   llvm.func @target_cpu() attributes {sym_visibility = "private", target_cpu = "gfx90a"}
   llvm.func @target_features() attributes {sym_visibility = "private", target_features = #llvm.target_features<["+sme", "+sve"]>}
+  llvm.func @passthrough_attr() attributes {passthrough = ["presplitcoroutine"], sym_visibility = "private"}
 }
 
 // -----
@@ -49,6 +50,25 @@ module {
 module {
   func.func @variadic_func(%arg0: i32) attributes {func.varargs = true, llvm.emit_c_interface} {
     llvm.return
+  }
+}
+
+// -----
+module {
+  llvm.func @empty_res_attrs() {
+    llvm.return
+  }
+}
+
+// -----
+module {
+  llvm.func internal @host_next_to_gpu_module() {
+    llvm.return
+  }
+  gpu.module @gpu_mod {
+    gpu.func @gpu_kernel() kernel {
+      gpu.return
+    }
   }
 }
 

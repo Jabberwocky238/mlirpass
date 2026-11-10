@@ -95,3 +95,68 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "unused_alloca_store_loop"}> ({
+    %0 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    "cf.br"()[^bb1] : () -> ()
+  ^bb1:  // 2 preds: ^bb0, ^bb1
+    "cf.br"()[^bb1] : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1) -> i32, sym_name = "store_back_to_alloca"}> ({
+  ^bb0(%arg0: i1):
+    %0 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    %1 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    "cf.cond_br"(%arg0)[^bb1, ^bb2] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb1:  // pred: ^bb0
+    "cf.br"(%0)[^bb3] : (i32) -> ()
+  ^bb2:  // pred: ^bb0
+    "cf.br"(%1)[^bb3] : (i32) -> ()
+  ^bb3(%2: i32):  // 2 preds: ^bb1, ^bb2
+    "func.return"(%2) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1) -> i32, sym_name = "merge_point_used_by_erased_op"}> ({
+  ^bb0(%arg0: i1):
+    %0 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    %1 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    "cf.cond_br"(%arg0)[^bb1, ^bb2] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb1:  // pred: ^bb0
+    "cf.br"()[^bb3] : () -> ()
+  ^bb2:  // pred: ^bb0
+    "cf.br"()[^bb3] : () -> ()
+  ^bb3:  // 2 preds: ^bb1, ^bb2
+    "func.return"(%0) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1, i1) -> i32, sym_name = "two_consecutive_merge_points"}> ({
+  ^bb0(%arg0: i1, %arg1: i1):
+    %0 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    %1 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    %2 = "arith.constant"() <{value = 2 : i32}> : () -> i32
+    "cf.cond_br"(%arg0)[^bb2, ^bb1] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb1:  // pred: ^bb0
+    "cf.cond_br"(%arg1)[^bb3, ^bb5] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb2:  // pred: ^bb0
+    "cf.br"(%0)[^bb4] : (i32) -> ()
+  ^bb3:  // pred: ^bb1
+    "cf.br"(%1)[^bb4] : (i32) -> ()
+  ^bb4(%3: i32):  // 2 preds: ^bb2, ^bb3
+    "cf.br"(%3)[^bb6] : (i32) -> ()
+  ^bb5:  // pred: ^bb1
+    "cf.br"(%2)[^bb6] : (i32) -> ()
+  ^bb6(%4: i32):  // 2 preds: ^bb4, ^bb5
+    "func.return"(%4) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+

@@ -387,7 +387,7 @@ impl GpuToSpirv {
     /// `GPUFuncOpConversion` (`lowerAsEntryFunction`).
     #[convert("gpu.func")]
     fn func<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuSpirvOptions) -> bool {
-        if cr.rw.body[op].get("gpu.kernel").is_none() {
+        if !cr.rw.body[op].gpu_kernel() {
             return false;
         }
         let Some(Attribute::Type(Type::Function(fty))) = cr.rw.body[op].get("function_type").cloned() else { return false };
@@ -408,7 +408,7 @@ impl GpuToSpirv {
             .with("function_type", Attribute::Type(new_ty))
             .with("function_control", Cr::spirv_enum("function_control", "None"));
         for a in cr.all_attrs(op) {
-            if a.name != "function_type" && a.name != "sym_name" && a.name != "gpu.kernel" {
+            if !matches!(&*a.name, "function_type" | "sym_name" | "gpu.kernel") {
                 data.set(&a.name, a.value.unwrap_or(Attribute::Unit));
             }
         }

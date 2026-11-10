@@ -1,48 +1,53 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<2x2x2xf32>) -> vector<2x2x2xf32>, sym_name = "vec_bin"}> ({
-  ^bb0(%arg14: vector<2x2x2xf32>):
-    %15 = "arith.addf"(%arg14, %arg14) <{fastmath = #arith.fastmath<none>}> : (vector<2x2x2xf32>, vector<2x2x2xf32>) -> vector<2x2x2xf32>
-    "func.return"(%15) : (vector<2x2x2xf32>) -> ()
+  ^bb0(%arg15: vector<2x2x2xf32>):
+    %16 = "arith.addf"(%arg15, %arg15) <{fastmath = #arith.fastmath<none>}> : (vector<2x2x2xf32>, vector<2x2x2xf32>) -> vector<2x2x2xf32>
+    "func.return"(%16) : (vector<2x2x2xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xi32>, vector<1x2x3xi64>) -> (), sym_name = "sexti_vector"}> ({
-  ^bb0(%arg12: vector<1x2x3xi32>, %arg13: vector<1x2x3xi64>):
-    %14 = "arith.extsi"(%arg12) : (vector<1x2x3xi32>) -> vector<1x2x3xi64>
+  ^bb0(%arg13: vector<1x2x3xi32>, %arg14: vector<1x2x3xi64>):
+    %15 = "arith.extsi"(%arg13) : (vector<1x2x3xi32>) -> vector<1x2x3xi64>
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xi32>, vector<1x2x3xi64>) -> (), sym_name = "zexti_vector"}> ({
-  ^bb0(%arg10: vector<1x2x3xi32>, %arg11: vector<1x2x3xi64>):
-    %13 = "arith.extui"(%arg10) : (vector<1x2x3xi32>) -> vector<1x2x3xi64>
+  ^bb0(%arg11: vector<1x2x3xi32>, %arg12: vector<1x2x3xi64>):
+    %14 = "arith.extui"(%arg11) : (vector<1x2x3xi32>) -> vector<1x2x3xi64>
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xi32>) -> vector<1x2x3xf32>, sym_name = "sitofp_vector"}> ({
-  ^bb0(%arg9: vector<1x2x3xi32>):
-    %12 = "arith.sitofp"(%arg9) : (vector<1x2x3xi32>) -> vector<1x2x3xf32>
-    "func.return"(%12) : (vector<1x2x3xf32>) -> ()
+  ^bb0(%arg10: vector<1x2x3xi32>):
+    %13 = "arith.sitofp"(%arg10) : (vector<1x2x3xi32>) -> vector<1x2x3xf32>
+    "func.return"(%13) : (vector<1x2x3xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xi32>) -> vector<1x2x3xf32>, sym_name = "uitofp_vector"}> ({
-  ^bb0(%arg8: vector<1x2x3xi32>):
-    %11 = "arith.uitofp"(%arg8) : (vector<1x2x3xi32>) -> vector<1x2x3xf32>
-    "func.return"(%11) : (vector<1x2x3xf32>) -> ()
+  ^bb0(%arg9: vector<1x2x3xi32>):
+    %12 = "arith.uitofp"(%arg9) : (vector<1x2x3xi32>) -> vector<1x2x3xf32>
+    "func.return"(%12) : (vector<1x2x3xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xf32>) -> vector<1x2x3xi32>, sym_name = "fptosi_vector"}> ({
-  ^bb0(%arg7: vector<1x2x3xf32>):
-    %10 = "arith.fptosi"(%arg7) : (vector<1x2x3xf32>) -> vector<1x2x3xi32>
-    "func.return"(%10) : (vector<1x2x3xi32>) -> ()
+  ^bb0(%arg8: vector<1x2x3xf32>):
+    %11 = "arith.fptosi"(%arg8) : (vector<1x2x3xf32>) -> vector<1x2x3xi32>
+    "func.return"(%11) : (vector<1x2x3xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xf32>) -> vector<1x2x3xi32>, sym_name = "fptoui_vector"}> ({
-  ^bb0(%arg6: vector<1x2x3xf32>):
-    %9 = "arith.fptoui"(%arg6) : (vector<1x2x3xf32>) -> vector<1x2x3xi32>
-    "func.return"(%9) : (vector<1x2x3xi32>) -> ()
+  ^bb0(%arg7: vector<1x2x3xf32>):
+    %10 = "arith.fptoui"(%arg7) : (vector<1x2x3xf32>) -> vector<1x2x3xi32>
+    "func.return"(%10) : (vector<1x2x3xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xf16>) -> vector<1x2x3xf64>, sym_name = "fpext_vector"}> ({
-  ^bb0(%arg5: vector<1x2x3xf16>):
-    %8 = "arith.extf"(%arg5) : (vector<1x2x3xf16>) -> vector<1x2x3xf64>
-    "func.return"(%8) : (vector<1x2x3xf64>) -> ()
+  ^bb0(%arg6: vector<1x2x3xf16>):
+    %9 = "arith.extf"(%arg6) : (vector<1x2x3xf16>) -> vector<1x2x3xf64>
+    "func.return"(%9) : (vector<1x2x3xf64>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xf64>) -> vector<1x2x3xf16>, sym_name = "fptrunc_vector"}> ({
-  ^bb0(%arg4: vector<1x2x3xf64>):
-    %7 = "arith.truncf"(%arg4) : (vector<1x2x3xf64>) -> vector<1x2x3xf16>
-    "func.return"(%7) : (vector<1x2x3xf16>) -> ()
+  ^bb0(%arg5: vector<1x2x3xf64>):
+    %8 = "arith.truncf"(%arg5) : (vector<1x2x3xf64>) -> vector<1x2x3xf16>
+    "func.return"(%8) : (vector<1x2x3xf16>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<1x2x3xf16>) -> vector<1x2x3xbf16>, sym_name = "convertf_vector"}> ({
+  ^bb0(%arg4: vector<1x2x3xf16>):
+    %7 = "arith.convertf"(%arg4) : (vector<1x2x3xf16>) -> vector<1x2x3xbf16>
+    "func.return"(%7) : (vector<1x2x3xbf16>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xi64>) -> vector<1x2x3xi16>, sym_name = "trunci_vector"}> ({
   ^bb0(%arg3: vector<1x2x3xi64>):

@@ -124,3 +124,26 @@ module {
   }
 }
 
+// -----
+module {
+  func.func @bufferize_pack(%arg0: tensor<200x127x256xf32>, %arg1: tensor<256x64x200x2xf32>) -> tensor<256x64x200x2xf32> {
+    %cst = arith.constant 0.000000e+00 : f32
+    %0 = bufferization.to_buffer %arg0 : tensor<200x127x256xf32> to memref<200x127x256xf32>
+    %alloc = memref.alloc() {alignment = 64 : i64} : memref<256x64x200x2xf32>
+    linalg.pack %0 padding_value(%cst : f32) outer_dims_perm = [2, 1, 0] inner_dims_pos = [1] inner_tiles = [2] into %alloc : memref<200x127x256xf32> -> memref<256x64x200x2xf32>
+    %1 = bufferization.to_tensor %alloc : memref<256x64x200x2xf32> to tensor<256x64x200x2xf32>
+    return %1 : tensor<256x64x200x2xf32>
+  }
+}
+
+// -----
+module {
+  func.func @bufferize_unpack(%arg0: tensor<256x64x200x2xf32>, %arg1: tensor<200x128x256xf32>) -> tensor<200x128x256xf32> {
+    %0 = bufferization.to_buffer %arg0 : tensor<256x64x200x2xf32> to memref<256x64x200x2xf32>
+    %alloc = memref.alloc() {alignment = 64 : i64} : memref<200x128x256xf32>
+    linalg.unpack %0 outer_dims_perm = [2, 1, 0] inner_dims_pos = [1] inner_tiles = [2] into %alloc : memref<256x64x200x2xf32> -> memref<200x128x256xf32>
+    %1 = bufferization.to_tensor %alloc : memref<200x128x256xf32> to tensor<200x128x256xf32>
+    return %1 : tensor<200x128x256xf32>
+  }
+}
+

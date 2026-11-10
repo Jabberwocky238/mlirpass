@@ -75,6 +75,12 @@ pub trait CfgToScfInterface<'a> {
 
     /// `createUnreachableTerminator`: a return-like terminator of `region` saying unreachable.
     fn unreachable_terminator(&mut self, body: &mut Body<'a>, at: At, loc: Option<Str<'a>>, region: RegionId) -> Result<OpId, Error>;
+
+    /// `canConvertMultiSuccessorBranchOp`: whether [`Self::branch_region_op`] takes `op`, a
+    /// terminator with several successors; asked before the IR changes.
+    fn can_convert_multi_successor(&self, _body: &Body<'a>, _op: OpId) -> bool {
+        true
+    }
 }
 
 /// An edge: successor `index` of terminator `term` (the block holding it is wherever it now is).
@@ -907,8 +913,16 @@ impl<'i, 'a> Lift<'i, 'a> {
     /// `checkTransformationPreconditions`: reported on the op as `emitOpError` does.
     fn preconditions(&self, body: &mut Body<'a>) -> bool {
         let blocks = body[self.region].blocks.to_vec();
-        for (i, &b) in blocks.iter().enumerate() {
-            if i > 0 && self.preds(b).is_empty() {
+        // Every block reachable from the entry (a cycle of unreachable blocks is unreachable too).
+        let mut reachable = alloc::collections::BTreeSet::new();
+        let mut stack = vec![blocks[0]];
+        while let Some(b) = stack.pop() {
+            if reachable.insert(b) {
+                stack.extend(body.successors(b).iter().copied());
+            }
+        }
+        for &b in &blocks {
+            if !reachable.contains(&b) {
                 if let Some(first) = body.first_op(b) {
                     let msg = alloc::format!("'{}' op transformation does not support unreachable blocks", body[first].name);
                     body.emit_error(first, msg);
@@ -942,6 +956,18 @@ impl<'i, 'a> Lift<'i, 'a> {
                     body.emit_error(o, msg);
                     return false;
                 }
+            }
+        }
+        // Every multi-successor terminator converts, before anything changes.
+        for &b in &blocks {
+            if body.successors(b).len() <= 1 {
+                continue;
+            }
+            let t = Lift::term(body, b);
+            if !self.interface.can_convert_multi_successor(body, t) {
+                let msg = alloc::format!("'{}' op cannot convert unknown control flow op to structured control flow", body[t].name);
+                body.emit_error(t, msg);
+                return false;
             }
         }
         true

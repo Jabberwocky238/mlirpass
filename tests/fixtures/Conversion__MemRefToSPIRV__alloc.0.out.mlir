@@ -51,8 +51,8 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %20 = spirv.ShiftLeftLogical %19, %16 : i32, i32
     %21 = spirv.SDiv %14, %cst2_i32 : i32
     %22 = spirv.AccessChain %__workgroup_mem__0_addr[%cst0_i32, %21] : !spirv.ptr<!spirv.struct<(!spirv.array<10 x i32>)>, Workgroup>, i32, i32 -> !spirv.ptr<i32, Workgroup>
-    %23 = spirv.AtomicAnd <Workgroup> <AcquireRelease> %22, %18 : !spirv.ptr<i32, Workgroup>
-    %24 = spirv.AtomicOr <Workgroup> <AcquireRelease> %22, %20 : !spirv.ptr<i32, Workgroup>
+    %23 = spirv.AtomicAnd <Workgroup> <AcquireRelease|WorkgroupMemory> %22, %18 : !spirv.ptr<i32, Workgroup>
+    %24 = spirv.AtomicOr <Workgroup> <AcquireRelease|WorkgroupMemory> %22, %20 : !spirv.ptr<i32, Workgroup>
     return
   }
 }
@@ -139,6 +139,27 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Kernel
 // -----
 module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader], [SPV_KHR_storage_buffer_storage_class]>, #spirv.resource_limits<>>} {
   func.func @zero_size() {
+    return
+  }
+}
+
+// -----
+module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader], [SPV_KHR_storage_buffer_storage_class]>, #spirv.resource_limits<>>} {
+  spirv.GlobalVariable @__workgroup_mem__0 : !spirv.ptr<!spirv.struct<(!spirv.array<20 x vector<2xf32>>)>, Workgroup>
+  func.func @alloc_dealloc_workgroup_mem_complex_f32(%arg0: index, %arg1: index) {
+    %cst5_i32 = spirv.Constant 5 : i32
+    %cst0_i32 = spirv.Constant 0 : i32
+    %0 = builtin.unrealized_conversion_cast %arg1 : index to i32
+    %1 = builtin.unrealized_conversion_cast %arg0 : index to i32
+    %__workgroup_mem__0_addr = spirv.mlir.addressof @__workgroup_mem__0 : !spirv.ptr<!spirv.struct<(!spirv.array<20 x vector<2xf32>>)>, Workgroup>
+    %2 = spirv.IMul %1, %cst5_i32 : i32
+    %3 = spirv.IAdd %0, %2 : i32
+    %4 = spirv.AccessChain %__workgroup_mem__0_addr[%cst0_i32, %3] : !spirv.ptr<!spirv.struct<(!spirv.array<20 x vector<2xf32>>)>, Workgroup>, i32, i32 -> !spirv.ptr<vector<2xf32>, Workgroup>
+    %5 = spirv.Load "Workgroup" %4 : vector<2xf32>
+    %6 = spirv.IMul %1, %cst5_i32 : i32
+    %7 = spirv.IAdd %0, %6 : i32
+    %8 = spirv.AccessChain %__workgroup_mem__0_addr[%cst0_i32, %7] : !spirv.ptr<!spirv.struct<(!spirv.array<20 x vector<2xf32>>)>, Workgroup>, i32, i32 -> !spirv.ptr<vector<2xf32>, Workgroup>
+    spirv.Store "Workgroup" %8, %5 : vector<2xf32>
     return
   }
 }

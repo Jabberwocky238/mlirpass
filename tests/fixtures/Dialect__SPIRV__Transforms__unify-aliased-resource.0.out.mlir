@@ -331,6 +331,7 @@ module {
 }
 
 // -----
+// -----
 module {
   spirv.module Logical GLSL450 {
     spirv.func @main(%arg0: !spirv.ptr<!spirv.struct<(!spirv.rtarray<f32, stride=4> [0])>, StorageBuffer>) "None" {

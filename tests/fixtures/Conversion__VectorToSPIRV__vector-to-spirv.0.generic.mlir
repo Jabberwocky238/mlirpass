@@ -119,12 +119,10 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (vector<2xf32>) -> (vector<1xf32>, f32), sym_name = "extract"}> ({
+  "func.func"() <{function_type = (vector<2xf32>) -> f32, sym_name = "extract"}> ({
   ^bb0(%arg0: vector<2xf32>):
-    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [0 : i32]}> : (vector<2xf32>) -> f32
-    %1 = "builtin.unrealized_conversion_cast"(%0) : (f32) -> vector<1xf32>
-    %2 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<2xf32>) -> f32
-    "func.return"(%1, %2) : (vector<1xf32>, f32) -> ()
+    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<2xf32>) -> f32
+    "func.return"(%0) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -719,6 +717,147 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi32>) -> i32, sym_name = "reduction_and"}> ({
+  ^bb0(%arg0: vector<4xi32>):
+    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [0 : i32]}> : (vector<4xi32>) -> i32
+    %1 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<4xi32>) -> i32
+    %2 = "spirv.CompositeExtract"(%arg0) <{indices = [2 : i32]}> : (vector<4xi32>) -> i32
+    %3 = "spirv.CompositeExtract"(%arg0) <{indices = [3 : i32]}> : (vector<4xi32>) -> i32
+    %4 = "spirv.BitwiseAnd"(%0, %1) : (i32, i32) -> i32
+    %5 = "spirv.BitwiseAnd"(%4, %2) : (i32, i32) -> i32
+    %6 = "spirv.BitwiseAnd"(%5, %3) : (i32, i32) -> i32
+    "func.return"(%6) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi32>, i32) -> i32, sym_name = "reduction_and_acc"}> ({
+  ^bb0(%arg0: vector<3xi32>, %arg1: i32):
+    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [0 : i32]}> : (vector<3xi32>) -> i32
+    %1 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<3xi32>) -> i32
+    %2 = "spirv.CompositeExtract"(%arg0) <{indices = [2 : i32]}> : (vector<3xi32>) -> i32
+    %3 = "spirv.BitwiseAnd"(%0, %1) : (i32, i32) -> i32
+    %4 = "spirv.BitwiseAnd"(%3, %2) : (i32, i32) -> i32
+    %5 = "spirv.BitwiseAnd"(%4, %arg1) : (i32, i32) -> i32
+    "func.return"(%5) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi32>) -> i32, sym_name = "reduction_or"}> ({
+  ^bb0(%arg0: vector<4xi32>):
+    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [0 : i32]}> : (vector<4xi32>) -> i32
+    %1 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<4xi32>) -> i32
+    %2 = "spirv.CompositeExtract"(%arg0) <{indices = [2 : i32]}> : (vector<4xi32>) -> i32
+    %3 = "spirv.CompositeExtract"(%arg0) <{indices = [3 : i32]}> : (vector<4xi32>) -> i32
+    %4 = "spirv.BitwiseOr"(%0, %1) : (i32, i32) -> i32
+    %5 = "spirv.BitwiseOr"(%4, %2) : (i32, i32) -> i32
+    %6 = "spirv.BitwiseOr"(%5, %3) : (i32, i32) -> i32
+    "func.return"(%6) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi32>, i32) -> i32, sym_name = "reduction_or_acc"}> ({
+  ^bb0(%arg0: vector<3xi32>, %arg1: i32):
+    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [0 : i32]}> : (vector<3xi32>) -> i32
+    %1 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<3xi32>) -> i32
+    %2 = "spirv.CompositeExtract"(%arg0) <{indices = [2 : i32]}> : (vector<3xi32>) -> i32
+    %3 = "spirv.BitwiseOr"(%0, %1) : (i32, i32) -> i32
+    %4 = "spirv.BitwiseOr"(%3, %2) : (i32, i32) -> i32
+    %5 = "spirv.BitwiseOr"(%4, %arg1) : (i32, i32) -> i32
+    "func.return"(%5) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi32>) -> i32, sym_name = "reduction_xor"}> ({
+  ^bb0(%arg0: vector<4xi32>):
+    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [0 : i32]}> : (vector<4xi32>) -> i32
+    %1 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<4xi32>) -> i32
+    %2 = "spirv.CompositeExtract"(%arg0) <{indices = [2 : i32]}> : (vector<4xi32>) -> i32
+    %3 = "spirv.CompositeExtract"(%arg0) <{indices = [3 : i32]}> : (vector<4xi32>) -> i32
+    %4 = "spirv.BitwiseXor"(%0, %1) : (i32, i32) -> i32
+    %5 = "spirv.BitwiseXor"(%4, %2) : (i32, i32) -> i32
+    %6 = "spirv.BitwiseXor"(%5, %3) : (i32, i32) -> i32
+    "func.return"(%6) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi32>, i32) -> i32, sym_name = "reduction_xor_acc"}> ({
+  ^bb0(%arg0: vector<3xi32>, %arg1: i32):
+    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [0 : i32]}> : (vector<3xi32>) -> i32
+    %1 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<3xi32>) -> i32
+    %2 = "spirv.CompositeExtract"(%arg0) <{indices = [2 : i32]}> : (vector<3xi32>) -> i32
+    %3 = "spirv.BitwiseXor"(%0, %1) : (i32, i32) -> i32
+    %4 = "spirv.BitwiseXor"(%3, %2) : (i32, i32) -> i32
+    %5 = "spirv.BitwiseXor"(%4, %arg1) : (i32, i32) -> i32
+    "func.return"(%5) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi1>) -> i1, sym_name = "reduction_or_bool"}> ({
+  ^bb0(%arg0: vector<4xi1>):
+    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [0 : i32]}> : (vector<4xi1>) -> i1
+    %1 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<4xi1>) -> i1
+    %2 = "spirv.CompositeExtract"(%arg0) <{indices = [2 : i32]}> : (vector<4xi1>) -> i1
+    %3 = "spirv.CompositeExtract"(%arg0) <{indices = [3 : i32]}> : (vector<4xi1>) -> i1
+    %4 = "spirv.Any"(%arg0) : (vector<4xi1>) -> i1
+    "func.return"(%4) : (i1) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi1>) -> i1, sym_name = "reduction_and_bool"}> ({
+  ^bb0(%arg0: vector<4xi1>):
+    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [0 : i32]}> : (vector<4xi1>) -> i1
+    %1 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<4xi1>) -> i1
+    %2 = "spirv.CompositeExtract"(%arg0) <{indices = [2 : i32]}> : (vector<4xi1>) -> i1
+    %3 = "spirv.CompositeExtract"(%arg0) <{indices = [3 : i32]}> : (vector<4xi1>) -> i1
+    %4 = "spirv.All"(%arg0) : (vector<4xi1>) -> i1
+    "func.return"(%4) : (i1) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi1>, i1) -> i1, sym_name = "reduction_or_bool_acc"}> ({
+  ^bb0(%arg0: vector<4xi1>, %arg1: i1):
+    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [0 : i32]}> : (vector<4xi1>) -> i1
+    %1 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<4xi1>) -> i1
+    %2 = "spirv.CompositeExtract"(%arg0) <{indices = [2 : i32]}> : (vector<4xi1>) -> i1
+    %3 = "spirv.CompositeExtract"(%arg0) <{indices = [3 : i32]}> : (vector<4xi1>) -> i1
+    %4 = "spirv.Any"(%arg0) : (vector<4xi1>) -> i1
+    %5 = "spirv.LogicalOr"(%4, %arg1) : (i1, i1) -> i1
+    "func.return"(%5) : (i1) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi1>, i1) -> i1, sym_name = "reduction_and_bool_acc"}> ({
+  ^bb0(%arg0: vector<4xi1>, %arg1: i1):
+    %0 = "spirv.CompositeExtract"(%arg0) <{indices = [0 : i32]}> : (vector<4xi1>) -> i1
+    %1 = "spirv.CompositeExtract"(%arg0) <{indices = [1 : i32]}> : (vector<4xi1>) -> i1
+    %2 = "spirv.CompositeExtract"(%arg0) <{indices = [2 : i32]}> : (vector<4xi1>) -> i1
+    %3 = "spirv.CompositeExtract"(%arg0) <{indices = [3 : i32]}> : (vector<4xi1>) -> i1
+    %4 = "spirv.All"(%arg0) : (vector<4xi1>) -> i1
+    %5 = "spirv.LogicalAnd"(%4, %arg1) : (i1, i1) -> i1
+    "func.return"(%5) : (i1) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (vector<4xbf16>, vector<4xbf16>) -> bf16, sym_name = "reduction_bf16_addf_mulf"}> ({
   ^bb0(%arg0: vector<4xbf16>, %arg1: vector<4xbf16>):
     %0 = "arith.mulf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>}> : (vector<4xbf16>, vector<4xbf16>) -> vector<4xbf16>
@@ -769,120 +908,155 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<4xi8>, sym_name = "step_i8"}> ({
+    %0 = "spirv.Constant"() <{value = 0 : i8}> : () -> i8
+    %1 = "spirv.Constant"() <{value = 1 : i8}> : () -> i8
+    %2 = "spirv.Constant"() <{value = 2 : i8}> : () -> i8
+    %3 = "spirv.Constant"() <{value = 3 : i8}> : () -> i8
+    %4 = "spirv.CompositeConstruct"(%0, %1, %2, %3) : (i8, i8, i8, i8) -> vector<4xi8>
+    "func.return"(%4) : (vector<4xi8>) -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int8, Shader], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<1xi16>, sym_name = "step_size1_i16"}> ({
+    %0 = "spirv.Constant"() <{value = 0 : i16}> : () -> i16
+    %1 = "builtin.unrealized_conversion_cast"(%0) : (i16) -> vector<1xi16>
+    "func.return"(%1) : (vector<1xi16>) -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int16, Shader], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> vector<4xf32>, sym_name = "vector_load"}> ({
-  ^bb0(%arg11: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
-    %70 = "builtin.unrealized_conversion_cast"(%arg11) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
-    %71 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %72 = "builtin.unrealized_conversion_cast"(%71) : (index) -> i32
-    %73 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
-    %74 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %75 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %76 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
-    %77 = "spirv.AccessChain"(%70, %74, %72) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
-    %78 = "spirv.Bitcast"(%77) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
-    %79 = "spirv.Load"(%78) : (!spirv.ptr<vector<4xf32>, StorageBuffer>) -> vector<4xf32>
-    "func.return"(%79) : (vector<4xf32>) -> ()
+  ^bb0(%arg13: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
+    %79 = "builtin.unrealized_conversion_cast"(%arg13) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
+    %80 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %81 = "builtin.unrealized_conversion_cast"(%80) : (index) -> i32
+    %82 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %83 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %84 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %85 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %86 = "spirv.AccessChain"(%79, %83, %81) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
+    %87 = "spirv.Bitcast"(%86) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
+    %88 = "spirv.Load"(%87) : (!spirv.ptr<vector<4xf32>, StorageBuffer>) -> vector<4xf32>
+    "func.return"(%88) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> vector<1xf32>, sym_name = "vector_load_single_elem"}> ({
-  ^bb0(%arg10: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
-    %60 = "builtin.unrealized_conversion_cast"(%arg10) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
-    %61 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %62 = "builtin.unrealized_conversion_cast"(%61) : (index) -> i32
-    %63 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
-    %64 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %65 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %66 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
-    %67 = "spirv.AccessChain"(%60, %64, %62) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
-    %68 = "spirv.Load"(%67) : (!spirv.ptr<f32, StorageBuffer>) -> f32
-    %69 = "builtin.unrealized_conversion_cast"(%68) : (f32) -> vector<1xf32>
-    "func.return"(%69) : (vector<1xf32>) -> ()
+  ^bb0(%arg12: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
+    %69 = "builtin.unrealized_conversion_cast"(%arg12) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
+    %70 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %71 = "builtin.unrealized_conversion_cast"(%70) : (index) -> i32
+    %72 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %73 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %74 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %75 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %76 = "spirv.AccessChain"(%69, %73, %71) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
+    %77 = "spirv.Load"(%76) : (!spirv.ptr<f32, StorageBuffer>) -> f32
+    %78 = "builtin.unrealized_conversion_cast"(%77) : (f32) -> vector<1xf32>
+    "func.return"(%78) : (vector<1xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> vector<4xf32>, sym_name = "vector_load_aligned"}> ({
-  ^bb0(%arg9: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
-    %51 = "builtin.unrealized_conversion_cast"(%arg9) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
-    %52 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %53 = "builtin.unrealized_conversion_cast"(%52) : (index) -> i32
-    %54 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %55 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %56 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
-    %57 = "spirv.AccessChain"(%51, %54, %53) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
-    %58 = "spirv.Bitcast"(%57) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
-    %59 = "spirv.Load"(%58) <{alignment = 8 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<vector<4xf32>, StorageBuffer>) -> vector<4xf32>
-    "func.return"(%59) : (vector<4xf32>) -> ()
+  ^bb0(%arg11: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
+    %60 = "builtin.unrealized_conversion_cast"(%arg11) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
+    %61 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %62 = "builtin.unrealized_conversion_cast"(%61) : (index) -> i32
+    %63 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %64 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %65 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %66 = "spirv.AccessChain"(%60, %63, %62) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
+    %67 = "spirv.Bitcast"(%66) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
+    %68 = "spirv.Load"(%67) <{alignment = 8 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<vector<4xf32>, StorageBuffer>) -> vector<4xf32>
+    "func.return"(%68) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4x4xf32, #spirv.storage_class<StorageBuffer>>) -> vector<4xf32>, sym_name = "vector_load_2d"}> ({
-  ^bb0(%arg8: memref<4x4xf32, #spirv.storage_class<StorageBuffer>>):
-    %37 = "builtin.unrealized_conversion_cast"(%arg8) : (memref<4x4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<16 x f32, stride=4> [0])>, StorageBuffer>
-    %38 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %39 = "builtin.unrealized_conversion_cast"(%38) : (index) -> i32
-    %40 = "arith.constant"() <{value = 1 : index}> : () -> index
-    %41 = "builtin.unrealized_conversion_cast"(%40) : (index) -> i32
-    %42 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %43 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %44 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
-    %45 = "spirv.IMul"(%39, %44) : (i32, i32) -> i32
-    %46 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
-    %47 = "spirv.IAdd"(%41, %45) : (i32, i32) -> i32
-    %48 = "spirv.AccessChain"(%37, %42, %47) : (!spirv.ptr<!spirv.struct<(!spirv.array<16 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
-    %49 = "spirv.Bitcast"(%48) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
-    %50 = "spirv.Load"(%49) : (!spirv.ptr<vector<4xf32>, StorageBuffer>) -> vector<4xf32>
-    "func.return"(%50) : (vector<4xf32>) -> ()
+  ^bb0(%arg10: memref<4x4xf32, #spirv.storage_class<StorageBuffer>>):
+    %46 = "builtin.unrealized_conversion_cast"(%arg10) : (memref<4x4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<16 x f32, stride=4> [0])>, StorageBuffer>
+    %47 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %48 = "builtin.unrealized_conversion_cast"(%47) : (index) -> i32
+    %49 = "arith.constant"() <{value = 1 : index}> : () -> index
+    %50 = "builtin.unrealized_conversion_cast"(%49) : (index) -> i32
+    %51 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %52 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %53 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
+    %54 = "spirv.IMul"(%48, %53) : (i32, i32) -> i32
+    %55 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %56 = "spirv.IAdd"(%50, %54) : (i32, i32) -> i32
+    %57 = "spirv.AccessChain"(%46, %51, %56) : (!spirv.ptr<!spirv.struct<(!spirv.array<16 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
+    %58 = "spirv.Bitcast"(%57) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
+    %59 = "spirv.Load"(%58) : (!spirv.ptr<vector<4xf32>, StorageBuffer>) -> vector<4xf32>
+    "func.return"(%59) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>, vector<4xf32>) -> (), sym_name = "vector_store"}> ({
-  ^bb0(%arg6: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg7: vector<4xf32>):
-    %29 = "builtin.unrealized_conversion_cast"(%arg6) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
-    %30 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %31 = "builtin.unrealized_conversion_cast"(%30) : (index) -> i32
-    %32 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %33 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %34 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
-    %35 = "spirv.AccessChain"(%29, %32, %31) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
-    %36 = "spirv.Bitcast"(%35) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
-    "spirv.Store"(%36, %arg7) : (!spirv.ptr<vector<4xf32>, StorageBuffer>, vector<4xf32>) -> ()
+  ^bb0(%arg8: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg9: vector<4xf32>):
+    %38 = "builtin.unrealized_conversion_cast"(%arg8) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
+    %39 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %40 = "builtin.unrealized_conversion_cast"(%39) : (index) -> i32
+    %41 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %42 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %43 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %44 = "spirv.AccessChain"(%38, %41, %40) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
+    %45 = "spirv.Bitcast"(%44) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
+    "spirv.Store"(%45, %arg9) : (!spirv.ptr<vector<4xf32>, StorageBuffer>, vector<4xf32>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>, vector<4xf32>) -> (), sym_name = "vector_store_aligned"}> ({
-  ^bb0(%arg4: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg5: vector<4xf32>):
-    %21 = "builtin.unrealized_conversion_cast"(%arg4) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
-    %22 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %23 = "builtin.unrealized_conversion_cast"(%22) : (index) -> i32
-    %24 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %25 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %26 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
-    %27 = "spirv.AccessChain"(%21, %24, %23) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
-    %28 = "spirv.Bitcast"(%27) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
-    "spirv.Store"(%28, %arg5) <{alignment = 8 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<vector<4xf32>, StorageBuffer>, vector<4xf32>) -> ()
+  ^bb0(%arg6: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg7: vector<4xf32>):
+    %30 = "builtin.unrealized_conversion_cast"(%arg6) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
+    %31 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %32 = "builtin.unrealized_conversion_cast"(%31) : (index) -> i32
+    %33 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %34 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %35 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %36 = "spirv.AccessChain"(%30, %33, %32) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
+    %37 = "spirv.Bitcast"(%36) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
+    "spirv.Store"(%37, %arg7) <{alignment = 8 : i32, memory_access = #spirv.memory_access<Aligned>}> : (!spirv.ptr<vector<4xf32>, StorageBuffer>, vector<4xf32>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>, vector<1xf32>) -> (), sym_name = "vector_store_single_elem"}> ({
-  ^bb0(%arg2: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg3: vector<1xf32>):
-    %13 = "builtin.unrealized_conversion_cast"(%arg2) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
-    %14 = "builtin.unrealized_conversion_cast"(%arg3) : (vector<1xf32>) -> f32
-    %15 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %16 = "builtin.unrealized_conversion_cast"(%15) : (index) -> i32
-    %17 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %18 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %19 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
-    %20 = "spirv.AccessChain"(%13, %17, %16) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
-    "spirv.Store"(%20, %14) : (!spirv.ptr<f32, StorageBuffer>, f32) -> ()
+  ^bb0(%arg4: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg5: vector<1xf32>):
+    %22 = "builtin.unrealized_conversion_cast"(%arg4) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>
+    %23 = "builtin.unrealized_conversion_cast"(%arg5) : (vector<1xf32>) -> f32
+    %24 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %25 = "builtin.unrealized_conversion_cast"(%24) : (index) -> i32
+    %26 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %27 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %28 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %29 = "spirv.AccessChain"(%22, %26, %25) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
+    "spirv.Store"(%29, %23) : (!spirv.ptr<f32, StorageBuffer>, f32) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4x4xf32, #spirv.storage_class<StorageBuffer>>, vector<4xf32>) -> (), sym_name = "vector_store_2d"}> ({
-  ^bb0(%arg0: memref<4x4xf32, #spirv.storage_class<StorageBuffer>>, %arg1: vector<4xf32>):
-    %0 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<4x4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<16 x f32, stride=4> [0])>, StorageBuffer>
-    %1 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %2 = "builtin.unrealized_conversion_cast"(%1) : (index) -> i32
-    %3 = "arith.constant"() <{value = 1 : index}> : () -> index
-    %4 = "builtin.unrealized_conversion_cast"(%3) : (index) -> i32
+  ^bb0(%arg2: memref<4x4xf32, #spirv.storage_class<StorageBuffer>>, %arg3: vector<4xf32>):
+    %9 = "builtin.unrealized_conversion_cast"(%arg2) : (memref<4x4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<16 x f32, stride=4> [0])>, StorageBuffer>
+    %10 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %11 = "builtin.unrealized_conversion_cast"(%10) : (index) -> i32
+    %12 = "arith.constant"() <{value = 1 : index}> : () -> index
+    %13 = "builtin.unrealized_conversion_cast"(%12) : (index) -> i32
+    %14 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %15 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %16 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
+    %17 = "spirv.IMul"(%11, %16) : (i32, i32) -> i32
+    %18 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %19 = "spirv.IAdd"(%13, %17) : (i32, i32) -> i32
+    %20 = "spirv.AccessChain"(%9, %14, %19) : (!spirv.ptr<!spirv.struct<(!spirv.array<16 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
+    %21 = "spirv.Bitcast"(%20) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
+    "spirv.Store"(%21, %arg3) : (!spirv.ptr<vector<4xf32>, StorageBuffer>, vector<4xf32>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (memref<4xindex, #spirv.storage_class<StorageBuffer>>, vector<4xindex>) -> (), sym_name = "vector_store_index"}> ({
+  ^bb0(%arg0: memref<4xindex, #spirv.storage_class<StorageBuffer>>, %arg1: vector<4xindex>):
+    %0 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<4xindex, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i32, stride=4> [0])>, StorageBuffer>
+    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (vector<4xindex>) -> vector<4xi32>
+    %2 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %3 = "builtin.unrealized_conversion_cast"(%2) : (index) -> i32
+    %4 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
     %5 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %6 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %7 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
-    %8 = "spirv.IMul"(%2, %7) : (i32, i32) -> i32
-    %9 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
-    %10 = "spirv.IAdd"(%4, %8) : (i32, i32) -> i32
-    %11 = "spirv.AccessChain"(%0, %5, %10) : (!spirv.ptr<!spirv.struct<(!spirv.array<16 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
-    %12 = "spirv.Bitcast"(%11) : (!spirv.ptr<f32, StorageBuffer>) -> !spirv.ptr<vector<4xf32>, StorageBuffer>
-    "spirv.Store"(%12, %arg1) : (!spirv.ptr<vector<4xf32>, StorageBuffer>, vector<4xf32>) -> ()
+    %6 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %7 = "spirv.AccessChain"(%0, %4, %3) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<i32, StorageBuffer>
+    %8 = "spirv.Bitcast"(%7) : (!spirv.ptr<i32, StorageBuffer>) -> !spirv.ptr<vector<4xi32>, StorageBuffer>
+    "spirv.Store"(%8, %1) : (!spirv.ptr<vector<4xi32>, StorageBuffer>, vector<4xi32>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader], [SPV_KHR_storage_buffer_storage_class]>, #spirv.resource_limits<>>} : () -> ()

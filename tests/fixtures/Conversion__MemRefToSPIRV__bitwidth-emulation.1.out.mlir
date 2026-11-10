@@ -46,6 +46,14 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %11 = builtin.unrealized_conversion_cast %10 : i32 to i16
     return %11 : i16
   }
+  func.func @load_i64(%arg0: memref<10xi64, #spirv.storage_class<StorageBuffer>>, %arg1: index) -> i64 {
+    %0 = builtin.unrealized_conversion_cast %arg1 : index to i64
+    %1 = builtin.unrealized_conversion_cast %arg0 : memref<10xi64, #spirv.storage_class<StorageBuffer>> to !spirv.ptr<!spirv.struct<(!spirv.array<10 x i64, stride=8> [0])>, StorageBuffer>
+    %cst0_i64 = spirv.Constant 0 : i64
+    %2 = spirv.AccessChain %1[%cst0_i64, %0] : !spirv.ptr<!spirv.struct<(!spirv.array<10 x i64, stride=8> [0])>, StorageBuffer>, i64, i64 -> !spirv.ptr<i64, StorageBuffer>
+    %3 = spirv.Load "StorageBuffer" %2 : i64
+    return %3 : i64
+  }
   func.func @load_f32(%arg0: memref<f32, #spirv.storage_class<StorageBuffer>>) {
     %0 = builtin.unrealized_conversion_cast %arg0 : memref<f32, #spirv.storage_class<StorageBuffer>> to !spirv.ptr<!spirv.struct<(!spirv.array<1 x f32, stride=4> [0])>, StorageBuffer>
     %cst0_i64 = spirv.Constant 0 : i64
@@ -61,8 +69,8 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %cst1_i32 = spirv.Constant 1 : i32
     %1 = spirv.Select %arg1, %cst1_i32, %cst0_i32 : i1, i32
     %2 = spirv.AccessChain %0[%cst0_i64, %cst0_i64] : !spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, StorageBuffer>, i64, i64 -> !spirv.ptr<i32, StorageBuffer>
-    %3 = spirv.AtomicAnd <Device> <AcquireRelease> %2, %cst-256_i32 : !spirv.ptr<i32, StorageBuffer>
-    %4 = spirv.AtomicOr <Device> <AcquireRelease> %2, %1 : !spirv.ptr<i32, StorageBuffer>
+    %3 = spirv.AtomicAnd <Device> <AcquireRelease|UniformMemory> %2, %cst-256_i32 : !spirv.ptr<i32, StorageBuffer>
+    %4 = spirv.AtomicOr <Device> <AcquireRelease|UniformMemory> %2, %1 : !spirv.ptr<i32, StorageBuffer>
     return
   }
   func.func @store_i8(%arg0: memref<i8, #spirv.storage_class<StorageBuffer>>, %arg1: i8) {
@@ -73,8 +81,8 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %cst-256_i32 = spirv.Constant -256 : i32
     %2 = spirv.BitwiseAnd %1, %cst255_i32 : i32
     %3 = spirv.AccessChain %0[%cst0_i64, %cst0_i64] : !spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, StorageBuffer>, i64, i64 -> !spirv.ptr<i32, StorageBuffer>
-    %4 = spirv.AtomicAnd <Device> <AcquireRelease> %3, %cst-256_i32 : !spirv.ptr<i32, StorageBuffer>
-    %5 = spirv.AtomicOr <Device> <AcquireRelease> %3, %2 : !spirv.ptr<i32, StorageBuffer>
+    %4 = spirv.AtomicAnd <Device> <AcquireRelease|UniformMemory> %3, %cst-256_i32 : !spirv.ptr<i32, StorageBuffer>
+    %5 = spirv.AtomicOr <Device> <AcquireRelease|UniformMemory> %3, %2 : !spirv.ptr<i32, StorageBuffer>
     return
   }
   func.func @store_i16(%arg0: memref<10xi16, #spirv.storage_class<StorageBuffer>>, %arg1: index, %arg2: i16) {
@@ -93,8 +101,16 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %8 = spirv.ShiftLeftLogical %7, %4 : i32, i64
     %9 = spirv.SDiv %0, %cst2_i64 : i64
     %10 = spirv.AccessChain %1[%cst0_i64, %9] : !spirv.ptr<!spirv.struct<(!spirv.array<5 x i32, stride=4> [0])>, StorageBuffer>, i64, i64 -> !spirv.ptr<i32, StorageBuffer>
-    %11 = spirv.AtomicAnd <Device> <AcquireRelease> %10, %6 : !spirv.ptr<i32, StorageBuffer>
-    %12 = spirv.AtomicOr <Device> <AcquireRelease> %10, %8 : !spirv.ptr<i32, StorageBuffer>
+    %11 = spirv.AtomicAnd <Device> <AcquireRelease|UniformMemory> %10, %6 : !spirv.ptr<i32, StorageBuffer>
+    %12 = spirv.AtomicOr <Device> <AcquireRelease|UniformMemory> %10, %8 : !spirv.ptr<i32, StorageBuffer>
+    return
+  }
+  func.func @store_i64(%arg0: memref<10xi64, #spirv.storage_class<StorageBuffer>>, %arg1: index, %arg2: i64) {
+    %0 = builtin.unrealized_conversion_cast %arg1 : index to i64
+    %1 = builtin.unrealized_conversion_cast %arg0 : memref<10xi64, #spirv.storage_class<StorageBuffer>> to !spirv.ptr<!spirv.struct<(!spirv.array<10 x i64, stride=8> [0])>, StorageBuffer>
+    %cst0_i64 = spirv.Constant 0 : i64
+    %2 = spirv.AccessChain %1[%cst0_i64, %0] : !spirv.ptr<!spirv.struct<(!spirv.array<10 x i64, stride=8> [0])>, StorageBuffer>, i64, i64 -> !spirv.ptr<i64, StorageBuffer>
+    spirv.Store "StorageBuffer" %2, %arg2 : i64
     return
   }
   func.func @store_f32(%arg0: memref<f32, #spirv.storage_class<StorageBuffer>>, %arg1: f32) {
@@ -144,8 +160,8 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %8 = spirv.ShiftLeftLogical %7, %4 : i32, i64
     %9 = spirv.SDiv %0, %cst8_i64 : i64
     %10 = spirv.AccessChain %1[%cst0_i64, %9] : !spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>, i64, i64 -> !spirv.ptr<i32, StorageBuffer>
-    %11 = spirv.AtomicAnd <Device> <AcquireRelease> %10, %6 : !spirv.ptr<i32, StorageBuffer>
-    %12 = spirv.AtomicOr <Device> <AcquireRelease> %10, %8 : !spirv.ptr<i32, StorageBuffer>
+    %11 = spirv.AtomicAnd <Device> <AcquireRelease|UniformMemory> %10, %6 : !spirv.ptr<i32, StorageBuffer>
+    %12 = spirv.AtomicOr <Device> <AcquireRelease|UniformMemory> %10, %8 : !spirv.ptr<i32, StorageBuffer>
     return
   }
 }
@@ -171,8 +187,8 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %cst-256_i32 = spirv.Constant -256 : i32
     %1 = spirv.UConvert %arg1 : i8 to i32
     %2 = spirv.AccessChain %0[%cst0_i64, %cst0_i64] : !spirv.ptr<!spirv.struct<(!spirv.array<1 x i32, stride=4> [0])>, StorageBuffer>, i64, i64 -> !spirv.ptr<i32, StorageBuffer>
-    %3 = spirv.AtomicAnd <Device> <AcquireRelease> %2, %cst-256_i32 : !spirv.ptr<i32, StorageBuffer>
-    %4 = spirv.AtomicOr <Device> <AcquireRelease> %2, %1 : !spirv.ptr<i32, StorageBuffer>
+    %3 = spirv.AtomicAnd <Device> <AcquireRelease|UniformMemory> %2, %cst-256_i32 : !spirv.ptr<i32, StorageBuffer>
+    %4 = spirv.AtomicOr <Device> <AcquireRelease|UniformMemory> %2, %1 : !spirv.ptr<i32, StorageBuffer>
     return
   }
 }

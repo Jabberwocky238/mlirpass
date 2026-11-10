@@ -30,6 +30,28 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (vector<4x3xi32>) -> (), sym_name = "absi_2dvector"}> ({
+  ^bb0(%arg0: vector<4x3xi32>):
+    %0 = "builtin.unrealized_conversion_cast"(%arg0) : (vector<4x3xi32>) -> !llvm.array<4 x vector<3xi32>>
+    %1 = "llvm.mlir.poison"() : () -> !llvm.array<4 x vector<3xi32>>
+    %2 = "llvm.extractvalue"(%0) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %3 = "llvm.intr.abs"(%2) <{is_int_min_poison = false}> : (vector<3xi32>) -> vector<3xi32>
+    %4 = "llvm.insertvalue"(%1, %3) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
+    %5 = "llvm.extractvalue"(%0) <{position = array<i64: 1>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %6 = "llvm.intr.abs"(%5) <{is_int_min_poison = false}> : (vector<3xi32>) -> vector<3xi32>
+    %7 = "llvm.insertvalue"(%4, %6) <{position = array<i64: 1>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
+    %8 = "llvm.extractvalue"(%0) <{position = array<i64: 2>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %9 = "llvm.intr.abs"(%8) <{is_int_min_poison = false}> : (vector<3xi32>) -> vector<3xi32>
+    %10 = "llvm.insertvalue"(%7, %9) <{position = array<i64: 2>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
+    %11 = "llvm.extractvalue"(%0) <{position = array<i64: 3>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %12 = "llvm.intr.abs"(%11) <{is_int_min_poison = false}> : (vector<3xi32>) -> vector<3xi32>
+    %13 = "llvm.insertvalue"(%10, %12) <{position = array<i64: 3>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (f32) -> (), sym_name = "log1p"}> ({
   ^bb0(%arg0: f32):
     %0 = "llvm.mlir.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
@@ -624,6 +646,37 @@
     %0 = "math.absf"(%arg0) <{fastmath = #arith.fastmath<none>}> : (f4E2M1FN) -> f4E2M1FN
     %1 = "math.cos"(%arg0) <{fastmath = #arith.fastmath<none>}> : (f4E2M1FN) -> f4E2M1FN
     %2 = "math.fma"(%arg1, %arg1, %arg2) <{fastmath = #arith.fastmath<none>}> : (f4E2M1FN, f4E2M1FN, f4E2M1FN) -> f4E2M1FN
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64, f64) -> (), sym_name = "experimental_constrained_fma"}> ({
+  ^bb0(%arg0: f64, %arg1: f64, %arg2: f64):
+    %0 = "llvm.intr.experimental.constrained.fma"(%arg0, %arg1, %arg2) <{fpExceptionBehavior = 0 : i64, roundingmode = 1 : i64}> : (f64, f64, f64) -> f64
+    %1 = "llvm.intr.experimental.constrained.fma"(%arg0, %arg1, %arg2) <{fpExceptionBehavior = 0 : i64, roundingmode = 3 : i64}> : (f64, f64, f64) -> f64
+    %2 = "llvm.intr.experimental.constrained.fma"(%arg0, %arg1, %arg2) <{fpExceptionBehavior = 0 : i64, roundingmode = 2 : i64}> : (f64, f64, f64) -> f64
+    %3 = "llvm.intr.experimental.constrained.fma"(%arg0, %arg1, %arg2) <{fpExceptionBehavior = 0 : i64, roundingmode = 0 : i64}> : (f64, f64, f64) -> f64
+    %4 = "llvm.intr.experimental.constrained.fma"(%arg0, %arg1, %arg2) <{fpExceptionBehavior = 0 : i64, roundingmode = 4 : i64}> : (f64, f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xf32>, vector<4xf32>, vector<4xf32>) -> (), sym_name = "experimental_constrained_fma_vector"}> ({
+  ^bb0(%arg0: vector<4xf32>, %arg1: vector<4xf32>, %arg2: vector<4xf32>):
+    %0 = "llvm.intr.experimental.constrained.fma"(%arg0, %arg1, %arg2) <{fpExceptionBehavior = 0 : i64, roundingmode = 1 : i64}> : (vector<4xf32>, vector<4xf32>, vector<4xf32>) -> vector<4xf32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64, f64) -> (), sym_name = "constrained_fma_with_fastmath"}> ({
+  ^bb0(%arg0: f64, %arg1: f64, %arg2: f64):
+    %0 = "llvm.intr.experimental.constrained.fma"(%arg0, %arg1, %arg2) <{fpExceptionBehavior = 0 : i64, roundingmode = 1 : i64}> : (f64, f64, f64) -> f64
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

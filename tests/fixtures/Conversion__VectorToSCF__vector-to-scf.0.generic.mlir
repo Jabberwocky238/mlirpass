@@ -35,7 +35,7 @@
           %32 = "affine.apply"(%arg0, %arg8) <{map = #map}> : (index, index) -> index
           %33 = "arith.cmpi"(%32, %0) <{predicate = 2 : i64}> : (index, index) -> i1
           %34 = "scf.if"(%33) ({
-            %35 = "memref.load"(%5, %31, %arg1) <{nontemporal = false}> : (memref<7x42xf32>, index, index) -> f32
+            %35 = "memref.load"(%5, %31, %arg1) <{invariant = false, nontemporal = false}> : (memref<7x42xf32>, index, index) -> f32
             %36 = "vector.insert"(%35, %arg9, %arg8) <{static_position = array<i64: -9223372036854775808>}> : (f32, vector<4xf32>, index) -> vector<4xf32>
             "scf.yield"(%36) : (vector<4xf32>) -> ()
           }, {
@@ -50,7 +50,7 @@
           %26 = "affine.apply"(%arg0, %arg6) <{map = #map}> : (index, index) -> index
           %27 = "arith.cmpi"(%26, %0) <{predicate = 2 : i64}> : (index, index) -> i1
           %28 = "scf.if"(%27) ({
-            %29 = "memref.load"(%5, %25, %7) <{nontemporal = false}> : (memref<7x42xf32>, index, index) -> f32
+            %29 = "memref.load"(%5, %25, %7) <{invariant = false, nontemporal = false}> : (memref<7x42xf32>, index, index) -> f32
             %30 = "vector.insert"(%29, %arg7, %arg6) <{static_position = array<i64: -9223372036854775808>}> : (f32, vector<4xf32>, index) -> vector<4xf32>
             "scf.yield"(%30) : (vector<4xf32>) -> ()
           }, {
@@ -65,7 +65,7 @@
           %20 = "affine.apply"(%arg0, %arg4) <{map = #map}> : (index, index) -> index
           %21 = "arith.cmpi"(%20, %0) <{predicate = 2 : i64}> : (index, index) -> i1
           %22 = "scf.if"(%21) ({
-            %23 = "memref.load"(%5, %19, %9) <{nontemporal = false}> : (memref<7x42xf32>, index, index) -> f32
+            %23 = "memref.load"(%5, %19, %9) <{invariant = false, nontemporal = false}> : (memref<7x42xf32>, index, index) -> f32
             %24 = "vector.insert"(%23, %arg5, %arg4) <{static_position = array<i64: -9223372036854775808>}> : (f32, vector<4xf32>, index) -> vector<4xf32>
             "scf.yield"(%24) : (vector<4xf32>) -> ()
           }, {
@@ -80,7 +80,7 @@
           %14 = "affine.apply"(%arg0, %arg2) <{map = #map}> : (index, index) -> index
           %15 = "arith.cmpi"(%14, %0) <{predicate = 2 : i64}> : (index, index) -> i1
           %16 = "scf.if"(%15) ({
-            %17 = "memref.load"(%5, %13, %11) <{nontemporal = false}> : (memref<7x42xf32>, index, index) -> f32
+            %17 = "memref.load"(%5, %13, %11) <{invariant = false, nontemporal = false}> : (memref<7x42xf32>, index, index) -> f32
             %18 = "vector.insert"(%17, %arg3, %arg2) <{static_position = array<i64: -9223372036854775808>}> : (f32, vector<4xf32>, index) -> vector<4xf32>
             "scf.yield"(%18) : (vector<4xf32>) -> ()
           }, {
@@ -129,7 +129,7 @@
                 %15 = "affine.apply"(%arg6, %arg10) <{map = #map}> : (index, index) -> index
                 %16 = "arith.cmpi"(%15, %0) <{predicate = 2 : i64}> : (index, index) -> i1
                 %17 = "scf.if"(%16) ({
-                  %18 = "memref.load"(%5, %arg3, %arg4, %arg5, %14, %arg7) <{nontemporal = false}> : (memref<7x?x?x42x?xf32>, index, index, index, index, index) -> f32
+                  %18 = "memref.load"(%5, %arg3, %arg4, %arg5, %14, %arg7) <{invariant = false, nontemporal = false}> : (memref<7x?x?x42x?xf32>, index, index, index, index, index) -> f32
                   %19 = "vector.insert"(%18, %arg11, %arg10) <{static_position = array<i64: -9223372036854775808>}> : (f32, vector<4xf32>, index) -> vector<4xf32>
                   "scf.yield"(%19) : (vector<4xf32>) -> ()
                 }, {
@@ -143,7 +143,7 @@
                 %9 = "affine.apply"(%arg8, %arg6) <{map = #map1}> : (index, index) -> index
                 %10 = "arith.cmpi"(%9, %0) <{predicate = 2 : i64}> : (index, index) -> i1
                 %11 = "scf.if"(%10) ({
-                  %12 = "memref.load"(%5, %arg3, %arg4, %arg5, %8, %arg7) <{nontemporal = false}> : (memref<7x?x?x42x?xf32>, index, index, index, index, index) -> f32
+                  %12 = "memref.load"(%5, %arg3, %arg4, %arg5, %8, %arg7) <{invariant = false, nontemporal = false}> : (memref<7x?x?x42x?xf32>, index, index, index, index, index) -> f32
                   %13 = "vector.insert"(%12, %arg9, %arg8) <{static_position = array<i64: -9223372036854775808>}> : (f32, vector<4xf32>, index) -> vector<4xf32>
                   "scf.yield"(%13) : (vector<4xf32>) -> ()
                 }, {
@@ -206,7 +206,7 @@
                     %17 = "affine.apply"(%arg4, %arg10) <{map = #map}> : (index, index) -> index
                     %18 = "arith.cmpi"(%arg0, %17) <{predicate = 4 : i64}> : (index, index) -> i1
                     %19 = "scf.if"(%18) ({
-                      %20 = "memref.load"(%7, %16, %arg5, %arg6, %13) <{nontemporal = false}> : (memref<?x?x?x?xf32>, index, index, index, index) -> f32
+                      %20 = "memref.load"(%7, %16, %arg5, %arg6, %13) <{invariant = false, nontemporal = false}> : (memref<?x?x?x?xf32>, index, index, index, index) -> f32
                       %21 = "vector.insert"(%20, %arg11, %arg10) <{static_position = array<i64: -9223372036854775808>}> : (f32, vector<3xf32>, index) -> vector<3xf32>
                       "scf.yield"(%21) : (vector<3xf32>) -> ()
                     }, {
@@ -280,7 +280,7 @@
                     "scf.for"(%3, %1, %1) ({
                     ^bb0(%arg10: index):
                       %16 = "affine.apply"(%arg6, %arg10) <{map = #map}> : (index, index) -> index
-                      %17 = "memref.load"(%15, %arg8, %arg9, %arg10) <{nontemporal = false}> : (memref<3x4x1xvector<5xf32>>, index, index, index) -> vector<5xf32>
+                      %17 = "memref.load"(%15, %arg8, %arg9, %arg10) <{invariant = false, nontemporal = false}> : (memref<3x4x1xvector<5xf32>>, index, index, index) -> vector<5xf32>
                       "vector.transfer_write"(%17, %5, %10, %14, %16, %arg7) <{in_bounds = [false], operandSegmentSizes = array<i32: 1, 1, 4, 0>, permutation_map = #map1}> : (vector<5xf32>, memref<?x?x?x?xf32>, index, index, index, index) -> ()
                       "scf.yield"() : () -> ()
                     }) : (index, index, index) -> ()
@@ -361,7 +361,7 @@
       %7 = "arith.cmpi"(%5, %6) <{predicate = 4 : i64}> : (index, index) -> i1
       "scf.if"(%7) ({
         %8 = "affine.apply"(%arg3, %arg1) <{map = #map}> : (index, index) -> index
-        %9 = "memref.load"(%4, %arg3) <{nontemporal = false}> : (memref<3xvector<15xf32>>, index) -> vector<15xf32>
+        %9 = "memref.load"(%4, %arg3) <{invariant = false, nontemporal = false}> : (memref<3xvector<15xf32>>, index) -> vector<15xf32>
         "vector.transfer_write"(%9, %arg0, %8, %arg1) <{in_bounds = [false], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<15xf32>, memref<?x?xf32>, index, index) -> ()
         "scf.yield"() : () -> ()
       }, {
@@ -388,7 +388,7 @@
     "scf.for"(%2, %1, %0) ({
     ^bb0(%arg3: index):
       %5 = "affine.apply"(%arg3, %arg1) <{map = #map}> : (index, index) -> index
-      %6 = "memref.load"(%4, %arg3) <{nontemporal = false}> : (memref<3xvector<15xf32>>, index) -> vector<15xf32>
+      %6 = "memref.load"(%4, %arg3) <{invariant = false, nontemporal = false}> : (memref<3xvector<15xf32>>, index) -> vector<15xf32>
       "vector.transfer_write"(%6, %arg0, %5, %arg1) <{in_bounds = [true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<15xf32>, memref<?x?xf32>, index, index) -> ()
       "scf.yield"() : () -> ()
     }) : (index, index, index) -> ()
@@ -458,7 +458,7 @@
       %6 = "memref.dim"(%arg1, %0) : (memref<?x?x?x?xf32>, index) -> index
       %7 = "arith.cmpi"(%6, %arg2) <{predicate = 4 : i64}> : (index, index) -> i1
       "scf.if"(%7) ({
-        %8 = "memref.load"(%5, %arg2) <{nontemporal = false}> : (memref<3xvector<3xf32>>, index) -> vector<3xf32>
+        %8 = "memref.load"(%5, %arg2) <{invariant = false, nontemporal = false}> : (memref<3xvector<3xf32>>, index) -> vector<3xf32>
         "vector.transfer_write"(%8, %arg1, %3, %3, %arg2, %3) <{in_bounds = [false], operandSegmentSizes = array<i32: 1, 1, 4, 0>, permutation_map = #map1}> : (vector<3xf32>, memref<?x?x?x?xf32>, index, index, index, index) -> ()
         "scf.yield"() : () -> ()
       }, {
@@ -481,7 +481,7 @@
     %7 = "arith.constant"() <{value = dense<0.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
     %8 = "scf.for"(%4, %5, %6, %7) ({
     ^bb0(%arg4: index, %arg5: vector<4xf32>):
-      %9 = "memref.load"(%arg3, %4, %arg4) <{nontemporal = false}> : (memref<8x4xf32, #map>, index, index) -> f32
+      %9 = "memref.load"(%arg3, %4, %arg4) <{invariant = false, nontemporal = false}> : (memref<8x4xf32, #map>, index, index) -> f32
       %10 = "vector.insert"(%9, %arg5, %arg4) <{static_position = array<i64: -9223372036854775808>}> : (f32, vector<4xf32>, index) -> vector<4xf32>
       "scf.yield"(%10) : (vector<4xf32>) -> ()
     }) : (index, index, index, vector<4xf32>) -> vector<4xf32>
@@ -691,7 +691,7 @@
     %9 = "vector.type_cast"(%5) : (memref<vector<3x[4]xi1>>) -> memref<3xvector<[4]xi1>>
     "scf.for"(%3, %0, %2) ({
     ^bb0(%arg1: index):
-      %11 = "memref.load"(%9, %arg1) <{nontemporal = false}> : (memref<3xvector<[4]xi1>>, index) -> vector<[4]xi1>
+      %11 = "memref.load"(%9, %arg1) <{invariant = false, nontemporal = false}> : (memref<3xvector<[4]xi1>>, index) -> vector<[4]xi1>
       %12 = "vector.transfer_read"(%arg0, %arg1, %3, %1, %11) <{in_bounds = [true], operandSegmentSizes = array<i32: 1, 2, 1, 1>, permutation_map = #map}> : (memref<3x?xf32>, index, index, f32, vector<[4]xi1>) -> vector<[4]xf32>
       "memref.store"(%12, %8, %arg1) <{nontemporal = false}> : (vector<[4]xf32>, memref<3xvector<[4]xf32>>, index) -> ()
       "scf.yield"() : () -> ()
@@ -719,8 +719,8 @@
     %8 = "vector.type_cast"(%4) : (memref<vector<3x[4]xi1>>) -> memref<3xvector<[4]xi1>>
     "scf.for"(%2, %0, %1) ({
     ^bb0(%arg2: index):
-      %9 = "memref.load"(%7, %arg2) <{nontemporal = false}> : (memref<3xvector<[4]xf32>>, index) -> vector<[4]xf32>
-      %10 = "memref.load"(%8, %arg2) <{nontemporal = false}> : (memref<3xvector<[4]xi1>>, index) -> vector<[4]xi1>
+      %9 = "memref.load"(%7, %arg2) <{invariant = false, nontemporal = false}> : (memref<3xvector<[4]xf32>>, index) -> vector<[4]xf32>
+      %10 = "memref.load"(%8, %arg2) <{invariant = false, nontemporal = false}> : (memref<3xvector<[4]xi1>>, index) -> vector<[4]xi1>
       "vector.transfer_write"(%9, %arg1, %arg2, %2, %10) <{in_bounds = [true], operandSegmentSizes = array<i32: 1, 1, 2, 1>, permutation_map = #map}> : (vector<[4]xf32>, memref<3x?xf32>, index, index, vector<[4]xi1>) -> ()
       "scf.yield"() : () -> ()
     }) : (index, index, index) -> ()
@@ -776,7 +776,7 @@
         %27 = "vector.type_cast"(%26) : (memref<1x1xvector<1x1xi32>>) -> memref<1x1x1xvector<1xi32>>
         "scf.for"(%20, %18, %18) ({
         ^bb0(%arg11: index):
-          %28 = "memref.load"(%24, %arg9) <{nontemporal = false}> : (memref<1xvector<1xi1>>, index) -> vector<1xi1>
+          %28 = "memref.load"(%24, %arg9) <{invariant = false, nontemporal = false}> : (memref<1xvector<1xi1>>, index) -> vector<1xi1>
           %29 = "vector.transfer_read"(%arg7, %arg9, %20, %20, %20, %19, %28) <{in_bounds = [true], operandSegmentSizes = array<i32: 1, 4, 1, 1>, permutation_map = #map1}> : (memref<1x1x1x1xi32>, index, index, index, index, i32, vector<1xi1>) -> vector<1xi32>
           "memref.store"(%29, %27, %arg9, %arg10, %arg11) <{nontemporal = false}> : (vector<1xi32>, memref<1x1x1xvector<1xi32>>, index, index, index) -> ()
           "scf.yield"() : () -> ()
@@ -807,7 +807,7 @@
       %15 = "vector.type_cast"(%12) : (memref<1xvector<2x[4]xi1>>) -> memref<1x2xvector<[4]xi1>>
       "scf.for"(%6, %5, %3) ({
       ^bb0(%arg6: index):
-        %16 = "memref.load"(%15, %arg5, %arg6) <{nontemporal = false}> : (memref<1x2xvector<[4]xi1>>, index, index) -> vector<[4]xi1>
+        %16 = "memref.load"(%15, %arg5, %arg6) <{invariant = false, nontemporal = false}> : (memref<1x2xvector<[4]xi1>>, index, index) -> vector<[4]xi1>
         %17 = "vector.transfer_read"(%arg3, %arg5, %arg6, %6, %4, %16) <{in_bounds = [true], operandSegmentSizes = array<i32: 1, 3, 1, 1>, permutation_map = #map2}> : (memref<1x2x?xf32>, index, index, index, f32, vector<[4]xi1>) -> vector<[4]xf32>
         "memref.store"(%17, %14, %arg5, %arg6) <{nontemporal = false}> : (vector<[4]xf32>, memref<1x2xvector<[4]xf32>>, index, index) -> ()
         "scf.yield"() : () -> ()
@@ -883,7 +883,7 @@
     "scf.for"(%2, %1, %0) ({
     ^bb0(%arg4: index):
       %6 = "affine.apply"(%arg4, %arg2) <{map = #map}> : (index, index) -> index
-      %7 = "memref.load"(%5, %arg4) <{nontemporal = false}> : (memref<4xvector<[4]xf32>>, index) -> vector<[4]xf32>
+      %7 = "memref.load"(%5, %arg4) <{invariant = false, nontemporal = false}> : (memref<4xvector<[4]xf32>>, index) -> vector<[4]xf32>
       "vector.transfer_write"(%7, %arg1, %6, %arg3) <{in_bounds = [true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<[4]xf32>, memref<?x?xf32>, index, index) -> ()
       "scf.yield"() : () -> ()
     }) : (index, index, index) -> ()
@@ -908,7 +908,7 @@
     "scf.for"(%2, %1, %0) ({
     ^bb0(%arg4: index):
       %7 = "affine.apply"(%arg4, %arg2) <{map = #map}> : (index, index) -> index
-      %8 = "memref.load"(%6, %arg4) <{nontemporal = false}> : (memref<4xvector<[4]xf32>>, index) -> vector<[4]xf32>
+      %8 = "memref.load"(%6, %arg4) <{invariant = false, nontemporal = false}> : (memref<4xvector<[4]xf32>>, index) -> vector<[4]xf32>
       "vector.transfer_write"(%8, %arg1, %7, %arg3) <{in_bounds = [true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<[4]xf32>, memref<?x?xf32>, index, index) -> ()
       "scf.yield"() : () -> ()
     }) : (index, index, index) -> ()

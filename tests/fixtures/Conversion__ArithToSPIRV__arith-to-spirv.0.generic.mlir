@@ -1,60 +1,78 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (i32, i32) -> (), sym_name = "int32_scalar"}> ({
-  ^bb0(%arg29: i32, %arg30: i32):
-    %64 = "spirv.IAdd"(%arg29, %arg30) : (i32, i32) -> i32
-    %65 = "spirv.ISub"(%arg29, %arg30) : (i32, i32) -> i32
-    %66 = "spirv.IMul"(%arg29, %arg30) : (i32, i32) -> i32
-    %67 = "spirv.SDiv"(%arg29, %arg30) : (i32, i32) -> i32
-    %68 = "spirv.UDiv"(%arg29, %arg30) : (i32, i32) -> i32
-    %69 = "spirv.UMod"(%arg29, %arg30) : (i32, i32) -> i32
+  ^bb0(%arg33: i32, %arg34: i32):
+    %74 = "spirv.IAdd"(%arg33, %arg34) : (i32, i32) -> i32
+    %75 = "spirv.ISub"(%arg33, %arg34) : (i32, i32) -> i32
+    %76 = "spirv.IMul"(%arg33, %arg34) : (i32, i32) -> i32
+    %77 = "spirv.SDiv"(%arg33, %arg34) : (i32, i32) -> i32
+    %78 = "spirv.UDiv"(%arg33, %arg34) : (i32, i32) -> i32
+    %79 = "spirv.UMod"(%arg33, %arg34) : (i32, i32) -> i32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> (), sym_name = "int32_scalar_srem"}> ({
-  ^bb0(%arg27: i32, %arg28: i32):
-    %58 = "spirv.GL.SAbs"(%arg27) : (i32) -> i32
-    %59 = "spirv.GL.SAbs"(%arg28) : (i32) -> i32
-    %60 = "spirv.UMod"(%58, %59) : (i32, i32) -> i32
-    %61 = "spirv.IEqual"(%arg27, %58) : (i32, i32) -> i1
-    %62 = "spirv.SNegate"(%60) : (i32) -> i32
-    %63 = "spirv.Select"(%61, %60, %62) : (i1, i32, i32) -> i32
+  ^bb0(%arg31: i32, %arg32: i32):
+    %68 = "spirv.GL.SAbs"(%arg31) : (i32) -> i32
+    %69 = "spirv.GL.SAbs"(%arg32) : (i32) -> i32
+    %70 = "spirv.UMod"(%68, %69) : (i32, i32) -> i32
+    %71 = "spirv.IEqual"(%arg31, %68) : (i32, i32) -> i1
+    %72 = "spirv.SNegate"(%70) : (i32) -> i32
+    %73 = "spirv.Select"(%71, %70, %72) : (i1, i32, i32) -> i32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> (), sym_name = "index_scalar"}> ({
-  ^bb0(%arg25: index, %arg26: index):
-    %50 = "builtin.unrealized_conversion_cast"(%arg26) : (index) -> i32
-    %51 = "builtin.unrealized_conversion_cast"(%arg25) : (index) -> i32
-    %52 = "spirv.IAdd"(%51, %50) : (i32, i32) -> i32
-    %53 = "spirv.ISub"(%51, %50) : (i32, i32) -> i32
-    %54 = "spirv.IMul"(%51, %50) : (i32, i32) -> i32
-    %55 = "spirv.SDiv"(%51, %50) : (i32, i32) -> i32
-    %56 = "spirv.UDiv"(%51, %50) : (i32, i32) -> i32
-    %57 = "spirv.UMod"(%51, %50) : (i32, i32) -> i32
+  ^bb0(%arg29: index, %arg30: index):
+    %60 = "builtin.unrealized_conversion_cast"(%arg30) : (index) -> i32
+    %61 = "builtin.unrealized_conversion_cast"(%arg29) : (index) -> i32
+    %62 = "spirv.IAdd"(%61, %60) : (i32, i32) -> i32
+    %63 = "spirv.ISub"(%61, %60) : (i32, i32) -> i32
+    %64 = "spirv.IMul"(%61, %60) : (i32, i32) -> i32
+    %65 = "spirv.SDiv"(%61, %60) : (i32, i32) -> i32
+    %66 = "spirv.UDiv"(%61, %60) : (i32, i32) -> i32
+    %67 = "spirv.UMod"(%61, %60) : (i32, i32) -> i32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> (), sym_name = "index_scalar_srem"}> ({
-  ^bb0(%arg23: index, %arg24: index):
-    %42 = "builtin.unrealized_conversion_cast"(%arg24) : (index) -> i32
-    %43 = "builtin.unrealized_conversion_cast"(%arg23) : (index) -> i32
-    %44 = "spirv.GL.SAbs"(%43) : (i32) -> i32
-    %45 = "spirv.GL.SAbs"(%42) : (i32) -> i32
-    %46 = "spirv.UMod"(%44, %45) : (i32, i32) -> i32
-    %47 = "spirv.IEqual"(%43, %44) : (i32, i32) -> i1
-    %48 = "spirv.SNegate"(%46) : (i32) -> i32
-    %49 = "spirv.Select"(%47, %46, %48) : (i1, i32, i32) -> i32
+  ^bb0(%arg27: index, %arg28: index):
+    %52 = "builtin.unrealized_conversion_cast"(%arg28) : (index) -> i32
+    %53 = "builtin.unrealized_conversion_cast"(%arg27) : (index) -> i32
+    %54 = "spirv.GL.SAbs"(%53) : (i32) -> i32
+    %55 = "spirv.GL.SAbs"(%52) : (i32) -> i32
+    %56 = "spirv.UMod"(%54, %55) : (i32, i32) -> i32
+    %57 = "spirv.IEqual"(%53, %54) : (i32, i32) -> i1
+    %58 = "spirv.SNegate"(%56) : (i32) -> i32
+    %59 = "spirv.Select"(%57, %56, %58) : (i1, i32, i32) -> i32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> (i32, i1), sym_name = "int32_scalar_addui_extended"}> ({
+  ^bb0(%arg25: i32, %arg26: i32):
+    %47 = "spirv.IAddCarry"(%arg25, %arg26) : (i32, i32) -> !spirv.struct<(i32, i32)>
+    %48 = "spirv.CompositeExtract"(%47) <{indices = [0 : i32]}> : (!spirv.struct<(i32, i32)>) -> i32
+    %49 = "spirv.CompositeExtract"(%47) <{indices = [1 : i32]}> : (!spirv.struct<(i32, i32)>) -> i32
+    %50 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %51 = "spirv.IEqual"(%49, %50) : (i32, i32) -> i1
+    "func.return"(%48, %51) : (i32, i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xi32>, vector<4xi32>) -> (vector<4xi32>, vector<4xi1>), sym_name = "int32_vector_addui_extended"}> ({
+  ^bb0(%arg23: vector<4xi32>, %arg24: vector<4xi32>):
+    %42 = "spirv.IAddCarry"(%arg23, %arg24) : (vector<4xi32>, vector<4xi32>) -> !spirv.struct<(vector<4xi32>, vector<4xi32>)>
+    %43 = "spirv.CompositeExtract"(%42) <{indices = [0 : i32]}> : (!spirv.struct<(vector<4xi32>, vector<4xi32>)>) -> vector<4xi32>
+    %44 = "spirv.CompositeExtract"(%42) <{indices = [1 : i32]}> : (!spirv.struct<(vector<4xi32>, vector<4xi32>)>) -> vector<4xi32>
+    %45 = "spirv.Constant"() <{value = dense<1> : vector<4xi32>}> : () -> vector<4xi32>
+    %46 = "spirv.IEqual"(%44, %45) : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+    "func.return"(%43, %46) : (vector<4xi32>, vector<4xi1>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32, i32) -> (i32, i1), sym_name = "int32_scalar_subui_extended"}> ({
   ^bb0(%arg21: i32, %arg22: i32):
-    %37 = "spirv.IAddCarry"(%arg21, %arg22) : (i32, i32) -> !spirv.struct<(i32, i32)>
+    %37 = "spirv.ISubBorrow"(%arg21, %arg22) : (i32, i32) -> !spirv.struct<(i32, i32)>
     %38 = "spirv.CompositeExtract"(%37) <{indices = [0 : i32]}> : (!spirv.struct<(i32, i32)>) -> i32
     %39 = "spirv.CompositeExtract"(%37) <{indices = [1 : i32]}> : (!spirv.struct<(i32, i32)>) -> i32
     %40 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
     %41 = "spirv.IEqual"(%39, %40) : (i32, i32) -> i1
     "func.return"(%38, %41) : (i32, i1) -> ()
   }) : () -> ()
-  "func.func"() <{function_type = (vector<4xi32>, vector<4xi32>) -> (vector<4xi32>, vector<4xi1>), sym_name = "int32_vector_addui_extended"}> ({
+  "func.func"() <{function_type = (vector<4xi32>, vector<4xi32>) -> (vector<4xi32>, vector<4xi1>), sym_name = "int32_vector_subui_extended"}> ({
   ^bb0(%arg19: vector<4xi32>, %arg20: vector<4xi32>):
-    %32 = "spirv.IAddCarry"(%arg19, %arg20) : (vector<4xi32>, vector<4xi32>) -> !spirv.struct<(vector<4xi32>, vector<4xi32>)>
+    %32 = "spirv.ISubBorrow"(%arg19, %arg20) : (vector<4xi32>, vector<4xi32>) -> !spirv.struct<(vector<4xi32>, vector<4xi32>)>
     %33 = "spirv.CompositeExtract"(%32) <{indices = [0 : i32]}> : (!spirv.struct<(vector<4xi32>, vector<4xi32>)>) -> vector<4xi32>
     %34 = "spirv.CompositeExtract"(%32) <{indices = [1 : i32]}> : (!spirv.struct<(vector<4xi32>, vector<4xi32>)>) -> vector<4xi32>
     %35 = "spirv.Constant"() <{value = dense<1> : vector<4xi32>}> : () -> vector<4xi32>
@@ -142,31 +160,45 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = (i32, i32) -> (), sym_name = "bitwise_scalar"}> ({
-  ^bb0(%arg10: i32, %arg11: i32):
-    %15 = "spirv.BitwiseAnd"(%arg10, %arg11) : (i32, i32) -> i32
-    %16 = "spirv.BitwiseOr"(%arg10, %arg11) : (i32, i32) -> i32
-    %17 = "spirv.BitwiseXor"(%arg10, %arg11) : (i32, i32) -> i32
+  ^bb0(%arg14: i32, %arg15: i32):
+    %21 = "spirv.BitwiseAnd"(%arg14, %arg15) : (i32, i32) -> i32
+    %22 = "spirv.BitwiseOr"(%arg14, %arg15) : (i32, i32) -> i32
+    %23 = "spirv.BitwiseXor"(%arg14, %arg15) : (i32, i32) -> i32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<4xi32>, vector<4xi32>) -> (), sym_name = "bitwise_vector"}> ({
-  ^bb0(%arg8: vector<4xi32>, %arg9: vector<4xi32>):
-    %12 = "spirv.BitwiseAnd"(%arg8, %arg9) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
-    %13 = "spirv.BitwiseOr"(%arg8, %arg9) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
-    %14 = "spirv.BitwiseXor"(%arg8, %arg9) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+  ^bb0(%arg12: vector<4xi32>, %arg13: vector<4xi32>):
+    %18 = "spirv.BitwiseAnd"(%arg12, %arg13) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    %19 = "spirv.BitwiseOr"(%arg12, %arg13) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    %20 = "spirv.BitwiseXor"(%arg12, %arg13) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i1, i1) -> (), sym_name = "logical_scalar"}> ({
-  ^bb0(%arg6: i1, %arg7: i1):
-    %9 = "spirv.LogicalAnd"(%arg6, %arg7) : (i1, i1) -> i1
-    %10 = "spirv.LogicalOr"(%arg6, %arg7) : (i1, i1) -> i1
-    %11 = "spirv.LogicalNotEqual"(%arg6, %arg7) : (i1, i1) -> i1
+  ^bb0(%arg10: i1, %arg11: i1):
+    %15 = "spirv.LogicalAnd"(%arg10, %arg11) : (i1, i1) -> i1
+    %16 = "spirv.LogicalOr"(%arg10, %arg11) : (i1, i1) -> i1
+    %17 = "spirv.LogicalNotEqual"(%arg10, %arg11) : (i1, i1) -> i1
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<4xi1>, vector<4xi1>) -> (), sym_name = "logical_vector"}> ({
+  ^bb0(%arg8: vector<4xi1>, %arg9: vector<4xi1>):
+    %12 = "spirv.LogicalAnd"(%arg8, %arg9) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    %13 = "spirv.LogicalOr"(%arg8, %arg9) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    %14 = "spirv.LogicalNotEqual"(%arg8, %arg9) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i1, i1) -> (), sym_name = "bool_arith_scalar"}> ({
+  ^bb0(%arg6: i1, %arg7: i1):
+    %9 = "spirv.LogicalNotEqual"(%arg6, %arg7) : (i1, i1) -> i1
+    %10 = "spirv.LogicalNotEqual"(%arg6, %arg7) : (i1, i1) -> i1
+    %11 = "spirv.LogicalAnd"(%arg6, %arg7) : (i1, i1) -> i1
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xi1>, vector<4xi1>) -> (), sym_name = "bool_arith_vector"}> ({
   ^bb0(%arg4: vector<4xi1>, %arg5: vector<4xi1>):
-    %6 = "spirv.LogicalAnd"(%arg4, %arg5) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
-    %7 = "spirv.LogicalOr"(%arg4, %arg5) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
-    %8 = "spirv.LogicalNotEqual"(%arg4, %arg5) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    %6 = "spirv.LogicalNotEqual"(%arg4, %arg5) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    %7 = "spirv.LogicalNotEqual"(%arg4, %arg5) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
+    %8 = "spirv.LogicalAnd"(%arg4, %arg5) : (vector<4xi1>, vector<4xi1>) -> vector<4xi1>
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> (), sym_name = "shift_scalar"}> ({
@@ -181,6 +213,32 @@
     %0 = "spirv.ShiftLeftLogical"(%arg0, %arg1) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
     %1 = "spirv.ShiftRightArithmetic"(%arg0, %arg1) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
     %2 = "spirv.ShiftRightLogical"(%arg0, %arg1) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1, i1) -> (), sym_name = "bool_shift_div_rem_scalar"}> ({
+  ^bb0(%arg2: i1, %arg3: i1):
+    %4 = "spirv.LogicalNot"(%arg3) : (i1) -> i1
+    %5 = "spirv.LogicalAnd"(%arg2, %4) : (i1, i1) -> i1
+    %6 = "spirv.LogicalNot"(%arg3) : (i1) -> i1
+    %7 = "spirv.LogicalAnd"(%arg2, %6) : (i1, i1) -> i1
+    %8 = "spirv.LogicalAnd"(%arg2, %arg3) : (i1, i1) -> i1
+    %9 = "spirv.LogicalAnd"(%arg2, %arg3) : (i1, i1) -> i1
+    %10 = "spirv.LogicalNot"(%arg3) : (i1) -> i1
+    %11 = "spirv.LogicalAnd"(%arg2, %10) : (i1, i1) -> i1
+    %12 = "spirv.LogicalNot"(%arg3) : (i1) -> i1
+    %13 = "spirv.LogicalAnd"(%arg2, %12) : (i1, i1) -> i1
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i1, i1) -> (), sym_name = "bool_minmax_scalar"}> ({
+  ^bb0(%arg0: i1, %arg1: i1):
+    %0 = "spirv.LogicalOr"(%arg0, %arg1) : (i1, i1) -> i1
+    %1 = "spirv.LogicalAnd"(%arg0, %arg1) : (i1, i1) -> i1
+    %2 = "spirv.LogicalAnd"(%arg0, %arg1) : (i1, i1) -> i1
+    %3 = "spirv.LogicalOr"(%arg0, %arg1) : (i1, i1) -> i1
     "func.return"() : () -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [], []>, #spirv.resource_limits<>>} : () -> ()
@@ -860,77 +918,69 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (i32, i32) -> (), sym_name = "int32_scalar"}> ({
   ^bb0(%arg20: i32, %arg21: i32):
-    %44 = "spirv.IAdd"(%arg20, %arg21) : (i32, i32) -> i32
-    %45 = "spirv.ISub"(%arg20, %arg21) : (i32, i32) -> i32
-    %46 = "spirv.IMul"(%arg20, %arg21) : (i32, i32) -> i32
-    %47 = "spirv.SDiv"(%arg20, %arg21) : (i32, i32) -> i32
-    %48 = "spirv.UDiv"(%arg20, %arg21) : (i32, i32) -> i32
-    %49 = "spirv.UMod"(%arg20, %arg21) : (i32, i32) -> i32
-    %50 = "spirv.GL.SMax"(%arg20, %arg21) : (i32, i32) -> i32
-    %51 = "spirv.GL.UMax"(%arg20, %arg21) : (i32, i32) -> i32
-    %52 = "spirv.GL.SMin"(%arg20, %arg21) : (i32, i32) -> i32
-    %53 = "spirv.GL.UMin"(%arg20, %arg21) : (i32, i32) -> i32
+    %36 = "spirv.IAdd"(%arg20, %arg21) : (i32, i32) -> i32
+    %37 = "spirv.ISub"(%arg20, %arg21) : (i32, i32) -> i32
+    %38 = "spirv.IMul"(%arg20, %arg21) : (i32, i32) -> i32
+    %39 = "spirv.SDiv"(%arg20, %arg21) : (i32, i32) -> i32
+    %40 = "spirv.UDiv"(%arg20, %arg21) : (i32, i32) -> i32
+    %41 = "spirv.UMod"(%arg20, %arg21) : (i32, i32) -> i32
+    %42 = "spirv.GL.SMax"(%arg20, %arg21) : (i32, i32) -> i32
+    %43 = "spirv.GL.UMax"(%arg20, %arg21) : (i32, i32) -> i32
+    %44 = "spirv.GL.SMin"(%arg20, %arg21) : (i32, i32) -> i32
+    %45 = "spirv.GL.UMin"(%arg20, %arg21) : (i32, i32) -> i32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> (), sym_name = "scalar_srem"}> ({
   ^bb0(%arg18: i32, %arg19: i32):
-    %38 = "spirv.GL.SAbs"(%arg18) : (i32) -> i32
-    %39 = "spirv.GL.SAbs"(%arg19) : (i32) -> i32
-    %40 = "spirv.UMod"(%38, %39) : (i32, i32) -> i32
-    %41 = "spirv.IEqual"(%arg18, %38) : (i32, i32) -> i1
-    %42 = "spirv.SNegate"(%40) : (i32) -> i32
-    %43 = "spirv.Select"(%41, %40, %42) : (i1, i32, i32) -> i32
+    %30 = "spirv.GL.SAbs"(%arg18) : (i32) -> i32
+    %31 = "spirv.GL.SAbs"(%arg19) : (i32) -> i32
+    %32 = "spirv.UMod"(%30, %31) : (i32, i32) -> i32
+    %33 = "spirv.IEqual"(%arg18, %30) : (i32, i32) -> i1
+    %34 = "spirv.SNegate"(%32) : (i32) -> i32
+    %35 = "spirv.Select"(%33, %32, %34) : (i1, i32, i32) -> i32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (f32) -> (), sym_name = "float32_unary_scalar"}> ({
   ^bb0(%arg17: f32):
-    %37 = "spirv.FNegate"(%arg17) : (f32) -> f32
+    %29 = "spirv.FNegate"(%arg17) : (f32) -> f32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (f32, f32) -> (), sym_name = "float32_binary_scalar"}> ({
   ^bb0(%arg15: f32, %arg16: f32):
-    %32 = "spirv.FAdd"(%arg15, %arg16) : (f32, f32) -> f32
-    %33 = "spirv.FSub"(%arg15, %arg16) : (f32, f32) -> f32
-    %34 = "spirv.FMul"(%arg15, %arg16) : (f32, f32) -> f32
-    %35 = "spirv.FDiv"(%arg15, %arg16) : (f32, f32) -> f32
-    %36 = "spirv.FRem"(%arg15, %arg16) : (f32, f32) -> f32
+    %24 = "spirv.FAdd"(%arg15, %arg16) : (f32, f32) -> f32
+    %25 = "spirv.FSub"(%arg15, %arg16) : (f32, f32) -> f32
+    %26 = "spirv.FMul"(%arg15, %arg16) : (f32, f32) -> f32
+    %27 = "spirv.FDiv"(%arg15, %arg16) : (f32, f32) -> f32
+    %28 = "spirv.FRem"(%arg15, %arg16) : (f32, f32) -> f32
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (f32, f32) -> f32, sym_name = "float32_minimumf_scalar"}> ({
   ^bb0(%arg13: f32, %arg14: f32):
-    %27 = "spirv.GL.FMin"(%arg13, %arg14) : (f32, f32) -> f32
-    %28 = "spirv.IsNan"(%arg13) : (f32) -> i1
-    %29 = "spirv.IsNan"(%arg14) : (f32) -> i1
-    %30 = "spirv.Select"(%28, %arg13, %27) : (i1, f32, f32) -> f32
-    %31 = "spirv.Select"(%29, %arg14, %30) : (i1, f32, f32) -> f32
-    "func.return"(%31) : (f32) -> ()
+    %19 = "spirv.GL.FMin"(%arg13, %arg14) : (f32, f32) -> f32
+    %20 = "spirv.IsNan"(%arg13) : (f32) -> i1
+    %21 = "spirv.IsNan"(%arg14) : (f32) -> i1
+    %22 = "spirv.Select"(%20, %arg13, %19) : (i1, f32, f32) -> f32
+    %23 = "spirv.Select"(%21, %arg14, %22) : (i1, f32, f32) -> f32
+    "func.return"(%23) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (f32, f32) -> f32, sym_name = "float32_minnumf_scalar"}> ({
   ^bb0(%arg11: f32, %arg12: f32):
-    %22 = "spirv.GL.FMin"(%arg11, %arg12) : (f32, f32) -> f32
-    %23 = "spirv.IsNan"(%arg11) : (f32) -> i1
-    %24 = "spirv.IsNan"(%arg12) : (f32) -> i1
-    %25 = "spirv.Select"(%23, %arg12, %22) : (i1, f32, f32) -> f32
-    %26 = "spirv.Select"(%24, %arg11, %25) : (i1, f32, f32) -> f32
-    "func.return"(%26) : (f32) -> ()
+    %18 = "spirv.GL.NMin"(%arg11, %arg12) : (f32, f32) -> f32
+    "func.return"(%18) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<2xf32>, vector<2xf32>) -> vector<2xf32>, sym_name = "float32_maximumf_scalar"}> ({
   ^bb0(%arg9: vector<2xf32>, %arg10: vector<2xf32>):
-    %17 = "spirv.GL.FMax"(%arg9, %arg10) : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
-    %18 = "spirv.IsNan"(%arg9) : (vector<2xf32>) -> vector<2xi1>
-    %19 = "spirv.IsNan"(%arg10) : (vector<2xf32>) -> vector<2xi1>
-    %20 = "spirv.Select"(%18, %arg9, %17) : (vector<2xi1>, vector<2xf32>, vector<2xf32>) -> vector<2xf32>
-    %21 = "spirv.Select"(%19, %arg10, %20) : (vector<2xi1>, vector<2xf32>, vector<2xf32>) -> vector<2xf32>
-    "func.return"(%21) : (vector<2xf32>) -> ()
+    %13 = "spirv.GL.FMax"(%arg9, %arg10) : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
+    %14 = "spirv.IsNan"(%arg9) : (vector<2xf32>) -> vector<2xi1>
+    %15 = "spirv.IsNan"(%arg10) : (vector<2xf32>) -> vector<2xi1>
+    %16 = "spirv.Select"(%14, %arg9, %13) : (vector<2xi1>, vector<2xf32>, vector<2xf32>) -> vector<2xf32>
+    %17 = "spirv.Select"(%15, %arg10, %16) : (vector<2xi1>, vector<2xf32>, vector<2xf32>) -> vector<2xf32>
+    "func.return"(%17) : (vector<2xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<2xf32>, vector<2xf32>) -> vector<2xf32>, sym_name = "float32_maxnumf_scalar"}> ({
   ^bb0(%arg7: vector<2xf32>, %arg8: vector<2xf32>):
-    %12 = "spirv.GL.FMax"(%arg7, %arg8) : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
-    %13 = "spirv.IsNan"(%arg7) : (vector<2xf32>) -> vector<2xi1>
-    %14 = "spirv.IsNan"(%arg8) : (vector<2xf32>) -> vector<2xi1>
-    %15 = "spirv.Select"(%13, %arg8, %12) : (vector<2xi1>, vector<2xf32>, vector<2xf32>) -> vector<2xf32>
-    %16 = "spirv.Select"(%14, %arg7, %15) : (vector<2xi1>, vector<2xf32>, vector<2xf32>) -> vector<2xf32>
-    "func.return"(%16) : (vector<2xf32>) -> ()
+    %12 = "spirv.GL.NMax"(%arg7, %arg8) : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
+    "func.return"(%12) : (vector<2xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<2xi8>, vector<4xi64>) -> (), sym_name = "int_vector234"}> ({
   ^bb0(%arg5: vector<2xi8>, %arg6: vector<4xi64>):
@@ -965,18 +1015,69 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<2xi8>, vector<3xi16>) -> (), sym_name = "int_vector23"}> ({
-  ^bb0(%arg1: vector<2xi8>, %arg2: vector<3xi16>):
-    %2 = "builtin.unrealized_conversion_cast"(%arg2) : (vector<3xi16>) -> vector<3xi32>
-    %3 = "builtin.unrealized_conversion_cast"(%arg1) : (vector<2xi8>) -> vector<2xi32>
-    %4 = "spirv.SDiv"(%3, %3) : (vector<2xi32>, vector<2xi32>) -> vector<2xi32>
-    %5 = "spirv.SDiv"(%2, %2) : (vector<3xi32>, vector<3xi32>) -> vector<3xi32>
+  ^bb0(%arg7: vector<2xi8>, %arg8: vector<3xi16>):
+    %29 = "builtin.unrealized_conversion_cast"(%arg8) : (vector<3xi16>) -> vector<3xi32>
+    %30 = "builtin.unrealized_conversion_cast"(%arg7) : (vector<2xi8>) -> vector<2xi32>
+    %31 = "spirv.SDiv"(%30, %30) : (vector<2xi32>, vector<2xi32>) -> vector<2xi32>
+    %32 = "spirv.SDiv"(%29, %29) : (vector<3xi32>, vector<3xi32>) -> vector<3xi32>
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (f16) -> (), sym_name = "float_scalar"}> ({
-  ^bb0(%arg0: f16):
-    %0 = "builtin.unrealized_conversion_cast"(%arg0) : (f16) -> f32
-    %1 = "spirv.FAdd"(%0, %0) : (f32, f32) -> f32
+  ^bb0(%arg6: f16):
+    %27 = "builtin.unrealized_conversion_cast"(%arg6) : (f16) -> f32
+    %28 = "spirv.FAdd"(%27, %27) : (f32, f32) -> f32
     "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8) -> f32, sym_name = "uitofp_i8_emulated_f32"}> ({
+  ^bb0(%arg5: i8):
+    %23 = "builtin.unrealized_conversion_cast"(%arg5) : (i8) -> i32
+    %24 = "spirv.Constant"() <{value = 255 : i32}> : () -> i32
+    %25 = "spirv.BitwiseAnd"(%23, %24) : (i32, i32) -> i32
+    %26 = "spirv.ConvertUToF"(%25) : (i32) -> f32
+    "func.return"(%26) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i16) -> f32, sym_name = "uitofp_i16_emulated_f32"}> ({
+  ^bb0(%arg4: i16):
+    %19 = "builtin.unrealized_conversion_cast"(%arg4) : (i16) -> i32
+    %20 = "spirv.Constant"() <{value = 65535 : i32}> : () -> i32
+    %21 = "spirv.BitwiseAnd"(%19, %20) : (i32, i32) -> i32
+    %22 = "spirv.ConvertUToF"(%21) : (i32) -> f32
+    "func.return"(%22) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xi8>) -> vector<4xf32>, sym_name = "uitofp_vec_i8_emulated_f32"}> ({
+  ^bb0(%arg3: vector<4xi8>):
+    %15 = "builtin.unrealized_conversion_cast"(%arg3) : (vector<4xi8>) -> vector<4xi32>
+    %16 = "spirv.Constant"() <{value = dense<255> : vector<4xi32>}> : () -> vector<4xi32>
+    %17 = "spirv.BitwiseAnd"(%15, %16) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    %18 = "spirv.ConvertUToF"(%17) : (vector<4xi32>) -> vector<4xf32>
+    "func.return"(%18) : (vector<4xf32>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8) -> f32, sym_name = "sitofp_i8_emulated_f32"}> ({
+  ^bb0(%arg2: i8):
+    %10 = "builtin.unrealized_conversion_cast"(%arg2) : (i8) -> i32
+    %11 = "spirv.Constant"() <{value = 24 : i32}> : () -> i32
+    %12 = "spirv.ShiftLeftLogical"(%10, %11) : (i32, i32) -> i32
+    %13 = "spirv.ShiftRightArithmetic"(%12, %11) : (i32, i32) -> i32
+    %14 = "spirv.ConvertSToF"(%13) : (i32) -> f32
+    "func.return"(%14) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i16) -> f32, sym_name = "sitofp_i16_emulated_f32"}> ({
+  ^bb0(%arg1: i16):
+    %5 = "builtin.unrealized_conversion_cast"(%arg1) : (i16) -> i32
+    %6 = "spirv.Constant"() <{value = 16 : i32}> : () -> i32
+    %7 = "spirv.ShiftLeftLogical"(%5, %6) : (i32, i32) -> i32
+    %8 = "spirv.ShiftRightArithmetic"(%7, %6) : (i32, i32) -> i32
+    %9 = "spirv.ConvertSToF"(%8) : (i32) -> f32
+    "func.return"(%9) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xi8>) -> vector<4xf32>, sym_name = "sitofp_vec_i8_emulated_f32"}> ({
+  ^bb0(%arg0: vector<4xi8>):
+    %0 = "builtin.unrealized_conversion_cast"(%arg0) : (vector<4xi8>) -> vector<4xi32>
+    %1 = "spirv.Constant"() <{value = dense<24> : vector<4xi32>}> : () -> vector<4xi32>
+    %2 = "spirv.ShiftLeftLogical"(%0, %1) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    %3 = "spirv.ShiftRightArithmetic"(%2, %1) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    %4 = "spirv.ConvertSToF"(%3) : (vector<4xi32>) -> vector<4xf32>
+    "func.return"(%4) : (vector<4xf32>) -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [], []>, #spirv.resource_limits<>>} : () -> ()
 

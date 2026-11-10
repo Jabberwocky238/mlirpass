@@ -77,10 +77,10 @@
       %72 = "spirv.AccessChain"(%arg9, %66, %71) : (!spirv.ptr<!spirv.struct<(!spirv.array<48 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
       "spirv.Store"(%72, %65) : (!spirv.ptr<f32, StorageBuffer>, f32) -> ()
       "spirv.Return"() : () -> ()
-    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, workgroup_attributions = 0 : i64} : () -> ()
+    }) {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = (memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, index, index, index, index) -> ()}> ({
+    "gpu.func"() <{function_type = (memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, index, index, index, index) -> (), kernel}> ({
     ^bb0(%arg0: memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, %arg1: memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, %arg2: memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, %arg3: index, %arg4: index, %arg5: index, %arg6: index):
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -101,7 +101,7 @@
       %16 = "arith.addf"(%14, %15) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
       "memref.store"(%16, %arg2, %12, %13) : (f32, memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, index, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "load_store_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, sym_name = "load_store_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader], [SPV_KHR_storage_buffer_storage_class]>, #spirv.resource_limits<>>} : () -> ()
 

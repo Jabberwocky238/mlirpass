@@ -1,0 +1,2 @@
+--split-input-file
+--pass-pipeline=builtin.module(tosa-to-spirv-tosa{custom-op-domain-to-opcode=my:custom:0,com.example.accel:42})

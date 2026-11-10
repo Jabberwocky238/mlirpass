@@ -1744,6 +1744,17 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (index) -> (index, index, index, index), sym_name = "split_delinearize_empty_linearize_basis"}> ({
+  ^bb0(%arg0: index):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "affine.linearize_index"(%0, %arg0, %0) <{disjoint, operandSegmentSizes = array<i32: 3, 0>, static_basis = array<i64: 4, 2, 2>}> : (index, index, index) -> index
+    %2:4 = "affine.delinearize_index"(%1) <{static_basis = array<i64: 2, 2, 2, 2>}> : (index) -> (index, index, index, index)
+    "func.return"(%2#0, %2#1, %2#2, %2#3) : (index, index, index, index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (index, index, index, index) -> index, sym_name = "linearize_unit_basis_disjoint"}> ({
   ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index):
     %0 = "affine.linearize_index"(%arg0, %arg1, %arg2, %arg3) <{disjoint, operandSegmentSizes = array<i32: 3, 1>, static_basis = array<i64: 3, 1, -9223372036854775808>}> : (index, index, index, index) -> index
@@ -2140,6 +2151,149 @@
       "affine.yield"(%arg0) : (index) -> ()
     }) : (index) -> index
     "func.return"(%1) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> index, sym_name = "linearize_dont_fold_poison_basis"}> ({
+  ^bb0(%arg0: index):
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> index
+    %1 = "affine.linearize_index"(%arg0, %0) <{disjoint = false, operandSegmentSizes = array<i32: 1, 1>, static_basis = array<i64: -9223372036854775808>}> : (index, index) -> index
+    "func.return"(%1) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> index, sym_name = "linearize_dont_fold_poison_index"}> ({
+  ^bb0(%arg0: index):
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> index
+    %1 = "arith.constant"() <{value = 4 : index}> : () -> index
+    %2 = "affine.linearize_index"(%0, %arg0, %1) <{disjoint = false, operandSegmentSizes = array<i32: 2, 1>, static_basis = array<i64: -9223372036854775808>}> : (index, index, index) -> index
+    "func.return"(%2) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<16xindex>, vector<16xindex>) -> (vector<16xindex>, vector<16xindex>), sym_name = "cancel_linearize_delinearize_vector"}> ({
+  ^bb0(%arg0: vector<16xindex>, %arg1: vector<16xindex>):
+    %0 = "affine.linearize_index"(%arg0, %arg1) <{disjoint, operandSegmentSizes = array<i32: 2, 0>, static_basis = array<i64: 4, 8>}> : (vector<16xindex>, vector<16xindex>) -> vector<16xindex>
+    %1:2 = "affine.delinearize_index"(%0) <{static_basis = array<i64: 4, 8>}> : (vector<16xindex>) -> (vector<16xindex>, vector<16xindex>)
+    "func.return"(%1#0, %1#1) : (vector<16xindex>, vector<16xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<16xindex>) -> (vector<16xindex>, vector<16xindex>, vector<16xindex>), sym_name = "drop_unit_extent_vector"}> ({
+  ^bb0(%arg0: vector<16xindex>):
+    %0:3 = "affine.delinearize_index"(%arg0) <{static_basis = array<i64: 4, 1, 8>}> : (vector<16xindex>) -> (vector<16xindex>, vector<16xindex>, vector<16xindex>)
+    "func.return"(%0#0, %0#1, %0#2) : (vector<16xindex>, vector<16xindex>, vector<16xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<8xindex>, vector<8xindex>) -> vector<8xindex>, sym_name = "drop_unit_linearize_vector"}> ({
+  ^bb0(%arg0: vector<8xindex>, %arg1: vector<8xindex>):
+    %0 = "affine.linearize_index"(%arg0, %arg1) <{disjoint, operandSegmentSizes = array<i32: 2, 0>, static_basis = array<i64: 4, 1>}> : (vector<8xindex>, vector<8xindex>) -> vector<8xindex>
+    "func.return"(%0) : (vector<8xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xindex>) -> vector<4xindex>, sym_name = "fold_single_result_vector"}> ({
+  ^bb0(%arg0: vector<4xindex>):
+    %0 = "affine.delinearize_index"(%arg0) <{static_basis = array<i64>}> : (vector<4xindex>) -> vector<4xindex>
+    "func.return"(%0) : (vector<4xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xindex>) -> vector<4xindex>, sym_name = "fold_single_index_vector"}> ({
+  ^bb0(%arg0: vector<4xindex>):
+    %0 = "affine.linearize_index"(%arg0) <{disjoint = false, operandSegmentSizes = array<i32: 1, 0>, static_basis = array<i64>}> : (vector<4xindex>) -> vector<4xindex>
+    "func.return"(%0) : (vector<4xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xindex>, vector<4xindex>, vector<4xindex>) -> (vector<4xindex>, vector<4xindex>, vector<4xindex>), sym_name = "cancel_delinearize_linearize_disjoint_partial_vector"}> ({
+  ^bb0(%arg0: vector<4xindex>, %arg1: vector<4xindex>, %arg2: vector<4xindex>):
+    %0 = "affine.linearize_index"(%arg0, %arg1, %arg2) <{disjoint, operandSegmentSizes = array<i32: 3, 0>, static_basis = array<i64: 3, 2, 32>}> : (vector<4xindex>, vector<4xindex>, vector<4xindex>) -> vector<4xindex>
+    %1:3 = "affine.delinearize_index"(%0) <{static_basis = array<i64: 3, 2, 32>}> : (vector<4xindex>) -> (vector<4xindex>, vector<4xindex>, vector<4xindex>)
+    "func.return"(%1#0, %1#1, %1#2) : (vector<4xindex>, vector<4xindex>, vector<4xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xindex>) -> vector<4xindex>, sym_name = "cancel_linearize_delinearize_exact_vector"}> ({
+  ^bb0(%arg0: vector<4xindex>):
+    %0:3 = "affine.delinearize_index"(%arg0) <{static_basis = array<i64: 2, 4, 8>}> : (vector<4xindex>) -> (vector<4xindex>, vector<4xindex>, vector<4xindex>)
+    %1 = "affine.linearize_index"(%0#0, %0#1, %0#2) <{disjoint = false, operandSegmentSizes = array<i32: 3, 0>, static_basis = array<i64: 2, 4, 8>}> : (vector<4xindex>, vector<4xindex>, vector<4xindex>) -> vector<4xindex>
+    "func.return"(%1) : (vector<4xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xindex>) -> (vector<4xindex>, vector<4xindex>), sym_name = "drop_all_unit_bases_vector"}> ({
+  ^bb0(%arg0: vector<4xindex>):
+    %0:2 = "affine.delinearize_index"(%arg0) <{static_basis = array<i64: 1, 1>}> : (vector<4xindex>) -> (vector<4xindex>, vector<4xindex>)
+    "func.return"(%0#0, %0#1) : (vector<4xindex>, vector<4xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xindex>) -> (vector<4xindex>, vector<4xindex>, vector<4xindex>), sym_name = "drop_all_unit_bases_no_outer_bound_vector"}> ({
+  ^bb0(%arg0: vector<4xindex>):
+    %0:3 = "affine.delinearize_index"(%arg0) <{static_basis = array<i64: 1, 1>}> : (vector<4xindex>) -> (vector<4xindex>, vector<4xindex>, vector<4xindex>)
+    "func.return"(%0#0, %0#1, %0#2) : (vector<4xindex>, vector<4xindex>, vector<4xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<4xindex>, sym_name = "linearize_all_zero_unit_basis_vector"}> ({
+    %0 = "arith.constant"() <{value = dense<0> : vector<4xindex>}> : () -> vector<4xindex>
+    %1 = "affine.linearize_index"(%0, %0) <{disjoint = false, operandSegmentSizes = array<i32: 2, 0>, static_basis = array<i64: 1, 1>}> : (vector<4xindex>, vector<4xindex>) -> vector<4xindex>
+    "func.return"(%1) : (vector<4xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xindex>) -> vector<4xindex>, sym_name = "linearize_one_element_basis_vector"}> ({
+  ^bb0(%arg0: vector<4xindex>):
+    %0 = "affine.linearize_index"(%arg0) <{disjoint = false, operandSegmentSizes = array<i32: 1, 0>, static_basis = array<i64: 8>}> : (vector<4xindex>) -> vector<4xindex>
+    "func.return"(%0) : (vector<4xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xindex>, vector<4xindex>) -> vector<4xindex>, sym_name = "linearize_drop_leading_zero_vector"}> ({
+  ^bb0(%arg0: vector<4xindex>, %arg1: vector<4xindex>):
+    %0 = "arith.constant"() <{value = dense<0> : vector<4xindex>}> : () -> vector<4xindex>
+    %1 = "affine.linearize_index"(%0, %arg1) <{disjoint = false, operandSegmentSizes = array<i32: 2, 0>, static_basis = array<i64: 4, 8>}> : (vector<4xindex>, vector<4xindex>) -> vector<4xindex>
+    "func.return"(%1) : (vector<4xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xindex>, vector<4xindex>, vector<4xindex>) -> (vector<4xindex>, vector<4xindex>, vector<4xindex>, vector<4xindex>), sym_name = "split_delinearize_spanning_final_part_vector"}> ({
+  ^bb0(%arg0: vector<4xindex>, %arg1: vector<4xindex>, %arg2: vector<4xindex>):
+    %0 = "affine.linearize_index"(%arg0, %arg1, %arg2) <{disjoint, operandSegmentSizes = array<i32: 3, 0>, static_basis = array<i64: 3, 2, 32>}> : (vector<4xindex>, vector<4xindex>, vector<4xindex>) -> vector<4xindex>
+    %1:4 = "affine.delinearize_index"(%0) <{static_basis = array<i64: 2, 3, 8, 4>}> : (vector<4xindex>) -> (vector<4xindex>, vector<4xindex>, vector<4xindex>, vector<4xindex>)
+    "func.return"(%1#0, %1#1, %1#2, %1#3) : (vector<4xindex>, vector<4xindex>, vector<4xindex>, vector<4xindex>) -> ()
   }) : () -> ()
 }) : () -> ()
 

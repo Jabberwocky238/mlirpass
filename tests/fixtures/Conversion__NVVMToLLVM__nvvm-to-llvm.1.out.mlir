@@ -21,13 +21,13 @@ module {
     llvm.return
   }
   llvm.func @async_cp(%arg0: !llvm.ptr<3>, %arg1: !llvm.ptr<1>) {
-    nvvm.cp.async.shared.global %arg0, %arg1, 16, cache =  ca : !llvm.ptr<3>, !llvm.ptr<1>
-    nvvm.cp.async.shared.global %arg0, %arg1, 16, cache =  cg : !llvm.ptr<3>, !llvm.ptr<1>
+    nvvm.cp.async.shared.global %arg0, %arg1, 16, cache = ca : !llvm.ptr<3>, !llvm.ptr<1>
+    nvvm.cp.async.shared.global %arg0, %arg1, 16, cache = cg : !llvm.ptr<3>, !llvm.ptr<1>
     llvm.return
   }
   llvm.func @async_cp_zfill(%arg0: !llvm.ptr<3>, %arg1: !llvm.ptr<1>, %arg2: i32) {
-    nvvm.cp.async.shared.global %arg0, %arg1, 16, cache =  cg, %arg2 : !llvm.ptr<3>, !llvm.ptr<1>, i32
-    nvvm.cp.async.shared.global %arg0, %arg1, 4, cache =  ca, %arg2 : !llvm.ptr<3>, !llvm.ptr<1>, i32
+    nvvm.cp.async.shared.global %arg0, %arg1, 16, cache = cg, %arg2 : !llvm.ptr<3>, !llvm.ptr<1>, i32
+    nvvm.cp.async.shared.global %arg0, %arg1, 4, cache = ca, %arg2 : !llvm.ptr<3>, !llvm.ptr<1>, i32
     llvm.return
   }
   llvm.func @cp_async_mbarrier_arrive(%arg0: !llvm.ptr<3>, %arg1: !llvm.ptr) {
@@ -483,8 +483,8 @@ module {
 // -----
 module {
   llvm.func @set_max_register() {
-    nvvm.setmaxregister  increase 232
-    nvvm.setmaxregister  decrease 40
+    nvvm.setmaxregister increase 232
+    nvvm.setmaxregister decrease 40
     llvm.return
   }
 }
@@ -510,15 +510,6 @@ module {
 
 // -----
 module {
-  llvm.func @llvm_nvvm_barrier_arrive(%arg0: i32, %arg1: i32) {
-    llvm.inline_asm has_side_effects asm_dialect = att "bar.arrive 0, $0;", "r" %arg1 : (i32) -> ()
-    llvm.inline_asm has_side_effects asm_dialect = att "bar.arrive $0, $1;", "r,r" %arg0, %arg1 : (i32, i32) -> ()
-    llvm.return
-  }
-}
-
-// -----
-module {
   llvm.func @init_mbarrier(%arg0: !llvm.ptr, %arg1: !llvm.ptr<3>, %arg2: i32, %arg3: i1) {
     llvm.inline_asm has_side_effects asm_dialect = att "mbarrier.init.b64 [$0], $1;", "l,r" %arg0, %arg2 : (!llvm.ptr, i32) -> ()
     llvm.inline_asm has_side_effects asm_dialect = att "@$2 mbarrier.init.b64 [$0], $1;", "l,r,b" %arg0, %arg2, %arg3 : (!llvm.ptr, i32, i1) -> ()
@@ -530,8 +521,15 @@ module {
 module {
   llvm.func @ex2(%arg0: f32, %arg1: i1) {
     %0 = llvm.inline_asm has_side_effects asm_dialect = att "ex2.approx.ftz.f32 $0, $1;", "=f,f" %arg0 : (f32) -> f32
-    %1 = llvm.inline_asm has_side_effects asm_dialect = att "@$1 ex2.approx.ftz.f32 $0, $1;", "=f,f,b" %arg0, %arg1 : (f32, i1) -> f32
+    %1 = llvm.inline_asm has_side_effects asm_dialect = att "@$2 ex2.approx.ftz.f32 $0, $1;", "=f,f,b" %arg0, %arg1 : (f32, i1) -> f32
     llvm.return
+  }
+  llvm.func @multi_return_pred(%arg0: i32, %arg1: i32, %arg2: i1) -> i32 {
+    %0 = llvm.inline_asm has_side_effects asm_dialect = att "@$4 {.reg .pred p; setp.ge.s32 p, $2, $3; selp.s32 $0, $2,$3, p; selp.s32 $1, $2,$3, p;}", "=r,=r,r,r,b" %arg0, %arg1, %arg2 : (i32, i32, i1) -> !llvm.struct<(i32, i32)>
+    %1 = llvm.extractvalue %0[0] : !llvm.struct<(i32, i32)> 
+    %2 = llvm.extractvalue %0[1] : !llvm.struct<(i32, i32)> 
+    %3 = llvm.add %1, %2 : i32
+    llvm.return %3 : i32
   }
   llvm.func @multi_return(%arg0: i32, %arg1: i32) -> i32 {
     %0 = llvm.inline_asm has_side_effects asm_dialect = att "{.reg .pred p; setp.ge.s32 p, $2, $3; selp.s32 $0, $2,$3, p; selp.s32 $1, $2,$3, p;}", "=r,=r,r,r" %arg0, %arg1 : (i32, i32) -> !llvm.struct<(i32, i32)>
@@ -547,8 +545,27 @@ module {
     %3 = llvm.fadd %1, %2 : f32
     llvm.return %3 : f32
   }
+  llvm.func @inline_ptx_multi_rw_pred(%arg0: i32, %arg1: i32, %arg2: f32, %arg3: f32, %arg4: i1) -> f32 {
+    %0 = llvm.inline_asm has_side_effects asm_dialect = att "@$4 {.reg .pred p; setp.ge.s32 p, $2, $3; selp.s32 $0, $2,$3, p; selp.s32 $1, $2,$3, p;}", "=f,=f,r,r,b,0,1" %arg2, %arg3, %arg0, %arg1, %arg4 : (f32, f32, i32, i32, i1) -> !llvm.struct<(f32, f32)>
+    %1 = llvm.extractvalue %0[0] : !llvm.struct<(f32, f32)> 
+    %2 = llvm.extractvalue %0[1] : !llvm.struct<(f32, f32)> 
+    %3 = llvm.fadd %1, %2 : f32
+    llvm.return %3 : f32
+  }
   llvm.func @inline_ptx_multi_rw_r(%arg0: i32, %arg1: i32, %arg2: f32, %arg3: f32) -> f32 {
     %0 = llvm.inline_asm has_side_effects asm_dialect = att "{.reg .pred p; setp.ge.s32 p, $4, $5; selp.s32 $0, $4,$5, p; selp.s32 $1, $4,$5, p; selp.s32 $2, $4,$5, p; selp.s32 $3, $4,$5, p;}", "=f,=f,=r,=r,r,r,0,1" %arg2, %arg3, %arg0, %arg1 : (f32, f32, i32, i32) -> !llvm.struct<(f32, f32, i32, i32)>
+    %1 = llvm.extractvalue %0[0] : !llvm.struct<(f32, f32, i32, i32)> 
+    %2 = llvm.extractvalue %0[1] : !llvm.struct<(f32, f32, i32, i32)> 
+    %3 = llvm.extractvalue %0[2] : !llvm.struct<(f32, f32, i32, i32)> 
+    %4 = llvm.extractvalue %0[3] : !llvm.struct<(f32, f32, i32, i32)> 
+    %5 = llvm.add %3, %4 : i32
+    %6 = llvm.sitofp %5 : i32 to f32
+    %7 = llvm.fadd %1, %2 : f32
+    %8 = llvm.fadd %6, %2 : f32
+    llvm.return %8 : f32
+  }
+  llvm.func @inline_ptx_multi_rw_r_pred(%arg0: i32, %arg1: i32, %arg2: f32, %arg3: f32, %arg4: i1) -> f32 {
+    %0 = llvm.inline_asm has_side_effects asm_dialect = att "@$6 {.reg .pred p; setp.ge.s32 p, $4, $5; selp.s32 $0, $4,$5, p; selp.s32 $1, $4,$5, p; selp.s32 $2, $4,$5, p; selp.s32 $3, $4,$5, p;}", "=f,=f,=r,=r,r,r,b,0,1" %arg2, %arg3, %arg0, %arg1, %arg4 : (f32, f32, i32, i32, i1) -> !llvm.struct<(f32, f32, i32, i32)>
     %1 = llvm.extractvalue %0[0] : !llvm.struct<(f32, f32, i32, i32)> 
     %2 = llvm.extractvalue %0[1] : !llvm.struct<(f32, f32, i32, i32)> 
     %3 = llvm.extractvalue %0[2] : !llvm.struct<(f32, f32, i32, i32)> 
@@ -579,6 +596,28 @@ module {
     %0 = llvm.zext %arg0 : i8 to i16
     %1 = llvm.inline_asm has_side_effects asm_dialect = att "{\0A\09.reg .b16 r;\0A\09.reg .b8 s;\0A\09mov.b16 {s,_}, $0;\0A\09cvt.rn.bf16.s8 r, s;\0A\09mov.b16 $1, r;\0A\09", "=h,h" %0 : (i16) -> i16
     llvm.return
+  }
+  llvm.func @inline_ptx_single_rw_no_result(%arg0: f32, %arg1: f32) -> f32 {
+    %0 = llvm.fadd %arg0, %arg1 : f32
+    %1 = llvm.inline_asm has_side_effects asm_dialect = att "asm1 ", "=f,0" %0 : (f32) -> f32
+    %2 = llvm.fadd %1, %arg0 : f32
+    llvm.return %2 : f32
+  }
+}
+
+// -----
+module {
+  llvm.func @inline_ptx_preserves_special_register() -> i32 {
+    %0 = llvm.inline_asm has_side_effects asm_dialect = att "mov.u32 $0, %laneid;", "=r"  : () -> i32
+    llvm.return %0 : i32
+  }
+}
+
+// -----
+module {
+  llvm.func @inline_ptx_special_register_trailing_digit() -> i32 {
+    %0 = llvm.inline_asm has_side_effects asm_dialect = att "mov.u32 $0, %pm0;", "=r"  : () -> i32
+    llvm.return %0 : i32
   }
 }
 

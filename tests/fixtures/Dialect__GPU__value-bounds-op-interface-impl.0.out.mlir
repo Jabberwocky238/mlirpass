@@ -40,7 +40,7 @@ module attributes {gpu.container_module} {
     llvm.func @kernel() attributes {gpu.kernel} {
       %c0 = arith.constant 0 : index
       %c4294967295 = arith.constant 4294967295 : index
-      %thread_id_x = gpu.thread_id  x
+      %thread_id_x = gpu.thread_id x
       "test.compare"(%thread_id_x, %c0) <{cmp = "GE"}> : (index, index) -> ()
       "test.compare"(%thread_id_x, %c4294967295) <{cmp = "LT"}> : (index, index) -> ()
       llvm.return
@@ -54,10 +54,10 @@ module attributes {gpu.container_module} {
     gpu.func @annotated_kernel() kernel attributes {known_block_size = array<i32: 8, 12, 16>, known_grid_size = array<i32: 20, 24, 28>} {
       %c0 = arith.constant 0 : index
       %c8 = arith.constant 8 : index
-      %thread_id_x = gpu.thread_id  x
+      %thread_id_x = gpu.thread_id x
       "test.compare"(%thread_id_x, %c0) <{cmp = "GE"}> : (index, index) -> ()
       "test.compare"(%thread_id_x, %c8) <{cmp = "LT"}> : (index, index) -> ()
-      %block_dim_x = gpu.block_dim  x
+      %block_dim_x = gpu.block_dim x
       "test.compare"(%block_dim_x, %c8) <{cmp = "EQ"}> : (index, index) -> ()
       "test.compare"(%thread_id_x, %block_dim_x) <{cmp = "LT"}> : (index, index) -> ()
       gpu.return
@@ -72,14 +72,42 @@ module attributes {gpu.container_module} {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 8 : index
-      %block_dim_x = gpu.block_dim  x upper_bound 8
+      %block_dim_x = gpu.block_dim x upper_bound 8
       "test.compare"(%block_dim_x, %c1) <{cmp = "GE"}> : (index, index) -> ()
       "test.compare"(%block_dim_x, %c8) <{cmp = "LE"}> : (index, index) -> ()
       "test.compare"(%block_dim_x, %c8) <{cmp = "EQ"}> : (index, index) -> ()
-      %thread_id_x = gpu.thread_id  x upper_bound 8
+      %thread_id_x = gpu.thread_id x upper_bound 8
       "test.compare"(%thread_id_x, %c0) <{cmp = "GE"}> : (index, index) -> ()
       "test.compare"(%thread_id_x, %c8) <{cmp = "LT"}> : (index, index) -> ()
       "test.compare"(%thread_id_x, %block_dim_x) <{cmp = "LT"}> : (index, index) -> ()
+      gpu.return
+    }
+  }
+}
+
+// -----
+module attributes {gpu.container_module} {
+  gpu.module @gpu_module {
+    gpu.func @subgroup_broadcast(%arg0: index) kernel {
+      %c1_i32 = arith.constant 1 : i32
+      %0 = gpu.subgroup_broadcast %arg0, specific_lane %c1_i32 : index
+      "test.compare"(%0, %arg0) <{cmp = "EQ"}> : (index, index) -> ()
+      %1 = gpu.subgroup_broadcast %arg0, first_active_lane : index
+      "test.compare"(%1, %arg0) <{cmp = "EQ"}> : (index, index) -> ()
+      gpu.return
+    }
+  }
+}
+
+// -----
+module attributes {gpu.container_module} {
+  gpu.module @gpu_module {
+    gpu.func @subgroup_broadcast_shaped(%arg0: memref<?xf32>) kernel {
+      %c0 = arith.constant 0 : index
+      %0 = gpu.subgroup_broadcast %arg0, first_active_lane : memref<?xf32>
+      %dim = memref.dim %0, %c0 : memref<?xf32>
+      %dim_0 = memref.dim %arg0, %c0 : memref<?xf32>
+      "test.compare"(%dim, %dim_0) <{cmp = "EQ"}> : (index, index) -> ()
       gpu.return
     }
   }

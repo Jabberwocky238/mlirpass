@@ -1,2 +1,0 @@
--convert-memref-to-emitc=lower-to-cpp=true
--split-input-file

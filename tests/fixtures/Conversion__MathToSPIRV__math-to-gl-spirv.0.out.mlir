@@ -3,19 +3,18 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %0 = spirv.GL.Atan %arg0 : f32
     %1 = spirv.GL.Cos %arg0 : f32
     %2 = spirv.GL.Exp %arg0 : f32
-    %3 = spirv.GL.Exp %arg0 : f32
+    %3 = spirv.GL.Exp2 %arg0 : f32
+    %4 = spirv.GL.Exp %arg0 : f32
     %cst_f32 = spirv.Constant 1.000000e+00 : f32
-    %4 = spirv.FSub %3, %cst_f32 : f32
-    %5 = spirv.GL.Log %arg0 : f32
+    %5 = spirv.FSub %4, %cst_f32 : f32
+    %6 = spirv.GL.Log %arg0 : f32
     %cst_f32_0 = spirv.Constant 1.000000e+00 : f32
-    %6 = spirv.FAdd %cst_f32_0, %arg0 : f32
-    %7 = spirv.GL.Log %6 : f32
-    %cst_f32_1 = spirv.Constant 1.44269502 : f32
-    %8 = spirv.GL.Log %arg0 : f32
-    %9 = spirv.FMul %8, %cst_f32_1 : f32
-    %cst_f32_2 = spirv.Constant 0.434294492 : f32
+    %7 = spirv.FAdd %cst_f32_0, %arg0 : f32
+    %8 = spirv.GL.Log %7 : f32
+    %9 = spirv.GL.Log2 %arg0 : f32
+    %cst_f32_1 = spirv.Constant 0.434294492 : f32
     %10 = spirv.GL.Log %arg0 : f32
-    %11 = spirv.FMul %10, %cst_f32_2 : f32
+    %11 = spirv.FMul %10, %cst_f32_1 : f32
     %12 = spirv.GL.RoundEven %arg0 : f32
     %13 = spirv.GL.InverseSqrt %arg0 : f32
     %14 = spirv.GL.Sqrt %arg0 : f32
@@ -32,25 +31,25 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %25 = spirv.GL.Asinh %arg0 : f32
     %26 = spirv.GL.Acosh %arg0 : f32
     %27 = spirv.GL.Atanh %arg0 : f32
+    %28 = spirv.GL.Trunc %arg0 : f32
     return
   }
   func.func @float32_unary_vector(%arg0: vector<3xf32>) {
     %0 = spirv.GL.Atan %arg0 : vector<3xf32>
     %1 = spirv.GL.Cos %arg0 : vector<3xf32>
     %2 = spirv.GL.Exp %arg0 : vector<3xf32>
-    %3 = spirv.GL.Exp %arg0 : vector<3xf32>
+    %3 = spirv.GL.Exp2 %arg0 : vector<3xf32>
+    %4 = spirv.GL.Exp %arg0 : vector<3xf32>
     %cst_vec_3xf32 = spirv.Constant dense<1.000000e+00> : vector<3xf32>
-    %4 = spirv.FSub %3, %cst_vec_3xf32 : vector<3xf32>
-    %5 = spirv.GL.Log %arg0 : vector<3xf32>
+    %5 = spirv.FSub %4, %cst_vec_3xf32 : vector<3xf32>
+    %6 = spirv.GL.Log %arg0 : vector<3xf32>
     %cst_vec_3xf32_0 = spirv.Constant dense<1.000000e+00> : vector<3xf32>
-    %6 = spirv.FAdd %cst_vec_3xf32_0, %arg0 : vector<3xf32>
-    %7 = spirv.GL.Log %6 : vector<3xf32>
-    %cst_vec_3xf32_1 = spirv.Constant dense<1.44269502> : vector<3xf32>
-    %8 = spirv.GL.Log %arg0 : vector<3xf32>
-    %9 = spirv.FMul %8, %cst_vec_3xf32_1 : vector<3xf32>
-    %cst_vec_3xf32_2 = spirv.Constant dense<0.434294492> : vector<3xf32>
+    %7 = spirv.FAdd %cst_vec_3xf32_0, %arg0 : vector<3xf32>
+    %8 = spirv.GL.Log %7 : vector<3xf32>
+    %9 = spirv.GL.Log2 %arg0 : vector<3xf32>
+    %cst_vec_3xf32_1 = spirv.Constant dense<0.434294492> : vector<3xf32>
     %10 = spirv.GL.Log %arg0 : vector<3xf32>
-    %11 = spirv.FMul %10, %cst_vec_3xf32_2 : vector<3xf32>
+    %11 = spirv.FMul %10, %cst_vec_3xf32_1 : vector<3xf32>
     %12 = spirv.GL.RoundEven %arg0 : vector<3xf32>
     %13 = spirv.GL.InverseSqrt %arg0 : vector<3xf32>
     %14 = spirv.GL.Sqrt %arg0 : vector<3xf32>
@@ -64,6 +63,7 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %22 = spirv.GL.Asinh %arg0 : vector<3xf32>
     %23 = spirv.GL.Acosh %arg0 : vector<3xf32>
     %24 = spirv.GL.Atanh %arg0 : vector<3xf32>
+    %25 = spirv.GL.Trunc %arg0 : vector<3xf32>
     return
   }
   func.func @float32_ternary_scalar(%arg0: f32, %arg1: f32, %arg2: f32) {
@@ -72,6 +72,22 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
   }
   func.func @float32_ternary_vector(%arg0: vector<4xf32>, %arg1: vector<4xf32>, %arg2: vector<4xf32>) {
     %0 = spirv.GL.Fma %arg0, %arg1, %arg2 : vector<4xf32>
+    return
+  }
+  func.func @float32_binary_scalar(%arg0: f32, %arg1: f32) {
+    %0 = spirv.GL.Atan2 %arg0, %arg1 : f32
+    return
+  }
+  func.func @float32_binary_vector(%arg0: vector<3xf32>, %arg1: vector<3xf32>) {
+    %0 = spirv.GL.Atan2 %arg0, %arg1 : vector<3xf32>
+    return
+  }
+  func.func @float32_clamp_scalar(%arg0: f32, %arg1: f32, %arg2: f32) {
+    %0 = spirv.GL.FClamp %arg0, %arg1, %arg2 : f32
+    return
+  }
+  func.func @float32_clamp_vector(%arg0: vector<4xf32>, %arg1: vector<4xf32>, %arg2: vector<4xf32>) {
+    %0 = spirv.GL.FClamp %arg0, %arg1, %arg2 : vector<4xf32>
     return
   }
   func.func @int_unary(%arg0: i32) {
@@ -113,45 +129,106 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %4 = spirv.Select %3, %2, %1 : vector<2xi1>, vector<2xi32>
     return %4 : vector<2xi32>
   }
+  func.func @cttz_scalar(%arg0: i32) -> i32 {
+    %cst0_i32 = spirv.Constant 0 : i32
+    %cst32_i32 = spirv.Constant 32 : i32
+    %0 = spirv.GL.FindILsb %arg0 : i32
+    %1 = spirv.IEqual %arg0, %cst0_i32 : i32
+    %2 = spirv.Select %1, %cst32_i32, %0 : i1, i32
+    return %2 : i32
+  }
+  func.func @cttz_vector(%arg0: vector<2xi32>) -> vector<2xi32> {
+    %cst_vec_2xi32 = spirv.Constant dense<0> : vector<2xi32>
+    %cst_vec_2xi32_0 = spirv.Constant dense<32> : vector<2xi32>
+    %0 = spirv.GL.FindILsb %arg0 : vector<2xi32>
+    %1 = spirv.IEqual %arg0, %cst_vec_2xi32 : vector<2xi32>
+    %2 = spirv.Select %1, %cst_vec_2xi32_0, %0 : vector<2xi1>, vector<2xi32>
+    return %2 : vector<2xi32>
+  }
   func.func @powf_scalar(%arg0: f32, %arg1: f32) -> f32 {
-    %cst_f32 = spirv.Constant 0.000000e+00 : f32
-    %0 = spirv.FOrdLessThan %arg0, %cst_f32 : f32
-    %cst_f32_0 = spirv.Constant 1.000000e+00 : f32
-    %1 = spirv.FRem %arg1, %cst_f32_0 : f32
-    %2 = spirv.FOrdNotEqual %1, %cst_f32 : f32
-    %3 = spirv.LogicalAnd %2, %0 : i1
-    %cst_f32_1 = spirv.Constant 0x7FC00000 : f32
-    %4 = spirv.Select %3, %cst_f32_1, %arg0 : i1, f32
-    %5 = spirv.GL.FAbs %4 : f32
-    %6 = spirv.ConvertFToS %arg1 : f32 to i32
-    %cst1_i32 = spirv.Constant 1 : i32
-    %7 = spirv.BitwiseAnd %6, %cst1_i32 : i32
-    %8 = spirv.IEqual %7, %cst1_i32 : i32
-    %9 = spirv.GL.Pow %5, %arg1 : f32
-    %10 = spirv.FNegate %9 : f32
-    %11 = spirv.LogicalAnd %0, %8 : i1
-    %12 = spirv.Select %11, %10, %9 : i1, f32
-    return %12 : f32
+    %0 = spirv.GL.Log %arg0 : f32
+    %1 = spirv.FMul %arg1, %0 : f32
+    %2 = spirv.GL.Exp %1 : f32
+    return %2 : f32
   }
   func.func @powf_vector(%arg0: vector<4xf32>, %arg1: vector<4xf32>) -> vector<4xf32> {
+    %0 = spirv.GL.Log %arg0 : vector<4xf32>
+    %1 = spirv.FMul %arg1, %0 : vector<4xf32>
+    %2 = spirv.GL.Exp %1 : vector<4xf32>
+    return %2 : vector<4xf32>
+  }
+  func.func @powf_const_odd_int_exp(%arg0: f32) -> f32 {
+    %cst = arith.constant 3.000000e+00 : f32
+    %0 = spirv.GL.FAbs %arg0 : f32
+    %1 = spirv.GL.Pow %0, %cst : f32
+    %cst_f32 = spirv.Constant 0.000000e+00 : f32
+    %2 = spirv.FOrdLessThan %arg0, %cst_f32 : f32
+    %3 = spirv.FNegate %1 : f32
+    %4 = spirv.Select %2, %3, %1 : i1, f32
+    return %4 : f32
+  }
+  func.func @powf_const_even_int_exp(%arg0: f32) -> f32 {
+    %cst = arith.constant 4.000000e+00 : f32
+    %0 = spirv.GL.FAbs %arg0 : f32
+    %1 = spirv.GL.Pow %0, %cst : f32
+    return %1 : f32
+  }
+  func.func @powf_const_frac_exp(%arg0: f32) -> f32 {
+    %cst = arith.constant 2.500000e+00 : f32
+    %0 = spirv.GL.Log %arg0 : f32
+    %1 = spirv.FMul %cst, %0 : f32
+    %2 = spirv.GL.Exp %1 : f32
+    return %2 : f32
+  }
+  func.func @powf_const_odd_int_exp_vector(%arg0: vector<4xf32>) -> vector<4xf32> {
+    %cst = arith.constant dense<3.000000e+00> : vector<4xf32>
+    %0 = spirv.GL.FAbs %arg0 : vector<4xf32>
+    %1 = spirv.GL.Pow %0, %cst : vector<4xf32>
     %cst_vec_4xf32 = spirv.Constant dense<0.000000e+00> : vector<4xf32>
-    %0 = spirv.FOrdLessThan %arg0, %cst_vec_4xf32 : vector<4xf32>
-    %cst_vec_4xf32_0 = spirv.Constant dense<1.000000e+00> : vector<4xf32>
-    %1 = spirv.FRem %arg1, %cst_vec_4xf32_0 : vector<4xf32>
-    %2 = spirv.FOrdNotEqual %1, %cst_vec_4xf32 : vector<4xf32>
-    %3 = spirv.LogicalAnd %2, %0 : vector<4xi1>
-    %cst_vec_4xf32_1 = spirv.Constant dense<0x7FC00000> : vector<4xf32>
-    %4 = spirv.Select %3, %cst_vec_4xf32_1, %arg0 : vector<4xi1>, vector<4xf32>
-    %5 = spirv.GL.FAbs %4 : vector<4xf32>
-    %6 = spirv.ConvertFToS %arg1 : vector<4xf32> to vector<4xi32>
+    %2 = spirv.FOrdLessThan %arg0, %cst_vec_4xf32 : vector<4xf32>
+    %3 = spirv.FNegate %1 : vector<4xf32>
+    %4 = spirv.Select %2, %3, %1 : vector<4xi1>, vector<4xf32>
+    return %4 : vector<4xf32>
+  }
+  func.func @powf_const_mixed_int_exp_vector(%arg0: vector<4xf32>) -> vector<4xf32> {
+    %cst = arith.constant dense<[3.000000e+00, 2.000000e+00, 5.000000e+00, 4.000000e+00]> : vector<4xf32>
+    %0 = spirv.GL.FAbs %arg0 : vector<4xf32>
+    %1 = spirv.GL.Pow %0, %cst : vector<4xf32>
+    %cst_vec_4xf32 = spirv.Constant dense<0.000000e+00> : vector<4xf32>
+    %2 = spirv.FOrdLessThan %arg0, %cst_vec_4xf32 : vector<4xf32>
+    %3 = spirv.FNegate %1 : vector<4xf32>
+    %cst_vec_4xi1 = spirv.Constant dense<[true, false, true, false]> : vector<4xi1>
+    %4 = spirv.LogicalAnd %2, %cst_vec_4xi1 : vector<4xi1>
+    %5 = spirv.Select %4, %3, %1 : vector<4xi1>, vector<4xf32>
+    return %5 : vector<4xf32>
+  }
+  func.func @fpowi_scalar(%arg0: f32, %arg1: i32) -> f32 {
+    %0 = spirv.ConvertSToF %arg1 : i32 to f32
+    %1 = spirv.GL.FAbs %arg0 : f32
+    %2 = spirv.GL.Pow %1, %0 : f32
+    %cst_f32 = spirv.Constant 0.000000e+00 : f32
+    %3 = spirv.FOrdLessThan %arg0, %cst_f32 : f32
+    %cst1_i32 = spirv.Constant 1 : i32
+    %4 = spirv.BitwiseAnd %arg1, %cst1_i32 : i32
+    %5 = spirv.IEqual %4, %cst1_i32 : i32
+    %6 = spirv.LogicalAnd %3, %5 : i1
+    %7 = spirv.FNegate %2 : f32
+    %8 = spirv.Select %6, %7, %2 : i1, f32
+    return %8 : f32
+  }
+  func.func @fpowi_vector(%arg0: vector<4xf32>, %arg1: vector<4xi32>) -> vector<4xf32> {
+    %0 = spirv.ConvertSToF %arg1 : vector<4xi32> to vector<4xf32>
+    %1 = spirv.GL.FAbs %arg0 : vector<4xf32>
+    %2 = spirv.GL.Pow %1, %0 : vector<4xf32>
+    %cst_vec_4xf32 = spirv.Constant dense<0.000000e+00> : vector<4xf32>
+    %3 = spirv.FOrdLessThan %arg0, %cst_vec_4xf32 : vector<4xf32>
     %cst_vec_4xi32 = spirv.Constant dense<1> : vector<4xi32>
-    %7 = spirv.BitwiseAnd %6, %cst_vec_4xi32 : vector<4xi32>
-    %8 = spirv.IEqual %7, %cst_vec_4xi32 : vector<4xi32>
-    %9 = spirv.GL.Pow %5, %arg1 : vector<4xf32>
-    %10 = spirv.FNegate %9 : vector<4xf32>
-    %11 = spirv.LogicalAnd %0, %8 : vector<4xi1>
-    %12 = spirv.Select %11, %10, %9 : vector<4xi1>, vector<4xf32>
-    return %12 : vector<4xf32>
+    %4 = spirv.BitwiseAnd %arg1, %cst_vec_4xi32 : vector<4xi32>
+    %5 = spirv.IEqual %4, %cst_vec_4xi32 : vector<4xi32>
+    %6 = spirv.LogicalAnd %3, %5 : vector<4xi1>
+    %7 = spirv.FNegate %2 : vector<4xf32>
+    %8 = spirv.Select %6, %7, %2 : vector<4xi1>, vector<4xf32>
+    return %8 : vector<4xf32>
   }
   func.func @round_scalar(%arg0: f32) -> f32 {
     %cst_f32 = spirv.Constant 0.000000e+00 : f32
@@ -195,6 +272,28 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %13 = spirv.Bitcast %12 : vector<4xi32> to vector<4xf32>
     return %13 : vector<4xf32>
   }
+  func.func @round_vector_unit_dim(%arg0: vector<1xf32>) -> vector<1xf32> {
+    %0 = builtin.unrealized_conversion_cast %arg0 : vector<1xf32> to f32
+    %cst_f32 = spirv.Constant 0.000000e+00 : f32
+    %cst_f32_0 = spirv.Constant 1.000000e+00 : f32
+    %cst_f32_1 = spirv.Constant 5.000000e-01 : f32
+    %1 = spirv.GL.FAbs %0 : f32
+    %2 = spirv.GL.Floor %1 : f32
+    %3 = spirv.FSub %1, %2 : f32
+    %4 = spirv.FOrdGreaterThanEqual %3, %cst_f32_1 : f32
+    %5 = spirv.Select %4, %cst_f32_0, %cst_f32 : i1, f32
+    %6 = spirv.FAdd %2, %5 : f32
+    %cst-2147483648_i32 = spirv.Constant -2147483648 : i32
+    %cst2147483647_i32 = spirv.Constant 2147483647 : i32
+    %7 = spirv.Bitcast %6 : f32 to i32
+    %8 = spirv.Bitcast %0 : f32 to i32
+    %9 = spirv.BitwiseAnd %7, %cst2147483647_i32 : i32
+    %10 = spirv.BitwiseAnd %8, %cst-2147483648_i32 : i32
+    %11 = spirv.BitwiseOr %9, %10 : i32
+    %12 = spirv.Bitcast %11 : i32 to f32
+    %13 = builtin.unrealized_conversion_cast %12 : f32 to vector<1xf32>
+    return %13 : vector<1xf32>
+  }
 }
 
 // -----
@@ -229,6 +328,20 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     %4 = math.ceil %arg0 : tensor<2xf32>
     %5 = math.floor %arg0 : tensor<2xf32>
     %6 = math.powf %arg0, %arg0 : tensor<2xf32>
+    return
+  }
+}
+
+// -----
+module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader], []>, #spirv.resource_limits<>>} {
+  func.func @sincos_scalar(%arg0: f32) {
+    %0 = spirv.GL.Sin %arg0 : f32
+    %1 = spirv.GL.Cos %arg0 : f32
+    return
+  }
+  func.func @sincos_vector(%arg0: vector<3xf32>) {
+    %0 = spirv.GL.Sin %arg0 : vector<3xf32>
+    %1 = spirv.GL.Cos %arg0 : vector<3xf32>
     return
   }
 }

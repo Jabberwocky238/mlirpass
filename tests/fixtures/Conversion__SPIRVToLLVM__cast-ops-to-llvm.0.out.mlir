@@ -84,5 +84,25 @@ module {
     %1 = llvm.trunc %arg1 : vector<3xi64> to vector<3xi32>
     llvm.return
   }
+  llvm.func @convert_ptr_to_u(%arg0: !llvm.ptr) {
+    %0 = llvm.ptrtoint %arg0 : !llvm.ptr to i32
+    llvm.return
+  }
+  llvm.func @convert_u_to_ptr(%arg0: i32) {
+    %0 = llvm.inttoptr %arg0 : i32 to !llvm.ptr
+    llvm.return
+  }
+  llvm.func @ptr_cast_to_generic(%arg0: !llvm.ptr) {
+    %0 = llvm.addrspacecast %arg0 : !llvm.ptr to !llvm.ptr
+    llvm.return
+  }
+  llvm.func @generic_cast_to_ptr(%arg0: !llvm.ptr) {
+    %0 = llvm.addrspacecast %arg0 : !llvm.ptr to !llvm.ptr
+    llvm.return
+  }
+  llvm.func @generic_cast_to_ptr_explicit(%arg0: !llvm.ptr) {
+    %0 = llvm.addrspacecast %arg0 : !llvm.ptr to !llvm.ptr
+    llvm.return
+  }
 }
 

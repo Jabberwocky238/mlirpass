@@ -25,3 +25,18 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "ml_program.global"() <{is_mutable, sym_name = "state_tensor", sym_visibility = "private", type = tensor<4x75xf32>, value = dense<0.000000e+00> : tensor<4x75xf32>}> : () -> ()
+  "func.func"() <{function_type = () -> tensor<4x75xf32>, sym_name = "global_load_store_tensor"}> ({
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %2 = "ml_program.global_load"() <{global = @state_tensor}> : () -> tensor<4x75xf32>
+    %3 = "tensor.extract"(%2, %0, %0) : (tensor<4x75xf32>, index, index) -> f32
+    %4 = "arith.addf"(%3, %1) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %5 = "tensor.insert"(%4, %2, %0, %0) : (f32, tensor<4x75xf32>, index, index) -> tensor<4x75xf32>
+    "ml_program.global_store"(%5) <{global = @state_tensor}> : (tensor<4x75xf32>) -> ()
+    "func.return"(%5) : (tensor<4x75xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+

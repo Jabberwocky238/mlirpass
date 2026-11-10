@@ -75,6 +75,18 @@ module {
     func.func @gpu_barrier() {
       %0 = llvm.mlir.constant(3 : i32) : i32
       llvm.call spir_funccc @_Z7barrierj(%0) {convergent, no_unwind, will_return} : (i32) -> ()
+      %1 = llvm.mlir.constant(3 : i32) : i32
+      llvm.call spir_funccc @_Z7barrierj(%1) {convergent, no_unwind, will_return} : (i32) -> ()
+      %2 = llvm.mlir.constant(1 : i32) : i32
+      llvm.call spir_funccc @_Z7barrierj(%2) {convergent, no_unwind, will_return} : (i32) -> ()
+      %3 = llvm.mlir.constant(2 : i32) : i32
+      llvm.call spir_funccc @_Z7barrierj(%3) {convergent, no_unwind, will_return} : (i32) -> ()
+      %4 = llvm.mlir.constant(0 : i32) : i32
+      llvm.call spir_funccc @_Z7barrierj(%4) {convergent, no_unwind, will_return} : (i32) -> ()
+      %5 = llvm.mlir.constant(0 : i32) : i32
+      llvm.call spir_funccc @_Z7barrierj(%5) {convergent, no_unwind, will_return} : (i32) -> ()
+      %6 = llvm.mlir.constant(0 : i32) : i32
+      llvm.call spir_funccc @_Z7barrierj(%6) {convergent, no_unwind, will_return} : (i32) -> ()
       return
     }
   }
@@ -116,6 +128,19 @@ module {
       %19 = llvm.call spir_funccc @_Z21sub_group_shuffle_xorcj(%18, %arg9) {convergent, no_unwind, will_return} : (i8, i32) -> i8
       %20 = llvm.trunc %19 : i8 to i1
       %21 = llvm.mlir.constant(true) : i1
+      llvm.return
+    }
+  }
+}
+
+// -----
+module {
+  gpu.module @shuffles_without_intel_reqd_sub_group_size_attribute {
+    llvm.func spir_funccc @_Z17sub_group_shuffleij(i32, i32) -> i32 attributes {convergent, no_unwind, will_return}
+    llvm.func @gpu_shuffles(%arg0: i32, %arg1: i32) {
+      %c16_i32 = arith.constant 16 : i32
+      %0 = llvm.call spir_funccc @_Z17sub_group_shuffleij(%arg0, %arg1) {convergent, no_unwind, will_return} : (i32, i32) -> i32
+      %1 = llvm.mlir.constant(true) : i1
       llvm.return
     }
   }

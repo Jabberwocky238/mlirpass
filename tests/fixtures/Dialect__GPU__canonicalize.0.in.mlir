@@ -11,8 +11,58 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = () -> (), sym_name = "erase_barriers"}> ({
-    "gpu.barrier"() : () -> ()
-    "gpu.barrier"() : () -> ()
+    "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (), sym_name = "erase_barriers_first_full_fence"}> ({
+    "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "gpu.barrier"() <{address_spaces = [#gpu.address_space<workgroup>], scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (), sym_name = "erase_barriers_second_full_fence"}> ({
+    "gpu.barrier"() <{address_spaces = [#gpu.address_space<workgroup>], scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (), sym_name = "erase_barriers_merge_memfence"}> ({
+    "gpu.barrier"() <{address_spaces = [#gpu.address_space<workgroup>], scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "gpu.barrier"() <{address_spaces = [#gpu.address_space<global>], scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (), sym_name = "erase_barriers_merge_memfence_same"}> ({
+    "gpu.barrier"() <{address_spaces = [#gpu.address_space<workgroup>], scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "gpu.barrier"() <{address_spaces = [#gpu.address_space<workgroup>], scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (), sym_name = "erase_barriers_empty_memfence"}> ({
+    "gpu.barrier"() <{address_spaces = [], scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "gpu.barrier"() <{address_spaces = [], scope = #gpu.barrier_scope<workgroup>}> : () -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (), sym_name = "erase_barriers_same_scope"}> ({
+    "gpu.barrier"() <{scope = #gpu.barrier_scope<subgroup>}> : () -> ()
+    "gpu.barrier"() <{scope = #gpu.barrier_scope<subgroup>}> : () -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (), sym_name = "no_fold_different_scope"}> ({
+    "gpu.barrier"() <{scope = #gpu.barrier_scope<subgroup>}> : () -> ()
+    "gpu.barrier"() <{scope = #gpu.barrier_scope<cluster>}> : () -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> (), sym_name = "no_fold_different_named_barriers"}> ({
+  ^bb0(%arg1: i32):
+    %1 = "gpu.initialize_named_barrier"(%arg1) : (i32) -> !gpu.named_barrier
+    %2 = "gpu.initialize_named_barrier"(%arg1) : (i32) -> !gpu.named_barrier
+    "gpu.barrier"(%1) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> ()
+    "gpu.barrier"(%2) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> (), sym_name = "fold_same_named_barrier"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "gpu.initialize_named_barrier"(%arg0) : (i32) -> !gpu.named_barrier
+    "gpu.barrier"(%0) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> ()
+    "gpu.barrier"(%0) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -147,6 +197,16 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<?xi8>) -> index, sym_name = "negative_memref_dim"}> ({
+  ^bb0(%arg0: memref<?xi8>):
+    %0 = "arith.constant"() <{value = -2 : index}> : () -> index
+    %1 = "memref.dim"(%arg0, %0) : (memref<?xi8>, index) -> index
+    "func.return"(%1) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = () -> (), sym_name = "simplify_gpu_launch"}> ({
     %0 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
     %1 = "arith.constant"() <{value = 1 : index}> : () -> index
@@ -189,7 +249,7 @@
       "memref.store"(%19, %8#0, %18, %5, %15) : (f32, memref<2x16x16xf32>, index, index, index) -> ()
       "memref.store"(%21, %8#0, %20, %5, %15) : (f32, memref<2x16x16xf32>, index, index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) {llvm.emit_c_interface} : () -> ()
 }) : () -> ()
@@ -205,7 +265,7 @@
       }) : (i32) -> i32
       "test.test3"(%2) : (i32) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -220,7 +280,7 @@
       %2 = "gpu.subgroup_reduce"(%1) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op add>}> : (i32) -> i32
       "test.test3"(%2) : (i32) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -235,7 +295,7 @@
       %2 = "gpu.subgroup_reduce"(%1) <{cluster_size = 1 : i32, cluster_stride = 1 : i32, op = #gpu<all_reduce_op add>}> : (i32) -> i32
       "test.test3"(%2) : (i32) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -248,7 +308,7 @@
     ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index):
       %1 = "arith.addi"(%arg0, %arg1) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

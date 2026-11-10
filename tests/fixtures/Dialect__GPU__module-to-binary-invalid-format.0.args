@@ -1,0 +1,2 @@
+--gpu-module-to-binary=format=invalid-format
+--verify-diagnostics

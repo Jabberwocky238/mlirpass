@@ -71,6 +71,18 @@
 
 // -----
 "builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i32 (i32, i32)>, linkage = #llvm.linkage<external>, sym_name = "fold_nested_extractvalue", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg0: i32, %arg1: i32):
+    %0 = "llvm.mlir.undef"() : () -> !llvm.struct<(struct<(i32, i32)>, i32)>
+    %1 = "llvm.insertvalue"(%0, %arg0) <{position = array<i64: 0, 0>}> : (!llvm.struct<(struct<(i32, i32)>, i32)>, i32) -> !llvm.struct<(struct<(i32, i32)>, i32)>
+    %2 = "llvm.insertvalue"(%1, %arg1) <{position = array<i64: 0, 1>}> : (!llvm.struct<(struct<(i32, i32)>, i32)>, i32) -> !llvm.struct<(struct<(i32, i32)>, i32)>
+    %3 = "llvm.extractvalue"(%2) <{position = array<i64: 0, 0>}> : (!llvm.struct<(struct<(i32, i32)>, i32)>) -> i32
+    "llvm.return"(%3) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<f32 (array<4 x f32>)>, linkage = #llvm.linkage<external>, sym_name = "fold_unrelated_extractvalue", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
   ^bb0(%arg0: !llvm.array<4 x f32>):
     %0 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
@@ -134,6 +146,28 @@
     %2 = "llvm.extractvalue"(%0) <{position = array<i64: 1>}> : (!llvm.array<4 x f32>) -> f32
     %3 = "llvm.fadd"(%1, %2) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
     "llvm.return"(%3) : (f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<vector<2xi32> ()>, linkage = #llvm.linkage<external>, sym_name = "no_fold_extract_splat_rank_mismatch", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+    %0 = "llvm.mlir.constant"() <{value = dense<12> : vector<2xi32>}> : () -> vector<2xi32>
+    %1 = "llvm.mlir.constant"() <{value = dense<23> : vector<4x2xi32>}> : () -> !llvm.array<4 x vector<2xi32>>
+    %2 = "llvm.extractvalue"(%1) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<2xi32>>) -> vector<2xi32>
+    %3 = "llvm.shl"(%0, %2) <{overflowFlags = 0 : i32}> : (vector<2xi32>, vector<2xi32>) -> vector<2xi32>
+    "llvm.return"(%3) : (vector<2xi32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<vector<2xi32> ()>, linkage = #llvm.linkage<external>, sym_name = "no_fold_extract_sparse_rank_mismatch", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+    %0 = "llvm.mlir.constant"() <{value = dense<12> : vector<2xi32>}> : () -> vector<2xi32>
+    %1 = "llvm.mlir.constant"() <{value = sparse<0, 23> : vector<4x2xi32>}> : () -> !llvm.array<4 x vector<2xi32>>
+    %2 = "llvm.extractvalue"(%1) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<2xi32>>) -> vector<2xi32>
+    %3 = "llvm.shl"(%0, %2) <{overflowFlags = 0 : i32}> : (vector<2xi32>, vector<2xi32>) -> vector<2xi32>
+    "llvm.return"(%3) : (vector<2xi32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -328,6 +362,18 @@
     "llvm.inline_asm"(%arg0) <{asm_string = "pure inline asm", constraints = "r", tail_call_kind = #llvm.tailcallkind<none>}> : (i32) -> ()
     "llvm.inline_asm"(%arg0) <{asm_string = "inline asm with side effects", constraints = "r", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (i32) -> ()
     "llvm.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i32 ()>, linkage = #llvm.linkage<external>, sym_name = "metadata_as_value_dedup", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+    %0 = "llvm.mlir.metadata_as_value"() <{metadata = #llvm.md_node<#llvm.md_string<"sp">>}> : () -> !llvm.metadata
+    %1 = "llvm.mlir.metadata_as_value"() <{metadata = #llvm.md_node<#llvm.md_string<"sp">>}> : () -> !llvm.metadata
+    %2 = "llvm.call_intrinsic"(%0) <{fastmathFlags = #llvm.fastmath<none>, intrin = "llvm.read_register.i32", op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>}> : (!llvm.metadata) -> i32
+    %3 = "llvm.call_intrinsic"(%1) <{fastmathFlags = #llvm.fastmath<none>, intrin = "llvm.read_register.i32", op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>}> : (!llvm.metadata) -> i32
+    %4 = "llvm.add"(%2, %3) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
+    "llvm.return"(%4) : (i32) -> ()
   }) : () -> ()
 }) : () -> ()
 

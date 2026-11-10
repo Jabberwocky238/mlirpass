@@ -1,10 +1,12 @@
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernel"}> ({
+    "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i64 (i32)>, linkage = #llvm.linkage<external>, sym_name = "__ockl_get_local_size", visibility_ = 0 : i64}> ({
+    }) : () -> ()
     "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i64 ()>, linkage = #llvm.linkage<external>, sym_name = "gpu_global_id", visibility_ = 0 : i64}> ({
       %0 = "rocdl.workgroup.id.x"() : () -> i32
       %1 = "llvm.sext"(%0) : (i32) -> i64
-      %2 = "rocdl.workgroup.dim.x"() : () -> i32
-      %3 = "llvm.sext"(%2) : (i32) -> i64
+      %2 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
+      %3 = "llvm.call"(%2) <{CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @__ockl_get_local_size, fastmathFlags = #llvm.fastmath<none>, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>, res_attrs = [{llvm.range = #llvm.constant_range<i64, 1, 1025>}]}> : (i32) -> i64
       %4 = "llvm.mul"(%1, %3) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
       %5 = "rocdl.workitem.id.x"() : () -> i32
       %6 = "llvm.sext"(%5) : (i32) -> i64

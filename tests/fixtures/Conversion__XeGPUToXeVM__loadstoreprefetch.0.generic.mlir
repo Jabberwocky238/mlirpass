@@ -12,7 +12,7 @@
       %7 = "arith.addi"(%arg0, %6) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
       %8 = "llvm.inttoptr"(%7) : (i64) -> !llvm.ptr<1>
       %9 = "scf.if"(%3) ({
-        %11 = "llvm.load"(%8) <{ordering = 0 : i64}> {cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>} : (!llvm.ptr<1>) -> f16
+        %11 = "llvm.load"(%8) <{ordering = 0 : i64}> {cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>} : (!llvm.ptr<1>) -> f16
         "scf.yield"(%11) : (f16) -> ()
       }, {
         "scf.yield"(%1) : (f16) -> ()
@@ -20,7 +20,7 @@
       %10 = "vector.broadcast"(%9) : (f16) -> vector<1xf16>
       "vector.store"(%10, %arg2, %0) : (vector<1xf16>, memref<1xf16>, index) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "load_gather_i64_src_value_offset", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "load_gather_i64_src_value_offset"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -39,7 +39,7 @@
       %7 = "arith.addi"(%arg0, %6) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
       %8 = "llvm.inttoptr"(%7) : (i64) -> !llvm.ptr<1>
       %9 = "scf.if"(%3) ({
-        %11 = "llvm.load"(%8) <{ordering = 0 : i64}> {cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>} : (!llvm.ptr<1>) -> f16
+        %11 = "llvm.load"(%8) <{ordering = 0 : i64}> {cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>} : (!llvm.ptr<1>) -> f16
         "scf.yield"(%11) : (f16) -> ()
       }, {
         "scf.yield"(%1) : (f16) -> ()
@@ -47,7 +47,7 @@
       %10 = "vector.broadcast"(%9) : (f16) -> vector<1xf16>
       "vector.store"(%10, %arg2, %0) : (vector<1xf16>, memref<1xf16>, index) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "source_materialize_single_elem_vec", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "source_materialize_single_elem_vec"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -65,12 +65,12 @@
       %6 = "arith.addi"(%arg0, %5) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
       %7 = "llvm.inttoptr"(%6) : (i64) -> !llvm.ptr<1>
       "scf.if"(%2) ({
-        "llvm.store"(%0, %7) <{ordering = 0 : i64}> {cache_control = #xevm.store_cache_control<L1wb_L2uc_L3uc>} : (f32, !llvm.ptr<1>) -> ()
+        "llvm.store"(%0, %7) <{ordering = 0 : i64}> {cache_control = #xevm.store_cache_control<L1wb_L2uc_L3wb>} : (f32, !llvm.ptr<1>) -> ()
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "store_scatter_i64_src_value_offset", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "store_scatter_i64_src_value_offset"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -85,9 +85,9 @@
       %3 = "arith.muli"(%2, %0) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
       %4 = "arith.addi"(%arg0, %3) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
       %5 = "llvm.inttoptr"(%4) : (i64) -> !llvm.ptr<1>
-      "xevm.prefetch"(%5) <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>}> : (!llvm.ptr<1>) -> ()
+      "xevm.prefetch"(%5) <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>}> : (!llvm.ptr<1>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "prefetch_i64_src_value_offset", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "prefetch_i64_src_value_offset"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -104,9 +104,9 @@
       %5 = "arith.muli"(%2, %0) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
       %6 = "arith.addi"(%4, %5) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
       %7 = "llvm.inttoptr"(%6) : (i64) -> !llvm.ptr<1>
-      "xevm.prefetch"(%7) <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>}> : (!llvm.ptr<1>) -> ()
+      "xevm.prefetch"(%7) <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>}> : (!llvm.ptr<1>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "prefetch_memref_src_value_offset", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "prefetch_memref_src_value_offset"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -133,7 +133,7 @@
       %15 = "arith.addi"(%13, %14) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
       %16 = "llvm.inttoptr"(%15) : (i64) -> !llvm.ptr<1>
       %17 = "scf.if"(%3) ({
-        %19 = "llvm.load"(%16) <{ordering = 0 : i64}> {cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>} : (!llvm.ptr<1>) -> f16
+        %19 = "llvm.load"(%16) <{ordering = 0 : i64}> {cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>} : (!llvm.ptr<1>) -> f16
         "scf.yield"(%19) : (f16) -> ()
       }, {
         "scf.yield"(%0) : (f16) -> ()
@@ -141,7 +141,7 @@
       %18 = "vector.broadcast"(%17) : (f16) -> vector<1xf16>
       "vector.store"(%18, %arg3, %2) : (vector<1xf16>, memref<1xf16>, index) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "load_gather_from_dyn_memref_subview", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "load_gather_from_dyn_memref_subview"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 

@@ -1,0 +1,2 @@
+-pass-pipeline=builtin.module(func.func(trivial-dce{recursive=false}))
+-split-input-file

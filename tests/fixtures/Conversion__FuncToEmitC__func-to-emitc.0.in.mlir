@@ -67,3 +67,47 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32, i32) -> (i32, i32), sym_name = "return_two"}> ({
+  ^bb0(%arg0: i32, %arg1: i32):
+    "func.return"(%arg0, %arg1) : (i32, i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32, i32) -> (i32, i32), sym_name = "return_two"}> ({
+  ^bb0(%arg1: i32, %arg2: i32):
+    "func.return"(%arg1, %arg2) : (i32, i32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> i32, sym_name = "caller"}> ({
+  ^bb0(%arg0: i32):
+    %0:2 = "func.call"(%arg0, %arg0) <{callee = @return_two}> : (i32, i32) -> (i32, i32)
+    "func.return"(%0#1) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> (i32, i32), sym_name = "first"}> ({
+  ^bb0(%arg1: i32):
+    "func.return"(%arg1, %arg1) : (i32, i32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> (i32, i32), sym_name = "second"}> ({
+  ^bb0(%arg0: i32):
+    "func.return"(%arg0, %arg0) : (i32, i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<4x8xf32>) -> (), sym_name = "memref_callee", sym_visibility = "private"}> ({
+  }) : () -> ()
+  "func.func"() <{function_type = (memref<4x8xf32>) -> (), sym_name = "memref_call"}> ({
+  ^bb0(%arg0: memref<4x8xf32>):
+    "func.call"(%arg0) <{callee = @memref_callee}> : (memref<4x8xf32>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+

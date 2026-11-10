@@ -1,0 +1,3 @@
+--no-implicit-module
+--convert-func-to-spirv
+-verify-diagnostics

@@ -1,10 +1,11 @@
 module {
   gpu.module @kernel attributes {llvm.data_layout = "e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9"} {
+    llvm.func @__ockl_get_local_size(i32) -> i64
     llvm.func @gpu_global_id() -> i64 {
       %0 = rocdl.workgroup.id.x : i32
       %1 = llvm.sext %0 : i32 to i64
-      %2 = rocdl.workgroup.dim.x : i32
-      %3 = llvm.sext %2 : i32 to i64
+      %2 = llvm.mlir.constant(0 : i32) : i32
+      %3 = llvm.call @__ockl_get_local_size(%2) : (i32) -> (i64 {llvm.range = #llvm.constant_range<i64, 1, 1025>})
       %4 = llvm.mul %1, %3 : i64
       %5 = rocdl.workitem.id.x : i32
       %6 = llvm.sext %5 : i32 to i64

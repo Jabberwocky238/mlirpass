@@ -31,7 +31,7 @@
       "test.compare"(%arg6, %2) <{cmp = "LT"}> : (index, index) -> ()
       "test.compare"(%arg4, %arg10) <{cmp = "LT"}> : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -53,7 +53,7 @@
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "gpu_module"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 8, 12, 16>, known_grid_size = array<i32: 20, 24, 28>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 8, 12, 16>, known_grid_size = array<i32: 20, 24, 28>}> ({
       %0 = "arith.constant"() <{value = 0 : index}> : () -> index
       %1 = "arith.constant"() <{value = 8 : index}> : () -> index
       %2 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index
@@ -63,14 +63,14 @@
       "test.compare"(%3, %1) <{cmp = "EQ"}> : (index, index) -> ()
       "test.compare"(%2, %3) <{cmp = "LT"}> : (index, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "annotated_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "annotated_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "gpu_module"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "arith.constant"() <{value = 0 : index}> : () -> index
       %1 = "arith.constant"() <{value = 1 : index}> : () -> index
       %2 = "arith.constant"() <{value = 8 : index}> : () -> index
@@ -83,7 +83,37 @@
       "test.compare"(%4, %2) <{cmp = "LT"}> : (index, index) -> ()
       "test.compare"(%4, %3) <{cmp = "LT"}> : (index, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "local_bounds_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "local_bounds_kernel"} : () -> ()
+  }) : () -> ()
+}) {gpu.container_module} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "gpu.module"() <{sym_name = "gpu_module"}> ({
+    "gpu.func"() <{function_type = (index) -> (), kernel}> ({
+    ^bb0(%arg0: index):
+      %0 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+      %1 = "gpu.subgroup_broadcast"(%arg0, %0) <{broadcast_type = #gpu<broadcast specific_lane>}> : (index, i32) -> index
+      "test.compare"(%1, %arg0) <{cmp = "EQ"}> : (index, index) -> ()
+      %2 = "gpu.subgroup_broadcast"(%arg0) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (index) -> index
+      "test.compare"(%2, %arg0) <{cmp = "EQ"}> : (index, index) -> ()
+      "gpu.return"() : () -> ()
+    }) {sym_name = "subgroup_broadcast"} : () -> ()
+  }) : () -> ()
+}) {gpu.container_module} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "gpu.module"() <{sym_name = "gpu_module"}> ({
+    "gpu.func"() <{function_type = (memref<?xf32>) -> (), kernel}> ({
+    ^bb0(%arg0: memref<?xf32>):
+      %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+      %1 = "gpu.subgroup_broadcast"(%arg0) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (memref<?xf32>) -> memref<?xf32>
+      %2 = "memref.dim"(%1, %0) : (memref<?xf32>, index) -> index
+      %3 = "memref.dim"(%arg0, %0) : (memref<?xf32>, index) -> index
+      "test.compare"(%2, %3) <{cmp = "EQ"}> : (index, index) -> ()
+      "gpu.return"() : () -> ()
+    }) {sym_name = "subgroup_broadcast_shaped"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 

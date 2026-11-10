@@ -474,27 +474,14 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (!test.test_tensor<[4, 4], f64>) -> (!test.test_tensor<[4, 8], f64>, !test.test_tensor<[4, 8], f64>), sym_name = "custom_types"}> ({
-  ^bb0(%arg0: !test.test_tensor<[4, 4], f64>):
-    %0 = "test.dummy_tensor_op"(%arg0) : (!test.test_tensor<[4, 4], f64>) -> !test.test_tensor<[4, 8], f64>
-    %1 = "test.create_tensor_op"() : () -> !test.test_tensor<[4, 4], f64>
-    %2 = "test.dummy_tensor_op"(%1) : (!test.test_tensor<[4, 4], f64>) -> !test.test_tensor<[4, 8], f64>
-    "func.return"(%0, %2) : (!test.test_tensor<[4, 8], f64>, !test.test_tensor<[4, 8], f64>) -> ()
+  "func.func"() <{function_type = (tensor<64x20x40xf32>) -> tensor<64x20x40xf32>, sym_name = "ranked_return_via_unranked_call"}> ({
+  ^bb0(%arg0: tensor<64x20x40xf32>):
+    %0 = "tensor.cast"(%arg0) : (tensor<64x20x40xf32>) -> tensor<*xf32>
+    %1 = "func.call"(%0) <{callee = @relu_unranked}> : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = "tensor.cast"(%1) : (tensor<*xf32>) -> tensor<64x20x40xf32>
+    "func.return"(%2) : (tensor<64x20x40xf32>) -> ()
   }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = (!test.test_tensor<[4, 4], f64>) -> !test.test_tensor<[4, 4], f64>, sym_name = "custom_types_foo"}> ({
-  ^bb0(%arg1: !test.test_tensor<[4, 4], f64>):
-    %2 = "test.dummy_tensor_op"(%arg1) : (!test.test_tensor<[4, 4], f64>) -> !test.test_tensor<[4, 4], f64>
-    "func.return"(%2) : (!test.test_tensor<[4, 4], f64>) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = (!test.test_tensor<[4, 4], f64>) -> !test.test_tensor<[4, 8], f64>, sym_name = "custom_types_bar"}> ({
-  ^bb0(%arg0: !test.test_tensor<[4, 4], f64>):
-    %0 = "func.call"(%arg0) <{callee = @custom_types_foo}> : (!test.test_tensor<[4, 4], f64>) -> !test.test_tensor<[4, 4], f64>
-    %1 = "test.dummy_tensor_op"(%0) : (!test.test_tensor<[4, 4], f64>) -> !test.test_tensor<[4, 8], f64>
-    "func.return"(%1) : (!test.test_tensor<[4, 8], f64>) -> ()
+  "func.func"() <{function_type = (tensor<*xf32>) -> tensor<*xf32>, sym_name = "relu_unranked", sym_visibility = "private"}> ({
   }) : () -> ()
 }) : () -> ()
 

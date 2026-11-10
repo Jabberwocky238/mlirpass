@@ -214,5 +214,14 @@ module {
     %15 = llvm.getelementptr %10[%14] : (!llvm.ptr, i64) -> !llvm.ptr, i8
     llvm.return %15 : !llvm.ptr
   }
+  llvm.func @test_constant_address_ops() -> !llvm.struct<(ptr, ptr)> {
+    %0 = llvm.mlir.constant(0 : i64) : i64
+    %1 = llvm.inttoptr %0 : i64 to !llvm.ptr
+    %2 = llvm.mlir.zero : !llvm.ptr
+    %3 = llvm.mlir.poison : !llvm.struct<(ptr, ptr)>
+    %4 = llvm.insertvalue %1, %3[0] : !llvm.struct<(ptr, ptr)> 
+    %5 = llvm.insertvalue %2, %4[1] : !llvm.struct<(ptr, ptr)> 
+    llvm.return %5 : !llvm.struct<(ptr, ptr)>
+  }
 }
 

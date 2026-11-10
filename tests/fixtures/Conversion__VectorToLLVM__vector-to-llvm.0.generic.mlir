@@ -185,19 +185,18 @@
   "func.func"() <{function_type = (vector<f32>) -> vector<3x2xf32>, sym_name = "broadcast_vec2d_from_vec0d"}> ({
   ^bb0(%arg0: vector<f32>):
     %0 = "builtin.unrealized_conversion_cast"(%arg0) : (vector<f32>) -> vector<1xf32>
-    %1 = "ub.poison"() <{value = #ub.poison}> : () -> vector<3x2xf32>
-    %2 = "builtin.unrealized_conversion_cast"(%1) : (vector<3x2xf32>) -> !llvm.array<3 x vector<2xf32>>
-    %3 = "llvm.mlir.constant"() <{value = 0 : i64}> : () -> i64
-    %4 = "llvm.extractelement"(%0, %3) : (vector<1xf32>, i64) -> f32
-    %5 = "llvm.mlir.poison"() : () -> vector<2xf32>
-    %6 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
-    %7 = "llvm.insertelement"(%5, %4, %6) : (vector<2xf32>, f32, i32) -> vector<2xf32>
-    %8 = "llvm.shufflevector"(%7, %5) <{mask = array<i32: 0, 0>}> : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
-    %9 = "llvm.insertvalue"(%2, %8) <{position = array<i64: 0>}> : (!llvm.array<3 x vector<2xf32>>, vector<2xf32>) -> !llvm.array<3 x vector<2xf32>>
-    %10 = "llvm.insertvalue"(%9, %8) <{position = array<i64: 1>}> : (!llvm.array<3 x vector<2xf32>>, vector<2xf32>) -> !llvm.array<3 x vector<2xf32>>
-    %11 = "llvm.insertvalue"(%10, %8) <{position = array<i64: 2>}> : (!llvm.array<3 x vector<2xf32>>, vector<2xf32>) -> !llvm.array<3 x vector<2xf32>>
-    %12 = "builtin.unrealized_conversion_cast"(%11) : (!llvm.array<3 x vector<2xf32>>) -> vector<3x2xf32>
-    "func.return"(%12) : (vector<3x2xf32>) -> ()
+    %1 = "llvm.mlir.constant"() <{value = 0 : i64}> : () -> i64
+    %2 = "llvm.extractelement"(%0, %1) : (vector<1xf32>, i64) -> f32
+    %3 = "llvm.mlir.poison"() : () -> !llvm.array<3 x vector<2xf32>>
+    %4 = "llvm.mlir.poison"() : () -> vector<2xf32>
+    %5 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
+    %6 = "llvm.insertelement"(%4, %2, %5) : (vector<2xf32>, f32, i32) -> vector<2xf32>
+    %7 = "llvm.shufflevector"(%6, %6) <{mask = array<i32: 0, 0>}> : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
+    %8 = "llvm.insertvalue"(%3, %7) <{position = array<i64: 0>}> : (!llvm.array<3 x vector<2xf32>>, vector<2xf32>) -> !llvm.array<3 x vector<2xf32>>
+    %9 = "llvm.insertvalue"(%8, %7) <{position = array<i64: 1>}> : (!llvm.array<3 x vector<2xf32>>, vector<2xf32>) -> !llvm.array<3 x vector<2xf32>>
+    %10 = "llvm.insertvalue"(%9, %7) <{position = array<i64: 2>}> : (!llvm.array<3 x vector<2xf32>>, vector<2xf32>) -> !llvm.array<3 x vector<2xf32>>
+    %11 = "builtin.unrealized_conversion_cast"(%10) : (!llvm.array<3 x vector<2xf32>>) -> vector<3x2xf32>
+    "func.return"(%11) : (vector<3x2xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1507,13 +1506,15 @@
   "func.func"() <{function_type = (index) -> vector<i1>, sym_name = "create_mask_0d"}> ({
   ^bb0(%arg0: index):
     %0 = "arith.constant"() <{value = dense<0> : vector<i32>}> : () -> vector<i32>
-    %1 = "arith.index_cast"(%arg0) : (index) -> i32
-    %2 = "llvm.mlir.poison"() : () -> vector<1xi32>
-    %3 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
-    %4 = "llvm.insertelement"(%2, %1, %3) : (vector<1xi32>, i32, i32) -> vector<1xi32>
-    %5 = "builtin.unrealized_conversion_cast"(%4) : (vector<1xi32>) -> vector<i32>
-    %6 = "arith.cmpi"(%5, %0) <{predicate = 4 : i64}> : (vector<i32>, vector<i32>) -> vector<i1>
-    "func.return"(%6) : (vector<i1>) -> ()
+    %1 = "arith.constant"() <{value = 2147483647 : index}> : () -> index
+    %2 = "arith.minsi"(%arg0, %1) : (index, index) -> index
+    %3 = "arith.index_cast"(%2) : (index) -> i32
+    %4 = "llvm.mlir.poison"() : () -> vector<1xi32>
+    %5 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
+    %6 = "llvm.insertelement"(%4, %3, %5) : (vector<1xi32>, i32, i32) -> vector<1xi32>
+    %7 = "builtin.unrealized_conversion_cast"(%6) : (vector<1xi32>) -> vector<i32>
+    %8 = "arith.cmpi"(%7, %0) <{predicate = 4 : i64}> : (vector<i32>, vector<i32>) -> vector<i1>
+    "func.return"(%8) : (vector<i1>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1522,13 +1523,15 @@
   "func.func"() <{function_type = (index) -> vector<4xi1>, sym_name = "create_mask_1d"}> ({
   ^bb0(%arg0: index):
     %0 = "arith.constant"() <{value = dense<[0, 1, 2, 3]> : vector<4xi32>}> : () -> vector<4xi32>
-    %1 = "arith.index_cast"(%arg0) : (index) -> i32
-    %2 = "llvm.mlir.poison"() : () -> vector<4xi32>
-    %3 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
-    %4 = "llvm.insertelement"(%2, %1, %3) : (vector<4xi32>, i32, i32) -> vector<4xi32>
-    %5 = "llvm.shufflevector"(%4, %2) <{mask = array<i32: 0, 0, 0, 0>}> : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
-    %6 = "arith.cmpi"(%5, %0) <{predicate = 4 : i64}> : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
-    "func.return"(%6) : (vector<4xi1>) -> ()
+    %1 = "arith.constant"() <{value = 2147483647 : index}> : () -> index
+    %2 = "arith.minsi"(%arg0, %1) : (index, index) -> index
+    %3 = "arith.index_cast"(%2) : (index) -> i32
+    %4 = "llvm.mlir.poison"() : () -> vector<4xi32>
+    %5 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
+    %6 = "llvm.insertelement"(%4, %3, %5) : (vector<4xi32>, i32, i32) -> vector<4xi32>
+    %7 = "llvm.shufflevector"(%6, %4) <{mask = array<i32: 0, 0, 0, 0>}> : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    %8 = "arith.cmpi"(%7, %0) <{predicate = 4 : i64}> : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+    "func.return"(%8) : (vector<4xi1>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1537,13 +1540,15 @@
   "func.func"() <{function_type = (index) -> vector<[4]xi1>, sym_name = "create_mask_1d_scalable"}> ({
   ^bb0(%arg0: index):
     %0 = "llvm.intr.stepvector"() : () -> vector<[4]xi32>
-    %1 = "arith.index_cast"(%arg0) : (index) -> i32
-    %2 = "llvm.mlir.poison"() : () -> vector<[4]xi32>
-    %3 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
-    %4 = "llvm.insertelement"(%2, %1, %3) : (vector<[4]xi32>, i32, i32) -> vector<[4]xi32>
-    %5 = "llvm.shufflevector"(%4, %2) <{mask = array<i32: 0, 0, 0, 0>}> : (vector<[4]xi32>, vector<[4]xi32>) -> vector<[4]xi32>
-    %6 = "arith.cmpi"(%0, %5) <{predicate = 2 : i64}> : (vector<[4]xi32>, vector<[4]xi32>) -> vector<[4]xi1>
-    "func.return"(%6) : (vector<[4]xi1>) -> ()
+    %1 = "arith.constant"() <{value = 2147483647 : index}> : () -> index
+    %2 = "arith.minsi"(%arg0, %1) : (index, index) -> index
+    %3 = "arith.index_cast"(%2) : (index) -> i32
+    %4 = "llvm.mlir.poison"() : () -> vector<[4]xi32>
+    %5 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
+    %6 = "llvm.insertelement"(%4, %3, %5) : (vector<[4]xi32>, i32, i32) -> vector<[4]xi32>
+    %7 = "llvm.shufflevector"(%6, %4) <{mask = array<i32: 0, 0, 0, 0>}> : (vector<[4]xi32>, vector<[4]xi32>) -> vector<[4]xi32>
+    %8 = "arith.cmpi"(%0, %7) <{predicate = 2 : i64}> : (vector<[4]xi32>, vector<[4]xi32>) -> vector<[4]xi1>
+    "func.return"(%8) : (vector<[4]xi1>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1736,14 +1741,6 @@
     %15 = "llvm.insertvalue"(%8, %12) <{position = array<i64: 1>}> : (!llvm.array<2 x vector<[4]xf32>>, vector<[4]xf32>) -> !llvm.array<2 x vector<[4]xf32>>
     %16 = "builtin.unrealized_conversion_cast"(%15) : (!llvm.array<2 x vector<[4]xf32>>) -> vector<2x[4]xf32>
     "func.return"(%14, %16) : (vector<2x[4]xf32>, vector<2x[4]xf32>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "func.func"() <{function_type = () -> vector<4xindex>, sym_name = "step"}> ({
-    %0 = "arith.constant"() <{value = dense<[0, 1, 2, 3]> : vector<4xindex>}> : () -> vector<4xindex>
-    "func.return"(%0) : (vector<4xindex>) -> ()
   }) : () -> ()
 }) : () -> ()
 

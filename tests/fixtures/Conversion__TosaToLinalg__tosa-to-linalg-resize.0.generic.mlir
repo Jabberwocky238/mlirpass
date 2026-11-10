@@ -199,12 +199,12 @@
       %22 = "arith.constant"() <{value = 0 : i32}> : () -> i32
       %23 = "arith.muli"(%13, %16) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %24 = "arith.addi"(%23, %19) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %25 = "arith.divsi"(%24, %15) : (i32, i32) -> i32
+      %25 = "arith.floordivsi"(%24, %15) : (i32, i32) -> i32
       %26 = "arith.muli"(%25, %15) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %27 = "arith.subi"(%24, %26) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %28 = "arith.muli"(%14, %18) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %29 = "arith.addi"(%28, %20) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %30 = "arith.divsi"(%29, %17) : (i32, i32) -> i32
+      %30 = "arith.floordivsi"(%29, %17) : (i32, i32) -> i32
       %31 = "arith.muli"(%30, %17) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %32 = "arith.subi"(%29, %31) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %33 = "arith.constant"() <{value = 1 : i32}> : () -> i32
@@ -260,12 +260,12 @@
       %22 = "arith.constant"() <{value = 0 : i32}> : () -> i32
       %23 = "arith.muli"(%13, %16) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %24 = "arith.addi"(%23, %19) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %25 = "arith.divsi"(%24, %15) : (i32, i32) -> i32
+      %25 = "arith.floordivsi"(%24, %15) : (i32, i32) -> i32
       %26 = "arith.muli"(%25, %15) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %27 = "arith.subi"(%24, %26) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %28 = "arith.muli"(%14, %18) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %29 = "arith.addi"(%28, %20) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %30 = "arith.divsi"(%29, %17) : (i32, i32) -> i32
+      %30 = "arith.floordivsi"(%29, %17) : (i32, i32) -> i32
       %31 = "arith.muli"(%30, %17) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %32 = "arith.subi"(%29, %31) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %33 = "arith.constant"() <{value = 1 : i32}> : () -> i32
@@ -345,34 +345,36 @@
       %23 = "arith.muli"(%13, %16) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %24 = "arith.addi"(%23, %19) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %25 = "arith.floordivsi"(%24, %15) : (i32, i32) -> i32
-      %26 = "arith.remsi"(%24, %15) : (i32, i32) -> i32
-      %27 = "arith.sitofp"(%26) : (i32) -> f32
-      %28 = "arith.uitofp"(%15) : (i32) -> f32
-      %29 = "arith.divf"(%27, %28) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %30 = "arith.muli"(%14, %18) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %31 = "arith.addi"(%30, %20) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %32 = "arith.floordivsi"(%31, %17) : (i32, i32) -> i32
-      %33 = "arith.remsi"(%31, %17) : (i32, i32) -> i32
-      %34 = "arith.sitofp"(%33) : (i32) -> f32
-      %35 = "arith.uitofp"(%17) : (i32) -> f32
-      %36 = "arith.divf"(%34, %35) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %37 = "arith.constant"() <{value = 1 : i32}> : () -> i32
-      %38 = "arith.constant"() <{value = 5.000000e-01 : f32}> : () -> f32
-      %39 = "arith.cmpf"(%29, %38) <{fastmath = #arith.fastmath<none>, predicate = 3 : i64}> : (f32, f32) -> i1
-      %40 = "arith.select"(%39, %37, %9) : (i1, i32, i32) -> i32
-      %41 = "arith.addi"(%25, %40) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %42 = "arith.maxsi"(%9, %41) : (i32, i32) -> i32
-      %43 = "arith.minsi"(%11, %42) : (i32, i32) -> i32
-      %44 = "arith.index_cast"(%43) : (i32) -> index
-      %45 = "arith.constant"() <{value = 5.000000e-01 : f32}> : () -> f32
-      %46 = "arith.cmpf"(%36, %45) <{fastmath = #arith.fastmath<none>, predicate = 3 : i64}> : (f32, f32) -> i1
-      %47 = "arith.select"(%46, %37, %9) : (i1, i32, i32) -> i32
-      %48 = "arith.addi"(%32, %47) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %49 = "arith.maxsi"(%9, %48) : (i32, i32) -> i32
-      %50 = "arith.minsi"(%12, %49) : (i32, i32) -> i32
-      %51 = "arith.index_cast"(%50) : (i32) -> index
-      %52 = "tensor.extract"(%arg0, %5, %44, %51, %8) : (tensor<1x50x48x1xf32>, index, index, index, index) -> f32
-      "linalg.yield"(%52) : (f32) -> ()
+      %26 = "arith.muli"(%25, %15) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %27 = "arith.subi"(%24, %26) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %28 = "arith.sitofp"(%27) : (i32) -> f32
+      %29 = "arith.uitofp"(%15) : (i32) -> f32
+      %30 = "arith.divf"(%28, %29) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %31 = "arith.muli"(%14, %18) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %32 = "arith.addi"(%31, %20) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %33 = "arith.floordivsi"(%32, %17) : (i32, i32) -> i32
+      %34 = "arith.muli"(%33, %17) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %35 = "arith.subi"(%32, %34) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %36 = "arith.sitofp"(%35) : (i32) -> f32
+      %37 = "arith.uitofp"(%17) : (i32) -> f32
+      %38 = "arith.divf"(%36, %37) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %39 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+      %40 = "arith.constant"() <{value = 5.000000e-01 : f32}> : () -> f32
+      %41 = "arith.cmpf"(%30, %40) <{fastmath = #arith.fastmath<none>, predicate = 3 : i64}> : (f32, f32) -> i1
+      %42 = "arith.select"(%41, %39, %9) : (i1, i32, i32) -> i32
+      %43 = "arith.addi"(%25, %42) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %44 = "arith.maxsi"(%9, %43) : (i32, i32) -> i32
+      %45 = "arith.minsi"(%11, %44) : (i32, i32) -> i32
+      %46 = "arith.index_cast"(%45) : (i32) -> index
+      %47 = "arith.constant"() <{value = 5.000000e-01 : f32}> : () -> f32
+      %48 = "arith.cmpf"(%38, %47) <{fastmath = #arith.fastmath<none>, predicate = 3 : i64}> : (f32, f32) -> i1
+      %49 = "arith.select"(%48, %39, %9) : (i1, i32, i32) -> i32
+      %50 = "arith.addi"(%33, %49) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %51 = "arith.maxsi"(%9, %50) : (i32, i32) -> i32
+      %52 = "arith.minsi"(%12, %51) : (i32, i32) -> i32
+      %53 = "arith.index_cast"(%52) : (i32) -> index
+      %54 = "tensor.extract"(%arg0, %5, %46, %53, %8) : (tensor<1x50x48x1xf32>, index, index, index, index) -> f32
+      "linalg.yield"(%54) : (f32) -> ()
     }) : (tensor<1x1600x1536x1xf32>) -> tensor<1x1600x1536x1xf32>
     "func.return"() : () -> ()
   }) : () -> ()
@@ -410,50 +412,52 @@
       %23 = "arith.muli"(%13, %16) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %24 = "arith.addi"(%23, %19) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %25 = "arith.floordivsi"(%24, %15) : (i32, i32) -> i32
-      %26 = "arith.remsi"(%24, %15) : (i32, i32) -> i32
-      %27 = "arith.sitofp"(%26) : (i32) -> f32
-      %28 = "arith.uitofp"(%15) : (i32) -> f32
-      %29 = "arith.divf"(%27, %28) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %30 = "arith.muli"(%14, %18) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %31 = "arith.addi"(%30, %20) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %32 = "arith.floordivsi"(%31, %17) : (i32, i32) -> i32
-      %33 = "arith.remsi"(%31, %17) : (i32, i32) -> i32
-      %34 = "arith.sitofp"(%33) : (i32) -> f32
-      %35 = "arith.uitofp"(%17) : (i32) -> f32
-      %36 = "arith.divf"(%34, %35) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %37 = "arith.constant"() <{value = 1 : i32}> : () -> i32
-      %38 = "arith.addi"(%25, %37) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %39 = "arith.maxsi"(%9, %25) : (i32, i32) -> i32
-      %40 = "arith.minsi"(%11, %39) : (i32, i32) -> i32
-      %41 = "arith.maxsi"(%9, %38) : (i32, i32) -> i32
+      %26 = "arith.muli"(%25, %15) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %27 = "arith.subi"(%24, %26) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %28 = "arith.sitofp"(%27) : (i32) -> f32
+      %29 = "arith.uitofp"(%15) : (i32) -> f32
+      %30 = "arith.divf"(%28, %29) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %31 = "arith.muli"(%14, %18) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %32 = "arith.addi"(%31, %20) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %33 = "arith.floordivsi"(%32, %17) : (i32, i32) -> i32
+      %34 = "arith.muli"(%33, %17) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %35 = "arith.subi"(%32, %34) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %36 = "arith.sitofp"(%35) : (i32) -> f32
+      %37 = "arith.uitofp"(%17) : (i32) -> f32
+      %38 = "arith.divf"(%36, %37) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %39 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+      %40 = "arith.addi"(%25, %39) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %41 = "arith.maxsi"(%9, %25) : (i32, i32) -> i32
       %42 = "arith.minsi"(%11, %41) : (i32, i32) -> i32
-      %43 = "arith.index_cast"(%40) : (i32) -> index
-      %44 = "arith.index_cast"(%42) : (i32) -> index
-      %45 = "arith.addi"(%32, %37) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %46 = "arith.maxsi"(%9, %32) : (i32, i32) -> i32
-      %47 = "arith.minsi"(%12, %46) : (i32, i32) -> i32
-      %48 = "arith.maxsi"(%9, %45) : (i32, i32) -> i32
+      %43 = "arith.maxsi"(%9, %40) : (i32, i32) -> i32
+      %44 = "arith.minsi"(%11, %43) : (i32, i32) -> i32
+      %45 = "arith.index_cast"(%42) : (i32) -> index
+      %46 = "arith.index_cast"(%44) : (i32) -> index
+      %47 = "arith.addi"(%33, %39) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %48 = "arith.maxsi"(%9, %33) : (i32, i32) -> i32
       %49 = "arith.minsi"(%12, %48) : (i32, i32) -> i32
-      %50 = "arith.index_cast"(%47) : (i32) -> index
-      %51 = "arith.index_cast"(%49) : (i32) -> index
-      %52 = "tensor.extract"(%arg0, %5, %43, %50, %8) : (tensor<1x23x24x1xf32>, index, index, index, index) -> f32
-      %53 = "tensor.extract"(%arg0, %5, %43, %51, %8) : (tensor<1x23x24x1xf32>, index, index, index, index) -> f32
-      %54 = "tensor.extract"(%arg0, %5, %44, %50, %8) : (tensor<1x23x24x1xf32>, index, index, index, index) -> f32
-      %55 = "tensor.extract"(%arg0, %5, %44, %51, %8) : (tensor<1x23x24x1xf32>, index, index, index, index) -> f32
-      %56 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-      %57 = "arith.subf"(%56, %36) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %58 = "arith.mulf"(%52, %57) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %59 = "arith.mulf"(%53, %36) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %60 = "arith.addf"(%58, %59) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %61 = "arith.subf"(%56, %36) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %62 = "arith.mulf"(%54, %61) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %63 = "arith.mulf"(%55, %36) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %64 = "arith.addf"(%62, %63) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %65 = "arith.subf"(%56, %29) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %66 = "arith.mulf"(%60, %65) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %67 = "arith.mulf"(%64, %29) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %68 = "arith.addf"(%66, %67) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      "linalg.yield"(%68) : (f32) -> ()
+      %50 = "arith.maxsi"(%9, %47) : (i32, i32) -> i32
+      %51 = "arith.minsi"(%12, %50) : (i32, i32) -> i32
+      %52 = "arith.index_cast"(%49) : (i32) -> index
+      %53 = "arith.index_cast"(%51) : (i32) -> index
+      %54 = "tensor.extract"(%arg0, %5, %45, %52, %8) : (tensor<1x23x24x1xf32>, index, index, index, index) -> f32
+      %55 = "tensor.extract"(%arg0, %5, %45, %53, %8) : (tensor<1x23x24x1xf32>, index, index, index, index) -> f32
+      %56 = "tensor.extract"(%arg0, %5, %46, %52, %8) : (tensor<1x23x24x1xf32>, index, index, index, index) -> f32
+      %57 = "tensor.extract"(%arg0, %5, %46, %53, %8) : (tensor<1x23x24x1xf32>, index, index, index, index) -> f32
+      %58 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+      %59 = "arith.subf"(%58, %38) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %60 = "arith.mulf"(%54, %59) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %61 = "arith.mulf"(%55, %38) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %62 = "arith.addf"(%60, %61) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %63 = "arith.subf"(%58, %38) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %64 = "arith.mulf"(%56, %63) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %65 = "arith.mulf"(%57, %38) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %66 = "arith.addf"(%64, %65) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %67 = "arith.subf"(%58, %30) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %68 = "arith.mulf"(%62, %67) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %69 = "arith.mulf"(%66, %30) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %70 = "arith.addf"(%68, %69) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      "linalg.yield"(%70) : (f32) -> ()
     }) : (tensor<1x89x93x1xf32>) -> tensor<1x89x93x1xf32>
     "func.return"() : () -> ()
   }) : () -> ()
@@ -492,12 +496,12 @@
       %24 = "arith.constant"() <{value = 1 : i32}> : () -> i32
       %25 = "arith.muli"(%15, %18) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %26 = "arith.addi"(%25, %21) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %27 = "arith.divsi"(%26, %17) : (i32, i32) -> i32
+      %27 = "arith.floordivsi"(%26, %17) : (i32, i32) -> i32
       %28 = "arith.muli"(%27, %17) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %29 = "arith.subi"(%26, %28) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %30 = "arith.muli"(%16, %20) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %31 = "arith.addi"(%30, %22) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %32 = "arith.divsi"(%31, %19) : (i32, i32) -> i32
+      %32 = "arith.floordivsi"(%31, %19) : (i32, i32) -> i32
       %33 = "arith.muli"(%32, %19) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %34 = "arith.subi"(%31, %33) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %35 = "arith.constant"() <{value = 1 : i32}> : () -> i32
@@ -572,12 +576,12 @@
       %22 = "arith.constant"() <{value = 0 : i32}> : () -> i32
       %23 = "arith.muli"(%13, %16) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %24 = "arith.addi"(%23, %19) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %25 = "arith.divsi"(%24, %15) : (i32, i32) -> i32
+      %25 = "arith.floordivsi"(%24, %15) : (i32, i32) -> i32
       %26 = "arith.muli"(%25, %15) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %27 = "arith.subi"(%24, %26) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %28 = "arith.muli"(%14, %18) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %29 = "arith.addi"(%28, %20) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %30 = "arith.divsi"(%29, %17) : (i32, i32) -> i32
+      %30 = "arith.floordivsi"(%29, %17) : (i32, i32) -> i32
       %31 = "arith.muli"(%30, %17) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %32 = "arith.subi"(%29, %31) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %33 = "arith.constant"() <{value = 1 : i32}> : () -> i32
@@ -630,70 +634,70 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (tensor<3x1x2x7xi8>) -> tensor<3x1x4x7xi32>, sym_name = "skip_interpolate_bilinear_i8"}> ({
   ^bb0(%arg2: tensor<3x1x2x7xi8>):
-    %58 = "tosa.const_shape"() <{values = dense<[2, 1, 3, 1]> : tensor<4xindex>}> : () -> !tosa.shape<4>
-    %59 = "tosa.const_shape"() <{values = dense<0> : tensor<2xindex>}> : () -> !tosa.shape<2>
+    %59 = "tosa.const_shape"() <{values = dense<[2, 1, 3, 1]> : tensor<4xindex>}> : () -> !tosa.shape<4>
     %60 = "tosa.const_shape"() <{values = dense<0> : tensor<2xindex>}> : () -> !tosa.shape<2>
-    %61 = "tensor.empty"() : () -> tensor<3x1x4x7xi32>
-    %62 = "linalg.generic"(%61) <{indexing_maps = [#map], iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>], operandSegmentSizes = array<i32: 0, 1>}> ({
+    %61 = "tosa.const_shape"() <{values = dense<0> : tensor<2xindex>}> : () -> !tosa.shape<2>
+    %62 = "tensor.empty"() : () -> tensor<3x1x4x7xi32>
+    %63 = "linalg.generic"(%62) <{indexing_maps = [#map], iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>], operandSegmentSizes = array<i32: 0, 1>}> ({
     ^bb0(%arg3: i32):
-      %63 = "linalg.index"() <{dim = 0 : i64}> : () -> index
-      %64 = "linalg.index"() <{dim = 1 : i64}> : () -> index
-      %65 = "linalg.index"() <{dim = 2 : i64}> : () -> index
-      %66 = "linalg.index"() <{dim = 3 : i64}> : () -> index
-      %67 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+      %64 = "linalg.index"() <{dim = 0 : i64}> : () -> index
+      %65 = "linalg.index"() <{dim = 1 : i64}> : () -> index
+      %66 = "linalg.index"() <{dim = 2 : i64}> : () -> index
+      %67 = "linalg.index"() <{dim = 3 : i64}> : () -> index
       %68 = "arith.constant"() <{value = 0 : i32}> : () -> i32
       %69 = "arith.constant"() <{value = 0 : i32}> : () -> i32
-      %70 = "arith.constant"() <{value = 1 : i32}> : () -> i32
-      %71 = "arith.index_cast"(%64) : (index) -> i32
+      %70 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+      %71 = "arith.constant"() <{value = 1 : i32}> : () -> i32
       %72 = "arith.index_cast"(%65) : (index) -> i32
-      %73 = "arith.constant"() <{value = 2 : i32}> : () -> i32
-      %74 = "arith.constant"() <{value = 1 : i32}> : () -> i32
-      %75 = "arith.constant"() <{value = 3 : i32}> : () -> i32
-      %76 = "arith.constant"() <{value = 1 : i32}> : () -> i32
-      %77 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+      %73 = "arith.index_cast"(%66) : (index) -> i32
+      %74 = "arith.constant"() <{value = 2 : i32}> : () -> i32
+      %75 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+      %76 = "arith.constant"() <{value = 3 : i32}> : () -> i32
+      %77 = "arith.constant"() <{value = 1 : i32}> : () -> i32
       %78 = "arith.constant"() <{value = 0 : i32}> : () -> i32
       %79 = "arith.constant"() <{value = 0 : i32}> : () -> i32
       %80 = "arith.constant"() <{value = 0 : i32}> : () -> i32
-      %81 = "arith.muli"(%72, %76) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %82 = "arith.addi"(%81, %78) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %83 = "arith.divsi"(%82, %75) : (i32, i32) -> i32
-      %84 = "arith.muli"(%83, %75) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %85 = "arith.subi"(%82, %84) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %86 = "arith.constant"() <{value = 1 : i32}> : () -> i32
-      %87 = "arith.addi"(%67, %86) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %88 = "arith.maxsi"(%67, %67) : (i32, i32) -> i32
-      %89 = "arith.minsi"(%69, %88) : (i32, i32) -> i32
-      %90 = "arith.maxsi"(%67, %87) : (i32, i32) -> i32
-      %91 = "arith.minsi"(%69, %90) : (i32, i32) -> i32
-      %92 = "arith.index_cast"(%89) : (i32) -> index
-      %93 = "arith.index_cast"(%91) : (i32) -> index
-      %94 = "arith.addi"(%83, %86) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %95 = "arith.maxsi"(%67, %83) : (i32, i32) -> i32
-      %96 = "arith.minsi"(%70, %95) : (i32, i32) -> i32
-      %97 = "arith.maxsi"(%67, %94) : (i32, i32) -> i32
-      %98 = "arith.minsi"(%70, %97) : (i32, i32) -> i32
-      %99 = "arith.index_cast"(%96) : (i32) -> index
-      %100 = "arith.index_cast"(%98) : (i32) -> index
-      %101 = "tensor.extract"(%arg2, %63, %92, %99, %66) : (tensor<3x1x2x7xi8>, index, index, index, index) -> i8
-      %102 = "tensor.extract"(%arg2, %63, %92, %100, %66) : (tensor<3x1x2x7xi8>, index, index, index, index) -> i8
-      %103 = "tensor.extract"(%arg2, %63, %93, %99, %66) : (tensor<3x1x2x7xi8>, index, index, index, index) -> i8
-      %104 = "tensor.extract"(%arg2, %63, %93, %100, %66) : (tensor<3x1x2x7xi8>, index, index, index, index) -> i8
-      %105 = "arith.extsi"(%101) : (i8) -> i32
+      %81 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+      %82 = "arith.muli"(%73, %77) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %83 = "arith.addi"(%82, %79) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %84 = "arith.floordivsi"(%83, %76) : (i32, i32) -> i32
+      %85 = "arith.muli"(%84, %76) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %86 = "arith.subi"(%83, %85) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %87 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+      %88 = "arith.addi"(%68, %87) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %89 = "arith.maxsi"(%68, %68) : (i32, i32) -> i32
+      %90 = "arith.minsi"(%70, %89) : (i32, i32) -> i32
+      %91 = "arith.maxsi"(%68, %88) : (i32, i32) -> i32
+      %92 = "arith.minsi"(%70, %91) : (i32, i32) -> i32
+      %93 = "arith.index_cast"(%90) : (i32) -> index
+      %94 = "arith.index_cast"(%92) : (i32) -> index
+      %95 = "arith.addi"(%84, %87) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %96 = "arith.maxsi"(%68, %84) : (i32, i32) -> i32
+      %97 = "arith.minsi"(%71, %96) : (i32, i32) -> i32
+      %98 = "arith.maxsi"(%68, %95) : (i32, i32) -> i32
+      %99 = "arith.minsi"(%71, %98) : (i32, i32) -> i32
+      %100 = "arith.index_cast"(%97) : (i32) -> index
+      %101 = "arith.index_cast"(%99) : (i32) -> index
+      %102 = "tensor.extract"(%arg2, %64, %93, %100, %67) : (tensor<3x1x2x7xi8>, index, index, index, index) -> i8
+      %103 = "tensor.extract"(%arg2, %64, %93, %101, %67) : (tensor<3x1x2x7xi8>, index, index, index, index) -> i8
+      %104 = "tensor.extract"(%arg2, %64, %94, %100, %67) : (tensor<3x1x2x7xi8>, index, index, index, index) -> i8
+      %105 = "tensor.extract"(%arg2, %64, %94, %101, %67) : (tensor<3x1x2x7xi8>, index, index, index, index) -> i8
       %106 = "arith.extsi"(%102) : (i8) -> i32
       %107 = "arith.extsi"(%103) : (i8) -> i32
       %108 = "arith.extsi"(%104) : (i8) -> i32
-      %109 = "arith.subi"(%75, %85) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %110 = "arith.muli"(%105, %109) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %111 = "arith.muli"(%106, %85) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %112 = "arith.addi"(%110, %111) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %113 = "arith.subi"(%75, %85) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %114 = "arith.muli"(%107, %113) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %115 = "arith.muli"(%108, %85) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %116 = "arith.addi"(%114, %115) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %117 = "arith.muli"(%112, %73) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      "linalg.yield"(%117) : (i32) -> ()
+      %109 = "arith.extsi"(%105) : (i8) -> i32
+      %110 = "arith.subi"(%76, %86) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %111 = "arith.muli"(%106, %110) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %112 = "arith.muli"(%107, %86) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %113 = "arith.addi"(%111, %112) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %114 = "arith.subi"(%76, %86) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %115 = "arith.muli"(%108, %114) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %116 = "arith.muli"(%109, %86) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %117 = "arith.addi"(%115, %116) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %118 = "arith.muli"(%113, %74) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      "linalg.yield"(%118) : (i32) -> ()
     }) : (tensor<3x1x4x7xi32>) -> tensor<3x1x4x7xi32>
-    "func.return"(%62) : (tensor<3x1x4x7xi32>) -> ()
+    "func.return"(%63) : (tensor<3x1x4x7xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (tensor<3x1x2x7xf32>) -> tensor<3x1x4x7xf32>, sym_name = "skip_interpolate_bilinear_f32"}> ({
   ^bb0(%arg0: tensor<3x1x2x7xf32>):
@@ -724,39 +728,40 @@
       %23 = "arith.muli"(%14, %18) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %24 = "arith.addi"(%23, %20) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
       %25 = "arith.floordivsi"(%24, %17) : (i32, i32) -> i32
-      %26 = "arith.remsi"(%24, %17) : (i32, i32) -> i32
-      %27 = "arith.sitofp"(%26) : (i32) -> f32
-      %28 = "arith.uitofp"(%17) : (i32) -> f32
-      %29 = "arith.divf"(%27, %28) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %30 = "arith.constant"() <{value = 1 : i32}> : () -> i32
-      %31 = "arith.addi"(%9, %30) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %32 = "arith.maxsi"(%9, %9) : (i32, i32) -> i32
-      %33 = "arith.minsi"(%11, %32) : (i32, i32) -> i32
-      %34 = "arith.maxsi"(%9, %31) : (i32, i32) -> i32
-      %35 = "arith.minsi"(%11, %34) : (i32, i32) -> i32
-      %36 = "arith.index_cast"(%33) : (i32) -> index
-      %37 = "arith.index_cast"(%35) : (i32) -> index
-      %38 = "arith.addi"(%25, %30) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-      %39 = "arith.maxsi"(%9, %25) : (i32, i32) -> i32
-      %40 = "arith.minsi"(%12, %39) : (i32, i32) -> i32
-      %41 = "arith.maxsi"(%9, %38) : (i32, i32) -> i32
-      %42 = "arith.minsi"(%12, %41) : (i32, i32) -> i32
-      %43 = "arith.index_cast"(%40) : (i32) -> index
-      %44 = "arith.index_cast"(%42) : (i32) -> index
-      %45 = "tensor.extract"(%arg0, %5, %36, %43, %8) : (tensor<3x1x2x7xf32>, index, index, index, index) -> f32
-      %46 = "tensor.extract"(%arg0, %5, %36, %44, %8) : (tensor<3x1x2x7xf32>, index, index, index, index) -> f32
-      %47 = "tensor.extract"(%arg0, %5, %37, %43, %8) : (tensor<3x1x2x7xf32>, index, index, index, index) -> f32
-      %48 = "tensor.extract"(%arg0, %5, %37, %44, %8) : (tensor<3x1x2x7xf32>, index, index, index, index) -> f32
-      %49 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-      %50 = "arith.subf"(%49, %29) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %51 = "arith.mulf"(%45, %50) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %52 = "arith.mulf"(%46, %29) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %53 = "arith.addf"(%51, %52) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %54 = "arith.subf"(%49, %29) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %55 = "arith.mulf"(%47, %54) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %56 = "arith.mulf"(%48, %29) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %57 = "arith.addf"(%55, %56) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      "linalg.yield"(%53) : (f32) -> ()
+      %26 = "arith.muli"(%25, %17) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %27 = "arith.subi"(%24, %26) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %28 = "arith.sitofp"(%27) : (i32) -> f32
+      %29 = "arith.uitofp"(%17) : (i32) -> f32
+      %30 = "arith.divf"(%28, %29) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %31 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+      %32 = "arith.addi"(%9, %31) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %33 = "arith.maxsi"(%9, %9) : (i32, i32) -> i32
+      %34 = "arith.minsi"(%11, %33) : (i32, i32) -> i32
+      %35 = "arith.maxsi"(%9, %32) : (i32, i32) -> i32
+      %36 = "arith.minsi"(%11, %35) : (i32, i32) -> i32
+      %37 = "arith.index_cast"(%34) : (i32) -> index
+      %38 = "arith.index_cast"(%36) : (i32) -> index
+      %39 = "arith.addi"(%25, %31) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+      %40 = "arith.maxsi"(%9, %25) : (i32, i32) -> i32
+      %41 = "arith.minsi"(%12, %40) : (i32, i32) -> i32
+      %42 = "arith.maxsi"(%9, %39) : (i32, i32) -> i32
+      %43 = "arith.minsi"(%12, %42) : (i32, i32) -> i32
+      %44 = "arith.index_cast"(%41) : (i32) -> index
+      %45 = "arith.index_cast"(%43) : (i32) -> index
+      %46 = "tensor.extract"(%arg0, %5, %37, %44, %8) : (tensor<3x1x2x7xf32>, index, index, index, index) -> f32
+      %47 = "tensor.extract"(%arg0, %5, %37, %45, %8) : (tensor<3x1x2x7xf32>, index, index, index, index) -> f32
+      %48 = "tensor.extract"(%arg0, %5, %38, %44, %8) : (tensor<3x1x2x7xf32>, index, index, index, index) -> f32
+      %49 = "tensor.extract"(%arg0, %5, %38, %45, %8) : (tensor<3x1x2x7xf32>, index, index, index, index) -> f32
+      %50 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+      %51 = "arith.subf"(%50, %30) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %52 = "arith.mulf"(%46, %51) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %53 = "arith.mulf"(%47, %30) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %54 = "arith.addf"(%52, %53) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %55 = "arith.subf"(%50, %30) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %56 = "arith.mulf"(%48, %55) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %57 = "arith.mulf"(%49, %30) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %58 = "arith.addf"(%56, %57) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      "linalg.yield"(%54) : (f32) -> ()
     }) : (tensor<3x1x4x7xf32>) -> tensor<3x1x4x7xf32>
     "func.return"(%4) : (tensor<3x1x4x7xf32>) -> ()
   }) : () -> ()

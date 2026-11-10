@@ -3,52 +3,58 @@
 #map2 = affine_map<(d0) -> (d0)>
 "builtin.module"() ({
   "func.func"() <{function_type = (memref<?xf32, 1>, index) -> (), sym_name = "load_store"}> ({
-  ^bb0(%arg35: memref<?xf32, 1>, %arg36: index):
-    %48 = "memref.load"(%arg35, %arg36) : (memref<?xf32, 1>, index) -> f32
-    "memref.store"(%48, %arg35, %arg36) : (f32, memref<?xf32, 1>, index) -> ()
+  ^bb0(%arg37: memref<?xf32, 1>, %arg38: index):
+    %50 = "memref.load"(%arg37, %arg38) : (memref<?xf32, 1>, index) -> f32
+    "memref.store"(%50, %arg37, %arg38) : (f32, memref<?xf32, 1>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<?xf32, 1>, index) -> (), sym_name = "load_store_unfoldable"}> ({
-  ^bb0(%arg33: memref<?xf32, 1>, %arg34: index):
-    %46 = "memref.memory_space_cast"(%arg33) : (memref<?xf32, 1>) -> memref<?xf32, 2>
-    %47 = "memref.load"(%46, %arg34) : (memref<?xf32, 2>, index) -> f32
-    "memref.store"(%47, %46, %arg34) : (f32, memref<?xf32, 2>, index) -> ()
+  ^bb0(%arg35: memref<?xf32, 1>, %arg36: index):
+    %48 = "memref.memory_space_cast"(%arg35) : (memref<?xf32, 1>) -> memref<?xf32, 2>
+    %49 = "memref.load"(%48, %arg36) : (memref<?xf32, 2>, index) -> f32
+    "memref.store"(%49, %48, %arg36) : (f32, memref<?xf32, 2>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<2xf32, 1>, memref<*xf32, 1>) -> (memref<*xf32>, memref<3x2xf32>), sym_name = "cast"}> ({
-  ^bb0(%arg31: memref<2xf32, 1>, %arg32: memref<*xf32, 1>):
-    %42 = "memref.cast"(%arg31) : (memref<2xf32, 1>) -> memref<*xf32, 1>
-    %43 = "memref.memory_space_cast"(%42) : (memref<*xf32, 1>) -> memref<*xf32>
-    %44 = "memref.cast"(%arg32) : (memref<*xf32, 1>) -> memref<3x2xf32, 1>
-    %45 = "memref.memory_space_cast"(%44) : (memref<3x2xf32, 1>) -> memref<3x2xf32>
-    "func.return"(%43, %45) : (memref<*xf32>, memref<3x2xf32>) -> ()
+  ^bb0(%arg33: memref<2xf32, 1>, %arg34: memref<*xf32, 1>):
+    %44 = "memref.cast"(%arg33) : (memref<2xf32, 1>) -> memref<*xf32, 1>
+    %45 = "memref.memory_space_cast"(%44) : (memref<*xf32, 1>) -> memref<*xf32>
+    %46 = "memref.cast"(%arg34) : (memref<*xf32, 1>) -> memref<3x2xf32, 1>
+    %47 = "memref.memory_space_cast"(%46) : (memref<3x2xf32, 1>) -> memref<3x2xf32>
+    "func.return"(%45, %47) : (memref<*xf32>, memref<3x2xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<?xi8, 1>, index, index) -> memref<?x?xi8>, sym_name = "view"}> ({
-  ^bb0(%arg28: memref<?xi8, 1>, %arg29: index, %arg30: index):
-    %39 = "arith.constant"() <{value = 100 : index}> : () -> index
-    %40 = "memref.view"(%arg28, %arg29, %arg30, %39) : (memref<?xi8, 1>, index, index, index) -> memref<?x?xi8, 1>
-    %41 = "memref.memory_space_cast"(%40) : (memref<?x?xi8, 1>) -> memref<?x?xi8>
-    "func.return"(%41) : (memref<?x?xi8>) -> ()
+  ^bb0(%arg30: memref<?xi8, 1>, %arg31: index, %arg32: index):
+    %41 = "arith.constant"() <{value = 100 : index}> : () -> index
+    %42 = "memref.view"(%arg30, %arg31, %arg32, %41) : (memref<?xi8, 1>, index, index, index) -> memref<?x?xi8, 1>
+    %43 = "memref.memory_space_cast"(%42) : (memref<?x?xi8, 1>) -> memref<?x?xi8>
+    "func.return"(%43) : (memref<?x?xi8>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<?x?xf32, 1>, index) -> memref<8x2xf32, strided<[?, 2], offset: ?>>, sym_name = "subview"}> ({
-  ^bb0(%arg26: memref<?x?xf32, 1>, %arg27: index):
-    %37 = "memref.subview"(%arg26) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>, static_offsets = array<i64: 4, 2>, static_sizes = array<i64: 8, 2>, static_strides = array<i64: 3, 2>}> : (memref<?x?xf32, 1>) -> memref<8x2xf32, strided<[?, 2], offset: ?>, 1>
-    %38 = "memref.memory_space_cast"(%37) : (memref<8x2xf32, strided<[?, 2], offset: ?>, 1>) -> memref<8x2xf32, strided<[?, 2], offset: ?>>
-    "func.return"(%38) : (memref<8x2xf32, strided<[?, 2], offset: ?>>) -> ()
+  ^bb0(%arg28: memref<?x?xf32, 1>, %arg29: index):
+    %39 = "memref.subview"(%arg28) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>, static_offsets = array<i64: 4, 2>, static_sizes = array<i64: 8, 2>, static_strides = array<i64: 3, 2>}> : (memref<?x?xf32, 1>) -> memref<8x2xf32, strided<[?, 2], offset: ?>, 1>
+    %40 = "memref.memory_space_cast"(%39) : (memref<8x2xf32, strided<[?, 2], offset: ?>, 1>) -> memref<8x2xf32, strided<[?, 2], offset: ?>>
+    "func.return"(%40) : (memref<8x2xf32, strided<[?, 2], offset: ?>>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<?xf32, 1>, index) -> memref<10x?xf32, strided<[?, 1], offset: ?>>, sym_name = "reinterpret_cast"}> ({
-  ^bb0(%arg24: memref<?xf32, 1>, %arg25: index):
-    %33 = "arith.constant"() <{value = 10 : index}> : () -> index
-    %34 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %35 = "memref.reinterpret_cast"(%arg24, %34, %33, %33) <{operandSegmentSizes = array<i32: 1, 1, 1, 1>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 10, -9223372036854775808>, static_strides = array<i64: -9223372036854775808, 1>}> : (memref<?xf32, 1>, index, index, index) -> memref<10x?xf32, strided<[?, 1], offset: ?>, 1>
-    %36 = "memref.memory_space_cast"(%35) : (memref<10x?xf32, strided<[?, 1], offset: ?>, 1>) -> memref<10x?xf32, strided<[?, 1], offset: ?>>
-    "func.return"(%36) : (memref<10x?xf32, strided<[?, 1], offset: ?>>) -> ()
+  ^bb0(%arg26: memref<?xf32, 1>, %arg27: index):
+    %35 = "arith.constant"() <{value = 10 : index}> : () -> index
+    %36 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %37 = "memref.reinterpret_cast"(%arg26, %36, %35, %35) <{operandSegmentSizes = array<i32: 1, 1, 1, 1>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 10, -9223372036854775808>, static_strides = array<i64: -9223372036854775808, 1>}> : (memref<?xf32, 1>, index, index, index) -> memref<10x?xf32, strided<[?, 1], offset: ?>, 1>
+    %38 = "memref.memory_space_cast"(%37) : (memref<10x?xf32, strided<[?, 1], offset: ?>, 1>) -> memref<10x?xf32, strided<[?, 1], offset: ?>>
+    "func.return"(%38) : (memref<10x?xf32, strided<[?, 1], offset: ?>>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<?x?xf32, 1>, memref<1xindex>) -> memref<?xf32>, sym_name = "reshape"}> ({
-  ^bb0(%arg22: memref<?x?xf32, 1>, %arg23: memref<1xindex>):
-    %31 = "memref.reshape"(%arg22, %arg23) : (memref<?x?xf32, 1>, memref<1xindex>) -> memref<?xf32, 1>
-    %32 = "memref.memory_space_cast"(%31) : (memref<?xf32, 1>) -> memref<?xf32>
-    "func.return"(%32) : (memref<?xf32>) -> ()
+  ^bb0(%arg24: memref<?x?xf32, 1>, %arg25: memref<1xindex>):
+    %33 = "memref.reshape"(%arg24, %arg25) : (memref<?x?xf32, 1>, memref<1xindex>) -> memref<?xf32, 1>
+    %34 = "memref.memory_space_cast"(%33) : (memref<?xf32, 1>) -> memref<?xf32>
+    "func.return"(%34) : (memref<?xf32>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (memref<?x?xf32, 1>, memref<?xindex>) -> memref<*xf32>, sym_name = "reshape_unranked"}> ({
+  ^bb0(%arg22: memref<?x?xf32, 1>, %arg23: memref<?xindex>):
+    %31 = "memref.reshape"(%arg22, %arg23) : (memref<?x?xf32, 1>, memref<?xindex>) -> memref<*xf32, 1>
+    %32 = "memref.memory_space_cast"(%31) : (memref<*xf32, 1>) -> memref<*xf32>
+    "func.return"(%32) : (memref<*xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<12xf32, 1>) -> memref<3x4xf32>, sym_name = "expand_shape"}> ({
   ^bb0(%arg21: memref<12xf32, 1>):

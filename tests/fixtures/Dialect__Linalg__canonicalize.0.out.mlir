@@ -268,7 +268,7 @@ module {
 // -----
 #map = affine_map<(d0, d1) -> (d0, d1)>
 module {
-  func.func @no_fold_fill_like_memref(%arg0: memref<4x16xf32>, %arg1: f32) {
+  func.func @negative_fold_fill_like_memref(%arg0: memref<4x16xf32>, %arg1: f32) {
     linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel", "parallel"]} ins(%arg0 : memref<4x16xf32>) outs(%arg0 : memref<4x16xf32>) {
     ^bb0(%in: f32, %out: f32):
       linalg.yield %arg1 : f32
@@ -280,7 +280,7 @@ module {
 // -----
 #map = affine_map<(d0, d1) -> (d0, d1)>
 module {
-  func.func @no_fold_fill_like_tensor(%arg0: tensor<4x16xf32>, %arg1: f32) -> tensor<4x16xf32> {
+  func.func @negative_fold_fill_like_tensor(%arg0: tensor<4x16xf32>, %arg1: f32) -> tensor<4x16xf32> {
     %0 = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel", "parallel"]} ins(%arg0 : tensor<4x16xf32>) outs(%arg0 : tensor<4x16xf32>) {
     ^bb0(%in: f32, %out: f32):
       linalg.yield %arg1 : f32
@@ -317,7 +317,7 @@ module {
 
 // -----
 module {
-  func.func @no_fold_pad_fill_value_mismatch() -> tensor<412x276xf32> {
+  func.func @negative_fold_pad_fill_value_mismatch() -> tensor<412x276xf32> {
     %cst = arith.constant 0.000000e+00 : f32
     %cst_0 = arith.constant 1.000000e+00 : f32
     %0 = tensor.empty() : tensor<400x273xf32>
@@ -656,6 +656,32 @@ module {
 
 // -----
 module {
+  func.func @broadcast_splat_constant_to_dense(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+    %cst = arith.constant dense<1.000000e+00> : tensor<2x3xf32>
+    return %cst : tensor<2x3xf32>
+  }
+}
+
+// -----
+module {
+  func.func @broadcast_splat_constant_dynamic_shape(%arg0: tensor<?x3xf32>) -> tensor<?x3xf32> {
+    %cst = arith.constant dense<1.000000e+00> : tensor<3xf32>
+    %broadcasted = linalg.broadcast ins(%cst : tensor<3xf32>) outs(%arg0 : tensor<?x3xf32>) dimensions = [0] 
+    return %broadcasted : tensor<?x3xf32>
+  }
+}
+
+// -----
+module {
+  func.func @broadcast_non_splat_constant(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+    %cst = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<3xf32>
+    %broadcasted = linalg.broadcast ins(%cst : tensor<3xf32>) outs(%arg0 : tensor<2x3xf32>) dimensions = [0] 
+    return %broadcasted : tensor<2x3xf32>
+  }
+}
+
+// -----
+module {
   func.func @broadcast_broadcast_fold(%arg0: tensor<2xf32>, %arg1: tensor<2x3xf32>, %arg2: tensor<2x3x4xf32>) -> tensor<2x3x4xf32> {
     %broadcasted = linalg.broadcast ins(%arg0 : tensor<2xf32>) outs(%arg2 : tensor<2x3x4xf32>) dimensions = [1, 2] 
     return %broadcasted : tensor<2x3x4xf32>
@@ -681,6 +707,31 @@ module {
 module {
   func.func @transpose_identity_perm(%arg0: tensor<16x32x64xf32>, %arg1: tensor<16x32x64xf32>) -> tensor<16x32x64xf32> {
     return %arg0 : tensor<16x32x64xf32>
+  }
+}
+
+// -----
+module {
+  func.func @transpose_splat_constant_to_dense(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
+    %cst = arith.constant dense<1.000000e+00> : tensor<3x2xf32>
+    return %cst : tensor<3x2xf32>
+  }
+}
+
+// -----
+module {
+  func.func @transpose_splat_constant_same_shape_permutations(%arg0: tensor<3x3x3xf32>, %arg1: tensor<3x3x3xf32>) -> (tensor<3x3x3xf32>, tensor<3x3x3xf32>) {
+    %cst = arith.constant dense<1.000000e+00> : tensor<3x3x3xf32>
+    return %cst, %cst : tensor<3x3x3xf32>, tensor<3x3x3xf32>
+  }
+}
+
+// -----
+module {
+  func.func @transpose_non_splat_constant(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
+    %cst = arith.constant dense<[[1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf32>
+    %transposed = linalg.transpose ins(%cst : tensor<2x3xf32>) outs(%arg0 : tensor<3x2xf32>) permutation = [1, 0] 
+    return %transposed : tensor<3x2xf32>
   }
 }
 
@@ -774,6 +825,18 @@ module {
 
 // -----
 module {
+  func.func @negative_fold_pack_zero_tile(%arg0: tensor<7x16xi32>) -> tensor<1x16x?x1xi32> {
+    %c123_i32 = arith.constant 123 : i32
+    %c0 = arith.constant 0 : index
+    %0 = tensor.empty() : tensor<1x16x0x1xi32>
+    %cast = tensor.cast %0 : tensor<1x16x0x1xi32> to tensor<1x16x?x1xi32>
+    %pack = linalg.pack %arg0 padding_value(%c123_i32 : i32) inner_dims_pos = [0, 1] inner_tiles = [%c0, 1] into %cast : tensor<7x16xi32> -> tensor<1x16x?x1xi32>
+    return %pack : tensor<1x16x?x1xi32>
+  }
+}
+
+// -----
+module {
   func.func @fold_padding_value_pack_constant_splat(%arg0: tensor<4x8x8x32xf32>) -> tensor<4x8x8x32xf32> {
     %cst = arith.constant dense<1.000000e-01> : tensor<4x8x8x32xf32>
     return %cst : tensor<4x8x8x32xf32>
@@ -782,7 +845,7 @@ module {
 
 // -----
 module {
-  func.func @nofold_padding_value_pack_constant_splat(%arg0: tensor<4x8x8x32xf32>) -> tensor<4x8x8x32xf32> {
+  func.func @negative_fold_padding_value_pack_constant_splat(%arg0: tensor<4x8x8x32xf32>) -> tensor<4x8x8x32xf32> {
     %cst = arith.constant 0.000000e+00 : f32
     %cst_0 = arith.constant dense<1.000000e-01> : tensor<63x127xf32>
     %pack = linalg.pack %cst_0 padding_value(%cst : f32) outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [8, 32] into %arg0 : tensor<63x127xf32> -> tensor<4x8x8x32xf32>
@@ -796,6 +859,29 @@ module {
     %0 = tensor.empty() : tensor<31250x1200x16x1xf32>
     %pack = linalg.pack %arg0 outer_dims_perm = [1, 0] inner_dims_pos = [1, 0] inner_tiles = [16, 1] into %0 : tensor<1200x500000xf32> -> tensor<31250x1200x16x1xf32>
     return %pack : tensor<31250x1200x16x1xf32>
+  }
+}
+
+// -----
+module {
+  func.func @fold_padding_value_pack_dynamic_with_unit_tile_size(%arg0: tensor<?x500000xf32>) -> tensor<31250x?x16x1xf32> {
+    %c0 = arith.constant 0 : index
+    %dim = tensor.dim %arg0, %c0 : tensor<?x500000xf32>
+    %0 = tensor.empty(%dim) : tensor<31250x?x16x1xf32>
+    %pack = linalg.pack %arg0 outer_dims_perm = [1, 0] inner_dims_pos = [1, 0] inner_tiles = [16, 1] into %0 : tensor<?x500000xf32> -> tensor<31250x?x16x1xf32>
+    return %pack : tensor<31250x?x16x1xf32>
+  }
+}
+
+// -----
+module {
+  func.func @nofold_padding_value_pack_dynamic_with_non_unit_tile_size(%arg0: tensor<?x500000xf32>) -> tensor<31250x?x16x2xf32> {
+    %cst = arith.constant 0.000000e+00 : f32
+    %c0 = arith.constant 0 : index
+    %dim = tensor.dim %arg0, %c0 : tensor<?x500000xf32>
+    %0 = tensor.empty(%dim) : tensor<31250x?x16x2xf32>
+    %pack = linalg.pack %arg0 padding_value(%cst : f32) outer_dims_perm = [1, 0] inner_dims_pos = [1, 0] inner_tiles = [16, 2] into %0 : tensor<?x500000xf32> -> tensor<31250x?x16x2xf32>
+    return %pack : tensor<31250x?x16x2xf32>
   }
 }
 
@@ -822,7 +908,7 @@ module {
 
 // -----
 module {
-  func.func @no_infer_pack_shape(%arg0: tensor<?x32x100xf32>, %arg1: index) -> tensor<32x7x?x16x1xf32> {
+  func.func @negative_infer_pack_shape(%arg0: tensor<?x32x100xf32>, %arg1: index) -> tensor<32x7x?x16x1xf32> {
     %cst = arith.constant 0.000000e+00 : f32
     %0 = tensor.empty(%arg1) : tensor<32x7x?x16x1xf32>
     %pack = linalg.pack %arg0 padding_value(%cst : f32) outer_dims_perm = [1, 2, 0] inner_dims_pos = [2, 0] inner_tiles = [16, 1] into %0 : tensor<?x32x100xf32> -> tensor<32x7x?x16x1xf32>
@@ -887,7 +973,7 @@ module {
 
 // -----
 module {
-  func.func @no_infer_unpack_shape(%arg0: tensor<32x7x?x16x1xf32>, %arg1: index) -> tensor<?x32x100xf32> {
+  func.func @negative_infer_unpack_shape(%arg0: tensor<32x7x?x16x1xf32>, %arg1: index) -> tensor<?x32x100xf32> {
     %0 = tensor.empty(%arg1) : tensor<?x32x100xf32>
     %unpack = linalg.unpack %arg0 outer_dims_perm = [1, 2, 0] inner_dims_pos = [2, 0] inner_tiles = [16, 1] into %0 : tensor<32x7x?x16x1xf32> -> tensor<?x32x100xf32>
     return %unpack : tensor<?x32x100xf32>
@@ -932,7 +1018,7 @@ module {
 
 // -----
 module {
-  func.func @unpack_pack_with_padding_no_canonicalization(%arg0: tensor<256x512xbf16>) -> tensor<224x512xbf16> {
+  func.func @negative_unpack_pack_with_padding_no_canonicalization(%arg0: tensor<256x512xbf16>) -> tensor<224x512xbf16> {
     %0 = tensor.empty() : tensor<4x16x64x32xbf16>
     %1 = tensor.empty() : tensor<224x512xbf16>
     %pack = linalg.pack %arg0 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [64, 32] into %0 : tensor<256x512xbf16> -> tensor<4x16x64x32xbf16>
@@ -1059,7 +1145,7 @@ module {
 
 // -----
 module {
-  func.func @no_fold_extract_slice_into_unpack_artificial_padding(%arg0: tensor<28x2x1x16x16xf32>, %arg1: tensor<28x28x15xf32>) -> tensor<28x16x15xf32> {
+  func.func @negative_fold_extract_slice_into_unpack_artificial_padding(%arg0: tensor<28x2x1x16x16xf32>, %arg1: tensor<28x28x15xf32>) -> tensor<28x16x15xf32> {
     %unpack = linalg.unpack %arg0 inner_dims_pos = [1, 2] inner_tiles = [16, 16] into %arg1 : tensor<28x2x1x16x16xf32> -> tensor<28x28x15xf32>
     %extracted_slice = tensor.extract_slice %unpack[0, 0, 0] [28, 16, 15] [1, 1, 1] : tensor<28x28x15xf32> to tensor<28x16x15xf32>
     return %extracted_slice : tensor<28x16x15xf32>
@@ -1068,7 +1154,7 @@ module {
 
 // -----
 module {
-  func.func @no_fold_extract_slice_into_unpack_dynamic(%arg0: tensor<28x2x?x16x16xf32>, %arg1: tensor<28x32x?xf32>, %arg2: index) -> tensor<28x28x?xf32> {
+  func.func @negative_fold_extract_slice_into_unpack_dynamic(%arg0: tensor<28x2x?x16x16xf32>, %arg1: tensor<28x32x?xf32>, %arg2: index) -> tensor<28x28x?xf32> {
     %unpack = linalg.unpack %arg0 outer_dims_perm = [0, 1, 2] inner_dims_pos = [1, 2] inner_tiles = [16, 16] into %arg1 : tensor<28x2x?x16x16xf32> -> tensor<28x32x?xf32>
     %extracted_slice = tensor.extract_slice %unpack[0, 0, 0] [28, 28, %arg2] [1, 1, 1] : tensor<28x32x?xf32> to tensor<28x28x?xf32>
     return %extracted_slice : tensor<28x28x?xf32>
@@ -1077,7 +1163,7 @@ module {
 
 // -----
 module {
-  func.func @no_fold_extract_slice_into_unpack_rank_reducing(%arg0: tensor<28x2x16xf32>, %arg1: tensor<28x32xf32>) -> tensor<28xf32> {
+  func.func @negative_fold_extract_slice_into_unpack_rank_reducing(%arg0: tensor<28x2x16xf32>, %arg1: tensor<28x32xf32>) -> tensor<28xf32> {
     %unpack = linalg.unpack %arg0 outer_dims_perm = [0, 1] inner_dims_pos = [1] inner_tiles = [16] into %arg1 : tensor<28x2x16xf32> -> tensor<28x32xf32>
     %extracted_slice = tensor.extract_slice %unpack[0, 0] [1, 28] [1, 1] : tensor<28x32xf32> to tensor<28xf32>
     return %extracted_slice : tensor<28xf32>
@@ -1086,10 +1172,98 @@ module {
 
 // -----
 module {
-  func.func @no_fold_extract_slice_into_unpack_non_zero_offset(%arg0: tensor<28x2x16xf32>, %arg1: tensor<28x32xf32>) -> tensor<28x28xf32> {
+  func.func @negative_fold_extract_slice_into_unpack_non_zero_offset(%arg0: tensor<28x2x16xf32>, %arg1: tensor<28x32xf32>) -> tensor<28x28xf32> {
     %unpack = linalg.unpack %arg0 outer_dims_perm = [0, 1] inner_dims_pos = [1] inner_tiles = [16] into %arg1 : tensor<28x2x16xf32> -> tensor<28x32xf32>
     %extracted_slice = tensor.extract_slice %unpack[0, 1] [28, 28] [1, 1] : tensor<28x32xf32> to tensor<28x28xf32>
     return %extracted_slice : tensor<28x28xf32>
+  }
+}
+
+// -----
+module {
+  func.func @negative_fold_extract_slice_into_unpack_slice_over_non_tiled_dim(%arg0: tensor<30x2x16xf32>, %arg1: tensor<30x32xf32>) -> tensor<28x28xf32> {
+    %unpack = linalg.unpack %arg0 inner_dims_pos = [1] inner_tiles = [16] into %arg1 : tensor<30x2x16xf32> -> tensor<30x32xf32>
+    %extracted_slice = tensor.extract_slice %unpack[0, 0] [28, 28] [1, 1] : tensor<30x32xf32> to tensor<28x28xf32>
+    return %extracted_slice : tensor<28x28xf32>
+  }
+}
+
+// -----
+module {
+  func.func @negative_fold_extract_slice_into_unpack_slice_over_dynamic_dim(%arg0: tensor<?x2x16xf32>, %arg1: tensor<?x32xf32>, %arg2: index) -> tensor<?x28xf32> {
+    %unpack = linalg.unpack %arg0 inner_dims_pos = [1] inner_tiles = [16] into %arg1 : tensor<?x2x16xf32> -> tensor<?x32xf32>
+    %extracted_slice = tensor.extract_slice %unpack[0, 0] [%arg2, 28] [1, 1] : tensor<?x32xf32> to tensor<?x28xf32>
+    return %extracted_slice : tensor<?x28xf32>
+  }
+}
+
+// -----
+module {
+  func.func @fold_cast_unpack_dynamic_tile_size(%arg0: tensor<1x1x8x1xi32>, %arg1: tensor<7x?xi32>) -> tensor<7x?xi32> {
+    %unpack = linalg.unpack %arg0 inner_dims_pos = [0, 1] inner_tiles = [8, 1] into %arg1 {test_attr} : tensor<1x1x8x1xi32> -> tensor<7x?xi32>
+    return %unpack : tensor<7x?xi32>
+  }
+}
+
+// -----
+module {
+  func.func @fold_pack_unpack_tensor(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+    return %arg0 : tensor<2x3xf32>
+  }
+}
+
+// -----
+module {
+  func.func @negative_pack_unpack_memref_no_canonicalization(%arg0: memref<128x256xf32>, %arg1: memref<16x8x8x32xf32>, %arg2: memref<128x256xf32>) {
+    linalg.pack %arg0 inner_dims_pos = [0, 1] inner_tiles = [8, 32] into %arg1 : memref<128x256xf32> -> memref<16x8x8x32xf32>
+    linalg.unpack %arg1 inner_dims_pos = [0, 1] inner_tiles = [8, 32] into %arg2 : memref<16x8x8x32xf32> -> memref<128x256xf32>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @negative_unpack_pack_memref_no_canonicalization(%arg0: memref<16x8x8x32xf32>, %arg1: memref<128x256xf32>, %arg2: memref<16x8x8x32xf32>) {
+    linalg.unpack %arg0 inner_dims_pos = [0, 1] inner_tiles = [8, 32] into %arg1 : memref<16x8x8x32xf32> -> memref<128x256xf32>
+    linalg.pack %arg1 inner_dims_pos = [0, 1] inner_tiles = [8, 32] into %arg2 : memref<128x256xf32> -> memref<16x8x8x32xf32>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @fold_unpack_cast_inner_tile_dynamic_arg(%arg0: tensor<1x3x8x1xi32>, %arg1: index) -> tensor<7x3xi32> {
+    %0 = tensor.empty() : tensor<7x3xi32>
+    %unpack = linalg.unpack %arg0 inner_dims_pos = [0, 1] inner_tiles = [8, 1] into %0 : tensor<1x3x8x1xi32> -> tensor<7x3xi32>
+    return %unpack : tensor<7x3xi32>
+  }
+}
+
+// -----
+module {
+  func.func @fold_unpack_cast_inner_tile_inlined_mismatch(%arg0: tensor<1x3x8x1xi32>) -> tensor<7x3xi32> {
+    %0 = tensor.empty() : tensor<7x3xi32>
+    %unpack = linalg.unpack %arg0 inner_dims_pos = [0, 1] inner_tiles = [8, 1] into %0 : tensor<1x3x8x1xi32> -> tensor<7x3xi32>
+    return %unpack : tensor<7x3xi32>
+  }
+}
+
+// -----
+module {
+  func.func @no_fold_pack_cast_inner_tile_dynamic_arg(%arg0: tensor<8x3xi32>, %arg1: index, %arg2: tensor<?x3x?x1xi32>) -> tensor<?x3x?x1xi32> {
+    %c0_i32 = arith.constant 0 : i32
+    %pack = linalg.pack %arg0 padding_value(%c0_i32 : i32) inner_dims_pos = [0, 1] inner_tiles = [%arg1, 1] into %arg2 : tensor<8x3xi32> -> tensor<?x3x?x1xi32>
+    return %pack : tensor<?x3x?x1xi32>
+  }
+}
+
+// -----
+module {
+  func.func @no_fold_pack_cast_inner_tile_inlined_mismatch(%arg0: tensor<8x3xi32>, %arg1: tensor<?x3x?x1xi32>) -> tensor<?x3x?x1xi32> {
+    %c0_i32 = arith.constant 0 : i32
+    %c256 = arith.constant 256 : index
+    %pack = linalg.pack %arg0 padding_value(%c0_i32 : i32) inner_dims_pos = [0, 1] inner_tiles = [%c256, 1] into %arg1 : tensor<8x3xi32> -> tensor<?x3x?x1xi32>
+    return %pack : tensor<?x3x?x1xi32>
   }
 }
 

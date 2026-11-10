@@ -76,3 +76,32 @@ module attributes {gpu.container_module} {
   }
 }
 
+// -----
+module attributes {gpu.container_module} {
+  gpu.module @kernel_module [#nvvm.target] {
+    llvm.func @kernel() attributes {gpu.kernel} {
+      llvm.return
+    }
+  }
+  llvm.func @multi_dep_launch() {
+    %0 = llvm.mlir.constant(1 : index) : i64
+    %1 = llvm.call @mgpuStreamCreate() : () -> !llvm.ptr
+    %2 = llvm.call @mgpuStreamCreate() : () -> !llvm.ptr
+    %3 = llvm.call @mgpuEventCreate() : () -> !llvm.ptr
+    llvm.call @mgpuEventRecord(%3, %2) : (!llvm.ptr, !llvm.ptr) -> ()
+    llvm.call @mgpuStreamWaitEvent(%1, %3) : (!llvm.ptr, !llvm.ptr) -> ()
+    llvm.call @mgpuEventDestroy(%3) : (!llvm.ptr) -> ()
+    gpu.launch_func <%1 : !llvm.ptr> @kernel_module::@kernel blocks in (%0, %0, %0) threads in (%0, %0, %0) : i64 
+    llvm.call @mgpuStreamSynchronize(%1) : (!llvm.ptr) -> ()
+    llvm.call @mgpuStreamDestroy(%1) : (!llvm.ptr) -> ()
+    llvm.return
+  }
+  llvm.func @mgpuStreamCreate() -> !llvm.ptr
+  llvm.func @mgpuEventCreate() -> !llvm.ptr
+  llvm.func @mgpuEventRecord(!llvm.ptr, !llvm.ptr)
+  llvm.func @mgpuStreamWaitEvent(!llvm.ptr, !llvm.ptr)
+  llvm.func @mgpuEventDestroy(!llvm.ptr)
+  llvm.func @mgpuStreamSynchronize(!llvm.ptr)
+  llvm.func @mgpuStreamDestroy(!llvm.ptr)
+}
+

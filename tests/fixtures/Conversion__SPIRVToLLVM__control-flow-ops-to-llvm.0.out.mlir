@@ -119,3 +119,14 @@ module {
   }
 }
 
+// -----
+module {
+  module {
+    llvm.func @unreachable() {
+      llvm.br ^bb1
+    ^bb1:  // pred: ^bb0
+      llvm.unreachable
+    }
+  }
+}
+

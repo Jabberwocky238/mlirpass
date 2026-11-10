@@ -329,7 +329,7 @@
     %35 = "arith.constant"() <{value = 64 : index}> : () -> index
     "affine.for"() <{lowerBoundMap = #map3, operandSegmentSizes = array<i32: 0, 0, 0>, step = 1 : index, upperBoundMap = #map4}> ({
     ^bb0(%arg41: index):
-      "affine.dma_start"(%31, %arg41, %32, %arg40, %33, %34, %35) {dst_map = #map24, src_map = #map25, tag_map = #map2} : (memref<100xf32>, index, memref<100xf32, 2>, index, memref<1xi32>, index, index) -> ()
+      "affine.dma_start"(%31, %arg41, %32, %arg40, %33, %34, %35) <{dst_map = #map24, src_map = #map25, tag_map = #map2}> : (memref<100xf32>, index, memref<100xf32, 2>, index, memref<1xi32>, index, index) -> ()
       "affine.yield"() : () -> ()
     }) : () -> ()
     "func.return"() : () -> ()
@@ -340,7 +340,7 @@
     %30 = "arith.constant"() <{value = 64 : index}> : () -> index
     "affine.for"() <{lowerBoundMap = #map3, operandSegmentSizes = array<i32: 0, 0, 0>, step = 1 : index, upperBoundMap = #map4}> ({
     ^bb0(%arg39: index):
-      "affine.dma_wait"(%29, %arg39, %arg38, %30) {tag_map = #map26} : (memref<1xi32>, index, index, index) -> ()
+      "affine.dma_wait"(%29, %arg39, %arg38, %30) <{tag_map = #map26}> : (memref<1xi32>, index, index, index) -> ()
       "affine.yield"() : () -> ()
     }) : () -> ()
     "func.return"() : () -> ()

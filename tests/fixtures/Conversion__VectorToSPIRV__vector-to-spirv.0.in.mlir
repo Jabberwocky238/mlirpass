@@ -82,11 +82,10 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (vector<2xf32>) -> (vector<1xf32>, f32), sym_name = "extract"}> ({
+  "func.func"() <{function_type = (vector<2xf32>) -> f32, sym_name = "extract"}> ({
   ^bb0(%arg0: vector<2xf32>):
-    %0 = "vector.extract"(%arg0) <{static_position = array<i64: 0>}> : (vector<2xf32>) -> vector<1xf32>
-    %1 = "vector.extract"(%arg0) <{static_position = array<i64: 1>}> : (vector<2xf32>) -> f32
-    "func.return"(%0, %1) : (vector<1xf32>, f32) -> ()
+    %0 = "vector.extract"(%arg0) <{static_position = array<i64: 1>}> : (vector<2xf32>) -> f32
+    "func.return"(%0) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -581,6 +580,96 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi32>) -> i32, sym_name = "reduction_and"}> ({
+  ^bb0(%arg0: vector<4xi32>):
+    %0 = "vector.reduction"(%arg0) <{fastmath = #arith.fastmath<none>, kind = #vector.kind<and>}> : (vector<4xi32>) -> i32
+    "func.return"(%0) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi32>, i32) -> i32, sym_name = "reduction_and_acc"}> ({
+  ^bb0(%arg0: vector<3xi32>, %arg1: i32):
+    %0 = "vector.reduction"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, kind = #vector.kind<and>}> : (vector<3xi32>, i32) -> i32
+    "func.return"(%0) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi32>) -> i32, sym_name = "reduction_or"}> ({
+  ^bb0(%arg0: vector<4xi32>):
+    %0 = "vector.reduction"(%arg0) <{fastmath = #arith.fastmath<none>, kind = #vector.kind<or>}> : (vector<4xi32>) -> i32
+    "func.return"(%0) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi32>, i32) -> i32, sym_name = "reduction_or_acc"}> ({
+  ^bb0(%arg0: vector<3xi32>, %arg1: i32):
+    %0 = "vector.reduction"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, kind = #vector.kind<or>}> : (vector<3xi32>, i32) -> i32
+    "func.return"(%0) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi32>) -> i32, sym_name = "reduction_xor"}> ({
+  ^bb0(%arg0: vector<4xi32>):
+    %0 = "vector.reduction"(%arg0) <{fastmath = #arith.fastmath<none>, kind = #vector.kind<xor>}> : (vector<4xi32>) -> i32
+    "func.return"(%0) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi32>, i32) -> i32, sym_name = "reduction_xor_acc"}> ({
+  ^bb0(%arg0: vector<3xi32>, %arg1: i32):
+    %0 = "vector.reduction"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, kind = #vector.kind<xor>}> : (vector<3xi32>, i32) -> i32
+    "func.return"(%0) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi1>) -> i1, sym_name = "reduction_or_bool"}> ({
+  ^bb0(%arg0: vector<4xi1>):
+    %0 = "vector.reduction"(%arg0) <{fastmath = #arith.fastmath<none>, kind = #vector.kind<or>}> : (vector<4xi1>) -> i1
+    "func.return"(%0) : (i1) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi1>) -> i1, sym_name = "reduction_and_bool"}> ({
+  ^bb0(%arg0: vector<4xi1>):
+    %0 = "vector.reduction"(%arg0) <{fastmath = #arith.fastmath<none>, kind = #vector.kind<and>}> : (vector<4xi1>) -> i1
+    "func.return"(%0) : (i1) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi1>, i1) -> i1, sym_name = "reduction_or_bool_acc"}> ({
+  ^bb0(%arg0: vector<4xi1>, %arg1: i1):
+    %0 = "vector.reduction"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, kind = #vector.kind<or>}> : (vector<4xi1>, i1) -> i1
+    "func.return"(%0) : (i1) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xi1>, i1) -> i1, sym_name = "reduction_and_bool_acc"}> ({
+  ^bb0(%arg0: vector<4xi1>, %arg1: i1):
+    %0 = "vector.reduction"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, kind = #vector.kind<and>}> : (vector<4xi1>, i1) -> i1
+    "func.return"(%0) : (i1) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (vector<4xbf16>, vector<4xbf16>) -> bf16, sym_name = "reduction_bf16_addf_mulf"}> ({
   ^bb0(%arg0: vector<4xbf16>, %arg1: vector<4xbf16>):
     %0 = "arith.mulf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>}> : (vector<4xbf16>, vector<4xbf16>) -> vector<4xbf16>
@@ -625,56 +714,78 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<4xi8>, sym_name = "step_i8"}> ({
+    %0 = "vector.step"() : () -> vector<4xi8>
+    "func.return"(%0) : (vector<4xi8>) -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int8, Shader], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> vector<1xi16>, sym_name = "step_size1_i16"}> ({
+    %0 = "vector.step"() : () -> vector<1xi16>
+    "func.return"(%0) : (vector<1xi16>) -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int16, Shader], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> vector<4xf32>, sym_name = "vector_load"}> ({
-  ^bb0(%arg11: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
-    %13 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %14 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
-    %15 = "vector.load"(%arg11, %13) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> vector<4xf32>
-    "func.return"(%15) : (vector<4xf32>) -> ()
+  ^bb0(%arg13: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
+    %14 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %15 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %16 = "vector.load"(%arg13, %14) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> vector<4xf32>
+    "func.return"(%16) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> vector<1xf32>, sym_name = "vector_load_single_elem"}> ({
-  ^bb0(%arg10: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
-    %10 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %11 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
-    %12 = "vector.load"(%arg10, %10) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> vector<1xf32>
-    "func.return"(%12) : (vector<1xf32>) -> ()
+  ^bb0(%arg12: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
+    %11 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %12 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %13 = "vector.load"(%arg12, %11) : (memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> vector<1xf32>
+    "func.return"(%13) : (vector<1xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>) -> vector<4xf32>, sym_name = "vector_load_aligned"}> ({
-  ^bb0(%arg9: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
-    %8 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %9 = "vector.load"(%arg9, %8) <{alignment = 8 : i64}> : (memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> vector<4xf32>
-    "func.return"(%9) : (vector<4xf32>) -> ()
+  ^bb0(%arg11: memref<4xf32, #spirv.storage_class<StorageBuffer>>):
+    %9 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %10 = "vector.load"(%arg11, %9) <{alignment = 8 : i64}> : (memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> vector<4xf32>
+    "func.return"(%10) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4x4xf32, #spirv.storage_class<StorageBuffer>>) -> vector<4xf32>, sym_name = "vector_load_2d"}> ({
-  ^bb0(%arg8: memref<4x4xf32, #spirv.storage_class<StorageBuffer>>):
-    %5 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %6 = "arith.constant"() <{value = 1 : index}> : () -> index
-    %7 = "vector.load"(%arg8, %5, %6) : (memref<4x4xf32, #spirv.storage_class<StorageBuffer>>, index, index) -> vector<4xf32>
-    "func.return"(%7) : (vector<4xf32>) -> ()
+  ^bb0(%arg10: memref<4x4xf32, #spirv.storage_class<StorageBuffer>>):
+    %6 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %7 = "arith.constant"() <{value = 1 : index}> : () -> index
+    %8 = "vector.load"(%arg10, %6, %7) : (memref<4x4xf32, #spirv.storage_class<StorageBuffer>>, index, index) -> vector<4xf32>
+    "func.return"(%8) : (vector<4xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>, vector<4xf32>) -> (), sym_name = "vector_store"}> ({
-  ^bb0(%arg6: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg7: vector<4xf32>):
-    %4 = "arith.constant"() <{value = 0 : index}> : () -> index
-    "vector.store"(%arg7, %arg6, %4) : (vector<4xf32>, memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> ()
+  ^bb0(%arg8: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg9: vector<4xf32>):
+    %5 = "arith.constant"() <{value = 0 : index}> : () -> index
+    "vector.store"(%arg9, %arg8, %5) : (vector<4xf32>, memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>, vector<4xf32>) -> (), sym_name = "vector_store_aligned"}> ({
-  ^bb0(%arg4: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg5: vector<4xf32>):
-    %3 = "arith.constant"() <{value = 0 : index}> : () -> index
-    "vector.store"(%arg5, %arg4, %3) <{alignment = 8 : i64}> : (vector<4xf32>, memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> ()
+  ^bb0(%arg6: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg7: vector<4xf32>):
+    %4 = "arith.constant"() <{value = 0 : index}> : () -> index
+    "vector.store"(%arg7, %arg6, %4) <{alignment = 8 : i64}> : (vector<4xf32>, memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xf32, #spirv.storage_class<StorageBuffer>>, vector<1xf32>) -> (), sym_name = "vector_store_single_elem"}> ({
-  ^bb0(%arg2: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg3: vector<1xf32>):
-    %2 = "arith.constant"() <{value = 0 : index}> : () -> index
-    "vector.store"(%arg3, %arg2, %2) : (vector<1xf32>, memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> ()
+  ^bb0(%arg4: memref<4xf32, #spirv.storage_class<StorageBuffer>>, %arg5: vector<1xf32>):
+    %3 = "arith.constant"() <{value = 0 : index}> : () -> index
+    "vector.store"(%arg5, %arg4, %3) : (vector<1xf32>, memref<4xf32, #spirv.storage_class<StorageBuffer>>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4x4xf32, #spirv.storage_class<StorageBuffer>>, vector<4xf32>) -> (), sym_name = "vector_store_2d"}> ({
-  ^bb0(%arg0: memref<4x4xf32, #spirv.storage_class<StorageBuffer>>, %arg1: vector<4xf32>):
+  ^bb0(%arg2: memref<4x4xf32, #spirv.storage_class<StorageBuffer>>, %arg3: vector<4xf32>):
+    %1 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %2 = "arith.constant"() <{value = 1 : index}> : () -> index
+    "vector.store"(%arg3, %arg2, %1, %2) : (vector<4xf32>, memref<4x4xf32, #spirv.storage_class<StorageBuffer>>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (memref<4xindex, #spirv.storage_class<StorageBuffer>>, vector<4xindex>) -> (), sym_name = "vector_store_index"}> ({
+  ^bb0(%arg0: memref<4xindex, #spirv.storage_class<StorageBuffer>>, %arg1: vector<4xindex>):
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %1 = "arith.constant"() <{value = 1 : index}> : () -> index
-    "vector.store"(%arg1, %arg0, %0, %1) : (vector<4xf32>, memref<4x4xf32, #spirv.storage_class<StorageBuffer>>, index, index) -> ()
+    "vector.store"(%arg1, %arg0, %0) : (vector<4xindex>, memref<4xindex, #spirv.storage_class<StorageBuffer>>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader], [SPV_KHR_storage_buffer_storage_class]>, #spirv.resource_limits<>>} : () -> ()

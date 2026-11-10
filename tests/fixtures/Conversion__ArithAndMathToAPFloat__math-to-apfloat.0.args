@@ -1,1 +1,2 @@
 --convert-math-to-apfloat
+-split-input-file

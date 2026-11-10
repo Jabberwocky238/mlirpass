@@ -203,21 +203,10 @@ module {
 
 // -----
 module {
-  func.func @extract_vec_1e_from_vec_1d_f32(%arg0: vector<16xf32>) -> vector<1xf32> {
-    %0 = llvm.mlir.constant(15 : i64) : i64
-    %1 = llvm.extractelement %arg0[%0 : i64] : vector<16xf32>
-    %2 = builtin.unrealized_conversion_cast %1 : f32 to vector<1xf32>
-    return %2 : vector<1xf32>
-  }
-}
-
-// -----
-module {
-  func.func @extract_vec_1e_from_vec_1d_f32_scalable(%arg0: vector<[16]xf32>) -> vector<1xf32> {
+  func.func @extract_vec_1e_from_vec_1d_f32_scalable(%arg0: vector<[16]xf32>) -> f32 {
     %0 = llvm.mlir.constant(15 : i64) : i64
     %1 = llvm.extractelement %arg0[%0 : i64] : vector<[16]xf32>
-    %2 = builtin.unrealized_conversion_cast %1 : f32 to vector<1xf32>
-    return %2 : vector<1xf32>
+    return %1 : f32
   }
 }
 
@@ -544,6 +533,14 @@ module {
   func.func @insert_scalar_into_vec_2d_f32_dynamic_idx_fail(%arg0: vector<2x16xf32>, %arg1: f32, %arg2: index) -> vector<2x16xf32> {
     %0 = vector.insert %arg1, %arg0 [%arg2, 0] : f32 into vector<2x16xf32>
     return %0 : vector<2x16xf32>
+  }
+}
+
+// -----
+module {
+  func.func @insert_vec_1d_into_vec_2d_dynamic_idx_fail(%arg0: vector<4xi1>, %arg1: vector<2x4xi1>, %arg2: index) -> vector<2x4xi1> {
+    %0 = vector.insert %arg0, %arg1 [%arg2] : vector<4xi1> into vector<2x4xi1>
+    return %0 : vector<2x4xi1>
   }
 }
 
@@ -1190,275 +1187,6 @@ module {
 
 // -----
 module {
-  func.func @load(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index) -> vector<8xf32> {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    %8 = llvm.load %7 {alignment = 4 : i64} : !llvm.ptr -> vector<8xf32>
-    return %8 : vector<8xf32>
-  }
-}
-
-// -----
-module {
-  func.func @load_scalable(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index) -> vector<[8]xf32> {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    %8 = llvm.load %7 {alignment = 4 : i64} : !llvm.ptr -> vector<[8]xf32>
-    return %8 : vector<[8]xf32>
-  }
-}
-
-// -----
-module {
-  func.func @load_nontemporal(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index) -> vector<8xf32> {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    %8 = llvm.load %7 {alignment = 4 : i64, nontemporal} : !llvm.ptr -> vector<8xf32>
-    return %8 : vector<8xf32>
-  }
-}
-
-// -----
-module {
-  func.func @load_nontemporal_scalable(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index) -> vector<[8]xf32> {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    %8 = llvm.load %7 {alignment = 4 : i64, nontemporal} : !llvm.ptr -> vector<[8]xf32>
-    return %8 : vector<[8]xf32>
-  }
-}
-
-// -----
-module {
-  func.func @load_index(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index) -> vector<8xindex> {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xindex> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, i64
-    %8 = llvm.load %7 {alignment = 8 : i64} : !llvm.ptr -> vector<8xi64>
-    %9 = builtin.unrealized_conversion_cast %8 : vector<8xi64> to vector<8xindex>
-    return %9 : vector<8xindex>
-  }
-}
-
-// -----
-module {
-  func.func @load_index_scalable(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index) -> vector<[8]xindex> {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xindex> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, i64
-    %8 = llvm.load %7 {alignment = 8 : i64} : !llvm.ptr -> vector<[8]xi64>
-    %9 = builtin.unrealized_conversion_cast %8 : vector<[8]xi64> to vector<[8]xindex>
-    return %9 : vector<[8]xindex>
-  }
-}
-
-// -----
-module {
-  func.func @load_0d(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index) -> vector<f32> {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    %8 = llvm.load %7 {alignment = 4 : i64} : !llvm.ptr -> vector<1xf32>
-    %9 = builtin.unrealized_conversion_cast %8 : vector<1xf32> to vector<f32>
-    return %9 : vector<f32>
-  }
-}
-
-// -----
-module {
-  func.func @load_with_alignment(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index) -> vector<8xf32> {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    %8 = llvm.load %7 {alignment = 8 : i64} : !llvm.ptr -> vector<8xf32>
-    return %8 : vector<8xf32>
-  }
-}
-
-// -----
-module {
-  func.func @store(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index) {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %cst = arith.constant dense<1.100000e+01> : vector<4xf32>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    llvm.store %cst, %7 {alignment = 4 : i64} : vector<4xf32>, !llvm.ptr
-    return
-  }
-}
-
-// -----
-module {
-  func.func @store_scalable(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index) {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %cst = arith.constant dense<1.100000e+01> : vector<[4]xf32>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    llvm.store %cst, %7 {alignment = 4 : i64} : vector<[4]xf32>, !llvm.ptr
-    return
-  }
-}
-
-// -----
-module {
-  func.func @store_nontemporal(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index) {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %cst = arith.constant dense<1.100000e+01> : vector<4xf32>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    llvm.store %cst, %7 {alignment = 4 : i64, nontemporal} : vector<4xf32>, !llvm.ptr
-    return
-  }
-}
-
-// -----
-module {
-  func.func @store_nontemporal_scalable(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index) {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %cst = arith.constant dense<1.100000e+01> : vector<[4]xf32>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    llvm.store %cst, %7 {alignment = 4 : i64, nontemporal} : vector<[4]xf32>, !llvm.ptr
-    return
-  }
-}
-
-// -----
-module {
-  func.func @store_index(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index) {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xindex> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %cst = arith.constant dense<11> : vector<4xindex>
-    %3 = builtin.unrealized_conversion_cast %cst : vector<4xindex> to vector<4xi64>
-    %4 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %5 = llvm.mlir.constant(100 : index) : i64
-    %6 = llvm.mul %1, %5 : i64
-    %7 = llvm.add %6, %0 : i64
-    %8 = llvm.getelementptr %4[%7] : (!llvm.ptr, i64) -> !llvm.ptr, i64
-    llvm.store %3, %8 {alignment = 8 : i64} : vector<4xi64>, !llvm.ptr
-    return
-  }
-}
-
-// -----
-module {
-  func.func @store_index_scalable(%arg0: memref<200x100xindex>, %arg1: index, %arg2: index) {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xindex> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %cst = arith.constant dense<11> : vector<[4]xindex>
-    %3 = builtin.unrealized_conversion_cast %cst : vector<[4]xindex> to vector<[4]xi64>
-    %4 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %5 = llvm.mlir.constant(100 : index) : i64
-    %6 = llvm.mul %1, %5 : i64
-    %7 = llvm.add %6, %0 : i64
-    %8 = llvm.getelementptr %4[%7] : (!llvm.ptr, i64) -> !llvm.ptr, i64
-    llvm.store %3, %8 {alignment = 8 : i64} : vector<[4]xi64>, !llvm.ptr
-    return
-  }
-}
-
-// -----
-module {
-  func.func @store_0d(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index) {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %cst = arith.constant dense<1.100000e+01> : vector<f32>
-    %3 = builtin.unrealized_conversion_cast %cst : vector<f32> to vector<1xf32>
-    %4 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %5 = llvm.mlir.constant(100 : index) : i64
-    %6 = llvm.mul %1, %5 : i64
-    %7 = llvm.add %6, %0 : i64
-    %8 = llvm.getelementptr %4[%7] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    llvm.store %3, %8 {alignment = 4 : i64} : vector<1xf32>, !llvm.ptr
-    return
-  }
-}
-
-// -----
-module {
-  func.func @store_with_alignment(%arg0: memref<200x100xf32>, %arg1: index, %arg2: index, %arg3: vector<4xf32>) {
-    %0 = builtin.unrealized_conversion_cast %arg2 : index to i64
-    %1 = builtin.unrealized_conversion_cast %arg1 : index to i64
-    %2 = builtin.unrealized_conversion_cast %arg0 : memref<200x100xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
-    %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %4 = llvm.mlir.constant(100 : index) : i64
-    %5 = llvm.mul %1, %4 : i64
-    %6 = llvm.add %5, %0 : i64
-    %7 = llvm.getelementptr %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
-    llvm.store %arg3, %7 {alignment = 8 : i64} : vector<4xf32>, !llvm.ptr
-    return
-  }
-}
-
-// -----
-module {
   func.func @masked_load(%arg0: memref<?xf32>, %arg1: vector<16xi1>, %arg2: vector<16xf32>) -> vector<16xf32> {
     %0 = builtin.unrealized_conversion_cast %arg0 : memref<?xf32> to !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
     %c0 = arith.constant 0 : index
@@ -1730,6 +1458,15 @@ module {
 
 // -----
 module {
+  func.func @negative_gather_on_strided_memref(%arg0: memref<?xf32, strided<[2], offset: ?>>, %arg1: vector<3xi32>, %arg2: vector<3xi1>, %arg3: vector<3xf32>) -> vector<3xf32> {
+    %c0 = arith.constant 0 : index
+    %0 = vector.gather %arg0[%c0] [%arg1], %arg2, %arg3 : memref<?xf32, strided<[2], offset: ?>>, vector<3xi32>, vector<3xi1>, vector<3xf32> into vector<3xf32>
+    return %0 : vector<3xf32>
+  }
+}
+
+// -----
+module {
   func.func @scatter(%arg0: memref<?xf32>, %arg1: vector<3xi32>, %arg2: vector<3xi1>, %arg3: vector<3xf32>) {
     %0 = builtin.unrealized_conversion_cast %arg0 : memref<?xf32> to !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
     %c0 = arith.constant 0 : index
@@ -1831,6 +1568,15 @@ module {
     %3 = llvm.getelementptr %2[%0] : (!llvm.ptr, i64) -> !llvm.ptr, f32
     %4 = llvm.getelementptr %3[%arg1] : (!llvm.ptr, vector<3xi32>) -> vector<3x!llvm.ptr>, f32
     llvm.intr.masked.scatter %arg3, %4, %arg2 {alignment = 8 : i32} : vector<3xf32>, vector<3xi1> into vector<3x!llvm.ptr>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @negative_scatter_on_strided_memref(%arg0: memref<?xf32, strided<[2], offset: ?>>, %arg1: vector<3xi32>, %arg2: vector<3xi1>, %arg3: vector<3xf32>) {
+    %c0 = arith.constant 0 : index
+    vector.scatter %arg0[%c0] [%arg1], %arg2, %arg3 : memref<?xf32, strided<[2], offset: ?>>, vector<3xi32>, vector<3xi1>, vector<3xf32>
     return
   }
 }
@@ -2033,10 +1779,23 @@ module {
 
 // -----
 module {
+  func.func @step() -> vector<4xindex> {
+    %0 = llvm.intr.stepvector : vector<4xi64>
+    %1 = builtin.unrealized_conversion_cast %0 : vector<4xi64> to vector<4xindex>
+    return %1 : vector<4xindex>
+  }
+  func.func @step_i8() -> vector<4xi8> {
+    %0 = llvm.intr.stepvector : vector<4xi8>
+    return %0 : vector<4xi8>
+  }
   func.func @step_scalable() -> vector<[4]xindex> {
     %0 = llvm.intr.stepvector : vector<[4]xi64>
     %1 = builtin.unrealized_conversion_cast %0 : vector<[4]xi64> to vector<[4]xindex>
     return %1 : vector<[4]xindex>
+  }
+  func.func @step_scalable_i8() -> vector<[4]xi8> {
+    %0 = llvm.intr.stepvector : vector<[4]xi8>
+    return %0 : vector<[4]xi8>
   }
 }
 

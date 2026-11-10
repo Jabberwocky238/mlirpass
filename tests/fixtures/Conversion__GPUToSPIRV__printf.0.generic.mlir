@@ -21,7 +21,7 @@
         %1 = "spirv.Bitcast"(%0) : (!spirv.ptr<!spirv.array<8 x i8>, UniformConstant>) -> !spirv.ptr<i8, UniformConstant>
         %2 = "spirv.CL.printf"(%1) : (!spirv.ptr<i8, UniformConstant>) -> i32
         "spirv.Return"() : () -> ()
-      }) {spirv.entry_point_abi = #spirv.entry_point_abi<>, workgroup_attributions = 0 : i64} : () -> ()
+      }) {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<>} : () -> ()
     }) : () -> ()
     "func.func"() <{function_type = () -> (), sym_name = "printf"}> ({
       "func.return"() : () -> ()
@@ -98,7 +98,7 @@
         %10 = "spirv.Bitcast"(%9) : (!spirv.ptr<!spirv.array<39 x i8>, UniformConstant>) -> !spirv.ptr<i8, UniformConstant>
         %11 = "spirv.CL.printf"(%10, %arg2, %arg3, %8) : (!spirv.ptr<i8, UniformConstant>, i32, f32, i32) -> i32
         "spirv.Return"() : () -> ()
-      }) {spirv.entry_point_abi = #spirv.entry_point_abi<>, workgroup_attributions = 0 : i64} : () -> ()
+      }) {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<>} : () -> ()
     }) : () -> ()
     "func.func"() <{function_type = (i32, f32) -> (), sym_name = "printf_args"}> ({
     ^bb0(%arg0: i32, %arg1: f32):

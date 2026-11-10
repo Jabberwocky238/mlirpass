@@ -8,7 +8,7 @@ module {
       %c1_i32 = arith.constant 1 : i32
       %2 = arith.muli %1, %c1_i32 : i32
       %3 = arith.addi %0, %2 : i32
-      %thread_id_x = gpu.thread_id  x
+      %thread_id_x = gpu.thread_id x
       %c0_0 = arith.constant 0 : index
       %c0_1 = arith.constant 0 : index
       %c32 = arith.constant 32 : index
@@ -49,7 +49,7 @@ module {
       %c4_i32 = arith.constant 4 : i32
       %2 = arith.muli %1, %c4_i32 : i32
       %3 = arith.addi %0, %2 : i32
-      %thread_id_x = gpu.thread_id  x
+      %thread_id_x = gpu.thread_id x
       %c0_0 = arith.constant 0 : index
       %c32 = arith.constant 32 : index
       %4 = arith.muli %c0, %c32 : index
@@ -86,7 +86,7 @@ module {
       %c1_i32 = arith.constant 1 : i32
       %2 = arith.muli %1, %c1_i32 : i32
       %3 = arith.addi %0, %2 : i32
-      %thread_id_x = gpu.thread_id  x
+      %thread_id_x = gpu.thread_id x
       %c13 = arith.constant 13 : index
       %c16 = arith.constant 16 : index
       %4 = arith.divsi %c13, %c16 : index
@@ -152,7 +152,7 @@ module {
       %c1_i32 = arith.constant 1 : i32
       %2 = arith.muli %1, %c1_i32 : i32
       %3 = arith.addi %0, %2 : i32
-      %thread_id_x = gpu.thread_id  x
+      %thread_id_x = gpu.thread_id x
       %c19 = arith.constant 19 : index
       %c16 = arith.constant 16 : index
       %4 = arith.divsi %c19, %c16 : index
@@ -218,7 +218,7 @@ module {
       %c1_i32 = arith.constant 1 : i32
       %2 = arith.muli %1, %c1_i32 : i32
       %3 = arith.addi %0, %2 : i32
-      %thread_id_x = gpu.thread_id  x
+      %thread_id_x = gpu.thread_id x
       %c16 = arith.constant 16 : index
       %c16_0 = arith.constant 16 : index
       %4 = arith.divsi %c16, %c16_0 : index
@@ -438,6 +438,58 @@ module {
       %12 = llvm.load %11 : !llvm.ptr<3> -> vector<16xbf16>
       %13 = vector.shape_cast %12 : vector<16xbf16> to vector<1x16xbf16>
       gpu.return %13 : vector<1x16xbf16>
+    }
+    gpu.func @load_matrix_f8e8m0_scalar(%arg0: memref<1024xi8, 3>) -> vector<1x1xf8E8M0FNU> {
+      %intptr = memref.extract_aligned_pointer_as_index %arg0 : memref<1024xi8, 3> -> index
+      %c0 = arith.constant 0 : index
+      %0 = arith.index_castui %intptr : index to i32
+      %1 = arith.index_castui %c0 : index to i32
+      %c1_i32 = arith.constant 1 : i32
+      %2 = arith.muli %1, %c1_i32 : i32
+      %3 = arith.addi %0, %2 : i32
+      %c0_0 = arith.constant 0 : index
+      %thread_id_x = gpu.thread_id x
+      %c0_1 = arith.constant 0 : index
+      %c32 = arith.constant 32 : index
+      %4 = arith.muli %c0_0, %c32 : index
+      %5 = arith.addi %4, %c0_1 : index
+      %c1 = arith.constant 1 : index
+      %6 = arith.muli %thread_id_x, %c1 : index
+      %7 = arith.addi %6, %5 : index
+      %8 = arith.index_castui %7 : index to i32
+      %c1_i32_2 = arith.constant 1 : i32
+      %9 = arith.muli %8, %c1_i32_2 : i32
+      %10 = arith.addi %3, %9 : i32
+      %11 = llvm.inttoptr %10 : i32 to !llvm.ptr<3>
+      %12 = llvm.load %11 : !llvm.ptr<3> -> i8
+      %13 = arith.bitcast %12 : i8 to f8E8M0FNU
+      %14 = vector.broadcast %13 : f8E8M0FNU to vector<1x1xf8E8M0FNU>
+      gpu.return %14 : vector<1x1xf8E8M0FNU>
+    }
+    gpu.func @load_matrix_f8e8m0_vector(%arg0: memref<1024xi8, 3>) -> vector<8xf8E8M0FNU> {
+      %intptr = memref.extract_aligned_pointer_as_index %arg0 : memref<1024xi8, 3> -> index
+      %c0 = arith.constant 0 : index
+      %0 = arith.index_castui %intptr : index to i32
+      %1 = arith.index_castui %c0 : index to i32
+      %c1_i32 = arith.constant 1 : i32
+      %2 = arith.muli %1, %c1_i32 : i32
+      %3 = arith.addi %0, %2 : i32
+      %c0_0 = arith.constant 0 : index
+      %c0_1 = arith.constant 0 : index
+      %c32 = arith.constant 32 : index
+      %4 = arith.muli %c0_0, %c32 : index
+      %5 = arith.addi %4, %c0_1 : index
+      %c1 = arith.constant 1 : index
+      %6 = arith.muli %c0_0, %c1 : index
+      %7 = arith.addi %6, %5 : index
+      %8 = arith.index_castui %7 : index to i32
+      %c1_i32_2 = arith.constant 1 : i32
+      %9 = arith.muli %8, %c1_i32_2 : i32
+      %10 = arith.addi %3, %9 : i32
+      %11 = llvm.inttoptr %10 : i32 to !llvm.ptr<3>
+      %12 = llvm.load %11 : !llvm.ptr<3> -> vector<8xi8>
+      %13 = vector.bitcast %12 : vector<8xi8> to vector<8xf8E8M0FNU>
+      gpu.return %13 : vector<8xf8E8M0FNU>
     }
   }
 }

@@ -26,7 +26,7 @@
       %17 = "affine.apply"(%2, %10) <{map = #map2}> : (index, index) -> index
       %18 = "affine.apply"(%2, %arg4) <{map = #map2}> : (index, index) -> index
       %19 = "vector.transfer_read"(%arg2, %18, %17, %6) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map3}> : (memref<32x32xf32>, index, index, f32) -> vector<16x16xf32>
-      %20 = "vector.contract"(%16, %19, %arg5) <{indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf32>, vector<16x16xf32>, vector<16x16xf32>) -> vector<16x16xf32>
+      %20 = "vector.contract"(%16, %19, %arg5) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf32>, vector<16x16xf32>, vector<16x16xf32>) -> vector<16x16xf32>
       "scf.yield"(%20) : (vector<16x16xf32>) -> ()
     }) : (index, index, index, vector<16x16xf32>) -> vector<16x16xf32>
     %12 = "affine.apply"(%2, %9) <{map = #map2}> : (index, index) -> index
@@ -80,14 +80,14 @@
       %22 = "arith.addi"(%21, %10) <{overflowFlags = #arith.overflow<none>}> : (vector<4x4xindex>, vector<4x4xindex>) -> vector<4x4xindex>
       %23 = "vector.gather"(%arg1, %2, %2, %22, %4, %5) : (memref<32x32xf32>, index, index, vector<4x4xindex>, vector<4x4xi1>, vector<4x4xf32>) -> vector<4x4xf32>
       "vector.transfer_write"(%23, %11, %2, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map2}> : (vector<4x4xf32>, memref<32x32xf32>, index, index) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       %24 = "affine.apply"(%2, %14) <{map = #map3}> : (index, index) -> index
       %25 = "affine.apply"(%2, %arg4) <{map = #map3}> : (index, index) -> index
       %26 = "vector.transfer_read"(%11, %24, %25, %8) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map2}> : (memref<32x32xf32>, index, index, f32) -> vector<16x16xf32>
       %27 = "affine.apply"(%2, %15) <{map = #map3}> : (index, index) -> index
       %28 = "affine.apply"(%2, %arg4) <{map = #map3}> : (index, index) -> index
       %29 = "vector.transfer_read"(%arg2, %28, %27, %8) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map2}> : (memref<32x32xf32>, index, index, f32) -> vector<16x16xf32>
-      %30 = "vector.contract"(%26, %29, %arg5) <{indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf32>, vector<16x16xf32>, vector<16x16xf32>) -> vector<16x16xf32>
+      %30 = "vector.contract"(%26, %29, %arg5) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf32>, vector<16x16xf32>, vector<16x16xf32>) -> vector<16x16xf32>
       "scf.yield"(%30) : (vector<16x16xf32>) -> ()
     }) : (index, index, index, vector<16x16xf32>) -> vector<16x16xf32>
     %17 = "affine.apply"(%2, %14) <{map = #map3}> : (index, index) -> index

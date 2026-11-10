@@ -211,30 +211,37 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (i32) -> !spirv.struct<(i32, i32)>, sym_name = "iaddcarry_x_0"}> ({
   ^bb0(%arg0: i32):
-    %15 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %16 = "spirv.CompositeConstruct"(%15, %arg0) : (i32, i32) -> !spirv.struct<(i32, i32)>
-    "func.return"(%16) : (!spirv.struct<(i32, i32)>) -> ()
+    %3 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %4 = "spirv.CompositeConstruct"(%3, %arg0) : (i32, i32) -> !spirv.struct<(i32, i32)>
+    "func.return"(%4) : (!spirv.struct<(i32, i32)>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>), sym_name = "const_fold_scalar_iaddcarry"}> ({
-    %5 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
-    %6 = "spirv.Constant"() <{value = -13 : i32}> : () -> i32
-    %7 = "spirv.Constant"() <{value = -3 : i32}> : () -> i32
-    %8 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %9 = "spirv.Undef"() : () -> !spirv.struct<(i32, i32)>
-    %10 = "spirv.CompositeInsert"(%7, %9) <{indices = [0 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    %11 = "spirv.CompositeInsert"(%8, %10) <{indices = [1 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    %12 = "spirv.Undef"() : () -> !spirv.struct<(i32, i32)>
-    %13 = "spirv.CompositeInsert"(%6, %12) <{indices = [0 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    %14 = "spirv.CompositeInsert"(%5, %13) <{indices = [1 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    "func.return"(%11, %14) : (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>) -> ()
+    %1 = "spirv.Constant"() <{value = [-3 : i32, 0 : i32]}> : () -> !spirv.struct<(i32, i32)>
+    %2 = "spirv.Constant"() <{value = [-13 : i32, 1 : i32]}> : () -> !spirv.struct<(i32, i32)>
+    "func.return"(%1, %2) : (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>, sym_name = "const_fold_vector_iaddcarry"}> ({
-    %0 = "spirv.Constant"() <{value = dense<[-3, -11, 0]> : vector<3xi32>}> : () -> vector<3xi32>
-    %1 = "spirv.Constant"() <{value = dense<[0, 1, 1]> : vector<3xi32>}> : () -> vector<3xi32>
-    %2 = "spirv.Undef"() : () -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %3 = "spirv.CompositeInsert"(%0, %2) <{indices = [0 : i32]}> : (vector<3xi32>, !spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %4 = "spirv.CompositeInsert"(%1, %3) <{indices = [1 : i32]}> : (vector<3xi32>, !spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    "func.return"(%4) : (!spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> ()
+    %0 = "spirv.Constant"() <{value = [dense<[-3, -11, 0]> : vector<3xi32>, dense<[0, 1, 1]> : vector<3xi32>]}> : () -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    "func.return"(%0) : (!spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> !spirv.struct<(i32, i32)>, sym_name = "isubborrow_x_0"}> ({
+  ^bb0(%arg0: i32):
+    %3 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %4 = "spirv.CompositeConstruct"(%arg0, %3) : (i32, i32) -> !spirv.struct<(i32, i32)>
+    "func.return"(%4) : (!spirv.struct<(i32, i32)>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>), sym_name = "const_fold_scalar_isubborrow"}> ({
+    %1 = "spirv.Constant"() <{value = [-3 : i32, 1 : i32]}> : () -> !spirv.struct<(i32, i32)>
+    %2 = "spirv.Constant"() <{value = [3 : i32, 0 : i32]}> : () -> !spirv.struct<(i32, i32)>
+    "func.return"(%1, %2) : (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>, sym_name = "const_fold_vector_isubborrow"}> ({
+    %0 = "spirv.Constant"() <{value = [dense<[-3, 3, -2]> : vector<3xi32>, dense<[1, 0, 0]> : vector<3xi32>]}> : () -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    "func.return"(%0) : (!spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -266,30 +273,18 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (i32) -> !spirv.struct<(i32, i32)>, sym_name = "smulextended_x_0"}> ({
   ^bb0(%arg0: i32):
-    %15 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %16 = "spirv.CompositeConstruct"(%15, %15) : (i32, i32) -> !spirv.struct<(i32, i32)>
-    "func.return"(%16) : (!spirv.struct<(i32, i32)>) -> ()
+    %3 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %4 = "spirv.CompositeConstruct"(%3, %3) : (i32, i32) -> !spirv.struct<(i32, i32)>
+    "func.return"(%4) : (!spirv.struct<(i32, i32)>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>), sym_name = "const_fold_scalar_smulextended"}> ({
-    %5 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %6 = "spirv.Constant"() <{value = 40 : i32}> : () -> i32
-    %7 = "spirv.Constant"() <{value = -40 : i32}> : () -> i32
-    %8 = "spirv.Constant"() <{value = -1 : i32}> : () -> i32
-    %9 = "spirv.Undef"() : () -> !spirv.struct<(i32, i32)>
-    %10 = "spirv.CompositeInsert"(%7, %9) <{indices = [0 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    %11 = "spirv.CompositeInsert"(%8, %10) <{indices = [1 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    %12 = "spirv.Undef"() : () -> !spirv.struct<(i32, i32)>
-    %13 = "spirv.CompositeInsert"(%6, %12) <{indices = [0 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    %14 = "spirv.CompositeInsert"(%5, %13) <{indices = [1 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    "func.return"(%11, %14) : (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>) -> ()
+    %1 = "spirv.Constant"() <{value = [-40 : i32, -1 : i32]}> : () -> !spirv.struct<(i32, i32)>
+    %2 = "spirv.Constant"() <{value = [40 : i32, 0 : i32]}> : () -> !spirv.struct<(i32, i32)>
+    "func.return"(%1, %2) : (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>, sym_name = "const_fold_vector_smulextended"}> ({
-    %0 = "spirv.Constant"() <{value = dense<[2147483643, 40, -1]> : vector<3xi32>}> : () -> vector<3xi32>
-    %1 = "spirv.Constant"() <{value = dense<[2, 0, -1]> : vector<3xi32>}> : () -> vector<3xi32>
-    %2 = "spirv.Undef"() : () -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %3 = "spirv.CompositeInsert"(%0, %2) <{indices = [0 : i32]}> : (vector<3xi32>, !spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %4 = "spirv.CompositeInsert"(%1, %3) <{indices = [1 : i32]}> : (vector<3xi32>, !spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    "func.return"(%4) : (!spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> ()
+    %0 = "spirv.Constant"() <{value = [dense<[2147483643, 40, -1]> : vector<3xi32>, dense<[2, 0, -1]> : vector<3xi32>]}> : () -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    "func.return"(%0) : (!spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -297,36 +292,24 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (i32) -> !spirv.struct<(i32, i32)>, sym_name = "umulextended_x_0"}> ({
   ^bb0(%arg1: i32):
-    %17 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %18 = "spirv.CompositeConstruct"(%17, %17) : (i32, i32) -> !spirv.struct<(i32, i32)>
-    "func.return"(%18) : (!spirv.struct<(i32, i32)>) -> ()
+    %5 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %6 = "spirv.CompositeConstruct"(%5, %5) : (i32, i32) -> !spirv.struct<(i32, i32)>
+    "func.return"(%6) : (!spirv.struct<(i32, i32)>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> !spirv.struct<(i32, i32)>, sym_name = "umulextended_x_1"}> ({
   ^bb0(%arg0: i32):
-    %15 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %16 = "spirv.CompositeConstruct"(%arg0, %15) : (i32, i32) -> !spirv.struct<(i32, i32)>
-    "func.return"(%16) : (!spirv.struct<(i32, i32)>) -> ()
+    %3 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %4 = "spirv.CompositeConstruct"(%arg0, %3) : (i32, i32) -> !spirv.struct<(i32, i32)>
+    "func.return"(%4) : (!spirv.struct<(i32, i32)>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>), sym_name = "const_fold_scalar_umulextended"}> ({
-    %5 = "spirv.Constant"() <{value = -13 : i32}> : () -> i32
-    %6 = "spirv.Constant"() <{value = 40 : i32}> : () -> i32
-    %7 = "spirv.Constant"() <{value = -40 : i32}> : () -> i32
-    %8 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
-    %9 = "spirv.Undef"() : () -> !spirv.struct<(i32, i32)>
-    %10 = "spirv.CompositeInsert"(%7, %9) <{indices = [0 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    %11 = "spirv.CompositeInsert"(%8, %10) <{indices = [1 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    %12 = "spirv.Undef"() : () -> !spirv.struct<(i32, i32)>
-    %13 = "spirv.CompositeInsert"(%6, %12) <{indices = [0 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    %14 = "spirv.CompositeInsert"(%5, %13) <{indices = [1 : i32]}> : (i32, !spirv.struct<(i32, i32)>) -> !spirv.struct<(i32, i32)>
-    "func.return"(%11, %14) : (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>) -> ()
+    %1 = "spirv.Constant"() <{value = [-40 : i32, 4 : i32]}> : () -> !spirv.struct<(i32, i32)>
+    %2 = "spirv.Constant"() <{value = [40 : i32, -13 : i32]}> : () -> !spirv.struct<(i32, i32)>
+    "func.return"(%1, %2) : (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>, sym_name = "const_fold_vector_umulextended"}> ({
-    %0 = "spirv.Constant"() <{value = dense<[2147483643, 40, -1]> : vector<3xi32>}> : () -> vector<3xi32>
-    %1 = "spirv.Constant"() <{value = dense<[2, -13, 0]> : vector<3xi32>}> : () -> vector<3xi32>
-    %2 = "spirv.Undef"() : () -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %3 = "spirv.CompositeInsert"(%0, %2) <{indices = [0 : i32]}> : (vector<3xi32>, !spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %4 = "spirv.CompositeInsert"(%1, %3) <{indices = [1 : i32]}> : (vector<3xi32>, !spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    "func.return"(%4) : (!spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> ()
+    %0 = "spirv.Constant"() <{value = [dense<[2147483643, 40, -1]> : vector<3xi32>, dense<[2, -13, 0]> : vector<3xi32>]}> : () -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    "func.return"(%0) : (!spirv.struct<(vector<3xi32>, vector<3xi32>)>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -467,78 +450,94 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = (i32, vector<3xi32>) -> (i32, vector<3xi32>), sym_name = "umod_x_1"}> ({
-  ^bb0(%arg7: i32, %arg8: vector<3xi32>):
-    %34 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %35 = "spirv.Constant"() <{value = dense<0> : vector<3xi32>}> : () -> vector<3xi32>
-    "func.return"(%34, %35) : (i32, vector<3xi32>) -> ()
+  ^bb0(%arg9: i32, %arg10: vector<3xi32>):
+    %42 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %43 = "spirv.Constant"() <{value = dense<0> : vector<3xi32>}> : () -> vector<3xi32>
+    "func.return"(%42, %43) : (i32, vector<3xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "umod_div_0"}> ({
-    %31 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %32 = "spirv.Constant"() <{value = -1 : i32}> : () -> i32
-    %33 = "spirv.UMod"(%32, %31) : (i32, i32) -> i32
-    "func.return"(%33) : (i32) -> ()
+    %39 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %40 = "spirv.Constant"() <{value = -1 : i32}> : () -> i32
+    %41 = "spirv.UMod"(%40, %39) : (i32, i32) -> i32
+    "func.return"(%41) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (i32, i32, i32), sym_name = "const_fold_scalar_umod"}> ({
-    %28 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
-    %29 = "spirv.Constant"() <{value = 2 : i32}> : () -> i32
-    %30 = "spirv.Constant"() <{value = 56 : i32}> : () -> i32
-    "func.return"(%28, %29, %30) : (i32, i32, i32) -> ()
+    %36 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %37 = "spirv.Constant"() <{value = 2 : i32}> : () -> i32
+    %38 = "spirv.Constant"() <{value = 56 : i32}> : () -> i32
+    "func.return"(%36, %37, %38) : (i32, i32, i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<3xi32>, sym_name = "const_fold_vector_umod"}> ({
-    %27 = "spirv.Constant"() <{value = dense<[42, 24, 0]> : vector<3xi32>}> : () -> vector<3xi32>
-    "func.return"(%27) : (vector<3xi32>) -> ()
+    %35 = "spirv.Constant"() <{value = dense<[42, 24, 0]> : vector<3xi32>}> : () -> vector<3xi32>
+    "func.return"(%35) : (vector<3xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (i32, i32), sym_name = "umod_fold"}> ({
-  ^bb0(%arg6: i32):
-    %23 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
-    %24 = "spirv.Constant"() <{value = 32 : i32}> : () -> i32
-    %25 = "spirv.UMod"(%arg6, %24) : (i32, i32) -> i32
-    %26 = "spirv.UMod"(%arg6, %23) : (i32, i32) -> i32
-    "func.return"(%25, %26) : (i32, i32) -> ()
+  ^bb0(%arg8: i32):
+    %31 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
+    %32 = "spirv.Constant"() <{value = 32 : i32}> : () -> i32
+    %33 = "spirv.UMod"(%arg8, %32) : (i32, i32) -> i32
+    %34 = "spirv.UMod"(%arg8, %31) : (i32, i32) -> i32
+    "func.return"(%33, %34) : (i32, i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<4xi32>) -> (vector<4xi32>, vector<4xi32>), sym_name = "umod_vector_fold"}> ({
-  ^bb0(%arg5: vector<4xi32>):
-    %19 = "spirv.Constant"() <{value = dense<4> : vector<4xi32>}> : () -> vector<4xi32>
-    %20 = "spirv.Constant"() <{value = dense<32> : vector<4xi32>}> : () -> vector<4xi32>
-    %21 = "spirv.UMod"(%arg5, %20) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
-    %22 = "spirv.UMod"(%arg5, %19) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
-    "func.return"(%21, %22) : (vector<4xi32>, vector<4xi32>) -> ()
+  ^bb0(%arg7: vector<4xi32>):
+    %27 = "spirv.Constant"() <{value = dense<4> : vector<4xi32>}> : () -> vector<4xi32>
+    %28 = "spirv.Constant"() <{value = dense<32> : vector<4xi32>}> : () -> vector<4xi32>
+    %29 = "spirv.UMod"(%arg7, %28) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    %30 = "spirv.UMod"(%arg7, %27) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    "func.return"(%29, %30) : (vector<4xi32>, vector<4xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (i32, i32), sym_name = "umod_fold_same_divisor"}> ({
-  ^bb0(%arg4: i32):
-    %16 = "spirv.Constant"() <{value = 32 : i32}> : () -> i32
-    %17 = "spirv.UMod"(%arg4, %16) : (i32, i32) -> i32
-    %18 = "spirv.UMod"(%arg4, %16) : (i32, i32) -> i32
-    "func.return"(%17, %18) : (i32, i32) -> ()
+  ^bb0(%arg6: i32):
+    %24 = "spirv.Constant"() <{value = 32 : i32}> : () -> i32
+    %25 = "spirv.UMod"(%arg6, %24) : (i32, i32) -> i32
+    %26 = "spirv.UMod"(%arg6, %24) : (i32, i32) -> i32
+    "func.return"(%25, %26) : (i32, i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (i32, i32), sym_name = "umod_fail_1_fold"}> ({
-  ^bb0(%arg3: i32):
-    %12 = "spirv.Constant"() <{value = 5 : i32}> : () -> i32
-    %13 = "spirv.Constant"() <{value = 32 : i32}> : () -> i32
-    %14 = "spirv.UMod"(%arg3, %13) : (i32, i32) -> i32
-    %15 = "spirv.UMod"(%14, %12) : (i32, i32) -> i32
-    "func.return"(%14, %15) : (i32, i32) -> ()
+  ^bb0(%arg5: i32):
+    %20 = "spirv.Constant"() <{value = 5 : i32}> : () -> i32
+    %21 = "spirv.Constant"() <{value = 32 : i32}> : () -> i32
+    %22 = "spirv.UMod"(%arg5, %21) : (i32, i32) -> i32
+    %23 = "spirv.UMod"(%22, %20) : (i32, i32) -> i32
+    "func.return"(%22, %23) : (i32, i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (i32, i32), sym_name = "umod_fail_2_fold"}> ({
-  ^bb0(%arg2: i32):
-    %8 = "spirv.Constant"() <{value = 32 : i32}> : () -> i32
-    %9 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
-    %10 = "spirv.UMod"(%arg2, %9) : (i32, i32) -> i32
-    %11 = "spirv.UMod"(%10, %8) : (i32, i32) -> i32
-    "func.return"(%10, %11) : (i32, i32) -> ()
+  ^bb0(%arg4: i32):
+    %16 = "spirv.Constant"() <{value = 32 : i32}> : () -> i32
+    %17 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
+    %18 = "spirv.UMod"(%arg4, %17) : (i32, i32) -> i32
+    %19 = "spirv.UMod"(%18, %16) : (i32, i32) -> i32
+    "func.return"(%18, %19) : (i32, i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<4xi32>) -> (vector<4xi32>, vector<4xi32>), sym_name = "umod_vector_fail_1_fold"}> ({
-  ^bb0(%arg1: vector<4xi32>):
-    %4 = "spirv.Constant"() <{value = dense<9> : vector<4xi32>}> : () -> vector<4xi32>
-    %5 = "spirv.Constant"() <{value = dense<64> : vector<4xi32>}> : () -> vector<4xi32>
-    %6 = "spirv.UMod"(%arg1, %5) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
-    %7 = "spirv.UMod"(%6, %4) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
-    "func.return"(%6, %7) : (vector<4xi32>, vector<4xi32>) -> ()
+  ^bb0(%arg3: vector<4xi32>):
+    %12 = "spirv.Constant"() <{value = dense<9> : vector<4xi32>}> : () -> vector<4xi32>
+    %13 = "spirv.Constant"() <{value = dense<64> : vector<4xi32>}> : () -> vector<4xi32>
+    %14 = "spirv.UMod"(%arg3, %13) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    %15 = "spirv.UMod"(%14, %12) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    "func.return"(%14, %15) : (vector<4xi32>, vector<4xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<4xi32>) -> (vector<4xi32>, vector<4xi32>), sym_name = "umod_vector_fail_2_fold"}> ({
+  ^bb0(%arg2: vector<4xi32>):
+    %8 = "spirv.Constant"() <{value = dense<32> : vector<4xi32>}> : () -> vector<4xi32>
+    %9 = "spirv.Constant"() <{value = dense<4> : vector<4xi32>}> : () -> vector<4xi32>
+    %10 = "spirv.UMod"(%arg2, %9) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    %11 = "spirv.UMod"(%10, %8) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    "func.return"(%10, %11) : (vector<4xi32>, vector<4xi32>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> (i32, i32), sym_name = "umod_fail_div_0_fold"}> ({
+  ^bb0(%arg1: i32):
+    %4 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %5 = "spirv.Constant"() <{value = 32 : i32}> : () -> i32
+    %6 = "spirv.UMod"(%arg1, %5) : (i32, i32) -> i32
+    %7 = "spirv.UMod"(%6, %4) : (i32, i32) -> i32
+    "func.return"(%6, %7) : (i32, i32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xi32>) -> (vector<4xi32>, vector<4xi32>), sym_name = "umod_vector_fail_div_0_fold"}> ({
   ^bb0(%arg0: vector<4xi32>):
-    %0 = "spirv.Constant"() <{value = dense<32> : vector<4xi32>}> : () -> vector<4xi32>
-    %1 = "spirv.Constant"() <{value = dense<4> : vector<4xi32>}> : () -> vector<4xi32>
+    %0 = "spirv.Constant"() <{value = dense<[4, 0, 4, 0]> : vector<4xi32>}> : () -> vector<4xi32>
+    %1 = "spirv.Constant"() <{value = dense<32> : vector<4xi32>}> : () -> vector<4xi32>
     %2 = "spirv.UMod"(%arg0, %1) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
     %3 = "spirv.UMod"(%2, %0) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
     "func.return"(%2, %3) : (vector<4xi32>, vector<4xi32>) -> ()

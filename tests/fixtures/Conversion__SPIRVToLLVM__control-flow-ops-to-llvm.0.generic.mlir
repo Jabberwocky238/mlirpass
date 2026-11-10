@@ -122,3 +122,14 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "builtin.module"() ({
+    "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<external>, sym_name = "unreachable", visibility_ = 0 : i64}> ({
+      "llvm.br"()[^bb1] : () -> ()
+    ^bb1:  // pred: ^bb0
+      "llvm.unreachable"() : () -> ()
+    }) : () -> ()
+  }) : () -> ()
+}) : () -> ()
+

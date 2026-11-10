@@ -11,7 +11,7 @@ module {
       %4 = arith.addi %arg0, %3 : i64
       %5 = llvm.inttoptr %4 : i64 to !llvm.ptr<1>
       %6 = scf.if %0 -> (f16) {
-        %8 = llvm.load %5 {cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>} : !llvm.ptr<1> -> f16
+        %8 = llvm.load %5 {cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>} : !llvm.ptr<1> -> f16
         scf.yield %8 : f16
       } else {
         scf.yield %cst : f16
@@ -37,7 +37,7 @@ module {
       %4 = arith.addi %arg0, %3 : i64
       %5 = llvm.inttoptr %4 : i64 to !llvm.ptr<1>
       %6 = scf.if %0 -> (f16) {
-        %8 = llvm.load %5 {cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>} : !llvm.ptr<1> -> f16
+        %8 = llvm.load %5 {cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>} : !llvm.ptr<1> -> f16
         scf.yield %8 : f16
       } else {
         scf.yield %cst : f16
@@ -62,7 +62,7 @@ module {
       %4 = arith.addi %arg0, %3 : i64
       %5 = llvm.inttoptr %4 : i64 to !llvm.ptr<1>
       scf.if %0 {
-        llvm.store %cst, %5 {cache_control = #xevm.store_cache_control<L1wb_L2uc_L3uc>} : f32, !llvm.ptr<1>
+        llvm.store %cst, %5 {cache_control = #xevm.store_cache_control<L1wb_L2uc_L3wb>} : f32, !llvm.ptr<1>
       }
       gpu.return
     }
@@ -79,7 +79,7 @@ module {
       %2 = arith.muli %1, %c4_i64 : i64
       %3 = arith.addi %arg0, %2 : i64
       %4 = llvm.inttoptr %3 : i64 to !llvm.ptr<1>
-      xevm.prefetch %4 <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>}> : (!llvm.ptr<1>)
+      xevm.prefetch %4 <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>}> : (!llvm.ptr<1>)
       gpu.return
     }
   }
@@ -97,7 +97,7 @@ module {
       %3 = arith.muli %1, %c4_i64 : i64
       %4 = arith.addi %2, %3 : i64
       %5 = llvm.inttoptr %4 : i64 to !llvm.ptr<1>
-      xevm.prefetch %5 <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>}> : (!llvm.ptr<1>)
+      xevm.prefetch %5 <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>}> : (!llvm.ptr<1>)
       gpu.return
     }
   }
@@ -125,7 +125,7 @@ module {
       %9 = arith.addi %7, %8 : i64
       %10 = llvm.inttoptr %9 : i64 to !llvm.ptr<1>
       %11 = scf.if %0 -> (f16) {
-        %13 = llvm.load %10 {cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>} : !llvm.ptr<1> -> f16
+        %13 = llvm.load %10 {cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>} : !llvm.ptr<1> -> f16
         scf.yield %13 : f16
       } else {
         scf.yield %cst : f16

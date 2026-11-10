@@ -301,6 +301,24 @@ module {
 
 // -----
 module {
+  func.func @do_not_hoist_multiple_nested_loop_uses(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+    %0 = "test.foo"() : () -> index
+    %1 = "test.foo"() : () -> index
+    %2 = "test.foo"() : () -> index
+    %3 = scf.for %arg1 = %0 to %1 step %2 iter_args(%arg2 = %arg0) -> (tensor<?xf32>) {
+      %extracted_slice = tensor.extract_slice %arg2[0] [5] [1] : tensor<?xf32> to tensor<5xf32>
+      %4 = "test.foo"(%extracted_slice) : (tensor<5xf32>) -> tensor<5xf32>
+      %inserted_slice = tensor.insert_slice %4 into %arg2[0] [5] [1] : tensor<5xf32> into tensor<?xf32>
+      %5 = scf.for %arg3 = %0 to %1 step %2 iter_args(%arg4 = %inserted_slice) -> (tensor<?xf32>) {
+        scf.yield %arg4 : tensor<?xf32>
+      }
+      %6 = scf.for %arg3 = %0 to %1 step %2 iter_args(%arg4 = %inserted_slice) -> (tensor<?xf32>) {
+        scf.yield %arg4 : tensor<?xf32>
+      }
+      scf.yield %5 : tensor<?xf32>
+    }
+    return %3 : tensor<?xf32>
+  }
   func.func @hoist_buffer(%arg0: memref<7x7xf16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index

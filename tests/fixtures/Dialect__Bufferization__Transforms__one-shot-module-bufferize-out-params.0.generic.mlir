@@ -16,8 +16,8 @@
     %1 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<5xf32>
     %2 = "memref.cast"(%1) : (memref<5xf32>) -> memref<5xf32, strided<[?], offset: ?>>
     "func.call"(%arg0, %2) <{callee = @callee}> : (memref<5xf32, strided<[?], offset: ?>>, memref<5xf32, strided<[?], offset: ?>>) -> ()
-    %3 = "memref.load"(%arg0, %0) <{nontemporal = false}> : (memref<5xf32, strided<[?], offset: ?>>, index) -> f32
-    %4 = "memref.load"(%2, %0) <{nontemporal = false}> : (memref<5xf32, strided<[?], offset: ?>>, index) -> f32
+    %3 = "memref.load"(%arg0, %0) <{invariant = false, nontemporal = false}> : (memref<5xf32, strided<[?], offset: ?>>, index) -> f32
+    %4 = "memref.load"(%2, %0) <{invariant = false, nontemporal = false}> : (memref<5xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%3, %4) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -38,7 +38,7 @@
     %1 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2x5xf32>
     %2 = "memref.cast"(%1) : (memref<2x5xf32>) -> memref<2x5xf32, strided<[?, ?], offset: ?>>
     "func.call"(%arg0, %2) <{callee = @callee}> : (index, memref<2x5xf32, strided<[?, ?], offset: ?>>) -> ()
-    %3 = "memref.load"(%2, %0, %0) <{nontemporal = false}> : (memref<2x5xf32, strided<[?, ?], offset: ?>>, index, index) -> f32
+    %3 = "memref.load"(%2, %0, %0) <{invariant = false, nontemporal = false}> : (memref<2x5xf32, strided<[?, ?], offset: ?>>, index, index) -> f32
     "func.return"(%3) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()

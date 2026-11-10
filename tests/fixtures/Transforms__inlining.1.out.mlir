@@ -229,5 +229,32 @@ module {
     %2 = complex.mul %1, %1 : complex<f32>
     return %2 : complex<f32>
   }
+  llvm.func @inline_test_return_arity_mismatch(%arg0: f16, %arg1: f16) attributes {llvm.emit_c_interface} {
+    %0 = "test.op_with_bitcast_type"(%arg0) : (f16) -> tensor<4xf32>
+    %1 = "test.op_with_bitcast_type"(%arg1) : (f16) -> tensor<2xi32>
+    llvm.return
+  }
+  llvm.func @inline_test_return_arity_mismatch_callee(%arg0: f16, %arg1: f16) {
+    %0 = "test.op_with_bitcast_type"(%arg0) : (f16) -> tensor<4xf32>
+    %1 = "test.op_with_bitcast_type"(%arg1) : (f16) -> tensor<2xi32>
+    "test.return"(%0, %1) : (tensor<4xf32>, tensor<2xi32>) -> ()
+  }
+  func.func @inline_functional_region_multiblock(%arg0: i32) -> i32 {
+    %0 = "test.functional_region_op"() ({
+    ^bb0(%arg1: i32):
+      %5 = arith.addi %arg1, %arg1 : i32
+      cf.br ^bb1(%5 : i32)
+    ^bb1(%6: i32):  // pred: ^bb0
+      %7 = arith.addi %6, %6 : i32
+      "test.return"(%7) : (i32) -> ()
+    }) : () -> ((i32) -> i32)
+    %1 = arith.addi %arg0, %arg0 : i32
+    cf.br ^bb1(%1 : i32)
+  ^bb1(%2: i32):  // pred: ^bb0
+    %3 = arith.addi %2, %2 : i32
+    cf.br ^bb2(%3 : i32)
+  ^bb2(%4: i32):  // pred: ^bb1
+    return %4 : i32
+  }
 }
 

@@ -1,0 +1,1 @@
+--nvvm-attach-target=verify-target-arch=false

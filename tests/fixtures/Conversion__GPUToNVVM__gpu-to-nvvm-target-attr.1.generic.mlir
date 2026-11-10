@@ -22,10 +22,10 @@
       %4 = "llvm.add"(%1, %3) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
       "llvm.return"(%4) : (i64) -> ()
     }) : () -> ()
-    "gpu.func"() <{function_type = (memref<f32, #gpu.address_space<global>>) -> (), known_block_size = array<i32: 128, 1, 1>}> ({
+    "gpu.func"() <{function_type = (memref<f32, #gpu.address_space<global>>) -> (), kernel, known_block_size = array<i32: 128, 1, 1>}> ({
     ^bb0(%arg0: memref<f32, #gpu.address_space<global>>):
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "kernel_1", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "kernel_1"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 

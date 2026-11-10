@@ -1,0 +1,2 @@
+-convert-vector-to-llvm=enable-gep-inbounds-nuw=1
+-split-input-file

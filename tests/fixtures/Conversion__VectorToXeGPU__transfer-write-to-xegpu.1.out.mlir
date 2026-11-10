@@ -101,7 +101,7 @@ module {
       %5 = vector.broadcast %2 : vector<16xindex> to vector<8x16xindex>
       %6 = arith.addi %4, %5 : vector<8x16xindex>
       %7 = arith.muli %arg2, %c64 : index
-      %8 = arith.addi %arg2, %7 : index
+      %8 = arith.addi %7, %arg2 : index
       %9 = vector.broadcast %8 : index to vector<8x16xindex>
       %10 = arith.addi %9, %6 : vector<8x16xindex>
       %intptr = memref.extract_aligned_pointer_as_index %arg1 : memref<32x64xf32> -> index
@@ -142,6 +142,86 @@ module {
       %intptr = memref.extract_aligned_pointer_as_index %arg1 : memref<16x32x64xf32> -> index
       %18 = arith.index_cast %intptr : index to i64
       xegpu.store %arg0, %18[%17], %cst  : vector<8x16x32xf32>, i64, vector<8x16x32xindex>, vector<8x16x32xi1>
+      gpu.return
+    }
+  }
+}
+
+// -----
+module {
+  gpu.module @xevm_module {
+    gpu.func @store_8D_vector(%arg0: vector<2x2x2x2x2x2x2x2xf32>, %arg1: memref<2x2x2x2x2x2x2x2xf32>, %arg2: index) {
+      %cst = arith.constant dense<true> : vector<2x2x2x2x2x2x2x2xi1>
+      %cst_0 = arith.constant dense<2> : vector<2xindex>
+      %cst_1 = arith.constant dense<4> : vector<2xindex>
+      %cst_2 = arith.constant dense<8> : vector<2xindex>
+      %cst_3 = arith.constant dense<16> : vector<2xindex>
+      %cst_4 = arith.constant dense<32> : vector<2xindex>
+      %cst_5 = arith.constant dense<64> : vector<2xindex>
+      %cst_6 = arith.constant dense<128> : vector<2xindex>
+      %c128 = arith.constant 128 : index
+      %c64 = arith.constant 64 : index
+      %c32 = arith.constant 32 : index
+      %c16 = arith.constant 16 : index
+      %c8 = arith.constant 8 : index
+      %c4 = arith.constant 4 : index
+      %c2 = arith.constant 2 : index
+      %0 = vector.step : vector<2xindex>
+      %1 = vector.step : vector<2xindex>
+      %2 = vector.step : vector<2xindex>
+      %3 = vector.step : vector<2xindex>
+      %4 = vector.step : vector<2xindex>
+      %5 = vector.step : vector<2xindex>
+      %6 = vector.step : vector<2xindex>
+      %7 = vector.step : vector<2xindex>
+      %8 = arith.muli %0, %cst_6 : vector<2xindex>
+      %9 = arith.muli %1, %cst_5 : vector<2xindex>
+      %10 = arith.muli %2, %cst_4 : vector<2xindex>
+      %11 = arith.muli %3, %cst_3 : vector<2xindex>
+      %12 = arith.muli %4, %cst_2 : vector<2xindex>
+      %13 = arith.muli %5, %cst_1 : vector<2xindex>
+      %14 = arith.muli %6, %cst_0 : vector<2xindex>
+      %15 = vector.shape_cast %8 : vector<2xindex> to vector<2x1x1x1x1x1x1x1xindex>
+      %16 = vector.shape_cast %9 : vector<2xindex> to vector<1x2x1x1x1x1x1x1xindex>
+      %17 = vector.shape_cast %10 : vector<2xindex> to vector<1x1x2x1x1x1x1x1xindex>
+      %18 = vector.shape_cast %11 : vector<2xindex> to vector<1x1x1x2x1x1x1x1xindex>
+      %19 = vector.shape_cast %12 : vector<2xindex> to vector<1x1x1x1x2x1x1x1xindex>
+      %20 = vector.shape_cast %13 : vector<2xindex> to vector<1x1x1x1x1x2x1x1xindex>
+      %21 = vector.shape_cast %14 : vector<2xindex> to vector<1x1x1x1x1x1x2x1xindex>
+      %22 = vector.broadcast %15 : vector<2x1x1x1x1x1x1x1xindex> to vector<2x2x2x2x2x2x2x2xindex>
+      %23 = vector.broadcast %16 : vector<1x2x1x1x1x1x1x1xindex> to vector<2x2x2x2x2x2x2x2xindex>
+      %24 = vector.broadcast %17 : vector<1x1x2x1x1x1x1x1xindex> to vector<2x2x2x2x2x2x2x2xindex>
+      %25 = vector.broadcast %18 : vector<1x1x1x2x1x1x1x1xindex> to vector<2x2x2x2x2x2x2x2xindex>
+      %26 = vector.broadcast %19 : vector<1x1x1x1x2x1x1x1xindex> to vector<2x2x2x2x2x2x2x2xindex>
+      %27 = vector.broadcast %20 : vector<1x1x1x1x1x2x1x1xindex> to vector<2x2x2x2x2x2x2x2xindex>
+      %28 = vector.broadcast %21 : vector<1x1x1x1x1x1x2x1xindex> to vector<2x2x2x2x2x2x2x2xindex>
+      %29 = vector.broadcast %7 : vector<2xindex> to vector<2x2x2x2x2x2x2x2xindex>
+      %30 = arith.addi %22, %23 : vector<2x2x2x2x2x2x2x2xindex>
+      %31 = arith.addi %30, %24 : vector<2x2x2x2x2x2x2x2xindex>
+      %32 = arith.addi %31, %25 : vector<2x2x2x2x2x2x2x2xindex>
+      %33 = arith.addi %32, %26 : vector<2x2x2x2x2x2x2x2xindex>
+      %34 = arith.addi %33, %27 : vector<2x2x2x2x2x2x2x2xindex>
+      %35 = arith.addi %34, %28 : vector<2x2x2x2x2x2x2x2xindex>
+      %36 = arith.addi %35, %29 : vector<2x2x2x2x2x2x2x2xindex>
+      %37 = arith.muli %arg2, %c128 : index
+      %38 = arith.muli %arg2, %c64 : index
+      %39 = arith.addi %37, %38 : index
+      %40 = arith.muli %arg2, %c32 : index
+      %41 = arith.addi %39, %40 : index
+      %42 = arith.muli %arg2, %c16 : index
+      %43 = arith.addi %41, %42 : index
+      %44 = arith.muli %arg2, %c8 : index
+      %45 = arith.addi %43, %44 : index
+      %46 = arith.muli %arg2, %c4 : index
+      %47 = arith.addi %45, %46 : index
+      %48 = arith.muli %arg2, %c2 : index
+      %49 = arith.addi %47, %48 : index
+      %50 = arith.addi %49, %arg2 : index
+      %51 = vector.broadcast %50 : index to vector<2x2x2x2x2x2x2x2xindex>
+      %52 = arith.addi %51, %36 : vector<2x2x2x2x2x2x2x2xindex>
+      %intptr = memref.extract_aligned_pointer_as_index %arg1 : memref<2x2x2x2x2x2x2x2xf32> -> index
+      %53 = arith.index_cast %intptr : index to i64
+      xegpu.store %arg0, %53[%52], %cst  : vector<2x2x2x2x2x2x2x2xf32>, i64, vector<2x2x2x2x2x2x2x2xindex>, vector<2x2x2x2x2x2x2x2xi1>
       gpu.return
     }
   }
@@ -216,6 +296,38 @@ module {
       %intptr = memref.extract_aligned_pointer_as_index %subview : memref<256x256xf16, strided<[4096, 1], offset: ?>> -> index
       %6 = arith.index_cast %intptr : index to i64
       xegpu.store %arg0, %6[%5], %cst  : vector<8xf16>, i64, vector<8xindex>, vector<8xi1>
+      gpu.return
+    }
+  }
+}
+
+// -----
+module {
+  gpu.module @xevm_module {
+    gpu.func @store_2D_vector_addrspace3(%arg0: vector<8x16xf32>, %arg1: memref<16x32xf32, 3>, %arg2: index) {
+      %0 = xegpu.create_mem_desc %arg1 : memref<16x32xf32, 3> -> !xegpu.mem_desc<16x32xf32>
+      xegpu.store_matrix %arg0, %0[%arg2, %arg2] : vector<8x16xf32>, !xegpu.mem_desc<16x32xf32>, index, index
+      gpu.return
+    }
+  }
+}
+
+// -----
+module {
+  gpu.module @xevm_module {
+    gpu.func @store_1D_vector_addrspace3(%arg0: vector<8xf32>, %arg1: memref<32xf32, 3>, %arg2: index) {
+      %0 = xegpu.create_mem_desc %arg1 : memref<32xf32, 3> -> !xegpu.mem_desc<32xf32>
+      xegpu.store_matrix %arg0, %0[%arg2] : vector<8xf32>, !xegpu.mem_desc<32xf32>, index
+      gpu.return
+    }
+  }
+}
+
+// -----
+module {
+  gpu.module @xevm_module {
+    gpu.func @store_0D_vector_unsupported(%arg0: vector<f32>, %arg1: memref<3xf32>, %arg2: index) {
+      vector.transfer_write %arg0, %arg1[%arg2] : vector<f32>, memref<3xf32>
       gpu.return
     }
   }

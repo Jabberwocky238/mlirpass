@@ -37,9 +37,11 @@
     "func.return"() : () -> ()
   }) {func.varargs = true} : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "target_cpu", sym_visibility = "private"}> ({
-  }) {target_cpu = "gfx90a"} : () -> ()
+  }) {llvm.target_cpu = "gfx90a"} : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "target_features", sym_visibility = "private"}> ({
-  }) {target_features = #llvm.target_features<["+sme", "+sve"]>} : () -> ()
+  }) {llvm.target_features = #llvm.target_features<["+sme", "+sve"]>} : () -> ()
+  "func.func"() <{function_type = () -> (), sym_name = "passthrough_attr", sym_visibility = "private"}> ({
+  }) {llvm.passthrough = ["presplitcoroutine"]} : () -> ()
 }) : () -> ()
 
 // -----
@@ -68,5 +70,24 @@
   ^bb0(%arg0: i32):
     "func.return"() : () -> ()
   }) {func.varargs = true, llvm.emit_c_interface} : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), res_attrs = [], sym_name = "empty_res_attrs"}> ({
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "host_next_to_gpu_module"}> ({
+    "func.return"() : () -> ()
+  }) {llvm.linkage = #llvm.linkage<internal>} : () -> ()
+  "gpu.module"() <{sym_name = "gpu_mod"}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
+      "gpu.return"() : () -> ()
+    }) {sym_name = "gpu_kernel"} : () -> ()
+  }) : () -> ()
 }) : () -> ()
 

@@ -92,6 +92,42 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (i1) -> (), sym_name = "index_castui_nneg"}> ({
+  ^bb0(%arg0: i1):
+    %0 = "arith.index_castui"(%arg0) <{nonNeg}> : (i1) -> index
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1) -> (), sym_name = "index_castui_nneg_not_set"}> ({
+  ^bb0(%arg0: i1):
+    %0 = "arith.index_castui"(%arg0) : (i1) -> index
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<3xi32>) -> memref<3xindex>, sym_name = "memref_index_cast"}> ({
+  ^bb0(%arg0: memref<3xi32>):
+    %0 = "arith.index_cast"(%arg0) : (memref<3xi32>) -> memref<3xindex>
+    "func.return"(%0) : (memref<3xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<3xi32>) -> memref<3xindex>, sym_name = "memref_index_castui"}> ({
+  ^bb0(%arg0: memref<3xi32>):
+    %0 = "arith.index_castui"(%arg0) : (memref<3xi32>) -> memref<3xindex>
+    "func.return"(%0) : (memref<3xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (i32, i64) -> (), sym_name = "sitofp"}> ({
   ^bb0(%arg0: i32, %arg1: i64):
     %0 = "arith.sitofp"(%arg0) : (i32) -> f32
@@ -253,6 +289,85 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64) -> (), sym_name = "experimental_constrained_addf"}> ({
+  ^bb0(%arg0: f64, %arg1: f64):
+    %0 = "arith.addf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, roundingmode = 0 : i32}> : (f64, f64) -> f64
+    %1 = "arith.addf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, roundingmode = 1 : i32}> : (f64, f64) -> f64
+    %2 = "arith.addf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, roundingmode = 2 : i32}> : (f64, f64) -> f64
+    %3 = "arith.addf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, roundingmode = 3 : i32}> : (f64, f64) -> f64
+    %4 = "arith.addf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, roundingmode = 4 : i32}> : (f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64) -> (), sym_name = "experimental_constrained_subf"}> ({
+  ^bb0(%arg0: f64, %arg1: f64):
+    %0 = "arith.subf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, roundingmode = 0 : i32}> : (f64, f64) -> f64
+    %1 = "arith.subf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, roundingmode = 1 : i32}> : (f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64) -> (), sym_name = "experimental_constrained_mulf"}> ({
+  ^bb0(%arg0: f64, %arg1: f64):
+    %0 = "arith.mulf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, roundingmode = 2 : i32}> : (f64, f64) -> f64
+    %1 = "arith.mulf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, roundingmode = 3 : i32}> : (f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64) -> (), sym_name = "experimental_constrained_divf"}> ({
+  ^bb0(%arg0: f64, %arg1: f64):
+    %0 = "arith.divf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, roundingmode = 0 : i32}> : (f64, f64) -> f64
+    %1 = "arith.divf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>, roundingmode = 4 : i32}> : (f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f64, f64) -> (), sym_name = "constrained_addf_with_fastmath"}> ({
+  ^bb0(%arg0: f64, %arg1: f64):
+    %0 = "arith.addf"(%arg0, %arg1) <{fastmath = #arith.fastmath<fast>, roundingmode = 0 : i32}> : (f64, f64) -> f64
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f16) -> bf16, sym_name = "convertf_f16_to_bf16"}> ({
+  ^bb0(%arg0: f16):
+    %0 = "arith.convertf"(%arg0) : (f16) -> bf16
+    "func.return"(%0) : (bf16) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (bf16) -> f16, sym_name = "convertf_bf16_to_f16"}> ({
+  ^bb0(%arg0: bf16):
+    %0 = "arith.convertf"(%arg0) : (bf16) -> f16
+    "func.return"(%0) : (f16) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<2xf16>) -> vector<2xbf16>, sym_name = "convertf_vector"}> ({
+  ^bb0(%arg0: vector<2xf16>):
+    %0 = "arith.convertf"(%arg0) : (vector<2xf16>) -> vector<2xbf16>
+    "func.return"(%0) : (vector<2xbf16>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (i3) -> (), sym_name = "integer_extension_and_truncation"}> ({
   ^bb0(%arg0: i3):
     %0 = "arith.extsi"(%arg0) : (i3) -> i6
@@ -325,6 +440,20 @@
   "func.func"() <{function_type = (vector<3xi16>, vector<3xi16>) -> (vector<3xi16>, vector<3xi1>), sym_name = "addui_extended_vector1d"}> ({
   ^bb0(%arg0: vector<3xi16>, %arg1: vector<3xi16>):
     %0:2 = "arith.addui_extended"(%arg0, %arg1) : (vector<3xi16>, vector<3xi16>) -> (vector<3xi16>, vector<3xi1>)
+    "func.return"(%0#0, %0#1) : (vector<3xi16>, vector<3xi1>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32, i32) -> (i32, i1), sym_name = "subui_extended_scalar"}> ({
+  ^bb0(%arg2: i32, %arg3: i32):
+    %1:2 = "arith.subui_extended"(%arg2, %arg3) : (i32, i32) -> (i32, i1)
+    "func.return"(%1#0, %1#1) : (i32, i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<3xi16>, vector<3xi16>) -> (vector<3xi16>, vector<3xi1>), sym_name = "subui_extended_vector1d"}> ({
+  ^bb0(%arg0: vector<3xi16>, %arg1: vector<3xi16>):
+    %0:2 = "arith.subui_extended"(%arg0, %arg1) : (vector<3xi16>, vector<3xi16>) -> (vector<3xi16>, vector<3xi1>)
     "func.return"(%0#0, %0#1) : (vector<3xi16>, vector<3xi1>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -491,6 +620,26 @@
     %1 = "arith.shrui"(%arg0, %arg1) <{isExact}> : (i32, i32) -> i32
     %2 = "arith.divsi"(%arg0, %arg1) <{isExact}> : (i32, i32) -> i32
     %3 = "arith.divui"(%arg0, %arg1) <{isExact}> : (i32, i32) -> i32
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> (), sym_name = "ops_supporting_nneg"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "arith.extui"(%arg0) <{nonNeg}> : (i32) -> i64
+    %1 = "arith.uitofp"(%arg0) <{nonNeg}> : (i32) -> f32
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> (), sym_name = "ops_nneg_not_set"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "arith.extui"(%arg0) : (i32) -> i64
+    %1 = "arith.uitofp"(%arg0) : (i32) -> f32
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

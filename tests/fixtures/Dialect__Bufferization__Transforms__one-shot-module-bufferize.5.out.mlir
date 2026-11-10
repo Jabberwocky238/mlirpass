@@ -464,24 +464,12 @@ module {
 
 // -----
 module {
-  func.func @custom_types(%arg0: !test.test_memref<[4, 4], f64>) -> (!test.test_memref<[4, 8], f64>, !test.test_memref<[4, 8], f64>) {
-    %0 = "test.dummy_memref_op"(%arg0) : (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 8], f64>
-    %1 = "test.create_memref_op"() : () -> !test.test_memref<[4, 4], f64>
-    %2 = "test.dummy_memref_op"(%1) : (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 8], f64>
-    return %0, %2 : !test.test_memref<[4, 8], f64>, !test.test_memref<[4, 8], f64>
+  func.func @ranked_return_via_unranked_call(%arg0: memref<64x20x40xf32, strided<[?, ?, ?], offset: ?>>) -> memref<64x20x40xf32, strided<[?, ?, ?], offset: ?>> {
+    %cast = memref.cast %arg0 : memref<64x20x40xf32, strided<[?, ?, ?], offset: ?>> to memref<*xf32>
+    %0 = call @relu_unranked(%cast) : (memref<*xf32>) -> memref<*xf32>
+    %cast_0 = memref.cast %0 : memref<*xf32> to memref<64x20x40xf32, strided<[?, ?, ?], offset: ?>>
+    return %cast_0 : memref<64x20x40xf32, strided<[?, ?, ?], offset: ?>>
   }
-}
-
-// -----
-module {
-  func.func @custom_types_foo(%arg0: !test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 4], f64> {
-    %0 = "test.dummy_memref_op"(%arg0) : (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 4], f64>
-    return %0 : !test.test_memref<[4, 4], f64>
-  }
-  func.func @custom_types_bar(%arg0: !test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 8], f64> {
-    %0 = call @custom_types_foo(%arg0) : (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 4], f64>
-    %1 = "test.dummy_memref_op"(%0) : (!test.test_memref<[4, 4], f64>) -> !test.test_memref<[4, 8], f64>
-    return %1 : !test.test_memref<[4, 8], f64>
-  }
+  func.func private @relu_unranked(memref<*xf32>) -> memref<*xf32>
 }
 

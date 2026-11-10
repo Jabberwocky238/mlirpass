@@ -16,7 +16,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
       spirv.SpecConstant @printfMsg0_sc7 = 0 : i8
       spirv.SpecConstantComposite @printfMsg0_scc (@printfMsg0_sc0, @printfMsg0_sc1, @printfMsg0_sc2, @printfMsg0_sc3, @printfMsg0_sc4, @printfMsg0_sc5, @printfMsg0_sc6, @printfMsg0_sc7) : !spirv.array<8 x i8>
       spirv.GlobalVariable @printfMsg0 initializer(@printfMsg0_scc) {Constant} : !spirv.ptr<!spirv.array<8 x i8>, UniformConstant>
-      spirv.func @printf() "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<>, workgroup_attributions = 0 : i64} {
+      spirv.func @printf() "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<>} {
         %printfMsg0_addr = spirv.mlir.addressof @printfMsg0 : !spirv.ptr<!spirv.array<8 x i8>, UniformConstant>
         %0 = spirv.Bitcast %printfMsg0_addr : !spirv.ptr<!spirv.array<8 x i8>, UniformConstant> to !spirv.ptr<i8, UniformConstant>
         %1 = spirv.CL.printf %0 : !spirv.ptr<i8, UniformConstant> -> i32
@@ -83,7 +83,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
       spirv.GlobalVariable @printfMsg0 initializer(@printfMsg0_scc) {Constant} : !spirv.ptr<!spirv.array<39 x i8>, UniformConstant>
       spirv.GlobalVariable @__builtin__LocalInvocationId__ built_in("LocalInvocationId") : !spirv.ptr<vector<3xi32>, Input>
       spirv.GlobalVariable @__builtin__WorkgroupId__ built_in("WorkgroupId") : !spirv.ptr<vector<3xi32>, Input>
-      spirv.func @printf_args(%arg0: i32, %arg1: f32) "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<>, workgroup_attributions = 0 : i64} {
+      spirv.func @printf_args(%arg0: i32, %arg1: f32) "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<>} {
         %__builtin__WorkgroupId___addr = spirv.mlir.addressof @__builtin__WorkgroupId__ : !spirv.ptr<vector<3xi32>, Input>
         %0 = spirv.Load "Input" %__builtin__WorkgroupId___addr : vector<3xi32>
         %1 = spirv.CompositeExtract %0[0 : i32] : vector<3xi32>

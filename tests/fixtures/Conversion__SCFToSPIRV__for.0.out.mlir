@@ -89,5 +89,59 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader
     spirv.Store "StorageBuffer" %5, %2 : f32
     spirv.Return
   }
+  spirv.func @loop_unroll(%arg0: !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>, %arg1: !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>) "None" {
+    %cst0_i32 = spirv.Constant 0 : i32
+    %cst10_i32 = spirv.Constant 10 : i32
+    %cst1_i32 = spirv.Constant 1 : i32
+    spirv.mlir.loop control(Unroll) {
+      spirv.Branch ^bb1(%cst0_i32 : i32)
+    ^bb1(%0: i32):  // 2 preds: ^bb0, ^bb2
+      %1 = spirv.SLessThan %0, %cst10_i32 : i32
+      spirv.BranchConditional %1, ^bb2, ^bb3
+    ^bb2:  // pred: ^bb1
+      %cst0_i32_0 = spirv.Constant 0 : i32
+      %cst0_i32_1 = spirv.Constant 0 : i32
+      %cst1_i32_2 = spirv.Constant 1 : i32
+      %2 = spirv.AccessChain %arg0[%cst0_i32_0, %0] : !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>, i32, i32 -> !spirv.ptr<f32, StorageBuffer>
+      %3 = spirv.Load "StorageBuffer" %2 : f32
+      %cst0_i32_3 = spirv.Constant 0 : i32
+      %cst0_i32_4 = spirv.Constant 0 : i32
+      %cst1_i32_5 = spirv.Constant 1 : i32
+      %4 = spirv.AccessChain %arg1[%cst0_i32_3, %0] : !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>, i32, i32 -> !spirv.ptr<f32, StorageBuffer>
+      spirv.Store "StorageBuffer" %4, %3 : f32
+      %5 = spirv.IAdd %0, %cst1_i32 : i32
+      spirv.Branch ^bb1(%5 : i32)
+    ^bb3:  // pred: ^bb1
+      spirv.mlir.merge
+    }
+    spirv.Return
+  }
+  spirv.func @loop_dont_unroll(%arg0: !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>, %arg1: !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>) "None" {
+    %cst0_i32 = spirv.Constant 0 : i32
+    %cst10_i32 = spirv.Constant 10 : i32
+    %cst1_i32 = spirv.Constant 1 : i32
+    spirv.mlir.loop control(DontUnroll) {
+      spirv.Branch ^bb1(%cst0_i32 : i32)
+    ^bb1(%0: i32):  // 2 preds: ^bb0, ^bb2
+      %1 = spirv.SLessThan %0, %cst10_i32 : i32
+      spirv.BranchConditional %1, ^bb2, ^bb3
+    ^bb2:  // pred: ^bb1
+      %cst0_i32_0 = spirv.Constant 0 : i32
+      %cst0_i32_1 = spirv.Constant 0 : i32
+      %cst1_i32_2 = spirv.Constant 1 : i32
+      %2 = spirv.AccessChain %arg0[%cst0_i32_0, %0] : !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>, i32, i32 -> !spirv.ptr<f32, StorageBuffer>
+      %3 = spirv.Load "StorageBuffer" %2 : f32
+      %cst0_i32_3 = spirv.Constant 0 : i32
+      %cst0_i32_4 = spirv.Constant 0 : i32
+      %cst1_i32_5 = spirv.Constant 1 : i32
+      %4 = spirv.AccessChain %arg1[%cst0_i32_3, %0] : !spirv.ptr<!spirv.struct<(!spirv.array<10 x f32, stride=4> [0])>, StorageBuffer>, i32, i32 -> !spirv.ptr<f32, StorageBuffer>
+      spirv.Store "StorageBuffer" %4, %3 : f32
+      %5 = spirv.IAdd %0, %cst1_i32 : i32
+      spirv.Branch ^bb1(%5 : i32)
+    ^bb3:  // pred: ^bb1
+      spirv.mlir.merge
+    }
+    spirv.Return
+  }
 }
 

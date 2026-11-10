@@ -1,0 +1,3 @@
+-convert-gpu-to-rocdl=chipset=gfx1250
+-split-input-file
+-verify-diagnostics

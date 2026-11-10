@@ -1,0 +1,3 @@
+--convert-xegpu-to-xevm
+-split-input-file
+-verify-diagnostics

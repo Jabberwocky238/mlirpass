@@ -53,8 +53,8 @@
     %26 = "spirv.ShiftLeftLogical"(%25, %22) : (i32, i32) -> i32
     %27 = "spirv.SDiv"(%20, %2) : (i32, i32) -> i32
     %28 = "spirv.AccessChain"(%7, %4, %27) : (!spirv.ptr<!spirv.struct<(!spirv.array<10 x i32>)>, Workgroup>, i32, i32) -> !spirv.ptr<i32, Workgroup>
-    %29 = "spirv.AtomicAnd"(%28, %24) <{memory_scope = #spirv.scope<Workgroup>, semantics = #spirv.memory_semantics<AcquireRelease>}> : (!spirv.ptr<i32, Workgroup>, i32) -> i32
-    %30 = "spirv.AtomicOr"(%28, %26) <{memory_scope = #spirv.scope<Workgroup>, semantics = #spirv.memory_semantics<AcquireRelease>}> : (!spirv.ptr<i32, Workgroup>, i32) -> i32
+    %29 = "spirv.AtomicAnd"(%28, %24) <{memory_scope = #spirv.scope<Workgroup>, semantics = #spirv.memory_semantics<AcquireRelease|WorkgroupMemory>}> : (!spirv.ptr<i32, Workgroup>, i32) -> i32
+    %30 = "spirv.AtomicOr"(%28, %26) <{memory_scope = #spirv.scope<Workgroup>, semantics = #spirv.memory_semantics<AcquireRelease|WorkgroupMemory>}> : (!spirv.ptr<i32, Workgroup>, i32) -> i32
     "func.return"() : () -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader], [SPV_KHR_storage_buffer_storage_class]>, #spirv.resource_limits<>>} : () -> ()
@@ -146,6 +146,28 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = () -> (), sym_name = "zero_size"}> ({
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader], [SPV_KHR_storage_buffer_storage_class]>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "spirv.GlobalVariable"() <{sym_name = "__workgroup_mem__0", type = !spirv.ptr<!spirv.struct<(!spirv.array<20 x vector<2xf32>>)>, Workgroup>}> : () -> ()
+  "func.func"() <{function_type = (index, index) -> (), sym_name = "alloc_dealloc_workgroup_mem_complex_f32"}> ({
+  ^bb0(%arg0: index, %arg1: index):
+    %0 = "spirv.Constant"() <{value = 5 : i32}> : () -> i32
+    %1 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %2 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i32
+    %3 = "builtin.unrealized_conversion_cast"(%arg0) : (index) -> i32
+    %4 = "spirv.mlir.addressof"() <{variable = @__workgroup_mem__0}> : () -> !spirv.ptr<!spirv.struct<(!spirv.array<20 x vector<2xf32>>)>, Workgroup>
+    %5 = "spirv.IMul"(%3, %0) : (i32, i32) -> i32
+    %6 = "spirv.IAdd"(%2, %5) : (i32, i32) -> i32
+    %7 = "spirv.AccessChain"(%4, %1, %6) : (!spirv.ptr<!spirv.struct<(!spirv.array<20 x vector<2xf32>>)>, Workgroup>, i32, i32) -> !spirv.ptr<vector<2xf32>, Workgroup>
+    %8 = "spirv.Load"(%7) : (!spirv.ptr<vector<2xf32>, Workgroup>) -> vector<2xf32>
+    %9 = "spirv.IMul"(%3, %0) : (i32, i32) -> i32
+    %10 = "spirv.IAdd"(%2, %9) : (i32, i32) -> i32
+    %11 = "spirv.AccessChain"(%4, %1, %10) : (!spirv.ptr<!spirv.struct<(!spirv.array<20 x vector<2xf32>>)>, Workgroup>, i32, i32) -> !spirv.ptr<vector<2xf32>, Workgroup>
+    "spirv.Store"(%11, %8) : (!spirv.ptr<vector<2xf32>, Workgroup>, vector<2xf32>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader], [SPV_KHR_storage_buffer_storage_class]>, #spirv.resource_limits<>>} : () -> ()

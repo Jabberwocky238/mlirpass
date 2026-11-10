@@ -1,15 +1,45 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (i1, i64) -> i64, sym_name = "select_same_val"}> ({
-  ^bb0(%arg36: i1, %arg37: i64):
-    "func.return"(%arg37) : (i64) -> ()
+  ^bb0(%arg44: i1, %arg45: i64):
+    "func.return"(%arg45) : (i64) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i64, i64) -> i64, sym_name = "select_cmp_eq_select"}> ({
-  ^bb0(%arg34: i64, %arg35: i64):
-    "func.return"(%arg35) : (i64) -> ()
+  ^bb0(%arg42: i64, %arg43: i64):
+    "func.return"(%arg43) : (i64) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i64, i64) -> i64, sym_name = "select_cmp_ne_select"}> ({
-  ^bb0(%arg32: i64, %arg33: i64):
-    "func.return"(%arg32) : (i64) -> ()
+  ^bb0(%arg40: i64, %arg41: i64):
+    "func.return"(%arg40) : (i64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i64, i64) -> (i64, i64, i64, i64, i64, i64, i64, i64), sym_name = "select_cmp_signed_min_max"}> ({
+  ^bb0(%arg38: i64, %arg39: i64):
+    %30 = "arith.minsi"(%arg38, %arg39) : (i64, i64) -> i64
+    %31 = "arith.minsi"(%arg38, %arg39) : (i64, i64) -> i64
+    %32 = "arith.minsi"(%arg38, %arg39) : (i64, i64) -> i64
+    %33 = "arith.minsi"(%arg38, %arg39) : (i64, i64) -> i64
+    %34 = "arith.maxsi"(%arg38, %arg39) : (i64, i64) -> i64
+    %35 = "arith.maxsi"(%arg38, %arg39) : (i64, i64) -> i64
+    %36 = "arith.maxsi"(%arg38, %arg39) : (i64, i64) -> i64
+    %37 = "arith.maxsi"(%arg38, %arg39) : (i64, i64) -> i64
+    "func.return"(%30, %31, %32, %33, %34, %35, %36, %37) : (i64, i64, i64, i64, i64, i64, i64, i64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i64, i64) -> (i64, i64, i64, i64, i64, i64, i64, i64), sym_name = "select_cmp_unsigned_min_max"}> ({
+  ^bb0(%arg36: i64, %arg37: i64):
+    %22 = "arith.minui"(%arg36, %arg37) : (i64, i64) -> i64
+    %23 = "arith.minui"(%arg36, %arg37) : (i64, i64) -> i64
+    %24 = "arith.minui"(%arg36, %arg37) : (i64, i64) -> i64
+    %25 = "arith.minui"(%arg36, %arg37) : (i64, i64) -> i64
+    %26 = "arith.maxui"(%arg36, %arg37) : (i64, i64) -> i64
+    %27 = "arith.maxui"(%arg36, %arg37) : (i64, i64) -> i64
+    %28 = "arith.maxui"(%arg36, %arg37) : (i64, i64) -> i64
+    %29 = "arith.maxui"(%arg36, %arg37) : (i64, i64) -> i64
+    "func.return"(%22, %23, %24, %25, %26, %27, %28, %29) : (i64, i64, i64, i64, i64, i64, i64, i64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (index, index, vector<4xi32>, vector<4xi32>) -> (index, vector<4xi32>), sym_name = "select_cmp_min_max_index_vector"}> ({
+  ^bb0(%arg32: index, %arg33: index, %arg34: vector<4xi32>, %arg35: vector<4xi32>):
+    %20 = "arith.minsi"(%arg32, %arg33) : (index, index) -> index
+    %21 = "arith.maxui"(%arg34, %arg35) : (vector<4xi32>, vector<4xi32>) -> vector<4xi32>
+    "func.return"(%20, %21) : (index, vector<4xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i1) -> i64, sym_name = "select_extui"}> ({
   ^bb0(%arg31: i1):
@@ -168,8 +198,13 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = (i1) -> i64, sym_name = "extSIOfExtUI"}> ({
+  ^bb0(%arg3: i1):
+    %3 = "arith.extui"(%arg3) : (i1) -> i64
+    "func.return"(%3) : (i64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i1) -> i64, sym_name = "extSIOfExtUI_nneg"}> ({
   ^bb0(%arg2: i1):
-    %2 = "arith.extui"(%arg2) : (i1) -> i64
+    %2 = "arith.extui"(%arg2) <{nonNeg}> : (i1) -> i64
     "func.return"(%2) : (i64) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i1) -> i64, sym_name = "extUIOfExtUI"}> ({
@@ -227,24 +262,54 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "andOfExtSI"}> ({
+  ^bb0(%arg16: i8, %arg17: i8):
+    %16 = "arith.andi"(%arg16, %arg17) : (i8, i8) -> i8
+    %17 = "arith.extsi"(%16) : (i8) -> i64
+    "func.return"(%17) : (i64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "andOfExtUI"}> ({
+  ^bb0(%arg14: i8, %arg15: i8):
+    %14 = "arith.andi"(%arg14, %arg15) : (i8, i8) -> i8
+    %15 = "arith.extui"(%14) : (i8) -> i64
+    "func.return"(%15) : (i64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "andOfExtUI_nneg_lhs"}> ({
+  ^bb0(%arg12: i8, %arg13: i8):
+    %12 = "arith.andi"(%arg12, %arg13) : (i8, i8) -> i8
+    %13 = "arith.extui"(%12) <{nonNeg}> : (i8) -> i64
+    "func.return"(%13) : (i64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "andOfExtUI_nneg_rhs"}> ({
+  ^bb0(%arg10: i8, %arg11: i8):
+    %10 = "arith.andi"(%arg10, %arg11) : (i8, i8) -> i8
+    %11 = "arith.extui"(%10) <{nonNeg}> : (i8) -> i64
+    "func.return"(%11) : (i64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "andOfExtUI_nneg_both"}> ({
+  ^bb0(%arg8: i8, %arg9: i8):
+    %8 = "arith.andi"(%arg8, %arg9) : (i8, i8) -> i8
+    %9 = "arith.extui"(%8) <{nonNeg}> : (i8) -> i64
+    "func.return"(%9) : (i64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "orOfExtSI"}> ({
   ^bb0(%arg6: i8, %arg7: i8):
-    %6 = "arith.andi"(%arg6, %arg7) : (i8, i8) -> i8
+    %6 = "arith.ori"(%arg6, %arg7) : (i8, i8) -> i8
     %7 = "arith.extsi"(%6) : (i8) -> i64
     "func.return"(%7) : (i64) -> ()
   }) : () -> ()
-  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "andOfExtUI"}> ({
+  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "orOfExtUI"}> ({
   ^bb0(%arg4: i8, %arg5: i8):
-    %4 = "arith.andi"(%arg4, %arg5) : (i8, i8) -> i8
+    %4 = "arith.ori"(%arg4, %arg5) : (i8, i8) -> i8
     %5 = "arith.extui"(%4) : (i8) -> i64
     "func.return"(%5) : (i64) -> ()
   }) : () -> ()
-  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "orOfExtSI"}> ({
+  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "orOfExtUI_nneg_both"}> ({
   ^bb0(%arg2: i8, %arg3: i8):
     %2 = "arith.ori"(%arg2, %arg3) : (i8, i8) -> i8
-    %3 = "arith.extsi"(%2) : (i8) -> i64
+    %3 = "arith.extui"(%2) <{nonNeg}> : (i8) -> i64
     "func.return"(%3) : (i64) -> ()
   }) : () -> ()
-  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "orOfExtUI"}> ({
+  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "orOfExtUI_nneg_mixed"}> ({
   ^bb0(%arg0: i8, %arg1: i8):
     %0 = "arith.ori"(%arg0, %arg1) : (i8, i8) -> i8
     %1 = "arith.extui"(%0) : (i8) -> i64
@@ -254,468 +319,760 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> i32, sym_name = "andOfAndConstant"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "arith.constant"() <{value = 8 : i32}> : () -> i32
+    %1 = "arith.andi"(%arg0, %0) : (i32, i32) -> i32
+    "func.return"(%1) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> index, sym_name = "andOfAndConstantIndex"}> ({
+  ^bb0(%arg0: index):
+    %0 = "arith.constant"() <{value = 8 : index}> : () -> index
+    %1 = "arith.andi"(%arg0, %0) : (index, index) -> index
+    "func.return"(%1) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> (i32, i32), sym_name = "andOfAndConstantMultiUse"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "arith.constant"() <{value = 8 : i32}> : () -> i32
+    %1 = "arith.constant"() <{value = 12 : i32}> : () -> i32
+    %2 = "arith.andi"(%arg0, %1) : (i32, i32) -> i32
+    %3 = "arith.andi"(%arg0, %0) : (i32, i32) -> i32
+    "func.return"(%2, %3) : (i32, i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> (i32, i32, i32), sym_name = "andOfAndConstantChain"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "arith.constant"() <{value = 8 : i32}> : () -> i32
+    %1 = "arith.constant"() <{value = 12 : i32}> : () -> i32
+    %2 = "arith.constant"() <{value = 14 : i32}> : () -> i32
+    %3 = "arith.andi"(%arg0, %2) : (i32, i32) -> i32
+    %4 = "arith.andi"(%arg0, %1) : (i32, i32) -> i32
+    %5 = "arith.andi"(%arg0, %0) : (i32, i32) -> i32
+    "func.return"(%3, %4, %5) : (i32, i32, i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> i32, sym_name = "orOfOrConstant"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "arith.constant"() <{value = 14 : i32}> : () -> i32
+    %1 = "arith.ori"(%arg0, %0) : (i32, i32) -> i32
+    "func.return"(%1) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> index, sym_name = "orOfOrConstantIndex"}> ({
+  ^bb0(%arg0: index):
+    %0 = "arith.constant"() <{value = 14 : index}> : () -> index
+    %1 = "arith.ori"(%arg0, %0) : (index, index) -> index
+    "func.return"(%1) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> (i32, i32), sym_name = "orOfOrConstantMultiUse"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "arith.constant"() <{value = 14 : i32}> : () -> i32
+    %1 = "arith.constant"() <{value = 12 : i32}> : () -> i32
+    %2 = "arith.ori"(%arg0, %1) : (i32, i32) -> i32
+    %3 = "arith.ori"(%arg0, %0) : (i32, i32) -> i32
+    "func.return"(%2, %3) : (i32, i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i32, sym_name = "nested_andi"}> ({
+    %0 = "test.constant"() <{value = 2147483647 : i64}> : () -> i32
+    %1 = "test.constant"() <{value = -2147483648 : i64}> : () -> i32
+    %2 = "test.constant"() <{value = 2147483648 : i64}> : () -> i32
+    %3 = "arith.andi"(%0, %1) : (i32, i32) -> i32
+    %4 = "arith.andi"(%3, %2) : (i32, i32) -> i32
+    "func.return"(%4) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i32, sym_name = "nested_ori"}> ({
+    %0 = "test.constant"() <{value = 2147483647 : i64}> : () -> i32
+    %1 = "test.constant"() <{value = -2147483648 : i64}> : () -> i32
+    %2 = "test.constant"() <{value = 2147483648 : i64}> : () -> i32
+    %3 = "arith.ori"(%0, %1) : (i32, i32) -> i32
+    %4 = "arith.ori"(%3, %2) : (i32, i32) -> i32
+    "func.return"(%4) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (i8) -> index, sym_name = "indexCastOfSignExtend"}> ({
-  ^bb0(%arg111: i8):
-    %163 = "arith.index_cast"(%arg111) : (i8) -> index
-    "func.return"(%163) : (index) -> ()
+  ^bb0(%arg4: i8):
+    %15 = "arith.index_cast"(%arg4) : (i8) -> index
+    "func.return"(%15) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i8) -> index, sym_name = "indexCastUIOfUnsignedExtend"}> ({
-  ^bb0(%arg110: i8):
-    %162 = "arith.index_castui"(%arg110) : (i8) -> index
-    "func.return"(%162) : (index) -> ()
+  ^bb0(%arg3: i8):
+    %14 = "arith.index_castui"(%arg3) : (i8) -> index
+    "func.return"(%14) : (index) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8) -> index, sym_name = "indexCastUIOfUnsignedExtend_nneg_on_extui"}> ({
+  ^bb0(%arg2: i8):
+    %13 = "arith.index_castui"(%arg2) <{nonNeg}> : (i8) -> index
+    "func.return"(%13) : (index) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8) -> index, sym_name = "indexCastUIOfUnsignedExtend_nneg_on_castui"}> ({
+  ^bb0(%arg1: i8):
+    %12 = "arith.index_castui"(%arg1) : (i8) -> index
+    "func.return"(%12) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> index, sym_name = "indexCastFold"}> ({
-    %161 = "arith.constant"() <{value = -2 : index}> : () -> index
-    "func.return"(%161) : (index) -> ()
+    %11 = "arith.constant"() <{value = -2 : index}> : () -> index
+    "func.return"(%11) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "indexCastFoldIndexToInt"}> ({
-    %160 = "arith.constant"() <{value = 1 : i32}> : () -> i32
-    "func.return"(%160) : (i32) -> ()
+    %10 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    "func.return"(%10) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<3xindex>, sym_name = "indexCastFoldSplatVector"}> ({
-    %159 = "arith.constant"() <{value = dense<42> : vector<3xindex>}> : () -> vector<3xindex>
-    "func.return"(%159) : (vector<3xindex>) -> ()
+    %9 = "arith.constant"() <{value = dense<42> : vector<3xindex>}> : () -> vector<3xindex>
+    "func.return"(%9) : (vector<3xindex>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<3xindex>, sym_name = "indexCastFoldVector"}> ({
-    %158 = "arith.constant"() <{value = dense<[1, 2, 3]> : vector<3xindex>}> : () -> vector<3xindex>
-    "func.return"(%158) : (vector<3xindex>) -> ()
+    %8 = "arith.constant"() <{value = dense<[1, 2, 3]> : vector<3xindex>}> : () -> vector<3xindex>
+    "func.return"(%8) : (vector<3xindex>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<3xi32>, sym_name = "indexCastFoldSplatVectorIndexToInt"}> ({
-    %157 = "arith.constant"() <{value = dense<42> : vector<3xi32>}> : () -> vector<3xi32>
-    "func.return"(%157) : (vector<3xi32>) -> ()
+    %7 = "arith.constant"() <{value = dense<42> : vector<3xi32>}> : () -> vector<3xi32>
+    "func.return"(%7) : (vector<3xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<3xi32>, sym_name = "indexCastFoldVectorIndexToInt"}> ({
-    %156 = "arith.constant"() <{value = dense<[1, 2, 3]> : vector<3xi32>}> : () -> vector<3xi32>
-    "func.return"(%156) : (vector<3xi32>) -> ()
+    %6 = "arith.constant"() <{value = dense<[1, 2, 3]> : vector<3xi32>}> : () -> vector<3xi32>
+    "func.return"(%6) : (vector<3xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> index, sym_name = "indexCastUIFold"}> ({
-    %155 = "arith.constant"() <{value = 254 : index}> : () -> index
-    "func.return"(%155) : (index) -> ()
+    %5 = "arith.constant"() <{value = 254 : index}> : () -> index
+    "func.return"(%5) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<3xindex>, sym_name = "indexCastUIFoldSplatVector"}> ({
-    %154 = "arith.constant"() <{value = dense<42> : vector<3xindex>}> : () -> vector<3xindex>
-    "func.return"(%154) : (vector<3xindex>) -> ()
+    %4 = "arith.constant"() <{value = dense<42> : vector<3xindex>}> : () -> vector<3xindex>
+    "func.return"(%4) : (vector<3xindex>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<3xindex>, sym_name = "indexCastUIFoldVector"}> ({
-    %153 = "arith.constant"() <{value = dense<[1, 2, 3]> : vector<3xindex>}> : () -> vector<3xindex>
-    "func.return"(%153) : (vector<3xindex>) -> ()
+    %3 = "arith.constant"() <{value = dense<[1, 2, 3]> : vector<3xindex>}> : () -> vector<3xindex>
+    "func.return"(%3) : (vector<3xindex>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "indexCastUIFoldIndexToInt"}> ({
-    %152 = "arith.constant"() <{value = 1 : i32}> : () -> i32
-    "func.return"(%152) : (i32) -> ()
+    %2 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    "func.return"(%2) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<3xi32>, sym_name = "indexCastUIFoldSplatVectorIndexToInt"}> ({
-    %151 = "arith.constant"() <{value = dense<42> : vector<3xi32>}> : () -> vector<3xi32>
-    "func.return"(%151) : (vector<3xi32>) -> ()
+    %1 = "arith.constant"() <{value = dense<42> : vector<3xi32>}> : () -> vector<3xi32>
+    "func.return"(%1) : (vector<3xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<3xi32>, sym_name = "indexCastUIFoldVectorIndexToInt"}> ({
-    %150 = "arith.constant"() <{value = dense<[1, 2, 3]> : vector<3xi32>}> : () -> vector<3xi32>
-    "func.return"(%150) : (vector<3xi32>) -> ()
+    %0 = "arith.constant"() <{value = dense<[1, 2, 3]> : vector<3xi32>}> : () -> vector<3xi32>
+    "func.return"(%0) : (vector<3xi32>) -> ()
   }) : () -> ()
+  "func.func"() <{function_type = (i64) -> i64, sym_name = "indexCastOfIndexCast_lossless"}> ({
+  ^bb0(%arg0: i64):
+    "func.return"(%arg0) : (i64) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> index, sym_name = "indexCastOfIndexCast_lossy"}> ({
+  ^bb0(%arg0: index):
+    %0 = "arith.index_cast"(%arg0) : (index) -> i8
+    %1 = "arith.index_cast"(%0) : (i8) -> index
+    "func.return"(%1) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i64) -> i64, sym_name = "indexCastUIOfIndexCastUI_lossless"}> ({
+  ^bb0(%arg0: i64):
+    "func.return"(%arg0) : (i64) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> index, sym_name = "indexCastUIOfIndexCastUI_lossy"}> ({
+  ^bb0(%arg0: index):
+    %0 = "arith.index_castui"(%arg0) : (index) -> i8
+    %1 = "arith.index_castui"(%0) : (i8) -> index
+    "func.return"(%1) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i64) -> index, sym_name = "indexCastUIOfIndexCastUI_3way_lossy"}> ({
+  ^bb0(%arg0: i64):
+    %0 = "arith.index_castui"(%arg0) : (i64) -> index
+    %1 = "arith.index_castui"(%0) : (index) -> i8
+    %2 = "arith.index_castui"(%1) : (i8) -> index
+    "func.return"(%2) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i8) -> index, sym_name = "indexCastOfIndexCast_3way_lossy"}> ({
+  ^bb0(%arg0: i8):
+    %0 = "arith.index_cast"(%arg0) : (i8) -> index
+    "func.return"(%0) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i8) -> i8, sym_name = "indexCastOfIndexCast_i8_roundtrip"}> ({
+  ^bb0(%arg0: i8):
+    "func.return"(%arg0) : (i8) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<3xi128>) -> vector<3xi128>, sym_name = "indexCastOfIndexCast_vector_lossy"}> ({
+  ^bb0(%arg0: vector<3xi128>):
+    %0 = "arith.index_cast"(%arg0) : (vector<3xi128>) -> vector<3xindex>
+    %1 = "arith.index_cast"(%0) : (vector<3xindex>) -> vector<3xi128>
+    "func.return"(%1) : (vector<3xi128>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = () -> i16, sym_name = "signExtendConstant"}> ({
-    %149 = "arith.constant"() <{value = -2 : i16}> : () -> i16
-    "func.return"(%149) : (i16) -> ()
+    %178 = "arith.constant"() <{value = -2 : i16}> : () -> i16
+    "func.return"(%178) : (i16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xi16>, sym_name = "signExtendConstantSplat"}> ({
-    %148 = "arith.constant"() <{value = dense<-2> : vector<4xi16>}> : () -> vector<4xi16>
-    "func.return"(%148) : (vector<4xi16>) -> ()
+    %177 = "arith.constant"() <{value = dense<-2> : vector<4xi16>}> : () -> vector<4xi16>
+    "func.return"(%177) : (vector<4xi16>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xi16>, sym_name = "signExtendConstantVector"}> ({
-    %147 = "arith.constant"() <{value = dense<[1, 3, 5, 7]> : vector<4xi16>}> : () -> vector<4xi16>
-    "func.return"(%147) : (vector<4xi16>) -> ()
+    %176 = "arith.constant"() <{value = dense<[1, 3, 5, 7]> : vector<4xi16>}> : () -> vector<4xi16>
+    "func.return"(%176) : (vector<4xi16>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i16, sym_name = "unsignedExtendConstant"}> ({
-    %146 = "arith.constant"() <{value = 2 : i16}> : () -> i16
-    "func.return"(%146) : (i16) -> ()
+    %175 = "arith.constant"() <{value = 2 : i16}> : () -> i16
+    "func.return"(%175) : (i16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xi16>, sym_name = "unsignedExtendConstantSplat"}> ({
-    %145 = "arith.constant"() <{value = dense<2> : vector<4xi16>}> : () -> vector<4xi16>
-    "func.return"(%145) : (vector<4xi16>) -> ()
+    %174 = "arith.constant"() <{value = dense<2> : vector<4xi16>}> : () -> vector<4xi16>
+    "func.return"(%174) : (vector<4xi16>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xi16>, sym_name = "unsignedExtendConstantVector"}> ({
-    %144 = "arith.constant"() <{value = dense<[1, 3, 5, 7]> : vector<4xi16>}> : () -> vector<4xi16>
-    "func.return"(%144) : (vector<4xi16>) -> ()
+    %173 = "arith.constant"() <{value = dense<[1, 3, 5, 7]> : vector<4xi16>}> : () -> vector<4xi16>
+    "func.return"(%173) : (vector<4xi16>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f64, sym_name = "extFPConstant"}> ({
-    %143 = "arith.constant"() <{value = 1.000000e+00 : f64}> : () -> f64
-    "func.return"(%143) : (f64) -> ()
+    %172 = "arith.constant"() <{value = 1.000000e+00 : f64}> : () -> f64
+    "func.return"(%172) : (f64) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<2xf128>, sym_name = "extFPVectorConstant"}> ({
-    %142 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00]> : vector<2xf128>}> : () -> vector<2xf128>
-    "func.return"(%142) : (vector<2xf128>) -> ()
+    %171 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00]> : vector<2xf128>}> : () -> vector<2xf128>
+    "func.return"(%171) : (vector<2xf128>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (f32) -> f32, sym_name = "truncExtf"}> ({
-  ^bb0(%arg109: f32):
-    "func.return"(%arg109) : (f32) -> ()
+  ^bb0(%arg126: f32):
+    "func.return"(%arg126) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (bf16) -> bf16, sym_name = "truncExtf1"}> ({
-  ^bb0(%arg108: bf16):
-    "func.return"(%arg108) : (bf16) -> ()
+  ^bb0(%arg125: bf16):
+    "func.return"(%arg125) : (bf16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (bf16) -> f16, sym_name = "truncExtf2"}> ({
-  ^bb0(%arg107: bf16):
-    %140 = "arith.extf"(%arg107) : (bf16) -> f32
-    %141 = "arith.truncf"(%140) : (f32) -> f16
-    "func.return"(%141) : (f16) -> ()
+  ^bb0(%arg124: bf16):
+    %169 = "arith.extf"(%arg124) : (bf16) -> f32
+    %170 = "arith.truncf"(%169) : (f32) -> f16
+    "func.return"(%170) : (f16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (f32) -> f16, sym_name = "truncExtf3"}> ({
-  ^bb0(%arg106: f32):
-    %139 = "arith.truncf"(%arg106) : (f32) -> f16
-    "func.return"(%139) : (f16) -> ()
+  ^bb0(%arg123: f32):
+    %168 = "arith.truncf"(%arg123) : (f32) -> f16
+    "func.return"(%168) : (f16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> f32, sym_name = "truncSitofp"}> ({
-  ^bb0(%arg105: i32):
-    %138 = "arith.sitofp"(%arg105) : (i32) -> f32
-    "func.return"(%138) : (f32) -> ()
+  ^bb0(%arg122: i32):
+    %167 = "arith.sitofp"(%arg122) : (i32) -> f32
+    "func.return"(%167) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> f32, sym_name = "truncSitofpConstrained"}> ({
-  ^bb0(%arg104: i32):
-    %136 = "arith.sitofp"(%arg104) : (i32) -> f64
-    %137 = "arith.truncf"(%136) <{roundingmode = 0 : i32}> : (f64) -> f32
-    "func.return"(%137) : (f32) -> ()
+  ^bb0(%arg121: i32):
+    %165 = "arith.sitofp"(%arg121) : (i32) -> f64
+    %166 = "arith.truncf"(%165) <{roundingmode = 0 : i32}> : (f64) -> f32
+    "func.return"(%166) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> f32, sym_name = "truncUitofp"}> ({
+  ^bb0(%arg120: i32):
+    %164 = "arith.uitofp"(%arg120) : (i32) -> f32
+    "func.return"(%164) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> f32, sym_name = "truncUitofp_nneg"}> ({
+  ^bb0(%arg119: i32):
+    %163 = "arith.uitofp"(%arg119) <{nonNeg}> : (i32) -> f32
+    "func.return"(%163) : (f32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8) -> bf16, sym_name = "sitofpExtsi"}> ({
+  ^bb0(%arg118: i8):
+    %162 = "arith.sitofp"(%arg118) : (i8) -> bf16
+    "func.return"(%162) : (bf16) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i4) -> bf16, sym_name = "sitofpExtui"}> ({
+  ^bb0(%arg117: i4):
+    %161 = "arith.uitofp"(%arg117) : (i4) -> bf16
+    "func.return"(%161) : (bf16) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8) -> bf16, sym_name = "uitofpExtui"}> ({
+  ^bb0(%arg116: i8):
+    %160 = "arith.uitofp"(%arg116) : (i8) -> bf16
+    "func.return"(%160) : (bf16) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i4) -> bf16, sym_name = "sitofpExtui_nneg"}> ({
+  ^bb0(%arg115: i4):
+    %159 = "arith.uitofp"(%arg115) <{nonNeg}> : (i4) -> bf16
+    "func.return"(%159) : (bf16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i8) -> i16, sym_name = "truncConstant"}> ({
-  ^bb0(%arg103: i8):
-    %135 = "arith.constant"() <{value = -2 : i16}> : () -> i16
-    "func.return"(%135) : (i16) -> ()
+  ^bb0(%arg114: i8):
+    %158 = "arith.constant"() <{value = -2 : i16}> : () -> i16
+    "func.return"(%158) : (i16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "truncExtui"}> ({
-  ^bb0(%arg102: i32):
-    "func.return"(%arg102) : (i32) -> ()
+  ^bb0(%arg113: i32):
+    "func.return"(%arg113) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i16, sym_name = "truncExtui2"}> ({
-  ^bb0(%arg101: i32):
-    %134 = "arith.trunci"(%arg101) <{overflowFlags = #arith.overflow<none>}> : (i32) -> i16
-    "func.return"(%134) : (i16) -> ()
+  ^bb0(%arg112: i32):
+    %157 = "arith.trunci"(%arg112) <{overflowFlags = #arith.overflow<none>}> : (i32) -> i16
+    "func.return"(%157) : (i16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i8) -> i16, sym_name = "truncExtui3"}> ({
-  ^bb0(%arg100: i8):
-    %133 = "arith.extui"(%arg100) : (i8) -> i16
-    "func.return"(%133) : (i16) -> ()
+  ^bb0(%arg111: i8):
+    %156 = "arith.extui"(%arg111) : (i8) -> i16
+    "func.return"(%156) : (i16) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8) -> i16, sym_name = "truncExtui3_nneg"}> ({
+  ^bb0(%arg110: i8):
+    %155 = "arith.extui"(%arg110) <{nonNeg}> : (i8) -> i16
+    "func.return"(%155) : (i16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<2xi32>) -> vector<2xi16>, sym_name = "truncExtuiVector"}> ({
-  ^bb0(%arg99: vector<2xi32>):
-    %132 = "arith.trunci"(%arg99) <{overflowFlags = #arith.overflow<none>}> : (vector<2xi32>) -> vector<2xi16>
-    "func.return"(%132) : (vector<2xi16>) -> ()
+  ^bb0(%arg109: vector<2xi32>):
+    %154 = "arith.trunci"(%arg109) <{overflowFlags = #arith.overflow<none>}> : (vector<2xi32>) -> vector<2xi16>
+    "func.return"(%154) : (vector<2xi16>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "truncExtsi"}> ({
-  ^bb0(%arg98: i32):
-    "func.return"(%arg98) : (i32) -> ()
+  ^bb0(%arg108: i32):
+    "func.return"(%arg108) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i16, sym_name = "truncExtsi2"}> ({
-  ^bb0(%arg97: i32):
-    %131 = "arith.trunci"(%arg97) <{overflowFlags = #arith.overflow<none>}> : (i32) -> i16
-    "func.return"(%131) : (i16) -> ()
+  ^bb0(%arg107: i32):
+    %153 = "arith.trunci"(%arg107) <{overflowFlags = #arith.overflow<none>}> : (i32) -> i16
+    "func.return"(%153) : (i16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i8) -> i16, sym_name = "truncExtsi3"}> ({
-  ^bb0(%arg96: i8):
-    %130 = "arith.extsi"(%arg96) : (i8) -> i16
-    "func.return"(%130) : (i16) -> ()
+  ^bb0(%arg106: i8):
+    %152 = "arith.extsi"(%arg106) : (i8) -> i16
+    "func.return"(%152) : (i16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<2xi32>) -> vector<2xi16>, sym_name = "truncExtsiVector"}> ({
-  ^bb0(%arg95: vector<2xi32>):
-    %129 = "arith.trunci"(%arg95) <{overflowFlags = #arith.overflow<none>}> : (vector<2xi32>) -> vector<2xi16>
-    "func.return"(%129) : (vector<2xi16>) -> ()
+  ^bb0(%arg105: vector<2xi32>):
+    %151 = "arith.trunci"(%arg105) <{overflowFlags = #arith.overflow<none>}> : (vector<2xi32>) -> vector<2xi16>
+    "func.return"(%151) : (vector<2xi16>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xi8>, sym_name = "truncConstantSplat"}> ({
-    %128 = "arith.constant"() <{value = dense<-2> : vector<4xi8>}> : () -> vector<4xi8>
-    "func.return"(%128) : (vector<4xi8>) -> ()
+    %150 = "arith.constant"() <{value = dense<-2> : vector<4xi8>}> : () -> vector<4xi8>
+    "func.return"(%150) : (vector<4xi8>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<4xi8>, sym_name = "truncConstantVector"}> ({
-    %127 = "arith.constant"() <{value = dense<[1, 3, 5, 7]> : vector<4xi8>}> : () -> vector<4xi8>
-    "func.return"(%127) : (vector<4xi8>) -> ()
+    %149 = "arith.constant"() <{value = dense<[1, 3, 5, 7]> : vector<4xi8>}> : () -> vector<4xi8>
+    "func.return"(%149) : (vector<4xi8>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i64) -> i8, sym_name = "truncTrunc"}> ({
-  ^bb0(%arg94: i64):
-    %126 = "arith.trunci"(%arg94) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i8
-    "func.return"(%126) : (i8) -> ()
+  ^bb0(%arg104: i64):
+    %148 = "arith.trunci"(%arg104) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i8
+    "func.return"(%148) : (i8) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> bf16, sym_name = "truncFPConstant"}> ({
-    %125 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
-    "func.return"(%125) : (bf16) -> ()
+    %147 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
+    "func.return"(%147) : (bf16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> bf16, sym_name = "truncFPToNearestEvenConstant"}> ({
-    %124 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
-    "func.return"(%124) : (bf16) -> ()
+    %146 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
+    "func.return"(%146) : (bf16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> bf16, sym_name = "truncFPDownwardConstant"}> ({
-    %123 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
-    "func.return"(%123) : (bf16) -> ()
+    %145 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
+    "func.return"(%145) : (bf16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> bf16, sym_name = "truncFPUpwardConstant"}> ({
-    %122 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
-    "func.return"(%122) : (bf16) -> ()
+    %144 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
+    "func.return"(%144) : (bf16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> bf16, sym_name = "truncFPTowardZeroConstant"}> ({
-    %121 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
-    "func.return"(%121) : (bf16) -> ()
+    %143 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
+    "func.return"(%143) : (bf16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> bf16, sym_name = "truncFPToNearestAwayConstant"}> ({
-    %120 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
-    "func.return"(%120) : (bf16) -> ()
+    %142 = "arith.constant"() <{value = 1.000000e+00 : bf16}> : () -> bf16
+    "func.return"(%142) : (bf16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> vector<2xbf16>, sym_name = "truncFPVectorConstant"}> ({
-    %119 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00]> : vector<2xbf16>}> : () -> vector<2xbf16>
-    "func.return"(%119) : (vector<2xbf16>) -> ()
+    %141 = "arith.constant"() <{value = dense<[0.000000e+00, 1.000000e+00]> : vector<2xbf16>}> : () -> vector<2xbf16>
+    "func.return"(%141) : (vector<2xbf16>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> bf16, sym_name = "truncFPConstantRounding"}> ({
-    %117 = "arith.constant"() <{value = 1.444000e+25 : f32}> : () -> f32
-    %118 = "arith.truncf"(%117) : (f32) -> bf16
-    "func.return"(%118) : (bf16) -> ()
+    %139 = "arith.constant"() <{value = 1.444000e+25 : f32}> : () -> f32
+    %140 = "arith.truncf"(%139) : (f32) -> bf16
+    "func.return"(%140) : (bf16) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleAddAdd"}> ({
-  ^bb0(%arg93: index):
-    %115 = "arith.constant"() <{value = 59 : index}> : () -> index
-    %116 = "arith.addi"(%arg93, %115) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%116) : (index) -> ()
+  ^bb0(%arg103: index):
+    %137 = "arith.constant"() <{value = 59 : index}> : () -> index
+    %138 = "arith.addi"(%arg103, %137) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%138) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleAddAddOvf1"}> ({
-  ^bb0(%arg92: index):
-    %113 = "arith.constant"() <{value = 59 : index}> : () -> index
-    %114 = "arith.addi"(%arg92, %113) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
-    "func.return"(%114) : (index) -> ()
+  ^bb0(%arg102: index):
+    %135 = "arith.constant"() <{value = 59 : index}> : () -> index
+    %136 = "arith.addi"(%arg102, %135) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
+    "func.return"(%136) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleAddAddOvf2"}> ({
-  ^bb0(%arg91: index):
-    %111 = "arith.constant"() <{value = 59 : index}> : () -> index
-    %112 = "arith.addi"(%arg91, %111) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%112) : (index) -> ()
+  ^bb0(%arg101: index):
+    %133 = "arith.constant"() <{value = 59 : index}> : () -> index
+    %134 = "arith.addi"(%arg101, %133) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%134) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (tensor<10xi32>, tensor<?x?xi32>) -> (tensor<10xi32>, tensor<?x?xi32>), sym_name = "foldSubXX_tensor"}> ({
-  ^bb0(%arg89: tensor<10xi32>, %arg90: tensor<?x?xi32>):
-    %109 = "arith.constant"() <{value = dense<0> : tensor<10xi32>}> : () -> tensor<10xi32>
-    %110 = "arith.subi"(%arg90, %arg90) <{overflowFlags = #arith.overflow<none>}> : (tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
-    "func.return"(%109, %110) : (tensor<10xi32>, tensor<?x?xi32>) -> ()
+  ^bb0(%arg99: tensor<10xi32>, %arg100: tensor<?x?xi32>):
+    %131 = "arith.constant"() <{value = dense<0> : tensor<10xi32>}> : () -> tensor<10xi32>
+    %132 = "arith.subi"(%arg100, %arg100) <{overflowFlags = #arith.overflow<none>}> : (tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+    "func.return"(%131, %132) : (tensor<10xi32>, tensor<?x?xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<8xi32>, vector<[4]xi32>) -> (vector<8xi32>, vector<[4]xi32>), sym_name = "foldSubXX_vector"}> ({
-  ^bb0(%arg87: vector<8xi32>, %arg88: vector<[4]xi32>):
-    %107 = "arith.constant"() <{value = dense<0> : vector<8xi32>}> : () -> vector<8xi32>
-    %108 = "arith.constant"() <{value = dense<0> : vector<[4]xi32>}> : () -> vector<[4]xi32>
-    "func.return"(%107, %108) : (vector<8xi32>, vector<[4]xi32>) -> ()
+  ^bb0(%arg97: vector<8xi32>, %arg98: vector<[4]xi32>):
+    %129 = "arith.constant"() <{value = dense<0> : vector<8xi32>}> : () -> vector<8xi32>
+    %130 = "arith.constant"() <{value = dense<0> : vector<[4]xi32>}> : () -> vector<[4]xi32>
+    "func.return"(%129, %130) : (vector<8xi32>, vector<[4]xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleAddSub0"}> ({
-  ^bb0(%arg86: index):
-    %105 = "arith.constant"() <{value = 59 : index}> : () -> index
-    %106 = "arith.subi"(%105, %arg86) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%106) : (index) -> ()
+  ^bb0(%arg96: index):
+    %127 = "arith.constant"() <{value = 59 : index}> : () -> index
+    %128 = "arith.subi"(%127, %arg96) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%128) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleAddSub0Ovf"}> ({
-  ^bb0(%arg85: index):
-    %103 = "arith.constant"() <{value = 59 : index}> : () -> index
-    %104 = "arith.subi"(%103, %arg85) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
-    "func.return"(%104) : (index) -> ()
+  ^bb0(%arg95: index):
+    %125 = "arith.constant"() <{value = 59 : index}> : () -> index
+    %126 = "arith.subi"(%125, %arg95) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
+    "func.return"(%126) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleAddSub1"}> ({
-  ^bb0(%arg84: index):
-    %101 = "arith.constant"() <{value = 25 : index}> : () -> index
-    %102 = "arith.addi"(%arg84, %101) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%102) : (index) -> ()
+  ^bb0(%arg94: index):
+    %123 = "arith.constant"() <{value = 25 : index}> : () -> index
+    %124 = "arith.addi"(%arg94, %123) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%124) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleAddSub1Ovf"}> ({
-  ^bb0(%arg83: index):
-    %99 = "arith.constant"() <{value = 25 : index}> : () -> index
-    %100 = "arith.addi"(%arg83, %99) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
-    "func.return"(%100) : (index) -> ()
+  ^bb0(%arg93: index):
+    %121 = "arith.constant"() <{value = 25 : index}> : () -> index
+    %122 = "arith.addi"(%arg93, %121) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
+    "func.return"(%122) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleSubAdd0"}> ({
-  ^bb0(%arg82: index):
-    %97 = "arith.constant"() <{value = 25 : index}> : () -> index
-    %98 = "arith.subi"(%97, %arg82) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%98) : (index) -> ()
+  ^bb0(%arg92: index):
+    %119 = "arith.constant"() <{value = 25 : index}> : () -> index
+    %120 = "arith.subi"(%119, %arg92) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%120) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleSubAdd0Ovf"}> ({
-  ^bb0(%arg81: index):
-    %95 = "arith.constant"() <{value = 25 : index}> : () -> index
-    %96 = "arith.subi"(%95, %arg81) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
-    "func.return"(%96) : (index) -> ()
+  ^bb0(%arg91: index):
+    %117 = "arith.constant"() <{value = 25 : index}> : () -> index
+    %118 = "arith.subi"(%117, %arg91) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
+    "func.return"(%118) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleSubAdd1"}> ({
-  ^bb0(%arg80: index):
-    %93 = "arith.constant"() <{value = -25 : index}> : () -> index
-    %94 = "arith.addi"(%arg80, %93) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%94) : (index) -> ()
+  ^bb0(%arg90: index):
+    %115 = "arith.constant"() <{value = -25 : index}> : () -> index
+    %116 = "arith.addi"(%arg90, %115) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%116) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> index, sym_name = "subSub0"}> ({
-  ^bb0(%arg78: index, %arg79: index):
-    %91 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %92 = "arith.subi"(%91, %arg79) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%92) : (index) -> ()
+  ^bb0(%arg88: index, %arg89: index):
+    %113 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %114 = "arith.subi"(%113, %arg89) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%114) : (index) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (index, index) -> index, sym_name = "subSub1"}> ({
+  ^bb0(%arg86: index, %arg87: index):
+    "func.return"(%arg87) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> index, sym_name = "subSub0Ovf"}> ({
-  ^bb0(%arg76: index, %arg77: index):
-    %89 = "arith.constant"() <{value = 0 : index}> : () -> index
-    %90 = "arith.subi"(%89, %arg77) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
-    "func.return"(%90) : (index) -> ()
+  ^bb0(%arg84: index, %arg85: index):
+    %111 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %112 = "arith.subi"(%111, %arg85) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
+    "func.return"(%112) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleSubSub0"}> ({
-  ^bb0(%arg75: index):
-    %87 = "arith.constant"() <{value = 25 : index}> : () -> index
-    %88 = "arith.addi"(%arg75, %87) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%88) : (index) -> ()
+  ^bb0(%arg83: index):
+    %109 = "arith.constant"() <{value = 25 : index}> : () -> index
+    %110 = "arith.addi"(%arg83, %109) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%110) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleSubSub0Ovf"}> ({
-  ^bb0(%arg74: index):
-    %85 = "arith.constant"() <{value = 25 : index}> : () -> index
-    %86 = "arith.addi"(%arg74, %85) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
-    "func.return"(%86) : (index) -> ()
+  ^bb0(%arg82: index):
+    %107 = "arith.constant"() <{value = 25 : index}> : () -> index
+    %108 = "arith.addi"(%arg82, %107) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
+    "func.return"(%108) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleSubSub1"}> ({
-  ^bb0(%arg73: index):
-    %83 = "arith.constant"() <{value = -25 : index}> : () -> index
-    %84 = "arith.subi"(%83, %arg73) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%84) : (index) -> ()
+  ^bb0(%arg81: index):
+    %105 = "arith.constant"() <{value = -25 : index}> : () -> index
+    %106 = "arith.subi"(%105, %arg81) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%106) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleSubSub1Ovf"}> ({
-  ^bb0(%arg72: index):
-    %81 = "arith.constant"() <{value = -25 : index}> : () -> index
-    %82 = "arith.subi"(%81, %arg72) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
-    "func.return"(%82) : (index) -> ()
+  ^bb0(%arg80: index):
+    %103 = "arith.constant"() <{value = -25 : index}> : () -> index
+    %104 = "arith.subi"(%103, %arg80) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
+    "func.return"(%104) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleSubSub2"}> ({
-  ^bb0(%arg71: index):
-    %79 = "arith.constant"() <{value = 59 : index}> : () -> index
-    %80 = "arith.subi"(%79, %arg71) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%80) : (index) -> ()
+  ^bb0(%arg79: index):
+    %101 = "arith.constant"() <{value = 59 : index}> : () -> index
+    %102 = "arith.subi"(%101, %arg79) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%102) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleSubSub2Ovf"}> ({
-  ^bb0(%arg70: index):
-    %77 = "arith.constant"() <{value = 59 : index}> : () -> index
-    %78 = "arith.subi"(%77, %arg70) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
-    "func.return"(%78) : (index) -> ()
+  ^bb0(%arg78: index):
+    %99 = "arith.constant"() <{value = 59 : index}> : () -> index
+    %100 = "arith.subi"(%99, %arg78) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
+    "func.return"(%100) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleSubSub3"}> ({
-  ^bb0(%arg69: index):
-    %75 = "arith.constant"() <{value = 59 : index}> : () -> index
-    %76 = "arith.subi"(%arg69, %75) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%76) : (index) -> ()
+  ^bb0(%arg77: index):
+    %97 = "arith.constant"() <{value = 59 : index}> : () -> index
+    %98 = "arith.subi"(%arg77, %97) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%98) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleSubSub3Ovf"}> ({
-  ^bb0(%arg68: index):
-    %73 = "arith.constant"() <{value = 59 : index}> : () -> index
-    %74 = "arith.subi"(%arg68, %73) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
-    "func.return"(%74) : (index) -> ()
+  ^bb0(%arg76: index):
+    %95 = "arith.constant"() <{value = 59 : index}> : () -> index
+    %96 = "arith.subi"(%arg76, %95) <{overflowFlags = #arith.overflow<nsw, nuw>}> : (index, index) -> index
+    "func.return"(%96) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> index, sym_name = "subAdd1"}> ({
-  ^bb0(%arg66: index, %arg67: index):
-    "func.return"(%arg66) : (index) -> ()
+  ^bb0(%arg74: index, %arg75: index):
+    "func.return"(%arg74) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> index, sym_name = "subAdd2"}> ({
-  ^bb0(%arg64: index, %arg65: index):
-    "func.return"(%arg65) : (index) -> ()
+  ^bb0(%arg72: index, %arg73: index):
+    "func.return"(%arg73) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> index, sym_name = "doubleAddSub1"}> ({
-  ^bb0(%arg62: index, %arg63: index):
-    "func.return"(%arg62) : (index) -> ()
+  ^bb0(%arg70: index, %arg71: index):
+    "func.return"(%arg70) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> index, sym_name = "doubleAddSub2"}> ({
-  ^bb0(%arg60: index, %arg61: index):
-    "func.return"(%arg60) : (index) -> ()
+  ^bb0(%arg68: index, %arg69: index):
+    "func.return"(%arg68) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i32, sym_name = "nested_muli"}> ({
-    %68 = "test.constant"() <{value = 2147483647 : i64}> : () -> i32
-    %69 = "test.constant"() <{value = -2147483648 : i64}> : () -> i32
-    %70 = "test.constant"() <{value = 2147483648 : i64}> : () -> i32
-    %71 = "arith.muli"(%68, %69) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    %72 = "arith.muli"(%71, %70) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%72) : (i32) -> ()
+    %90 = "test.constant"() <{value = 2147483647 : i64}> : () -> i32
+    %91 = "test.constant"() <{value = -2147483648 : i64}> : () -> i32
+    %92 = "test.constant"() <{value = 2147483648 : i64}> : () -> i32
+    %93 = "arith.muli"(%90, %91) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    %94 = "arith.muli"(%93, %92) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%94) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "tripleMulIMulIIndex"}> ({
-  ^bb0(%arg59: index):
-    %66 = "arith.constant"() <{value = 15 : index}> : () -> index
-    %67 = "arith.muli"(%arg59, %66) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%67) : (index) -> ()
+  ^bb0(%arg67: index):
+    %88 = "arith.constant"() <{value = 15 : index}> : () -> index
+    %89 = "arith.muli"(%arg67, %88) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%89) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "tripleMulIMulII32"}> ({
-  ^bb0(%arg58: i32):
-    %64 = "arith.constant"() <{value = -21 : i32}> : () -> i32
-    %65 = "arith.muli"(%arg58, %64) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%65) : (i32) -> ()
+  ^bb0(%arg66: i32):
+    %86 = "arith.constant"() <{value = -21 : i32}> : () -> i32
+    %87 = "arith.muli"(%arg66, %86) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%87) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i256) -> i256, sym_name = "tripleMulLargeInt"}> ({
-  ^bb0(%arg57: i256):
-    %62 = "arith.constant"() <{value = 3618502788666131213697322783095070105623107215331596699973092056135872020482 : i256}> : () -> i256
-    %63 = "arith.addi"(%arg57, %62) <{overflowFlags = #arith.overflow<none>}> : (i256, i256) -> i256
-    "func.return"(%63) : (i256) -> ()
+  ^bb0(%arg65: i256):
+    %84 = "arith.constant"() <{value = 3618502788666131213697322783095070105623107215331596699973092056135872020482 : i256}> : () -> i256
+    %85 = "arith.addi"(%arg65, %84) <{overflowFlags = #arith.overflow<none>}> : (i256, i256) -> i256
+    "func.return"(%85) : (i256) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> i32, sym_name = "addiMuliToSubiRhsI32"}> ({
-  ^bb0(%arg55: i32, %arg56: i32):
-    %61 = "arith.subi"(%arg55, %arg56) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%61) : (i32) -> ()
+  ^bb0(%arg63: i32, %arg64: i32):
+    %83 = "arith.subi"(%arg63, %arg64) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%83) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> index, sym_name = "addiMuliToSubiRhsIndex"}> ({
-  ^bb0(%arg53: index, %arg54: index):
-    %60 = "arith.subi"(%arg53, %arg54) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%60) : (index) -> ()
+  ^bb0(%arg61: index, %arg62: index):
+    %82 = "arith.subi"(%arg61, %arg62) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%82) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<3xi64>, vector<3xi64>) -> vector<3xi64>, sym_name = "addiMuliToSubiRhsVector"}> ({
-  ^bb0(%arg51: vector<3xi64>, %arg52: vector<3xi64>):
-    %59 = "arith.subi"(%arg51, %arg52) <{overflowFlags = #arith.overflow<none>}> : (vector<3xi64>, vector<3xi64>) -> vector<3xi64>
-    "func.return"(%59) : (vector<3xi64>) -> ()
+  ^bb0(%arg59: vector<3xi64>, %arg60: vector<3xi64>):
+    %81 = "arith.subi"(%arg59, %arg60) <{overflowFlags = #arith.overflow<none>}> : (vector<3xi64>, vector<3xi64>) -> vector<3xi64>
+    "func.return"(%81) : (vector<3xi64>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> i32, sym_name = "addiMuliToSubiLhsI32"}> ({
-  ^bb0(%arg49: i32, %arg50: i32):
-    %58 = "arith.subi"(%arg49, %arg50) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%58) : (i32) -> ()
+  ^bb0(%arg57: i32, %arg58: i32):
+    %80 = "arith.subi"(%arg57, %arg58) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%80) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, index) -> index, sym_name = "addiMuliToSubiLhsIndex"}> ({
-  ^bb0(%arg47: index, %arg48: index):
-    %57 = "arith.subi"(%arg47, %arg48) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-    "func.return"(%57) : (index) -> ()
+  ^bb0(%arg55: index, %arg56: index):
+    %79 = "arith.subi"(%arg55, %arg56) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    "func.return"(%79) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<3xi64>, vector<3xi64>) -> vector<3xi64>, sym_name = "addiMuliToSubiLhsVector"}> ({
-  ^bb0(%arg45: vector<3xi64>, %arg46: vector<3xi64>):
-    %56 = "arith.subi"(%arg45, %arg46) <{overflowFlags = #arith.overflow<none>}> : (vector<3xi64>, vector<3xi64>) -> vector<3xi64>
-    "func.return"(%56) : (vector<3xi64>) -> ()
+  ^bb0(%arg53: vector<3xi64>, %arg54: vector<3xi64>):
+    %78 = "arith.subi"(%arg53, %arg54) <{overflowFlags = #arith.overflow<none>}> : (vector<3xi64>, vector<3xi64>) -> vector<3xi64>
+    "func.return"(%78) : (vector<3xi64>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (i32, i1), sym_name = "adduiExtendedZeroRhs"}> ({
-  ^bb0(%arg44: i32):
-    %55 = "arith.constant"() <{value = false}> : () -> i1
-    "func.return"(%arg44, %55) : (i32, i1) -> ()
+  ^bb0(%arg52: i32):
+    %77 = "arith.constant"() <{value = false}> : () -> i1
+    "func.return"(%arg52, %77) : (i32, i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<4xi32>) -> (vector<4xi32>, vector<4xi1>), sym_name = "adduiExtendedZeroRhsSplat"}> ({
-  ^bb0(%arg43: vector<4xi32>):
-    %54 = "arith.constant"() <{value = dense<false> : vector<4xi1>}> : () -> vector<4xi1>
-    "func.return"(%arg43, %54) : (vector<4xi32>, vector<4xi1>) -> ()
+  ^bb0(%arg51: vector<4xi32>):
+    %76 = "arith.constant"() <{value = dense<false> : vector<4xi1>}> : () -> vector<4xi1>
+    "func.return"(%arg51, %76) : (vector<4xi32>, vector<4xi1>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (i32, i1), sym_name = "adduiExtendedZeroLhs"}> ({
-  ^bb0(%arg42: i32):
-    %53 = "arith.constant"() <{value = false}> : () -> i1
-    "func.return"(%arg42, %53) : (i32, i1) -> ()
+  ^bb0(%arg50: i32):
+    %75 = "arith.constant"() <{value = false}> : () -> i1
+    "func.return"(%arg50, %75) : (i32, i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, i32) -> i32, sym_name = "adduiExtendedUnusedOverflowScalar"}> ({
-  ^bb0(%arg40: i32, %arg41: i32):
-    %52 = "arith.addi"(%arg40, %arg41) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
-    "func.return"(%52) : (i32) -> ()
+  ^bb0(%arg48: i32, %arg49: i32):
+    %74 = "arith.addi"(%arg48, %arg49) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%74) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<3xi32>, vector<3xi32>) -> vector<3xi32>, sym_name = "adduiExtendedUnusedOverflowVector"}> ({
-  ^bb0(%arg38: vector<3xi32>, %arg39: vector<3xi32>):
-    %51 = "arith.addi"(%arg38, %arg39) <{overflowFlags = #arith.overflow<none>}> : (vector<3xi32>, vector<3xi32>) -> vector<3xi32>
-    "func.return"(%51) : (vector<3xi32>) -> ()
+  ^bb0(%arg46: vector<3xi32>, %arg47: vector<3xi32>):
+    %73 = "arith.addi"(%arg46, %arg47) <{overflowFlags = #arith.overflow<none>}> : (vector<3xi32>, vector<3xi32>) -> vector<3xi32>
+    "func.return"(%73) : (vector<3xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (i32, i1), sym_name = "adduiExtendedConstants"}> ({
-    %49 = "arith.constant"() <{value = 50 : i32}> : () -> i32
+    %71 = "arith.constant"() <{value = 50 : i32}> : () -> i32
+    %72 = "arith.constant"() <{value = false}> : () -> i1
+    "func.return"(%71, %72) : (i32, i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (i32, i1), sym_name = "adduiExtendedConstantsOverflow1"}> ({
+    %69 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    %70 = "arith.constant"() <{value = true}> : () -> i1
+    "func.return"(%69, %70) : (i32, i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (i32, i1), sym_name = "adduiExtendedConstantsOverflow2"}> ({
+    %67 = "arith.constant"() <{value = -2 : i32}> : () -> i32
+    %68 = "arith.constant"() <{value = true}> : () -> i1
+    "func.return"(%67, %68) : (i32, i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (vector<4xi32>, vector<4xi1>), sym_name = "adduiExtendedConstantsOverflowVector"}> ({
+    %65 = "arith.constant"() <{value = dense<[1, 6, 2, 14]> : vector<4xi32>}> : () -> vector<4xi32>
+    %66 = "arith.constant"() <{value = dense<[false, false, true, false]> : vector<4xi1>}> : () -> vector<4xi1>
+    "func.return"(%65, %66) : (vector<4xi32>, vector<4xi1>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (vector<4xi32>, vector<4xi1>), sym_name = "adduiExtendedConstantsSplatVector"}> ({
+    %63 = "arith.constant"() <{value = dense<3> : vector<4xi32>}> : () -> vector<4xi32>
+    %64 = "arith.constant"() <{value = dense<false> : vector<4xi1>}> : () -> vector<4xi1>
+    "func.return"(%63, %64) : (vector<4xi32>, vector<4xi1>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (i32, i1), sym_name = "adduiExtendedPoisonLhs"}> ({
+    %61 = "ub.poison"() <{value = #ub.poison}> : () -> i32
+    %62 = "ub.poison"() <{value = #ub.poison}> : () -> i1
+    "func.return"(%61, %62) : (i32, i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (i32, i1), sym_name = "adduiExtendedPoisonRhs"}> ({
+    %59 = "ub.poison"() <{value = #ub.poison}> : () -> i32
+    %60 = "ub.poison"() <{value = #ub.poison}> : () -> i1
+    "func.return"(%59, %60) : (i32, i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> (i32, i1), sym_name = "subuiExtendedZeroRhs"}> ({
+  ^bb0(%arg45: i32):
+    %58 = "arith.constant"() <{value = false}> : () -> i1
+    "func.return"(%arg45, %58) : (i32, i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xi32>) -> (vector<4xi32>, vector<4xi1>), sym_name = "subuiExtendedZeroRhsSplat"}> ({
+  ^bb0(%arg44: vector<4xi32>):
+    %57 = "arith.constant"() <{value = dense<false> : vector<4xi1>}> : () -> vector<4xi1>
+    "func.return"(%arg44, %57) : (vector<4xi32>, vector<4xi1>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32) -> (i32, i1), sym_name = "subuiExtendedSameOperand"}> ({
+  ^bb0(%arg43: i32):
+    %55 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+    %56 = "arith.constant"() <{value = false}> : () -> i1
+    "func.return"(%55, %56) : (i32, i1) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xi32>) -> (vector<4xi32>, vector<4xi1>), sym_name = "subuiExtendedSameOperandVector"}> ({
+  ^bb0(%arg42: vector<4xi32>):
+    %53 = "arith.constant"() <{value = dense<0> : vector<4xi32>}> : () -> vector<4xi32>
+    %54 = "arith.constant"() <{value = dense<false> : vector<4xi1>}> : () -> vector<4xi1>
+    "func.return"(%53, %54) : (vector<4xi32>, vector<4xi1>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i32, i32) -> i32, sym_name = "subuiExtendedUnusedBorrowScalar"}> ({
+  ^bb0(%arg40: i32, %arg41: i32):
+    %52 = "arith.subi"(%arg40, %arg41) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%52) : (i32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<3xi32>, vector<3xi32>) -> vector<3xi32>, sym_name = "subuiExtendedUnusedBorrowVector"}> ({
+  ^bb0(%arg38: vector<3xi32>, %arg39: vector<3xi32>):
+    %51 = "arith.subi"(%arg38, %arg39) <{overflowFlags = #arith.overflow<none>}> : (vector<3xi32>, vector<3xi32>) -> vector<3xi32>
+    "func.return"(%51) : (vector<3xi32>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (i32, i1), sym_name = "subuiExtendedConstants"}> ({
+    %49 = "arith.constant"() <{value = 2 : i32}> : () -> i32
     %50 = "arith.constant"() <{value = false}> : () -> i1
     "func.return"(%49, %50) : (i32, i1) -> ()
   }) : () -> ()
-  "func.func"() <{function_type = () -> (i32, i1), sym_name = "adduiExtendedConstantsOverflow1"}> ({
-    %47 = "arith.constant"() <{value = 0 : i32}> : () -> i32
+  "func.func"() <{function_type = () -> (i32, i1), sym_name = "subuiExtendedConstantsBorrow"}> ({
+    %47 = "arith.constant"() <{value = -2 : i32}> : () -> i32
     %48 = "arith.constant"() <{value = true}> : () -> i1
     "func.return"(%47, %48) : (i32, i1) -> ()
   }) : () -> ()
-  "func.func"() <{function_type = () -> (i32, i1), sym_name = "adduiExtendedConstantsOverflow2"}> ({
-    %45 = "arith.constant"() <{value = -2 : i32}> : () -> i32
-    %46 = "arith.constant"() <{value = true}> : () -> i1
-    "func.return"(%45, %46) : (i32, i1) -> ()
+  "func.func"() <{function_type = () -> (vector<4xi32>, vector<4xi1>), sym_name = "subuiExtendedConstantsBorrowVector"}> ({
+    %45 = "arith.constant"() <{value = dense<[1, 0, -1, 0]> : vector<4xi32>}> : () -> vector<4xi32>
+    %46 = "arith.constant"() <{value = dense<[false, false, true, false]> : vector<4xi1>}> : () -> vector<4xi1>
+    "func.return"(%45, %46) : (vector<4xi32>, vector<4xi1>) -> ()
   }) : () -> ()
-  "func.func"() <{function_type = () -> (vector<4xi32>, vector<4xi1>), sym_name = "adduiExtendedConstantsOverflowVector"}> ({
-    %43 = "arith.constant"() <{value = dense<[1, 6, 2, 14]> : vector<4xi32>}> : () -> vector<4xi32>
-    %44 = "arith.constant"() <{value = dense<[false, false, true, false]> : vector<4xi1>}> : () -> vector<4xi1>
-    "func.return"(%43, %44) : (vector<4xi32>, vector<4xi1>) -> ()
+  "func.func"() <{function_type = () -> (i32, i1), sym_name = "subuiExtendedPoisonLhs"}> ({
+    %43 = "ub.poison"() <{value = #ub.poison}> : () -> i32
+    %44 = "ub.poison"() <{value = #ub.poison}> : () -> i1
+    "func.return"(%43, %44) : (i32, i1) -> ()
   }) : () -> ()
-  "func.func"() <{function_type = () -> (vector<4xi32>, vector<4xi1>), sym_name = "adduiExtendedConstantsSplatVector"}> ({
-    %41 = "arith.constant"() <{value = dense<3> : vector<4xi32>}> : () -> vector<4xi32>
-    %42 = "arith.constant"() <{value = dense<false> : vector<4xi1>}> : () -> vector<4xi1>
-    "func.return"(%41, %42) : (vector<4xi32>, vector<4xi1>) -> ()
+  "func.func"() <{function_type = () -> (i32, i1), sym_name = "subuiExtendedPoisonRhs"}> ({
+    %41 = "ub.poison"() <{value = #ub.poison}> : () -> i32
+    %42 = "ub.poison"() <{value = #ub.poison}> : () -> i1
+    "func.return"(%41, %42) : (i32, i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> (i32, i32), sym_name = "mulsiExtendedZeroRhs"}> ({
   ^bb0(%arg37: i32):
@@ -883,20 +1240,76 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = (i1) -> i1, sym_name = "xorxor"}> ({
-  ^bb0(%arg4: i1):
-    "func.return"(%arg4) : (i1) -> ()
+  ^bb0(%arg8: i1):
+    "func.return"(%arg8) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "xorOfExtSI"}> ({
-  ^bb0(%arg2: i8, %arg3: i8):
-    %2 = "arith.xori"(%arg2, %arg3) : (i8, i8) -> i8
-    %3 = "arith.extsi"(%2) : (i8) -> i64
-    "func.return"(%3) : (i64) -> ()
+  ^bb0(%arg6: i8, %arg7: i8):
+    %6 = "arith.xori"(%arg6, %arg7) : (i8, i8) -> i8
+    %7 = "arith.extsi"(%6) : (i8) -> i64
+    "func.return"(%7) : (i64) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "xorOfExtUI"}> ({
+  ^bb0(%arg4: i8, %arg5: i8):
+    %4 = "arith.xori"(%arg4, %arg5) : (i8, i8) -> i8
+    %5 = "arith.extui"(%4) : (i8) -> i64
+    "func.return"(%5) : (i64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "xorOfExtUI_nneg_both"}> ({
+  ^bb0(%arg2: i8, %arg3: i8):
+    %2 = "arith.xori"(%arg2, %arg3) : (i8, i8) -> i8
+    %3 = "arith.extui"(%2) <{nonNeg}> : (i8) -> i64
+    "func.return"(%3) : (i64) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (i8, i8) -> i64, sym_name = "xorOfExtUI_nneg_mixed"}> ({
   ^bb0(%arg0: i8, %arg1: i8):
     %0 = "arith.xori"(%arg0, %arg1) : (i8, i8) -> i8
     %1 = "arith.extui"(%0) : (i8) -> i64
     "func.return"(%1) : (i64) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> i32, sym_name = "xorOfXorConstant"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "arith.constant"() <{value = 6 : i32}> : () -> i32
+    %1 = "arith.xori"(%arg0, %0) : (i32, i32) -> i32
+    "func.return"(%1) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> index, sym_name = "xorOfXorConstantIndex"}> ({
+  ^bb0(%arg0: index):
+    %0 = "arith.constant"() <{value = 6 : index}> : () -> index
+    %1 = "arith.xori"(%arg0, %0) : (index, index) -> index
+    "func.return"(%1) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i32) -> (i32, i32), sym_name = "xorOfXorConstantMultiUse"}> ({
+  ^bb0(%arg0: i32):
+    %0 = "arith.constant"() <{value = 6 : i32}> : () -> i32
+    %1 = "arith.constant"() <{value = 12 : i32}> : () -> i32
+    %2 = "arith.xori"(%arg0, %1) : (i32, i32) -> i32
+    %3 = "arith.xori"(%arg0, %0) : (i32, i32) -> i32
+    "func.return"(%2, %3) : (i32, i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i32, sym_name = "nested_xori"}> ({
+    %0 = "test.constant"() <{value = 2147483647 : i64}> : () -> i32
+    %1 = "test.constant"() <{value = -2147483648 : i64}> : () -> i32
+    %2 = "test.constant"() <{value = 2147483648 : i64}> : () -> i32
+    %3 = "arith.xori"(%0, %1) : (i32, i32) -> i32
+    %4 = "arith.xori"(%3, %2) : (i32, i32) -> i32
+    "func.return"(%4) : (i32) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1127,11 +1540,27 @@
 // -----
 "builtin.module"() ({
   "func.func"() <{function_type = (f16) -> (f16, f16, f16), sym_name = "test_subf"}> ({
-  ^bb0(%arg0: f16):
-    %0 = "arith.constant"() <{value = -1.000000e+00 : f16}> : () -> f16
-    %1 = "arith.constant"() <{value = -0.000000e+00 : f16}> : () -> f16
-    %2 = "arith.subf"(%arg0, %1) <{fastmath = #arith.fastmath<none>}> : (f16, f16) -> f16
-    "func.return"(%arg0, %2, %0) : (f16, f16, f16) -> ()
+  ^bb0(%arg3: f16):
+    %4 = "arith.constant"() <{value = -1.000000e+00 : f16}> : () -> f16
+    %5 = "arith.constant"() <{value = -0.000000e+00 : f16}> : () -> f16
+    %6 = "arith.subf"(%arg3, %5) <{fastmath = #arith.fastmath<none>}> : (f16, f16) -> f16
+    "func.return"(%arg3, %6, %4) : (f16, f16, f16) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (f16) -> f16, sym_name = "test_subf_negzero"}> ({
+  ^bb0(%arg2: f16):
+    %3 = "arith.negf"(%arg2) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
+    "func.return"(%3) : (f16) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (f16) -> f16, sym_name = "test_subf_poszero_no_negf"}> ({
+  ^bb0(%arg1: f16):
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
+    %2 = "arith.subf"(%1, %arg1) <{fastmath = #arith.fastmath<none>}> : (f16, f16) -> f16
+    "func.return"(%2) : (f16) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4xf32>) -> vector<4xf32>, sym_name = "test_subf_negzero_splat"}> ({
+  ^bb0(%arg0: vector<4xf32>):
+    %0 = "arith.negf"(%arg0) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
+    "func.return"(%0) : (vector<4xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1168,6 +1597,48 @@
   ^bb0(%arg0: f32, %arg1: f32):
     %0 = "arith.divf"(%arg0, %arg1) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
     "func.return"(%0) : (f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f32) -> (f32, f32, f32), sym_name = "test_addf_rounding_mode"}> ({
+  ^bb0(%arg0: f32):
+    %0 = "arith.constant"() <{value = 2.00000024 : f32}> : () -> f32
+    %1 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    "func.return"(%arg0, %0, %1) : (f32, f32, f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f32) -> (f32, f32, f32, f32), sym_name = "test_subf_rounding_mode"}> ({
+  ^bb0(%arg0: f32):
+    %0 = "arith.constant"() <{value = -0.000000e+00 : f32}> : () -> f32
+    %1 = "arith.constant"() <{value = 2.00000024 : f32}> : () -> f32
+    %2 = "arith.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
+    %3 = "arith.subf"(%0, %arg0) <{fastmath = #arith.fastmath<none>, roundingmode = 1 : i32}> : (f32, f32) -> f32
+    "func.return"(%arg0, %1, %2, %3) : (f32, f32, f32, f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f32) -> (f32, f32, f32), sym_name = "test_mulf_rounding_mode"}> ({
+  ^bb0(%arg0: f32):
+    %0 = "arith.constant"() <{value = 3.00000048 : f32}> : () -> f32
+    %1 = "arith.constant"() <{value = 3.00000024 : f32}> : () -> f32
+    "func.return"(%arg0, %0, %1) : (f32, f32, f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f32) -> (f32, f32, f32), sym_name = "test_divf_rounding_mode"}> ({
+  ^bb0(%arg0: f32):
+    %0 = "arith.constant"() <{value = 0.333333343 : f32}> : () -> f32
+    %1 = "arith.constant"() <{value = 0.333333313 : f32}> : () -> f32
+    "func.return"(%arg0, %0, %1) : (f32, f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1427,6 +1898,23 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> f32, sym_name = "test_flush_denormals_const"}> ({
+    %0 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    "func.return"(%0) : (f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f32) -> f32, sym_name = "test_flush_denormals_idempotent"}> ({
+  ^bb0(%arg0: f32):
+    %0 = "arith.flush_denormals"(%arg0) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
+    "func.return"(%0) : (f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = () -> vector<4xi32>, sym_name = "test_remui"}> ({
     %0 = "arith.constant"() <{value = dense<[0, 0, 4, 2]> : vector<4xi32>}> : () -> vector<4xi32>
     "func.return"(%0) : (vector<4xi32>) -> ()
@@ -1564,31 +2052,31 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (i64) -> i32, sym_name = "truncIShrSIToTrunciShrUI"}> ({
   ^bb0(%arg28: i64):
-    %65 = "arith.constant"() <{value = 32 : i64}> : () -> i64
-    %66 = "arith.shrui"(%arg28, %65) : (i64, i64) -> i64
-    %67 = "arith.trunci"(%66) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i32
-    "func.return"(%67) : (i32) -> ()
+    %56 = "arith.constant"() <{value = 32 : i64}> : () -> i64
+    %57 = "arith.shrui"(%arg28, %56) : (i64, i64) -> i64
+    %58 = "arith.trunci"(%57) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i32
+    "func.return"(%58) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i64) -> i32, sym_name = "truncIShrSIExactToTrunciShrUIExact"}> ({
   ^bb0(%arg27: i64):
-    %62 = "arith.constant"() <{value = 32 : i64}> : () -> i64
-    %63 = "arith.shrui"(%arg27, %62) <{isExact}> : (i64, i64) -> i64
-    %64 = "arith.trunci"(%63) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i32
-    "func.return"(%64) : (i32) -> ()
+    %53 = "arith.constant"() <{value = 32 : i64}> : () -> i64
+    %54 = "arith.shrui"(%arg27, %53) <{isExact}> : (i64, i64) -> i64
+    %55 = "arith.trunci"(%54) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i32
+    "func.return"(%55) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i64) -> i32, sym_name = "truncIShrSIToTrunciShrUIBadShiftAmt1"}> ({
   ^bb0(%arg26: i64):
-    %59 = "arith.constant"() <{value = 33 : i64}> : () -> i64
-    %60 = "arith.shrsi"(%arg26, %59) : (i64, i64) -> i64
-    %61 = "arith.trunci"(%60) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i32
-    "func.return"(%61) : (i32) -> ()
+    %50 = "arith.constant"() <{value = 33 : i64}> : () -> i64
+    %51 = "arith.shrsi"(%arg26, %50) : (i64, i64) -> i64
+    %52 = "arith.trunci"(%51) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i32
+    "func.return"(%52) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i64) -> i32, sym_name = "truncIShrSIToTrunciShrUIBadShiftAmt2"}> ({
   ^bb0(%arg25: i64):
-    %56 = "arith.constant"() <{value = 31 : i64}> : () -> i64
-    %57 = "arith.shrsi"(%arg25, %56) : (i64, i64) -> i64
-    %58 = "arith.trunci"(%57) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i32
-    "func.return"(%58) : (i32) -> ()
+    %47 = "arith.constant"() <{value = 31 : i64}> : () -> i64
+    %48 = "arith.shrsi"(%arg25, %47) : (i64, i64) -> i64
+    %49 = "arith.trunci"(%48) <{overflowFlags = #arith.overflow<none>}> : (i64) -> i32
+    "func.return"(%49) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i64) -> i64, sym_name = "foldShli0"}> ({
   ^bb0(%arg24: i64):
@@ -1604,107 +2092,71 @@
   }) : () -> ()
   "func.func"() <{function_type = (i1) -> i1, sym_name = "foldOrXor1"}> ({
   ^bb0(%arg21: i1):
-    %55 = "arith.constant"() <{value = true}> : () -> i1
-    "func.return"(%55) : (i1) -> ()
+    %46 = "arith.constant"() <{value = true}> : () -> i1
+    "func.return"(%46) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i1) -> i1, sym_name = "foldOrXor2"}> ({
   ^bb0(%arg20: i1):
-    %54 = "arith.constant"() <{value = true}> : () -> i1
-    "func.return"(%54) : (i1) -> ()
+    %45 = "arith.constant"() <{value = true}> : () -> i1
+    "func.return"(%45) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i1) -> i1, sym_name = "foldOrXor3"}> ({
   ^bb0(%arg19: i1):
-    %53 = "arith.constant"() <{value = true}> : () -> i1
-    "func.return"(%53) : (i1) -> ()
+    %44 = "arith.constant"() <{value = true}> : () -> i1
+    "func.return"(%44) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i1) -> i1, sym_name = "foldOrXor4"}> ({
   ^bb0(%arg18: i1):
-    %52 = "arith.constant"() <{value = true}> : () -> i1
-    "func.return"(%52) : (i1) -> ()
+    %43 = "arith.constant"() <{value = true}> : () -> i1
+    "func.return"(%43) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "foldOrXor5"}> ({
   ^bb0(%arg17: i32):
-    %51 = "arith.constant"() <{value = -1 : i32}> : () -> i32
-    "func.return"(%51) : (i32) -> ()
+    %42 = "arith.constant"() <{value = -1 : i32}> : () -> i32
+    "func.return"(%42) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index) -> index, sym_name = "foldOrXor6"}> ({
   ^bb0(%arg16: index):
-    %50 = "arith.constant"() <{value = -1 : index}> : () -> index
-    "func.return"(%50) : (index) -> ()
+    %41 = "arith.constant"() <{value = -1 : index}> : () -> index
+    "func.return"(%41) : (index) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i1, i32) -> (i32, i32, i32, i32), sym_name = "selectOfPoison"}> ({
   ^bb0(%arg14: i1, %arg15: i32):
-    %49 = "ub.poison"() <{value = #ub.poison}> : () -> i32
-    "func.return"(%arg15, %arg15, %49, %arg15) : (i32, i32, i32, i32) -> ()
+    %40 = "ub.poison"() <{value = #ub.poison}> : () -> i32
+    "func.return"(%arg15, %arg15, %40, %arg15) : (i32, i32, i32, i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "addi_poison1"}> ({
   ^bb0(%arg13: i32):
-    %48 = "ub.poison"() <{value = #ub.poison}> : () -> i32
-    "func.return"(%48) : (i32) -> ()
+    %39 = "ub.poison"() <{value = #ub.poison}> : () -> i32
+    "func.return"(%39) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32) -> i32, sym_name = "addi_poison2"}> ({
   ^bb0(%arg12: i32):
-    %47 = "ub.poison"() <{value = #ub.poison}> : () -> i32
-    "func.return"(%47) : (i32) -> ()
+    %38 = "ub.poison"() <{value = #ub.poison}> : () -> i32
+    "func.return"(%38) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (f32) -> f32, sym_name = "addf_poison1"}> ({
   ^bb0(%arg11: f32):
-    %46 = "ub.poison"() <{value = #ub.poison}> : () -> f32
-    "func.return"(%46) : (f32) -> ()
+    %37 = "ub.poison"() <{value = #ub.poison}> : () -> f32
+    "func.return"(%37) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (f32) -> f32, sym_name = "addf_poison2"}> ({
   ^bb0(%arg10: f32):
-    %45 = "ub.poison"() <{value = #ub.poison}> : () -> f32
-    "func.return"(%45) : (f32) -> ()
+    %36 = "ub.poison"() <{value = #ub.poison}> : () -> f32
+    "func.return"(%36) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> f32, sym_name = "negf_poison"}> ({
-    %44 = "ub.poison"() <{value = #ub.poison}> : () -> f32
-    "func.return"(%44) : (f32) -> ()
+    %35 = "ub.poison"() <{value = #ub.poison}> : () -> f32
+    "func.return"(%35) : (f32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> i64, sym_name = "extsi_poison"}> ({
-    %43 = "ub.poison"() <{value = #ub.poison}> : () -> i64
-    "func.return"(%43) : (i64) -> ()
+    %34 = "ub.poison"() <{value = #ub.poison}> : () -> i64
+    "func.return"(%34) : (i64) -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> tensor<i16>, sym_name = "unsignedExtendConstantResource"}> ({
-    %41 = "arith.constant"() <{value = dense_resource<blob1> : tensor<i8>}> : () -> tensor<i8>
-    %42 = "arith.extui"(%41) : (tensor<i8>) -> tensor<i16>
-    "func.return"(%42) : (tensor<i16>) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = () -> i16, sym_name = "extsi_i0"}> ({
-    %40 = "arith.constant"() <{value = 0 : i16}> : () -> i16
-    "func.return"(%40) : (i16) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = () -> i16, sym_name = "extui_i0"}> ({
-    %39 = "arith.constant"() <{value = 0 : i16}> : () -> i16
-    "func.return"(%39) : (i16) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = () -> i0, sym_name = "trunc_i0"}> ({
-    %38 = "arith.constant"() <{value = 0 : i0}> : () -> i0
-    "func.return"(%38) : (i0) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = () -> i0, sym_name = "shli_i0"}> ({
-    %37 = "arith.constant"() <{value = 0 : i0}> : () -> i0
-    "func.return"(%37) : (i0) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = () -> i0, sym_name = "shrsi_i0"}> ({
-    %36 = "arith.constant"() <{value = 0 : i0}> : () -> i0
-    "func.return"(%36) : (i0) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = () -> i0, sym_name = "shrui_i0"}> ({
-    %35 = "arith.constant"() <{value = 0 : i0}> : () -> i0
-    "func.return"(%35) : (i0) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = () -> i0, sym_name = "maxsi_i0"}> ({
-    %34 = "arith.constant"() <{value = 0 : i0}> : () -> i0
-    "func.return"(%34) : (i0) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = () -> i0, sym_name = "minsi_i0"}> ({
-    %33 = "arith.constant"() <{value = 0 : i0}> : () -> i0
-    "func.return"(%33) : (i0) -> ()
-  }) : () -> ()
-  "func.func"() <{function_type = () -> (i0, i0), sym_name = "mulsi_extended_i0"}> ({
-    %32 = "arith.constant"() <{value = 0 : i0}> : () -> i0
-    "func.return"(%32, %32) : (i0, i0) -> ()
+    %32 = "arith.constant"() <{value = dense_resource<blob1> : tensor<i8>}> : () -> tensor<i8>
+    %33 = "arith.extui"(%32) : (tensor<i8>) -> tensor<i16>
+    "func.return"(%33) : (tensor<i16>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (bf16) -> bf16, sym_name = "sequences_fastmath_contract"}> ({
   ^bb0(%arg9: bf16):
@@ -1782,4 +2234,39 @@
     }
   }
 #-}
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<?xi32>) -> tensor<?xi1>, sym_name = "cmpi_dynamic_shape_no_fold"}> ({
+  ^bb0(%arg0: tensor<?xi32>):
+    %0 = "arith.cmpi"(%arg0, %arg0) <{predicate = 0 : i64}> : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi1>
+    "func.return"(%0) : (tensor<?xi1>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> f4E2M1FN, sym_name = "truncf_inf_to_finite_only_no_fold"}> ({
+    %0 = "arith.constant"() <{value = 0x7F800000 : f32}> : () -> f32
+    %1 = "arith.truncf"(%0) : (f32) -> f4E2M1FN
+    "func.return"(%1) : (f4E2M1FN) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> f4E2M1FN, sym_name = "truncf_neg_inf_to_finite_only_no_fold"}> ({
+    %0 = "arith.constant"() <{value = 0xFF800000 : f32}> : () -> f32
+    %1 = "arith.truncf"(%0) : (f32) -> f4E2M1FN
+    "func.return"(%1) : (f4E2M1FN) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> f8E5M2, sym_name = "convertf_fold_f8"}> ({
+    %0 = "arith.constant"() <{value = 2.000000e+00 : f8E5M2}> : () -> f8E5M2
+    "func.return"(%0) : (f8E5M2) -> ()
+  }) : () -> ()
+}) : () -> ()
 

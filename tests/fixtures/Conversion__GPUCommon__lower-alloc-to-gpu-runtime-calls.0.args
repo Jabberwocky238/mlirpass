@@ -1,1 +1,2 @@
 --gpu-to-llvm
+-split-input-file

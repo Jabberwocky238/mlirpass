@@ -14,8 +14,8 @@
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
     %1 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<5xf32>
     "func.call"(%arg0, %1) <{callee = @callee}> : (memref<5xf32>, memref<5xf32>) -> ()
-    %2 = "memref.load"(%arg0, %0) <{nontemporal = false}> : (memref<5xf32>, index) -> f32
-    %3 = "memref.load"(%1, %0) <{nontemporal = false}> : (memref<5xf32>, index) -> f32
+    %2 = "memref.load"(%arg0, %0) <{invariant = false, nontemporal = false}> : (memref<5xf32>, index) -> f32
+    %3 = "memref.load"(%1, %0) <{invariant = false, nontemporal = false}> : (memref<5xf32>, index) -> f32
     "func.return"(%2, %3) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -36,7 +36,7 @@
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
     %1 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2x5xf32>
     "func.call"(%arg0, %1) <{callee = @callee}> : (index, memref<2x5xf32>) -> ()
-    %2 = "memref.load"(%1, %0, %0) <{nontemporal = false}> : (memref<2x5xf32>, index, index) -> f32
+    %2 = "memref.load"(%1, %0, %0) <{invariant = false, nontemporal = false}> : (memref<2x5xf32>, index, index) -> f32
     "func.return"(%2) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()

@@ -1,1 +1,2 @@
+-split-input-file
 -convert-index-to-spirv=use-64bit-index=false

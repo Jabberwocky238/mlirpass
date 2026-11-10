@@ -29,22 +29,22 @@
     %3 = "complex.im"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %4 = "arith.mulf"(%0, %2) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
     %5 = "arith.mulf"(%1, %3) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %6 = "arith.subf"(%4, %5) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %7 = "arith.mulf"(%1, %2) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %8 = "arith.mulf"(%0, %3) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %9 = "arith.addf"(%7, %8) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %10 = "complex.create"(%6, %9) : (f32, f32) -> complex<f32>
+    %6 = "arith.mulf"(%1, %2) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %7 = "arith.mulf"(%0, %3) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %8 = "arith.subf"(%4, %5) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %9 = "arith.addf"(%6, %7) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %10 = "complex.create"(%8, %9) : (f32, f32) -> complex<f32>
     %11 = "complex.re"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %12 = "complex.im"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %13 = "complex.re"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %14 = "complex.im"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %15 = "arith.mulf"(%11, %13) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
     %16 = "arith.mulf"(%12, %14) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %17 = "arith.subf"(%15, %16) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %18 = "arith.mulf"(%12, %13) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %19 = "arith.mulf"(%11, %14) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %20 = "arith.addf"(%18, %19) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %21 = "complex.create"(%17, %20) : (f32, f32) -> complex<f32>
+    %17 = "arith.mulf"(%12, %13) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %18 = "arith.mulf"(%11, %14) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %19 = "arith.subf"(%15, %16) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %20 = "arith.addf"(%17, %18) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %21 = "complex.create"(%19, %20) : (f32, f32) -> complex<f32>
     %22 = "complex.re"(%10) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %23 = "complex.re"(%21) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %24 = "arith.addf"(%22, %23) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
@@ -108,11 +108,11 @@
     %82 = "complex.im"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %83 = "arith.mulf"(%79, %81) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
     %84 = "arith.mulf"(%80, %82) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %85 = "arith.subf"(%83, %84) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %86 = "arith.mulf"(%80, %81) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %87 = "arith.mulf"(%79, %82) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %88 = "arith.addf"(%86, %87) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %89 = "complex.create"(%85, %88) : (f32, f32) -> complex<f32>
+    %85 = "arith.mulf"(%80, %81) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %86 = "arith.mulf"(%79, %82) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %87 = "arith.subf"(%83, %84) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %88 = "arith.addf"(%85, %86) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %89 = "complex.create"(%87, %88) : (f32, f32) -> complex<f32>
     %90 = "complex.re"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %91 = "complex.re"(%89) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %92 = "arith.addf"(%90, %91) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
@@ -239,11 +239,11 @@
     %213 = "complex.im"(%207) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %214 = "arith.mulf"(%210, %212) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
     %215 = "arith.mulf"(%211, %213) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %216 = "arith.subf"(%214, %215) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %217 = "arith.mulf"(%211, %212) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %218 = "arith.mulf"(%210, %213) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %219 = "arith.addf"(%217, %218) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %220 = "complex.create"(%216, %219) : (f32, f32) -> complex<f32>
+    %216 = "arith.mulf"(%211, %212) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %217 = "arith.mulf"(%210, %213) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %218 = "arith.subf"(%214, %215) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %219 = "arith.addf"(%216, %217) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %220 = "complex.create"(%218, %219) : (f32, f32) -> complex<f32>
     "func.return"(%220) : (complex<f32>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -543,11 +543,11 @@
     %3 = "complex.im"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %4 = "arith.mulf"(%0, %2) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
     %5 = "arith.mulf"(%1, %3) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %6 = "arith.subf"(%4, %5) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %7 = "arith.mulf"(%1, %2) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %8 = "arith.mulf"(%0, %3) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %9 = "arith.addf"(%7, %8) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %10 = "complex.create"(%6, %9) : (f32, f32) -> complex<f32>
+    %6 = "arith.mulf"(%1, %2) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %7 = "arith.mulf"(%0, %3) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %8 = "arith.subf"(%4, %5) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %9 = "arith.addf"(%6, %7) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %10 = "complex.create"(%8, %9) : (f32, f32) -> complex<f32>
     "func.return"(%10) : (complex<f32>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -1388,14 +1388,13 @@
     %1 = "complex.im"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %2 = "complex.re"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %3 = "complex.im"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %4 = "arith.mulf"(%0, %2) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %5 = "arith.mulf"(%1, %3) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %6 = "arith.subf"(%4, %5) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %4 = "arith.mulf"(%1, %3) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %5 = "arith.negf"(%4) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %6 = "math.fma"(%0, %2, %5) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32, f32) -> f32
     %7 = "arith.mulf"(%1, %2) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %8 = "arith.mulf"(%0, %3) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %9 = "arith.addf"(%7, %8) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %10 = "complex.create"(%6, %9) : (f32, f32) -> complex<f32>
-    "func.return"(%10) : (complex<f32>) -> ()
+    %8 = "math.fma"(%0, %3, %7) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32, f32) -> f32
+    %9 = "complex.create"(%6, %8) : (f32, f32) -> complex<f32>
+    "func.return"(%9) : (complex<f32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1407,224 +1406,220 @@
     %1 = "complex.im"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %2 = "complex.re"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %3 = "complex.im"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %4 = "arith.mulf"(%0, %2) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %5 = "arith.mulf"(%1, %3) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %6 = "arith.subf"(%4, %5) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %4 = "arith.mulf"(%1, %3) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %5 = "arith.negf"(%4) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %6 = "math.fma"(%0, %2, %5) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32, f32) -> f32
     %7 = "arith.mulf"(%1, %2) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %8 = "arith.mulf"(%0, %3) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %9 = "arith.addf"(%7, %8) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %10 = "complex.create"(%6, %9) : (f32, f32) -> complex<f32>
-    %11 = "complex.re"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %12 = "complex.im"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %13 = "complex.re"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %14 = "complex.im"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %15 = "arith.mulf"(%11, %13) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %16 = "arith.mulf"(%12, %14) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %17 = "arith.subf"(%15, %16) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %18 = "arith.mulf"(%12, %13) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %19 = "arith.mulf"(%11, %14) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %20 = "arith.addf"(%18, %19) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %21 = "complex.create"(%17, %20) : (f32, f32) -> complex<f32>
-    %22 = "complex.re"(%10) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %23 = "complex.re"(%21) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %24 = "arith.addf"(%22, %23) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %25 = "complex.im"(%10) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %26 = "complex.im"(%21) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %27 = "arith.addf"(%25, %26) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %28 = "complex.create"(%24, %27) : (f32, f32) -> complex<f32>
-    %29 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
-    %30 = "arith.constant"() <{value = 5.000000e-01 : f32}> : () -> f32
-    %31 = "complex.re"(%28) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %32 = "complex.im"(%28) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %33 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %34 = "math.absf"(%31) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %35 = "math.absf"(%32) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %36 = "arith.maximumf"(%34, %35) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %37 = "arith.minimumf"(%34, %35) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %38 = "arith.divf"(%37, %36) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
-    %39 = "arith.mulf"(%38, %38) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
-    %40 = "arith.addf"(%39, %33) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
-    %41 = "arith.constant"() <{value = 2.500000e-01 : f32}> : () -> f32
-    %42 = "math.sqrt"(%36) <{fastmath = #arith.fastmath<contract>}> : (f32) -> f32
-    %43 = "math.powf"(%40, %41) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
-    %44 = "arith.mulf"(%42, %43) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
-    %45 = "arith.cmpf"(%44, %44) <{fastmath = #arith.fastmath<contract>, predicate = 14 : i64}> : (f32, f32) -> i1
-    %46 = "arith.select"(%45, %37, %44) : (i1, f32, f32) -> f32
-    %47 = "math.atan2"(%32, %31) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %48 = "arith.mulf"(%47, %30) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %49 = "math.cos"(%48) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %50 = "math.sin"(%48) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %51 = "arith.cmpf"(%50, %29) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 1 : i64}> : (f32, f32) -> i1
-    %52 = "arith.mulf"(%46, %49) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %53 = "arith.mulf"(%46, %50) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %54 = "arith.select"(%51, %29, %53) : (i1, f32, f32) -> f32
-    %55 = "arith.constant"() <{value = 0x7F800000 : f32}> : () -> f32
-    %56 = "arith.constant"() <{value = 0xFF800000 : f32}> : () -> f32
-    %57 = "arith.constant"() <{value = 0x7FC00000 : f32}> : () -> f32
-    %58 = "math.absf"(%32) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %59 = "arith.cmpf"(%58, %55) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 1 : i64}> : (f32, f32) -> i1
-    %60 = "arith.cmpf"(%58, %55) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 6 : i64}> : (f32, f32) -> i1
-    %61 = "arith.cmpf"(%31, %55) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 1 : i64}> : (f32, f32) -> i1
-    %62 = "arith.cmpf"(%31, %56) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 1 : i64}> : (f32, f32) -> i1
-    %63 = "arith.andi"(%62, %60) : (i1, i1) -> i1
-    %64 = "arith.select"(%63, %29, %52) : (i1, f32, f32) -> f32
-    %65 = "arith.ori"(%59, %61) : (i1, i1) -> i1
-    %66 = "arith.select"(%65, %55, %64) : (i1, f32, f32) -> f32
-    %67 = "math.copysign"(%55, %32) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %68 = "arith.cmpf"(%46, %46) <{fastmath = #arith.fastmath<none>, predicate = 14 : i64}> : (f32, f32) -> i1
-    %69 = "arith.select"(%68, %57, %54) : (i1, f32, f32) -> f32
-    %70 = "arith.ori"(%59, %62) : (i1, i1) -> i1
-    %71 = "arith.select"(%70, %67, %69) : (i1, f32, f32) -> f32
-    %72 = "arith.cmpf"(%46, %29) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 1 : i64}> : (f32, f32) -> i1
-    %73 = "arith.select"(%72, %29, %66) : (i1, f32, f32) -> f32
-    %74 = "arith.select"(%72, %29, %71) : (i1, f32, f32) -> f32
-    %75 = "complex.create"(%73, %74) : (f32, f32) -> complex<f32>
-    %76 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
-    %77 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %78 = "complex.create"(%76, %77) : (f32, f32) -> complex<f32>
-    %79 = "complex.re"(%78) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %80 = "complex.im"(%78) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %81 = "complex.re"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %82 = "complex.im"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %83 = "arith.mulf"(%79, %81) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %84 = "arith.mulf"(%80, %82) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %85 = "arith.subf"(%83, %84) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %86 = "arith.mulf"(%80, %81) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %87 = "arith.mulf"(%79, %82) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %88 = "arith.addf"(%86, %87) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %89 = "complex.create"(%85, %88) : (f32, f32) -> complex<f32>
-    %90 = "complex.re"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %91 = "complex.re"(%89) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %8 = "math.fma"(%0, %3, %7) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32, f32) -> f32
+    %9 = "complex.create"(%6, %8) : (f32, f32) -> complex<f32>
+    %10 = "complex.re"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %11 = "complex.im"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %12 = "complex.re"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %13 = "complex.im"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %14 = "arith.mulf"(%11, %13) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %15 = "arith.negf"(%14) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %16 = "math.fma"(%10, %12, %15) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32, f32) -> f32
+    %17 = "arith.mulf"(%11, %12) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %18 = "math.fma"(%10, %13, %17) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32, f32) -> f32
+    %19 = "complex.create"(%16, %18) : (f32, f32) -> complex<f32>
+    %20 = "complex.re"(%9) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %21 = "complex.re"(%19) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %22 = "arith.addf"(%20, %21) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %23 = "complex.im"(%9) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %24 = "complex.im"(%19) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %25 = "arith.addf"(%23, %24) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %26 = "complex.create"(%22, %25) : (f32, f32) -> complex<f32>
+    %27 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %28 = "arith.constant"() <{value = 5.000000e-01 : f32}> : () -> f32
+    %29 = "complex.re"(%26) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %30 = "complex.im"(%26) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %31 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %32 = "math.absf"(%29) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %33 = "math.absf"(%30) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %34 = "arith.maximumf"(%32, %33) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %35 = "arith.minimumf"(%32, %33) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %36 = "arith.divf"(%35, %34) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
+    %37 = "arith.mulf"(%36, %36) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
+    %38 = "arith.addf"(%37, %31) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
+    %39 = "arith.constant"() <{value = 2.500000e-01 : f32}> : () -> f32
+    %40 = "math.sqrt"(%34) <{fastmath = #arith.fastmath<contract>}> : (f32) -> f32
+    %41 = "math.powf"(%38, %39) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
+    %42 = "arith.mulf"(%40, %41) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
+    %43 = "arith.cmpf"(%42, %42) <{fastmath = #arith.fastmath<contract>, predicate = 14 : i64}> : (f32, f32) -> i1
+    %44 = "arith.select"(%43, %35, %42) : (i1, f32, f32) -> f32
+    %45 = "math.atan2"(%30, %29) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %46 = "arith.mulf"(%45, %28) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %47 = "math.cos"(%46) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %48 = "math.sin"(%46) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %49 = "arith.cmpf"(%48, %27) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 1 : i64}> : (f32, f32) -> i1
+    %50 = "arith.mulf"(%44, %47) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %51 = "arith.mulf"(%44, %48) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %52 = "arith.select"(%49, %27, %51) : (i1, f32, f32) -> f32
+    %53 = "arith.constant"() <{value = 0x7F800000 : f32}> : () -> f32
+    %54 = "arith.constant"() <{value = 0xFF800000 : f32}> : () -> f32
+    %55 = "arith.constant"() <{value = 0x7FC00000 : f32}> : () -> f32
+    %56 = "math.absf"(%30) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %57 = "arith.cmpf"(%56, %53) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 1 : i64}> : (f32, f32) -> i1
+    %58 = "arith.cmpf"(%56, %53) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 6 : i64}> : (f32, f32) -> i1
+    %59 = "arith.cmpf"(%29, %53) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 1 : i64}> : (f32, f32) -> i1
+    %60 = "arith.cmpf"(%29, %54) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 1 : i64}> : (f32, f32) -> i1
+    %61 = "arith.andi"(%60, %58) : (i1, i1) -> i1
+    %62 = "arith.select"(%61, %27, %50) : (i1, f32, f32) -> f32
+    %63 = "arith.ori"(%57, %59) : (i1, i1) -> i1
+    %64 = "arith.select"(%63, %53, %62) : (i1, f32, f32) -> f32
+    %65 = "math.copysign"(%53, %30) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %66 = "arith.cmpf"(%44, %44) <{fastmath = #arith.fastmath<none>, predicate = 14 : i64}> : (f32, f32) -> i1
+    %67 = "arith.select"(%66, %55, %52) : (i1, f32, f32) -> f32
+    %68 = "arith.ori"(%57, %60) : (i1, i1) -> i1
+    %69 = "arith.select"(%68, %65, %67) : (i1, f32, f32) -> f32
+    %70 = "arith.cmpf"(%44, %27) <{fastmath = #arith.fastmath<nnan,contract>, predicate = 1 : i64}> : (f32, f32) -> i1
+    %71 = "arith.select"(%70, %27, %64) : (i1, f32, f32) -> f32
+    %72 = "arith.select"(%70, %27, %69) : (i1, f32, f32) -> f32
+    %73 = "complex.create"(%71, %72) : (f32, f32) -> complex<f32>
+    %74 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %75 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %76 = "complex.create"(%74, %75) : (f32, f32) -> complex<f32>
+    %77 = "complex.re"(%76) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %78 = "complex.im"(%76) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %79 = "complex.re"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %80 = "complex.im"(%arg0) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %81 = "arith.mulf"(%78, %80) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %82 = "arith.negf"(%81) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %83 = "math.fma"(%77, %79, %82) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32, f32) -> f32
+    %84 = "arith.mulf"(%78, %79) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %85 = "math.fma"(%77, %80, %84) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32, f32) -> f32
+    %86 = "complex.create"(%83, %85) : (f32, f32) -> complex<f32>
+    %87 = "complex.re"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %88 = "complex.re"(%86) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %89 = "arith.addf"(%87, %88) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %90 = "complex.im"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %91 = "complex.im"(%86) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
     %92 = "arith.addf"(%90, %91) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %93 = "complex.im"(%arg1) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %94 = "complex.im"(%89) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %95 = "arith.addf"(%93, %94) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %96 = "complex.create"(%92, %95) : (f32, f32) -> complex<f32>
-    %97 = "complex.re"(%96) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %98 = "complex.im"(%96) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %99 = "complex.re"(%75) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %100 = "complex.im"(%75) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %101 = "arith.divf"(%99, %100) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %102 = "arith.mulf"(%101, %99) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %103 = "arith.addf"(%100, %102) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %104 = "arith.mulf"(%97, %101) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %105 = "arith.addf"(%104, %98) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %106 = "arith.divf"(%105, %103) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %107 = "arith.mulf"(%98, %101) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %108 = "arith.subf"(%107, %97) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %109 = "arith.divf"(%108, %103) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %110 = "arith.divf"(%100, %99) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %111 = "arith.mulf"(%110, %100) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %112 = "arith.addf"(%99, %111) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %113 = "arith.mulf"(%98, %110) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %114 = "arith.addf"(%97, %113) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %115 = "arith.divf"(%114, %112) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %116 = "arith.mulf"(%97, %110) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %117 = "arith.subf"(%98, %116) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %118 = "arith.divf"(%117, %112) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %119 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
-    %120 = "math.absf"(%99) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %121 = "arith.cmpf"(%120, %119) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
-    %122 = "math.absf"(%100) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %123 = "arith.cmpf"(%122, %119) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
-    %124 = "arith.cmpf"(%97, %119) <{fastmath = #arith.fastmath<none>, predicate = 7 : i64}> : (f32, f32) -> i1
-    %125 = "arith.cmpf"(%98, %119) <{fastmath = #arith.fastmath<none>, predicate = 7 : i64}> : (f32, f32) -> i1
-    %126 = "arith.ori"(%124, %125) : (i1, i1) -> i1
-    %127 = "arith.andi"(%121, %123) : (i1, i1) -> i1
-    %128 = "arith.andi"(%126, %127) : (i1, i1) -> i1
-    %129 = "arith.constant"() <{value = 0x7F800000 : f32}> : () -> f32
-    %130 = "math.copysign"(%129, %99) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %131 = "arith.mulf"(%130, %97) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %132 = "arith.mulf"(%130, %98) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %133 = "arith.cmpf"(%120, %129) <{fastmath = #arith.fastmath<none>, predicate = 6 : i64}> : (f32, f32) -> i1
-    %134 = "arith.cmpf"(%122, %129) <{fastmath = #arith.fastmath<none>, predicate = 6 : i64}> : (f32, f32) -> i1
-    %135 = "arith.andi"(%133, %134) : (i1, i1) -> i1
-    %136 = "math.absf"(%97) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %137 = "arith.cmpf"(%136, %129) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
-    %138 = "math.absf"(%98) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %139 = "arith.cmpf"(%138, %129) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
-    %140 = "arith.ori"(%137, %139) : (i1, i1) -> i1
-    %141 = "arith.andi"(%140, %135) : (i1, i1) -> i1
-    %142 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %143 = "arith.select"(%137, %142, %119) : (i1, f32, f32) -> f32
-    %144 = "math.copysign"(%143, %97) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %145 = "arith.select"(%139, %142, %119) : (i1, f32, f32) -> f32
-    %146 = "math.copysign"(%145, %98) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %147 = "arith.mulf"(%144, %99) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %148 = "arith.mulf"(%146, %100) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %149 = "arith.addf"(%147, %148) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %150 = "arith.mulf"(%129, %149) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %151 = "arith.mulf"(%144, %100) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %152 = "arith.mulf"(%146, %99) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %153 = "arith.subf"(%152, %151) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %154 = "arith.mulf"(%129, %153) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %155 = "arith.cmpf"(%136, %129) <{fastmath = #arith.fastmath<none>, predicate = 6 : i64}> : (f32, f32) -> i1
-    %156 = "arith.cmpf"(%138, %129) <{fastmath = #arith.fastmath<none>, predicate = 6 : i64}> : (f32, f32) -> i1
-    %157 = "arith.andi"(%155, %156) : (i1, i1) -> i1
-    %158 = "arith.cmpf"(%120, %129) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
-    %159 = "arith.cmpf"(%122, %129) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
-    %160 = "arith.ori"(%158, %159) : (i1, i1) -> i1
-    %161 = "arith.andi"(%157, %160) : (i1, i1) -> i1
-    %162 = "arith.select"(%158, %142, %119) : (i1, f32, f32) -> f32
-    %163 = "math.copysign"(%162, %99) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %164 = "arith.select"(%159, %142, %119) : (i1, f32, f32) -> f32
-    %165 = "math.copysign"(%164, %100) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-    %166 = "arith.mulf"(%97, %163) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %167 = "arith.mulf"(%98, %165) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %168 = "arith.addf"(%166, %167) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %169 = "arith.mulf"(%119, %168) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %170 = "arith.mulf"(%98, %163) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %171 = "arith.mulf"(%97, %165) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %172 = "arith.subf"(%170, %171) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %173 = "arith.mulf"(%119, %172) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %174 = "arith.cmpf"(%120, %122) <{fastmath = #arith.fastmath<none>, predicate = 4 : i64}> : (f32, f32) -> i1
-    %175 = "arith.select"(%174, %106, %115) : (i1, f32, f32) -> f32
-    %176 = "arith.select"(%174, %109, %118) : (i1, f32, f32) -> f32
-    %177 = "arith.select"(%161, %169, %175) : (i1, f32, f32) -> f32
-    %178 = "arith.select"(%161, %173, %176) : (i1, f32, f32) -> f32
-    %179 = "arith.select"(%141, %150, %177) : (i1, f32, f32) -> f32
-    %180 = "arith.select"(%141, %154, %178) : (i1, f32, f32) -> f32
-    %181 = "arith.select"(%128, %131, %179) : (i1, f32, f32) -> f32
-    %182 = "arith.select"(%128, %132, %180) : (i1, f32, f32) -> f32
-    %183 = "arith.cmpf"(%175, %119) <{fastmath = #arith.fastmath<none>, predicate = 14 : i64}> : (f32, f32) -> i1
-    %184 = "arith.cmpf"(%176, %119) <{fastmath = #arith.fastmath<none>, predicate = 14 : i64}> : (f32, f32) -> i1
-    %185 = "arith.andi"(%183, %184) : (i1, i1) -> i1
-    %186 = "arith.select"(%185, %181, %175) : (i1, f32, f32) -> f32
-    %187 = "arith.select"(%185, %182, %176) : (i1, f32, f32) -> f32
-    %188 = "complex.create"(%186, %187) : (f32, f32) -> complex<f32>
-    %189 = "complex.re"(%188) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %190 = "complex.im"(%188) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %191 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-    %192 = "math.absf"(%189) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %193 = "math.absf"(%190) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %194 = "arith.maximumf"(%192, %193) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %195 = "arith.minimumf"(%192, %193) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %196 = "arith.divf"(%195, %194) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
-    %197 = "arith.mulf"(%196, %196) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
-    %198 = "arith.addf"(%197, %191) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
-    %199 = "math.sqrt"(%198) <{fastmath = #arith.fastmath<contract>}> : (f32) -> f32
-    %200 = "arith.mulf"(%194, %199) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
-    %201 = "arith.cmpf"(%200, %200) <{fastmath = #arith.fastmath<contract>, predicate = 14 : i64}> : (f32, f32) -> i1
-    %202 = "arith.select"(%201, %195, %200) : (i1, f32, f32) -> f32
-    %203 = "math.log"(%202) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
-    %204 = "complex.re"(%188) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %205 = "complex.im"(%188) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %206 = "math.atan2"(%205, %204) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %207 = "complex.create"(%203, %206) : (f32, f32) -> complex<f32>
-    %208 = "arith.constant"() <{value = -1.000000e+00 : f32}> : () -> f32
-    %209 = "complex.create"(%76, %208) : (f32, f32) -> complex<f32>
-    %210 = "complex.re"(%209) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %211 = "complex.im"(%209) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %212 = "complex.re"(%207) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %213 = "complex.im"(%207) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
-    %214 = "arith.mulf"(%210, %212) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %215 = "arith.mulf"(%211, %213) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %216 = "arith.subf"(%214, %215) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %217 = "arith.mulf"(%211, %212) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %218 = "arith.mulf"(%210, %213) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %219 = "arith.addf"(%217, %218) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
-    %220 = "complex.create"(%216, %219) : (f32, f32) -> complex<f32>
-    "func.return"(%220) : (complex<f32>) -> ()
+    %93 = "complex.create"(%89, %92) : (f32, f32) -> complex<f32>
+    %94 = "complex.re"(%93) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %95 = "complex.im"(%93) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %96 = "complex.re"(%73) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %97 = "complex.im"(%73) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %98 = "arith.divf"(%96, %97) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %99 = "arith.mulf"(%98, %96) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %100 = "arith.addf"(%97, %99) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %101 = "arith.mulf"(%94, %98) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %102 = "arith.addf"(%101, %95) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %103 = "arith.divf"(%102, %100) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %104 = "arith.mulf"(%95, %98) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %105 = "arith.subf"(%104, %94) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %106 = "arith.divf"(%105, %100) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %107 = "arith.divf"(%97, %96) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %108 = "arith.mulf"(%107, %97) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %109 = "arith.addf"(%96, %108) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %110 = "arith.mulf"(%95, %107) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %111 = "arith.addf"(%94, %110) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %112 = "arith.divf"(%111, %109) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %113 = "arith.mulf"(%94, %107) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %114 = "arith.subf"(%95, %113) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %115 = "arith.divf"(%114, %109) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %116 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %117 = "math.absf"(%96) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %118 = "arith.cmpf"(%117, %116) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
+    %119 = "math.absf"(%97) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %120 = "arith.cmpf"(%119, %116) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
+    %121 = "arith.cmpf"(%94, %116) <{fastmath = #arith.fastmath<none>, predicate = 7 : i64}> : (f32, f32) -> i1
+    %122 = "arith.cmpf"(%95, %116) <{fastmath = #arith.fastmath<none>, predicate = 7 : i64}> : (f32, f32) -> i1
+    %123 = "arith.ori"(%121, %122) : (i1, i1) -> i1
+    %124 = "arith.andi"(%118, %120) : (i1, i1) -> i1
+    %125 = "arith.andi"(%123, %124) : (i1, i1) -> i1
+    %126 = "arith.constant"() <{value = 0x7F800000 : f32}> : () -> f32
+    %127 = "math.copysign"(%126, %96) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %128 = "arith.mulf"(%127, %94) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %129 = "arith.mulf"(%127, %95) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %130 = "arith.cmpf"(%117, %126) <{fastmath = #arith.fastmath<none>, predicate = 6 : i64}> : (f32, f32) -> i1
+    %131 = "arith.cmpf"(%119, %126) <{fastmath = #arith.fastmath<none>, predicate = 6 : i64}> : (f32, f32) -> i1
+    %132 = "arith.andi"(%130, %131) : (i1, i1) -> i1
+    %133 = "math.absf"(%94) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %134 = "arith.cmpf"(%133, %126) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
+    %135 = "math.absf"(%95) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %136 = "arith.cmpf"(%135, %126) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
+    %137 = "arith.ori"(%134, %136) : (i1, i1) -> i1
+    %138 = "arith.andi"(%137, %132) : (i1, i1) -> i1
+    %139 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %140 = "arith.select"(%134, %139, %116) : (i1, f32, f32) -> f32
+    %141 = "math.copysign"(%140, %94) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %142 = "arith.select"(%136, %139, %116) : (i1, f32, f32) -> f32
+    %143 = "math.copysign"(%142, %95) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %144 = "arith.mulf"(%141, %96) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %145 = "arith.mulf"(%143, %97) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %146 = "arith.addf"(%144, %145) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %147 = "arith.mulf"(%126, %146) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %148 = "arith.mulf"(%141, %97) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %149 = "arith.mulf"(%143, %96) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %150 = "arith.subf"(%149, %148) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %151 = "arith.mulf"(%126, %150) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %152 = "arith.cmpf"(%133, %126) <{fastmath = #arith.fastmath<none>, predicate = 6 : i64}> : (f32, f32) -> i1
+    %153 = "arith.cmpf"(%135, %126) <{fastmath = #arith.fastmath<none>, predicate = 6 : i64}> : (f32, f32) -> i1
+    %154 = "arith.andi"(%152, %153) : (i1, i1) -> i1
+    %155 = "arith.cmpf"(%117, %126) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
+    %156 = "arith.cmpf"(%119, %126) <{fastmath = #arith.fastmath<none>, predicate = 1 : i64}> : (f32, f32) -> i1
+    %157 = "arith.ori"(%155, %156) : (i1, i1) -> i1
+    %158 = "arith.andi"(%154, %157) : (i1, i1) -> i1
+    %159 = "arith.select"(%155, %139, %116) : (i1, f32, f32) -> f32
+    %160 = "math.copysign"(%159, %96) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %161 = "arith.select"(%156, %139, %116) : (i1, f32, f32) -> f32
+    %162 = "math.copysign"(%161, %97) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+    %163 = "arith.mulf"(%94, %160) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %164 = "arith.mulf"(%95, %162) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %165 = "arith.addf"(%163, %164) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %166 = "arith.mulf"(%116, %165) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %167 = "arith.mulf"(%95, %160) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %168 = "arith.mulf"(%94, %162) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %169 = "arith.subf"(%167, %168) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %170 = "arith.mulf"(%116, %169) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %171 = "arith.cmpf"(%117, %119) <{fastmath = #arith.fastmath<none>, predicate = 4 : i64}> : (f32, f32) -> i1
+    %172 = "arith.select"(%171, %103, %112) : (i1, f32, f32) -> f32
+    %173 = "arith.select"(%171, %106, %115) : (i1, f32, f32) -> f32
+    %174 = "arith.select"(%158, %166, %172) : (i1, f32, f32) -> f32
+    %175 = "arith.select"(%158, %170, %173) : (i1, f32, f32) -> f32
+    %176 = "arith.select"(%138, %147, %174) : (i1, f32, f32) -> f32
+    %177 = "arith.select"(%138, %151, %175) : (i1, f32, f32) -> f32
+    %178 = "arith.select"(%125, %128, %176) : (i1, f32, f32) -> f32
+    %179 = "arith.select"(%125, %129, %177) : (i1, f32, f32) -> f32
+    %180 = "arith.cmpf"(%172, %116) <{fastmath = #arith.fastmath<none>, predicate = 14 : i64}> : (f32, f32) -> i1
+    %181 = "arith.cmpf"(%173, %116) <{fastmath = #arith.fastmath<none>, predicate = 14 : i64}> : (f32, f32) -> i1
+    %182 = "arith.andi"(%180, %181) : (i1, i1) -> i1
+    %183 = "arith.select"(%182, %178, %172) : (i1, f32, f32) -> f32
+    %184 = "arith.select"(%182, %179, %173) : (i1, f32, f32) -> f32
+    %185 = "complex.create"(%183, %184) : (f32, f32) -> complex<f32>
+    %186 = "complex.re"(%185) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %187 = "complex.im"(%185) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %188 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+    %189 = "math.absf"(%186) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %190 = "math.absf"(%187) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %191 = "arith.maximumf"(%189, %190) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %192 = "arith.minimumf"(%189, %190) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %193 = "arith.divf"(%192, %191) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
+    %194 = "arith.mulf"(%193, %193) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
+    %195 = "arith.addf"(%194, %188) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
+    %196 = "math.sqrt"(%195) <{fastmath = #arith.fastmath<contract>}> : (f32) -> f32
+    %197 = "arith.mulf"(%191, %196) <{fastmath = #arith.fastmath<contract>}> : (f32, f32) -> f32
+    %198 = "arith.cmpf"(%197, %197) <{fastmath = #arith.fastmath<contract>, predicate = 14 : i64}> : (f32, f32) -> i1
+    %199 = "arith.select"(%198, %192, %197) : (i1, f32, f32) -> f32
+    %200 = "math.log"(%199) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %201 = "complex.re"(%185) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %202 = "complex.im"(%185) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %203 = "math.atan2"(%202, %201) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %204 = "complex.create"(%200, %203) : (f32, f32) -> complex<f32>
+    %205 = "arith.constant"() <{value = -1.000000e+00 : f32}> : () -> f32
+    %206 = "complex.create"(%74, %205) : (f32, f32) -> complex<f32>
+    %207 = "complex.re"(%206) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %208 = "complex.im"(%206) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %209 = "complex.re"(%204) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %210 = "complex.im"(%204) <{fastmath = #arith.fastmath<none>}> : (complex<f32>) -> f32
+    %211 = "arith.mulf"(%208, %210) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %212 = "arith.negf"(%211) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32) -> f32
+    %213 = "math.fma"(%207, %209, %212) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32, f32) -> f32
+    %214 = "arith.mulf"(%208, %209) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32) -> f32
+    %215 = "math.fma"(%207, %210, %214) <{fastmath = #arith.fastmath<nnan,contract>}> : (f32, f32, f32) -> f32
+    %216 = "complex.create"(%213, %215) : (f32, f32) -> complex<f32>
+    "func.return"(%216) : (complex<f32>) -> ()
   }) : () -> ()
 }) : () -> ()
 

@@ -24,7 +24,7 @@
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "test_module"}> ({
-    "gpu.func"() <{function_type = (memref<i32>) -> (), known_block_size = array<i32: 8, 12, 16>, known_grid_size = array<i32: 20, 24, 28>}> ({
+    "gpu.func"() <{function_type = (memref<i32>) -> (), kernel, known_block_size = array<i32: 8, 12, 16>, known_grid_size = array<i32: 20, 24, 28>}> ({
     ^bb0(%arg0: memref<i32>):
       %0 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -32,15 +32,27 @@
       %3 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %4 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %5 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
-      %6 = "arith.addi"(%0, %1) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %7 = "arith.addi"(%6, %2) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %8 = "arith.addi"(%7, %3) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %9 = "arith.addi"(%8, %4) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %10 = "arith.addi"(%9, %5) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %11 = "arith.index_cast"(%10) : (index) -> i32
-      "memref.store"(%11, %arg0) : (i32, memref<i32>) -> ()
+      %6 = "gpu.block_dim"() <{dimension = #gpu<dim x>}> : () -> index
+      %7 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
+      %8 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
+      %9 = "gpu.grid_dim"() <{dimension = #gpu<dim x>}> : () -> index
+      %10 = "gpu.grid_dim"() <{dimension = #gpu<dim y>}> : () -> index
+      %11 = "gpu.grid_dim"() <{dimension = #gpu<dim z>}> : () -> index
+      %12 = "arith.addi"(%0, %1) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      %13 = "arith.addi"(%12, %2) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      %14 = "arith.addi"(%13, %3) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      %15 = "arith.addi"(%14, %4) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      %16 = "arith.addi"(%15, %5) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      %17 = "arith.addi"(%16, %6) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      %18 = "arith.addi"(%17, %7) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      %19 = "arith.addi"(%18, %8) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      %20 = "arith.addi"(%19, %9) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      %21 = "arith.addi"(%20, %10) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      %22 = "arith.addi"(%21, %11) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      %23 = "arith.index_cast"(%22) : (index) -> i32
+      "memref.store"(%23, %arg0) : (i32, memref<i32>) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "gpu_index_ops_range", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "gpu_index_ops_range"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -51,16 +63,6 @@
     ^bb0(%arg0: index):
       %0 = "arith.addi"(%arg0, %arg0) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
       "func.return"(%0) : (index) -> ()
-    }) : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
-  "gpu.module"() <{sym_name = "test_module"}> ({
-    "func.func"() <{function_type = () -> (), sym_name = "gpu_sync"}> ({
-      "gpu.barrier"() : () -> ()
-      "func.return"() : () -> ()
     }) : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -383,9 +385,9 @@
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "test_module"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "kernel_func", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "kernel_func"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -408,7 +410,7 @@
       %1 = "gpu.all_reduce"(%0) <{op = #gpu<all_reduce_op add>, uniform}> ({
       }) : (f32) -> f32
       "gpu.return"() : () -> ()
-    }) {sym_name = "gpu_all_reduce_op", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "gpu_all_reduce_op"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -423,7 +425,7 @@
         "gpu.yield"(%2) : (i32) -> ()
       }) : (i32) -> i32
       "gpu.return"() : () -> ()
-    }) {sym_name = "gpu_all_reduce_region", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "gpu_all_reduce_region"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -493,21 +495,47 @@
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "test_module"}> ({
     "func.func"() <{function_type = (index, i32) -> (index, index), sym_name = "broadcast"}> ({
-    ^bb0(%arg3: index, %arg4: i32):
-      %3 = "gpu.subgroup_broadcast"(%arg3) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (index) -> index
-      %4 = "gpu.subgroup_broadcast"(%arg3, %arg4) <{broadcast_type = #gpu<broadcast specific_lane>}> : (index, i32) -> index
-      "func.return"(%3, %4) : (index, index) -> ()
+    ^bb0(%arg8: index, %arg9: i32):
+      %9 = "gpu.subgroup_broadcast"(%arg8) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (index) -> index
+      %10 = "gpu.subgroup_broadcast"(%arg8, %arg9) <{broadcast_type = #gpu<broadcast specific_lane>}> : (index, i32) -> index
+      "func.return"(%9, %10) : (index, index) -> ()
     }) : () -> ()
     "func.func"() <{function_type = (i8, i32) -> (i8, i8), sym_name = "broadcast_i8"}> ({
-    ^bb0(%arg1: i8, %arg2: i32):
-      %1 = "gpu.subgroup_broadcast"(%arg1) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (i8) -> i8
-      %2 = "gpu.subgroup_broadcast"(%arg1, %arg2) <{broadcast_type = #gpu<broadcast specific_lane>}> : (i8, i32) -> i8
-      "func.return"(%1, %2) : (i8, i8) -> ()
+    ^bb0(%arg6: i8, %arg7: i32):
+      %7 = "gpu.subgroup_broadcast"(%arg6) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (i8) -> i8
+      %8 = "gpu.subgroup_broadcast"(%arg6, %arg7) <{broadcast_type = #gpu<broadcast specific_lane>}> : (i8, i32) -> i8
+      "func.return"(%7, %8) : (i8, i8) -> ()
     }) : () -> ()
     "func.func"() <{function_type = (vector<4xi16>) -> vector<4xi16>, sym_name = "broadcast_4xi16"}> ({
-    ^bb0(%arg0: vector<4xi16>):
-      %0 = "gpu.subgroup_broadcast"(%arg0) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (vector<4xi16>) -> vector<4xi16>
-      "func.return"(%0) : (vector<4xi16>) -> ()
+    ^bb0(%arg5: vector<4xi16>):
+      %6 = "gpu.subgroup_broadcast"(%arg5) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (vector<4xi16>) -> vector<4xi16>
+      "func.return"(%6) : (vector<4xi16>) -> ()
+    }) : () -> ()
+    "func.func"() <{function_type = (vector<2x2xi16>) -> vector<2x2xi16>, sym_name = "broadcast_2x2xi16"}> ({
+    ^bb0(%arg4: vector<2x2xi16>):
+      %5 = "gpu.subgroup_broadcast"(%arg4) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (vector<2x2xi16>) -> vector<2x2xi16>
+      "func.return"(%5) : (vector<2x2xi16>) -> ()
+    }) : () -> ()
+    "func.func"() <{function_type = (memref<?xi32>) -> memref<?xi32>, sym_name = "broadcast_memref"}> ({
+    ^bb0(%arg3: memref<?xi32>):
+      %4 = "gpu.subgroup_broadcast"(%arg3) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (memref<?xi32>) -> memref<?xi32>
+      "func.return"(%4) : (memref<?xi32>) -> ()
+    }) : () -> ()
+    "func.func"() <{function_type = (i48) -> i48, sym_name = "broadcast_i48"}> ({
+    ^bb0(%arg2: i48):
+      %3 = "gpu.subgroup_broadcast"(%arg2) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (i48) -> i48
+      "func.return"(%3) : (i48) -> ()
+    }) : () -> ()
+    "func.func"() <{function_type = (vector<3xi16>) -> vector<3xi16>, sym_name = "broadcast_3xi16"}> ({
+    ^bb0(%arg1: vector<3xi16>):
+      %2 = "gpu.subgroup_broadcast"(%arg1) <{broadcast_type = #gpu<broadcast first_active_lane>}> : (vector<3xi16>) -> vector<3xi16>
+      "func.return"(%2) : (vector<3xi16>) -> ()
+    }) : () -> ()
+    "func.func"() <{function_type = (i1) -> (i32, i64), sym_name = "ballot"}> ({
+    ^bb0(%arg0: i1):
+      %0 = "gpu.ballot"(%arg0) : (i1) -> i32
+      %1 = "gpu.ballot"(%arg0) : (i1) -> i64
+      "func.return"(%0, %1) : (i32, i64) -> ()
     }) : () -> ()
   }) : () -> ()
 }) : () -> ()

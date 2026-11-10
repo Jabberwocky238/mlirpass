@@ -241,7 +241,7 @@
     ^bb20:  // pred: ^bb18
       "llvm.br"()[^bb21] : () -> ()
     ^bb21:  // 2 preds: ^bb19, ^bb20
-      "nvvm.barrier0"() : () -> ()
+      "nvvm.barrier"() <{aligned = true, operandSegmentSizes = array<i32: 0, 0>}> : () -> ()
       %190 = "llvm.add"(%84, %50) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
       %191 = "llvm.sdiv"(%190, %48) : (i32, i32) -> i32
       %192 = "llvm.icmp"(%83, %191) <{predicate = 2 : i64}> : (i32, i32) -> i1
@@ -385,7 +385,7 @@
     ^bb41:  // pred: ^bb21
       "llvm.br"()[^bb42] : () -> ()
     ^bb42:  // 2 preds: ^bb40, ^bb41
-      "nvvm.barrier0"() : () -> ()
+      "nvvm.barrier"() <{aligned = true, operandSegmentSizes = array<i32: 0, 0>}> : () -> ()
       %296 = "llvm.extractvalue"(%30) <{position = array<i64: 1>}> : (!llvm.struct<(ptr<3>, ptr<3>, i64, array<1 x i64>, array<1 x i64>)>) -> !llvm.ptr<3>
       %297 = "llvm.getelementptr"(%296, %42) <{elem_type = f32, noWrapFlags = 7 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>
       %298 = "llvm.load"(%297) <{ordering = 0 : i64}> : (!llvm.ptr<3>) -> f32
@@ -558,7 +558,7 @@
     ^bb62:  // pred: ^bb60
       "llvm.br"()[^bb63] : () -> ()
     ^bb63:  // 2 preds: ^bb61, ^bb62
-      "nvvm.barrier0"() : () -> ()
+      "nvvm.barrier"() <{aligned = true, operandSegmentSizes = array<i32: 0, 0>}> : () -> ()
       %430 = "llvm.add"(%324, %50) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
       %431 = "llvm.sdiv"(%430, %48) : (i32, i32) -> i32
       %432 = "llvm.icmp"(%323, %431) <{predicate = 2 : i64}> : (i32, i32) -> i1
@@ -702,7 +702,7 @@
     ^bb83:  // pred: ^bb63
       "llvm.br"()[^bb84] : () -> ()
     ^bb84:  // 2 preds: ^bb82, ^bb83
-      "nvvm.barrier0"() : () -> ()
+      "nvvm.barrier"() <{aligned = true, operandSegmentSizes = array<i32: 0, 0>}> : () -> ()
       %536 = "llvm.extractvalue"(%41) <{position = array<i64: 1>}> : (!llvm.struct<(ptr<3>, ptr<3>, i64, array<1 x i64>, array<1 x i64>)>) -> !llvm.ptr<3>
       %537 = "llvm.getelementptr"(%536, %42) <{elem_type = f32, noWrapFlags = 7 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>
       %538 = "llvm.load"(%537) <{ordering = 0 : i64}> : (!llvm.ptr<3>) -> f32

@@ -65,6 +65,53 @@ module {
     %37 = builtin.unrealized_conversion_cast %36 : !llvm.array<2 x vector<2xf32>> to vector<2x2xf32>
     return %37 : vector<2x2xf32>
   }
+  func.func @m16n8k16_bf16_fp32(%arg0: vector<4x2xbf16>, %arg1: vector<2x2xbf16>, %arg2: vector<2x2xf32>) -> vector<2x2xf32> {
+    %0 = builtin.unrealized_conversion_cast %arg2 : vector<2x2xf32> to !llvm.array<2 x vector<2xf32>>
+    %1 = builtin.unrealized_conversion_cast %arg1 : vector<2x2xbf16> to !llvm.array<2 x vector<2xbf16>>
+    %2 = builtin.unrealized_conversion_cast %arg0 : vector<4x2xbf16> to !llvm.array<4 x vector<2xbf16>>
+    %3 = llvm.extractvalue %2[0] : !llvm.array<4 x vector<2xbf16>> 
+    %4 = llvm.bitcast %3 : vector<2xbf16> to i32
+    %5 = llvm.extractvalue %2[1] : !llvm.array<4 x vector<2xbf16>> 
+    %6 = llvm.bitcast %5 : vector<2xbf16> to i32
+    %7 = llvm.extractvalue %2[2] : !llvm.array<4 x vector<2xbf16>> 
+    %8 = llvm.bitcast %7 : vector<2xbf16> to i32
+    %9 = llvm.extractvalue %2[3] : !llvm.array<4 x vector<2xbf16>> 
+    %10 = llvm.bitcast %9 : vector<2xbf16> to i32
+    %11 = llvm.extractvalue %1[0] : !llvm.array<2 x vector<2xbf16>> 
+    %12 = llvm.bitcast %11 : vector<2xbf16> to i32
+    %13 = llvm.extractvalue %1[1] : !llvm.array<2 x vector<2xbf16>> 
+    %14 = llvm.bitcast %13 : vector<2xbf16> to i32
+    %15 = llvm.extractvalue %0[0] : !llvm.array<2 x vector<2xf32>> 
+    %16 = llvm.mlir.constant(0 : i64) : i64
+    %17 = llvm.extractelement %15[%16 : i64] : vector<2xf32>
+    %18 = llvm.mlir.constant(1 : i64) : i64
+    %19 = llvm.extractelement %15[%18 : i64] : vector<2xf32>
+    %20 = llvm.extractvalue %0[1] : !llvm.array<2 x vector<2xf32>> 
+    %21 = llvm.mlir.constant(0 : i64) : i64
+    %22 = llvm.extractelement %20[%21 : i64] : vector<2xf32>
+    %23 = llvm.mlir.constant(1 : i64) : i64
+    %24 = llvm.extractelement %20[%23 : i64] : vector<2xf32>
+    %25 = nvvm.mma.sync A[%4, %6, %8, %10]  B[%12, %14]  C[%17, %19, %22, %24]  {layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>, multiplicandAPtxType = #nvvm.mma_type<bf16>, multiplicandBPtxType = #nvvm.mma_type<bf16>, shape = #nvvm.shape<m = 16, n = 8, k = 16>} : (i32, i32, f32) -> !llvm.struct<(f32, f32, f32, f32)>
+    %26 = llvm.mlir.poison : vector<2xf32>
+    %27 = llvm.extractvalue %25[0] : !llvm.struct<(f32, f32, f32, f32)> 
+    %28 = llvm.extractvalue %25[1] : !llvm.struct<(f32, f32, f32, f32)> 
+    %29 = llvm.mlir.constant(0 : i32) : i32
+    %30 = llvm.insertelement %27, %26[%29 : i32] : vector<2xf32>
+    %31 = llvm.mlir.constant(1 : i32) : i32
+    %32 = llvm.insertelement %28, %30[%31 : i32] : vector<2xf32>
+    %33 = llvm.mlir.poison : vector<2xf32>
+    %34 = llvm.extractvalue %25[2] : !llvm.struct<(f32, f32, f32, f32)> 
+    %35 = llvm.extractvalue %25[3] : !llvm.struct<(f32, f32, f32, f32)> 
+    %36 = llvm.mlir.constant(0 : i32) : i32
+    %37 = llvm.insertelement %34, %33[%36 : i32] : vector<2xf32>
+    %38 = llvm.mlir.constant(1 : i32) : i32
+    %39 = llvm.insertelement %35, %37[%38 : i32] : vector<2xf32>
+    %40 = llvm.mlir.poison : !llvm.array<2 x vector<2xf32>>
+    %41 = llvm.insertvalue %32, %40[0] : !llvm.array<2 x vector<2xf32>> 
+    %42 = llvm.insertvalue %39, %41[1] : !llvm.array<2 x vector<2xf32>> 
+    %43 = builtin.unrealized_conversion_cast %42 : !llvm.array<2 x vector<2xf32>> to vector<2x2xf32>
+    return %43 : vector<2x2xf32>
+  }
   func.func @m16n8k8_fp16(%arg0: vector<2x2xf16>, %arg1: vector<1x2xf16>, %arg2: vector<2x2xf16>) -> vector<2x2xf16> {
     %0 = builtin.unrealized_conversion_cast %arg2 : vector<2x2xf16> to !llvm.array<2 x vector<2xf16>>
     %1 = builtin.unrealized_conversion_cast %arg1 : vector<1x2xf16> to !llvm.array<1 x vector<2xf16>>
@@ -347,7 +394,7 @@ module {
     %14 = llvm.add %13, %1 : i64
     %15 = llvm.getelementptr %11[%14] : (!llvm.ptr, i64) -> !llvm.ptr, f32
     %16 = llvm.addrspacecast %15 : !llvm.ptr to !llvm.ptr<1>
-    nvvm.cp.async.shared.global %10, %16, 16, cache =  ca : !llvm.ptr<3>, !llvm.ptr<1>
+    nvvm.cp.async.shared.global %10, %16, 16, cache = ca : !llvm.ptr<3>, !llvm.ptr<1>
     %17 = llvm.mlir.constant(0 : i32) : i32
     nvvm.cp.async.commit.group
     %18 = llvm.mlir.constant(0 : i32) : i32
@@ -366,7 +413,7 @@ module {
     %30 = llvm.add %29, %1 : i64
     %31 = llvm.getelementptr %27[%30] : (!llvm.ptr, i64) -> !llvm.ptr, f32
     %32 = llvm.addrspacecast %31 : !llvm.ptr to !llvm.ptr<1>
-    nvvm.cp.async.shared.global %26, %32, 16, cache =  cg : !llvm.ptr<3>, !llvm.ptr<1>
+    nvvm.cp.async.shared.global %26, %32, 16, cache = cg : !llvm.ptr<3>, !llvm.ptr<1>
     %33 = llvm.mlir.constant(0 : i32) : i32
     return
   }
@@ -385,7 +432,7 @@ module {
     %11 = llvm.add %10, %1 : i64
     %12 = llvm.getelementptr %8[%11] : (!llvm.ptr, i64) -> !llvm.ptr, i4
     %13 = llvm.addrspacecast %12 : !llvm.ptr to !llvm.ptr<1>
-    nvvm.cp.async.shared.global %7, %13, 16, cache =  ca : !llvm.ptr<3>, !llvm.ptr<1>
+    nvvm.cp.async.shared.global %7, %13, 16, cache = ca : !llvm.ptr<3>, !llvm.ptr<1>
     %14 = llvm.mlir.constant(0 : i32) : i32
     %15 = builtin.unrealized_conversion_cast %14 : i32 to !nvgpu.device.async.token
     return %15 : !nvgpu.device.async.token
@@ -414,7 +461,7 @@ module {
     %20 = llvm.trunc %0 : i64 to i32
     %21 = llvm.mul %19, %20 : i32
     %22 = llvm.lshr %21, %18 : i32
-    nvvm.cp.async.shared.global %11, %17, 16, cache =  cg, %22 : !llvm.ptr<3>, !llvm.ptr<1>, i32
+    nvvm.cp.async.shared.global %11, %17, 16, cache = cg, %22 : !llvm.ptr<3>, !llvm.ptr<1>, i32
     %23 = llvm.mlir.constant(0 : i32) : i32
     nvvm.cp.async.commit.group
     %24 = llvm.mlir.constant(0 : i32) : i32
@@ -445,7 +492,7 @@ module {
     %20 = llvm.trunc %0 : i64 to i32
     %21 = llvm.mul %19, %20 : i32
     %22 = llvm.lshr %21, %18 : i32
-    nvvm.cp.async.shared.global %11, %17, 4, cache =  ca, %22 : !llvm.ptr<3>, !llvm.ptr<1>, i32
+    nvvm.cp.async.shared.global %11, %17, 4, cache = ca, %22 : !llvm.ptr<3>, !llvm.ptr<1>, i32
     %23 = llvm.mlir.constant(0 : i32) : i32
     nvvm.cp.async.commit.group
     %24 = llvm.mlir.constant(0 : i32) : i32
@@ -659,14 +706,14 @@ module {
       %16 = llvm.extractvalue %3[1] : !llvm.struct<(ptr<3>, ptr<3>, i64, array<1 x i64>, array<1 x i64>)> 
       %17 = llvm.getelementptr %16[%1] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i64
       %18 = llvm.trunc %15 : i64 to i32
-      nvvm.mbarrier.arrive.expect_tx %17, %18 : !llvm.ptr<3>, i32
+      %19 = nvvm.mbarrier.arrive.expect_tx %17, %18 : !llvm.ptr<3>, i32 -> i64
     } else {
       %c0_0 = arith.constant 0 : index
       %15 = builtin.unrealized_conversion_cast %c0_0 : index to i64
       %16 = llvm.extractvalue %3[1] : !llvm.struct<(ptr<3>, ptr<3>, i64, array<1 x i64>, array<1 x i64>)> 
       %17 = llvm.getelementptr %16[%1] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i64
       %18 = llvm.trunc %15 : i64 to i32
-      nvvm.mbarrier.arrive.expect_tx %17, %18 : !llvm.ptr<3>, i32
+      %19 = nvvm.mbarrier.arrive.expect_tx %17, %18 : !llvm.ptr<3>, i32 -> i64
     }
     %false = arith.constant false
     %c10000000 = arith.constant 10000000 : index
@@ -683,7 +730,7 @@ module {
     %0 = builtin.unrealized_conversion_cast %c1 : index to i64
     %c0 = arith.constant 0 : index
     %1 = builtin.unrealized_conversion_cast %c0 : index to i64
-    %thread_id_x = gpu.thread_id  x
+    %thread_id_x = gpu.thread_id x
     %2 = arith.cmpi eq, %thread_id_x, %c0 : index
     %3 = memref.get_global @__mbarrier_2 : memref<1xi64, 3>
     %4 = builtin.unrealized_conversion_cast %3 : memref<1xi64, 3> to !llvm.struct<(ptr<3>, ptr<3>, i64, array<1 x i64>, array<1 x i64>)>

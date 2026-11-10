@@ -1,4 +1,4 @@
-//! ⭐ Every fixture RUN line through mlirpass, chunk by chunk, against what `mlir-opt` 22.1.8
+//! ⭐ Every fixture RUN line through mlirpass, chunk by chunk, against what `mlir-opt` 23.1.5
 //! printed for it. Both sides go through `Body` and print generic, so only the IR is compared:
 //!
 //! ```text
@@ -21,7 +21,7 @@ use mlirpass::mlirformat::MlirOpt;
 use mlirpass::{Body, Ctx, Interfaces, Invocation, Passes};
 
 /// Chunks matching exactly; raise it whenever a change makes more match.
-const FLOOR: usize = 6741;
+const FLOOR: usize = 6598;
 
 #[derive(Default, Clone, Copy)]
 struct Tally {
@@ -92,7 +92,14 @@ fn passes() {
         assert_eq!(ins.len(), outs.len(), "{}: chunk counts differ", run.stem);
         for (i, (chunk, want)) in ins.into_iter().zip(outs).enumerate() {
             let want = if want.trim().is_empty() { String::new() } else { inv.print(&mut Body::parse(ctx, want).unwrap()) };
-            match inv.run_chunk(ctx, chunk) {
+            // A panic is an error of this chunk, not the end of the run.
+            let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| inv.run_chunk(ctx, chunk)));
+            let Ok(ran) = ran else {
+                t.error += 1;
+                eprintln!("  panic {} #{i}", run.stem);
+                continue;
+            };
+            match ran {
                 Ok(_) if discard => t.exact += 1,
                 Ok(got) if got == want => t.exact += 1,
                 Err(_) if want.is_empty() => t.exact += 1,

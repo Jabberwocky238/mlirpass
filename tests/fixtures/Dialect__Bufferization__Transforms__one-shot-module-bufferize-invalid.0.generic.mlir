@@ -10,7 +10,7 @@
       "scf.yield"(%0) : (memref<?xf32>) -> ()
     }) : () -> memref<?xf32>
     "memref.store"(%arg0, %1, %arg1) <{nontemporal = false}> : (f32, memref<?xf32>, index) -> ()
-    %2 = "memref.load"(%1, %arg2) <{nontemporal = false}> : (memref<?xf32>, index) -> f32
+    %2 = "memref.load"(%1, %arg2) <{invariant = false, nontemporal = false}> : (memref<?xf32>, index) -> f32
     "func.return"(%2) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()

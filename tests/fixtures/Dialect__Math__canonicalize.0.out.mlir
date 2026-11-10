@@ -45,6 +45,18 @@ module {
     %cst = arith.constant dense<[1.000000e+00, 4.000000e+00, 9.000000e+00, 1.600000e+01]> : vector<4xf32>
     return %cst : vector<4xf32>
   }
+  func.func @rsqrt_fold() -> f32 {
+    %cst = arith.constant 5.000000e-01 : f32
+    return %cst : f32
+  }
+  func.func @rsqrt_fold_vec() -> vector<2xf32> {
+    %cst = arith.constant dense<[1.000000e+00, 5.000000e-01]> : vector<2xf32>
+    return %cst : vector<2xf32>
+  }
+  func.func @rsqrt_poison() -> f32 {
+    %0 = ub.poison : f32
+    return %0 : f32
+  }
   func.func @sqrt_fold() -> f32 {
     %cst = arith.constant 2.000000e+00 : f32
     return %cst : f32
@@ -248,6 +260,56 @@ module {
   func.func @isnormal_fold_vec() -> vector<4xi1> {
     %cst = arith.constant dense<true> : vector<4xi1>
     return %cst : vector<4xi1>
+  }
+  func.func @ipowi_i1_const_pos_exp() -> i1 {
+    %true = arith.constant true
+    %false = arith.constant false
+    %0 = math.ipowi %true, %false : i1
+    return %0 : i1
+  }
+  func.func @ipowi_i1_const_neg_exp() -> i1 {
+    %true = arith.constant true
+    %0 = math.ipowi %true, %true : i1
+    return %0 : i1
+  }
+  func.func @fpowi_fold() -> (f64, f32) {
+    %cst = arith.constant 4.000000e+00 : f64
+    %cst_0 = arith.constant 4.000000e+00 : f32
+    return %cst, %cst_0 : f64, f32
+  }
+  func.func @fpowi_fold_vec() -> vector<4xf32> {
+    %cst = arith.constant dense<[1.000000e+00, 1.600000e+01, 9.000000e+00, 1.600000e+01]> : vector<4xf32>
+    return %cst : vector<4xf32>
+  }
+  func.func @fpowi_fold_failed() -> f32 {
+    %cst = arith.constant 2.000000e+00 : f32
+    %c16777217_i32 = arith.constant 16777217 : i32
+    %0 = math.fpowi %cst, %c16777217_i32 : f32, i32
+    return %0 : f32
+  }
+  func.func @sincos_fold_f32() -> (f32, f32) {
+    %cst = arith.constant 0.841470957 : f32
+    %cst_0 = arith.constant 0.540302277 : f32
+    return %cst, %cst_0 : f32, f32
+  }
+  func.func @sincos_fold_f64() -> (f64, f64) {
+    %cst = arith.constant 0.8414709848078965 : f64
+    %cst_0 = arith.constant 0.54030230586813977 : f64
+    return %cst, %cst_0 : f64, f64
+  }
+  func.func @sincos_fold_vec() -> (vector<4xf32>, vector<4xf32>) {
+    %cst = arith.constant dense<[0.000000e+00, 0.841470957, 0.000000e+00, 0.841470957]> : vector<4xf32>
+    %cst_0 = arith.constant dense<[1.000000e+00, 0.540302277, 1.000000e+00, 0.540302277]> : vector<4xf32>
+    return %cst, %cst_0 : vector<4xf32>, vector<4xf32>
+  }
+  func.func @cbrt_fold() -> (f64, f32) {
+    %cst = arith.constant 2.000000e+00 : f64
+    %cst_0 = arith.constant -2.000000e+00 : f32
+    return %cst, %cst_0 : f64, f32
+  }
+  func.func @cbrt_fold_vec() -> vector<4xf32> {
+    %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 1.000000e+00, 2.000000e+00]> : vector<4xf32>
+    return %cst : vector<4xf32>
   }
 }
 

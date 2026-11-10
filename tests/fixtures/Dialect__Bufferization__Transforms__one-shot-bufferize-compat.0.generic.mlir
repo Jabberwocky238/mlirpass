@@ -10,8 +10,8 @@
     %6 = "memref.alloc"(%5) <{alignment = 64 : i64, operandSegmentSizes = array<i32: 1, 0>}> : (index) -> memref<?xf32>
     "memref.copy"(%1, %6) : (memref<?xf32, strided<[?], offset: ?>>, memref<?xf32>) -> ()
     "memref.store"(%2, %6, %3) <{nontemporal = false}> : (f32, memref<?xf32>, index) -> ()
-    %7 = "memref.load"(%0, %3) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
-    %8 = "memref.load"(%6, %3) <{nontemporal = false}> : (memref<?xf32>, index) -> f32
+    %7 = "memref.load"(%0, %3) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %8 = "memref.load"(%6, %3) <{invariant = false, nontemporal = false}> : (memref<?xf32>, index) -> f32
     "func.return"(%7, %8) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()

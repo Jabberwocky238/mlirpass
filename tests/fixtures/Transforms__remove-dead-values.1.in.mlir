@@ -18,6 +18,20 @@
 }) : () -> ()
 
 // -----
+"builtin.module"() <{sym_name = "named_module_with_dead_args"}> ({
+  "func.func"() <{function_type = (i32, i32) -> i32, sym_name = "compute", sym_visibility = "private"}> ({
+  ^bb0(%arg0: i32, %arg1: i32):
+    "func.return"(%arg0) : (i32) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> i32, sym_name = "main"}> ({
+    %0 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+    %1 = "arith.constant"() <{value = 2 : i32}> : () -> i32
+    %2 = "func.call"(%0, %1) <{callee = @compute}> : (i32, i32) -> i32
+    "func.return"(%2) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
 "builtin.module"() ({
   "func.func"() <{function_type = (i1) -> (), sym_name = "acceptable_ir_has_cleanable_loop_of_conditional_and_branch_op"}> ({
   ^bb0(%arg0: i1):
@@ -263,7 +277,7 @@
       %5 = "affine.apply"(%arg1, %2, %3) <{map = #map}> : (index, index, index) -> index
       "memref.store"(%4, %arg0, %5) : (f32, memref<18xf32>, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -302,7 +316,7 @@
         "gpu.yield"(%2) : (i32) -> ()
       }) : (i32) -> i32
       "gpu.return"() : () -> ()
-    }) {sym_name = "gpu_all_reduce_region", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "gpu_all_reduce_region"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -364,6 +378,28 @@
     %0 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<4xi32>
     "func.call"(%arg0, %0) <{callee = @fn_return_void_with_unused_argument}> : (i32, memref<4xi32>) -> ()
     "func.return"(%0) : (memref<4xi32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<f64>) -> (), sym_name = "keep_region_branch_operands_valid", sym_visibility = "private"}> ({
+  ^bb0(%arg0: memref<f64>):
+    %0 = "arith.constant"() <{value = false}> : () -> i1
+    %1 = "arith.constant"() <{value = 2.000000e+00 : f64}> : () -> f64
+    %2 = "memref.load"(%arg0) {name = "caller"} : (memref<f64>) -> f64
+    "memref.store"(%1, %arg0) {name = "callee"} : (f64, memref<f64>) -> ()
+    %3 = "scf.if"(%0) ({
+      "scf.yield"(%arg0) : (memref<f64>) -> ()
+    }, {
+      %7 = "bufferization.clone"(%arg0) : (memref<f64>) -> memref<f64>
+      "scf.yield"(%7) : (memref<f64>) -> ()
+    }) : (i1) -> memref<f64>
+    %4 = "arith.constant"() <{value = true}> : () -> i1
+    %5:2 = "memref.extract_strided_metadata"(%arg0) : (memref<f64>) -> (memref<f64>, index)
+    %6:2 = "memref.extract_strided_metadata"(%3) : (memref<f64>) -> (memref<f64>, index)
+    "bufferization.dealloc"(%5#0, %6#0, %0, %4) <{operandSegmentSizes = array<i32: 2, 2, 0>}> : (memref<f64>, memref<f64>, i1, i1) -> ()
+    "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -509,5 +545,43 @@
     }) : (i32) -> (i32, i32)
     "func.return"(%1#0) : (i32) -> ()
   }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<1xindex>) -> vector<1xindex>, sym_name = "replace_dead_operation_results_with_poison"}> ({
+  ^bb0(%arg0: vector<1xindex>):
+    %0 = "scf.while"(%arg0) ({
+    ^bb0(%arg4: vector<1xindex>):
+      %3 = "arith.constant"() <{value = true}> : () -> i1
+      "scf.condition"(%3, %arg4) : (i1, vector<1xindex>) -> ()
+    }, {
+    ^bb0(%arg3: vector<1xindex>):
+      "scf.yield"(%arg3) : (vector<1xindex>) -> ()
+    }) : (vector<1xindex>) -> vector<1xindex>
+    %1 = "scf.while"(%0) ({
+    ^bb0(%arg2: vector<1xindex>):
+      %2:3 = "test.three"(%0) : (vector<1xindex>) -> (i1, i32, vector<1xindex>)
+      "scf.condition"(%2#0, %2#2) : (i1, vector<1xindex>) -> ()
+    }, {
+    ^bb0(%arg1: vector<1xindex>):
+      "scf.yield"(%arg1) : (vector<1xindex>) -> ()
+    }) : (vector<1xindex>) -> vector<1xindex>
+    "func.return"(%1) : (vector<1xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() <{sym_name = "func_with_non_call_users"}> ({
+  "func.func"() <{function_type = (i32, i32) -> (), sym_name = "callee", sym_visibility = "private"}> ({
+  ^bb0(%arg0: i32, %arg1: i32):
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (), sym_name = "main_func"}> ({
+    %0 = "llvm.mlir.constant"() <{value = 1 : i32}> : () -> i32
+    "func.call"(%0, %0) <{callee = @callee}> : (i32, i32) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "spirv.EntryPoint"() <{execution_model = #spirv.execution_model<GLCompute>, fn = @callee, interface = []}> : () -> ()
 }) : () -> ()
 

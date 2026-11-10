@@ -1,0 +1,3 @@
+--gpu-to-llvm=use-bare-pointers-for-kernels=1
+-split-input-file
+-verify-diagnostics

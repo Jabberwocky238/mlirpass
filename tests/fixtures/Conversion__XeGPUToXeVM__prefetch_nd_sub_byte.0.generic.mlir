@@ -1,6 +1,6 @@
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "prefetch_check"}> ({
-    "gpu.func"() <{function_type = (memref<16x128xi4, 1>) -> ()}> ({
+    "gpu.func"() <{function_type = (memref<16x128xi4, 1>) -> (), kernel}> ({
     ^bb0(%arg0: memref<16x128xi4, 1>):
       %0 = "arith.constant"() <{value = 64 : i32}> : () -> i32
       %1 = "arith.constant"() <{value = 8 : i32}> : () -> i32
@@ -18,9 +18,9 @@
       %13 = "vector.bitcast"(%12) : (vector<8xi32>) -> vector<4xi64>
       %14 = "vector.extract"(%13) <{static_position = array<i64: 0>}> : (vector<4xi64>) -> i64
       %15 = "llvm.inttoptr"(%14) : (i64) -> !llvm.ptr<1>
-      "xevm.blockprefetch2d"(%15, %0, %3, %0, %3, %1) <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>, elem_size_in_bits = 16 : i32, tile_height = 8 : i32, tile_width = 16 : i32, v_blocks = 1 : i32}> : (!llvm.ptr<1>, i32, i32, i32, i32, i32) -> ()
+      "xevm.blockprefetch2d"(%15, %0, %3, %0, %3, %1) <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>, elem_size_in_bits = 16 : i32, tile_height = 8 : i32, tile_width = 16 : i32, v_blocks = 1 : i32}> : (!llvm.ptr<1>, i32, i32, i32, i32, i32) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "prefetch_matrix_a", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "prefetch_matrix_a"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 

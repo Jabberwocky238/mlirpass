@@ -204,25 +204,31 @@ module {
     return %0 : !spirv.struct<(i32, i32)>
   }
   func.func @const_fold_scalar_iaddcarry() -> (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>) {
-    %cst1_i32 = spirv.Constant 1 : i32
-    %cst-13_i32 = spirv.Constant -13 : i32
-    %cst-3_i32 = spirv.Constant -3 : i32
-    %cst0_i32 = spirv.Constant 0 : i32
-    %0 = spirv.Undef : !spirv.struct<(i32, i32)>
-    %1 = spirv.CompositeInsert %cst-3_i32, %0[0 : i32] : i32 into !spirv.struct<(i32, i32)>
-    %2 = spirv.CompositeInsert %cst0_i32, %1[1 : i32] : i32 into !spirv.struct<(i32, i32)>
-    %3 = spirv.Undef : !spirv.struct<(i32, i32)>
-    %4 = spirv.CompositeInsert %cst-13_i32, %3[0 : i32] : i32 into !spirv.struct<(i32, i32)>
-    %5 = spirv.CompositeInsert %cst1_i32, %4[1 : i32] : i32 into !spirv.struct<(i32, i32)>
-    return %2, %5 : !spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>
+    %cst = spirv.Constant [-3 : i32, 0 : i32] : !spirv.struct<(i32, i32)>
+    %cst_0 = spirv.Constant [-13 : i32, 1 : i32] : !spirv.struct<(i32, i32)>
+    return %cst, %cst_0 : !spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>
   }
   func.func @const_fold_vector_iaddcarry() -> !spirv.struct<(vector<3xi32>, vector<3xi32>)> {
-    %cst_vec_3xi32 = spirv.Constant dense<[-3, -11, 0]> : vector<3xi32>
-    %cst_vec_3xi32_0 = spirv.Constant dense<[0, 1, 1]> : vector<3xi32>
-    %0 = spirv.Undef : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %1 = spirv.CompositeInsert %cst_vec_3xi32, %0[0 : i32] : vector<3xi32> into !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %2 = spirv.CompositeInsert %cst_vec_3xi32_0, %1[1 : i32] : vector<3xi32> into !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    return %2 : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    %cst = spirv.Constant [dense<[-3, -11, 0]> : vector<3xi32>, dense<[0, 1, 1]> : vector<3xi32>] : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    return %cst : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+  }
+}
+
+// -----
+module {
+  func.func @isubborrow_x_0(%arg0: i32) -> !spirv.struct<(i32, i32)> {
+    %cst0_i32 = spirv.Constant 0 : i32
+    %0 = spirv.CompositeConstruct %arg0, %cst0_i32 : (i32, i32) -> !spirv.struct<(i32, i32)>
+    return %0 : !spirv.struct<(i32, i32)>
+  }
+  func.func @const_fold_scalar_isubborrow() -> (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>) {
+    %cst = spirv.Constant [-3 : i32, 1 : i32] : !spirv.struct<(i32, i32)>
+    %cst_0 = spirv.Constant [3 : i32, 0 : i32] : !spirv.struct<(i32, i32)>
+    return %cst, %cst_0 : !spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>
+  }
+  func.func @const_fold_vector_isubborrow() -> !spirv.struct<(vector<3xi32>, vector<3xi32>)> {
+    %cst = spirv.Constant [dense<[-3, 3, -2]> : vector<3xi32>, dense<[1, 0, 0]> : vector<3xi32>] : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    return %cst : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
   }
 }
 
@@ -257,25 +263,13 @@ module {
     return %0 : !spirv.struct<(i32, i32)>
   }
   func.func @const_fold_scalar_smulextended() -> (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>) {
-    %cst0_i32 = spirv.Constant 0 : i32
-    %cst40_i32 = spirv.Constant 40 : i32
-    %cst-40_i32 = spirv.Constant -40 : i32
-    %cst-1_i32 = spirv.Constant -1 : i32
-    %0 = spirv.Undef : !spirv.struct<(i32, i32)>
-    %1 = spirv.CompositeInsert %cst-40_i32, %0[0 : i32] : i32 into !spirv.struct<(i32, i32)>
-    %2 = spirv.CompositeInsert %cst-1_i32, %1[1 : i32] : i32 into !spirv.struct<(i32, i32)>
-    %3 = spirv.Undef : !spirv.struct<(i32, i32)>
-    %4 = spirv.CompositeInsert %cst40_i32, %3[0 : i32] : i32 into !spirv.struct<(i32, i32)>
-    %5 = spirv.CompositeInsert %cst0_i32, %4[1 : i32] : i32 into !spirv.struct<(i32, i32)>
-    return %2, %5 : !spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>
+    %cst = spirv.Constant [-40 : i32, -1 : i32] : !spirv.struct<(i32, i32)>
+    %cst_0 = spirv.Constant [40 : i32, 0 : i32] : !spirv.struct<(i32, i32)>
+    return %cst, %cst_0 : !spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>
   }
   func.func @const_fold_vector_smulextended() -> !spirv.struct<(vector<3xi32>, vector<3xi32>)> {
-    %cst_vec_3xi32 = spirv.Constant dense<[2147483643, 40, -1]> : vector<3xi32>
-    %cst_vec_3xi32_0 = spirv.Constant dense<[2, 0, -1]> : vector<3xi32>
-    %0 = spirv.Undef : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %1 = spirv.CompositeInsert %cst_vec_3xi32, %0[0 : i32] : vector<3xi32> into !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %2 = spirv.CompositeInsert %cst_vec_3xi32_0, %1[1 : i32] : vector<3xi32> into !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    return %2 : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    %cst = spirv.Constant [dense<[2147483643, 40, -1]> : vector<3xi32>, dense<[2, 0, -1]> : vector<3xi32>] : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    return %cst : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
   }
 }
 
@@ -292,25 +286,13 @@ module {
     return %0 : !spirv.struct<(i32, i32)>
   }
   func.func @const_fold_scalar_umulextended() -> (!spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>) {
-    %cst-13_i32 = spirv.Constant -13 : i32
-    %cst40_i32 = spirv.Constant 40 : i32
-    %cst-40_i32 = spirv.Constant -40 : i32
-    %cst4_i32 = spirv.Constant 4 : i32
-    %0 = spirv.Undef : !spirv.struct<(i32, i32)>
-    %1 = spirv.CompositeInsert %cst-40_i32, %0[0 : i32] : i32 into !spirv.struct<(i32, i32)>
-    %2 = spirv.CompositeInsert %cst4_i32, %1[1 : i32] : i32 into !spirv.struct<(i32, i32)>
-    %3 = spirv.Undef : !spirv.struct<(i32, i32)>
-    %4 = spirv.CompositeInsert %cst40_i32, %3[0 : i32] : i32 into !spirv.struct<(i32, i32)>
-    %5 = spirv.CompositeInsert %cst-13_i32, %4[1 : i32] : i32 into !spirv.struct<(i32, i32)>
-    return %2, %5 : !spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>
+    %cst = spirv.Constant [-40 : i32, 4 : i32] : !spirv.struct<(i32, i32)>
+    %cst_0 = spirv.Constant [40 : i32, -13 : i32] : !spirv.struct<(i32, i32)>
+    return %cst, %cst_0 : !spirv.struct<(i32, i32)>, !spirv.struct<(i32, i32)>
   }
   func.func @const_fold_vector_umulextended() -> !spirv.struct<(vector<3xi32>, vector<3xi32>)> {
-    %cst_vec_3xi32 = spirv.Constant dense<[2147483643, 40, -1]> : vector<3xi32>
-    %cst_vec_3xi32_0 = spirv.Constant dense<[2, -13, 0]> : vector<3xi32>
-    %0 = spirv.Undef : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %1 = spirv.CompositeInsert %cst_vec_3xi32, %0[0 : i32] : vector<3xi32> into !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    %2 = spirv.CompositeInsert %cst_vec_3xi32_0, %1[1 : i32] : vector<3xi32> into !spirv.struct<(vector<3xi32>, vector<3xi32>)>
-    return %2 : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    %cst = spirv.Constant [dense<[2147483643, 40, -1]> : vector<3xi32>, dense<[2, -13, 0]> : vector<3xi32>] : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    return %cst : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
   }
 }
 
@@ -509,6 +491,20 @@ module {
   func.func @umod_vector_fail_2_fold(%arg0: vector<4xi32>) -> (vector<4xi32>, vector<4xi32>) {
     %cst_vec_4xi32 = spirv.Constant dense<32> : vector<4xi32>
     %cst_vec_4xi32_0 = spirv.Constant dense<4> : vector<4xi32>
+    %0 = spirv.UMod %arg0, %cst_vec_4xi32_0 : vector<4xi32>
+    %1 = spirv.UMod %0, %cst_vec_4xi32 : vector<4xi32>
+    return %0, %1 : vector<4xi32>, vector<4xi32>
+  }
+  func.func @umod_fail_div_0_fold(%arg0: i32) -> (i32, i32) {
+    %cst0_i32 = spirv.Constant 0 : i32
+    %cst32_i32 = spirv.Constant 32 : i32
+    %0 = spirv.UMod %arg0, %cst32_i32 : i32
+    %1 = spirv.UMod %0, %cst0_i32 : i32
+    return %0, %1 : i32, i32
+  }
+  func.func @umod_vector_fail_div_0_fold(%arg0: vector<4xi32>) -> (vector<4xi32>, vector<4xi32>) {
+    %cst_vec_4xi32 = spirv.Constant dense<[4, 0, 4, 0]> : vector<4xi32>
+    %cst_vec_4xi32_0 = spirv.Constant dense<32> : vector<4xi32>
     %0 = spirv.UMod %arg0, %cst_vec_4xi32_0 : vector<4xi32>
     %1 = spirv.UMod %0, %cst_vec_4xi32 : vector<4xi32>
     return %0, %1 : vector<4xi32>, vector<4xi32>

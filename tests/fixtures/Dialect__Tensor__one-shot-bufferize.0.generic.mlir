@@ -202,7 +202,7 @@
     %5 = "memref.dim"(%2, %4) : (memref<?xf32, 3>, index) -> index
     %6 = "memref.subview"(%3, %5) <{operandSegmentSizes = array<i32: 1, 0, 1, 0>, static_offsets = array<i64: 2>, static_sizes = array<i64: -9223372036854775808>, static_strides = array<i64: 1>}> : (memref<15xf32, 3>, index) -> memref<?xf32, strided<[1], offset: 2>, 3>
     "memref.copy"(%2, %6) : (memref<?xf32, 3>, memref<?xf32, strided<[1], offset: 2>, 3>) -> ()
-    %7 = "memref.load"(%3, %arg3) <{nontemporal = false}> : (memref<15xf32, 3>, index) -> f32
+    %7 = "memref.load"(%3, %arg3) <{invariant = false, nontemporal = false}> : (memref<15xf32, 3>, index) -> f32
     "func.return"(%7) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -294,7 +294,7 @@
       %3 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<1xf32>
       "memref.copy"(%arg0, %3) : (memref<1xf32, strided<[?], offset: ?>>, memref<1xf32>) -> ()
       "memref.store"(%arg2, %3, %0) <{nontemporal = false}> : (f32, memref<1xf32>, index) -> ()
-      %4 = "memref.load"(%arg0, %0) <{nontemporal = false}> : (memref<1xf32, strided<[?], offset: ?>>, index) -> f32
+      %4 = "memref.load"(%arg0, %0) <{invariant = false, nontemporal = false}> : (memref<1xf32, strided<[?], offset: ?>>, index) -> f32
       "vector.print"(%4) <{punctuation = #vector.punctuation<newline>}> : (f32) -> ()
       %5 = "memref.subview"(%arg1, %arg3) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 1>, static_strides = array<i64: 1>}> : (memref<100xf32, strided<[?], offset: ?>>, index) -> memref<1xf32, strided<[?], offset: ?>>
       "memref.copy"(%3, %5) : (memref<1xf32>, memref<1xf32, strided<[?], offset: ?>>) -> ()
@@ -346,7 +346,7 @@
     %1 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2xf32, 3>
     "memref.copy"(%0, %1) : (memref<2xf32, strided<[?], offset: ?>, 3>, memref<2xf32, 3>) -> ()
     %2 = "memref.reshape"(%1, %arg1) : (memref<2xf32, 3>, memref<2xi32, strided<[?], offset: ?>>) -> memref<1x2xf32, 3>
-    %3 = "memref.load"(%2, %arg2, %arg2) <{nontemporal = false}> : (memref<1x2xf32, 3>, index, index) -> f32
+    %3 = "memref.load"(%2, %arg2, %arg2) <{invariant = false, nontemporal = false}> : (memref<1x2xf32, 3>, index, index) -> f32
     "func.return"(%3) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()

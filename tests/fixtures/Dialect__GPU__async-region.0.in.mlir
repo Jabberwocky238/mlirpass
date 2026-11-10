@@ -1,8 +1,8 @@
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "kernel"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "foo", sym_visibility = "private"}> ({
   }) : () -> ()

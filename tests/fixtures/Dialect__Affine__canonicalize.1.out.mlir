@@ -1179,6 +1179,14 @@ module {
 
 // -----
 module {
+  func.func @split_delinearize_empty_linearize_basis(%arg0: index) -> (index, index, index, index) {
+    %c0 = arith.constant 0 : index
+    return %c0, %c0, %arg0, %c0 : index, index, index, index
+  }
+}
+
+// -----
+module {
   func.func @linearize_unit_basis_disjoint(%arg0: index, %arg1: index, %arg2: index, %arg3: index) -> index {
     %0 = affine.linearize_index disjoint [%arg0, %arg2] by (3, %arg3) : index
     return %0 : index
@@ -1498,6 +1506,121 @@ module {
       affine.yield %arg0 : index
     }
     return %0 : index
+  }
+}
+
+// -----
+module {
+  func.func @linearize_dont_fold_poison_basis(%arg0: index) -> index {
+    return %arg0 : index
+  }
+}
+
+// -----
+module {
+  func.func @linearize_dont_fold_poison_index(%arg0: index) -> index {
+    %0 = ub.poison : index
+    %1 = affine.linearize_index [%0, %arg0] by (4) : index
+    return %1 : index
+  }
+}
+
+// -----
+module {
+  func.func @cancel_linearize_delinearize_vector(%arg0: vector<16xindex>, %arg1: vector<16xindex>) -> (vector<16xindex>, vector<16xindex>) {
+    return %arg0, %arg1 : vector<16xindex>, vector<16xindex>
+  }
+}
+
+// -----
+module {
+  func.func @drop_unit_extent_vector(%arg0: vector<16xindex>) -> (vector<16xindex>, vector<16xindex>, vector<16xindex>) {
+    %cst = arith.constant dense<0> : vector<16xindex>
+    %0:2 = affine.delinearize_index %arg0 into (4, 8) : vector<16xindex>, vector<16xindex>
+    return %0#0, %cst, %0#1 : vector<16xindex>, vector<16xindex>, vector<16xindex>
+  }
+}
+
+// -----
+module {
+  func.func @drop_unit_linearize_vector(%arg0: vector<8xindex>, %arg1: vector<8xindex>) -> vector<8xindex> {
+    return %arg0 : vector<8xindex>
+  }
+}
+
+// -----
+module {
+  func.func @fold_single_result_vector(%arg0: vector<4xindex>) -> vector<4xindex> {
+    return %arg0 : vector<4xindex>
+  }
+}
+
+// -----
+module {
+  func.func @fold_single_index_vector(%arg0: vector<4xindex>) -> vector<4xindex> {
+    return %arg0 : vector<4xindex>
+  }
+}
+
+// -----
+module {
+  func.func @cancel_delinearize_linearize_disjoint_partial_vector(%arg0: vector<4xindex>, %arg1: vector<4xindex>, %arg2: vector<4xindex>) -> (vector<4xindex>, vector<4xindex>, vector<4xindex>) {
+    return %arg0, %arg1, %arg2 : vector<4xindex>, vector<4xindex>, vector<4xindex>
+  }
+}
+
+// -----
+module {
+  func.func @cancel_linearize_delinearize_exact_vector(%arg0: vector<4xindex>) -> vector<4xindex> {
+    return %arg0 : vector<4xindex>
+  }
+}
+
+// -----
+module {
+  func.func @drop_all_unit_bases_vector(%arg0: vector<4xindex>) -> (vector<4xindex>, vector<4xindex>) {
+    %cst = arith.constant dense<0> : vector<4xindex>
+    return %cst, %cst : vector<4xindex>, vector<4xindex>
+  }
+}
+
+// -----
+module {
+  func.func @drop_all_unit_bases_no_outer_bound_vector(%arg0: vector<4xindex>) -> (vector<4xindex>, vector<4xindex>, vector<4xindex>) {
+    %cst = arith.constant dense<0> : vector<4xindex>
+    return %arg0, %cst, %cst : vector<4xindex>, vector<4xindex>, vector<4xindex>
+  }
+}
+
+// -----
+module {
+  func.func @linearize_all_zero_unit_basis_vector() -> vector<4xindex> {
+    %cst = arith.constant dense<0> : vector<4xindex>
+    return %cst : vector<4xindex>
+  }
+}
+
+// -----
+module {
+  func.func @linearize_one_element_basis_vector(%arg0: vector<4xindex>) -> vector<4xindex> {
+    return %arg0 : vector<4xindex>
+  }
+}
+
+// -----
+module {
+  func.func @linearize_drop_leading_zero_vector(%arg0: vector<4xindex>, %arg1: vector<4xindex>) -> vector<4xindex> {
+    return %arg1 : vector<4xindex>
+  }
+}
+
+// -----
+module {
+  func.func @split_delinearize_spanning_final_part_vector(%arg0: vector<4xindex>, %arg1: vector<4xindex>, %arg2: vector<4xindex>) -> (vector<4xindex>, vector<4xindex>, vector<4xindex>, vector<4xindex>) {
+    %0 = affine.linearize_index disjoint [%arg0, %arg1] by (3, 2) : vector<4xindex>
+    %1:2 = affine.delinearize_index %0 into (2, 3) : vector<4xindex>, vector<4xindex>
+    %2:2 = affine.delinearize_index %arg2 into (8, 4) : vector<4xindex>, vector<4xindex>
+    return %1#0, %1#1, %2#0, %2#1 : vector<4xindex>, vector<4xindex>, vector<4xindex>, vector<4xindex>
   }
 }
 

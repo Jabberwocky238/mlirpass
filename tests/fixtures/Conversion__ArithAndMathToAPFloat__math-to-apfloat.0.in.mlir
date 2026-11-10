@@ -14,3 +14,14 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "test_vector"}> ({
+    %0 = "arith.constant"() <{value = dense<2.000000e+00> : vector<4xf8E4M3FN>}> : () -> vector<4xf8E4M3FN>
+    %1 = "arith.constant"() <{value = dense<4.000000e+00> : vector<4xf8E4M3FN>}> : () -> vector<4xf8E4M3FN>
+    %2 = "arith.constant"() <{value = dense<8.000000e+00> : vector<4xf8E4M3FN>}> : () -> vector<4xf8E4M3FN>
+    %3 = "math.fma"(%0, %1, %2) <{fastmath = #arith.fastmath<none>}> : (vector<4xf8E4M3FN>, vector<4xf8E4M3FN>, vector<4xf8E4M3FN>) -> vector<4xf8E4M3FN>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+

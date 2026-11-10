@@ -565,12 +565,10 @@
   ^bb0(%arg0: i32):
     %0 = "emitc.cast"(%arg0) : (i32) -> !emitc.ptrdiff_t
     %1 = "emitc.cast"(%0) : (!emitc.ptrdiff_t) -> !emitc.size_t
-    %2 = "emitc.cast"(%1) : (!emitc.size_t) -> !emitc.ptrdiff_t
-    %3 = "emitc.cast"(%2) : (!emitc.ptrdiff_t) -> i32
-    %4 = "emitc.constant"() <{value = 1 : index}> : () -> !emitc.size_t
-    %5 = "emitc.bitwise_and"(%1, %4) : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
-    %6 = "emitc.cast"(%5) : (!emitc.size_t) -> i1
-    "func.return"(%3) : (i32) -> ()
+    %2 = "emitc.constant"() <{value = 1 : index}> : () -> !emitc.size_t
+    %3 = "emitc.bitwise_and"(%1, %2) : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
+    %4 = "emitc.cast"(%3) : (!emitc.size_t) -> i1
+    "func.return"(%arg0) : (i32) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -580,12 +578,10 @@
   ^bb0(%arg0: i32):
     %0 = "emitc.cast"(%arg0) : (i32) -> ui32
     %1 = "emitc.cast"(%0) : (ui32) -> !emitc.size_t
-    %2 = "emitc.cast"(%1) : (!emitc.size_t) -> ui32
-    %3 = "emitc.cast"(%2) : (ui32) -> i32
-    %4 = "emitc.constant"() <{value = 1 : index}> : () -> !emitc.size_t
-    %5 = "emitc.bitwise_and"(%1, %4) : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
-    %6 = "emitc.cast"(%5) : (!emitc.size_t) -> i1
-    "func.return"(%3) : (i32) -> ()
+    %2 = "emitc.constant"() <{value = 1 : index}> : () -> !emitc.size_t
+    %3 = "emitc.bitwise_and"(%1, %2) : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
+    %4 = "emitc.cast"(%3) : (!emitc.size_t) -> i1
+    "func.return"(%arg0) : (i32) -> ()
   }) : () -> ()
 }) : () -> ()
 

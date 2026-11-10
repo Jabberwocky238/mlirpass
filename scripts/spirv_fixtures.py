@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Regenerates the SPIR-V serialization fixtures from llvm-project's mlir/test/Target/SPIRV and a
-vanilla mlir-opt / mlir-translate 22.1.8.
+vanilla mlir-opt / mlir-translate 23.1.5.
 
 For every chunk (`// -----`) of every test file that serializes (`--serialize-spirv` or
 `--test-spirv-roundtrip` on a RUN line) it writes, under tests/fixtures/:
@@ -19,7 +19,7 @@ from pathlib import Path
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--llvm", required=True, help="llvm-project checkout")
-    ap.add_argument("--bin", required=True, help="directory with mlir-opt and mlir-translate 22.1.8")
+    ap.add_argument("--bin", required=True, help="directory with mlir-opt and mlir-translate 23.1.5")
     ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "tests" / "fixtures"))
     a = ap.parse_args()
     root = Path(a.llvm) / "mlir" / "test" / "Target" / "SPIRV"

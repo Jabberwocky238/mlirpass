@@ -768,6 +768,21 @@
 }) : () -> ()
 
 // -----
+#map = affine_map<(d0, d1, d2, d3) -> (d3)>
+#map1 = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<1x49x42x27xf8E5M2>, tensor<28x3x3x27xf8E5M2>, tensor<28xf32>) -> (), sym_name = "conv2d_f8_f32_acc"}> ({
+  ^bb0(%arg0: tensor<1x49x42x27xf8E5M2>, %arg1: tensor<28x3x3x27xf8E5M2>, %arg2: tensor<28xf32>):
+    %0 = "tensor.empty"() : () -> tensor<1x45x40x28xf32>
+    %1 = "linalg.generic"(%arg2, %0) <{indexing_maps = [#map, #map1], iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>], operandSegmentSizes = array<i32: 1, 1>}> ({
+    ^bb0(%arg3: f32, %arg4: f32):
+      "linalg.yield"(%arg3) : (f32) -> ()
+    }) : (tensor<28xf32>, tensor<1x45x40x28xf32>) -> tensor<1x45x40x28xf32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
 #map = affine_map<(d0, d1, d2, d3, d4, d5, d6) -> (d0, d1 + d5, d2 + d6, d3)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6) -> (d5, d6, d3, d4)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6) -> (d0, d1, d2, d3, d4)>
@@ -1042,6 +1057,33 @@
 }) : () -> ()
 
 // -----
+#map = affine_map<(d0, d1, d2, d3, d4, d5, d6) -> (d0, d1 + d5, d2 + d6, d3)>
+#map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6) -> (d5, d6, d3, d4)>
+#map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6) -> (d0, d1, d2, d3, d4)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<1x7x5x3xf8E5M2>, tensor<3x1x3x11xf8E5M2>, tensor<33xf32>) -> (), sym_name = "depthwise_conv2d_f8_f32_acc"}> ({
+  ^bb0(%arg0: tensor<1x7x5x3xf8E5M2>, %arg1: tensor<3x1x3x11xf8E5M2>, %arg2: tensor<33xf32>):
+    %0 = "tensor.empty"() : () -> tensor<1x5x5x3x11xf32>
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %2 = "linalg.fill"(%1, %0) <{operandSegmentSizes = array<i32: 1, 1>}> ({
+    ^bb0(%arg6: f32, %arg7: f32):
+      "linalg.yield"(%arg6) : (f32) -> ()
+    }) : (f32, tensor<1x5x5x3x11xf32>) -> tensor<1x5x5x3x11xf32>
+    %3 = "tensor.empty"() : () -> tensor<1x5x5x33xf32>
+    %4 = "linalg.depthwise_conv_2d_nhwc_hwcm"(%arg0, %arg1, %2) <{dilations = dense<1> : tensor<2xi64>, operandSegmentSizes = array<i32: 2, 1>, strides = dense<1> : tensor<2xi64>}> ({
+    ^bb0(%arg3: f8E5M2, %arg4: f8E5M2, %arg5: f32):
+      %6 = "arith.extf"(%arg3) : (f8E5M2) -> f32
+      %7 = "arith.extf"(%arg4) : (f8E5M2) -> f32
+      %8 = "arith.mulf"(%6, %7) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      %9 = "arith.addf"(%arg5, %8) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
+      "linalg.yield"(%9) : (f32) -> ()
+    }) {linalg.memoized_indexing_maps = [#map, #map1, #map2]} : (tensor<1x7x5x3xf8E5M2>, tensor<3x1x3x11xf8E5M2>, tensor<1x5x5x3x11xf32>) -> tensor<1x5x5x3x11xf32>
+    %5 = "tensor.collapse_shape"(%4) <{reassociation = [[0], [1], [2], [3, 4]]}> : (tensor<1x5x5x3x11xf32>) -> tensor<1x5x5x33xf32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
 #map = affine_map<(d0, d1, d2, d3, d4) -> (d4)>
 #map1 = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
 "builtin.module"() ({
@@ -1131,6 +1173,26 @@
       %8 = "arith.addf"(%arg5, %7) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
       "linalg.yield"(%8) : (f32) -> ()
     }) {linalg.memoized_indexing_maps = [#map2, #map3, #map4]} : (tensor<1x49x48x47x27xf16>, tensor<3x4x5x27x43xf16>, tensor<1x47x45x43x43xf32>) -> tensor<1x47x45x43x43xf32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2, d3, d4) -> (d4)>
+#map1 = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<1x49x48x47x27xf8E5M2>, tensor<43x3x4x5x27xf8E5M2>, tensor<43xf32>) -> (), sym_name = "conv3d_f8_f32_acc"}> ({
+  ^bb0(%arg0: tensor<1x49x48x47x27xf8E5M2>, %arg1: tensor<43x3x4x5x27xf8E5M2>, %arg2: tensor<43xf32>):
+    %0 = "tensor.empty"() : () -> tensor<3x4x5x27x43xf8E5M2>
+    %1 = "linalg.transpose"(%arg1, %0) <{permutation = array<i64: 1, 2, 3, 4, 0>}> ({
+    ^bb0(%arg5: f8E5M2, %arg6: f8E5M2):
+      "linalg.yield"(%arg5) : (f8E5M2) -> ()
+    }) : (tensor<43x3x4x5x27xf8E5M2>, tensor<3x4x5x27x43xf8E5M2>) -> tensor<3x4x5x27x43xf8E5M2>
+    %2 = "tensor.empty"() : () -> tensor<1x47x45x43x43xf32>
+    %3 = "linalg.generic"(%arg2, %2) <{indexing_maps = [#map, #map1], iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>], operandSegmentSizes = array<i32: 1, 1>}> ({
+    ^bb0(%arg3: f32, %arg4: f32):
+      "linalg.yield"(%arg3) : (f32) -> ()
+    }) : (tensor<43xf32>, tensor<1x47x45x43x43xf32>) -> tensor<1x47x45x43x43xf32>
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

@@ -66,7 +66,7 @@ module {
   func.func @await_and_resume_token() {
     %0 = llvm.mlir.constant(0 : i32) : i32
     %1 = llvm.mlir.zero : !llvm.ptr
-    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %3 = llvm.intr.coro.size : i64
     %4 = llvm.intr.coro.align : i64
     %5 = llvm.add %3, %4 : i64
@@ -76,7 +76,7 @@ module {
     %9 = llvm.sub %8, %4 : i64
     %10 = llvm.and %7, %9 : i64
     %11 = llvm.call @aligned_alloc(%4, %10) : (i64, i64) -> !llvm.ptr
-    %12 = llvm.intr.coro.begin %2, %11 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %12 = llvm.intr.coro.begin %2, %11 : (token, !llvm.ptr) -> !llvm.ptr
     %13 = call @mlirAsyncRuntimeCreateToken() : () -> !llvm.ptr
     %14 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeAwaitTokenAndExecute(%13, %12, %14) : (!llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
@@ -85,7 +85,7 @@ module {
   func.func @await_and_resume_value() {
     %0 = llvm.mlir.constant(0 : i32) : i32
     %1 = llvm.mlir.zero : !llvm.ptr
-    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %3 = llvm.intr.coro.size : i64
     %4 = llvm.intr.coro.align : i64
     %5 = llvm.add %3, %4 : i64
@@ -95,7 +95,7 @@ module {
     %9 = llvm.sub %8, %4 : i64
     %10 = llvm.and %7, %9 : i64
     %11 = llvm.call @aligned_alloc(%4, %10) : (i64, i64) -> !llvm.ptr
-    %12 = llvm.intr.coro.begin %2, %11 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %12 = llvm.intr.coro.begin %2, %11 : (token, !llvm.ptr) -> !llvm.ptr
     %13 = llvm.mlir.zero : !llvm.ptr
     %14 = llvm.getelementptr %13[1] : (!llvm.ptr) -> !llvm.ptr, f32
     %15 = llvm.ptrtoint %14 : !llvm.ptr to i64
@@ -109,7 +109,7 @@ module {
     %0 = builtin.unrealized_conversion_cast %c1 : index to i64
     %1 = llvm.mlir.constant(0 : i32) : i32
     %2 = llvm.mlir.zero : !llvm.ptr
-    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %3 = llvm.intr.coro.id %1, %2, %2, %2 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %4 = llvm.intr.coro.size : i64
     %5 = llvm.intr.coro.align : i64
     %6 = llvm.add %4, %5 : i64
@@ -119,7 +119,7 @@ module {
     %10 = llvm.sub %9, %5 : i64
     %11 = llvm.and %8, %10 : i64
     %12 = llvm.call @aligned_alloc(%5, %11) : (i64, i64) -> !llvm.ptr
-    %13 = llvm.intr.coro.begin %3, %12 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %13 = llvm.intr.coro.begin %3, %12 : (token, !llvm.ptr) -> !llvm.ptr
     %14 = call @mlirAsyncRuntimeCreateGroup(%0) : (i64) -> !llvm.ptr
     %15 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeAwaitAllInGroupAndExecute(%14, %13, %15) : (!llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
@@ -128,7 +128,7 @@ module {
   func.func @resume() {
     %0 = llvm.mlir.constant(0 : i32) : i32
     %1 = llvm.mlir.zero : !llvm.ptr
-    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %3 = llvm.intr.coro.size : i64
     %4 = llvm.intr.coro.align : i64
     %5 = llvm.add %3, %4 : i64
@@ -138,7 +138,7 @@ module {
     %9 = llvm.sub %8, %4 : i64
     %10 = llvm.and %7, %9 : i64
     %11 = llvm.call @aligned_alloc(%4, %10) : (i64, i64) -> !llvm.ptr
-    %12 = llvm.intr.coro.begin %2, %11 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %12 = llvm.intr.coro.begin %2, %11 : (token, !llvm.ptr) -> !llvm.ptr
     %13 = llvm.mlir.addressof @__resume : !llvm.ptr
     call @mlirAsyncRuntimeExecute(%12, %13) : (!llvm.ptr, !llvm.ptr) -> ()
     return

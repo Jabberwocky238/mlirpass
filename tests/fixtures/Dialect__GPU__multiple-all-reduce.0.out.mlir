@@ -109,7 +109,7 @@ module attributes {gpu.container_module} {
       %93 = llvm.sub %92, %88 : i32
       %94 = llvm.lshr %91, %93 : i32
       %95 = llvm.sub %88, %90 : i32
-      %96 = nvvm.shfl.sync  bfly %94, %60, %47, %95 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %96 = nvvm.shfl.sync bfly %94, %60, %47, %95 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %97 = llvm.extractvalue %96[0] : !llvm.struct<(f32, i1)> 
       %98 = llvm.extractvalue %96[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %98, ^bb2, ^bb3
@@ -125,7 +125,7 @@ module attributes {gpu.container_module} {
       %104 = llvm.sub %103, %88 : i32
       %105 = llvm.lshr %102, %104 : i32
       %106 = llvm.sub %88, %101 : i32
-      %107 = nvvm.shfl.sync  bfly %105, %100, %46, %106 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %107 = nvvm.shfl.sync bfly %105, %100, %46, %106 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %108 = llvm.extractvalue %107[0] : !llvm.struct<(f32, i1)> 
       %109 = llvm.extractvalue %107[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %109, ^bb5, ^bb6
@@ -141,7 +141,7 @@ module attributes {gpu.container_module} {
       %115 = llvm.sub %114, %88 : i32
       %116 = llvm.lshr %113, %115 : i32
       %117 = llvm.sub %88, %112 : i32
-      %118 = nvvm.shfl.sync  bfly %116, %111, %45, %117 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %118 = nvvm.shfl.sync bfly %116, %111, %45, %117 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %119 = llvm.extractvalue %118[0] : !llvm.struct<(f32, i1)> 
       %120 = llvm.extractvalue %118[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %120, ^bb8, ^bb9
@@ -157,7 +157,7 @@ module attributes {gpu.container_module} {
       %126 = llvm.sub %125, %88 : i32
       %127 = llvm.lshr %124, %126 : i32
       %128 = llvm.sub %88, %123 : i32
-      %129 = nvvm.shfl.sync  bfly %127, %122, %44, %128 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %129 = nvvm.shfl.sync bfly %127, %122, %44, %128 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %130 = llvm.extractvalue %129[0] : !llvm.struct<(f32, i1)> 
       %131 = llvm.extractvalue %129[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %131, ^bb11, ^bb12
@@ -173,7 +173,7 @@ module attributes {gpu.container_module} {
       %137 = llvm.sub %136, %88 : i32
       %138 = llvm.lshr %135, %137 : i32
       %139 = llvm.sub %88, %134 : i32
-      %140 = nvvm.shfl.sync  bfly %138, %133, %43, %139 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %140 = nvvm.shfl.sync bfly %138, %133, %43, %139 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %141 = llvm.extractvalue %140[0] : !llvm.struct<(f32, i1)> 
       %142 = llvm.extractvalue %140[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %142, ^bb14, ^bb15
@@ -191,7 +191,7 @@ module attributes {gpu.container_module} {
       %148 = llvm.sub %147, %48 : i32
       %149 = llvm.lshr %146, %148 : i32
       %150 = llvm.sub %48, %145 : i32
-      %151 = nvvm.shfl.sync  bfly %149, %60, %47, %150 : f32 -> f32
+      %151 = nvvm.shfl.sync bfly %149, %60, %47, %150 : f32 -> f32
       %152 = llvm.fadd %60, %151 : f32
       %153 = llvm.mlir.constant(1 : i32) : i32
       %154 = llvm.mlir.constant(-1 : i32) : i32
@@ -199,7 +199,7 @@ module attributes {gpu.container_module} {
       %156 = llvm.sub %155, %48 : i32
       %157 = llvm.lshr %154, %156 : i32
       %158 = llvm.sub %48, %153 : i32
-      %159 = nvvm.shfl.sync  bfly %157, %152, %46, %158 : f32 -> f32
+      %159 = nvvm.shfl.sync bfly %157, %152, %46, %158 : f32 -> f32
       %160 = llvm.fadd %152, %159 : f32
       %161 = llvm.mlir.constant(1 : i32) : i32
       %162 = llvm.mlir.constant(-1 : i32) : i32
@@ -207,7 +207,7 @@ module attributes {gpu.container_module} {
       %164 = llvm.sub %163, %48 : i32
       %165 = llvm.lshr %162, %164 : i32
       %166 = llvm.sub %48, %161 : i32
-      %167 = nvvm.shfl.sync  bfly %165, %160, %45, %166 : f32 -> f32
+      %167 = nvvm.shfl.sync bfly %165, %160, %45, %166 : f32 -> f32
       %168 = llvm.fadd %160, %167 : f32
       %169 = llvm.mlir.constant(1 : i32) : i32
       %170 = llvm.mlir.constant(-1 : i32) : i32
@@ -215,7 +215,7 @@ module attributes {gpu.container_module} {
       %172 = llvm.sub %171, %48 : i32
       %173 = llvm.lshr %170, %172 : i32
       %174 = llvm.sub %48, %169 : i32
-      %175 = nvvm.shfl.sync  bfly %173, %168, %44, %174 : f32 -> f32
+      %175 = nvvm.shfl.sync bfly %173, %168, %44, %174 : f32 -> f32
       %176 = llvm.fadd %168, %175 : f32
       %177 = llvm.mlir.constant(1 : i32) : i32
       %178 = llvm.mlir.constant(-1 : i32) : i32
@@ -223,7 +223,7 @@ module attributes {gpu.container_module} {
       %180 = llvm.sub %179, %48 : i32
       %181 = llvm.lshr %178, %180 : i32
       %182 = llvm.sub %48, %177 : i32
-      %183 = nvvm.shfl.sync  bfly %181, %176, %43, %182 : f32 -> f32
+      %183 = nvvm.shfl.sync bfly %181, %176, %43, %182 : f32 -> f32
       %184 = llvm.fadd %176, %183 : f32
       llvm.br ^bb18(%184 : f32)
     ^bb18(%185: f32):  // 2 preds: ^bb16, ^bb17
@@ -238,7 +238,7 @@ module attributes {gpu.container_module} {
     ^bb20:  // pred: ^bb18
       llvm.br ^bb21
     ^bb21:  // 2 preds: ^bb19, ^bb20
-      nvvm.barrier0
+      nvvm.barrier
       %190 = llvm.add %84, %50 : i32
       %191 = llvm.sdiv %190, %48 : i32
       %192 = llvm.icmp "slt" %83, %191 : i32
@@ -257,7 +257,7 @@ module attributes {gpu.container_module} {
       %201 = llvm.sub %200, %191 : i32
       %202 = llvm.lshr %199, %201 : i32
       %203 = llvm.sub %191, %198 : i32
-      %204 = nvvm.shfl.sync  bfly %202, %196, %47, %203 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %204 = nvvm.shfl.sync bfly %202, %196, %47, %203 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %205 = llvm.extractvalue %204[0] : !llvm.struct<(f32, i1)> 
       %206 = llvm.extractvalue %204[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %206, ^bb24, ^bb25
@@ -273,7 +273,7 @@ module attributes {gpu.container_module} {
       %212 = llvm.sub %211, %191 : i32
       %213 = llvm.lshr %210, %212 : i32
       %214 = llvm.sub %191, %209 : i32
-      %215 = nvvm.shfl.sync  bfly %213, %208, %46, %214 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %215 = nvvm.shfl.sync bfly %213, %208, %46, %214 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %216 = llvm.extractvalue %215[0] : !llvm.struct<(f32, i1)> 
       %217 = llvm.extractvalue %215[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %217, ^bb27, ^bb28
@@ -289,7 +289,7 @@ module attributes {gpu.container_module} {
       %223 = llvm.sub %222, %191 : i32
       %224 = llvm.lshr %221, %223 : i32
       %225 = llvm.sub %191, %220 : i32
-      %226 = nvvm.shfl.sync  bfly %224, %219, %45, %225 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %226 = nvvm.shfl.sync bfly %224, %219, %45, %225 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %227 = llvm.extractvalue %226[0] : !llvm.struct<(f32, i1)> 
       %228 = llvm.extractvalue %226[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %228, ^bb30, ^bb31
@@ -305,7 +305,7 @@ module attributes {gpu.container_module} {
       %234 = llvm.sub %233, %191 : i32
       %235 = llvm.lshr %232, %234 : i32
       %236 = llvm.sub %191, %231 : i32
-      %237 = nvvm.shfl.sync  bfly %235, %230, %44, %236 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %237 = nvvm.shfl.sync bfly %235, %230, %44, %236 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %238 = llvm.extractvalue %237[0] : !llvm.struct<(f32, i1)> 
       %239 = llvm.extractvalue %237[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %239, ^bb33, ^bb34
@@ -321,7 +321,7 @@ module attributes {gpu.container_module} {
       %245 = llvm.sub %244, %191 : i32
       %246 = llvm.lshr %243, %245 : i32
       %247 = llvm.sub %191, %242 : i32
-      %248 = nvvm.shfl.sync  bfly %246, %241, %43, %247 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %248 = nvvm.shfl.sync bfly %246, %241, %43, %247 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %249 = llvm.extractvalue %248[0] : !llvm.struct<(f32, i1)> 
       %250 = llvm.extractvalue %248[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %250, ^bb36, ^bb37
@@ -339,7 +339,7 @@ module attributes {gpu.container_module} {
       %256 = llvm.sub %255, %48 : i32
       %257 = llvm.lshr %254, %256 : i32
       %258 = llvm.sub %48, %253 : i32
-      %259 = nvvm.shfl.sync  bfly %257, %196, %47, %258 : f32 -> f32
+      %259 = nvvm.shfl.sync bfly %257, %196, %47, %258 : f32 -> f32
       %260 = llvm.fadd %196, %259 : f32
       %261 = llvm.mlir.constant(1 : i32) : i32
       %262 = llvm.mlir.constant(-1 : i32) : i32
@@ -347,7 +347,7 @@ module attributes {gpu.container_module} {
       %264 = llvm.sub %263, %48 : i32
       %265 = llvm.lshr %262, %264 : i32
       %266 = llvm.sub %48, %261 : i32
-      %267 = nvvm.shfl.sync  bfly %265, %260, %46, %266 : f32 -> f32
+      %267 = nvvm.shfl.sync bfly %265, %260, %46, %266 : f32 -> f32
       %268 = llvm.fadd %260, %267 : f32
       %269 = llvm.mlir.constant(1 : i32) : i32
       %270 = llvm.mlir.constant(-1 : i32) : i32
@@ -355,7 +355,7 @@ module attributes {gpu.container_module} {
       %272 = llvm.sub %271, %48 : i32
       %273 = llvm.lshr %270, %272 : i32
       %274 = llvm.sub %48, %269 : i32
-      %275 = nvvm.shfl.sync  bfly %273, %268, %45, %274 : f32 -> f32
+      %275 = nvvm.shfl.sync bfly %273, %268, %45, %274 : f32 -> f32
       %276 = llvm.fadd %268, %275 : f32
       %277 = llvm.mlir.constant(1 : i32) : i32
       %278 = llvm.mlir.constant(-1 : i32) : i32
@@ -363,7 +363,7 @@ module attributes {gpu.container_module} {
       %280 = llvm.sub %279, %48 : i32
       %281 = llvm.lshr %278, %280 : i32
       %282 = llvm.sub %48, %277 : i32
-      %283 = nvvm.shfl.sync  bfly %281, %276, %44, %282 : f32 -> f32
+      %283 = nvvm.shfl.sync bfly %281, %276, %44, %282 : f32 -> f32
       %284 = llvm.fadd %276, %283 : f32
       %285 = llvm.mlir.constant(1 : i32) : i32
       %286 = llvm.mlir.constant(-1 : i32) : i32
@@ -371,7 +371,7 @@ module attributes {gpu.container_module} {
       %288 = llvm.sub %287, %48 : i32
       %289 = llvm.lshr %286, %288 : i32
       %290 = llvm.sub %48, %285 : i32
-      %291 = nvvm.shfl.sync  bfly %289, %284, %43, %290 : f32 -> f32
+      %291 = nvvm.shfl.sync bfly %289, %284, %43, %290 : f32 -> f32
       %292 = llvm.fadd %284, %291 : f32
       llvm.br ^bb40(%292 : f32)
     ^bb40(%293: f32):  // 2 preds: ^bb38, ^bb39
@@ -382,7 +382,7 @@ module attributes {gpu.container_module} {
     ^bb41:  // pred: ^bb21
       llvm.br ^bb42
     ^bb42:  // 2 preds: ^bb40, ^bb41
-      nvvm.barrier0
+      nvvm.barrier
       %296 = llvm.extractvalue %30[1] : !llvm.struct<(ptr<3>, ptr<3>, i64, array<1 x i64>, array<1 x i64>)> 
       %297 = llvm.getelementptr inbounds|nuw %296[%42] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, f32
       %298 = llvm.load %297 : !llvm.ptr<3> -> f32
@@ -426,7 +426,7 @@ module attributes {gpu.container_module} {
       %333 = llvm.sub %332, %328 : i32
       %334 = llvm.lshr %331, %333 : i32
       %335 = llvm.sub %328, %330 : i32
-      %336 = nvvm.shfl.sync  bfly %334, %60, %47, %335 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %336 = nvvm.shfl.sync bfly %334, %60, %47, %335 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %337 = llvm.extractvalue %336[0] : !llvm.struct<(f32, i1)> 
       %338 = llvm.extractvalue %336[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %338, ^bb44, ^bb45
@@ -442,7 +442,7 @@ module attributes {gpu.container_module} {
       %344 = llvm.sub %343, %328 : i32
       %345 = llvm.lshr %342, %344 : i32
       %346 = llvm.sub %328, %341 : i32
-      %347 = nvvm.shfl.sync  bfly %345, %340, %46, %346 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %347 = nvvm.shfl.sync bfly %345, %340, %46, %346 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %348 = llvm.extractvalue %347[0] : !llvm.struct<(f32, i1)> 
       %349 = llvm.extractvalue %347[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %349, ^bb47, ^bb48
@@ -458,7 +458,7 @@ module attributes {gpu.container_module} {
       %355 = llvm.sub %354, %328 : i32
       %356 = llvm.lshr %353, %355 : i32
       %357 = llvm.sub %328, %352 : i32
-      %358 = nvvm.shfl.sync  bfly %356, %351, %45, %357 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %358 = nvvm.shfl.sync bfly %356, %351, %45, %357 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %359 = llvm.extractvalue %358[0] : !llvm.struct<(f32, i1)> 
       %360 = llvm.extractvalue %358[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %360, ^bb50, ^bb51
@@ -474,7 +474,7 @@ module attributes {gpu.container_module} {
       %366 = llvm.sub %365, %328 : i32
       %367 = llvm.lshr %364, %366 : i32
       %368 = llvm.sub %328, %363 : i32
-      %369 = nvvm.shfl.sync  bfly %367, %362, %44, %368 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %369 = nvvm.shfl.sync bfly %367, %362, %44, %368 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %370 = llvm.extractvalue %369[0] : !llvm.struct<(f32, i1)> 
       %371 = llvm.extractvalue %369[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %371, ^bb53, ^bb54
@@ -490,7 +490,7 @@ module attributes {gpu.container_module} {
       %377 = llvm.sub %376, %328 : i32
       %378 = llvm.lshr %375, %377 : i32
       %379 = llvm.sub %328, %374 : i32
-      %380 = nvvm.shfl.sync  bfly %378, %373, %43, %379 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %380 = nvvm.shfl.sync bfly %378, %373, %43, %379 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %381 = llvm.extractvalue %380[0] : !llvm.struct<(f32, i1)> 
       %382 = llvm.extractvalue %380[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %382, ^bb56, ^bb57
@@ -508,7 +508,7 @@ module attributes {gpu.container_module} {
       %388 = llvm.sub %387, %48 : i32
       %389 = llvm.lshr %386, %388 : i32
       %390 = llvm.sub %48, %385 : i32
-      %391 = nvvm.shfl.sync  bfly %389, %60, %47, %390 : f32 -> f32
+      %391 = nvvm.shfl.sync bfly %389, %60, %47, %390 : f32 -> f32
       %392 = llvm.fmul %60, %391 : f32
       %393 = llvm.mlir.constant(1 : i32) : i32
       %394 = llvm.mlir.constant(-1 : i32) : i32
@@ -516,7 +516,7 @@ module attributes {gpu.container_module} {
       %396 = llvm.sub %395, %48 : i32
       %397 = llvm.lshr %394, %396 : i32
       %398 = llvm.sub %48, %393 : i32
-      %399 = nvvm.shfl.sync  bfly %397, %392, %46, %398 : f32 -> f32
+      %399 = nvvm.shfl.sync bfly %397, %392, %46, %398 : f32 -> f32
       %400 = llvm.fmul %392, %399 : f32
       %401 = llvm.mlir.constant(1 : i32) : i32
       %402 = llvm.mlir.constant(-1 : i32) : i32
@@ -524,7 +524,7 @@ module attributes {gpu.container_module} {
       %404 = llvm.sub %403, %48 : i32
       %405 = llvm.lshr %402, %404 : i32
       %406 = llvm.sub %48, %401 : i32
-      %407 = nvvm.shfl.sync  bfly %405, %400, %45, %406 : f32 -> f32
+      %407 = nvvm.shfl.sync bfly %405, %400, %45, %406 : f32 -> f32
       %408 = llvm.fmul %400, %407 : f32
       %409 = llvm.mlir.constant(1 : i32) : i32
       %410 = llvm.mlir.constant(-1 : i32) : i32
@@ -532,7 +532,7 @@ module attributes {gpu.container_module} {
       %412 = llvm.sub %411, %48 : i32
       %413 = llvm.lshr %410, %412 : i32
       %414 = llvm.sub %48, %409 : i32
-      %415 = nvvm.shfl.sync  bfly %413, %408, %44, %414 : f32 -> f32
+      %415 = nvvm.shfl.sync bfly %413, %408, %44, %414 : f32 -> f32
       %416 = llvm.fmul %408, %415 : f32
       %417 = llvm.mlir.constant(1 : i32) : i32
       %418 = llvm.mlir.constant(-1 : i32) : i32
@@ -540,7 +540,7 @@ module attributes {gpu.container_module} {
       %420 = llvm.sub %419, %48 : i32
       %421 = llvm.lshr %418, %420 : i32
       %422 = llvm.sub %48, %417 : i32
-      %423 = nvvm.shfl.sync  bfly %421, %416, %43, %422 : f32 -> f32
+      %423 = nvvm.shfl.sync bfly %421, %416, %43, %422 : f32 -> f32
       %424 = llvm.fmul %416, %423 : f32
       llvm.br ^bb60(%424 : f32)
     ^bb60(%425: f32):  // 2 preds: ^bb58, ^bb59
@@ -555,7 +555,7 @@ module attributes {gpu.container_module} {
     ^bb62:  // pred: ^bb60
       llvm.br ^bb63
     ^bb63:  // 2 preds: ^bb61, ^bb62
-      nvvm.barrier0
+      nvvm.barrier
       %430 = llvm.add %324, %50 : i32
       %431 = llvm.sdiv %430, %48 : i32
       %432 = llvm.icmp "slt" %323, %431 : i32
@@ -574,7 +574,7 @@ module attributes {gpu.container_module} {
       %441 = llvm.sub %440, %431 : i32
       %442 = llvm.lshr %439, %441 : i32
       %443 = llvm.sub %431, %438 : i32
-      %444 = nvvm.shfl.sync  bfly %442, %436, %47, %443 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %444 = nvvm.shfl.sync bfly %442, %436, %47, %443 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %445 = llvm.extractvalue %444[0] : !llvm.struct<(f32, i1)> 
       %446 = llvm.extractvalue %444[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %446, ^bb66, ^bb67
@@ -590,7 +590,7 @@ module attributes {gpu.container_module} {
       %452 = llvm.sub %451, %431 : i32
       %453 = llvm.lshr %450, %452 : i32
       %454 = llvm.sub %431, %449 : i32
-      %455 = nvvm.shfl.sync  bfly %453, %448, %46, %454 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %455 = nvvm.shfl.sync bfly %453, %448, %46, %454 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %456 = llvm.extractvalue %455[0] : !llvm.struct<(f32, i1)> 
       %457 = llvm.extractvalue %455[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %457, ^bb69, ^bb70
@@ -606,7 +606,7 @@ module attributes {gpu.container_module} {
       %463 = llvm.sub %462, %431 : i32
       %464 = llvm.lshr %461, %463 : i32
       %465 = llvm.sub %431, %460 : i32
-      %466 = nvvm.shfl.sync  bfly %464, %459, %45, %465 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %466 = nvvm.shfl.sync bfly %464, %459, %45, %465 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %467 = llvm.extractvalue %466[0] : !llvm.struct<(f32, i1)> 
       %468 = llvm.extractvalue %466[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %468, ^bb72, ^bb73
@@ -622,7 +622,7 @@ module attributes {gpu.container_module} {
       %474 = llvm.sub %473, %431 : i32
       %475 = llvm.lshr %472, %474 : i32
       %476 = llvm.sub %431, %471 : i32
-      %477 = nvvm.shfl.sync  bfly %475, %470, %44, %476 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %477 = nvvm.shfl.sync bfly %475, %470, %44, %476 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %478 = llvm.extractvalue %477[0] : !llvm.struct<(f32, i1)> 
       %479 = llvm.extractvalue %477[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %479, ^bb75, ^bb76
@@ -638,7 +638,7 @@ module attributes {gpu.container_module} {
       %485 = llvm.sub %484, %431 : i32
       %486 = llvm.lshr %483, %485 : i32
       %487 = llvm.sub %431, %482 : i32
-      %488 = nvvm.shfl.sync  bfly %486, %481, %43, %487 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
+      %488 = nvvm.shfl.sync bfly %486, %481, %43, %487 {return_value_and_is_valid} : f32 -> !llvm.struct<(f32, i1)>
       %489 = llvm.extractvalue %488[0] : !llvm.struct<(f32, i1)> 
       %490 = llvm.extractvalue %488[1] : !llvm.struct<(f32, i1)> 
       llvm.cond_br %490, ^bb78, ^bb79
@@ -656,7 +656,7 @@ module attributes {gpu.container_module} {
       %496 = llvm.sub %495, %48 : i32
       %497 = llvm.lshr %494, %496 : i32
       %498 = llvm.sub %48, %493 : i32
-      %499 = nvvm.shfl.sync  bfly %497, %436, %47, %498 : f32 -> f32
+      %499 = nvvm.shfl.sync bfly %497, %436, %47, %498 : f32 -> f32
       %500 = llvm.fmul %436, %499 : f32
       %501 = llvm.mlir.constant(1 : i32) : i32
       %502 = llvm.mlir.constant(-1 : i32) : i32
@@ -664,7 +664,7 @@ module attributes {gpu.container_module} {
       %504 = llvm.sub %503, %48 : i32
       %505 = llvm.lshr %502, %504 : i32
       %506 = llvm.sub %48, %501 : i32
-      %507 = nvvm.shfl.sync  bfly %505, %500, %46, %506 : f32 -> f32
+      %507 = nvvm.shfl.sync bfly %505, %500, %46, %506 : f32 -> f32
       %508 = llvm.fmul %500, %507 : f32
       %509 = llvm.mlir.constant(1 : i32) : i32
       %510 = llvm.mlir.constant(-1 : i32) : i32
@@ -672,7 +672,7 @@ module attributes {gpu.container_module} {
       %512 = llvm.sub %511, %48 : i32
       %513 = llvm.lshr %510, %512 : i32
       %514 = llvm.sub %48, %509 : i32
-      %515 = nvvm.shfl.sync  bfly %513, %508, %45, %514 : f32 -> f32
+      %515 = nvvm.shfl.sync bfly %513, %508, %45, %514 : f32 -> f32
       %516 = llvm.fmul %508, %515 : f32
       %517 = llvm.mlir.constant(1 : i32) : i32
       %518 = llvm.mlir.constant(-1 : i32) : i32
@@ -680,7 +680,7 @@ module attributes {gpu.container_module} {
       %520 = llvm.sub %519, %48 : i32
       %521 = llvm.lshr %518, %520 : i32
       %522 = llvm.sub %48, %517 : i32
-      %523 = nvvm.shfl.sync  bfly %521, %516, %44, %522 : f32 -> f32
+      %523 = nvvm.shfl.sync bfly %521, %516, %44, %522 : f32 -> f32
       %524 = llvm.fmul %516, %523 : f32
       %525 = llvm.mlir.constant(1 : i32) : i32
       %526 = llvm.mlir.constant(-1 : i32) : i32
@@ -688,7 +688,7 @@ module attributes {gpu.container_module} {
       %528 = llvm.sub %527, %48 : i32
       %529 = llvm.lshr %526, %528 : i32
       %530 = llvm.sub %48, %525 : i32
-      %531 = nvvm.shfl.sync  bfly %529, %524, %43, %530 : f32 -> f32
+      %531 = nvvm.shfl.sync bfly %529, %524, %43, %530 : f32 -> f32
       %532 = llvm.fmul %524, %531 : f32
       llvm.br ^bb82(%532 : f32)
     ^bb82(%533: f32):  // 2 preds: ^bb80, ^bb81
@@ -699,7 +699,7 @@ module attributes {gpu.container_module} {
     ^bb83:  // pred: ^bb63
       llvm.br ^bb84
     ^bb84:  // 2 preds: ^bb82, ^bb83
-      nvvm.barrier0
+      nvvm.barrier
       %536 = llvm.extractvalue %41[1] : !llvm.struct<(ptr<3>, ptr<3>, i64, array<1 x i64>, array<1 x i64>)> 
       %537 = llvm.getelementptr inbounds|nuw %536[%42] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, f32
       %538 = llvm.load %537 : !llvm.ptr<3> -> f32

@@ -14,7 +14,7 @@
       %6 = "memref.load"(%arg5, %4, %5) : (memref<?x?xf32>, index, index) -> f32
       "memref.store"(%6, %arg6, %5, %4) : (f32, memref<?x?xf32>, index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -44,7 +44,7 @@
       %14 = "memref.load"(%arg4, %12, %13) : (memref<?x?xf32>, index, index) -> f32
       "memref.store"(%14, %arg5, %13, %12) : (f32, memref<?x?xf32>, index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -68,7 +68,7 @@
         "scf.yield"() : () -> ()
       }) : (index, index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -102,7 +102,7 @@
         "scf.yield"() : () -> ()
       }) : (index, index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -168,7 +168,7 @@
       }, {
       }) : (i1) -> ()
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -186,7 +186,7 @@
     ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index):
       %4 = "affine.apply"(%arg0, %1, %0) <{map = #map1}> : (index, index, index) -> index
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, optional_attr = 1 : i64, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited, optional_attr = 1 : i64} : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -271,7 +271,7 @@
       %21 = "arith.addf"(%19, %20) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64
       "memref.store"(%21, %0, %12, %18) : (f64, memref<1x1xf64>, index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "memref.dealloc"(%2) : (memref<1x1xf64>) -> ()
     "memref.dealloc"(%1) : (memref<1x1xf64>) -> ()
     "memref.dealloc"(%0) : (memref<1x1xf64>) -> ()
@@ -305,7 +305,7 @@
       }) : (f32) -> f32
       "memref.store"(%12, %0) : (f32, memref<f32>) -> ()
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "memref.dealloc"(%0) : (memref<f32>) -> ()
     "memref.dealloc"(%1) : (memref<64xf32>) -> ()
     "func.return"() : () -> ()
@@ -340,7 +340,7 @@
       }) : (f32) -> f32
       "memref.store"(%14, %0) : (f32, memref<f32>) -> ()
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "memref.dealloc"(%0) : (memref<f32>) -> ()
     "memref.dealloc"(%1) : (memref<8x8xf32>) -> ()
     "func.return"() : () -> ()
@@ -378,7 +378,7 @@
       }) : (f32) -> f32
       "memref.store"(%16, %11) : (f32, memref<f32, strided<[], offset: ?>>) -> ()
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "memref.dealloc"(%5) : (memref<8192xf32>) -> ()
     "memref.dealloc"(%6) : (memref<64xf32>) -> ()
     "func.return"() : () -> ()
@@ -477,7 +477,7 @@
       %22 = "memref.load"(%8, %21, %3) : (memref<4x4xf32>, index, index) -> f32
       "memref.store"(%22, %9, %21, %3) : (f32, memref<4x4xf32>, index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -500,7 +500,7 @@
       %8 = "arith.addi"(%6, %0) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
       %9 = "arith.addi"(%7, %0) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -520,7 +520,7 @@
       %5 = "affine.apply"(%arg3, %1, %0) <{map = #map1}> : (index, index, index) -> index
       %6 = "arith.addi"(%5, %0) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
       "gpu.terminator"() : () -> ()
-    }) {SCFToGPU_visited, workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) {SCFToGPU_visited} : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

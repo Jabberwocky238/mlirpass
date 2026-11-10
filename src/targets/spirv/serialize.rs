@@ -417,6 +417,8 @@ impl<'b, 'a> Serializer<'b, 'a> {
             SpirvType::CoopMatrix { rows, cols, elem, scope, usage } => SpirvType::CoopMatrix { rows, cols, elem: inner(&elem).into(), scope, usage },
             SpirvType::Matrix { cols, column } => SpirvType::Matrix { cols, column: inner(&column).into() },
             SpirvType::TensorArm { shape, elem } => SpirvType::TensorArm { shape, elem: inner(&elem).into() },
+            SpirvType::Sampler => SpirvType::Sampler,
+            SpirvType::NamedBarrier => SpirvType::NamedBarrier,
         }
     }
 
@@ -544,6 +546,8 @@ impl<'b, 'a> Serializer<'b, 'a> {
                 }
                 "OpTypeRuntimeArray"
             }
+            SpirvType::Sampler => "OpTypeSampler",
+            SpirvType::NamedBarrier => "OpTypeNamedBarrier",
             SpirvType::SampledImage(image) => {
                 ops.push(self.type_id(&image)?);
                 "OpTypeSampledImage"

@@ -7,7 +7,7 @@
       "test.read_buffer"(%1) : (memref<2xf32>) -> ()
       "memref.dealloc"(%1) : (memref<2xf32>) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

@@ -124,3 +124,56 @@ module {
   }
 }
 
+// -----
+module {
+  func.func @no_crash_acc_serial_empty_region() {
+    acc.serial {
+    }
+    return
+  }
+}
+
+// -----
+module {
+  func.func @no_crash_acc_kernel_environment(%arg0: memref<8xi32>) {
+    acc.kernel_environment {
+      acc.compute_region {
+        acc.yield
+      } {origin = "acc.parallel"}
+    }
+    return
+  }
+}
+
+// -----
+module {
+  func.func @no_crash_emitc_switch_unsigned_condition() {
+    %0 = "emitc.constant"() <{value = 1 : ui32}> : () -> ui32
+    %1 = "emitc.constant"() <{value = 1 : ui32}> : () -> ui32
+    emitc.switch %0 : ui32 
+    case 2 {
+      yield
+    }
+    default {
+    }
+    return
+  }
+}
+
+// -----
+module {
+  func.func @fold_to_non_operand_value(%arg0: i64, %arg1: i1) -> i64 {
+    %c1_i64 = arith.constant 1 : i64
+    cf.cond_br %arg1, ^bb1, ^bb2
+  ^bb1:  // pred: ^bb0
+    cf.br ^bb3(%c1_i64 : i64)
+  ^bb2:  // pred: ^bb0
+    %0 = arith.addi %arg0, %c1_i64 : i64
+    cf.br ^bb3(%0 : i64)
+  ^bb3(%1: i64):  // 2 preds: ^bb1, ^bb2
+    %2 = builtin.unrealized_conversion_cast %1 : i64 to index
+    %3 = builtin.unrealized_conversion_cast %2 : index to i64
+    return %3 : i64
+  }
+}
+

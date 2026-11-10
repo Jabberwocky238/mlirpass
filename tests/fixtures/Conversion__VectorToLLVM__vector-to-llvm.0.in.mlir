@@ -1000,14 +1000,6 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = () -> vector<4xindex>, sym_name = "step"}> ({
-    %0 = "vector.step"() : () -> vector<4xindex>
-    "func.return"(%0) : (vector<4xindex>) -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
   "func.func"() <{function_type = (f32, f32, f32, f32) -> vector<2x1x2xf32>, sym_name = "from_elements_3d"}> ({
   ^bb0(%arg0: f32, %arg1: f32, %arg2: f32, %arg3: f32):
     %0 = "vector.from_elements"(%arg0, %arg1, %arg2, %arg3) : (f32, f32, f32, f32) -> vector<2x1x2xf32>

@@ -19,7 +19,7 @@
       }, {
       }) : (i1) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -57,9 +57,9 @@
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -98,9 +98,9 @@
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -136,7 +136,7 @@
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       %12 = "arith.cmpi"(%8, %2) <{predicate = 6 : i64}> : (index, index) -> i1
       "scf.if"(%12) ({
         %13 = "memref.load"(%arg3, %7) : (memref<32xf32>, index) -> f32
@@ -145,9 +145,9 @@
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -178,9 +178,9 @@
       %12 = "memref.load"(%arg2, %7, %8, %10, %9) : (memref<32x64x4x32xf32>, index, index, index, index) -> f32
       %13 = "math.fma"(%arg3, %11, %12) <{fastmath = #arith.fastmath<none>}> : (f32, f32, f32) -> f32
       "memref.store"(%13, %arg2, %7, %8, %10, %9) : (f32, memref<32x64x4x32xf32>, index, index, index, index) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"(%arg2) : (memref<32x64x4x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -218,7 +218,7 @@
       }, {
       }) : (i1) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -244,9 +244,9 @@
       %7 = "memref.load"(%arg2, %5, %5) : (memref<32x32xf32>, index, index) -> f32
       %8 = "arith.mulf"(%6, %7) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
       "memref.store"(%8, %arg2, %5, %5) : (f32, memref<32x32xf32>, index, index) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<32x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -284,7 +284,7 @@
       }, {
       }) : (i1) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<3x2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -326,9 +326,9 @@
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -370,9 +370,9 @@
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -416,7 +416,7 @@
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       %15 = "affine.apply"(%10, %11) <{map = #map}> : (index, index) -> index
       %16 = "affine.apply"(%10, %11) <{map = #map1}> : (index, index) -> index
       %17 = "affine.apply"(%10, %11) <{map = #map2}> : (index, index) -> index
@@ -428,7 +428,7 @@
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       %19 = "affine.apply"(%10, %11) <{map = #map3}> : (index, index) -> index
       %20 = "affine.apply"(%10, %11) <{map = #map4}> : (index, index) -> index
       %21 = "arith.cmpi"(%15, %2) <{predicate = 6 : i64}> : (index, index) -> i1
@@ -439,9 +439,9 @@
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -483,7 +483,7 @@
       }, {
       }) : (i1) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -517,7 +517,7 @@
       %12 = "math.fma"(%arg4, %10, %11) <{fastmath = #arith.fastmath<none>}> : (f32, f32, f32) -> f32
       "memref.store"(%12, %arg2, %8, %9) : (f32, memref<2x32xf32>, index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -553,9 +553,9 @@
       %14 = "affine.apply"(%11, %12, %13) <{map = #map1}> : (index, index, index) -> index
       %15 = "memref.subview"(%10, %14) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 32>, static_strides = array<i64: 1>}> : (memref<128xf32, strided<[1], offset: ?>>, index) -> memref<32xf32, strided<[1], offset: ?>>
       "vector.transfer_write"(%4, %15, %3) <{in_bounds = [true], operandSegmentSizes = array<i32: 1, 1, 1, 0>, permutation_map = #map2}> : (vector<32xf32>, memref<32xf32, strided<[1], offset: ?>>, index) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"(%arg1) : (memref<128xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -601,9 +601,9 @@
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"(%arg1) : (memref<128x256xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -658,9 +658,9 @@
         "scf.yield"() : () -> ()
       }, {
       }) : (i1) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"(%arg1) : (memref<128xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({

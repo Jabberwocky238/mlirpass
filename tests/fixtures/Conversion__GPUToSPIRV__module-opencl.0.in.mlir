@@ -1,9 +1,9 @@
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = (f32, memref<12xf32, #spirv.storage_class<CrossWorkgroup>>) -> ()}> ({
+    "gpu.func"() <{function_type = (f32, memref<12xf32, #spirv.storage_class<CrossWorkgroup>>) -> (), kernel}> ({
     ^bb0(%arg0: f32, %arg1: memref<12xf32, #spirv.storage_class<CrossWorkgroup>>):
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "basic_module_structure", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "basic_module_structure"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "main"}> ({
     %0 = "op"() : () -> f32
@@ -17,10 +17,10 @@
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = (f32, memref<12xf32, #spirv.storage_class<CrossWorkgroup>>) -> ()}> ({
+    "gpu.func"() <{function_type = (f32, memref<12xf32, #spirv.storage_class<CrossWorkgroup>>) -> (), kernel}> ({
     ^bb0(%arg0: f32, %arg1: memref<12xf32, #spirv.storage_class<CrossWorkgroup>>):
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "basic_module_structure", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [32, 4, 1]>, sym_name = "basic_module_structure"} : () -> ()
   }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Kernel, Addresses], []>, #spirv.resource_limits<>>} : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "main"}> ({
     %0 = "op"() : () -> f32

@@ -262,3 +262,60 @@ module {
   }
 }
 
+// -----
+module {
+  func.func @no_merge_self_arg_loop(%arg0: i1) -> i1 {
+    %true = arith.constant true
+    return %true : i1
+  }
+  func.func @fold_uniform_branch_block_arg(%arg0: i1, %arg1: i32) -> i32 {
+    cf.cond_br %arg0, ^bb1, ^bb2
+  ^bb1:  // pred: ^bb0
+    "foo.op"() : () -> ()
+    cf.br ^bb3
+  ^bb2:  // pred: ^bb0
+    "foo.op"() : () -> ()
+    cf.br ^bb3
+  ^bb3:  // 2 preds: ^bb1, ^bb2
+    return %arg1 : i32
+  }
+  func.func @no_fold_non_uniform_block_arg(%arg0: i1, %arg1: i32, %arg2: i32) -> i32 {
+    cf.cond_br %arg0, ^bb1, ^bb2
+  ^bb1:  // pred: ^bb0
+    "foo.op"() : () -> ()
+    cf.br ^bb3(%arg1 : i32)
+  ^bb2:  // pred: ^bb0
+    "foo.op"() : () -> ()
+    cf.br ^bb3(%arg2 : i32)
+  ^bb3(%0: i32):  // 2 preds: ^bb1, ^bb2
+    return %0 : i32
+  }
+  func.func @no_fold_same_dest_different_args(%arg0: i32, %arg1: i32) -> i32 {
+    %0 = "test.producing_br"(%arg0, %arg1)[^bb1, ^bb1] <{operandSegmentSizes = array<i32: 1, 1>}> : (i32, i32) -> i32
+  ^bb1(%1: i32):  // 2 preds: ^bb0, ^bb0
+    return %1 : i32
+  }
+  func.func @fold_same_dest_same_args(%arg0: i32) -> i32 {
+    %0 = "test.producing_br"()[^bb1, ^bb1] <{operandSegmentSizes = array<i32: 0, 0>}> : () -> i32
+  ^bb1:  // 2 preds: ^bb0, ^bb0
+    return %arg0 : i32
+  }
+  func.func @no_fold_unknown_terminator(%arg0: i32) -> i32 {
+    "foo.two_successors"()[^bb1, ^bb2] : () -> ()
+  ^bb1:  // pred: ^bb0
+    cf.br ^bb2(%arg0 : i32)
+  ^bb2(%0: i32):  // 2 preds: ^bb0, ^bb1
+    return %0 : i32
+  }
+  func.func @skip_unused_block_arg(%arg0: i32, %arg1: i32, %arg2: i32) -> i32 {
+    "foo.pred"()[^bb1, ^bb2] : () -> ()
+  ^bb1:  // pred: ^bb0
+    cf.br ^bb3(%arg2 : i32)
+  ^bb2:  // pred: ^bb0
+    cf.br ^bb3(%arg1 : i32)
+  ^bb3(%0: i32):  // 2 preds: ^bb1, ^bb2
+    "foo.use"(%0) : (i32) -> ()
+    return %arg1 : i32
+  }
+}
+

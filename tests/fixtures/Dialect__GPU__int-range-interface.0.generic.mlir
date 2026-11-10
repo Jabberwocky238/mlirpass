@@ -20,7 +20,7 @@
       %14 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index
       %15 = "test.reflect_bounds"(%14) <{smax = 4294967294 : index, smin = 0 : index, umax = 4294967294 : index, umin = 0 : index}> : (index) -> index
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -75,7 +75,7 @@
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "gpu_module"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 8, 12, 16>, known_grid_size = array<i32: 20, 24, 28>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 8, 12, 16>, known_grid_size = array<i32: 20, 24, 28>}> ({
       %0 = "arith.constant"() <{value = 16 : index}> : () -> index
       %1 = "arith.constant"() <{value = 12 : index}> : () -> index
       %2 = "arith.constant"() <{value = 8 : index}> : () -> index
@@ -115,7 +115,7 @@
       %36 = "test.reflect_bounds"(%32) <{smax = 4294967295 : index, smin = 1 : index, umax = 4294967295 : index, umin = 1 : index}> : (index) -> index
       %37 = "test.reflect_bounds"(%33) <{smax = 4294967294 : index, smin = 0 : index, umax = 4294967294 : index, umin = 0 : index}> : (index) -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "annotated_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "annotated_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -141,7 +141,7 @@
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "gpu_module"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.grid_dim"() <{dimension = #gpu<dim x>, upper_bound = 20 : index}> : () -> index
       %1 = "gpu.grid_dim"() <{dimension = #gpu<dim y>, upper_bound = 24 : index}> : () -> index
       %2 = "gpu.grid_dim"() <{dimension = #gpu<dim z>, upper_bound = 28 : index}> : () -> index
@@ -181,7 +181,7 @@
       %36 = "test.reflect_bounds"(%32) <{smax = 8 : index, smin = 1 : index, umax = 8 : index, umin = 1 : index}> : (index) -> index
       %37 = "test.reflect_bounds"(%33) <{smax = 63 : index, smin = 0 : index, umax = 63 : index, umin = 0 : index}> : (index) -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "local_bounds_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "local_bounds_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 

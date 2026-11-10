@@ -1,12 +1,17 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>, sym_name = "m16n8k16_fp16"}> ({
-  ^bb0(%arg198: vector<4x2xf16>, %arg199: vector<2x2xf16>, %arg200: vector<2x2xf16>):
-    %101 = "nvgpu.mma.sync"(%arg198, %arg199, %arg200) <{mmaShape = [16, 8, 16]}> : (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
-    "func.return"(%101) : (vector<2x2xf16>) -> ()
+  ^bb0(%arg201: vector<4x2xf16>, %arg202: vector<2x2xf16>, %arg203: vector<2x2xf16>):
+    %102 = "nvgpu.mma.sync"(%arg201, %arg202, %arg203) <{mmaShape = [16, 8, 16]}> : (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
+    "func.return"(%102) : (vector<2x2xf16>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf32>) -> vector<2x2xf32>, sym_name = "m16n8k16_fp16_fp32"}> ({
-  ^bb0(%arg195: vector<4x2xf16>, %arg196: vector<2x2xf16>, %arg197: vector<2x2xf32>):
-    %100 = "nvgpu.mma.sync"(%arg195, %arg196, %arg197) <{mmaShape = [16, 8, 16]}> : (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf32>) -> vector<2x2xf32>
+  ^bb0(%arg198: vector<4x2xf16>, %arg199: vector<2x2xf16>, %arg200: vector<2x2xf32>):
+    %101 = "nvgpu.mma.sync"(%arg198, %arg199, %arg200) <{mmaShape = [16, 8, 16]}> : (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf32>) -> vector<2x2xf32>
+    "func.return"(%101) : (vector<2x2xf32>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<4x2xbf16>, vector<2x2xbf16>, vector<2x2xf32>) -> vector<2x2xf32>, sym_name = "m16n8k16_bf16_fp32"}> ({
+  ^bb0(%arg195: vector<4x2xbf16>, %arg196: vector<2x2xbf16>, %arg197: vector<2x2xf32>):
+    %100 = "nvgpu.mma.sync"(%arg195, %arg196, %arg197) <{mmaShape = [16, 8, 16]}> : (vector<4x2xbf16>, vector<2x2xbf16>, vector<2x2xf32>) -> vector<2x2xf32>
     "func.return"(%100) : (vector<2x2xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<2x2xf16>, vector<1x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>, sym_name = "m16n8k8_fp16"}> ({
@@ -357,7 +362,7 @@
   }) {transform.with_named_sequence} : () -> ()
   "func.func"() <{function_type = (vector<32x16xf32>) -> (), sym_name = "rcp_approx_ftz_f32"}> ({
   ^bb0(%arg0: vector<32x16xf32>):
-    %0 = "nvgpu.rcp"(%arg0) <{ftz, rounding = #nvgpu<rcp_rounding_mode approx>}> : (vector<32x16xf32>) -> vector<32x16xf32>
+    %0 = "nvgpu.rcp"(%arg0) <{approx = true, ftz = true, rounding = #nvvm.fp_rnd_mode<none>}> : (vector<32x16xf32>) -> vector<32x16xf32>
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

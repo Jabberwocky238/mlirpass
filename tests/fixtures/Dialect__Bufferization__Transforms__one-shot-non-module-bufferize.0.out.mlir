@@ -16,19 +16,3 @@ module {
   }) : () -> ()
 }
 
-// -----
-module {
-  "test.symbol_scope_isolated"() ({
-    func.func @inner_func(%arg0: memref<?xf32, #test.memref_layout<"hello">>) -> memref<?xf32, #test.memref_layout<"hello">> {
-      return %arg0 : memref<?xf32, #test.memref_layout<"hello">>
-    }
-    func.func @outer_func(%arg0: memref<?xf32, #test.memref_layout<"hello">>) -> (memref<?xf32, #test.memref_layout<"hello">>, memref<?xf32, #test.memref_layout<"not hello">>) {
-      %0 = call @inner_func(%arg0) : (memref<?xf32, #test.memref_layout<"hello">>) -> memref<?xf32, #test.memref_layout<"hello">>
-      %1 = "test.create_memref_op"() : () -> memref<?xf32, #test.memref_layout<"not hello">>
-      %2 = "test.dummy_memref_op"(%1) : (memref<?xf32, #test.memref_layout<"not hello">>) -> memref<?xf32, #test.memref_layout<"not hello">>
-      return %0, %2 : memref<?xf32, #test.memref_layout<"hello">>, memref<?xf32, #test.memref_layout<"not hello">>
-    }
-    "test.finish"() : () -> ()
-  }) : () -> ()
-}
-

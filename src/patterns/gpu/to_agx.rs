@@ -282,7 +282,7 @@ impl GpuToAgx {
     /// `gpu.func {gpu.kernel}` ⇒ `agx.kernel {stage = "compute", params}`; its arguments are the parameters.
     #[convert("gpu.func")]
     fn func(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
-        if cr.rw.body[op].get("gpu.kernel").is_none() {
+        if !cr.rw.body[op].gpu_kernel() {
             return false;
         }
         let Some(Attribute::Type(Type::Function(fty))) = cr.rw.body[op].get("function_type").cloned() else { return false };

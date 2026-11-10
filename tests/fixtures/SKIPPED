@@ -1,11 +1,17 @@
+Conversion__AMDGPUToROCDL__gfx1250.0	mlir-opt failed (reading the input)
+Conversion__AMDGPUToROCDL__global_transpose_load.2	not mlir-opt: ['not']
+Conversion__AMDGPUToROCDL__load_lds-gfx950.0	not mlir-opt: ['not']
+Conversion__AMDGPUToROCDL__transpose_load.1	not mlir-opt: ['not']
+Conversion__AMDGPUToROCDL__transpose_load_reject.0	not mlir-opt: ['not']
+Conversion__AMDGPUToROCDL__wmma-gfx1250.0	mlir-opt failed (reading the input)
+Conversion__AffineToStandard__lower-affine-invalid.0	mlir-opt failed: mlir-opt: Too many positional arguments specified!
 Conversion__ArithToLLVM__type-conversion.0	test-only pass -test-llvm-legalize-patterns
 Conversion__ArithToLLVM__type-conversion.1	test-only pass -test-llvm-legalize-patterns=allow-pattern-rollback=0
-Conversion__ConvertToEmitC__tosa.0	lit substitution --pass-pipeline=%{pipeline}
 Conversion__ConvertToSPIRV__argmax-kernel.0	test-only pass -test-convert-to-spirv
 Conversion__ConvertToSPIRV__arith.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
 Conversion__ConvertToSPIRV__combined.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
-Conversion__ConvertToSPIRV__convert-gpu-modules.0	test-only pass -test-convert-to-spirv=convert-gpu-modules=true run-signature-conversion=false run-vector-unrolling=false
 Conversion__ConvertToSPIRV__convert-gpu-modules-nested.0	test-only pass -test-convert-to-spirv=convert-gpu-modules=true nest-in-gpu-module=true run-signature-conversion=false run-vector-unrolling=false
+Conversion__ConvertToSPIRV__convert-gpu-modules.0	test-only pass -test-convert-to-spirv=convert-gpu-modules=true run-signature-conversion=false run-vector-unrolling=false
 Conversion__ConvertToSPIRV__func-signature-vector-unroll.0	test-only pass -test-spirv-func-signature-conversion
 Conversion__ConvertToSPIRV__gpu.0	test-only pass -test-convert-to-spirv
 Conversion__ConvertToSPIRV__index.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
@@ -13,8 +19,8 @@ Conversion__ConvertToSPIRV__memref.0	test-only pass -test-convert-to-spirv=run-s
 Conversion__ConvertToSPIRV__scf.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
 Conversion__ConvertToSPIRV__simple.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
 Conversion__ConvertToSPIRV__ub.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
-Conversion__ConvertToSPIRV__vector.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
 Conversion__ConvertToSPIRV__vector-unroll.0	test-only pass -test-spirv-vector-unrolling
+Conversion__ConvertToSPIRV__vector.0	test-only pass -test-convert-to-spirv=run-signature-conversion=false run-vector-unrolling=false
 Conversion__GPUToSPIRV__entry-point.0	test-only pass -test-spirv-entry-point-abi
 Conversion__GPUToSPIRV__entry-point.1	test-only pass -test-spirv-entry-point-abi=workgroup-size=32
 Conversion__GPUToSPIRV__entry-point.2	test-only pass -test-spirv-entry-point-abi=subgroup-size=4
@@ -23,32 +29,43 @@ Conversion__GPUToSPIRV__entry-point.4	test-only pass -test-spirv-entry-point-abi
 Conversion__MemRefToLLVM__memref-to-llvm-with-transforms.0	test-only pass -test-memref-to-llvm-with-transforms
 Conversion__MemRefToLLVM__type-conversion.0	test-only pass -test-llvm-legalize-patterns
 Conversion__MemRefToLLVM__type-conversion.1	test-only pass -test-llvm-legalize-patterns=allow-pattern-rollback=0
+Conversion__NVVMToLLVM__invalid.0	mlir-opt failed (reading the input)
 Conversion__TosaToLinalg__tosa-to-linalg-invalid.0	mlir-opt failed (reading the input)
 Conversion__TosaToLinalg__tosa-to-linalg-pipeline.0	mlir-opt failed (reading the input)
+Conversion__TosaToSPIRVTosa__custom-op-domain-to-opcode-invalid.0	not mlir-opt: ['not']
 Conversion__VectorToLLVM__pass-option-serialization.0	prints logs, not IR: --dump-pass-pipeline
 Conversion__VectorToLLVM__pass-option-serialization.1	prints logs, not IR: --dump-pass-pipeline
-Conversion__VectorToLLVM__vector-scalable-memcpy.0	pipes into mlir-opt
 Conversion__VectorToSPIRV__vector-reduction-to-spirv-dot-prod.0	test-only pass --test-vector-reduction-to-spirv-dot-prod
-Dialect__ArmSME__canonicalize.0	pipes into mlir-opt
+Dialect__Bufferization__Transforms__one-shot-bufferize-pass-statistics.0	prints logs, not IR: -mlir-pass-statistics
 Dialect__GPU__all-reduce-add.0	test-only pass -test-gpu-rewrite
 Dialect__GPU__all-reduce-maxf.0	test-only pass -test-gpu-rewrite
 Dialect__GPU__globalId-rewrite.0	test-only pass --test-gpu-rewrite
 Dialect__GPU__indirect-device-func-call.0	test-only pass -test-gpu-rewrite
 Dialect__GPU__invalid.0	mlir-opt failed (reading the input)
+Dialect__GPU__module-to-binary-nvvm.0	mlir-opt failed: /home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Dialect/GPU/module-to-binary-nvvm.mlir:10:3: error: Failed to lookup target for triple 'nvptx64-nvidia-cuda' Unable to find target for this triple (no targets are registered)
+Dialect__GPU__module-to-binary-nvvm.1	mlir-opt failed: /home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Dialect/GPU/module-to-binary-nvvm.mlir:10:3: error: Failed to lookup target for triple 'nvptx64-nvidia-cuda' Unable to find target for this triple (no targets are registered)
+Dialect__GPU__module-to-binary-nvvm.2	mlir-opt failed: /home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Dialect/GPU/module-to-binary-nvvm.mlir:10:3: error: Failed to lookup target for triple 'nvptx64-nvidia-cuda' Unable to find target for this triple (no targets are registered)
+Dialect__GPU__module-to-binary-rocdl.0	mlir-opt failed: /home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Dialect/GPU/module-to-binary-rocdl.mlir:8:3: error: the `AMDGPU` target was not built. Please enable it when building LLVM
+Dialect__GPU__module-to-binary-rocdl.1	mlir-opt failed: /home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Dialect/GPU/module-to-binary-rocdl.mlir:8:3: error: the `AMDGPU` target was not built. Please enable it when building LLVM
+Dialect__GPU__named-barrier.0	mlir-opt failed (reading the input)
 Dialect__GPU__ops.1	pipes into mlir-opt
 Dialect__GPU__ops.2	pipes into mlir-opt
 Dialect__GPU__shuffle-rewrite.0	test-only pass --test-gpu-rewrite
 Dialect__GPU__sparse-roundtrip.0	pipes into mlir-opt
-Dialect__GPU__subgroupId-rewrite.0	test-only pass --test-gpu-rewrite
 Dialect__GPU__subgroup-reduce-lowering.0	test-only pass --test-gpu-subgroup-reduce-lowering
 Dialect__GPU__subgroup-reduce-lowering.1	test-only pass --test-gpu-subgroup-reduce-lowering=expand-to-shuffles
 Dialect__GPU__subgroup-reduce-lowering.2	test-only pass --test-gpu-subgroup-reduce-lowering=expand-to-shuffles target=gfx942
 Dialect__GPU__subgroup-reduce-lowering.3	test-only pass --test-gpu-subgroup-reduce-lowering=expand-to-shuffles target=gfx1030
+Dialect__GPU__subgroupId-rewrite.0	test-only pass --test-gpu-rewrite
 Dialect__GPU__test-nvvm-pipeline.0	pipes into mlir-opt
 Dialect__GPU__test-nvvm-pipeline.1	pipes into mlir-opt
 Dialect__GPU__transform-gpu-failing.0	mlir-opt failed (reading the input)
 Dialect__LLVMIR__sroa-statistics.0	prints logs, not IR: --mlir-pass-statistics
+Dialect__Linalg__affine.1	test-only pass -test-lower-to-llvm
+Dialect__Linalg__loops.2	test-only pass -test-lower-to-llvm
 Dialect__MemRef__mem2reg-statistics.0	prints logs, not IR: --mlir-pass-statistics
+Dialect__SCF__one-shot-bufferize-tensor-copy-insertion.0	test-only pass -test-tensor-copy-insertion=allow-return-allocs-from-loops
+Dialect__SCF__one-shot-bufferize-tensor-copy-insertion.1	test-only pass -test-tensor-copy-insertion=allow-return-allocs-from-loops bufferize-function-boundaries
 Dialect__SPIRV__IR__arithmetic-ops.0	mlir-opt failed (reading the input)
 Dialect__SPIRV__IR__atomic-ops.0	mlir-opt failed (reading the input)
 Dialect__SPIRV__IR__availability.0	test-only pass -test-spirv-op-availability
@@ -77,12 +94,23 @@ Dialect__SPIRV__IR__ocl-ops.0	mlir-opt failed (reading the input)
 Dialect__SPIRV__IR__structure-ops.0	mlir-opt failed (reading the input)
 Dialect__SPIRV__IR__target-and-abi.0	mlir-opt failed (reading the input)
 Dialect__SPIRV__IR__target-env.0	test-only pass --test-spirv-target-env
+Dialect__SPIRV__IR__tosa-ops-verification.0	mlir-opt failed (reading the input)
 Dialect__SPIRV__IR__types.0	mlir-opt failed (reading the input)
+Dialect__SPIRV__Linking__ModuleCombiner__basic.0	test-only pass -test-spirv-module-combiner
+Dialect__SPIRV__Linking__ModuleCombiner__conflict-resolution.0	test-only pass -test-spirv-module-combiner
+Dialect__SPIRV__Linking__ModuleCombiner__deduplication.0	test-only pass -test-spirv-module-combiner
+Dialect__SPIRV__Linking__ModuleCombiner__symbol-rename-listener.0	test-only pass -test-spirv-module-combiner
+Dialect__Tensor__one-shot-bufferize-tensor-copy-insertion.0	test-only pass -test-tensor-copy-insertion
+Dialect__Tensor__one-shot-bufferize-tensor-copy-insertion.1	test-only pass -test-tensor-copy-insertion=bufferize-function-boundaries
+Dialect__X86__AMX__invalid.0	mlir-opt failed (reading the input)
+Dialect__X86__cvt-packed-f32-to-bf16.0	pipes into mlir-translate
+Dialect__X86__dot-bf16.0	pipes into mlir-translate
+Transforms__canonicalize-filter-dialects.3	not mlir-opt: ['not']
 Transforms__compose-subview.0	test-only pass -test-compose-subview
 Transforms__composite-pass.0	prints logs, not IR: --log-actions-to=-
 Transforms__composite-pass.1	prints logs, not IR: --log-actions-to=-
-Transforms__constant-fold.0	test-only pass -test-single-fold
 Transforms__constant-fold-debuginfo.0	test-only pass -test-single-fold
+Transforms__constant-fold.0	test-only pass -test-single-fold
 Transforms__control-flow-sink-test.0	test-only pass -test-control-flow-sink
 Transforms__decompose-call-graph-types.0	test-only pass -test-decompose-call-graph-types
 Transforms__inlining-dump-default-pipeline.0	prints logs, not IR: -dump-pass-pipeline
@@ -100,10 +128,10 @@ Transforms__make-isolated-from-above.1	test-only pass -test-make-isolated-from-a
 Transforms__make-isolated-from-above.2	test-only pass -test-make-isolated-from-above=clone-ops-with-operands
 Transforms__parametric-tiling.0	test-only pass -test-extract-fixed-outer-loops=test-outer-loop-sizes=7
 Transforms__parametric-tiling.1	test-only pass -test-extract-fixed-outer-loops=test-outer-loop-sizes=7,4
-Transforms__print-op-graph.0	lit substitution %t
-Transforms__print-op-graph.1	lit substitution %t
 Transforms__print-op-graph-back-edges.0	lit substitution %t
 Transforms__print-op-graph-cycles.0	lit substitution %t
+Transforms__print-op-graph.0	lit substitution %t
+Transforms__print-op-graph.1	lit substitution %t
 Transforms__scf-if-utils.0	test-only pass -test-scf-if-utils
 Transforms__scf-loop-unroll.0	test-only pass --test-loop-unrolling=unroll-factor=3
 Transforms__scf-loop-unroll.1	test-only pass --test-loop-unrolling=unroll-factor=1
@@ -114,25 +142,25 @@ Transforms__test-context-aware-type-converter.0	test-only pass -test-legalize-ty
 Transforms__test-convert-call-op.0	test-only pass -test-convert-call-op
 Transforms__test-convert-func-op.0	test-only pass -test-convert-func-op
 Transforms__test-dialect-conversion-pdll.0	test-only pass -test-dialect-conversion-pdll
-Transforms__test-inlining.0	test-only pass -test-inline
 Transforms__test-inlining-callback.0	test-only pass -test-inline-callback
+Transforms__test-inlining.0	test-only pass -test-inline
 Transforms__test-legalize-erased-op-with-uses.0	test-only pass -test-legalize-unknown-root-patterns
-Transforms__test-legalizer.0	test-only pass -test-legalize-patterns=allow-pattern-rollback=1
-Transforms__test-legalizer.1	test-only pass -test-legalize-patterns=allow-pattern-rollback=1
-Transforms__test-legalizer.2	test-only pass -test-legalize-patterns=allow-pattern-rollback=0
-Transforms__test-legalizer-analysis.0	test-only pass -test-legalize-patterns=test-legalize-mode=analysis
 Transforms__test-legalize-remapped-value.0	test-only pass -test-remapped-value
+Transforms__test-legalize-target-materialization-no-uses.0	test-only pass -test-target-materialization-with-no-uses
+Transforms__test-legalize-type-conversion.0	test-only pass -test-legalize-type-conversion
+Transforms__test-legalize-unknown-root.0	test-only pass -test-legalize-unknown-root-patterns
+Transforms__test-legalizer-analysis.0	test-only pass -test-legalize-patterns=test-legalize-mode=analysis
 Transforms__test-legalizer-fold-after.0	test-only pass -test-legalize-patterns=test-legalize-folding-mode=after-patterns
 Transforms__test-legalizer-fold-before.0	test-only pass -test-legalize-patterns=test-legalize-folding-mode=before-patterns
-Transforms__test-legalizer-full.0	test-only pass -test-legalize-patterns=test-legalize-mode=full
 Transforms__test-legalizer-full-rollback.0	test-only pass -test-legalize-patterns=test-legalize-mode=full
+Transforms__test-legalizer-full.0	test-only pass -test-legalize-patterns=test-legalize-mode=full
 Transforms__test-legalizer-no-fold.0	test-only pass -test-legalize-patterns=test-legalize-folding-mode=never
 Transforms__test-legalizer-no-materializations.0	test-only pass -test-legalize-patterns=allow-pattern-rollback=0 build-materializations=0 attach-debug-materialization-kind=1
 Transforms__test-legalizer-no-rollback.0	test-only pass -test-legalize-patterns=allow-pattern-rollback=0
 Transforms__test-legalizer-rollback.0	test-only pass -test-legalize-patterns
-Transforms__test-legalize-target-materialization-no-uses.0	test-only pass -test-target-materialization-with-no-uses
-Transforms__test-legalize-type-conversion.0	test-only pass -test-legalize-type-conversion
-Transforms__test-legalize-unknown-root.0	test-only pass -test-legalize-unknown-root-patterns
+Transforms__test-legalizer.0	test-only pass -test-legalize-patterns=allow-pattern-rollback=1
+Transforms__test-legalizer.1	test-only pass -test-legalize-patterns=allow-pattern-rollback=1
+Transforms__test-legalizer.2	test-only pass -test-legalize-patterns=allow-pattern-rollback=0
 Transforms__test-merge-blocks.0	test-only pass -test-merge-blocks
 Transforms__test-operation-folder.0	test-only pass -test-greedy-patterns=top-down=false
 Transforms__test-operation-folder.1	test-only pass -test-greedy-patterns=top-down=true
@@ -143,21 +171,3 @@ Transforms__test-rewrite-dynamic-op.0	test-only pass -test-rewrite-dynamic-op
 Transforms__test-strict-pattern-driver.0	test-only pass -test-strict-pattern-driver=strictness=AnyOp
 Transforms__test-strict-pattern-driver.1	test-only pass -test-strict-pattern-driver=strictness=ExistingAndNewOps
 Transforms__test-strict-pattern-driver.2	test-only pass -test-strict-pattern-driver=strictness=ExistingOps
-Dialect__Linalg__affine.1	test-only pass -test-lower-to-llvm
-Dialect__Linalg__loops.2	test-only pass -test-lower-to-llvm
-Dialect__AMX__invalid.0	mlir-opt failed (reading the input)
-Dialect__X86Vector__cvt-packed-f32-to-bf16.0	pipes into mlir-translate
-Dialect__X86Vector__dot-bf16.0	pipes into mlir-translate
-Dialect__Bufferization__Transforms__one-shot-bufferize-pass-statistics.0	prints logs, not IR: -mlir-pass-statistics
-Conversion__MathToXeVM__native-spirv-builtins.0	prints logs, not IR: -debug-only=serialize-to-isa
-Conversion__MathToXeVM__native-spirv-builtins.1	not mlir-opt: ['FileCheck']
-Conversion__NVVMToLLVM__invalid.0	mlir-opt failed (reading the input)
-Dialect__SCF__one-shot-bufferize-tensor-copy-insertion.0	test-only pass -test-tensor-copy-insertion=allow-return-allocs-from-loops
-Dialect__SCF__one-shot-bufferize-tensor-copy-insertion.1	test-only pass -test-tensor-copy-insertion=allow-return-allocs-from-loops bufferize-function-boundaries
-Dialect__Tensor__one-shot-bufferize-tensor-copy-insertion.0	test-only pass -test-tensor-copy-insertion
-Dialect__Tensor__one-shot-bufferize-tensor-copy-insertion.1	test-only pass -test-tensor-copy-insertion=bufferize-function-boundaries
-Conversion__AMDGPUToROCDL__gfx1250.0	mlir-opt failed (reading the input)
-Conversion__AMDGPUToROCDL__load_lds-gfx950.0	not mlir-opt: ['not']
-Conversion__AMDGPUToROCDL__transpose_load.1	not mlir-opt: ['not']
-Conversion__AMDGPUToROCDL__transpose_load_reject.0	not mlir-opt: ['not']
-Conversion__AMDGPUToROCDL__wmma-gfx1250.0	mlir-opt failed (reading the input)

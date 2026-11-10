@@ -51,3 +51,12 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<4xf32>, memref<?xvector<4xf32>>, index) -> (), sym_name = "no_store_vec_element_memref"}> ({
+  ^bb0(%arg0: vector<4xf32>, %arg1: memref<?xvector<4xf32>>, %arg2: index):
+    "vector.store"(%arg0, %arg1, %arg2) : (vector<4xf32>, memref<?xvector<4xf32>>, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+

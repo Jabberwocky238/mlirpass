@@ -36,14 +36,6 @@ module {
       %0 = spirv.EXT.ConstantCompositeReplicate [dense<[1, 2]> : vector<2xi32>] : !spirv.array<1 x !spirv.array<2 x vector<2xi32>>>
       spirv.ReturnValue %0 : !spirv.array<1 x !spirv.array<2 x vector<2xi32>>>
     }
-    spirv.func @array_of_one_splat_array_of_vector_of_one_i32() -> !spirv.array<1 x !spirv.array<2 x vector<1xi32>>> "None" {
-      %0 = spirv.EXT.ConstantCompositeReplicate [dense<1> : vector<1xi32>] : !spirv.array<1 x !spirv.array<2 x vector<1xi32>>>
-      spirv.ReturnValue %0 : !spirv.array<1 x !spirv.array<2 x vector<1xi32>>>
-    }
-    spirv.func @splat_array_of_array_of_one_vector_of_one_i32() -> !spirv.array<2 x !spirv.array<1 x vector<1xi32>>> "None" {
-      %0 = spirv.EXT.ConstantCompositeReplicate [dense<1> : vector<1xi32>] : !spirv.array<2 x !spirv.array<1 x vector<1xi32>>>
-      spirv.ReturnValue %0 : !spirv.array<2 x !spirv.array<1 x vector<1xi32>>>
-    }
     spirv.func @array_of_one_array_of_one_splat_vector_of_i32() -> !spirv.array<1 x !spirv.array<1 x vector<2xi32>>> "None" {
       %0 = spirv.EXT.ConstantCompositeReplicate [1 : i32] : !spirv.array<1 x !spirv.array<1 x vector<2xi32>>>
       spirv.ReturnValue %0 : !spirv.array<1 x !spirv.array<1 x vector<2xi32>>>
@@ -87,14 +79,6 @@ module {
     spirv.func @array_of_splat_array_of_non_splat_vectors_of_f32() -> !spirv.array<1 x !spirv.array<2 x vector<2xf32>>> "None" {
       %0 = spirv.EXT.ConstantCompositeReplicate [dense<[1.000000e+00, 2.000000e+00]> : vector<2xf32>] : !spirv.array<1 x !spirv.array<2 x vector<2xf32>>>
       spirv.ReturnValue %0 : !spirv.array<1 x !spirv.array<2 x vector<2xf32>>>
-    }
-    spirv.func @array_of_one_splat_array_of_vector_of_one_f32() -> !spirv.array<1 x !spirv.array<2 x vector<1xf32>>> "None" {
-      %0 = spirv.EXT.ConstantCompositeReplicate [dense<1.000000e+00> : vector<1xf32>] : !spirv.array<1 x !spirv.array<2 x vector<1xf32>>>
-      spirv.ReturnValue %0 : !spirv.array<1 x !spirv.array<2 x vector<1xf32>>>
-    }
-    spirv.func @splat_array_of_array_of_one_vector_of_one_f32() -> !spirv.array<2 x !spirv.array<1 x vector<1xf32>>> "None" {
-      %0 = spirv.EXT.ConstantCompositeReplicate [dense<1.000000e+00> : vector<1xf32>] : !spirv.array<2 x !spirv.array<1 x vector<1xf32>>>
-      spirv.ReturnValue %0 : !spirv.array<2 x !spirv.array<1 x vector<1xf32>>>
     }
     spirv.func @array_of_one_array_of_one_splat_vector_of_f32() -> !spirv.array<1 x !spirv.array<1 x vector<2xf32>>> "None" {
       %0 = spirv.EXT.ConstantCompositeReplicate [1.000000e+00 : f32] : !spirv.array<1 x !spirv.array<1 x vector<2xf32>>>
@@ -140,9 +124,9 @@ module {
       %cst = spirv.Constant [[dense<[1, 2]> : vector<2xi32>]] : !spirv.array<1 x !spirv.array<1 x vector<2xi32>>>
       spirv.ReturnValue %cst : !spirv.array<1 x !spirv.array<1 x vector<2xi32>>>
     }
-    spirv.func @array_of_one_array_of_one_vector_of_one_i32() -> !spirv.array<1 x !spirv.array<1 x vector<1xi32>>> "None" {
-      %cst = spirv.Constant [[dense<1> : vector<1xi32>]] : !spirv.array<1 x !spirv.array<1 x vector<1xi32>>>
-      spirv.ReturnValue %cst : !spirv.array<1 x !spirv.array<1 x vector<1xi32>>>
+    spirv.func @empty_struct() -> !spirv.struct<()> "None" {
+      %cst = spirv.Constant [] : !spirv.struct<()>
+      spirv.ReturnValue %cst : !spirv.struct<()>
     }
   }
 }

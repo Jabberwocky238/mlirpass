@@ -241,6 +241,34 @@ module {
 
 // -----
 module {
+  func.func private @_mlir_apfloat_flush_denormals(i32, i64) -> i64
+  func.func @flush_denormals(%arg0: f32) {
+    %0 = arith.bitcast %arg0 : f32 to i32
+    %1 = arith.extui %0 : i32 to i64
+    %c2_i32 = arith.constant 2 : i32
+    %2 = call @_mlir_apfloat_flush_denormals(%c2_i32, %1) : (i32, i64) -> i64
+    %3 = arith.trunci %2 : i64 to i32
+    %4 = arith.bitcast %3 : i32 to f32
+    return
+  }
+}
+
+// -----
+module {
+  func.func private @_mlir_apfloat_flush_denormals(i32, i64) -> i64
+  func.func @flush_denormals_f8(%arg0: f8E4M3FN) {
+    %0 = arith.bitcast %arg0 : f8E4M3FN to i8
+    %1 = arith.extui %0 : i8 to i64
+    %c10_i32 = arith.constant 10 : i32
+    %2 = call @_mlir_apfloat_flush_denormals(%c10_i32, %1) : (i32, i64) -> i64
+    %3 = arith.trunci %2 : i64 to i8
+    %4 = arith.bitcast %3 : i8 to f8E4M3FN
+    return
+  }
+}
+
+// -----
+module {
   func.func private @_mlir_apfloat_minimum(i32, i64, i64) -> i64
   func.func @minimumf(%arg0: f32, %arg1: f32) {
     %0 = arith.bitcast %arg0 : f32 to i32

@@ -41,12 +41,15 @@ module {
 // -----
 module {
   llvm.func @no_fold_extractvalue(%arg0: !llvm.array<4 x f32>) -> f32 {
-    %cst = arith.constant 0.000000e+00 : f32
-    %0 = llvm.mlir.undef : !llvm.array<4 x array<4 x f32>>
-    %1 = llvm.insertvalue %cst, %0[0, 0] : !llvm.array<4 x array<4 x f32>> 
-    %2 = llvm.insertvalue %arg0, %1[0] : !llvm.array<4 x array<4 x f32>> 
-    %3 = llvm.extractvalue %2[0, 0] : !llvm.array<4 x array<4 x f32>> 
-    llvm.return %3 : f32
+    %0 = llvm.extractvalue %arg0[0] : !llvm.array<4 x f32> 
+    llvm.return %0 : f32
+  }
+}
+
+// -----
+module {
+  llvm.func @fold_nested_extractvalue(%arg0: i32, %arg1: i32) -> i32 {
+    llvm.return %arg0 : i32
   }
 }
 
@@ -105,6 +108,28 @@ module {
     %1 = llvm.mlir.constant(0.000000e+00 : f32) : f32
     %2 = llvm.fadd %0, %1 : f32
     llvm.return %2 : f32
+  }
+}
+
+// -----
+module {
+  llvm.func @no_fold_extract_splat_rank_mismatch() -> vector<2xi32> {
+    %0 = llvm.mlir.constant(dense<12> : vector<2xi32>) : vector<2xi32>
+    %1 = llvm.mlir.constant(dense<23> : vector<4x2xi32>) : !llvm.array<4 x vector<2xi32>>
+    %2 = llvm.extractvalue %1[0] : !llvm.array<4 x vector<2xi32>> 
+    %3 = llvm.shl %0, %2 : vector<2xi32>
+    llvm.return %3 : vector<2xi32>
+  }
+}
+
+// -----
+module {
+  llvm.func @no_fold_extract_sparse_rank_mismatch() -> vector<2xi32> {
+    %0 = llvm.mlir.constant(dense<12> : vector<2xi32>) : vector<2xi32>
+    %1 = llvm.mlir.constant(sparse<0, 23> : vector<4x2xi32>) : !llvm.array<4 x vector<2xi32>>
+    %2 = llvm.extractvalue %1[0] : !llvm.array<4 x vector<2xi32>> 
+    %3 = llvm.shl %0, %2 : vector<2xi32>
+    llvm.return %3 : vector<2xi32>
   }
 }
 
@@ -256,6 +281,17 @@ module {
   llvm.func @inline_asm_side_effects(%arg0: i32) {
     llvm.inline_asm has_side_effects "inline asm with side effects", "r" %arg0 : (i32) -> ()
     llvm.return
+  }
+}
+
+// -----
+module {
+  llvm.func @metadata_as_value_dedup() -> i32 {
+    %0 = llvm.mlir.metadata_as_value #llvm.md_node<#llvm.md_string<"sp">>
+    %1 = llvm.call_intrinsic "llvm.read_register.i32"(%0) : (!llvm.metadata) -> i32
+    %2 = llvm.call_intrinsic "llvm.read_register.i32"(%0) : (!llvm.metadata) -> i32
+    %3 = llvm.add %1, %2 : i32
+    llvm.return %3 : i32
   }
 }
 

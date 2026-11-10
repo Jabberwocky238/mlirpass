@@ -64,7 +64,7 @@
   "func.func"() <{function_type = (tensor<?xf32>, index) -> f32, sym_name = "tensor.extract"}> ({
   ^bb0(%arg0: tensor<?xf32>, %arg1: index):
     %0 = "bufferization.to_buffer"(%arg0) : (tensor<?xf32>) -> memref<?xf32>
-    %1 = "memref.load"(%0, %arg1) <{nontemporal = false}> : (memref<?xf32>, index) -> f32
+    %1 = "memref.load"(%0, %arg1) <{invariant = false, nontemporal = false}> : (memref<?xf32>, index) -> f32
     "func.return"(%1) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()

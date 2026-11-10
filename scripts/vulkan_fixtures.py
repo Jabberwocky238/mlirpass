@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Regenerates the Vulkan execution fixtures from llvm-project's mlir/test/Integration/GPU/Vulkan
-and a vanilla mlir-opt 22.1.8.
+and a vanilla mlir-opt 23.1.5.
 
 For every test it writes, under tests/fixtures/:
 
@@ -20,7 +20,7 @@ from pathlib import Path
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--llvm", required=True)
-    ap.add_argument("--bin", required=True, help="directory with mlir-opt 22.1.8")
+    ap.add_argument("--bin", required=True, help="directory with mlir-opt 23.1.5")
     ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "tests" / "fixtures"))
     a = ap.parse_args()
     out = Path(a.out)

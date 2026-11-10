@@ -302,9 +302,9 @@ module {
     %2 = builtin.unrealized_conversion_cast %arg0 : memref<42x?xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
     %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
     %4 = llvm.extractvalue %2[4, 0] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %5 = llvm.mul %1, %4 overflow<nsw, nuw> : i64
-    %6 = llvm.add %5, %0 overflow<nsw, nuw> : i64
-    %7 = llvm.getelementptr inbounds|nuw %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %5 = llvm.mul %1, %4 overflow<nsw> : i64
+    %6 = llvm.add %5, %0 overflow<nsw> : i64
+    %7 = llvm.getelementptr inbounds %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
     %8 = llvm.load %7 : !llvm.ptr -> f32
     return
   }
@@ -318,9 +318,9 @@ module {
     %2 = builtin.unrealized_conversion_cast %arg0 : memref<?x?xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
     %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
     %4 = llvm.extractvalue %2[4, 0] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %5 = llvm.mul %1, %4 overflow<nsw, nuw> : i64
-    %6 = llvm.add %5, %0 overflow<nsw, nuw> : i64
-    %7 = llvm.getelementptr inbounds|nuw %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %5 = llvm.mul %1, %4 overflow<nsw> : i64
+    %6 = llvm.add %5, %0 overflow<nsw> : i64
+    %7 = llvm.getelementptr inbounds %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
     %8 = llvm.load %7 : !llvm.ptr -> f32
     return
   }
@@ -362,9 +362,9 @@ module {
     %2 = builtin.unrealized_conversion_cast %arg0 : memref<?x?xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
     %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
     %4 = llvm.extractvalue %2[4, 0] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %5 = llvm.mul %1, %4 overflow<nsw, nuw> : i64
-    %6 = llvm.add %5, %0 overflow<nsw, nuw> : i64
-    %7 = llvm.getelementptr inbounds|nuw %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %5 = llvm.mul %1, %4 overflow<nsw> : i64
+    %6 = llvm.add %5, %0 overflow<nsw> : i64
+    %7 = llvm.getelementptr inbounds %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
     llvm.store %arg3, %7 : f32, !llvm.ptr
     return
   }
@@ -378,9 +378,9 @@ module {
     %2 = builtin.unrealized_conversion_cast %arg0 : memref<42x?xf32> to !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
     %3 = llvm.extractvalue %2[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
     %4 = llvm.extractvalue %2[4, 0] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)> 
-    %5 = llvm.mul %1, %4 overflow<nsw, nuw> : i64
-    %6 = llvm.add %5, %0 overflow<nsw, nuw> : i64
-    %7 = llvm.getelementptr inbounds|nuw %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %5 = llvm.mul %1, %4 overflow<nsw> : i64
+    %6 = llvm.add %5, %0 overflow<nsw> : i64
+    %7 = llvm.getelementptr inbounds %3[%6] : (!llvm.ptr, i64) -> !llvm.ptr, f32
     llvm.store %arg3, %7 : f32, !llvm.ptr
     return
   }
@@ -765,6 +765,34 @@ module {
     %28 = llvm.insertvalue %26, %27[0] : !llvm.struct<(i64, ptr)> 
     %29 = llvm.insertvalue %25, %28[1] : !llvm.struct<(i64, ptr)> 
     return
+  }
+}
+
+// -----
+module {
+  func.func @memref_load_neg_stride(%arg0: memref<2000xf32>) -> f32 {
+    %0 = builtin.unrealized_conversion_cast %arg0 : memref<2000xf32> to !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+    %1 = llvm.mlir.poison : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+    %2 = llvm.extractvalue %0[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+    %3 = llvm.extractvalue %0[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+    %4 = llvm.insertvalue %2, %1[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+    %5 = llvm.insertvalue %3, %4[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+    %6 = llvm.mlir.constant(1000 : index) : i64
+    %7 = llvm.insertvalue %6, %5[2] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+    %8 = llvm.mlir.constant(100 : index) : i64
+    %9 = llvm.insertvalue %8, %7[3, 0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+    %10 = llvm.mlir.constant(-1 : index) : i64
+    %11 = llvm.insertvalue %10, %9[4, 0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+    %c5 = arith.constant 5 : index
+    %12 = builtin.unrealized_conversion_cast %c5 : index to i64
+    %13 = llvm.extractvalue %11[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
+    %14 = llvm.mlir.constant(1000 : index) : i64
+    %15 = llvm.getelementptr %13[%14] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %16 = llvm.mlir.constant(-1 : index) : i64
+    %17 = llvm.mul %12, %16 overflow<nsw> : i64
+    %18 = llvm.getelementptr inbounds %15[%17] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+    %19 = llvm.load %18 : !llvm.ptr -> f32
+    return %19 : f32
   }
 }
 

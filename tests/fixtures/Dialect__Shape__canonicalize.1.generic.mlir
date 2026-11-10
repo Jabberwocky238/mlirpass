@@ -187,6 +187,15 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> !shape.shape, sym_name = "from_extents_poison"}> ({
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> index
+    %1 = "shape.from_extents"(%0) : (index) -> !shape.shape
+    "func.return"(%1) : (!shape.shape) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = () -> index, sym_name = "const_size_to_index"}> ({
     %0 = "arith.constant"() <{value = 123 : index}> : () -> index
     "func.return"(%0) : (index) -> ()
@@ -1126,6 +1135,43 @@
     %0 = "shape.const_shape"() <{shape = dense<> : tensor<0xindex>}> : () -> tensor<0xindex>
     %1 = "tensor.cast"(%0) : (tensor<0xindex>) -> tensor<?xindex>
     "func.return"(%1) : (tensor<?xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<3xf32>) -> !shape.shape, sym_name = "shape_of_static_with_shape_result"}> ({
+  ^bb0(%arg0: tensor<3xf32>):
+    %0 = "shape.const_shape"() <{shape = dense<3> : tensor<1xindex>}> : () -> !shape.shape
+    "func.return"(%0) : (!shape.shape) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "broadcast_no_crash_on_poison"}> ({
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<?xf32>) -> index, sym_name = "extract_from_shape_of_tensor"}> ({
+  ^bb0(%arg0: tensor<?xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "tensor.dim"(%arg0, %0) : (tensor<?xf32>, index) -> index
+    "func.return"(%1) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<?xf32>) -> index, sym_name = "extract_from_shape_of_memref_no_fold"}> ({
+  ^bb0(%arg0: memref<?xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "shape.shape_of"(%arg0) : (memref<?xf32>) -> tensor<1xindex>
+    %2 = "tensor.extract"(%1, %0) : (tensor<1xindex>, index) -> index
+    "func.return"(%2) : (index) -> ()
   }) : () -> ()
 }) : () -> ()
 

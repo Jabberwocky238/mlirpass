@@ -1,0 +1,2 @@
+-split-input-file
+-convert-math-to-xevm=convert-to-ocl=true convert-arith=true

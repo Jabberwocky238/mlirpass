@@ -700,6 +700,23 @@ module {
 #map = affine_map<(d0, d1, d2, d3) -> (d3)>
 #map1 = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 module {
+  func.func @conv2d_f8_f32_acc(%arg0: tensor<1x49x42x27xf8E5M2>, %arg1: tensor<28x3x3x27xf8E5M2>, %arg2: tensor<28xf32>) {
+    %0 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %1 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %2 = tensor.empty() : tensor<1x45x40x28xf32>
+    %3 = linalg.generic {indexing_maps = [#map, #map1], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%arg2 : tensor<28xf32>) outs(%2 : tensor<1x45x40x28xf32>) {
+    ^bb0(%in: f32, %out: f32):
+      linalg.yield %in : f32
+    } -> tensor<1x45x40x28xf32>
+    %4 = linalg.conv_2d_nhwc_fhwc {dilations = dense<[2, 1]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} ins(%arg0, %arg1 : tensor<1x49x42x27xf8E5M2>, tensor<28x3x3x27xf8E5M2>) outs(%3 : tensor<1x45x40x28xf32>) -> tensor<1x45x40x28xf32>
+    return
+  }
+}
+
+// -----
+#map = affine_map<(d0, d1, d2, d3) -> (d3)>
+#map1 = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+module {
   func.func @depthwise_conv(%arg0: tensor<1x7x5x3xf32>, %arg1: tensor<3x1x3x11xf32>, %arg2: tensor<33xf32>) {
     %0 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
     %1 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
@@ -940,6 +957,28 @@ module {
 }
 
 // -----
+#map = affine_map<(d0, d1, d2, d3) -> (d3)>
+#map1 = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+module {
+  func.func @depthwise_conv2d_f8_f32_acc(%arg0: tensor<1x7x5x3xf8E5M2>, %arg1: tensor<3x1x3x11xf8E5M2>, %arg2: tensor<33xf32>) {
+    %0 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %1 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %2 = tensor.empty() : tensor<1x5x5x3x11xf32>
+    %cst = arith.constant 0.000000e+00 : f32
+    %3 = linalg.fill ins(%cst : f32) outs(%2 : tensor<1x5x5x3x11xf32>) -> tensor<1x5x5x3x11xf32>
+    %4 = tensor.empty() : tensor<1x5x5x33xf32>
+    %5 = linalg.depthwise_conv_2d_nhwc_hwcm {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} ins(%arg0, %arg1 : tensor<1x7x5x3xf8E5M2>, tensor<3x1x3x11xf8E5M2>) outs(%3 : tensor<1x5x5x3x11xf32>) -> tensor<1x5x5x3x11xf32>
+    %collapsed = tensor.collapse_shape %5 [[0], [1], [2], [3, 4]] : tensor<1x5x5x3x11xf32> into tensor<1x5x5x33xf32>
+    %6 = linalg.generic {indexing_maps = [#map, #map1, #map1], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%arg2, %collapsed : tensor<33xf32>, tensor<1x5x5x33xf32>) outs(%4 : tensor<1x5x5x33xf32>) {
+    ^bb0(%in: f32, %in_0: f32, %out: f32):
+      %7 = arith.addf %in, %in_0 : f32
+      linalg.yield %7 : f32
+    } -> tensor<1x5x5x33xf32>
+    return
+  }
+}
+
+// -----
 #map = affine_map<(d0, d1, d2, d3, d4) -> (d4)>
 #map1 = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
 module {
@@ -1015,6 +1054,25 @@ module {
     } -> tensor<1x47x45x43x43xf32>
     %5 = linalg.conv_3d_ndhwc_dhwcf {dilations = dense<1> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} ins(%arg0, %transposed : tensor<1x49x48x47x27xf16>, tensor<3x4x5x27x43xf16>) outs(%4 : tensor<1x47x45x43x43xf32>) -> tensor<1x47x45x43x43xf32>
     %6 = tosa.cast %5 : (tensor<1x47x45x43x43xf32>) -> tensor<1x47x45x43x43xf16>
+    return
+  }
+}
+
+// -----
+#map = affine_map<(d0, d1, d2, d3, d4) -> (d4)>
+#map1 = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
+module {
+  func.func @conv3d_f8_f32_acc(%arg0: tensor<1x49x48x47x27xf8E5M2>, %arg1: tensor<43x3x4x5x27xf8E5M2>, %arg2: tensor<43xf32>) {
+    %0 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %1 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %2 = tensor.empty() : tensor<3x4x5x27x43xf8E5M2>
+    %transposed = linalg.transpose ins(%arg1 : tensor<43x3x4x5x27xf8E5M2>) outs(%2 : tensor<3x4x5x27x43xf8E5M2>) permutation = [1, 2, 3, 4, 0] 
+    %3 = tensor.empty() : tensor<1x47x45x43x43xf32>
+    %4 = linalg.generic {indexing_maps = [#map, #map1], iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel"]} ins(%arg2 : tensor<43xf32>) outs(%3 : tensor<1x47x45x43x43xf32>) {
+    ^bb0(%in: f32, %out: f32):
+      linalg.yield %in : f32
+    } -> tensor<1x47x45x43x43xf32>
+    %5 = linalg.conv_3d_ndhwc_dhwcf {dilations = dense<1> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} ins(%arg0, %transposed : tensor<1x49x48x47x27xf8E5M2>, tensor<3x4x5x27x43xf8E5M2>) outs(%4 : tensor<1x47x45x43x43xf32>) -> tensor<1x47x45x43x43xf32>
     return
   }
 }

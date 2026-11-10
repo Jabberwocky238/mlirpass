@@ -10,6 +10,47 @@ module {
     gpu.barrier
     return
   }
+  func.func @erase_barriers_first_full_fence() {
+    gpu.barrier
+    return
+  }
+  func.func @erase_barriers_second_full_fence() {
+    gpu.barrier
+    return
+  }
+  func.func @erase_barriers_merge_memfence() {
+    gpu.barrier memfence [#gpu.address_space<workgroup>, #gpu.address_space<global>]
+    return
+  }
+  func.func @erase_barriers_merge_memfence_same() {
+    gpu.barrier memfence [#gpu.address_space<workgroup>]
+    return
+  }
+  func.func @erase_barriers_empty_memfence() {
+    gpu.barrier memfence []
+    return
+  }
+  func.func @erase_barriers_same_scope() {
+    gpu.barrier scope <subgroup>
+    return
+  }
+  func.func @no_fold_different_scope() {
+    gpu.barrier scope <subgroup>
+    gpu.barrier scope <cluster>
+    return
+  }
+  func.func @no_fold_different_named_barriers(%arg0: i32) {
+    %0 = gpu.initialize_named_barrier %arg0 : i32 -> !gpu.named_barrier
+    %1 = gpu.initialize_named_barrier %arg0 : i32 -> !gpu.named_barrier
+    gpu.barrier named(%0 : !gpu.named_barrier)
+    gpu.barrier named(%1 : !gpu.named_barrier)
+    return
+  }
+  func.func @fold_same_named_barrier(%arg0: i32) {
+    %0 = gpu.initialize_named_barrier %arg0 : i32 -> !gpu.named_barrier
+    gpu.barrier named(%0 : !gpu.named_barrier)
+    return
+  }
 }
 
 // -----
@@ -106,6 +147,15 @@ module {
 
 // -----
 module {
+  func.func @negative_memref_dim(%arg0: memref<?xi8>) -> index {
+    %c-2 = arith.constant -2 : index
+    %dim = memref.dim %arg0, %c-2 : memref<?xi8>
+    return %dim : index
+  }
+}
+
+// -----
+module {
   func.func @simplify_gpu_launch() attributes {llvm.emit_c_interface} {
     %cst = arith.constant 0.000000e+00 : f32
     %c1 = arith.constant 1 : index
@@ -144,7 +194,7 @@ module {
     %0:6 = "test.test1"() : () -> (index, index, index, index, index, index)
     gpu.launch blocks(%arg0, %arg1, %arg2) in (%arg6 = %0#0, %arg7 = %0#1, %arg8 = %0#2) threads(%arg3, %arg4, %arg5) in (%arg9 = %0#3, %arg10 = %0#4, %arg11 = %0#5) {
       %1 = "test.test2"() : () -> i32
-      %2 = gpu.all_reduce  add %1 uniform {
+      %2 = gpu.all_reduce add %1 uniform {
       } : (i32) -> i32
       "test.test3"(%2) : (i32) -> ()
       gpu.terminator
@@ -159,7 +209,7 @@ module {
     %0:6 = "test.test1"() : () -> (index, index, index, index, index, index)
     gpu.launch blocks(%arg0, %arg1, %arg2) in (%arg6 = %0#0, %arg7 = %0#1, %arg8 = %0#2) threads(%arg3, %arg4, %arg5) in (%arg9 = %0#3, %arg10 = %0#4, %arg11 = %0#5) {
       %1 = "test.test2"() : () -> i32
-      %2 = gpu.subgroup_reduce  add %1 uniform : (i32) -> i32
+      %2 = gpu.subgroup_reduce add %1 uniform : (i32) -> i32
       "test.test3"(%2) : (i32) -> ()
       gpu.terminator
     }
@@ -191,11 +241,11 @@ module {
 // -----
 module {
   func.func @broadcast_of_broadcast1(%arg0: f32, %arg1: i32) -> f32 {
-    %0 = gpu.subgroup_broadcast %arg0,  first_active_lane : f32
+    %0 = gpu.subgroup_broadcast %arg0, first_active_lane : f32
     return %0 : f32
   }
   func.func @broadcast_of_broadcast2(%arg0: f32, %arg1: i32) -> f32 {
-    %0 = gpu.subgroup_broadcast %arg0,  specific_lane %arg1 : f32
+    %0 = gpu.subgroup_broadcast %arg0, specific_lane %arg1 : f32
     return %0 : f32
   }
 }

@@ -37,42 +37,42 @@
     %14 = "arith.constant"() <{value = 0 : index}> : () -> index
     %15 = "affine.apply"(%11) <{map = #map3}> : (index) -> index
     %16 = "affine.apply"(%11) <{map = #map4}> : (index) -> index
-    %17 = "memref.load"(%arg1, %16, %15) <{nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
+    %17 = "memref.load"(%arg1, %16, %15) <{invariant = false, nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
     %18 = "vector.insert"(%17, %13) <{static_position = array<i64: 0, 0>}> : (i8, vector<2x4xi8>) -> vector<2x4xi8>
     %19 = "arith.constant"() <{value = 1 : index}> : () -> index
     %20 = "affine.apply"(%11) <{map = #map3}> : (index) -> index
     %21 = "affine.apply"(%11) <{map = #map5}> : (index) -> index
-    %22 = "memref.load"(%arg1, %21, %20) <{nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
+    %22 = "memref.load"(%arg1, %21, %20) <{invariant = false, nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
     %23 = "vector.insert"(%22, %18) <{static_position = array<i64: 0, 1>}> : (i8, vector<2x4xi8>) -> vector<2x4xi8>
     %24 = "arith.constant"() <{value = 2 : index}> : () -> index
     %25 = "affine.apply"(%11) <{map = #map3}> : (index) -> index
     %26 = "affine.apply"(%11) <{map = #map6}> : (index) -> index
-    %27 = "memref.load"(%arg1, %26, %25) <{nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
+    %27 = "memref.load"(%arg1, %26, %25) <{invariant = false, nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
     %28 = "vector.insert"(%27, %23) <{static_position = array<i64: 0, 2>}> : (i8, vector<2x4xi8>) -> vector<2x4xi8>
     %29 = "arith.constant"() <{value = 3 : index}> : () -> index
     %30 = "affine.apply"(%11) <{map = #map3}> : (index) -> index
     %31 = "affine.apply"(%11) <{map = #map7}> : (index) -> index
-    %32 = "memref.load"(%arg1, %31, %30) <{nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
+    %32 = "memref.load"(%arg1, %31, %30) <{invariant = false, nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
     %33 = "vector.insert"(%32, %28) <{static_position = array<i64: 0, 3>}> : (i8, vector<2x4xi8>) -> vector<2x4xi8>
     %34 = "arith.constant"() <{value = 4 : index}> : () -> index
     %35 = "affine.apply"(%11) <{map = #map3}> : (index) -> index
     %36 = "affine.apply"(%11) <{map = #map8}> : (index) -> index
-    %37 = "memref.load"(%arg1, %36, %35) <{nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
+    %37 = "memref.load"(%arg1, %36, %35) <{invariant = false, nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
     %38 = "vector.insert"(%37, %33) <{static_position = array<i64: 1, 0>}> : (i8, vector<2x4xi8>) -> vector<2x4xi8>
     %39 = "arith.constant"() <{value = 5 : index}> : () -> index
     %40 = "affine.apply"(%11) <{map = #map3}> : (index) -> index
     %41 = "affine.apply"(%11) <{map = #map9}> : (index) -> index
-    %42 = "memref.load"(%arg1, %41, %40) <{nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
+    %42 = "memref.load"(%arg1, %41, %40) <{invariant = false, nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
     %43 = "vector.insert"(%42, %38) <{static_position = array<i64: 1, 1>}> : (i8, vector<2x4xi8>) -> vector<2x4xi8>
     %44 = "arith.constant"() <{value = 6 : index}> : () -> index
     %45 = "affine.apply"(%11) <{map = #map3}> : (index) -> index
     %46 = "affine.apply"(%11) <{map = #map10}> : (index) -> index
-    %47 = "memref.load"(%arg1, %46, %45) <{nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
+    %47 = "memref.load"(%arg1, %46, %45) <{invariant = false, nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
     %48 = "vector.insert"(%47, %43) <{static_position = array<i64: 1, 2>}> : (i8, vector<2x4xi8>) -> vector<2x4xi8>
     %49 = "arith.constant"() <{value = 7 : index}> : () -> index
     %50 = "affine.apply"(%11) <{map = #map3}> : (index) -> index
     %51 = "affine.apply"(%11) <{map = #map11}> : (index) -> index
-    %52 = "memref.load"(%arg1, %51, %50) <{nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
+    %52 = "memref.load"(%arg1, %51, %50) <{invariant = false, nontemporal = false}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index) -> i8
     %53 = "vector.insert"(%52, %48) <{static_position = array<i64: 1, 3>}> : (i8, vector<2x4xi8>) -> vector<2x4xi8>
     %54 = "vector.transfer_read"(%arg1, %1, %2, %4) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map12}> : (memref<128x128xi8, #gpu.address_space<workgroup>>, index, index, i8) -> vector<8x32xi8>
     %55 = "gpu.lane_id"() : () -> index
@@ -90,7 +90,7 @@
     %67 = "vector.insert"(%66, %62) <{static_position = array<i64: 1>}> : (vector<2xi32>, vector<2x2xi32>) -> vector<2x2xi32>
     %68 = "vector.transfer_read"(%arg2, %3, %2, %5) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map2}> : (memref<128x128xi32>, index, index, i32) -> vector<16x8xi32>
     %69 = "nvgpu.mma.sync"(%9, %53, %67) <{mmaShape = [16, 8, 32]}> : (vector<4x4xi8>, vector<2x4xi8>, vector<2x2xi32>) -> vector<2x2xi32>
-    %70 = "vector.contract"(%10, %54, %68) <{indexing_maps = [#map16, #map17, #map18], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x32xi8>, vector<8x32xi8>, vector<16x8xi32>) -> vector<16x8xi32>
+    %70 = "vector.contract"(%10, %54, %68) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map16, #map17, #map18], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x32xi8>, vector<8x32xi8>, vector<16x8xi32>) -> vector<16x8xi32>
     %71 = "gpu.lane_id"() : () -> index
     %72 = "arith.constant"() <{value = 0 : index}> : () -> index
     %73 = "vector.extract"(%69) <{static_position = array<i64: 0>}> : (vector<2x2xi32>) -> vector<2xi32>
@@ -141,7 +141,7 @@
     %17 = "arith.constant"() <{value = 0 : index}> : () -> index
     %18 = "affine.apply"(%14) <{map = #map3}> : (index) -> index
     %19 = "affine.apply"(%14) <{map = #map4}> : (index) -> index
-    %20 = "memref.load"(%arg1, %19, %18) <{nontemporal = false}> : (memref<128x128xf64>, index, index) -> f64
+    %20 = "memref.load"(%arg1, %19, %18) <{invariant = false, nontemporal = false}> : (memref<128x128xf64>, index, index) -> f64
     %21 = "vector.insert"(%20, %16) <{static_position = array<i64: 0, 0>}> : (f64, vector<1x1xf64>) -> vector<1x1xf64>
     %22 = "vector.transfer_read"(%arg1, %1, %2, %4) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map5}> : (memref<128x128xf64>, index, index, f64) -> vector<8x4xf64>
     %23 = "gpu.lane_id"() : () -> index
@@ -154,7 +154,7 @@
     %30 = "vector.insert"(%29, %25) <{static_position = array<i64: 0>}> : (vector<2xf64>, vector<1x2xf64>) -> vector<1x2xf64>
     %31 = "vector.transfer_read"(%arg2, %3, %2, %4) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map2}> : (memref<128x128xf64>, index, index, f64) -> vector<8x8xf64>
     %32 = "nvgpu.mma.sync"(%12, %21, %30) <{mmaShape = [8, 8, 4]}> : (vector<1x1xf64>, vector<1x1xf64>, vector<1x2xf64>) -> vector<1x2xf64>
-    %33 = "vector.contract"(%13, %22, %31) <{indexing_maps = [#map8, #map9, #map10], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<8x4xf64>, vector<8x4xf64>, vector<8x8xf64>) -> vector<8x8xf64>
+    %33 = "vector.contract"(%13, %22, %31) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map8, #map9, #map10], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<8x4xf64>, vector<8x4xf64>, vector<8x8xf64>) -> vector<8x8xf64>
     %34 = "gpu.lane_id"() : () -> index
     %35 = "arith.constant"() <{value = 0 : index}> : () -> index
     %36 = "vector.extract"(%32) <{static_position = array<i64: 0>}> : (vector<1x2xf64>) -> vector<2xf64>
@@ -197,7 +197,7 @@
     %15 = "nvgpu.ldmatrix"(%arg2, %13, %14) <{numTiles = 2 : i32, transpose = false}> : (memref<20x20xf16, #gpu.address_space<workgroup>>, index, index) -> vector<2x2xf16>
     %16 = "vector.transfer_read"(%arg2, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map2}> : (memref<20x20xf16, #gpu.address_space<workgroup>>, index, index, f16) -> vector<16x8xf16>
     %17 = "nvgpu.mma.sync"(%5, %10, %15) <{mmaShape = [16, 8, 16]}> : (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
-    %18 = "vector.contract"(%6, %11, %16) <{indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
+    %18 = "vector.contract"(%6, %11, %16) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
     %19 = "gpu.lane_id"() : () -> index
     %20 = "arith.constant"() <{value = 0 : index}> : () -> index
     %21 = "vector.extract"(%17) <{static_position = array<i64: 0>}> : (vector<2x2xf16>) -> vector<2xf16>
@@ -249,7 +249,7 @@
     %19 = "vector.extract_strided_slice"(%15) <{offsets = [0, 0], sizes = [2, 2], strides = [1, 1]}> : (vector<4x2xf16>) -> vector<2x2xf16>
     %20 = "vector.extract_strided_slice"(%16) <{offsets = [0, 0], sizes = [16, 8], strides = [1, 1]}> : (vector<16x16xf16>) -> vector<16x8xf16>
     %21 = "nvgpu.mma.sync"(%5, %17, %19) <{mmaShape = [16, 8, 16]}> : (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
-    %22 = "vector.contract"(%6, %18, %20) <{indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
+    %22 = "vector.contract"(%6, %18, %20) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
     %23 = "gpu.lane_id"() : () -> index
     %24 = "arith.constant"() <{value = 0 : index}> : () -> index
     %25 = "vector.extract"(%21) <{static_position = array<i64: 0>}> : (vector<2x2xf16>) -> vector<2xf16>
@@ -266,7 +266,7 @@
     %34 = "vector.extract_strided_slice"(%15) <{offsets = [2, 0], sizes = [2, 2], strides = [1, 1]}> : (vector<4x2xf16>) -> vector<2x2xf16>
     %35 = "vector.extract_strided_slice"(%16) <{offsets = [0, 8], sizes = [16, 8], strides = [1, 1]}> : (vector<16x16xf16>) -> vector<16x8xf16>
     %36 = "nvgpu.mma.sync"(%5, %32, %34) <{mmaShape = [16, 8, 16]}> : (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
-    %37 = "vector.contract"(%6, %33, %35) <{indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
+    %37 = "vector.contract"(%6, %33, %35) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
     %38 = "gpu.lane_id"() : () -> index
     %39 = "arith.constant"() <{value = 0 : index}> : () -> index
     %40 = "vector.extract"(%36) <{static_position = array<i64: 0>}> : (vector<2x2xf16>) -> vector<2xf16>
@@ -318,7 +318,7 @@
     %19 = "vector.extract_strided_slice"(%15) <{offsets = [0, 0], sizes = [2, 2], strides = [1, 1]}> : (vector<4x2xf16>) -> vector<2x2xf16>
     %20 = "vector.extract_strided_slice"(%16) <{offsets = [0, 0], sizes = [16, 8], strides = [1, 1]}> : (vector<16x16xf16>) -> vector<16x8xf16>
     %21 = "nvgpu.mma.sync"(%5, %17, %19) <{mmaShape = [16, 8, 16]}> : (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
-    %22 = "vector.contract"(%6, %18, %20) <{indexing_maps = [#map5, #map4, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
+    %22 = "vector.contract"(%6, %18, %20) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map5, #map4, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
     %23 = "gpu.lane_id"() : () -> index
     %24 = "arith.constant"() <{value = 0 : index}> : () -> index
     %25 = "vector.extract"(%21) <{static_position = array<i64: 0>}> : (vector<2x2xf16>) -> vector<2xf16>
@@ -365,7 +365,7 @@
     %15 = "nvgpu.ldmatrix"(%arg2, %0, %13, %14) <{numTiles = 2 : i32, transpose = false}> : (memref<2x20x20xf16, #gpu.address_space<workgroup>>, index, index, index) -> vector<2x2xf16>
     %16 = "vector.transfer_read"(%arg2, %0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map2}> : (memref<2x20x20xf16, #gpu.address_space<workgroup>>, index, index, index, f16) -> vector<16x8xf16>
     %17 = "nvgpu.mma.sync"(%5, %10, %15) <{mmaShape = [16, 8, 16]}> : (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
-    %18 = "vector.contract"(%6, %11, %16) <{indexing_maps = [#map4, #map2, #map5], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
+    %18 = "vector.contract"(%6, %11, %16) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map4, #map2, #map5], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
     %19 = "gpu.lane_id"() : () -> index
     %20 = "arith.constant"() <{value = 0 : index}> : () -> index
     %21 = "vector.extract"(%17) <{static_position = array<i64: 0>}> : (vector<2x2xf16>) -> vector<2xf16>
@@ -414,7 +414,7 @@
     %15 = "nvgpu.ldmatrix"(%arg2, %13, %14) <{numTiles = 2 : i32, transpose = false}> : (memref<20x20xf16, #gpu.address_space<workgroup>>, index, index) -> vector<2x2xf16>
     %16 = "vector.transfer_read"(%arg2, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map2}> : (memref<20x20xf16, #gpu.address_space<workgroup>>, index, index, f16) -> vector<16x8xf16>
     %17 = "nvgpu.mma.sync"(%5, %10, %15) <{mmaShape = [16, 8, 16]}> : (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
-    %18 = "vector.contract"(%6, %11, %16) <{indexing_maps = [#map5, #map6, #map7], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
+    %18 = "vector.contract"(%6, %11, %16) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map5, #map6, #map7], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
     %19 = "gpu.lane_id"() : () -> index
     %20 = "arith.constant"() <{value = 0 : index}> : () -> index
     %21 = "vector.extract"(%17) <{static_position = array<i64: 0>}> : (vector<2x2xf16>) -> vector<2xf16>
@@ -463,11 +463,11 @@
     %14 = "arith.constant"() <{value = 0 : index}> : () -> index
     %15 = "affine.apply"(%11) <{map = #map3}> : (index) -> index
     %16 = "affine.apply"(%11) <{map = #map4}> : (index) -> index
-    %17 = "memref.load"(%arg1, %16, %15) <{nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
+    %17 = "memref.load"(%arg1, %16, %15) <{invariant = false, nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
     %18 = "vector.insert"(%17, %13) <{static_position = array<i64: 0, 0>}> : (f32, vector<1x1xf32>) -> vector<1x1xf32>
     %19 = "vector.transfer_read"(%arg1, %4, %4, %5) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map5}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index, f32) -> vector<8x4xf32>
     %20 = "nvgpu.mma.sync"(%9, %18, %0) <{mmaShape = [16, 8, 4]}> : (vector<2x1xf32>, vector<1x1xf32>, vector<2x2xf32>) -> vector<2x2xf32>
-    %21 = "vector.contract"(%10, %19, %1) <{indexing_maps = [#map6, #map7, #map8], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x4xf32>, vector<8x4xf32>, vector<16x8xf32>) -> vector<16x8xf32>
+    %21 = "vector.contract"(%10, %19, %1) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map6, #map7, #map8], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x4xf32>, vector<8x4xf32>, vector<16x8xf32>) -> vector<16x8xf32>
     %22 = "gpu.lane_id"() : () -> index
     %23 = "arith.constant"() <{value = 0 : index}> : () -> index
     %24 = "vector.extract"(%20) <{static_position = array<i64: 0>}> : (vector<2x2xf32>) -> vector<2xf32>
@@ -517,16 +517,16 @@
     %14 = "arith.constant"() <{value = 0 : index}> : () -> index
     %15 = "affine.apply"(%11) <{map = #map3}> : (index) -> index
     %16 = "affine.apply"(%11) <{map = #map4}> : (index) -> index
-    %17 = "memref.load"(%arg1, %16, %15) <{nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
+    %17 = "memref.load"(%arg1, %16, %15) <{invariant = false, nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
     %18 = "vector.insert"(%17, %13) <{static_position = array<i64: 0, 0>}> : (f32, vector<2x1xf32>) -> vector<2x1xf32>
     %19 = "arith.constant"() <{value = 1 : index}> : () -> index
     %20 = "affine.apply"(%11) <{map = #map3}> : (index) -> index
     %21 = "affine.apply"(%11) <{map = #map5}> : (index) -> index
-    %22 = "memref.load"(%arg1, %21, %20) <{nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
+    %22 = "memref.load"(%arg1, %21, %20) <{invariant = false, nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
     %23 = "vector.insert"(%22, %18) <{static_position = array<i64: 1, 0>}> : (f32, vector<2x1xf32>) -> vector<2x1xf32>
     %24 = "vector.transfer_read"(%arg1, %4, %4, %5) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map6}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index, f32) -> vector<8x8xf32>
     %25 = "nvgpu.mma.sync"(%9, %23, %0) <{mmaShape = [16, 8, 8]}> : (vector<4x1xf32>, vector<2x1xf32>, vector<2x2xf32>) -> vector<2x2xf32>
-    %26 = "vector.contract"(%10, %24, %1) <{indexing_maps = [#map7, #map8, #map9], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x8xf32>, vector<8x8xf32>, vector<16x8xf32>) -> vector<16x8xf32>
+    %26 = "vector.contract"(%10, %24, %1) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map7, #map8, #map9], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x8xf32>, vector<8x8xf32>, vector<16x8xf32>) -> vector<16x8xf32>
     %27 = "gpu.lane_id"() : () -> index
     %28 = "arith.constant"() <{value = 0 : index}> : () -> index
     %29 = "vector.extract"(%25) <{static_position = array<i64: 0>}> : (vector<2x2xf32>) -> vector<2xf32>
@@ -572,22 +572,22 @@
     %9 = "arith.constant"() <{value = 0 : index}> : () -> index
     %10 = "affine.apply"(%6) <{map = #map}> : (index) -> index
     %11 = "affine.apply"(%6) <{map = #map1}> : (index) -> index
-    %12 = "memref.load"(%arg0, %11, %10) <{nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
+    %12 = "memref.load"(%arg0, %11, %10) <{invariant = false, nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
     %13 = "vector.insert"(%12, %8) <{static_position = array<i64: 0, 0>}> : (f32, vector<4x1xf32>) -> vector<4x1xf32>
     %14 = "arith.constant"() <{value = 1 : index}> : () -> index
     %15 = "affine.apply"(%6) <{map = #map2}> : (index) -> index
     %16 = "affine.apply"(%6) <{map = #map1}> : (index) -> index
-    %17 = "memref.load"(%arg0, %16, %15) <{nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
+    %17 = "memref.load"(%arg0, %16, %15) <{invariant = false, nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
     %18 = "vector.insert"(%17, %13) <{static_position = array<i64: 1, 0>}> : (f32, vector<4x1xf32>) -> vector<4x1xf32>
     %19 = "arith.constant"() <{value = 2 : index}> : () -> index
     %20 = "affine.apply"(%6) <{map = #map}> : (index) -> index
     %21 = "affine.apply"(%6) <{map = #map3}> : (index) -> index
-    %22 = "memref.load"(%arg0, %21, %20) <{nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
+    %22 = "memref.load"(%arg0, %21, %20) <{invariant = false, nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
     %23 = "vector.insert"(%22, %18) <{static_position = array<i64: 2, 0>}> : (f32, vector<4x1xf32>) -> vector<4x1xf32>
     %24 = "arith.constant"() <{value = 3 : index}> : () -> index
     %25 = "affine.apply"(%6) <{map = #map2}> : (index) -> index
     %26 = "affine.apply"(%6) <{map = #map3}> : (index) -> index
-    %27 = "memref.load"(%arg0, %26, %25) <{nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
+    %27 = "memref.load"(%arg0, %26, %25) <{invariant = false, nontemporal = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> f32
     %28 = "vector.insert"(%27, %23) <{static_position = array<i64: 3, 0>}> : (f32, vector<4x1xf32>) -> vector<4x1xf32>
     %29 = "vector.transfer_read"(%arg0, %2, %2, %5) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map4}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index, f32) -> vector<16x8xf32>
     %30 = "gpu.lane_id"() : () -> index
@@ -596,7 +596,7 @@
     %33 = "nvgpu.ldmatrix"(%arg1, %31, %32) <{numTiles = 2 : i32, transpose = false}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index) -> vector<2x1xf32>
     %34 = "vector.transfer_read"(%arg1, %2, %2, %5) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map7}> : (memref<20x20xf32, #gpu.address_space<workgroup>>, index, index, f32) -> vector<8x8xf32>
     %35 = "nvgpu.mma.sync"(%28, %33, %0) <{mmaShape = [16, 8, 8]}> : (vector<4x1xf32>, vector<2x1xf32>, vector<2x2xf32>) -> vector<2x2xf32>
-    %36 = "vector.contract"(%29, %34, %1) <{indexing_maps = [#map8, #map9, #map10], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x8xf32>, vector<8x8xf32>, vector<16x8xf32>) -> vector<16x8xf32>
+    %36 = "vector.contract"(%29, %34, %1) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map8, #map9, #map10], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x8xf32>, vector<8x8xf32>, vector<16x8xf32>) -> vector<16x8xf32>
     %37 = "gpu.lane_id"() : () -> index
     %38 = "arith.constant"() <{value = 0 : index}> : () -> index
     %39 = "vector.extract"(%35) <{static_position = array<i64: 0>}> : (vector<2x2xf32>) -> vector<2xf32>
@@ -655,7 +655,7 @@
     %25 = "vector.insert"(%24, %20) <{static_position = array<i64: 1>}> : (vector<2xi32>, vector<2x2xi32>) -> vector<2x2xi32>
     %26 = "vector.transfer_read"(%arg2, %2, %2, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map2}> : (memref<128x128xi32>, index, index, i32) -> vector<16x8xi32>
     %27 = "nvgpu.mma.sync"(%6, %11, %25) <{mmaShape = [16, 8, 64]}> : (vector<4x8xi4>, vector<2x8xi4>, vector<2x2xi32>) -> vector<2x2xi32>
-    %28 = "vector.contract"(%7, %12, %26) <{indexing_maps = [#map8, #map9, #map10], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x64xi4>, vector<8x64xi4>, vector<16x8xi32>) -> vector<16x8xi32>
+    %28 = "vector.contract"(%7, %12, %26) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map8, #map9, #map10], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x64xi4>, vector<8x64xi4>, vector<16x8xi32>) -> vector<16x8xi32>
     %29 = "gpu.lane_id"() : () -> index
     %30 = "arith.constant"() <{value = 0 : index}> : () -> index
     %31 = "vector.extract"(%27) <{static_position = array<i64: 0>}> : (vector<2x2xi32>) -> vector<2xi32>
@@ -714,7 +714,7 @@
     %25 = "vector.insert"(%24, %20) <{static_position = array<i64: 1>}> : (vector<2xi32>, vector<2x2xi32>) -> vector<2x2xi32>
     %26 = "vector.transfer_read"(%arg2, %0, %0, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map2}> : (memref<128x128xi32>, index, index, i32) -> vector<16x8xi32>
     %27 = "nvgpu.mma.sync"(%6, %11, %25) <{mmaShape = [16, 8, 32]}> : (vector<4x4xi8>, vector<2x4xi8>, vector<2x2xi32>) -> vector<2x2xi32>
-    %28 = "vector.contract"(%7, %12, %26) <{indexing_maps = [#map8, #map9, #map10], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x32xi8>, vector<8x32xi8>, vector<16x8xi32>) -> vector<16x8xi32>
+    %28 = "vector.contract"(%7, %12, %26) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map8, #map9, #map10], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x32xi8>, vector<8x32xi8>, vector<16x8xi32>) -> vector<16x8xi32>
     %29 = "gpu.lane_id"() : () -> index
     %30 = "arith.constant"() <{value = 0 : index}> : () -> index
     %31 = "vector.extract"(%27) <{static_position = array<i64: 0>}> : (vector<2x2xi32>) -> vector<2xi32>
@@ -762,7 +762,7 @@
     %15 = "nvgpu.ldmatrix"(%arg2, %13, %14) <{numTiles = 2 : i32, transpose = false}> : (memref<20x20xf16, strided<[?, 1], offset: ?>, #gpu.address_space<workgroup>>, index, index) -> vector<2x2xf16>
     %16 = "vector.transfer_read"(%arg2, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map2}> : (memref<20x20xf16, strided<[?, 1], offset: ?>, #gpu.address_space<workgroup>>, index, index, f16) -> vector<16x8xf16>
     %17 = "nvgpu.mma.sync"(%5, %10, %15) <{mmaShape = [16, 8, 16]}> : (vector<4x2xf16>, vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
-    %18 = "vector.contract"(%6, %11, %16) <{indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
+    %18 = "vector.contract"(%6, %11, %16) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map4, #map5, #map6], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
     %19 = "gpu.lane_id"() : () -> index
     %20 = "arith.constant"() <{value = 0 : index}> : () -> index
     %21 = "vector.extract"(%17) <{static_position = array<i64: 0>}> : (vector<2x2xf16>) -> vector<2xf16>
@@ -791,7 +791,7 @@
     %2 = "vector.transfer_read"(%arg0, %0, %0, %0, %1) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (memref<20x20x20xf16, strided<[?, ?, 1], offset: ?>, #gpu.address_space<workgroup>>, index, index, index, f16) -> vector<1x16x16xf16>
     %3 = "vector.transfer_read"(%arg1, %0, %0, %0, %1) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (memref<20x20x20xf16, strided<[?, ?, 1], offset: ?>, #gpu.address_space<workgroup>>, index, index, index, f16) -> vector<8x1x16xf16>
     %4 = "vector.transfer_read"(%arg2, %0, %0, %0, %1) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (memref<20x20x20xf16, strided<[?, ?, 1], offset: ?>, #gpu.address_space<workgroup>>, index, index, index, f16) -> vector<1x16x8xf16>
-    %5 = "vector.contract"(%2, %3, %4) <{indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<1x16x16xf16>, vector<8x1x16xf16>, vector<1x16x8xf16>) -> vector<1x16x8xf16>
+    %5 = "vector.contract"(%2, %3, %4) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<1x16x16xf16>, vector<8x1x16xf16>, vector<1x16x8xf16>) -> vector<1x16x8xf16>
     "vector.transfer_write"(%5, %arg2, %0, %0, %0) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 1, 3, 0>, permutation_map = #map}> : (vector<1x16x8xf16>, memref<20x20x20xf16, strided<[?, ?, 1], offset: ?>, #gpu.address_space<workgroup>>, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -811,7 +811,7 @@
     %2 = "vector.transfer_read"(%arg0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<20x20xf16, strided<[?, ?], offset: ?>, #gpu.address_space<workgroup>>, index, index, f16) -> vector<16x16xf16>
     %3 = "vector.transfer_read"(%arg1, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<20x20xf16, strided<[?, ?], offset: ?>, #gpu.address_space<workgroup>>, index, index, f16) -> vector<8x16xf16>
     %4 = "vector.transfer_read"(%arg2, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<20x20xf16, strided<[?, ?], offset: ?>, #gpu.address_space<workgroup>>, index, index, f16) -> vector<16x8xf16>
-    %5 = "vector.contract"(%2, %3, %4) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
+    %5 = "vector.contract"(%2, %3, %4) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
     "vector.transfer_write"(%5, %arg2, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x8xf16>, memref<20x20xf16, strided<[?, ?], offset: ?>, #gpu.address_space<workgroup>>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -831,7 +831,7 @@
     %2 = "vector.transfer_read"(%arg0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<20x20xf16, strided<[?, 1], offset: ?>, #gpu.address_space<workgroup>>, index, index, f16) -> vector<16x16xf16>
     %3 = "vector.transfer_read"(%arg1, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map1}> : (memref<20x20xf16, strided<[?, 1], offset: ?>, #gpu.address_space<workgroup>>, index, index, f16) -> vector<8x16xf16>
     %4 = "vector.transfer_read"(%arg2, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<20x20xf16, strided<[?, 1], offset: ?>, #gpu.address_space<workgroup>>, index, index, f16) -> vector<16x8xf16>
-    %5 = "vector.contract"(%2, %3, %4) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
+    %5 = "vector.contract"(%2, %3, %4) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf16>, vector<8x16xf16>, vector<16x8xf16>) -> vector<16x8xf16>
     "vector.transfer_write"(%5, %arg2, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<16x8xf16>, memref<20x20xf16, strided<[?, 1], offset: ?>, #gpu.address_space<workgroup>>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()

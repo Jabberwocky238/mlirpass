@@ -222,6 +222,15 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> !shape.shape, sym_name = "from_extents_poison"}> ({
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> index
+    %1 = "shape.from_extents"(%0) : (index) -> !shape.shape
+    "func.return"(%1) : (!shape.shape) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = () -> index, sym_name = "const_size_to_index"}> ({
     %0 = "shape.const_size"() <{value = 123 : index}> : () -> !shape.size
     %1 = "shape.size_to_index"(%0) : (!shape.size) -> index
@@ -1256,6 +1265,48 @@
   ^bb0(%arg0: tensor<f32>):
     %0 = "shape.shape_of"(%arg0) : (tensor<f32>) -> tensor<?xindex>
     "func.return"(%0) : (tensor<?xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<3xf32>) -> !shape.shape, sym_name = "shape_of_static_with_shape_result"}> ({
+  ^bb0(%arg0: tensor<3xf32>):
+    %0 = "shape.shape_of"(%arg0) : (tensor<3xf32>) -> !shape.shape
+    "func.return"(%0) : (!shape.shape) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "broadcast_no_crash_on_poison"}> ({
+    %0 = "shape.const_shape"() <{shape = dense<[1, 2, 3]> : tensor<3xindex>}> : () -> tensor<3xindex>
+    %1 = "ub.poison"() <{value = #ub.poison}> : () -> tensor<3xindex>
+    %2 = "shape.broadcast"(%0, %1) : (tensor<3xindex>, tensor<3xindex>) -> tensor<3xindex>
+    %3 = "tensor.rank"(%2) : (tensor<3xindex>) -> index
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<?xf32>) -> index, sym_name = "extract_from_shape_of_tensor"}> ({
+  ^bb0(%arg0: tensor<?xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "shape.shape_of"(%arg0) : (tensor<?xf32>) -> tensor<1xindex>
+    %2 = "tensor.extract"(%1, %0) : (tensor<1xindex>, index) -> index
+    "func.return"(%2) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<?xf32>) -> index, sym_name = "extract_from_shape_of_memref_no_fold"}> ({
+  ^bb0(%arg0: memref<?xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "shape.shape_of"(%arg0) : (memref<?xf32>) -> tensor<1xindex>
+    %2 = "tensor.extract"(%1, %0) : (tensor<1xindex>, index) -> index
+    "func.return"(%2) : (index) -> ()
   }) : () -> ()
 }) : () -> ()
 

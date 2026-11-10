@@ -13,8 +13,8 @@
   ^bb0(%arg0: memref<5xf32, strided<[?], offset: ?>>):
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
     %1 = "func.call"(%arg0) <{callee = @callee}> : (memref<5xf32, strided<[?], offset: ?>>) -> memref<5xf32>
-    %2 = "memref.load"(%arg0, %0) <{nontemporal = false}> : (memref<5xf32, strided<[?], offset: ?>>, index) -> f32
-    %3 = "memref.load"(%1, %0) <{nontemporal = false}> : (memref<5xf32>, index) -> f32
+    %2 = "memref.load"(%arg0, %0) <{invariant = false, nontemporal = false}> : (memref<5xf32, strided<[?], offset: ?>>, index) -> f32
+    %3 = "memref.load"(%1, %0) <{invariant = false, nontemporal = false}> : (memref<5xf32>, index) -> f32
     "func.return"(%2, %3) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -32,7 +32,7 @@
   ^bb0(%arg0: index):
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
     %1 = "func.call"(%arg0) <{callee = @callee}> : (index) -> memref<2x5xf32, strided<[20, 1], offset: ?>>
-    %2 = "memref.load"(%1, %0, %0) <{nontemporal = false}> : (memref<2x5xf32, strided<[20, 1], offset: ?>>, index, index) -> f32
+    %2 = "memref.load"(%1, %0, %0) <{invariant = false, nontemporal = false}> : (memref<2x5xf32, strided<[20, 1], offset: ?>>, index, index) -> f32
     "func.return"(%2) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()

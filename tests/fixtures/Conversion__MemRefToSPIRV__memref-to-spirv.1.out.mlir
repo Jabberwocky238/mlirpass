@@ -138,6 +138,33 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.5, [Shader
     spirv.Store "PhysicalStorageBuffer" %1, %2 ["Aligned", 2] : f16
     return
   }
+  func.func @load_store_vec4f16_physical(%arg0: memref<5xvector<4xf16>, #spirv.storage_class<PhysicalStorageBuffer>>, %arg1: index) {
+    %0 = builtin.unrealized_conversion_cast %arg1 : index to i64
+    %1 = builtin.unrealized_conversion_cast %arg0 : memref<5xvector<4xf16>, #spirv.storage_class<PhysicalStorageBuffer>> to !spirv.ptr<!spirv.struct<(!spirv.array<5 x vector<4xf16>, stride=8> [0])>, PhysicalStorageBuffer>
+    %cst0_i64 = spirv.Constant 0 : i64
+    %2 = spirv.AccessChain %1[%cst0_i64, %0] : !spirv.ptr<!spirv.struct<(!spirv.array<5 x vector<4xf16>, stride=8> [0])>, PhysicalStorageBuffer>, i64, i64 -> !spirv.ptr<vector<4xf16>, PhysicalStorageBuffer>
+    %3 = spirv.Load "PhysicalStorageBuffer" %2 ["Aligned", 8] : vector<4xf16>
+    spirv.Store "PhysicalStorageBuffer" %2, %3 ["Aligned", 8] : vector<4xf16>
+    return
+  }
+  func.func @load_store_vec4f32_physical(%arg0: memref<8xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, %arg1: index) {
+    %0 = builtin.unrealized_conversion_cast %arg1 : index to i64
+    %1 = builtin.unrealized_conversion_cast %arg0 : memref<8xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>> to !spirv.ptr<!spirv.struct<(!spirv.array<8 x vector<4xf32>, stride=16> [0])>, PhysicalStorageBuffer>
+    %cst0_i64 = spirv.Constant 0 : i64
+    %2 = spirv.AccessChain %1[%cst0_i64, %0] : !spirv.ptr<!spirv.struct<(!spirv.array<8 x vector<4xf32>, stride=16> [0])>, PhysicalStorageBuffer>, i64, i64 -> !spirv.ptr<vector<4xf32>, PhysicalStorageBuffer>
+    %3 = spirv.Load "PhysicalStorageBuffer" %2 ["Aligned", 16] : vector<4xf32>
+    spirv.Store "PhysicalStorageBuffer" %2, %3 ["Aligned", 16] : vector<4xf32>
+    return
+  }
+  func.func @load_store_vec4f32_dynamic_physical(%arg0: memref<?xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, %arg1: index) {
+    %0 = builtin.unrealized_conversion_cast %arg1 : index to i64
+    %1 = builtin.unrealized_conversion_cast %arg0 : memref<?xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>> to !spirv.ptr<!spirv.struct<(!spirv.rtarray<vector<4xf32>, stride=16> [0])>, PhysicalStorageBuffer>
+    %cst0_i64 = spirv.Constant 0 : i64
+    %2 = spirv.AccessChain %1[%cst0_i64, %0] : !spirv.ptr<!spirv.struct<(!spirv.rtarray<vector<4xf32>, stride=16> [0])>, PhysicalStorageBuffer>, i64, i64 -> !spirv.ptr<vector<4xf32>, PhysicalStorageBuffer>
+    %3 = spirv.Load "PhysicalStorageBuffer" %2 ["Aligned", 16] : vector<4xf32>
+    spirv.Store "PhysicalStorageBuffer" %2, %3 ["Aligned", 16] : vector<4xf32>
+    return
+  }
 }
 
 // -----

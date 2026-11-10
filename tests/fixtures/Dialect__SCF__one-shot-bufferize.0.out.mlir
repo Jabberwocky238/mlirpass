@@ -526,20 +526,10 @@ module {
 // -----
 module {
   func.func @regression_cast_in_loop() -> memref<2xindex> {
-    %false = arith.constant false
-    %c0 = arith.constant 0 : index
     %alloc = memref.alloc() {alignment = 64 : i64} : memref<2xindex>
-    %0 = scf.while (%arg0 = %alloc) : (memref<2xindex>) -> memref<2xindex> {
-      %alloc_0 = memref.alloc() {alignment = 64 : i64} : memref<2xindex>
-      memref.copy %arg0, %alloc_0 : memref<2xindex> to memref<2xindex>
-      scf.condition(%false) %alloc_0 : memref<2xindex>
-    } do {
-    ^bb0(%arg0: memref<2xindex>):
-      %alloc_0 = memref.alloc() {alignment = 64 : i64} : memref<2xindex>
-      memref.store %c0, %alloc_0[%c0] : memref<2xindex>
-      scf.yield %alloc_0 : memref<2xindex>
-    }
-    return %0 : memref<2xindex>
+    %alloc_0 = memref.alloc() {alignment = 64 : i64} : memref<2xindex>
+    memref.copy %alloc, %alloc_0 : memref<2xindex> to memref<2xindex>
+    return %alloc_0 : memref<2xindex>
   }
 }
 

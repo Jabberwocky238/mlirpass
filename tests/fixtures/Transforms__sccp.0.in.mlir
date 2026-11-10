@@ -138,3 +138,56 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "no_crash_acc_serial_empty_region"}> ({
+    "acc.serial"() <{operandSegmentSizes = array<i32: 0, 0, 0, 0, 0, 0, 0, 0>}> ({
+    }) : () -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<8xi32>) -> (), sym_name = "no_crash_acc_kernel_environment"}> ({
+  ^bb0(%arg0: memref<8xi32>):
+    "acc.kernel_environment"() <{operandSegmentSizes = array<i32: 0, 0, 0, 0>}> ({
+      "acc.compute_region"() <{operandSegmentSizes = array<i32: 0, 0, 0>, origin = "acc.parallel"}> ({
+        "acc.yield"() : () -> ()
+      }) : () -> ()
+    }) : () -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "no_crash_emitc_switch_unsigned_condition"}> ({
+    %0 = "emitc.constant"() <{value = 1 : ui32}> : () -> ui32
+    "emitc.switch"(%0) <{cases = array<i64: 2>}> ({
+      "emitc.yield"() : () -> ()
+    }, {
+      "emitc.yield"() : () -> ()
+    }) : (ui32) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i64, i1) -> i64, sym_name = "fold_to_non_operand_value"}> ({
+  ^bb0(%arg0: i64, %arg1: i1):
+    %0 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+    "cf.cond_br"(%arg1)[^bb1, ^bb2] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb1:  // pred: ^bb0
+    "cf.br"(%0)[^bb3] : (i64) -> ()
+  ^bb2:  // pred: ^bb0
+    %1 = "arith.addi"(%arg0, %0) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+    "cf.br"(%1)[^bb3] : (i64) -> ()
+  ^bb3(%2: i64):  // 2 preds: ^bb1, ^bb2
+    %3 = "builtin.unrealized_conversion_cast"(%2) : (i64) -> index
+    %4 = "builtin.unrealized_conversion_cast"(%3) : (index) -> i64
+    "func.return"(%4) : (i64) -> ()
+  }) : () -> ()
+}) : () -> ()
+

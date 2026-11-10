@@ -14,7 +14,7 @@
       "some_op"(%arg0, %arg9) : (index, index) -> ()
       %8 = "memref.load"(%1, %arg3) : (memref<?xf32, 1>, index) -> f32
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -38,7 +38,7 @@
       "some_op"(%arg0, %arg9) : (index, index) -> ()
       %8 = "memref.load"(%1, %arg3) : (memref<?xf32, 1>, index) -> f32
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -55,7 +55,7 @@
       "some_op"(%arg0, %arg9) : (index, index) -> ()
       %3 = "memref.load"(%1, %arg3) : (memref<?xf32, 1>, index) -> f32
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "llvm.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -67,20 +67,20 @@
     "gpu.launch"(%0, %0, %0, %0, %0, %0) <{operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0>}> ({
     ^bb0(%arg36: index, %arg37: index, %arg38: index, %arg39: index, %arg40: index, %arg41: index, %arg42: index, %arg43: index, %arg44: index, %arg45: index, %arg46: index, %arg47: index):
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "gpu.launch"(%0, %0, %0, %0, %0, %0) <{operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0>}> ({
     ^bb0(%arg24: index, %arg25: index, %arg26: index, %arg27: index, %arg28: index, %arg29: index, %arg30: index, %arg31: index, %arg32: index, %arg33: index, %arg34: index, %arg35: index):
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     %1 = "gpu.wait"() : () -> !gpu.async.token
     %2 = "gpu.launch"(%1, %0, %0, %0, %0, %0, %0) <{operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0>}> ({
     ^bb0(%arg12: index, %arg13: index, %arg14: index, %arg15: index, %arg16: index, %arg17: index, %arg18: index, %arg19: index, %arg20: index, %arg21: index, %arg22: index, %arg23: index):
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     %3 = "gpu.launch"(%0, %0, %0, %0, %0, %0) <{operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0>}> ({
     ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index):
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> !gpu.async.token
+    }) : (index, index, index, index, index, index) -> !gpu.async.token
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -97,7 +97,7 @@
     ^bb0(%arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index, %arg12: index):
       "use"(%1, %arg0, %3) : (index, memref<?xf32>, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -114,7 +114,7 @@
     ^bb0(%arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index, %arg12: index):
       "use"(%1, %arg0, %3) : (index, memref<?xf32>, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -131,7 +131,7 @@
     ^bb0(%arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index, %arg12: index, %arg13: index):
       "use"(%1, %arg0, %3) : (index, memref<?xf32>, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -147,7 +147,7 @@
       "use1"(%1, %1) : (index, index) -> ()
       "use2"(%1) : (index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -165,7 +165,7 @@
       "use2"(%1, %1) : (index, index) -> ()
       "use3"(%arg0) : (memref<*xf32>) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -183,7 +183,7 @@
       "func.call"() <{callee = @device_function}> : () -> ()
       %1 = "llvm.mlir.addressof"() <{global_name = @global}> : () -> !llvm.ptr
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "device_function"}> ({
@@ -203,7 +203,7 @@
     "gpu.launch"(%arg0, %arg0, %arg0, %arg0, %arg0, %arg0) <{operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0>}> ({
     ^bb0(%arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index, %arg12: index):
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -213,14 +213,14 @@
   "func.func"() <{function_type = () -> (), sym_name = "launch_memory_attributions_0"}> ({
     %0 = "op"() : () -> memref<?xf32, 1>
     %1 = "arith.constant"() <{value = 128 : index}> : () -> index
-    "gpu.launch"(%1, %1, %1, %1, %1, %1) <{operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0>}> ({
+    "gpu.launch"(%1, %1, %1, %1, %1, %1) <{operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0>, workgroup_attributions = 1 : i64}> ({
     ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index, %arg12: memref<42xf32, 3>, %arg13: memref<2xf32, 5>, %arg14: memref<1xf32, 5>):
       "some_op"(%arg0, %arg9) : (index, index) -> ()
       %2 = "memref.load"(%0, %arg3) : (memref<?xf32, 1>, index) -> f32
       %3 = "memref.load"(%arg12, %arg3) : (memref<42xf32, 3>, index) -> f32
       %4 = "memref.load"(%arg14, %arg3) : (memref<1xf32, 5>, index) -> f32
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 1 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -236,7 +236,7 @@
     ^bb0(%arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index, %arg12: index, %arg13: memref<3xf32, 5>):
       %3 = "memref.load"(%arg13, %1) : (memref<3xf32, 5>, index) -> f32
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -261,7 +261,7 @@
       "some_op"(%arg12, %arg0, %arg9) : (index, index, index) -> ()
       %11 = "memref.load"(%1, %arg3) : (memref<?xf32, 1>, index) -> f32
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -279,7 +279,7 @@
     ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index):
       "some_op"(%arg0, %arg3) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -289,7 +289,7 @@
   "gpu.module"() <{sym_name = "existing_module"}> ({
     "gpu.func"() <{function_type = () -> ()}> ({
       "gpu.return"() : () -> ()
-    }) {sym_name = "test_kernel_func", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "test_kernel_func"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "testExistingModule"}> ({
     %0 = "arith.constant"() <{value = 8 : index}> : () -> index
@@ -302,7 +302,7 @@
     ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index):
       "some_op"(%arg0, %arg3) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -320,7 +320,7 @@
     ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index):
       "some_op"(%arg0, %arg3) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -338,7 +338,7 @@
     ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index):
       "some_op"(%arg0, %arg3) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -356,10 +356,28 @@
     ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index):
       "some_op"(%arg0, %arg3) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "gpu.module"() <{sym_name = "some_kernels"}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
+      "gpu.return"() : () -> ()
+    }) {sym_name = "some_kernel"} : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (index) -> (), sym_name = "launch_with_launch_func_body"}> ({
+  ^bb0(%arg0: index):
+    "gpu.launch"(%arg0, %arg0, %arg0, %arg0, %arg0, %arg0) <{operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0>}> ({
+    ^bb0(%arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index, %arg12: index):
+      "test.use_nested"() {uses = [@public_module::@nested_function]} : () -> ()
+      "gpu.terminator"() : () -> ()
+    }) : (index, index, index, index, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) {gpu.container_module} : () -> ()
 
 // -----
 "builtin.module"() ({
@@ -371,9 +389,39 @@
       ^bb0(%arg13: index, %arg14: index, %arg15: index, %arg16: index, %arg17: index, %arg18: index, %arg19: index, %arg20: index, %arg21: index, %arg22: index, %arg23: index, %arg24: index):
         "some_op"(%arg13, %arg16) : (index, index) -> ()
         "gpu.terminator"() : () -> ()
-      }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+      }) : (index, index, index, index, index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "gpu.module"() <{sym_name = "km"}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
+      "gpu.return"() : () -> ()
+    }) {sym_name = "k"} : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (index) -> (), sym_name = "cross_module_nested_ref"}> ({
+  ^bb0(%arg0: index):
+    "gpu.launch"(%arg0, %arg0, %arg0, %arg0, %arg0, %arg0) <{operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0>}> ({
+    ^bb0(%arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index, %arg12: index):
+      "gpu.launch_func"(%arg0, %arg0, %arg0, %arg0, %arg0, %arg0) <{kernel = @km::@k, operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0>}> : (index, index, index, index, index, index) -> ()
+      "gpu.terminator"() : () -> ()
+    }) : (index, index, index, index, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) {gpu.container_module} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "launch_cooperative"}> ({
+    %0 = "arith.constant"() <{value = 8 : index}> : () -> index
+    "gpu.launch"(%0, %0, %0, %0, %0, %0) <{cooperative, operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0>}> ({
+    ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: index, %arg9: index, %arg10: index, %arg11: index):
+      "gpu.terminator"() : () -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

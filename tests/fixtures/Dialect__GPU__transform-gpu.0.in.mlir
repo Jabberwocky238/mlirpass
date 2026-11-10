@@ -17,7 +17,7 @@
         }) : () -> ()
       }) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -50,7 +50,7 @@
         }) : () -> ()
       }) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -83,7 +83,7 @@
         }) : () -> ()
       }) : (index, index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -126,7 +126,7 @@
         }) : () -> ()
       }) : (index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -196,7 +196,7 @@
         }) : () -> ()
       }) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -228,7 +228,7 @@
         }) : () -> ()
       }) : (index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<32x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -262,7 +262,7 @@
         }) : () -> ()
       }) : (index, index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<3x2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -295,7 +295,7 @@
         }) : () -> ()
       }) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -328,7 +328,7 @@
         }) : () -> ()
       }) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -383,7 +383,7 @@
         }) : () -> ()
       }) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({
@@ -416,7 +416,7 @@
         }) : () -> ()
       }) : (index, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    }) : (!gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
     "func.return"(%arg2) : (memref<2x32xf32>) -> ()
   }) : () -> ()
   "builtin.module"() ({

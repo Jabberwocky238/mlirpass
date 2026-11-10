@@ -18,21 +18,3 @@
   }) : () -> ()
 }) : () -> ()
 
-// -----
-"builtin.module"() ({
-  "test.symbol_scope_isolated"() ({
-    "func.func"() <{function_type = (tensor<?xf32, #test.tensor_encoding<"hello">>) -> tensor<?xf32, #test.tensor_encoding<"hello">>, sym_name = "inner_func"}> ({
-    ^bb0(%arg1: tensor<?xf32, #test.tensor_encoding<"hello">>):
-      "func.return"(%arg1) : (tensor<?xf32, #test.tensor_encoding<"hello">>) -> ()
-    }) : () -> ()
-    "func.func"() <{function_type = (tensor<?xf32, #test.tensor_encoding<"hello">>) -> (tensor<?xf32, #test.tensor_encoding<"hello">>, tensor<?xf32, #test.tensor_encoding<"not hello">>), sym_name = "outer_func"}> ({
-    ^bb0(%arg0: tensor<?xf32, #test.tensor_encoding<"hello">>):
-      %0 = "func.call"(%arg0) <{callee = @inner_func}> : (tensor<?xf32, #test.tensor_encoding<"hello">>) -> tensor<?xf32, #test.tensor_encoding<"hello">>
-      %1 = "test.create_tensor_op"() : () -> tensor<?xf32, #test.tensor_encoding<"not hello">>
-      %2 = "test.dummy_tensor_op"(%1) : (tensor<?xf32, #test.tensor_encoding<"not hello">>) -> tensor<?xf32, #test.tensor_encoding<"not hello">>
-      "func.return"(%0, %2) : (tensor<?xf32, #test.tensor_encoding<"hello">>, tensor<?xf32, #test.tensor_encoding<"not hello">>) -> ()
-    }) : () -> ()
-    "test.finish"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-

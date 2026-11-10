@@ -62,6 +62,21 @@ module {
     }
     return
   }
+  func.func @read_read_write_loop_trailing_sync_non_memory_barrier(%arg0: memref<?xf32>, %arg1: f32) attributes {__parallel_region_boundary_for_test} {
+    %c0 = arith.constant 0 : index
+    %c42 = arith.constant 42 : index
+    %c1 = arith.constant 1 : index
+    scf.for %arg2 = %c0 to %c42 step %c1 {
+      %0 = memref.load %arg0[%arg2] : memref<?xf32>
+      gpu.barrier memfence []
+      %1 = memref.load %arg0[%arg2] : memref<?xf32>
+      %2 = arith.addf %0, %1 : f32
+      gpu.barrier
+      memref.store %2, %arg0[%arg2] : memref<?xf32>
+      gpu.barrier
+    }
+    return
+  }
   func.func @write_write_noalias(%arg0: index, %arg1: f32) -> (memref<42xf32>, memref<10xf32>) attributes {__parallel_region_boundary_for_test} {
     %alloc = memref.alloc() : memref<42xf32>
     %alloc_0 = memref.alloc() : memref<10xf32>
@@ -99,6 +114,78 @@ module {
   }
   func.func @nested_loop_barrier_only() attributes {__parallel_region_boundary_for_test} {
     return
+  }
+  func.func @workgroup_barrier_global_memory(%arg0: memref<?xf32, #gpu.address_space<global>>, %arg1: index, %arg2: f32) -> f32 attributes {__parallel_region_boundary_for_test} {
+    memref.store %arg2, %arg0[%arg1] : memref<?xf32, #gpu.address_space<global>>
+    %0 = memref.load %arg0[%arg1] : memref<?xf32, #gpu.address_space<global>>
+    return %0 : f32
+  }
+  func.func @workgroup_barrier_workgroup_memory(%arg0: memref<?xf32, #gpu.address_space<workgroup>>, %arg1: index, %arg2: f32) -> f32 attributes {__parallel_region_boundary_for_test} {
+    memref.store %arg2, %arg0[%arg1] : memref<?xf32, #gpu.address_space<workgroup>>
+    gpu.barrier memfence [#gpu.address_space<workgroup>]
+    %0 = memref.load %arg0[%arg1] : memref<?xf32, #gpu.address_space<workgroup>>
+    return %0 : f32
+  }
+  func.func @non_overlapping_barriers(%arg0: memref<?xf32, #gpu.address_space<global>>, %arg1: index, %arg2: f32) -> f32 attributes {__parallel_region_boundary_for_test} {
+    memref.store %arg2, %arg0[%arg1] : memref<?xf32, #gpu.address_space<global>>
+    gpu.barrier memfence [#gpu.address_space<global>]
+    %0 = memref.load %arg0[%arg1] : memref<?xf32, #gpu.address_space<global>>
+    return %0 : f32
+  }
+  func.func @unknown_address_space(%arg0: memref<?xf32>, %arg1: index, %arg2: f32) -> f32 attributes {__parallel_region_boundary_for_test} {
+    memref.store %arg2, %arg0[%arg1] : memref<?xf32>
+    gpu.barrier memfence [#gpu.address_space<workgroup>]
+    %0 = memref.load %arg0[%arg1] : memref<?xf32>
+    return %0 : f32
+  }
+  func.func @mixed_address_spaces(%arg0: memref<?xf32, #gpu.address_space<global>>, %arg1: memref<?xf32, #gpu.address_space<workgroup>>, %arg2: index, %arg3: f32) -> f32 attributes {__parallel_region_boundary_for_test} {
+    memref.store %arg3, %arg0[%arg2] : memref<?xf32, #gpu.address_space<global>>
+    memref.store %arg3, %arg1[%arg2] : memref<?xf32, #gpu.address_space<workgroup>>
+    gpu.barrier memfence [#gpu.address_space<global>, #gpu.address_space<workgroup>]
+    %0 = memref.load %arg0[%arg2] : memref<?xf32, #gpu.address_space<global>>
+    %1 = memref.load %arg1[%arg2] : memref<?xf32, #gpu.address_space<workgroup>>
+    %2 = arith.addf %0, %1 : f32
+    return %2 : f32
+  }
+  func.func @full_barrier_with_global_conflict(%arg0: memref<?xf32, #gpu.address_space<global>>, %arg1: index, %arg2: f32) -> f32 attributes {__parallel_region_boundary_for_test} {
+    memref.store %arg2, %arg0[%arg1] : memref<?xf32, #gpu.address_space<global>>
+    gpu.barrier
+    %0 = memref.load %arg0[%arg1] : memref<?xf32, #gpu.address_space<global>>
+    return %0 : f32
+  }
+  func.func @barrier_fencing_nothing_removed() attributes {__parallel_region_boundary_for_test} {
+    return
+  }
+  func.func @non_workgroup_barrier_retained() attributes {__parallel_region_boundary_for_test} {
+    gpu.barrier scope <subgroup>
+    return
+  }
+  func.func @empty_barrrier_retained() attributes {__parallel_region_boundary_for_test} {
+    gpu.barrier memfence []
+    return
+  }
+  func.func @read_write_loop_no_workgroup(%arg0: memref<?xf32, #gpu.address_space<global>>, %arg1: f32) attributes {__parallel_region_boundary_for_test} {
+    %c0 = arith.constant 0 : index
+    %c42 = arith.constant 42 : index
+    %c1 = arith.constant 1 : index
+    scf.for %arg2 = %c0 to %c42 step %c1 {
+      %0 = memref.load %arg0[%arg2] : memref<?xf32, #gpu.address_space<global>>
+      memref.store %0, %arg0[%arg2] : memref<?xf32, #gpu.address_space<global>>
+    }
+    return
+  }
+  func.func @global_barrier_buffer_cast(%arg0: memref<?xf32, #gpu.address_space<global>>, %arg1: index, %arg2: f32) -> f32 attributes {__parallel_region_boundary_for_test} {
+    memref.store %arg2, %arg0[%arg1] : memref<?xf32, #gpu.address_space<global>>
+    gpu.barrier memfence [#gpu.address_space<global>]
+    %0 = amdgpu.fat_raw_buffer_cast %arg0 : memref<?xf32, #gpu.address_space<global>> to memref<?xf32, #amdgpu.address_space<fat_raw_buffer>>
+    %1 = memref.load %0[%arg1] : memref<?xf32, #amdgpu.address_space<fat_raw_buffer>>
+    return %1 : f32
+  }
+  func.func @workgroup_barrier_buffer_cast(%arg0: memref<?xf32, #gpu.address_space<global>>, %arg1: index, %arg2: f32) -> f32 attributes {__parallel_region_boundary_for_test} {
+    memref.store %arg2, %arg0[%arg1] : memref<?xf32, #gpu.address_space<global>>
+    %0 = amdgpu.fat_raw_buffer_cast %arg0 : memref<?xf32, #gpu.address_space<global>> to memref<?xf32, #amdgpu.address_space<fat_raw_buffer>>
+    %1 = memref.load %0[%arg1] : memref<?xf32, #amdgpu.address_space<fat_raw_buffer>>
+    return %1 : f32
   }
 }
 

@@ -2,7 +2,7 @@
 #map1 = affine_map<()[s0, s1] -> (s0 + s1)>
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "foo"}> ({
-    "gpu.func"() <{arg_attrs = [{gpu.test_promote_workgroup}], function_type = (memref<5x4xf32>) -> ()}> ({
+    "gpu.func"() <{arg_attrs = [{gpu.test_promote_workgroup}], function_type = (memref<5x4xf32>) -> (), kernel, workgroup_attributions = 1 : i64}> ({
     ^bb0(%arg0: memref<5x4xf32>, %arg1: memref<5x4xf32, #gpu.address_space<workgroup>>):
       %0 = "arith.constant"() <{value = 0 : index}> : () -> index
       %1 = "arith.constant"() <{value = 1 : index}> : () -> index
@@ -31,7 +31,7 @@
           %42 = "affine.apply"(%7, %1) <{map = #map}> : (index, index) -> index
           "scf.for"(%41, %5, %42) ({
           ^bb0(%arg7: index):
-            %43 = "memref.load"(%arg0, %arg6, %arg7) <{nontemporal = false}> : (memref<5x4xf32>, index, index) -> f32
+            %43 = "memref.load"(%arg0, %arg6, %arg7) <{invariant = false, nontemporal = false}> : (memref<5x4xf32>, index, index) -> f32
             "memref.store"(%43, %arg1, %arg6, %arg7) <{nontemporal = false}> : (f32, memref<5x4xf32, #gpu.address_space<workgroup>>, index, index) -> ()
             "scf.yield"() : () -> ()
           }) : (index, index, index) -> ()
@@ -39,9 +39,9 @@
         }) : (index, index, index) -> ()
         "scf.yield"() : () -> ()
       }) : (index, index, index) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "use"(%arg1) : (memref<5x4xf32, #gpu.address_space<workgroup>>) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       %15 = "arith.constant"() <{value = 0 : index}> : () -> index
       %16 = "arith.constant"() <{value = 1 : index}> : () -> index
       %17 = "arith.constant"() <{value = 0 : index}> : () -> index
@@ -69,7 +69,7 @@
           %35 = "affine.apply"(%22, %16) <{map = #map}> : (index, index) -> index
           "scf.for"(%34, %20, %35) ({
           ^bb0(%arg4: index):
-            %36 = "memref.load"(%arg1, %arg3, %arg4) <{nontemporal = false}> : (memref<5x4xf32, #gpu.address_space<workgroup>>, index, index) -> f32
+            %36 = "memref.load"(%arg1, %arg3, %arg4) <{invariant = false, nontemporal = false}> : (memref<5x4xf32, #gpu.address_space<workgroup>>, index, index) -> f32
             "memref.store"(%36, %arg0, %arg3, %arg4) <{nontemporal = false}> : (f32, memref<5x4xf32>, index, index) -> ()
             "scf.yield"() : () -> ()
           }) : (index, index, index) -> ()
@@ -78,7 +78,7 @@
         "scf.yield"() : () -> ()
       }) : (index, index, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "memref3d", workgroup_attributions = 1 : i64} : () -> ()
+    }) {sym_name = "memref3d"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -87,7 +87,7 @@
 #map1 = affine_map<()[s0, s1] -> (s0 + s1)>
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "foo"}> ({
-    "gpu.func"() <{arg_attrs = [{gpu.test_promote_workgroup}], function_type = (memref<8x7x6x5x4xf32>) -> ()}> ({
+    "gpu.func"() <{arg_attrs = [{gpu.test_promote_workgroup}], function_type = (memref<8x7x6x5x4xf32>) -> (), kernel, workgroup_attributions = 1 : i64}> ({
     ^bb0(%arg0: memref<8x7x6x5x4xf32>, %arg1: memref<8x7x6x5x4xf32, #gpu.address_space<workgroup>>):
       %0 = "arith.constant"() <{value = 0 : index}> : () -> index
       %1 = "arith.constant"() <{value = 1 : index}> : () -> index
@@ -126,7 +126,7 @@
               %54 = "affine.apply"(%13, %1) <{map = #map}> : (index, index) -> index
               "scf.for"(%53, %11, %54) ({
               ^bb0(%arg11: index):
-                %55 = "memref.load"(%arg0, %arg7, %arg8, %arg9, %arg10, %arg11) <{nontemporal = false}> : (memref<8x7x6x5x4xf32>, index, index, index, index, index) -> f32
+                %55 = "memref.load"(%arg0, %arg7, %arg8, %arg9, %arg10, %arg11) <{invariant = false, nontemporal = false}> : (memref<8x7x6x5x4xf32>, index, index, index, index, index) -> f32
                 "memref.store"(%55, %arg1, %arg7, %arg8, %arg9, %arg10, %arg11) <{nontemporal = false}> : (f32, memref<8x7x6x5x4xf32, #gpu.address_space<workgroup>>, index, index, index, index, index) -> ()
                 "scf.yield"() : () -> ()
               }) : (index, index, index) -> ()
@@ -138,9 +138,9 @@
         }) : (index, index, index) -> ()
         "scf.yield"() : () -> ()
       }) : (index, index, index) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "use"(%arg1) : (memref<8x7x6x5x4xf32, #gpu.address_space<workgroup>>) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       %18 = "arith.constant"() <{value = 0 : index}> : () -> index
       %19 = "arith.constant"() <{value = 1 : index}> : () -> index
       %20 = "arith.constant"() <{value = 0 : index}> : () -> index
@@ -178,7 +178,7 @@
               %44 = "affine.apply"(%31, %19) <{map = #map}> : (index, index) -> index
               "scf.for"(%43, %29, %44) ({
               ^bb0(%arg6: index):
-                %45 = "memref.load"(%arg1, %arg2, %arg3, %arg4, %arg5, %arg6) <{nontemporal = false}> : (memref<8x7x6x5x4xf32, #gpu.address_space<workgroup>>, index, index, index, index, index) -> f32
+                %45 = "memref.load"(%arg1, %arg2, %arg3, %arg4, %arg5, %arg6) <{invariant = false, nontemporal = false}> : (memref<8x7x6x5x4xf32, #gpu.address_space<workgroup>>, index, index, index, index, index) -> f32
                 "memref.store"(%45, %arg0, %arg2, %arg3, %arg4, %arg5, %arg6) <{nontemporal = false}> : (f32, memref<8x7x6x5x4xf32>, index, index, index, index, index) -> ()
                 "scf.yield"() : () -> ()
               }) : (index, index, index) -> ()
@@ -191,7 +191,7 @@
         "scf.yield"() : () -> ()
       }) : (index, index, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "memref5d", workgroup_attributions = 1 : i64} : () -> ()
+    }) {sym_name = "memref5d"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -200,7 +200,7 @@
 #map1 = affine_map<()[s0, s1] -> (s0 + s1)>
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "foo"}> ({
-    "gpu.func"() <{arg_attrs = [{gpu.test_promote_workgroup}], function_type = (memref<4xf32>) -> ()}> ({
+    "gpu.func"() <{arg_attrs = [{gpu.test_promote_workgroup}], function_type = (memref<4xf32>) -> (), kernel, workgroup_attributions = 2 : i64}> ({
     ^bb0(%arg0: memref<4xf32>, %arg1: memref<1x1xf64, #gpu.address_space<workgroup>>, %arg2: memref<4xf32, #gpu.address_space<workgroup>>, %arg3: memref<1x1xi64, 5>):
       %0 = "arith.constant"() <{value = 0 : index}> : () -> index
       %1 = "arith.constant"() <{value = 1 : index}> : () -> index
@@ -227,7 +227,7 @@
           %38 = "affine.apply"(%5, %1) <{map = #map}> : (index, index) -> index
           "scf.for"(%37, %3, %38) ({
           ^bb0(%arg9: index):
-            %39 = "memref.load"(%arg0, %arg9) <{nontemporal = false}> : (memref<4xf32>, index) -> f32
+            %39 = "memref.load"(%arg0, %arg9) <{invariant = false, nontemporal = false}> : (memref<4xf32>, index) -> f32
             "memref.store"(%39, %arg2, %arg9) <{nontemporal = false}> : (f32, memref<4xf32, #gpu.address_space<workgroup>>, index) -> ()
             "scf.yield"() : () -> ()
           }) : (index, index, index) -> ()
@@ -235,9 +235,9 @@
         }) : (index, index, index) -> ()
         "scf.yield"() : () -> ()
       }) : (index, index, index) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       "use"(%arg2) : (memref<4xf32, #gpu.address_space<workgroup>>) -> ()
-      "gpu.barrier"() : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
       %13 = "arith.constant"() <{value = 0 : index}> : () -> index
       %14 = "arith.constant"() <{value = 1 : index}> : () -> index
       %15 = "arith.constant"() <{value = 0 : index}> : () -> index
@@ -263,7 +263,7 @@
           %31 = "affine.apply"(%18, %14) <{map = #map}> : (index, index) -> index
           "scf.for"(%30, %16, %31) ({
           ^bb0(%arg6: index):
-            %32 = "memref.load"(%arg2, %arg6) <{nontemporal = false}> : (memref<4xf32, #gpu.address_space<workgroup>>, index) -> f32
+            %32 = "memref.load"(%arg2, %arg6) <{invariant = false, nontemporal = false}> : (memref<4xf32, #gpu.address_space<workgroup>>, index) -> f32
             "memref.store"(%32, %arg0, %arg6) <{nontemporal = false}> : (f32, memref<4xf32>, index) -> ()
             "scf.yield"() : () -> ()
           }) : (index, index, index) -> ()
@@ -272,7 +272,7 @@
         "scf.yield"() : () -> ()
       }) : (index, index, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "insert", workgroup_attributions = 2 : i64} : () -> ()
+    }) {sym_name = "insert"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 

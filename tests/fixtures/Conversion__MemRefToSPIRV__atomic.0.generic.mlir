@@ -15,7 +15,7 @@
     %101 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
     %102 = "spirv.IAdd"(%90, %100) : (i32, i32) -> i32
     %103 = "spirv.AccessChain"(%93, %94, %102) : (!spirv.ptr<!spirv.struct<(!spirv.array<24 x i32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<i32, StorageBuffer>
-    %104 = "spirv.AtomicIAdd"(%103, %arg30) <{memory_scope = #spirv.scope<Device>, semantics = #spirv.memory_semantics<AcquireRelease>}> : (!spirv.ptr<i32, StorageBuffer>, i32) -> i32
+    %104 = "spirv.AtomicIAdd"(%103, %arg30) <{memory_scope = #spirv.scope<Device>, semantics = #spirv.memory_semantics<AcquireRelease|UniformMemory>}> : (!spirv.ptr<i32, StorageBuffer>, i32) -> i32
     "func.return"(%104) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, memref<2x3x4xi32, #spirv.storage_class<Workgroup>>, index, index, index) -> i32, sym_name = "atomic_maxs_workgroup"}> ({
@@ -34,7 +34,7 @@
     %86 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
     %87 = "spirv.IAdd"(%75, %85) : (i32, i32) -> i32
     %88 = "spirv.AccessChain"(%78, %79, %87) : (!spirv.ptr<!spirv.struct<(!spirv.array<24 x i32>)>, Workgroup>, i32, i32) -> !spirv.ptr<i32, Workgroup>
-    %89 = "spirv.AtomicSMax"(%88, %arg25) <{memory_scope = #spirv.scope<Workgroup>, semantics = #spirv.memory_semantics<AcquireRelease>}> : (!spirv.ptr<i32, Workgroup>, i32) -> i32
+    %89 = "spirv.AtomicSMax"(%88, %arg25) <{memory_scope = #spirv.scope<Workgroup>, semantics = #spirv.memory_semantics<AcquireRelease|WorkgroupMemory>}> : (!spirv.ptr<i32, Workgroup>, i32) -> i32
     "func.return"(%89) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, memref<2x3x4xi32, #spirv.storage_class<StorageBuffer>>, index, index, index) -> i32, sym_name = "atomic_maxu_storage_buffer"}> ({
@@ -53,7 +53,7 @@
     %71 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
     %72 = "spirv.IAdd"(%60, %70) : (i32, i32) -> i32
     %73 = "spirv.AccessChain"(%63, %64, %72) : (!spirv.ptr<!spirv.struct<(!spirv.array<24 x i32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<i32, StorageBuffer>
-    %74 = "spirv.AtomicUMax"(%73, %arg20) <{memory_scope = #spirv.scope<Device>, semantics = #spirv.memory_semantics<AcquireRelease>}> : (!spirv.ptr<i32, StorageBuffer>, i32) -> i32
+    %74 = "spirv.AtomicUMax"(%73, %arg20) <{memory_scope = #spirv.scope<Device>, semantics = #spirv.memory_semantics<AcquireRelease|UniformMemory>}> : (!spirv.ptr<i32, StorageBuffer>, i32) -> i32
     "func.return"(%74) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, memref<2x3x4xi32, #spirv.storage_class<Workgroup>>, index, index, index) -> i32, sym_name = "atomic_mins_workgroup"}> ({
@@ -72,7 +72,7 @@
     %56 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
     %57 = "spirv.IAdd"(%45, %55) : (i32, i32) -> i32
     %58 = "spirv.AccessChain"(%48, %49, %57) : (!spirv.ptr<!spirv.struct<(!spirv.array<24 x i32>)>, Workgroup>, i32, i32) -> !spirv.ptr<i32, Workgroup>
-    %59 = "spirv.AtomicSMin"(%58, %arg15) <{memory_scope = #spirv.scope<Workgroup>, semantics = #spirv.memory_semantics<AcquireRelease>}> : (!spirv.ptr<i32, Workgroup>, i32) -> i32
+    %59 = "spirv.AtomicSMin"(%58, %arg15) <{memory_scope = #spirv.scope<Workgroup>, semantics = #spirv.memory_semantics<AcquireRelease|WorkgroupMemory>}> : (!spirv.ptr<i32, Workgroup>, i32) -> i32
     "func.return"(%59) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, memref<2x3x4xi32, #spirv.storage_class<StorageBuffer>>, index, index, index) -> i32, sym_name = "atomic_minu_storage_buffer"}> ({
@@ -91,7 +91,7 @@
     %41 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
     %42 = "spirv.IAdd"(%30, %40) : (i32, i32) -> i32
     %43 = "spirv.AccessChain"(%33, %34, %42) : (!spirv.ptr<!spirv.struct<(!spirv.array<24 x i32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<i32, StorageBuffer>
-    %44 = "spirv.AtomicUMin"(%43, %arg10) <{memory_scope = #spirv.scope<Device>, semantics = #spirv.memory_semantics<AcquireRelease>}> : (!spirv.ptr<i32, StorageBuffer>, i32) -> i32
+    %44 = "spirv.AtomicUMin"(%43, %arg10) <{memory_scope = #spirv.scope<Device>, semantics = #spirv.memory_semantics<AcquireRelease|UniformMemory>}> : (!spirv.ptr<i32, StorageBuffer>, i32) -> i32
     "func.return"(%44) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, memref<2x3x4xi32, #spirv.storage_class<Workgroup>>, index, index, index) -> i32, sym_name = "atomic_ori_workgroup"}> ({
@@ -110,7 +110,7 @@
     %26 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
     %27 = "spirv.IAdd"(%15, %25) : (i32, i32) -> i32
     %28 = "spirv.AccessChain"(%18, %19, %27) : (!spirv.ptr<!spirv.struct<(!spirv.array<24 x i32>)>, Workgroup>, i32, i32) -> !spirv.ptr<i32, Workgroup>
-    %29 = "spirv.AtomicOr"(%28, %arg5) <{memory_scope = #spirv.scope<Workgroup>, semantics = #spirv.memory_semantics<AcquireRelease>}> : (!spirv.ptr<i32, Workgroup>, i32) -> i32
+    %29 = "spirv.AtomicOr"(%28, %arg5) <{memory_scope = #spirv.scope<Workgroup>, semantics = #spirv.memory_semantics<AcquireRelease|WorkgroupMemory>}> : (!spirv.ptr<i32, Workgroup>, i32) -> i32
     "func.return"(%29) : (i32) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (i32, memref<2x3x4xi32, #spirv.storage_class<StorageBuffer>>, index, index, index) -> i32, sym_name = "atomic_andi_storage_buffer"}> ({
@@ -129,8 +129,94 @@
     %11 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
     %12 = "spirv.IAdd"(%0, %10) : (i32, i32) -> i32
     %13 = "spirv.AccessChain"(%3, %4, %12) : (!spirv.ptr<!spirv.struct<(!spirv.array<24 x i32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<i32, StorageBuffer>
-    %14 = "spirv.AtomicAnd"(%13, %arg0) <{memory_scope = #spirv.scope<Device>, semantics = #spirv.memory_semantics<AcquireRelease>}> : (!spirv.ptr<i32, StorageBuffer>, i32) -> i32
+    %14 = "spirv.AtomicAnd"(%13, %arg0) <{memory_scope = #spirv.scope<Device>, semantics = #spirv.memory_semantics<AcquireRelease|UniformMemory>}> : (!spirv.ptr<i32, StorageBuffer>, i32) -> i32
     "func.return"(%14) : (i32) -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.3, [Shader], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i8, memref<16xi8, #spirv.storage_class<StorageBuffer>>, index) -> i8, sym_name = "atomic_ori_i8_storage_buffer"}> ({
+  ^bb0(%arg0: i8, %arg1: memref<16xi8, #spirv.storage_class<StorageBuffer>>, %arg2: index):
+    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i32
+    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (memref<16xi8, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i32, stride=4> [0])>, StorageBuffer>
+    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (i8) -> i32
+    %3 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %4 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %5 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %6 = "spirv.AccessChain"(%1, %3, %0) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<i32, StorageBuffer>
+    %7 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
+    %8 = "spirv.Constant"() <{value = 8 : i32}> : () -> i32
+    %9 = "spirv.UMod"(%0, %7) : (i32, i32) -> i32
+    %10 = "spirv.IMul"(%9, %8) : (i32, i32) -> i32
+    %11 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
+    %12 = "spirv.SDiv"(%0, %11) : (i32, i32) -> i32
+    %13 = "spirv.AccessChain"(%1, %3, %12) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<i32, StorageBuffer>
+    %14 = "spirv.Constant"() <{value = 255 : i32}> : () -> i32
+    %15 = "spirv.BitwiseAnd"(%2, %14) : (i32, i32) -> i32
+    %16 = "spirv.ShiftLeftLogical"(%15, %10) : (i32, i32) -> i32
+    %17 = "spirv.AtomicOr"(%13, %16) <{memory_scope = #spirv.scope<Device>, semantics = #spirv.memory_semantics<AcquireRelease|UniformMemory>}> : (!spirv.ptr<i32, StorageBuffer>, i32) -> i32
+    %18 = "spirv.ShiftRightLogical"(%17, %10) : (i32, i32) -> i32
+    %19 = "spirv.Constant"() <{value = 255 : i32}> : () -> i32
+    %20 = "spirv.BitwiseAnd"(%18, %19) : (i32, i32) -> i32
+    %21 = "builtin.unrealized_conversion_cast"(%20) : (i32) -> i8
+    "func.return"(%21) : (i8) -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.3, [Shader], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i8, memref<16xi8, #spirv.storage_class<StorageBuffer>>, index) -> i8, sym_name = "atomic_andi_i8_storage_buffer"}> ({
+  ^bb0(%arg0: i8, %arg1: memref<16xi8, #spirv.storage_class<StorageBuffer>>, %arg2: index):
+    %0 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i32
+    %1 = "builtin.unrealized_conversion_cast"(%arg1) : (memref<16xi8, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<4 x i32, stride=4> [0])>, StorageBuffer>
+    %2 = "builtin.unrealized_conversion_cast"(%arg0) : (i8) -> i32
+    %3 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %4 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %5 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %6 = "spirv.AccessChain"(%1, %3, %0) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<i32, StorageBuffer>
+    %7 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
+    %8 = "spirv.Constant"() <{value = 8 : i32}> : () -> i32
+    %9 = "spirv.UMod"(%0, %7) : (i32, i32) -> i32
+    %10 = "spirv.IMul"(%9, %8) : (i32, i32) -> i32
+    %11 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
+    %12 = "spirv.SDiv"(%0, %11) : (i32, i32) -> i32
+    %13 = "spirv.AccessChain"(%1, %3, %12) : (!spirv.ptr<!spirv.struct<(!spirv.array<4 x i32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<i32, StorageBuffer>
+    %14 = "spirv.Constant"() <{value = 255 : i32}> : () -> i32
+    %15 = "spirv.BitwiseAnd"(%2, %14) : (i32, i32) -> i32
+    %16 = "spirv.ShiftLeftLogical"(%15, %10) : (i32, i32) -> i32
+    %17 = "spirv.ShiftLeftLogical"(%14, %10) : (i32, i32) -> i32
+    %18 = "spirv.Not"(%17) : (i32) -> i32
+    %19 = "spirv.BitwiseOr"(%16, %18) : (i32, i32) -> i32
+    %20 = "spirv.AtomicAnd"(%13, %19) <{memory_scope = #spirv.scope<Device>, semantics = #spirv.memory_semantics<AcquireRelease|UniformMemory>}> : (!spirv.ptr<i32, StorageBuffer>, i32) -> i32
+    %21 = "spirv.ShiftRightLogical"(%20, %10) : (i32, i32) -> i32
+    %22 = "spirv.Constant"() <{value = 255 : i32}> : () -> i32
+    %23 = "spirv.BitwiseAnd"(%21, %22) : (i32, i32) -> i32
+    %24 = "builtin.unrealized_conversion_cast"(%23) : (i32) -> i8
+    "func.return"(%24) : (i8) -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.3, [Shader], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (f32, memref<2x3x4xf32, #spirv.storage_class<StorageBuffer>>, index, index, index) -> f32, sym_name = "atomic_addf_storage_buffer"}> ({
+  ^bb0(%arg0: f32, %arg1: memref<2x3x4xf32, #spirv.storage_class<StorageBuffer>>, %arg2: index, %arg3: index, %arg4: index):
+    %0 = "builtin.unrealized_conversion_cast"(%arg4) : (index) -> i32
+    %1 = "builtin.unrealized_conversion_cast"(%arg3) : (index) -> i32
+    %2 = "builtin.unrealized_conversion_cast"(%arg2) : (index) -> i32
+    %3 = "builtin.unrealized_conversion_cast"(%arg1) : (memref<2x3x4xf32, #spirv.storage_class<StorageBuffer>>) -> !spirv.ptr<!spirv.struct<(!spirv.array<24 x f32, stride=4> [0])>, StorageBuffer>
+    %4 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %5 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+    %6 = "spirv.Constant"() <{value = 12 : i32}> : () -> i32
+    %7 = "spirv.IMul"(%2, %6) : (i32, i32) -> i32
+    %8 = "spirv.Constant"() <{value = 4 : i32}> : () -> i32
+    %9 = "spirv.IMul"(%1, %8) : (i32, i32) -> i32
+    %10 = "spirv.IAdd"(%9, %7) : (i32, i32) -> i32
+    %11 = "spirv.Constant"() <{value = 1 : i32}> : () -> i32
+    %12 = "spirv.IAdd"(%0, %10) : (i32, i32) -> i32
+    %13 = "spirv.AccessChain"(%3, %4, %12) : (!spirv.ptr<!spirv.struct<(!spirv.array<24 x f32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<f32, StorageBuffer>
+    %14 = "spirv.EXT.AtomicFAdd"(%13, %arg0) <{memory_scope = #spirv.scope<Device>, semantics = #spirv.memory_semantics<AcquireRelease|UniformMemory>}> : (!spirv.ptr<f32, StorageBuffer>, f32) -> f32
+    "func.return"(%14) : (f32) -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.3, [Shader, AtomicFloat32AddEXT], [SPV_EXT_shader_atomic_float_add]>, #spirv.resource_limits<>>} : () -> ()
 

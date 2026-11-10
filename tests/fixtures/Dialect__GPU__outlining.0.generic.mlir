@@ -12,7 +12,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "launch_kernel"}> ({
-    "gpu.func"() <{function_type = (f32, memref<?xf32, 1>) -> (), known_block_size = array<i32: 20, 24, 28>, known_grid_size = array<i32: 8, 12, 16>}> ({
+    "gpu.func"() <{function_type = (f32, memref<?xf32, 1>) -> (), kernel, known_block_size = array<i32: 20, 24, 28>, known_grid_size = array<i32: 8, 12, 16>, workgroup_attributions = 0 : i64}> ({
     ^bb0(%arg0: f32, %arg1: memref<?xf32, 1>):
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -30,7 +30,7 @@
       "some_op"(%0, %9) : (index, index) -> ()
       %12 = "memref.load"(%arg1, %3) : (memref<?xf32, 1>, index) -> f32
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "launch_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "launch_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -49,7 +49,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "launchCFG_kernel"}> ({
-    "gpu.func"() <{function_type = (f32, memref<?xf32, 1>) -> (), known_block_size = array<i32: 20, 24, 28>, known_grid_size = array<i32: 8, 12, 16>}> ({
+    "gpu.func"() <{function_type = (f32, memref<?xf32, 1>) -> (), kernel, known_block_size = array<i32: 20, 24, 28>, known_grid_size = array<i32: 8, 12, 16>, workgroup_attributions = 0 : i64}> ({
     ^bb0(%arg0: f32, %arg1: memref<?xf32, 1>):
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -69,7 +69,7 @@
       "some_op"(%0, %9) : (index, index) -> ()
       %12 = "memref.load"(%arg1, %3) : (memref<?xf32, 1>, index) -> f32
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "launchCFG_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "launchCFG_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -83,7 +83,7 @@
     "llvm.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "launch_from_llvm_func_kernel"}> ({
-    "gpu.func"() <{function_type = (f32, memref<?xf32, 1>) -> (), known_block_size = array<i32: 1, 1, 1>, known_grid_size = array<i32: 1, 1, 1>}> ({
+    "gpu.func"() <{function_type = (f32, memref<?xf32, 1>) -> (), kernel, known_block_size = array<i32: 1, 1, 1>, known_grid_size = array<i32: 1, 1, 1>, workgroup_attributions = 0 : i64}> ({
     ^bb0(%arg0: f32, %arg1: memref<?xf32, 1>):
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -101,7 +101,7 @@
       "some_op"(%0, %9) : (index, index) -> ()
       %12 = "memref.load"(%arg1, %3) : (memref<?xf32, 1>, index) -> f32
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "launch_from_llvm_func_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "launch_from_llvm_func_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -117,7 +117,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "multiple_launches_kernel"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>, workgroup_attributions = 0 : i64}> ({
       %36 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %37 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %38 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -131,10 +131,10 @@
       %46 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
       %47 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "multiple_launches_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "multiple_launches_kernel"} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "multiple_launches_kernel_0"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>, workgroup_attributions = 0 : i64}> ({
       %24 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %25 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %26 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -148,10 +148,10 @@
       %34 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
       %35 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "multiple_launches_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "multiple_launches_kernel"} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "multiple_launches_kernel_1"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>, workgroup_attributions = 0 : i64}> ({
       %12 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %13 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %14 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -165,10 +165,10 @@
       %22 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
       %23 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "multiple_launches_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "multiple_launches_kernel"} : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "multiple_launches_kernel_2"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>, workgroup_attributions = 0 : i64}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %2 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -182,7 +182,7 @@
       %10 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
       %11 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "multiple_launches_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "multiple_launches_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -198,7 +198,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "extra_constants_not_inlined_kernel"}> ({
-    "gpu.func"() <{function_type = (memref<?xf32>, index) -> (), known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>}> ({
+    "gpu.func"() <{function_type = (memref<?xf32>, index) -> (), kernel, known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>, workgroup_attributions = 0 : i64}> ({
     ^bb0(%arg0: memref<?xf32>, %arg1: index):
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -215,7 +215,7 @@
       %12 = "arith.constant"() <{value = 2 : index}> : () -> index
       "use"(%12, %arg0, %arg1) : (index, memref<?xf32>, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "extra_constants_not_inlined_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "extra_constants_not_inlined_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -231,7 +231,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "extra_constants_kernel"}> ({
-    "gpu.func"() <{function_type = (memref<?xf32>) -> (), known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>}> ({
+    "gpu.func"() <{function_type = (memref<?xf32>) -> (), kernel, known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>, workgroup_attributions = 0 : i64}> ({
     ^bb0(%arg0: memref<?xf32>):
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -250,7 +250,7 @@
       %14 = "memref.dim"(%arg0, %13) : (memref<?xf32>, index) -> index
       "use"(%12, %arg0, %14) : (index, memref<?xf32>, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "extra_constants_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "extra_constants_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -266,7 +266,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "extra_constants_noarg_kernel"}> ({
-    "gpu.func"() <{function_type = (memref<?xf32>, index) -> (), known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>}> ({
+    "gpu.func"() <{function_type = (memref<?xf32>, index) -> (), kernel, known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>, workgroup_attributions = 0 : i64}> ({
     ^bb0(%arg0: memref<?xf32>, %arg1: index):
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -283,7 +283,7 @@
       %12 = "arith.constant"() <{value = 2 : index}> : () -> index
       "use"(%12, %arg0, %arg1) : (index, memref<?xf32>, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "extra_constants_noarg_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "extra_constants_noarg_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -297,7 +297,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "multiple_uses_kernel"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 1, 1, 1>, known_grid_size = array<i32: 1, 1, 1>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 1, 1, 1>, known_grid_size = array<i32: 1, 1, 1>, workgroup_attributions = 0 : i64}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %2 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -314,7 +314,7 @@
       "use1"(%12, %12) : (index, index) -> ()
       "use2"(%12) : (index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "multiple_uses_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "multiple_uses_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -329,7 +329,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "multiple_uses2_kernel"}> ({
-    "gpu.func"() <{function_type = (memref<*xf32>) -> (), known_block_size = array<i32: 1, 1, 1>, known_grid_size = array<i32: 1, 1, 1>}> ({
+    "gpu.func"() <{function_type = (memref<*xf32>) -> (), kernel, known_block_size = array<i32: 1, 1, 1>, known_grid_size = array<i32: 1, 1, 1>, workgroup_attributions = 0 : i64}> ({
     ^bb0(%arg0: memref<*xf32>):
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -349,7 +349,7 @@
       "use2"(%12, %12) : (index, index) -> ()
       "use3"(%arg0) : (memref<*xf32>) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "multiple_uses2_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "multiple_uses2_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -364,7 +364,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "function_call_kernel"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>, workgroup_attributions = 0 : i64}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %2 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -381,7 +381,7 @@
       "func.call"() <{callee = @device_function}> : () -> ()
       %12 = "llvm.mlir.addressof"() <{global_name = @global}> : () -> !llvm.ptr
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "function_call_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "function_call_kernel"} : () -> ()
     "func.func"() <{function_type = () -> (), sym_name = "device_function"}> ({
       "func.call"() <{callee = @recursive_device_function}> : () -> ()
       "func.return"() : () -> ()
@@ -411,7 +411,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "non_constant_launches_kernel"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, workgroup_attributions = 0 : i64}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %2 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -425,7 +425,7 @@
       %10 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
       %11 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "non_constant_launches_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "non_constant_launches_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -438,7 +438,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "launch_memory_attributions_0_kernel"}> ({
-    "gpu.func"() <{function_type = (memref<?xf32, 1>) -> (), known_block_size = array<i32: 128, 128, 128>, known_grid_size = array<i32: 128, 128, 128>}> ({
+    "gpu.func"() <{function_type = (memref<?xf32, 1>) -> (), kernel, known_block_size = array<i32: 128, 128, 128>, known_grid_size = array<i32: 128, 128, 128>, workgroup_attributions = 1 : i64}> ({
     ^bb0(%arg0: memref<?xf32, 1>, %arg1: memref<42xf32, 3>, %arg2: memref<2xf32, 5>, %arg3: memref<1xf32, 5>):
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -457,7 +457,7 @@
       %13 = "memref.load"(%arg1, %3) : (memref<42xf32, 3>, index) -> f32
       %14 = "memref.load"(%arg3, %3) : (memref<1xf32, 5>, index) -> f32
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "launch_memory_attributions_0_kernel", workgroup_attributions = 1 : i64} : () -> ()
+    }) {sym_name = "launch_memory_attributions_0_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -472,7 +472,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "launch_memory_attributions_1_kernel"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 1, 1, 1>, known_grid_size = array<i32: 1, 1, 1>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 1, 1, 1>, known_grid_size = array<i32: 1, 1, 1>, workgroup_attributions = 0 : i64}> ({
     ^bb0(%arg0: memref<3xf32, 5>):
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -489,7 +489,7 @@
       %12 = "arith.constant"() <{value = 2 : index}> : () -> index
       %13 = "memref.load"(%arg0, %12) : (memref<3xf32, 5>, index) -> f32
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "launch_memory_attributions_1_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "launch_memory_attributions_1_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -511,7 +511,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "launch_cluster_kernel"}> ({
-    "gpu.func"() <{function_type = (f32, memref<?xf32, 1>) -> (), known_block_size = array<i32: 20, 24, 28>, known_grid_size = array<i32: 8, 12, 16>}> ({
+    "gpu.func"() <{function_type = (f32, memref<?xf32, 1>) -> (), kernel, known_block_size = array<i32: 20, 24, 28>, known_cluster_size = array<i32: 1, 2, 1>, known_grid_size = array<i32: 8, 12, 16>, workgroup_attributions = 0 : i64}> ({
     ^bb0(%arg0: f32, %arg1: memref<?xf32, 1>):
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
@@ -535,7 +535,7 @@
       "some_op"(%12, %0, %9) : (index, index, index) -> ()
       %18 = "memref.load"(%arg1, %3) : (memref<?xf32, 1>, index) -> f32
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "launch_cluster_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "launch_cluster_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -552,7 +552,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 32, 16, 8>, known_grid_size = array<i32: 8, 12, 16>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 32, 16, 8>, known_grid_size = array<i32: 8, 12, 16>, workgroup_attributions = 0 : i64}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %2 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -567,7 +567,7 @@
       %11 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "some_op"(%0, %3) : (index, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "test_kernel_func", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "test_kernel_func"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -576,8 +576,8 @@
   "gpu.module"() <{sym_name = "existing_module"}> ({
     "gpu.func"() <{function_type = () -> ()}> ({
       "gpu.return"() : () -> ()
-    }) {sym_name = "test_kernel_func", workgroup_attributions = 0 : i64} : () -> ()
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 32, 16, 8>, known_grid_size = array<i32: 8, 12, 16>}> ({
+    }) {sym_name = "test_kernel_func"} : () -> ()
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 32, 16, 8>, known_grid_size = array<i32: 8, 12, 16>, workgroup_attributions = 0 : i64}> ({
       %6 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %7 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %8 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -592,7 +592,7 @@
       %17 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "some_op"(%6, %9) : (index, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "test_kernel_func_0", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "test_kernel_func_0"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "testExistingModule"}> ({
     %0 = "arith.constant"() <{value = 8 : index}> : () -> index
@@ -619,7 +619,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_module"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 32, 16, 8>, known_grid_size = array<i32: 8, 12, 16>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 32, 16, 8>, known_grid_size = array<i32: 8, 12, 16>, workgroup_attributions = 0 : i64}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %2 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -634,7 +634,7 @@
       %11 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "some_op"(%0, %3) : (index, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "testKernelModuleOnly_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "testKernelModuleOnly_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -651,7 +651,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "test_kernel_func"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 32, 16, 8>, known_grid_size = array<i32: 8, 12, 16>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 32, 16, 8>, known_grid_size = array<i32: 8, 12, 16>, workgroup_attributions = 0 : i64}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %2 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -666,7 +666,7 @@
       %11 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "some_op"(%0, %3) : (index, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "test_kernel_func", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "test_kernel_func"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -683,7 +683,7 @@
     "func.return"() : () -> ()
   }) : () -> ()
   "gpu.module"() <{sym_name = "testNoAttributes_kernel"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 32, 16, 8>, known_grid_size = array<i32: 8, 12, 16>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 32, 16, 8>, known_grid_size = array<i32: 8, 12, 16>, workgroup_attributions = 0 : i64}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %2 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -698,38 +698,24 @@
       %11 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
       "some_op"(%0, %3) : (index, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "testNoAttributes_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "testNoAttributes_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (index) -> (), sym_name = "nested_launch"}> ({
-  ^bb0(%arg1: index):
-    "gpu.launch_func"(%arg1, %arg1, %arg1, %arg1, %arg1, %arg1, %arg1) <{kernel = @nested_launch_kernel_0::@nested_launch_kernel, operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0>}> : (index, index, index, index, index, index, index) -> ()
+  "gpu.module"() <{sym_name = "some_kernels"}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
+      "gpu.return"() : () -> ()
+    }) {sym_name = "some_kernel"} : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (index) -> (), sym_name = "launch_with_launch_func_body"}> ({
+  ^bb0(%arg0: index):
+    "gpu.launch_func"(%arg0, %arg0, %arg0, %arg0, %arg0, %arg0) <{kernel = @launch_with_launch_func_body_kernel::@launch_with_launch_func_body_kernel, operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0>}> : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
-  "gpu.module"() <{sym_name = "nested_launch_kernel"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
-      %12 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
-      %13 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
-      %14 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
-      %15 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index
-      %16 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index
-      %17 = "gpu.thread_id"() <{dimension = #gpu<dim z>}> : () -> index
-      %18 = "gpu.grid_dim"() <{dimension = #gpu<dim x>}> : () -> index
-      %19 = "gpu.grid_dim"() <{dimension = #gpu<dim y>}> : () -> index
-      %20 = "gpu.grid_dim"() <{dimension = #gpu<dim z>}> : () -> index
-      %21 = "gpu.block_dim"() <{dimension = #gpu<dim x>}> : () -> index
-      %22 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
-      %23 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
-      "some_op"(%12, %15) : (index, index) -> ()
-      "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "nested_launch_kernel", workgroup_attributions = 0 : i64} : () -> ()
-  }) : () -> ()
-  "gpu.module"() <{sym_name = "nested_launch_kernel_0"}> ({
-    "gpu.func"() <{function_type = (index) -> ()}> ({
-    ^bb0(%arg0: index):
+  "gpu.module"() <{sym_name = "launch_with_launch_func_body_kernel"}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, workgroup_attributions = 0 : i64}> ({
       %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
       %2 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
@@ -742,9 +728,37 @@
       %9 = "gpu.block_dim"() <{dimension = #gpu<dim x>}> : () -> index
       %10 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
       %11 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
-      "gpu.launch_func"(%arg0, %arg0, %arg0, %arg0, %arg0, %arg0) <{kernel = @nested_launch_kernel::@nested_launch_kernel, operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0>}> : (index, index, index, index, index, index) -> ()
+      "test.use_nested"() {uses = [@public_module::@nested_function]} : () -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "nested_launch_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "launch_with_launch_func_body_kernel"} : () -> ()
+  }) : () -> ()
+}) {gpu.container_module} : () -> ()
+
+// -----
+// -----
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> (), sym_name = "launch_cooperative"}> ({
+    %12 = "arith.constant"() <{value = 8 : index}> : () -> index
+    "gpu.launch_func"(%12, %12, %12, %12, %12, %12) <{cooperative, kernel = @launch_cooperative_kernel::@launch_cooperative_kernel, operandSegmentSizes = array<i32: 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0>}> : (index, index, index, index, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "gpu.module"() <{sym_name = "launch_cooperative_kernel"}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 8, 8, 8>, known_grid_size = array<i32: 8, 8, 8>, workgroup_attributions = 0 : i64}> ({
+      %0 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
+      %1 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
+      %2 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
+      %3 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index
+      %4 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index
+      %5 = "gpu.thread_id"() <{dimension = #gpu<dim z>}> : () -> index
+      %6 = "gpu.grid_dim"() <{dimension = #gpu<dim x>}> : () -> index
+      %7 = "gpu.grid_dim"() <{dimension = #gpu<dim y>}> : () -> index
+      %8 = "gpu.grid_dim"() <{dimension = #gpu<dim z>}> : () -> index
+      %9 = "gpu.block_dim"() <{dimension = #gpu<dim x>}> : () -> index
+      %10 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
+      %11 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
+      "gpu.return"() : () -> ()
+    }) {sym_name = "launch_cooperative_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 

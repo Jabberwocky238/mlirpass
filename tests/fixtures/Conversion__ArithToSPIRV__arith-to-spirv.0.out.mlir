@@ -55,6 +55,22 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int8, 
     %3 = spirv.IEqual %2, %cst_vec_4xi32 : vector<4xi32>
     return %1, %3 : vector<4xi32>, vector<4xi1>
   }
+  func.func @int32_scalar_subui_extended(%arg0: i32, %arg1: i32) -> (i32, i1) {
+    %0 = spirv.ISubBorrow %arg0, %arg1 : !spirv.struct<(i32, i32)>
+    %1 = spirv.CompositeExtract %0[0 : i32] : !spirv.struct<(i32, i32)>
+    %2 = spirv.CompositeExtract %0[1 : i32] : !spirv.struct<(i32, i32)>
+    %cst1_i32 = spirv.Constant 1 : i32
+    %3 = spirv.IEqual %2, %cst1_i32 : i32
+    return %1, %3 : i32, i1
+  }
+  func.func @int32_vector_subui_extended(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> (vector<4xi32>, vector<4xi1>) {
+    %0 = spirv.ISubBorrow %arg0, %arg1 : !spirv.struct<(vector<4xi32>, vector<4xi32>)>
+    %1 = spirv.CompositeExtract %0[0 : i32] : !spirv.struct<(vector<4xi32>, vector<4xi32>)>
+    %2 = spirv.CompositeExtract %0[1 : i32] : !spirv.struct<(vector<4xi32>, vector<4xi32>)>
+    %cst_vec_4xi32 = spirv.Constant dense<1> : vector<4xi32>
+    %3 = spirv.IEqual %2, %cst_vec_4xi32 : vector<4xi32>
+    return %1, %3 : vector<4xi32>, vector<4xi1>
+  }
   func.func @int32_scalar_mulsi_extended(%arg0: i32, %arg1: i32) -> (i32, i32) {
     %0 = spirv.SMulExtended %arg0, %arg1 : !spirv.struct<(i32, i32)>
     %1 = spirv.CompositeExtract %0[0 : i32] : !spirv.struct<(i32, i32)>
@@ -148,6 +164,18 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [], []>
     %2 = spirv.LogicalNotEqual %arg0, %arg1 : vector<4xi1>
     return
   }
+  func.func @bool_arith_scalar(%arg0: i1, %arg1: i1) {
+    %0 = spirv.LogicalNotEqual %arg0, %arg1 : i1
+    %1 = spirv.LogicalNotEqual %arg0, %arg1 : i1
+    %2 = spirv.LogicalAnd %arg0, %arg1 : i1
+    return
+  }
+  func.func @bool_arith_vector(%arg0: vector<4xi1>, %arg1: vector<4xi1>) {
+    %0 = spirv.LogicalNotEqual %arg0, %arg1 : vector<4xi1>
+    %1 = spirv.LogicalNotEqual %arg0, %arg1 : vector<4xi1>
+    %2 = spirv.LogicalAnd %arg0, %arg1 : vector<4xi1>
+    return
+  }
   func.func @shift_scalar(%arg0: i32, %arg1: i32) {
     %0 = spirv.ShiftLeftLogical %arg0, %arg1 : i32, i32
     %1 = spirv.ShiftRightArithmetic %arg0, %arg1 : i32, i32
@@ -158,6 +186,30 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [], []>
     %0 = spirv.ShiftLeftLogical %arg0, %arg1 : vector<4xi32>, vector<4xi32>
     %1 = spirv.ShiftRightArithmetic %arg0, %arg1 : vector<4xi32>, vector<4xi32>
     %2 = spirv.ShiftRightLogical %arg0, %arg1 : vector<4xi32>, vector<4xi32>
+    return
+  }
+}
+
+// -----
+module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [], []>, #spirv.resource_limits<>>} {
+  func.func @bool_shift_div_rem_scalar(%arg0: i1, %arg1: i1) {
+    %0 = spirv.LogicalNot %arg1 : i1
+    %1 = spirv.LogicalAnd %arg0, %0 : i1
+    %2 = spirv.LogicalNot %arg1 : i1
+    %3 = spirv.LogicalAnd %arg0, %2 : i1
+    %4 = spirv.LogicalAnd %arg0, %arg1 : i1
+    %5 = spirv.LogicalAnd %arg0, %arg1 : i1
+    %6 = spirv.LogicalNot %arg1 : i1
+    %7 = spirv.LogicalAnd %arg0, %6 : i1
+    %8 = spirv.LogicalNot %arg1 : i1
+    %9 = spirv.LogicalAnd %arg0, %8 : i1
+    return
+  }
+  func.func @bool_minmax_scalar(%arg0: i1, %arg1: i1) {
+    %0 = spirv.LogicalOr %arg0, %arg1 : i1
+    %1 = spirv.LogicalAnd %arg0, %arg1 : i1
+    %2 = spirv.LogicalAnd %arg0, %arg1 : i1
+    %3 = spirv.LogicalOr %arg0, %arg1 : i1
     return
   }
 }
@@ -802,12 +854,8 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int8, 
     return %4 : f32
   }
   func.func @float32_minnumf_scalar(%arg0: f32, %arg1: f32) -> f32 {
-    %0 = spirv.GL.FMin %arg0, %arg1 : f32
-    %1 = spirv.IsNan %arg0 : f32
-    %2 = spirv.IsNan %arg1 : f32
-    %3 = spirv.Select %1, %arg1, %0 : i1, f32
-    %4 = spirv.Select %2, %arg0, %3 : i1, f32
-    return %4 : f32
+    %0 = spirv.GL.NMin %arg0, %arg1 : f32
+    return %0 : f32
   }
   func.func @float32_maximumf_scalar(%arg0: vector<2xf32>, %arg1: vector<2xf32>) -> vector<2xf32> {
     %0 = spirv.GL.FMax %arg0, %arg1 : vector<2xf32>
@@ -818,12 +866,8 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int8, 
     return %4 : vector<2xf32>
   }
   func.func @float32_maxnumf_scalar(%arg0: vector<2xf32>, %arg1: vector<2xf32>) -> vector<2xf32> {
-    %0 = spirv.GL.FMax %arg0, %arg1 : vector<2xf32>
-    %1 = spirv.IsNan %arg0 : vector<2xf32>
-    %2 = spirv.IsNan %arg1 : vector<2xf32>
-    %3 = spirv.Select %1, %arg1, %0 : vector<2xi1>, vector<2xf32>
-    %4 = spirv.Select %2, %arg0, %3 : vector<2xi1>, vector<2xf32>
-    return %4 : vector<2xf32>
+    %0 = spirv.GL.NMax %arg0, %arg1 : vector<2xf32>
+    return %0 : vector<2xf32>
   }
   func.func @int_vector234(%arg0: vector<2xi8>, %arg1: vector<4xi64>) {
     %0 = spirv.SDiv %arg0, %arg0 : vector<2xi8>
@@ -864,6 +908,51 @@ module attributes {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [], []>
     %0 = builtin.unrealized_conversion_cast %arg0 : f16 to f32
     %1 = spirv.FAdd %0, %0 : f32
     return
+  }
+  func.func @uitofp_i8_emulated_f32(%arg0: i8) -> f32 {
+    %0 = builtin.unrealized_conversion_cast %arg0 : i8 to i32
+    %cst255_i32 = spirv.Constant 255 : i32
+    %1 = spirv.BitwiseAnd %0, %cst255_i32 : i32
+    %2 = spirv.ConvertUToF %1 : i32 to f32
+    return %2 : f32
+  }
+  func.func @uitofp_i16_emulated_f32(%arg0: i16) -> f32 {
+    %0 = builtin.unrealized_conversion_cast %arg0 : i16 to i32
+    %cst65535_i32 = spirv.Constant 65535 : i32
+    %1 = spirv.BitwiseAnd %0, %cst65535_i32 : i32
+    %2 = spirv.ConvertUToF %1 : i32 to f32
+    return %2 : f32
+  }
+  func.func @uitofp_vec_i8_emulated_f32(%arg0: vector<4xi8>) -> vector<4xf32> {
+    %0 = builtin.unrealized_conversion_cast %arg0 : vector<4xi8> to vector<4xi32>
+    %cst_vec_4xi32 = spirv.Constant dense<255> : vector<4xi32>
+    %1 = spirv.BitwiseAnd %0, %cst_vec_4xi32 : vector<4xi32>
+    %2 = spirv.ConvertUToF %1 : vector<4xi32> to vector<4xf32>
+    return %2 : vector<4xf32>
+  }
+  func.func @sitofp_i8_emulated_f32(%arg0: i8) -> f32 {
+    %0 = builtin.unrealized_conversion_cast %arg0 : i8 to i32
+    %cst24_i32 = spirv.Constant 24 : i32
+    %1 = spirv.ShiftLeftLogical %0, %cst24_i32 : i32, i32
+    %2 = spirv.ShiftRightArithmetic %1, %cst24_i32 : i32, i32
+    %3 = spirv.ConvertSToF %2 : i32 to f32
+    return %3 : f32
+  }
+  func.func @sitofp_i16_emulated_f32(%arg0: i16) -> f32 {
+    %0 = builtin.unrealized_conversion_cast %arg0 : i16 to i32
+    %cst16_i32 = spirv.Constant 16 : i32
+    %1 = spirv.ShiftLeftLogical %0, %cst16_i32 : i32, i32
+    %2 = spirv.ShiftRightArithmetic %1, %cst16_i32 : i32, i32
+    %3 = spirv.ConvertSToF %2 : i32 to f32
+    return %3 : f32
+  }
+  func.func @sitofp_vec_i8_emulated_f32(%arg0: vector<4xi8>) -> vector<4xf32> {
+    %0 = builtin.unrealized_conversion_cast %arg0 : vector<4xi8> to vector<4xi32>
+    %cst_vec_4xi32 = spirv.Constant dense<24> : vector<4xi32>
+    %1 = spirv.ShiftLeftLogical %0, %cst_vec_4xi32 : vector<4xi32>, vector<4xi32>
+    %2 = spirv.ShiftRightArithmetic %1, %cst_vec_4xi32 : vector<4xi32>, vector<4xi32>
+    %3 = spirv.ConvertSToF %2 : vector<4xi32> to vector<4xf32>
+    return %3 : vector<4xf32>
   }
 }
 

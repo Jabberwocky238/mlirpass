@@ -1,4 +1,23 @@
 "builtin.module"() ({
+^bb0:
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x2x2xf16>) -> (), sym_name = "no_convert_3d"}> ({
+  ^bb0(%arg0: memref<2x2x2xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %0, %1) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (memref<2x2x2xf16>, index, index, index, f16) -> vector<2x2x2xf16>
+    %3 = "arith.addf"(%2, %2) <{fastmath = #arith.fastmath<none>}> : (vector<2x2x2xf16>, vector<2x2x2xf16>) -> vector<2x2x2xf16>
+    "vector.transfer_write"(%3, %arg0, %0, %0, %0) <{in_bounds = [true, true, true], operandSegmentSizes = array<i32: 1, 1, 3, 0>, permutation_map = #map}> : (vector<2x2x2xf16>, memref<2x2x2xf16>, index, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<16x16xf16>, memref<16x16xf16>, memref<16x16xf16>) -> (), sym_name = "matmul"}> ({
   ^bb0(%arg0: memref<16x16xf16>, %arg1: memref<16x16xf16>, %arg2: memref<16x16xf16>):
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
@@ -180,7 +199,7 @@
     %3 = "vector.transfer_read"(%arg0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xi8>, index, index, i8) -> vector<16x16xi8>
     %4 = "vector.transfer_read"(%arg2, %0, %0, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xi32>, index, index, i32) -> vector<16x16xi32>
     %5 = "vector.transfer_read"(%arg1, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<16x16xi8>, index, index, i8) -> vector<16x16xi8>
-    %6 = "vector.contract"(%3, %5, %4) <{indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xi8>, vector<16x16xi8>, vector<16x16xi32>) -> vector<16x16xi32>
+    %6 = "vector.contract"(%3, %5, %4) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xi8>, vector<16x16xi8>, vector<16x16xi32>) -> vector<16x16xi32>
     "vector.transfer_write"(%6, %arg2, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x16xi32>, memref<16x16xi32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -244,6 +263,21 @@
 }) : () -> ()
 
 // -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<16x16xf32>, memref<16x16xf32>, memref<16x16xf32>, memref<16x16xf16>) -> (), sym_name = "cast_f32_to_f16_write"}> ({
+  ^bb0(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf32>, %arg2: memref<16x16xf32>, %arg3: memref<16x16xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "gpu.subgroup_mma_load_matrix"(%arg0, %0, %0) <{leadDimension = 16 : index}> : (memref<16x16xf32>, index, index) -> !gpu.mma_matrix<16x16xf32, "AOp">
+    %2 = "gpu.subgroup_mma_load_matrix"(%arg2, %0, %0) <{leadDimension = 16 : index}> : (memref<16x16xf32>, index, index) -> !gpu.mma_matrix<16x16xf32, "COp">
+    %3 = "gpu.subgroup_mma_load_matrix"(%arg1, %0, %0) <{leadDimension = 16 : index, transpose}> : (memref<16x16xf32>, index, index) -> !gpu.mma_matrix<16x16xf32, "BOp">
+    %4 = "gpu.subgroup_mma_compute"(%1, %3, %2) : (!gpu.mma_matrix<16x16xf32, "AOp">, !gpu.mma_matrix<16x16xf32, "BOp">, !gpu.mma_matrix<16x16xf32, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
+    %5 = "gpu.subgroup_mma_elementwise"(%4) <{opType = #gpu<mma_element_wise truncf>}> : (!gpu.mma_matrix<16x16xf32, "COp">) -> !gpu.mma_matrix<16x16xf16, "COp">
+    "gpu.subgroup_mma_store_matrix"(%5, %arg3, %0, %0) <{leadDimension = 16 : index}> : (!gpu.mma_matrix<16x16xf16, "COp">, memref<16x16xf16>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
 #map = affine_map<(d0, d1) -> (d1, d0)>
 #map1 = affine_map<(d0, d1, d2) -> (d0, d2)>
 #map2 = affine_map<(d0, d1, d2) -> (d2, d1)>
@@ -258,7 +292,7 @@
     %3 = "arith.extf"(%arg1) : (vector<32x128xf16>) -> vector<32x128xf32>
     %4 = "vector.transfer_read"(%arg0, %1, %1, %2) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<64x128xf16>, index, index, f16) -> vector<128x64xf16>
     %5 = "arith.extf"(%4) : (vector<128x64xf16>) -> vector<128x64xf32>
-    %6 = "vector.contract"(%3, %5, %0) <{indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<32x128xf32>, vector<128x64xf32>, vector<32x64xf32>) -> vector<32x64xf32>
+    %6 = "vector.contract"(%3, %5, %0) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map1, #map2, #map3], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<32x128xf32>, vector<128x64xf32>, vector<32x64xf32>) -> vector<32x64xf32>
     "vector.transfer_write"(%6, %arg2, %1, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map4}> : (vector<32x64xf32>, memref<32x64xf32>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
@@ -290,7 +324,7 @@
   ^bb0(%arg0: vector<4x4xi32>, %arg1: vector<4x4xi32>, %arg2: vector<4x4xi64>):
     %0 = "arith.extui"(%arg0) : (vector<4x4xi32>) -> vector<4x4xi64>
     %1 = "arith.extui"(%arg1) : (vector<4x4xi32>) -> vector<4x4xi64>
-    %2 = "vector.contract"(%0, %1, %arg2) <{indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<4x4xi64>, vector<4x4xi64>, vector<4x4xi64>) -> vector<4x4xi64>
+    %2 = "vector.contract"(%0, %1, %arg2) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map, #map1, #map2], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<4x4xi64>, vector<4x4xi64>, vector<4x4xi64>) -> vector<4x4xi64>
     "func.return"(%2) : (vector<4x4xi64>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -304,6 +338,88 @@
     %2 = "gpu.subgroup_mma_load_matrix"(%arg1, %0, %0) <{leadDimension = 16 : index, transpose}> : (memref<16x16xf16>, index, index) -> !gpu.mma_matrix<16x16xf16, "COp">
     %3 = "gpu.subgroup_mma_elementwise"(%1, %2) <{opType = #gpu<mma_element_wise addf>}> : (!gpu.mma_matrix<16x16xf16, "COp">, !gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf16, "COp">
     "gpu.subgroup_mma_store_matrix"(%3, %arg2, %0, %0) <{leadDimension = 16 : index}> : (!gpu.mma_matrix<16x16xf16, "COp">, memref<16x16xf16>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<16x16xf16>, memref<16x6x16xf16>, memref<16x9x16xf16>) -> (), sym_name = "matmul_with_strides"}> ({
+  ^bb0(%arg0: memref<16x16xf16>, %arg1: memref<16x6x16xf16>, %arg2: memref<16x9x16xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "gpu.subgroup_mma_load_matrix"(%arg0, %0, %0) <{leadDimension = 16 : index}> : (memref<16x16xf16>, index, index) -> !gpu.mma_matrix<16x16xf16, "AOp">
+    %2 = "gpu.subgroup_mma_load_matrix"(%arg1, %0, %0, %0) <{leadDimension = 96 : index}> : (memref<16x6x16xf16>, index, index, index) -> !gpu.mma_matrix<16x16xf16, "BOp">
+    %3 = "gpu.subgroup_mma_load_matrix"(%arg2, %0, %0, %0) <{leadDimension = 144 : index}> : (memref<16x9x16xf16>, index, index, index) -> !gpu.mma_matrix<16x16xf16, "COp">
+    %4 = "gpu.subgroup_mma_compute"(%1, %2, %3) : (!gpu.mma_matrix<16x16xf16, "AOp">, !gpu.mma_matrix<16x16xf16, "BOp">, !gpu.mma_matrix<16x16xf16, "COp">) -> !gpu.mma_matrix<16x16xf16, "COp">
+    "gpu.subgroup_mma_store_matrix"(%4, %arg2, %0, %0, %0) <{leadDimension = 144 : index}> : (!gpu.mma_matrix<16x16xf16, "COp">, memref<16x9x16xf16>, index, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<5x7x3xf16>, memref<2x5x3xf16>, memref<3x5xf16>) -> (), sym_name = "read_transpose_with_strides_3d"}> ({
+  ^bb0(%arg0: memref<5x7x3xf16>, %arg1: memref<2x5x3xf16>, %arg2: memref<3x5xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "gpu.subgroup_mma_load_matrix"(%arg0, %0, %0, %0) <{leadDimension = 21 : index, transpose}> : (memref<5x7x3xf16>, index, index, index) -> !gpu.mma_matrix<3x5xf16, "COp">
+    %2 = "gpu.subgroup_mma_load_matrix"(%arg1, %0, %0, %0) <{leadDimension = 3 : index, transpose}> : (memref<2x5x3xf16>, index, index, index) -> !gpu.mma_matrix<3x5xf16, "COp">
+    %3 = "gpu.subgroup_mma_elementwise"(%1, %2) <{opType = #gpu<mma_element_wise addf>}> : (!gpu.mma_matrix<3x5xf16, "COp">, !gpu.mma_matrix<3x5xf16, "COp">) -> !gpu.mma_matrix<3x5xf16, "COp">
+    "gpu.subgroup_mma_store_matrix"(%3, %arg2, %0, %0) <{leadDimension = 5 : index}> : (!gpu.mma_matrix<3x5xf16, "COp">, memref<3x5xf16>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<5x7x11x3xf16>, memref<2x5x11x3xf16>, memref<3x5xf16>) -> (), sym_name = "read_transpose_with_strides_4d"}> ({
+  ^bb0(%arg0: memref<5x7x11x3xf16>, %arg1: memref<2x5x11x3xf16>, %arg2: memref<3x5xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "gpu.subgroup_mma_load_matrix"(%arg0, %0, %0, %0, %0) <{leadDimension = 231 : index, transpose}> : (memref<5x7x11x3xf16>, index, index, index, index) -> !gpu.mma_matrix<3x5xf16, "COp">
+    %2 = "gpu.subgroup_mma_load_matrix"(%arg1, %0, %0, %0, %0) <{leadDimension = 33 : index, transpose}> : (memref<2x5x11x3xf16>, index, index, index, index) -> !gpu.mma_matrix<3x5xf16, "COp">
+    %3 = "gpu.subgroup_mma_elementwise"(%1, %2) <{opType = #gpu<mma_element_wise addf>}> : (!gpu.mma_matrix<3x5xf16, "COp">, !gpu.mma_matrix<3x5xf16, "COp">) -> !gpu.mma_matrix<3x5xf16, "COp">
+    "gpu.subgroup_mma_store_matrix"(%3, %arg2, %0, %0) <{leadDimension = 5 : index}> : (!gpu.mma_matrix<3x5xf16, "COp">, memref<3x5xf16>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1, d2) -> (d1, d0)>
+#map1 = affine_map<(d0, d1) -> (d0, d1)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x2x2xf16>, memref<2x2xf16>) -> (), sym_name = "no_convert_read_transpose_not_last_dim"}> ({
+  ^bb0(%arg0: memref<2x2x2xf16>, %arg1: memref<2x2xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 3, 1, 0>, permutation_map = #map}> : (memref<2x2x2xf16>, index, index, index, f16) -> vector<2x2xf16>
+    %3 = "arith.addf"(%2, %2) <{fastmath = #arith.fastmath<none>}> : (vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
+    "vector.transfer_write"(%3, %arg1, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<2x2xf16>, memref<2x2xf16>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+#map = affine_map<(d0, d1) -> (d0, d1)>
+#map1 = affine_map<(d0, d1) -> (d1, d0)>
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x2xf16>) -> (), sym_name = "no_convert_write_transpose"}> ({
+  ^bb0(%arg0: memref<2x2xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 0.000000e+00 : f16}> : () -> f16
+    %2 = "vector.transfer_read"(%arg0, %0, %0, %1) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 2, 1, 0>, permutation_map = #map}> : (memref<2x2xf16>, index, index, f16) -> vector<2x2xf16>
+    %3 = "arith.addf"(%2, %2) <{fastmath = #arith.fastmath<none>}> : (vector<2x2xf16>, vector<2x2xf16>) -> vector<2x2xf16>
+    "vector.transfer_write"(%3, %arg0, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map1}> : (vector<2x2xf16>, memref<2x2xf16>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x2x2xf16>, memref<2x2xf16>) -> (), sym_name = "read_transpose_with_broadcast_3d"}> ({
+  ^bb0(%arg0: memref<2x2x2xf16>, %arg1: memref<2x2xf16>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "gpu.subgroup_mma_load_matrix"(%arg0, %0, %0, %0) <{leadDimension = 0 : index, transpose}> : (memref<2x2x2xf16>, index, index, index) -> !gpu.mma_matrix<2x2xf16, "COp">
+    %2 = "gpu.subgroup_mma_elementwise"(%1, %1) <{opType = #gpu<mma_element_wise addf>}> : (!gpu.mma_matrix<2x2xf16, "COp">, !gpu.mma_matrix<2x2xf16, "COp">) -> !gpu.mma_matrix<2x2xf16, "COp">
+    "gpu.subgroup_mma_store_matrix"(%2, %arg1, %0, %0) <{leadDimension = 2 : index}> : (!gpu.mma_matrix<2x2xf16, "COp">, memref<2x2xf16>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

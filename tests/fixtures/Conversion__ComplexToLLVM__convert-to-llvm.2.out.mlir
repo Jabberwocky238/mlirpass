@@ -96,11 +96,11 @@ module {
     %6 = llvm.mlir.poison : !llvm.struct<(f32, f32)>
     %7 = llvm.fmul %4, %2 : f32
     %8 = llvm.fmul %5, %3 : f32
-    %9 = llvm.fsub %7, %8 : f32
-    %10 = llvm.fmul %3, %4 : f32
-    %11 = llvm.fmul %2, %5 : f32
-    %12 = llvm.fadd %10, %11 : f32
-    %13 = llvm.insertvalue %9, %6[0] : !llvm.struct<(f32, f32)> 
+    %9 = llvm.fmul %3, %4 : f32
+    %10 = llvm.fmul %2, %5 : f32
+    %11 = llvm.fsub %7, %8 : f32
+    %12 = llvm.fadd %9, %10 : f32
+    %13 = llvm.insertvalue %11, %6[0] : !llvm.struct<(f32, f32)> 
     %14 = llvm.insertvalue %12, %13[1] : !llvm.struct<(f32, f32)> 
     %15 = builtin.unrealized_conversion_cast %14 : !llvm.struct<(f32, f32)> to complex<f32>
     return %15 : complex<f32>
@@ -191,16 +191,15 @@ module {
     %4 = llvm.extractvalue %0[0] : !llvm.struct<(f32, f32)> 
     %5 = llvm.extractvalue %0[1] : !llvm.struct<(f32, f32)> 
     %6 = llvm.mlir.poison : !llvm.struct<(f32, f32)>
-    %7 = llvm.fmul %4, %2 {fastmathFlags = #llvm.fastmath<contract, afn>} : f32
-    %8 = llvm.fmul %5, %3 {fastmathFlags = #llvm.fastmath<contract, afn>} : f32
-    %9 = llvm.fsub %7, %8 {fastmathFlags = #llvm.fastmath<contract, afn>} : f32
+    %7 = llvm.fmul %3, %5 {fastmathFlags = #llvm.fastmath<contract, afn>} : f32
+    %8 = llvm.fneg %7 {fastmathFlags = #llvm.fastmath<contract, afn>} : f32
+    %9 = llvm.intr.fma(%2, %4, %8) {fastmathFlags = #llvm.fastmath<contract, afn>} : (f32, f32, f32) -> f32
     %10 = llvm.fmul %3, %4 {fastmathFlags = #llvm.fastmath<contract, afn>} : f32
-    %11 = llvm.fmul %2, %5 {fastmathFlags = #llvm.fastmath<contract, afn>} : f32
-    %12 = llvm.fadd %10, %11 {fastmathFlags = #llvm.fastmath<contract, afn>} : f32
-    %13 = llvm.insertvalue %9, %6[0] : !llvm.struct<(f32, f32)> 
-    %14 = llvm.insertvalue %12, %13[1] : !llvm.struct<(f32, f32)> 
-    %15 = builtin.unrealized_conversion_cast %14 : !llvm.struct<(f32, f32)> to complex<f32>
-    return %15 : complex<f32>
+    %11 = llvm.intr.fma(%2, %5, %10) {fastmathFlags = #llvm.fastmath<contract, afn>} : (f32, f32, f32) -> f32
+    %12 = llvm.insertvalue %9, %6[0] : !llvm.struct<(f32, f32)> 
+    %13 = llvm.insertvalue %11, %12[1] : !llvm.struct<(f32, f32)> 
+    %14 = builtin.unrealized_conversion_cast %13 : !llvm.struct<(f32, f32)> to complex<f32>
+    return %14 : complex<f32>
   }
   func.func @complex_abs_with_fmf(%arg0: complex<f32>) -> f32 {
     %0 = builtin.unrealized_conversion_cast %arg0 : complex<f32> to !llvm.struct<(f32, f32)>

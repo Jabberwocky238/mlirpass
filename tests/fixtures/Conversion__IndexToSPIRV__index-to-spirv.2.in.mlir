@@ -79,5 +79,17 @@
     %3 = "index.castu"(%arg1) : (i64) -> index
     "func.return"(%0, %1, %2, %3) : (index, index, index, index) -> ()
   }) : () -> ()
-}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Int64], []>, #spirv.resource_limits<>>} : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Shader, Int64], []>, #spirv.resource_limits<>>} : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index, index) -> (), sym_name = "min_max_ops"}> ({
+  ^bb0(%arg0: index, %arg1: index):
+    %0 = "index.maxs"(%arg0, %arg1) : (index, index) -> index
+    %1 = "index.maxu"(%arg0, %arg1) : (index, index) -> index
+    %2 = "index.mins"(%arg0, %arg1) : (index, index) -> index
+    %3 = "index.minu"(%arg0, %arg1) : (index, index) -> index
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.0, [Kernel, Int64], []>, #spirv.resource_limits<>>} : () -> ()
 

@@ -459,6 +459,31 @@ module {
 
 // -----
 module {
+  llvm.func @generic_atomic_rmw_f16() {
+    %0 = "test.foo"() : () -> memref<10xf16>
+    %1 = builtin.unrealized_conversion_cast %0 : memref<10xf16> to !llvm.struct<(ptr, ptr, i32, array<1 x i32>, array<1 x i32>)>
+    %2 = "test.foo"() : () -> index
+    %3 = builtin.unrealized_conversion_cast %2 : index to i32
+    %4 = llvm.extractvalue %1[1] : !llvm.struct<(ptr, ptr, i32, array<1 x i32>, array<1 x i32>)> 
+    %5 = llvm.getelementptr %4[%3] : (!llvm.ptr, i32) -> !llvm.ptr, f16
+    %6 = llvm.load %5 : !llvm.ptr -> f16
+    %7 = llvm.bitcast %6 : f16 to i16
+    llvm.br ^bb1(%7 : i16)
+  ^bb1(%8: i16):  // 2 preds: ^bb0, ^bb1
+    %9 = llvm.bitcast %8 : i16 to f16
+    %10 = llvm.bitcast %9 : f16 to i16
+    %11 = llvm.cmpxchg %5, %8, %10 acq_rel monotonic : !llvm.ptr, i16
+    %12 = llvm.extractvalue %11[0] : !llvm.struct<(i16, i1)> 
+    %13 = llvm.extractvalue %11[1] : !llvm.struct<(i16, i1)> 
+    llvm.cond_br %13, ^bb2, ^bb1(%12 : i16)
+  ^bb2:  // pred: ^bb1
+    %14 = llvm.bitcast %12 : i16 to f16
+    llvm.return
+  }
+}
+
+// -----
+module {
   llvm.func @malloc(i32) -> !llvm.ptr
   llvm.func @generic_atomic_rmw_in_alloca_scope() {
     %c1 = arith.constant 1 : index
@@ -798,6 +823,19 @@ module {
 
 // -----
 module {
+  func.func @load_invariant(%arg0: memref<32xf32>) {
+    %0 = builtin.unrealized_conversion_cast %arg0 : memref<32xf32> to !llvm.struct<(ptr, ptr, i32, array<1 x i32>, array<1 x i32>)>
+    %c7 = arith.constant 7 : index
+    %1 = builtin.unrealized_conversion_cast %c7 : index to i32
+    %2 = llvm.extractvalue %0[1] : !llvm.struct<(ptr, ptr, i32, array<1 x i32>, array<1 x i32>)> 
+    %3 = llvm.getelementptr inbounds|nuw %2[%1] : (!llvm.ptr, i32) -> !llvm.ptr, f32
+    %4 = llvm.load %3 invariant : !llvm.ptr -> f32
+    return
+  }
+}
+
+// -----
+module {
   func.func @load_with_alignment(%arg0: memref<32xf32>, %arg1: index) {
     %0 = builtin.unrealized_conversion_cast %arg1 : index to i32
     %1 = builtin.unrealized_conversion_cast %arg0 : memref<32xf32> to !llvm.struct<(ptr, ptr, i32, array<1 x i32>, array<1 x i32>)>
@@ -841,6 +879,27 @@ module {
 module {
   func.func @alloca_unconvertable_memory_space() {
     %alloca = memref.alloca() : memref<1x32x33xi32, #spirv.storage_class<StorageBuffer>>
+    return
+  }
+}
+
+// -----
+module {
+  func.func @alloca_huge(%arg0: index) {
+    %0 = llvm.mlir.constant(9223372036854775807 : index) : i32
+    %1 = llvm.mlir.constant(3 : index) : i32
+    %2 = llvm.mlir.constant(1 : index) : i32
+    %3 = llvm.mlir.poison : i32
+    %4 = llvm.alloca %3 x i32 : (i32) -> !llvm.ptr
+    %5 = llvm.mlir.poison : !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>
+    %6 = llvm.insertvalue %4, %5[0] : !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)> 
+    %7 = llvm.insertvalue %4, %6[1] : !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)> 
+    %8 = llvm.mlir.constant(0 : index) : i32
+    %9 = llvm.insertvalue %8, %7[2] : !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)> 
+    %10 = llvm.insertvalue %0, %9[3, 0] : !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)> 
+    %11 = llvm.insertvalue %1, %10[3, 1] : !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)> 
+    %12 = llvm.insertvalue %1, %11[4, 0] : !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)> 
+    %13 = llvm.insertvalue %2, %12[4, 1] : !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)> 
     return
   }
 }

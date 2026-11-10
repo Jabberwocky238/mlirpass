@@ -142,3 +142,28 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<200x127x256xf32>, tensor<256x64x200x2xf32>) -> tensor<256x64x200x2xf32>, sym_name = "bufferize_pack"}> ({
+  ^bb0(%arg0: tensor<200x127x256xf32>, %arg1: tensor<256x64x200x2xf32>):
+    %0 = "arith.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
+    %1 = "bufferization.to_buffer"(%arg0) : (tensor<200x127x256xf32>) -> memref<200x127x256xf32>
+    %2 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<256x64x200x2xf32>
+    "linalg.pack"(%1, %2, %0) <{inner_dims_pos = array<i64: 1>, operandSegmentSizes = array<i32: 1, 1, 1, 0>, outer_dims_perm = array<i64: 2, 1, 0>, static_inner_tiles = array<i64: 2>}> : (memref<200x127x256xf32>, memref<256x64x200x2xf32>, f32) -> ()
+    %3 = "bufferization.to_tensor"(%2) : (memref<256x64x200x2xf32>) -> tensor<256x64x200x2xf32>
+    "func.return"(%3) : (tensor<256x64x200x2xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<256x64x200x2xf32>, tensor<200x128x256xf32>) -> tensor<200x128x256xf32>, sym_name = "bufferize_unpack"}> ({
+  ^bb0(%arg0: tensor<256x64x200x2xf32>, %arg1: tensor<200x128x256xf32>):
+    %0 = "bufferization.to_buffer"(%arg0) : (tensor<256x64x200x2xf32>) -> memref<256x64x200x2xf32>
+    %1 = "memref.alloc"() <{alignment = 64 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<200x128x256xf32>
+    "linalg.unpack"(%0, %1) <{inner_dims_pos = array<i64: 1>, outer_dims_perm = array<i64: 2, 1, 0>, static_inner_tiles = array<i64: 2>}> {operandSegmentSizes = array<i32: 1, 1, 0, 0>} : (memref<256x64x200x2xf32>, memref<200x128x256xf32>) -> ()
+    %2 = "bufferization.to_tensor"(%1) : (memref<200x128x256xf32>) -> tensor<200x128x256xf32>
+    "func.return"(%2) : (tensor<200x128x256xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+

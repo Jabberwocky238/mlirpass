@@ -155,7 +155,7 @@ impl<'a> Body<'a> {
         if let Some(g) = self.constant_dims(&self.launch_group(launch, GRID)) {
             data.set("known_grid_size", g);
         }
-        data.attributes.push(mlirformat::NamedAttr { name: "gpu.kernel".into(), value: None });
+        data.set("kernel", Attribute::Unit);
         data.set("sym_name", Attribute::str(name));
         data.set("workgroup_attributions", Attribute::integer(workgroup as i128, Type::int(64)));
         data.loc = self[launch].loc.clone();

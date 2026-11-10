@@ -16,7 +16,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
     spirv.GlobalVariable @__builtin__NumWorkgroups__ built_in("NumWorkgroups") : !spirv.ptr<vector<3xi32>, Input>
     spirv.GlobalVariable @__builtin__LocalInvocationId__ built_in("LocalInvocationId") : !spirv.ptr<vector<3xi32>, Input>
     spirv.GlobalVariable @__builtin__WorkgroupId__ built_in("WorkgroupId") : !spirv.ptr<vector<3xi32>, Input>
-    spirv.func @load_store_kernel(%arg0: !spirv.ptr<!spirv.struct<(!spirv.array<48 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 0)>}, %arg1: !spirv.ptr<!spirv.struct<(!spirv.array<48 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 1)>}, %arg2: !spirv.ptr<!spirv.struct<(!spirv.array<48 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 2)>}, %arg3: i32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 3), StorageBuffer>}, %arg4: i32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 4), StorageBuffer>}, %arg5: i32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 5), StorageBuffer>}, %arg6: i32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 6), StorageBuffer>}) "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, workgroup_attributions = 0 : i64} {
+    spirv.func @load_store_kernel(%arg0: !spirv.ptr<!spirv.struct<(!spirv.array<48 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 0)>}, %arg1: !spirv.ptr<!spirv.struct<(!spirv.array<48 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 1)>}, %arg2: !spirv.ptr<!spirv.struct<(!spirv.array<48 x f32, stride=4> [0])>, StorageBuffer> {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 2)>}, %arg3: i32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 3), StorageBuffer>}, %arg4: i32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 4), StorageBuffer>}, %arg5: i32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 5), StorageBuffer>}, %arg6: i32 {spirv.interface_var_abi = #spirv.interface_var_abi<(0, 6), StorageBuffer>}) "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} {
       %__builtin__WorkgroupId___addr = spirv.mlir.addressof @__builtin__WorkgroupId__ : !spirv.ptr<vector<3xi32>, Input>
       %0 = spirv.Load "Input" %__builtin__WorkgroupId___addr : vector<3xi32>
       %1 = spirv.CompositeExtract %0[0 : i32] : vector<3xi32>
@@ -79,18 +79,18 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
   }
   gpu.module @kernels {
     gpu.func @load_store_kernel(%arg0: memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, %arg1: memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, %arg2: memref<12x4xf32, #spirv.storage_class<StorageBuffer>>, %arg3: index, %arg4: index, %arg5: index, %arg6: index) kernel attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} {
-      %block_id_x = gpu.block_id  x
-      %block_id_y = gpu.block_id  y
-      %block_id_z = gpu.block_id  z
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
-      %thread_id_z = gpu.thread_id  z
-      %grid_dim_x = gpu.grid_dim  x
-      %grid_dim_y = gpu.grid_dim  y
-      %grid_dim_z = gpu.grid_dim  z
-      %block_dim_x = gpu.block_dim  x
-      %block_dim_y = gpu.block_dim  y
-      %block_dim_z = gpu.block_dim  z
+      %block_id_x = gpu.block_id x
+      %block_id_y = gpu.block_id y
+      %block_id_z = gpu.block_id z
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
+      %thread_id_z = gpu.thread_id z
+      %grid_dim_x = gpu.grid_dim x
+      %grid_dim_y = gpu.grid_dim y
+      %grid_dim_z = gpu.grid_dim z
+      %block_dim_x = gpu.block_dim x
+      %block_dim_y = gpu.block_dim y
+      %block_dim_z = gpu.block_dim z
       %0 = arith.addi %arg3, %block_id_x : index
       %1 = arith.addi %arg4, %thread_id_x : index
       %2 = memref.load %arg0[%0, %1] : memref<12x4xf32, #spirv.storage_class<StorageBuffer>>

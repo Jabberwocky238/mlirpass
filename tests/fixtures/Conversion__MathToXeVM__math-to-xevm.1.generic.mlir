@@ -99,7 +99,7 @@
       %4 = "math.exp"(%3) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
       %5 = "llvm.call"(%3) <{CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @_Z22__spirv_ocl_native_expf, fastmathFlags = #llvm.fastmath<afn>, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>}> : (f32) -> f32
       "gpu.return"() : () -> ()
-    }) {sym_name = "exp_gpu", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "exp_gpu"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "exp_func"}> ({
     %0 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32

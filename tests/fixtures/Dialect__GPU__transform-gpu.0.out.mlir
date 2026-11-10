@@ -5,8 +5,8 @@ module {
     %c1 = arith.constant 1 : index
     %c12 = arith.constant 12 : index
     %0 = gpu.launch async [%arg4] blocks(%arg5, %arg6, %arg7) in (%arg11 = %c12, %arg12 = %c9, %arg13 = %c1) threads(%arg8, %arg9, %arg10) in (%arg14 = %c1, %arg15 = %c1, %arg16 = %c1) {
-      %block_id_x = gpu.block_id  x
-      %block_id_y = gpu.block_id  y
+      %block_id_x = gpu.block_id x
+      %block_id_y = gpu.block_id y
       %1 = arith.cmpi ult, %block_id_x, %c7 : index
       scf.if %1 {
         %2 = memref.load %arg0[%block_id_x, %block_id_y] : memref<2x32xf32>
@@ -36,8 +36,8 @@ module {
     %c512 = arith.constant 512 : index
     %c2 = arith.constant 2 : index
     %0 = gpu.launch async [%arg4] blocks(%arg5, %arg6, %arg7) in (%arg11 = %c1, %arg12 = %c1, %arg13 = %c1) threads(%arg8, %arg9, %arg10) in (%arg14 = %c512, %arg15 = %c2, %arg16 = %c1) {
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
       %1 = affine.apply #map()[%thread_id_x]
       %2 = arith.cmpi ult, %thread_id_x, %c384 : index
       %3 = arith.cmpi ult, %thread_id_y, %c1 : index
@@ -72,8 +72,8 @@ module {
     %c64 = arith.constant 64 : index
     %c4 = arith.constant 4 : index
     %0 = gpu.launch async [%arg4] blocks(%arg5, %arg6, %arg7) in (%arg11 = %c1, %arg12 = %c1, %arg13 = %c1) threads(%arg8, %arg9, %arg10) in (%arg14 = %c64, %arg15 = %c4, %arg16 = %c3) {
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
       %1 = affine.apply #map()[%thread_id_x]
       %2 = arith.cmpi ult, %thread_id_x, %c32 : index
       %3 = arith.cmpi ult, %thread_id_y, %c3 : index
@@ -106,8 +106,8 @@ module {
     %c9 = arith.constant 9 : index
     %c7 = arith.constant 7 : index
     %0 = gpu.launch async [%arg4] blocks(%arg5, %arg6, %arg7) in (%arg11 = %c1, %arg12 = %c1, %arg13 = %c1) threads(%arg8, %arg9, %arg10) in (%arg14 = %c12, %arg15 = %c9, %arg16 = %c1) {
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
       %1 = arith.cmpi ult, %thread_id_x, %c9 : index
       %2 = arith.cmpi ult, %thread_id_y, %c7 : index
       %3 = arith.andi %1, %2 : i1
@@ -146,10 +146,10 @@ module {
     %c4 = arith.constant 4 : index
     %c1 = arith.constant 1 : index
     gpu.launch blocks(%arg3, %arg4, %arg5) in (%arg9 = %c32, %arg10 = %c64, %arg11 = %c1) threads(%arg6, %arg7, %arg8) in (%arg12 = %c32, %arg13 = %c4, %arg14 = %c1) {
-      %block_id_x = gpu.block_id  x
-      %block_id_y = gpu.block_id  y
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
+      %block_id_x = gpu.block_id x
+      %block_id_y = gpu.block_id y
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
       %0 = memref.load %arg0[%block_id_x, %block_id_y, %thread_id_y, %thread_id_x] : memref<32x64x4x32xf32>
       %1 = memref.load %arg1[%block_id_x, %block_id_y, %thread_id_y, %thread_id_x] : memref<32x64x4x32xf32>
       %2 = math.fma %arg2, %0, %1 : f32
@@ -177,8 +177,8 @@ module {
     %c9 = arith.constant 9 : index
     %c7 = arith.constant 7 : index
     %0 = gpu.launch async [%arg4] blocks(%arg5, %arg6, %arg7) in (%arg11 = %c1, %arg12 = %c1, %arg13 = %c1) threads(%arg8, %arg9, %arg10) in (%arg14 = %c12, %arg15 = %c9, %arg16 = %c1) {
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
       %1 = arith.cmpi ult, %thread_id_x, %c9 : index
       %2 = arith.cmpi ult, %thread_id_y, %c7 : index
       %3 = arith.andi %1, %2 : i1
@@ -207,7 +207,7 @@ module {
     %c32 = arith.constant 32 : index
     %c1 = arith.constant 1 : index
     %0 = gpu.launch async [%arg2] blocks(%arg3, %arg4, %arg5) in (%arg9 = %c1, %arg10 = %c1, %arg11 = %c1) threads(%arg6, %arg7, %arg8) in (%arg12 = %c32, %arg13 = %c1, %arg14 = %c1) {
-      %thread_id_x = gpu.thread_id  x
+      %thread_id_x = gpu.thread_id x
       %1 = memref.load %arg0[%thread_id_x, %thread_id_x] : memref<32x32xf32>
       %2 = memref.load %arg1[%thread_id_x, %thread_id_x] : memref<32x32xf32>
       %3 = arith.mulf %1, %2 : f32
@@ -235,8 +235,8 @@ module {
     %c9 = arith.constant 9 : index
     %c7 = arith.constant 7 : index
     %0 = gpu.launch async [%arg4] blocks(%arg5, %arg6, %arg7) in (%arg11 = %c1, %arg12 = %c1, %arg13 = %c1) threads(%arg8, %arg9, %arg10) in (%arg14 = %c12, %arg15 = %c9, %arg16 = %c1) {
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
       %1 = arith.cmpi ult, %thread_id_x, %c9 : index
       %2 = arith.cmpi ult, %thread_id_y, %c7 : index
       %3 = arith.andi %1, %2 : i1
@@ -271,9 +271,9 @@ module {
     %c8 = arith.constant 8 : index
     %c4 = arith.constant 4 : index
     %0 = gpu.launch async [%arg4] blocks(%arg5, %arg6, %arg7) in (%arg11 = %c1, %arg12 = %c1, %arg13 = %c1) threads(%arg8, %arg9, %arg10) in (%arg14 = %c32, %arg15 = %c8, %arg16 = %c4) {
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
-      %thread_id_z = gpu.thread_id  z
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
+      %thread_id_z = gpu.thread_id z
       %1 = affine.apply #map()[%thread_id_x, %thread_id_y, %thread_id_z]
       %2 = affine.apply #map1()[%thread_id_x, %thread_id_y]
       %3 = affine.apply #map2()[%thread_id_x, %thread_id_y, %thread_id_z]
@@ -310,9 +310,9 @@ module {
     %c8 = arith.constant 8 : index
     %c4 = arith.constant 4 : index
     %0 = gpu.launch async [%arg4] blocks(%arg5, %arg6, %arg7) in (%arg11 = %c1, %arg12 = %c1, %arg13 = %c1) threads(%arg8, %arg9, %arg10) in (%arg14 = %c32, %arg15 = %c8, %arg16 = %c4) {
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
-      %thread_id_z = gpu.thread_id  z
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
+      %thread_id_z = gpu.thread_id z
       %1 = affine.apply #map()[%thread_id_x, %thread_id_y, %thread_id_z]
       %2 = affine.apply #map1()[%thread_id_x, %thread_id_y, %thread_id_z]
       %3 = affine.apply #map2()[%thread_id_x, %thread_id_y, %thread_id_z]
@@ -353,8 +353,8 @@ module {
     %c9 = arith.constant 9 : index
     %c7 = arith.constant 7 : index
     %0 = gpu.launch async [%arg4] blocks(%arg5, %arg6, %arg7) in (%arg11 = %c1, %arg12 = %c1, %arg13 = %c1) threads(%arg8, %arg9, %arg10) in (%arg14 = %c18, %arg15 = %c11, %arg16 = %c1) {
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
       %1 = arith.cmpi ult, %thread_id_x, %c9 : index
       %2 = arith.cmpi ult, %thread_id_y, %c7 : index
       %3 = arith.andi %1, %2 : i1
@@ -408,9 +408,9 @@ module {
     %c1 = arith.constant 1 : index
     %c12 = arith.constant 12 : index
     %0 = gpu.launch async [%arg4] blocks(%arg5, %arg6, %arg7) in (%arg11 = %c12, %arg12 = %c9, %arg13 = %c1) threads(%arg8, %arg9, %arg10) in (%arg14 = %c1, %arg15 = %c1, %arg16 = %c1) {
-      %block_id_x = gpu.block_id  x
-      %block_id_y = gpu.block_id  y
-      %block_id_z = gpu.block_id  z
+      %block_id_x = gpu.block_id x
+      %block_id_y = gpu.block_id y
+      %block_id_z = gpu.block_id z
       %1 = affine.apply #map()[%block_id_x, %block_id_y, %block_id_z]
       %2 = affine.apply #map1()[%block_id_x, %block_id_y, %block_id_z]
       %3 = affine.apply #map2()[%block_id_x, %block_id_y, %block_id_z]
@@ -443,9 +443,9 @@ module {
     %c7 = arith.constant 7 : index
     %c1 = arith.constant 1 : index
     gpu.launch blocks(%arg5, %arg6, %arg7) in (%arg11 = %c7, %arg12 = %c9, %arg13 = %c1) threads(%arg8, %arg9, %arg10) in (%arg14 = %c1, %arg15 = %c1, %arg16 = %c1) {
-      %block_id_x = gpu.block_id  x
-      %block_id_y = gpu.block_id  y
-      %block_id_z = gpu.block_id  z
+      %block_id_x = gpu.block_id x
+      %block_id_y = gpu.block_id y
+      %block_id_z = gpu.block_id z
       %0 = affine.apply #map()[%block_id_x]
       %1 = affine.apply #map1()[%block_id_x, %block_id_y, %block_id_z]
       %2 = memref.load %arg0[%0, %1] : memref<2x32xf32>
@@ -476,12 +476,12 @@ module {
     %c4 = arith.constant 4 : index
     %c8 = arith.constant 8 : index
     gpu.launch blocks(%arg1, %arg2, %arg3) in (%arg7 = %c1, %arg8 = %c1, %arg9 = %c1) threads(%arg4, %arg5, %arg6) in (%arg10 = %c4, %arg11 = %c8, %arg12 = %c4) {
-      %block_id_x = gpu.block_id  x
+      %block_id_x = gpu.block_id x
       %0 = affine.apply #map()[%block_id_x]
       %subview = memref.subview %arg0[%0] [128] [1] : memref<128xf32> to memref<128xf32, strided<[1], offset: ?>>
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
-      %thread_id_z = gpu.thread_id  z
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
+      %thread_id_z = gpu.thread_id z
       %1 = affine.apply #map1()[%thread_id_x, %thread_id_y, %thread_id_z]
       %subview_0 = memref.subview %subview[%1] [32] [1] : memref<128xf32, strided<[1], offset: ?>> to memref<32xf32, strided<[1], offset: ?>>
       vector.transfer_write %cst, %subview_0[%c0] {in_bounds = [true]} : vector<32xf32>, memref<32xf32, strided<[1], offset: ?>>
@@ -514,11 +514,11 @@ module {
     %c73 = arith.constant 73 : index
     %c5 = arith.constant 5 : index
     gpu.launch blocks(%arg1, %arg2, %arg3) in (%arg7 = %c1, %arg8 = %c1, %arg9 = %c1) threads(%arg4, %arg5, %arg6) in (%arg10 = %c73, %arg11 = %c5, %arg12 = %c1) {
-      %block_id_x = gpu.block_id  x
+      %block_id_x = gpu.block_id x
       %0 = affine.apply #map()[%block_id_x]
       %subview = memref.subview %arg0[%0, 0] [128, 256] [1, 1] : memref<128x256xf32> to memref<128x256xf32, strided<[256, 1], offset: ?>>
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
       %1 = affine.apply #map1()[%thread_id_x, %thread_id_y]
       %2 = arith.cmpi ult, %1, %c6 : index
       scf.if %2 {
@@ -558,11 +558,11 @@ module {
     %c73 = arith.constant 73 : index
     %c5 = arith.constant 5 : index
     gpu.launch blocks(%arg1, %arg2, %arg3) in (%arg7 = %c1, %arg8 = %c1, %arg9 = %c1) threads(%arg4, %arg5, %arg6) in (%arg10 = %c73, %arg11 = %c5, %arg12 = %c1) {
-      %block_id_x = gpu.block_id  x
+      %block_id_x = gpu.block_id x
       %0 = affine.apply #map()[%block_id_x]
       %subview = memref.subview %arg0[%0] [128] [1] : memref<128xf32> to memref<128xf32, strided<[1], offset: ?>>
-      %thread_id_x = gpu.thread_id  x
-      %thread_id_y = gpu.thread_id  y
+      %thread_id_x = gpu.thread_id x
+      %thread_id_y = gpu.thread_id y
       %1 = affine.apply #map1()[%thread_id_x, %thread_id_y]
       %2 = arith.index_castui %1 : index to i64
       %3 = arith.shli %c1_i64, %2 : i64

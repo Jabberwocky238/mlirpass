@@ -362,8 +362,8 @@ module {
     return
   }
   func.func @index_switch(%arg0: index, %arg1: i32, %arg2: i32, %arg3: i32) -> i32 {
-    %0 = arith.index_cast %arg0 : index to i32
-    cf.switch %0 : i32, [
+    %0 = arith.index_cast %arg0 : index to i64
+    cf.switch %0 : i64, [
       default: ^bb3,
       0: ^bb1,
       1: ^bb2
@@ -376,6 +376,25 @@ module {
     cf.br ^bb4(%arg3 : i32)
   ^bb4(%1: i32):  // 3 preds: ^bb1, ^bb2, ^bb3
     return %1 : i32
+  }
+  func.func @index_switch_large_cases(%arg0: index) {
+    %0 = arith.index_cast %arg0 : index to i64
+    cf.switch %0 : i64, [
+      default: ^bb4,
+      0: ^bb1,
+      4294967296: ^bb2,
+      8589934592: ^bb3
+    ]
+  ^bb1:  // pred: ^bb0
+    cf.br ^bb5
+  ^bb2:  // pred: ^bb0
+    cf.br ^bb5
+  ^bb3:  // pred: ^bb0
+    cf.br ^bb5
+  ^bb4:  // pred: ^bb0
+    cf.br ^bb5
+  ^bb5:  // 4 preds: ^bb1, ^bb2, ^bb3, ^bb4
+    return
   }
   func.func @forall(%arg0: index) {
     %c0 = arith.constant 0 : index

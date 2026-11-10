@@ -7,6 +7,15 @@ module {
 
 // -----
 module {
+  func.func @alloca_rank0() {
+    %0 = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.lvalue<f32>
+    %1 = emitc.address_of %0 : !emitc.lvalue<f32>
+    return
+  }
+}
+
+// -----
+module {
   func.func @memref_store(%arg0: memref<4x8xf32>, %arg1: f32, %arg2: index, %arg3: index) {
     %0 = builtin.unrealized_conversion_cast %arg0 : memref<4x8xf32> to !emitc.array<4x8xf32>
     %1 = emitc.subscript %0[%arg2, %arg3] : (!emitc.array<4x8xf32>, index, index) -> !emitc.lvalue<f32>
@@ -37,5 +46,11 @@ module @globals {
     %2 = emitc.address_of %1 : !emitc.lvalue<i32>
     return
   }
+}
+
+// -----
+module @rank0_globals {
+  emitc.global extern @extern_global : f32
+  emitc.global extern @uninitialized_global : f32
 }
 

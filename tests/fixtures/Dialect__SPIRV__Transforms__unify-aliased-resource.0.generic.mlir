@@ -346,6 +346,7 @@
 }) : () -> ()
 
 // -----
+// -----
 "builtin.module"() ({
   "spirv.module"() <{addressing_model = #spirv.addressing_model<Logical>, memory_model = #spirv.memory_model<GLSL450>}> ({
     "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (!spirv.ptr<!spirv.struct<(!spirv.rtarray<f32, stride=4> [0])>, StorageBuffer>) -> (), sym_name = "main"}> ({

@@ -261,16 +261,6 @@
 
 // -----
 "builtin.module"() ({
-  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i32, i32)>, linkage = #llvm.linkage<external>, sym_name = "llvm_nvvm_barrier_arrive", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg0: i32, %arg1: i32):
-    "nvvm.barrier.arrive"(%arg1) : (i32) -> ()
-    "nvvm.barrier.arrive"(%arg0, %arg1) : (i32, i32) -> ()
-    "llvm.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (ptr, ptr<3>, i32, i1)>, linkage = #llvm.linkage<external>, sym_name = "init_mbarrier", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
   ^bb0(%arg0: !llvm.ptr, %arg1: !llvm.ptr<3>, %arg2: i32, %arg3: i1):
     "nvvm.inline_ptx"(%arg0, %arg2) <{operandSegmentSizes = array<i32: 2, 0, 0>, ptxCode = "mbarrier.init.b64 [{$r0}], {$r1};"}> : (!llvm.ptr, i32) -> ()
@@ -282,26 +272,47 @@
 // -----
 "builtin.module"() ({
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (f32, i1)>, linkage = #llvm.linkage<external>, sym_name = "ex2", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg10: f32, %arg11: i1):
-    %8 = "nvvm.inline_ptx"(%arg10) <{operandSegmentSizes = array<i32: 1, 0, 0>, ptxCode = "ex2.approx.ftz.f32 {$w0}, {$r0};"}> : (f32) -> f32
-    %9 = "nvvm.inline_ptx"(%arg10, %arg11) <{operandSegmentSizes = array<i32: 1, 0, 1>, ptxCode = "ex2.approx.ftz.f32 {$w0}, {$r0};"}> : (f32, i1) -> f32
+  ^bb0(%arg23: f32, %arg24: i1):
+    %16 = "nvvm.inline_ptx"(%arg23) <{operandSegmentSizes = array<i32: 1, 0, 0>, ptxCode = "ex2.approx.ftz.f32 {$w0}, {$r0};"}> : (f32) -> f32
+    %17 = "nvvm.inline_ptx"(%arg23, %arg24) <{operandSegmentSizes = array<i32: 1, 0, 1>, ptxCode = "ex2.approx.ftz.f32 {$w0}, {$r0};"}> : (f32, i1) -> f32
     "llvm.return"() : () -> ()
   }) : () -> ()
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i32 (i32, i32, i1)>, linkage = #llvm.linkage<external>, sym_name = "multi_return_pred", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg20: i32, %arg21: i32, %arg22: i1):
+    %14:2 = "nvvm.inline_ptx"(%arg20, %arg21, %arg22) <{operandSegmentSizes = array<i32: 2, 0, 1>, ptxCode = "{.reg .pred p; setp.ge.s32 p, {$r0}, {$r1}; selp.s32 {$w0}, {$r0},{$r1}, p; selp.s32 {$w1}, {$r0},{$r1}, p;}"}> : (i32, i32, i1) -> (i32, i32)
+    %15 = "llvm.add"(%14#0, %14#1) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
+    "llvm.return"(%15) : (i32) -> ()
+  }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i32 (i32, i32)>, linkage = #llvm.linkage<external>, sym_name = "multi_return", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg8: i32, %arg9: i32):
-    %6:2 = "nvvm.inline_ptx"(%arg8, %arg9) <{operandSegmentSizes = array<i32: 2, 0, 0>, ptxCode = "{.reg .pred p; setp.ge.s32 p, {$r0}, {$r1}; selp.s32 {$w0}, {$r0},{$r1}, p; selp.s32 {$w1}, {$r0},{$r1}, p;}"}> : (i32, i32) -> (i32, i32)
-    %7 = "llvm.add"(%6#0, %6#1) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
-    "llvm.return"(%7) : (i32) -> ()
+  ^bb0(%arg18: i32, %arg19: i32):
+    %12:2 = "nvvm.inline_ptx"(%arg18, %arg19) <{operandSegmentSizes = array<i32: 2, 0, 0>, ptxCode = "{.reg .pred p; setp.ge.s32 p, {$r0}, {$r1}; selp.s32 {$w0}, {$r0},{$r1}, p; selp.s32 {$w1}, {$r0},{$r1}, p;}"}> : (i32, i32) -> (i32, i32)
+    %13 = "llvm.add"(%12#0, %12#1) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
+    "llvm.return"(%13) : (i32) -> ()
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<f32 (i32, i32, f32, f32)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_multi_rw", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg4: i32, %arg5: i32, %arg6: f32, %arg7: f32):
-    "nvvm.inline_ptx"(%arg4, %arg5, %arg6, %arg7) <{operandSegmentSizes = array<i32: 2, 2, 0>, ptxCode = "{.reg .pred p; setp.ge.s32 p, {$r0}, {$r1}; selp.s32 {$rw0}, {$r0},{$r1}, p; selp.s32 {$rw1}, {$r0},{$r1}, p;}"}> : (i32, i32, f32, f32) -> ()
-    %5 = "llvm.fadd"(%arg6, %arg7) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
-    "llvm.return"(%5) : (f32) -> ()
+  ^bb0(%arg14: i32, %arg15: i32, %arg16: f32, %arg17: f32):
+    "nvvm.inline_ptx"(%arg14, %arg15, %arg16, %arg17) <{operandSegmentSizes = array<i32: 2, 2, 0>, ptxCode = "{.reg .pred p; setp.ge.s32 p, {$r0}, {$r1}; selp.s32 {$rw0}, {$r0},{$r1}, p; selp.s32 {$rw1}, {$r0},{$r1}, p;}"}> : (i32, i32, f32, f32) -> ()
+    %11 = "llvm.fadd"(%arg16, %arg17) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    "llvm.return"(%11) : (f32) -> ()
+  }) : () -> ()
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<f32 (i32, i32, f32, f32, i1)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_multi_rw_pred", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg9: i32, %arg10: i32, %arg11: f32, %arg12: f32, %arg13: i1):
+    "nvvm.inline_ptx"(%arg9, %arg10, %arg11, %arg12, %arg13) <{operandSegmentSizes = array<i32: 2, 2, 1>, ptxCode = "{.reg .pred p; setp.ge.s32 p, {$r0}, {$r1}; selp.s32 {$rw0}, {$r0},{$r1}, p; selp.s32 {$rw1}, {$r0},{$r1}, p;}"}> : (i32, i32, f32, f32, i1) -> ()
+    %10 = "llvm.fadd"(%arg11, %arg12) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    "llvm.return"(%10) : (f32) -> ()
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<f32 (i32, i32, f32, f32)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_multi_rw_r", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg0: i32, %arg1: i32, %arg2: f32, %arg3: f32):
-    %0:2 = "nvvm.inline_ptx"(%arg0, %arg1, %arg2, %arg3) <{operandSegmentSizes = array<i32: 2, 2, 0>, ptxCode = "{.reg .pred p; setp.ge.s32 p, {$r0}, {$r1}; selp.s32 {$rw0}, {$r0},{$r1}, p; selp.s32 {$rw1}, {$r0},{$r1}, p; selp.s32 {$w0}, {$r0},{$r1}, p; selp.s32 {$w1}, {$r0},{$r1}, p;}"}> : (i32, i32, f32, f32) -> (i32, i32)
+  ^bb0(%arg5: i32, %arg6: i32, %arg7: f32, %arg8: f32):
+    %5:2 = "nvvm.inline_ptx"(%arg5, %arg6, %arg7, %arg8) <{operandSegmentSizes = array<i32: 2, 2, 0>, ptxCode = "{.reg .pred p; setp.ge.s32 p, {$r0}, {$r1}; selp.s32 {$rw0}, {$r0},{$r1}, p; selp.s32 {$rw1}, {$r0},{$r1}, p; selp.s32 {$w0}, {$r0},{$r1}, p; selp.s32 {$w1}, {$r0},{$r1}, p;}"}> : (i32, i32, f32, f32) -> (i32, i32)
+    %6 = "llvm.add"(%5#0, %5#1) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
+    %7 = "llvm.sitofp"(%6) : (i32) -> f32
+    %8 = "llvm.fadd"(%arg7, %arg8) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    %9 = "llvm.fadd"(%7, %arg8) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    "llvm.return"(%9) : (f32) -> ()
+  }) : () -> ()
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<f32 (i32, i32, f32, f32, i1)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_multi_rw_r_pred", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg0: i32, %arg1: i32, %arg2: f32, %arg3: f32, %arg4: i1):
+    %0:2 = "nvvm.inline_ptx"(%arg0, %arg1, %arg2, %arg3, %arg4) <{operandSegmentSizes = array<i32: 2, 2, 1>, ptxCode = "{.reg .pred p; setp.ge.s32 p, {$r0}, {$r1}; selp.s32 {$rw0}, {$r0},{$r1}, p; selp.s32 {$rw1}, {$r0},{$r1}, p; selp.s32 {$w0}, {$r0},{$r1}, p; selp.s32 {$w1}, {$r0},{$r1}, p;}"}> : (i32, i32, f32, f32, i1) -> (i32, i32)
     %1 = "llvm.add"(%0#0, %0#1) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
     %2 = "llvm.sitofp"(%1) : (i32) -> f32
     %3 = "llvm.fadd"(%arg2, %arg3) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
@@ -313,25 +324,48 @@
 // -----
 "builtin.module"() ({
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (vector<4xi8>, i32, i32)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_pack_4i8", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg4: vector<4xi8>, %arg5: i32, %arg6: i32):
-    %4 = "nvvm.inline_ptx"(%arg4, %arg5, %arg6) <{operandSegmentSizes = array<i32: 3, 0, 0>, ptxCode = "dp4a.s32.s32 {$w0}, {$r0}, {$r1}, {$r2};"}> : (vector<4xi8>, i32, i32) -> i32
+  ^bb0(%arg6: vector<4xi8>, %arg7: i32, %arg8: i32):
+    %6 = "nvvm.inline_ptx"(%arg6, %arg7, %arg8) <{operandSegmentSizes = array<i32: 3, 0, 0>, ptxCode = "dp4a.s32.s32 {$w0}, {$r0}, {$r1}, {$r2};"}> : (vector<4xi8>, i32, i32) -> i32
     "llvm.return"() : () -> ()
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (f32, f32)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_pack_2bf16", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg2: f32, %arg3: f32):
-    %3 = "nvvm.inline_ptx"(%arg2, %arg3) <{operandSegmentSizes = array<i32: 2, 0, 0>, ptxCode = "cvt.rn.satfinite.bf16x2.f32 {$w0}, {$r0}, {$r1};"}> : (f32, f32) -> vector<2xbf16>
+  ^bb0(%arg4: f32, %arg5: f32):
+    %5 = "nvvm.inline_ptx"(%arg4, %arg5) <{operandSegmentSizes = array<i32: 2, 0, 0>, ptxCode = "cvt.rn.satfinite.bf16x2.f32 {$w0}, {$r0}, {$r1};"}> : (f32, f32) -> vector<2xbf16>
     "llvm.return"() : () -> ()
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i16)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_cvt_rn_e4m3x2_f16x2", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg1: i16):
-    %2 = "nvvm.inline_ptx"(%arg1) <{operandSegmentSizes = array<i32: 1, 0, 0>, ptxCode = "cvt.rz.satfinite.ue8m0x2.bf16x2 {$w0}, {$r0}"}> : (i16) -> vector<2xbf16>
+  ^bb0(%arg3: i16):
+    %4 = "nvvm.inline_ptx"(%arg3) <{operandSegmentSizes = array<i32: 1, 0, 0>, ptxCode = "cvt.rz.satfinite.ue8m0x2.bf16x2 {$w0}, {$r0}"}> : (i16) -> vector<2xbf16>
     "llvm.return"() : () -> ()
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i8)>, linkage = #llvm.linkage<external>, sym_name = "cvt_i8_bf16", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg0: i8):
-    %0 = "llvm.zext"(%arg0) : (i8) -> i16
-    %1 = "nvvm.inline_ptx"(%0) <{operandSegmentSizes = array<i32: 1, 0, 0>, ptxCode = "{\0A\09.reg .b16 r;\0A\09.reg .b8 s;\0A\09mov.b16 {s,_}, {$w0};\0A\09cvt.rn.bf16.s8 r, s;\0A\09mov.b16 {$r0}, r;\0A\09"}> : (i16) -> i16
+  ^bb0(%arg2: i8):
+    %2 = "llvm.zext"(%arg2) : (i8) -> i16
+    %3 = "nvvm.inline_ptx"(%2) <{operandSegmentSizes = array<i32: 1, 0, 0>, ptxCode = "{\0A\09.reg .b16 r;\0A\09.reg .b8 s;\0A\09mov.b16 {s,_}, {$w0};\0A\09cvt.rn.bf16.s8 r, s;\0A\09mov.b16 {$r0}, r;\0A\09"}> : (i16) -> i16
     "llvm.return"() : () -> ()
+  }) : () -> ()
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<f32 (f32, f32)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_single_rw_no_result", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg0: f32, %arg1: f32):
+    %0 = "llvm.fadd"(%arg0, %arg1) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    "nvvm.inline_ptx"(%0) <{operandSegmentSizes = array<i32: 0, 1, 0>, ptxCode = "asm1 "}> : (f32) -> ()
+    %1 = "llvm.fadd"(%0, %arg0) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    "llvm.return"(%1) : (f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i32 ()>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_preserves_special_register", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+    %0 = "nvvm.inline_ptx"() <{operandSegmentSizes = array<i32: 0, 0, 0>, ptxCode = "mov.u32 {$w0}, %laneid;"}> : () -> i32
+    "llvm.return"(%0) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i32 ()>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_special_register_trailing_digit", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+    %0 = "nvvm.inline_ptx"() <{operandSegmentSizes = array<i32: 0, 0, 0>, ptxCode = "mov.u32 {$w0}, %pm0;"}> : () -> i32
+    "llvm.return"(%0) : (i32) -> ()
   }) : () -> ()
 }) : () -> ()
 

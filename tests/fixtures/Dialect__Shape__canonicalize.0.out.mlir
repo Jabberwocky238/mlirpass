@@ -179,6 +179,15 @@ module {
 
 // -----
 module {
+  func.func @from_extents_poison() -> !shape.shape {
+    %0 = ub.poison : index
+    %1 = shape.from_extents %0 : index
+    return %1 : !shape.shape
+  }
+}
+
+// -----
+module {
   func.func @const_size_to_index() -> index {
     %c123 = arith.constant 123 : index
     return %c123 : index
@@ -1055,6 +1064,40 @@ module {
     %0 = shape.const_shape [] : tensor<0xindex>
     %cast = tensor.cast %0 : tensor<0xindex> to tensor<?xindex>
     return %cast : tensor<?xindex>
+  }
+}
+
+// -----
+module {
+  func.func @shape_of_static_with_shape_result(%arg0: tensor<3xf32>) -> !shape.shape {
+    %0 = shape.const_shape [3] : !shape.shape
+    return %0 : !shape.shape
+  }
+}
+
+// -----
+module {
+  func.func @broadcast_no_crash_on_poison() {
+    return
+  }
+}
+
+// -----
+module {
+  func.func @extract_from_shape_of_tensor(%arg0: tensor<?xf32>) -> index {
+    %c0 = arith.constant 0 : index
+    %dim = tensor.dim %arg0, %c0 : tensor<?xf32>
+    return %dim : index
+  }
+}
+
+// -----
+module {
+  func.func @extract_from_shape_of_memref_no_fold(%arg0: memref<?xf32>) -> index {
+    %c0 = arith.constant 0 : index
+    %0 = shape.shape_of %arg0 : memref<?xf32> -> tensor<1xindex>
+    %extracted = tensor.extract %0[%c0] : tensor<1xindex>
+    return %extracted : index
   }
 }
 

@@ -14,7 +14,7 @@
       %9 = "arith.index_cast"(%8) : (index) -> i64
       "xegpu.store"(%arg0, %9, %7, %arg6) : (vector<8xf32>, i64, vector<8xindex>, vector<8xi1>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "store_1D_vector", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "store_1D_vector"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -32,7 +32,7 @@
       %6 = "arith.index_cast"(%5) : (index) -> i64
       "xegpu.store"(%arg0, %6, %4, %arg5) : (vector<8xf32>, i64, vector<8xindex>, vector<8xi1>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "store_2D_memref", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "store_2D_memref"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -53,7 +53,7 @@
       %9 = "arith.index_cast"(%8) : (index) -> i64
       "xegpu.store"(%arg0, %9, %7, %arg6) : (vector<8x16xf32>, i64, vector<8x16xindex>, vector<8x16xi1>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "store_2D_vector", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "store_2D_vector"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -73,7 +73,7 @@
       %8 = "arith.index_cast"(%7) : (index) -> i64
       "xegpu.store"(%arg0, %8, %6, %arg6) : (vector<8x16xf32>, i64, vector<8x16xindex>, vector<8x16xi1>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "store_dynamic_source", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "store_dynamic_source"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -94,7 +94,7 @@
       %9 = "arith.index_cast"(%8) : (index) -> i64
       "xegpu.store"(%arg0, %9, %7, %arg6) : (vector<8x16xf32>, i64, vector<8x16xindex>, vector<8x16xi1>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "store_dynamic_source2", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "store_dynamic_source2"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -114,7 +114,7 @@
       %8 = "arith.index_cast"(%7) : (index) -> i64
       "xegpu.store"(%arg0, %8, %6, %arg4) : (vector<8xf32>, i64, vector<8xindex>, vector<8xi1>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "non_unit_inner_stride_1D", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "non_unit_inner_stride_1D"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -140,7 +140,7 @@
       %14 = "arith.index_cast"(%13) : (index) -> i64
       "xegpu.store"(%arg0, %14, %12, %arg6) : (vector<8xf32>, i64, vector<8xindex>, vector<8xi1>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "non_unit_inner_stride_3D", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "non_unit_inner_stride_3D"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -161,7 +161,7 @@
       %9 = "arith.index_cast"(%8) : (index) -> i64
       "xegpu.store"(%arg0, %9, %7, %arg6) : (vector<8xf16>, i64, vector<8xindex>, vector<8xi1>) -> ()
       "gpu.return"() : () -> ()
-    }) {sym_name = "scatter_into_subview", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "scatter_into_subview"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 

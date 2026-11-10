@@ -1,0 +1,2 @@
+--canonicalize=cse-between-iterations=true max-iterations=1
+-split-input-file

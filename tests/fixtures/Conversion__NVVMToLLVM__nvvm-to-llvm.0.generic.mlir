@@ -543,16 +543,6 @@
 
 // -----
 "builtin.module"() ({
-  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i32, i32)>, linkage = #llvm.linkage<external>, sym_name = "llvm_nvvm_barrier_arrive", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg0: i32, %arg1: i32):
-    "llvm.inline_asm"(%arg1) <{asm_dialect = 0 : i64, asm_string = "bar.arrive 0, $0;", constraints = "r", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (i32) -> ()
-    "llvm.inline_asm"(%arg0, %arg1) <{asm_dialect = 0 : i64, asm_string = "bar.arrive $0, $1;", constraints = "r,r", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (i32, i32) -> ()
-    "llvm.return"() : () -> ()
-  }) : () -> ()
-}) : () -> ()
-
-// -----
-"builtin.module"() ({
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (ptr, ptr<3>, i32, i1)>, linkage = #llvm.linkage<external>, sym_name = "init_mbarrier", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
   ^bb0(%arg0: !llvm.ptr, %arg1: !llvm.ptr<3>, %arg2: i32, %arg3: i1):
     "llvm.inline_asm"(%arg0, %arg2) <{asm_dialect = 0 : i64, asm_string = "mbarrier.init.b64 [$0], $1;", constraints = "l,r", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (!llvm.ptr, i32) -> ()
@@ -564,30 +554,59 @@
 // -----
 "builtin.module"() ({
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (f32, i1)>, linkage = #llvm.linkage<external>, sym_name = "ex2", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg10: f32, %arg11: i1):
-    %17 = "llvm.inline_asm"(%arg10) <{asm_dialect = 0 : i64, asm_string = "ex2.approx.ftz.f32 $0, $1;", constraints = "=f,f", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32) -> f32
-    %18 = "llvm.inline_asm"(%arg10, %arg11) <{asm_dialect = 0 : i64, asm_string = "@$1 ex2.approx.ftz.f32 $0, $1;", constraints = "=f,f,b", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32, i1) -> f32
+  ^bb0(%arg23: f32, %arg24: i1):
+    %34 = "llvm.inline_asm"(%arg23) <{asm_dialect = 0 : i64, asm_string = "ex2.approx.ftz.f32 $0, $1;", constraints = "=f,f", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32) -> f32
+    %35 = "llvm.inline_asm"(%arg23, %arg24) <{asm_dialect = 0 : i64, asm_string = "@$2 ex2.approx.ftz.f32 $0, $1;", constraints = "=f,f,b", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32, i1) -> f32
     "llvm.return"() : () -> ()
   }) : () -> ()
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i32 (i32, i32, i1)>, linkage = #llvm.linkage<external>, sym_name = "multi_return_pred", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg20: i32, %arg21: i32, %arg22: i1):
+    %30 = "llvm.inline_asm"(%arg20, %arg21, %arg22) <{asm_dialect = 0 : i64, asm_string = "@$4 {.reg .pred p; setp.ge.s32 p, $2, $3; selp.s32 $0, $2,$3, p; selp.s32 $1, $2,$3, p;}", constraints = "=r,=r,r,r,b", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (i32, i32, i1) -> !llvm.struct<(i32, i32)>
+    %31 = "llvm.extractvalue"(%30) <{position = array<i64: 0>}> : (!llvm.struct<(i32, i32)>) -> i32
+    %32 = "llvm.extractvalue"(%30) <{position = array<i64: 1>}> : (!llvm.struct<(i32, i32)>) -> i32
+    %33 = "llvm.add"(%31, %32) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
+    "llvm.return"(%33) : (i32) -> ()
+  }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i32 (i32, i32)>, linkage = #llvm.linkage<external>, sym_name = "multi_return", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg8: i32, %arg9: i32):
-    %13 = "llvm.inline_asm"(%arg8, %arg9) <{asm_dialect = 0 : i64, asm_string = "{.reg .pred p; setp.ge.s32 p, $2, $3; selp.s32 $0, $2,$3, p; selp.s32 $1, $2,$3, p;}", constraints = "=r,=r,r,r", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (i32, i32) -> !llvm.struct<(i32, i32)>
-    %14 = "llvm.extractvalue"(%13) <{position = array<i64: 0>}> : (!llvm.struct<(i32, i32)>) -> i32
-    %15 = "llvm.extractvalue"(%13) <{position = array<i64: 1>}> : (!llvm.struct<(i32, i32)>) -> i32
-    %16 = "llvm.add"(%14, %15) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
-    "llvm.return"(%16) : (i32) -> ()
+  ^bb0(%arg18: i32, %arg19: i32):
+    %26 = "llvm.inline_asm"(%arg18, %arg19) <{asm_dialect = 0 : i64, asm_string = "{.reg .pred p; setp.ge.s32 p, $2, $3; selp.s32 $0, $2,$3, p; selp.s32 $1, $2,$3, p;}", constraints = "=r,=r,r,r", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (i32, i32) -> !llvm.struct<(i32, i32)>
+    %27 = "llvm.extractvalue"(%26) <{position = array<i64: 0>}> : (!llvm.struct<(i32, i32)>) -> i32
+    %28 = "llvm.extractvalue"(%26) <{position = array<i64: 1>}> : (!llvm.struct<(i32, i32)>) -> i32
+    %29 = "llvm.add"(%27, %28) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
+    "llvm.return"(%29) : (i32) -> ()
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<f32 (i32, i32, f32, f32)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_multi_rw", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg4: i32, %arg5: i32, %arg6: f32, %arg7: f32):
-    %9 = "llvm.inline_asm"(%arg6, %arg7, %arg4, %arg5) <{asm_dialect = 0 : i64, asm_string = "{.reg .pred p; setp.ge.s32 p, $2, $3; selp.s32 $0, $2,$3, p; selp.s32 $1, $2,$3, p;}", constraints = "=f,=f,r,r,0,1", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32, f32, i32, i32) -> !llvm.struct<(f32, f32)>
-    %10 = "llvm.extractvalue"(%9) <{position = array<i64: 0>}> : (!llvm.struct<(f32, f32)>) -> f32
-    %11 = "llvm.extractvalue"(%9) <{position = array<i64: 1>}> : (!llvm.struct<(f32, f32)>) -> f32
-    %12 = "llvm.fadd"(%10, %11) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
-    "llvm.return"(%12) : (f32) -> ()
+  ^bb0(%arg14: i32, %arg15: i32, %arg16: f32, %arg17: f32):
+    %22 = "llvm.inline_asm"(%arg16, %arg17, %arg14, %arg15) <{asm_dialect = 0 : i64, asm_string = "{.reg .pred p; setp.ge.s32 p, $2, $3; selp.s32 $0, $2,$3, p; selp.s32 $1, $2,$3, p;}", constraints = "=f,=f,r,r,0,1", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32, f32, i32, i32) -> !llvm.struct<(f32, f32)>
+    %23 = "llvm.extractvalue"(%22) <{position = array<i64: 0>}> : (!llvm.struct<(f32, f32)>) -> f32
+    %24 = "llvm.extractvalue"(%22) <{position = array<i64: 1>}> : (!llvm.struct<(f32, f32)>) -> f32
+    %25 = "llvm.fadd"(%23, %24) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    "llvm.return"(%25) : (f32) -> ()
+  }) : () -> ()
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<f32 (i32, i32, f32, f32, i1)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_multi_rw_pred", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg9: i32, %arg10: i32, %arg11: f32, %arg12: f32, %arg13: i1):
+    %18 = "llvm.inline_asm"(%arg11, %arg12, %arg9, %arg10, %arg13) <{asm_dialect = 0 : i64, asm_string = "@$4 {.reg .pred p; setp.ge.s32 p, $2, $3; selp.s32 $0, $2,$3, p; selp.s32 $1, $2,$3, p;}", constraints = "=f,=f,r,r,b,0,1", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32, f32, i32, i32, i1) -> !llvm.struct<(f32, f32)>
+    %19 = "llvm.extractvalue"(%18) <{position = array<i64: 0>}> : (!llvm.struct<(f32, f32)>) -> f32
+    %20 = "llvm.extractvalue"(%18) <{position = array<i64: 1>}> : (!llvm.struct<(f32, f32)>) -> f32
+    %21 = "llvm.fadd"(%19, %20) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    "llvm.return"(%21) : (f32) -> ()
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<f32 (i32, i32, f32, f32)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_multi_rw_r", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg0: i32, %arg1: i32, %arg2: f32, %arg3: f32):
-    %0 = "llvm.inline_asm"(%arg2, %arg3, %arg0, %arg1) <{asm_dialect = 0 : i64, asm_string = "{.reg .pred p; setp.ge.s32 p, $4, $5; selp.s32 $0, $4,$5, p; selp.s32 $1, $4,$5, p; selp.s32 $2, $4,$5, p; selp.s32 $3, $4,$5, p;}", constraints = "=f,=f,=r,=r,r,r,0,1", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32, f32, i32, i32) -> !llvm.struct<(f32, f32, i32, i32)>
+  ^bb0(%arg5: i32, %arg6: i32, %arg7: f32, %arg8: f32):
+    %9 = "llvm.inline_asm"(%arg7, %arg8, %arg5, %arg6) <{asm_dialect = 0 : i64, asm_string = "{.reg .pred p; setp.ge.s32 p, $4, $5; selp.s32 $0, $4,$5, p; selp.s32 $1, $4,$5, p; selp.s32 $2, $4,$5, p; selp.s32 $3, $4,$5, p;}", constraints = "=f,=f,=r,=r,r,r,0,1", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32, f32, i32, i32) -> !llvm.struct<(f32, f32, i32, i32)>
+    %10 = "llvm.extractvalue"(%9) <{position = array<i64: 0>}> : (!llvm.struct<(f32, f32, i32, i32)>) -> f32
+    %11 = "llvm.extractvalue"(%9) <{position = array<i64: 1>}> : (!llvm.struct<(f32, f32, i32, i32)>) -> f32
+    %12 = "llvm.extractvalue"(%9) <{position = array<i64: 2>}> : (!llvm.struct<(f32, f32, i32, i32)>) -> i32
+    %13 = "llvm.extractvalue"(%9) <{position = array<i64: 3>}> : (!llvm.struct<(f32, f32, i32, i32)>) -> i32
+    %14 = "llvm.add"(%12, %13) <{overflowFlags = 0 : i32}> : (i32, i32) -> i32
+    %15 = "llvm.sitofp"(%14) : (i32) -> f32
+    %16 = "llvm.fadd"(%10, %11) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    %17 = "llvm.fadd"(%15, %11) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    "llvm.return"(%17) : (f32) -> ()
+  }) : () -> ()
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<f32 (i32, i32, f32, f32, i1)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_multi_rw_r_pred", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg0: i32, %arg1: i32, %arg2: f32, %arg3: f32, %arg4: i1):
+    %0 = "llvm.inline_asm"(%arg2, %arg3, %arg0, %arg1, %arg4) <{asm_dialect = 0 : i64, asm_string = "@$6 {.reg .pred p; setp.ge.s32 p, $4, $5; selp.s32 $0, $4,$5, p; selp.s32 $1, $4,$5, p; selp.s32 $2, $4,$5, p; selp.s32 $3, $4,$5, p;}", constraints = "=f,=f,=r,=r,r,r,b,0,1", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32, f32, i32, i32, i1) -> !llvm.struct<(f32, f32, i32, i32)>
     %1 = "llvm.extractvalue"(%0) <{position = array<i64: 0>}> : (!llvm.struct<(f32, f32, i32, i32)>) -> f32
     %2 = "llvm.extractvalue"(%0) <{position = array<i64: 1>}> : (!llvm.struct<(f32, f32, i32, i32)>) -> f32
     %3 = "llvm.extractvalue"(%0) <{position = array<i64: 2>}> : (!llvm.struct<(f32, f32, i32, i32)>) -> i32
@@ -603,25 +622,48 @@
 // -----
 "builtin.module"() ({
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (vector<4xi8>, i32, i32)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_pack_4i8", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg4: vector<4xi8>, %arg5: i32, %arg6: i32):
-    %4 = "llvm.inline_asm"(%arg4, %arg5, %arg6) <{asm_dialect = 0 : i64, asm_string = "dp4a.s32.s32 $0, $1, $2, $3;", constraints = "=r,r,r,r", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (vector<4xi8>, i32, i32) -> i32
+  ^bb0(%arg6: vector<4xi8>, %arg7: i32, %arg8: i32):
+    %7 = "llvm.inline_asm"(%arg6, %arg7, %arg8) <{asm_dialect = 0 : i64, asm_string = "dp4a.s32.s32 $0, $1, $2, $3;", constraints = "=r,r,r,r", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (vector<4xi8>, i32, i32) -> i32
     "llvm.return"() : () -> ()
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (f32, f32)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_pack_2bf16", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg2: f32, %arg3: f32):
-    %3 = "llvm.inline_asm"(%arg2, %arg3) <{asm_dialect = 0 : i64, asm_string = "cvt.rn.satfinite.bf16x2.f32 $0, $1, $2;", constraints = "=f,f,f", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32, f32) -> vector<2xbf16>
+  ^bb0(%arg4: f32, %arg5: f32):
+    %6 = "llvm.inline_asm"(%arg4, %arg5) <{asm_dialect = 0 : i64, asm_string = "cvt.rn.satfinite.bf16x2.f32 $0, $1, $2;", constraints = "=f,f,f", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32, f32) -> vector<2xbf16>
     "llvm.return"() : () -> ()
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i16)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_cvt_rn_e4m3x2_f16x2", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg1: i16):
-    %2 = "llvm.inline_asm"(%arg1) <{asm_dialect = 0 : i64, asm_string = "cvt.rz.satfinite.ue8m0x2.bf16x2 $0, $1", constraints = "=f,h", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (i16) -> vector<2xbf16>
+  ^bb0(%arg3: i16):
+    %5 = "llvm.inline_asm"(%arg3) <{asm_dialect = 0 : i64, asm_string = "cvt.rz.satfinite.ue8m0x2.bf16x2 $0, $1", constraints = "=f,h", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (i16) -> vector<2xbf16>
     "llvm.return"() : () -> ()
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i8)>, linkage = #llvm.linkage<external>, sym_name = "cvt_i8_bf16", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
-  ^bb0(%arg0: i8):
-    %0 = "llvm.zext"(%arg0) : (i8) -> i16
-    %1 = "llvm.inline_asm"(%0) <{asm_dialect = 0 : i64, asm_string = "{\0A\09.reg .b16 r;\0A\09.reg .b8 s;\0A\09mov.b16 {s,_}, $0;\0A\09cvt.rn.bf16.s8 r, s;\0A\09mov.b16 $1, r;\0A\09", constraints = "=h,h", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (i16) -> i16
+  ^bb0(%arg2: i8):
+    %3 = "llvm.zext"(%arg2) : (i8) -> i16
+    %4 = "llvm.inline_asm"(%3) <{asm_dialect = 0 : i64, asm_string = "{\0A\09.reg .b16 r;\0A\09.reg .b8 s;\0A\09mov.b16 {s,_}, $0;\0A\09cvt.rn.bf16.s8 r, s;\0A\09mov.b16 $1, r;\0A\09", constraints = "=h,h", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (i16) -> i16
     "llvm.return"() : () -> ()
+  }) : () -> ()
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<f32 (f32, f32)>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_single_rw_no_result", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg0: f32, %arg1: f32):
+    %0 = "llvm.fadd"(%arg0, %arg1) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    %1 = "llvm.inline_asm"(%0) <{asm_dialect = 0 : i64, asm_string = "asm1 ", constraints = "=f,0", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : (f32) -> f32
+    %2 = "llvm.fadd"(%1, %arg0) <{fastmathFlags = #llvm.fastmath<none>}> : (f32, f32) -> f32
+    "llvm.return"(%2) : (f32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i32 ()>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_preserves_special_register", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+    %0 = "llvm.inline_asm"() <{asm_dialect = 0 : i64, asm_string = "mov.u32 $0, %laneid;", constraints = "=r", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : () -> i32
+    "llvm.return"(%0) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<i32 ()>, linkage = #llvm.linkage<external>, sym_name = "inline_ptx_special_register_trailing_digit", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+    %0 = "llvm.inline_asm"() <{asm_dialect = 0 : i64, asm_string = "mov.u32 $0, %pm0;", constraints = "=r", has_side_effects, tail_call_kind = #llvm.tailcallkind<none>}> : () -> i32
+    "llvm.return"(%0) : (i32) -> ()
   }) : () -> ()
 }) : () -> ()
 

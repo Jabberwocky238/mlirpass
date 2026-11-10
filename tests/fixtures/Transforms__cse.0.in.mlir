@@ -390,3 +390,79 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i32, sym_name = "cse_non_addressable_write_blocks_non_pointer_read"}> ({
+    %0 = "test.op_with_memread"() : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", test_nonaddressable_resource}]} : () -> i32
+    %2 = "test.op_with_memread"() : () -> i32
+    %3 = "arith.addi"(%0, %2) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%3) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i32, sym_name = "cse_non_addressable_write_does_not_block_pointer_read"}> ({
+    %0 = "test.side_effect_op"() {effects = [{effect = "read", on_result}]} : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", test_nonaddressable_resource}]} : () -> i32
+    %2 = "test.side_effect_op"() {effects = [{effect = "read", on_result}]} : () -> i32
+    %3 = "arith.addi"(%0, %2) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%3) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i32, sym_name = "cse_reads_on_same_nonaddressable_resource"}> ({
+    %0 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource}]} : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource}]} : () -> i32
+    %2 = "arith.addi"(%0, %1) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%2) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i32, sym_name = "cse_write_same_nonaddressable_resource_blocks"}> ({
+    %0 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource}]} : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", test_nonaddressable_resource}]} : () -> i32
+    %2 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource}]} : () -> i32
+    %3 = "arith.addi"(%0, %2) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%3) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i32, sym_name = "cse_write_disjoint_nonaddressable_subresource_allows"}> ({
+    %0 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource_a}]} : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", test_nonaddressable_resource_b}]} : () -> i32
+    %2 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource_a}]} : () -> i32
+    %3 = "arith.addi"(%0, %2) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%3) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i32, sym_name = "cse_addressable_custom_resource_write_blocks"}> ({
+    %0 = "test.op_with_memread"() : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", test_resource}]} : () -> i32
+    %2 = "test.op_with_memread"() : () -> i32
+    %3 = "arith.addi"(%0, %2) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%3) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> i32, sym_name = "cse_pointer_write_does_not_block_non_addressable_read"}> ({
+    %0 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource}]} : () -> i32
+    %1 = "test.side_effect_op"() {effects = [{effect = "write", on_result}]} : () -> i32
+    %2 = "test.side_effect_op"() {effects = [{effect = "read", test_nonaddressable_resource}]} : () -> i32
+    %3 = "arith.addi"(%0, %2) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32
+    "func.return"(%3) : (i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+

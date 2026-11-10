@@ -188,7 +188,7 @@
     ^bb0(%arg3: i32, %arg4: f32):
       %0 = "linalg.index"() <{dim = 1 : i64}> : () -> index
       %1 = "arith.index_cast"(%arg3) : (i32) -> index
-      %2 = "memref.load"(%arg0, %1, %0) <{nontemporal = false}> : (memref<?x?xf32, strided<[?, ?], offset: ?>>, index, index) -> f32
+      %2 = "memref.load"(%arg0, %1, %0) <{invariant = false, nontemporal = false}> : (memref<?x?xf32, strided<[?, ?], offset: ?>>, index, index) -> f32
       "linalg.yield"(%2) : (f32) -> ()
     }) : (memref<?xi32, strided<[?], offset: ?>>, memref<?x?xf32, strided<[?, ?], offset: ?>>) -> ()
     "func.return"() : () -> ()

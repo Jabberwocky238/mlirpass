@@ -153,7 +153,7 @@ module {
     %1 = emitc.cast %arg0 : i32 to !emitc.ptrdiff_t
     %2 = emitc.cast %1 : !emitc.ptrdiff_t to !emitc.size_t
     %3 = "emitc.constant"() <{value = 8 : index}> : () -> !emitc.size_t
-    %4 = emitc.call_opaque "sizeof"(%3) : (!emitc.size_t) -> !emitc.size_t
+    %4 = emitc.call_opaque "sizeof"(%3)  : (!emitc.size_t) -> !emitc.size_t
     %5 = emitc.mul %3, %4 : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
     %6 = emitc.cmp lt, %2, %5 : (!emitc.size_t, !emitc.size_t) -> i1
     %7 = "emitc.constant"() <{value = 0 : index}> : () -> !emitc.size_t
@@ -173,7 +173,7 @@ module {
     %1 = emitc.cast %arg0 : i32 to !emitc.ptrdiff_t
     %2 = emitc.cast %1 : !emitc.ptrdiff_t to !emitc.size_t
     %3 = "emitc.constant"() <{value = 8 : index}> : () -> !emitc.size_t
-    %4 = emitc.call_opaque "sizeof"(%3) : (!emitc.size_t) -> !emitc.size_t
+    %4 = emitc.call_opaque "sizeof"(%3)  : (!emitc.size_t) -> !emitc.size_t
     %5 = emitc.mul %3, %4 : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
     %6 = emitc.cmp lt, %2, %5 : (!emitc.size_t, !emitc.size_t) -> i1
     %7 = "emitc.constant"() <{value = 0 : index}> : () -> !emitc.size_t
@@ -184,7 +184,7 @@ module {
     }
     %9 = emitc.cast %0 : !emitc.size_t to !emitc.ptrdiff_t
     %10 = "emitc.constant"() <{value = 8 : index}> : () -> !emitc.size_t
-    %11 = emitc.call_opaque "sizeof"(%10) : (!emitc.size_t) -> !emitc.size_t
+    %11 = emitc.call_opaque "sizeof"(%10)  : (!emitc.size_t) -> !emitc.size_t
     %12 = emitc.mul %10, %11 : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
     %13 = emitc.cmp lt, %2, %12 : (!emitc.size_t, !emitc.size_t) -> i1
     %14 = "emitc.constant"() <{value = 0 : index}> : () -> !emitc.ptrdiff_t
@@ -518,12 +518,10 @@ module {
   func.func @arith_index_cast(%arg0: i32) -> i32 {
     %0 = emitc.cast %arg0 : i32 to !emitc.ptrdiff_t
     %1 = emitc.cast %0 : !emitc.ptrdiff_t to !emitc.size_t
-    %2 = emitc.cast %1 : !emitc.size_t to !emitc.ptrdiff_t
-    %3 = emitc.cast %2 : !emitc.ptrdiff_t to i32
-    %4 = "emitc.constant"() <{value = 1 : index}> : () -> !emitc.size_t
-    %5 = emitc.bitwise_and %1, %4 : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
-    %6 = emitc.cast %5 : !emitc.size_t to i1
-    return %3 : i32
+    %2 = "emitc.constant"() <{value = 1 : index}> : () -> !emitc.size_t
+    %3 = emitc.bitwise_and %1, %2 : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
+    %4 = emitc.cast %3 : !emitc.size_t to i1
+    return %arg0 : i32
   }
 }
 
@@ -532,12 +530,10 @@ module {
   func.func @arith_index_castui(%arg0: i32) -> i32 {
     %0 = emitc.cast %arg0 : i32 to ui32
     %1 = emitc.cast %0 : ui32 to !emitc.size_t
-    %2 = emitc.cast %1 : !emitc.size_t to ui32
-    %3 = emitc.cast %2 : ui32 to i32
-    %4 = "emitc.constant"() <{value = 1 : index}> : () -> !emitc.size_t
-    %5 = emitc.bitwise_and %1, %4 : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
-    %6 = emitc.cast %5 : !emitc.size_t to i1
-    return %3 : i32
+    %2 = "emitc.constant"() <{value = 1 : index}> : () -> !emitc.size_t
+    %3 = emitc.bitwise_and %1, %2 : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
+    %4 = emitc.cast %3 : !emitc.size_t to i1
+    return %arg0 : i32
   }
 }
 

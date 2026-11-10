@@ -90,6 +90,40 @@ module {
 
 // -----
 module {
+  func.func @index_castui_nneg(%arg0: i1) {
+    %0 = llvm.zext nneg %arg0 : i1 to i64
+    return
+  }
+}
+
+// -----
+module {
+  func.func @index_castui_nneg_not_set(%arg0: i1) {
+    %0 = llvm.zext %arg0 : i1 to i64
+    return
+  }
+}
+
+// -----
+module {
+  func.func @memref_index_cast(%arg0: memref<3xi32>) -> memref<3xindex> {
+    %0 = builtin.unrealized_conversion_cast %arg0 : memref<3xi32> to !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+    %1 = builtin.unrealized_conversion_cast %0 : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> to memref<3xindex>
+    return %1 : memref<3xindex>
+  }
+}
+
+// -----
+module {
+  func.func @memref_index_castui(%arg0: memref<3xi32>) -> memref<3xindex> {
+    %0 = builtin.unrealized_conversion_cast %arg0 : memref<3xi32> to !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+    %1 = builtin.unrealized_conversion_cast %0 : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> to memref<3xindex>
+    return %1 : memref<3xindex>
+  }
+}
+
+// -----
+module {
   func.func @sitofp(%arg0: i32, %arg1: i64) {
     %0 = llvm.sitofp %arg0 : i32 to f32
     %1 = llvm.sitofp %arg0 : i32 to f64
@@ -238,6 +272,80 @@ module {
 
 // -----
 module {
+  func.func @experimental_constrained_addf(%arg0: f64, %arg1: f64) {
+    %0 = llvm.intr.experimental.constrained.fadd %arg0, %arg1 tonearest ignore : f64
+    %1 = llvm.intr.experimental.constrained.fadd %arg0, %arg1 downward ignore : f64
+    %2 = llvm.intr.experimental.constrained.fadd %arg0, %arg1 upward ignore : f64
+    %3 = llvm.intr.experimental.constrained.fadd %arg0, %arg1 towardzero ignore : f64
+    %4 = llvm.intr.experimental.constrained.fadd %arg0, %arg1 tonearestaway ignore : f64
+    return
+  }
+}
+
+// -----
+module {
+  func.func @experimental_constrained_subf(%arg0: f64, %arg1: f64) {
+    %0 = llvm.intr.experimental.constrained.fsub %arg0, %arg1 tonearest ignore : f64
+    %1 = llvm.intr.experimental.constrained.fsub %arg0, %arg1 downward ignore : f64
+    return
+  }
+}
+
+// -----
+module {
+  func.func @experimental_constrained_mulf(%arg0: f64, %arg1: f64) {
+    %0 = llvm.intr.experimental.constrained.fmul %arg0, %arg1 upward ignore : f64
+    %1 = llvm.intr.experimental.constrained.fmul %arg0, %arg1 towardzero ignore : f64
+    return
+  }
+}
+
+// -----
+module {
+  func.func @experimental_constrained_divf(%arg0: f64, %arg1: f64) {
+    %0 = llvm.intr.experimental.constrained.fdiv %arg0, %arg1 tonearest ignore : f64
+    %1 = llvm.intr.experimental.constrained.fdiv %arg0, %arg1 tonearestaway ignore : f64
+    return
+  }
+}
+
+// -----
+module {
+  func.func @constrained_addf_with_fastmath(%arg0: f64, %arg1: f64) {
+    %0 = llvm.intr.experimental.constrained.fadd %arg0, %arg1 tonearest ignore : f64
+    return
+  }
+}
+
+// -----
+module {
+  func.func @convertf_f16_to_bf16(%arg0: f16) -> bf16 {
+    %0 = llvm.fpext %arg0 : f16 to f32
+    %1 = llvm.fptrunc %0 : f32 to bf16
+    return %1 : bf16
+  }
+}
+
+// -----
+module {
+  func.func @convertf_bf16_to_f16(%arg0: bf16) -> f16 {
+    %0 = llvm.fpext %arg0 : bf16 to f32
+    %1 = llvm.fptrunc %0 : f32 to f16
+    return %1 : f16
+  }
+}
+
+// -----
+module {
+  func.func @convertf_vector(%arg0: vector<2xf16>) -> vector<2xbf16> {
+    %0 = llvm.fpext %arg0 : vector<2xf16> to vector<2xf32>
+    %1 = llvm.fptrunc %0 : vector<2xf32> to vector<2xbf16>
+    return %1 : vector<2xbf16>
+  }
+}
+
+// -----
+module {
   func.func @integer_extension_and_truncation(%arg0: i3) {
     %0 = llvm.sext %arg0 : i3 to i6
     %1 = llvm.zext %arg0 : i3 to i6
@@ -307,6 +415,22 @@ module {
   }
   func.func @addui_extended_vector1d(%arg0: vector<3xi16>, %arg1: vector<3xi16>) -> (vector<3xi16>, vector<3xi1>) {
     %0 = "llvm.intr.uadd.with.overflow"(%arg0, %arg1) : (vector<3xi16>, vector<3xi16>) -> !llvm.struct<(vector<3xi16>, vector<3xi1>)>
+    %1 = llvm.extractvalue %0[0] : !llvm.struct<(vector<3xi16>, vector<3xi1>)> 
+    %2 = llvm.extractvalue %0[1] : !llvm.struct<(vector<3xi16>, vector<3xi1>)> 
+    return %1, %2 : vector<3xi16>, vector<3xi1>
+  }
+}
+
+// -----
+module {
+  func.func @subui_extended_scalar(%arg0: i32, %arg1: i32) -> (i32, i1) {
+    %0 = "llvm.intr.usub.with.overflow"(%arg0, %arg1) : (i32, i32) -> !llvm.struct<(i32, i1)>
+    %1 = llvm.extractvalue %0[0] : !llvm.struct<(i32, i1)> 
+    %2 = llvm.extractvalue %0[1] : !llvm.struct<(i32, i1)> 
+    return %1, %2 : i32, i1
+  }
+  func.func @subui_extended_vector1d(%arg0: vector<3xi16>, %arg1: vector<3xi16>) -> (vector<3xi16>, vector<3xi1>) {
+    %0 = "llvm.intr.usub.with.overflow"(%arg0, %arg1) : (vector<3xi16>, vector<3xi16>) -> !llvm.struct<(vector<3xi16>, vector<3xi1>)>
     %1 = llvm.extractvalue %0[0] : !llvm.struct<(vector<3xi16>, vector<3xi1>)> 
     %2 = llvm.extractvalue %0[1] : !llvm.struct<(vector<3xi16>, vector<3xi1>)> 
     return %1, %2 : vector<3xi16>, vector<3xi1>
@@ -548,6 +672,24 @@ module {
     %1 = llvm.lshr exact %arg0, %arg1 : i32
     %2 = llvm.sdiv exact %arg0, %arg1 : i32
     %3 = llvm.udiv exact %arg0, %arg1 : i32
+    return
+  }
+}
+
+// -----
+module {
+  func.func @ops_supporting_nneg(%arg0: i32) {
+    %0 = llvm.zext nneg %arg0 : i32 to i64
+    %1 = llvm.uitofp nneg %arg0 : i32 to f32
+    return
+  }
+}
+
+// -----
+module {
+  func.func @ops_nneg_not_set(%arg0: i32) {
+    %0 = llvm.zext %arg0 : i32 to i64
+    %1 = llvm.uitofp %arg0 : i32 to f32
     return
   }
 }

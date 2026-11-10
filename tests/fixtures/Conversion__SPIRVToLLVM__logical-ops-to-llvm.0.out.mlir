@@ -41,5 +41,21 @@ module {
     %0 = llvm.or %arg0, %arg1 : vector<4xi1>
     llvm.return
   }
+  llvm.func @ordered_scalar(%arg0: f32, %arg1: f32) {
+    %0 = llvm.fcmp "ord" %arg0, %arg1 : f32
+    llvm.return
+  }
+  llvm.func @ordered_vector(%arg0: vector<4xf32>, %arg1: vector<4xf32>) {
+    %0 = llvm.fcmp "ord" %arg0, %arg1 : vector<4xf32>
+    llvm.return
+  }
+  llvm.func @unordered_scalar(%arg0: f32, %arg1: f32) {
+    %0 = llvm.fcmp "uno" %arg0, %arg1 : f32
+    llvm.return
+  }
+  llvm.func @unordered_vector(%arg0: vector<4xf32>, %arg1: vector<4xf32>) {
+    %0 = llvm.fcmp "uno" %arg0, %arg1 : vector<4xf32>
+    llvm.return
+  }
 }
 

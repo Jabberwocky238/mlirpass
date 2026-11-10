@@ -17,7 +17,7 @@ module {
       %6 = vector.bitcast %5 : vector<8xi32> to vector<4xi64>
       %7 = vector.extract %6[0] : i64 from vector<4xi64>
       %8 = llvm.inttoptr %7 : i64 to !llvm.ptr<1>
-      xevm.blockprefetch2d %8, %c64_i32, %c8_i32, %c64_i32, %c0_i32, %c0_i32 <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3uc>, elem_size_in_bits = 32 : i32, tile_height = 8 : i32, tile_width = 16 : i32, v_blocks = 1 : i32}> : (!llvm.ptr<1>, i32, i32, i32, i32, i32)
+      xevm.blockprefetch2d %8, %c64_i32, %c8_i32, %c64_i32, %c0_i32, %c0_i32 <{cache_control = #xevm.load_cache_control<L1c_L2uc_L3c>, elem_size_in_bits = 32 : i32, tile_height = 8 : i32, tile_width = 16 : i32, v_blocks = 1 : i32}> : (!llvm.ptr<1>, i32, i32, i32, i32, i32)
       gpu.return
     }
   }

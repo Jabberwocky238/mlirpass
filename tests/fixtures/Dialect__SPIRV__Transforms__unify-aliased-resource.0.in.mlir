@@ -303,6 +303,22 @@
 // -----
 "builtin.module"() ({
   "spirv.module"() <{addressing_model = #spirv.addressing_model<Logical>, memory_model = #spirv.memory_model<GLSL450>}> ({
+    "spirv.GlobalVariable"() <{binding = 1 : i32, descriptor_set = 0 : i32, sym_name = "var01_i1", type = !spirv.ptr<!spirv.struct<(!spirv.rtarray<i1, stride=1> [0])>, StorageBuffer>}> {aliased} : () -> ()
+    "spirv.GlobalVariable"() <{binding = 1 : i32, descriptor_set = 0 : i32, sym_name = "var01_i32", type = !spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>}> {aliased} : () -> ()
+    "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (i32) -> i32, sym_name = "unknown_byte_size"}> ({
+    ^bb0(%arg0: i32):
+      %0 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32
+      %1 = "spirv.mlir.addressof"() <{variable = @var01_i32}> : () -> !spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>
+      %2 = "spirv.AccessChain"(%1, %0, %arg0) : (!spirv.ptr<!spirv.struct<(!spirv.rtarray<i32, stride=4> [0])>, StorageBuffer>, i32, i32) -> !spirv.ptr<i32, StorageBuffer>
+      %3 = "spirv.Load"(%2) : (!spirv.ptr<i32, StorageBuffer>) -> i32
+      "spirv.ReturnValue"(%3) : (i32) -> ()
+    }) : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "spirv.module"() <{addressing_model = #spirv.addressing_model<Logical>, memory_model = #spirv.memory_model<GLSL450>}> ({
     "spirv.func"() <{function_control = #spirv.function_control<None>, function_type = (!spirv.ptr<!spirv.struct<(!spirv.rtarray<f32, stride=4> [0])>, StorageBuffer>) -> (), sym_name = "main"}> ({
     ^bb0(%arg0: !spirv.ptr<!spirv.struct<(!spirv.rtarray<f32, stride=4> [0])>, StorageBuffer>):
       %0 = "spirv.Constant"() <{value = 0 : i32}> : () -> i32

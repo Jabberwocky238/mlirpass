@@ -76,7 +76,7 @@ module {
 // -----
 module {
   func.func @constant_hoisting_target(%arg0: !llvm.ptr) {
-    omp.target {
+    omp.target kernel_type(generic) {
       %c10_i32 = arith.constant 10 : i32
       llvm.store %c10_i32, %arg1 : i32, !llvm.ptr
       omp.terminator

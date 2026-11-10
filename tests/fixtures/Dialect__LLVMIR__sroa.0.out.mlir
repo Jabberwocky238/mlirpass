@@ -311,3 +311,13 @@ module {
   }
 }
 
+// -----
+module {
+  llvm.func @empty_struct_not_destructured() -> !llvm.struct<()> {
+    %0 = llvm.mlir.constant(1 : i32) : i32
+    %1 = llvm.alloca %0 x !llvm.struct<()> : (i32) -> !llvm.ptr
+    %2 = llvm.load %1 : !llvm.ptr -> !llvm.struct<()>
+    llvm.return %2 : !llvm.struct<()>
+  }
+}
+

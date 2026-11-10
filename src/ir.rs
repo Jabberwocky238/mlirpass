@@ -1484,6 +1484,12 @@ impl<'a> OpData<'a> {
         out
     }
 
+    /// `GPUFuncOp::isKernel`: the `kernel` property, or the legacy discardable `gpu.kernel`.
+    #[inline]
+    pub fn gpu_kernel(&self) -> bool {
+        self.get("kernel").is_some() || self.get("gpu.kernel").is_some()
+    }
+
     pub fn get<'s>(&'s self, name: &str) -> Option<&'s Attribute<'a>> {
         let find = |d: &'s [NamedAttr<'a>]| d.iter().find(|a| a.name == name);
         let a = find(self.dict(true)).or_else(|| find(self.dict(false)))?;

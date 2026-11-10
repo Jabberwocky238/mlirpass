@@ -1,0 +1,3 @@
+--lift-cf-to-scf
+-verify-diagnostics
+-split-input-file

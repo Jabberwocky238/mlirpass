@@ -48,3 +48,20 @@
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
+// -----
+"builtin.module"() ({
+  "gpu.module"() <{sym_name = "kernel_module", targets = [#nvvm.target]}> ({
+    "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<external>, sym_name = "kernel", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+      "llvm.return"() : () -> ()
+    }) {gpu.kernel} : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = () -> (), sym_name = "multi_dep_launch"}> ({
+    %0 = "arith.constant"() <{value = 1 : index}> : () -> index
+    %1 = "gpu.wait"() : () -> !gpu.async.token
+    %2 = "gpu.wait"() : () -> !gpu.async.token
+    %3 = "gpu.launch_func"(%1, %2, %0, %0, %0, %0, %0, %0) <{kernel = @kernel_module::@kernel, operandSegmentSizes = array<i32: 2, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0>}> : (!gpu.async.token, !gpu.async.token, index, index, index, index, index, index) -> !gpu.async.token
+    "gpu.wait"(%3) : (!gpu.async.token) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) {gpu.container_module} : () -> ()
+

@@ -14,7 +14,7 @@
       }) : (f32) -> f32
       "memref.store"(%6, %2, %arg0) : (f32, memref<2xf32>, index) -> ()
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

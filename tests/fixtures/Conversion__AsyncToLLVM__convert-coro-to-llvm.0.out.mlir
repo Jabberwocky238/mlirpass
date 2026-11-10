@@ -4,13 +4,13 @@ module {
   func.func @coro_id() {
     %0 = llvm.mlir.constant(0 : i32) : i32
     %1 = llvm.mlir.zero : !llvm.ptr
-    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     return
   }
   func.func @coro_begin() {
     %0 = llvm.mlir.constant(0 : i32) : i32
     %1 = llvm.mlir.zero : !llvm.ptr
-    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %3 = llvm.intr.coro.size : i64
     %4 = llvm.intr.coro.align : i64
     %5 = llvm.add %3, %4 : i64
@@ -20,13 +20,13 @@ module {
     %9 = llvm.sub %8, %4 : i64
     %10 = llvm.and %7, %9 : i64
     %11 = llvm.call @aligned_alloc(%4, %10) : (i64, i64) -> !llvm.ptr
-    %12 = llvm.intr.coro.begin %2, %11 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %12 = llvm.intr.coro.begin %2, %11 : (token, !llvm.ptr) -> !llvm.ptr
     return
   }
   func.func @coro_free() {
     %0 = llvm.mlir.constant(0 : i32) : i32
     %1 = llvm.mlir.zero : !llvm.ptr
-    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %3 = llvm.intr.coro.size : i64
     %4 = llvm.intr.coro.align : i64
     %5 = llvm.add %3, %4 : i64
@@ -36,15 +36,15 @@ module {
     %9 = llvm.sub %8, %4 : i64
     %10 = llvm.and %7, %9 : i64
     %11 = llvm.call @aligned_alloc(%4, %10) : (i64, i64) -> !llvm.ptr
-    %12 = llvm.intr.coro.begin %2, %11 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %13 = llvm.intr.coro.free %2, %12 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %12 = llvm.intr.coro.begin %2, %11 : (token, !llvm.ptr) -> !llvm.ptr
+    %13 = llvm.intr.coro.free %2, %12 : (token, !llvm.ptr) -> !llvm.ptr
     llvm.call @free(%13) : (!llvm.ptr) -> ()
     return
   }
   func.func @coro_end() {
     %0 = llvm.mlir.constant(0 : i32) : i32
     %1 = llvm.mlir.zero : !llvm.ptr
-    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %3 = llvm.intr.coro.size : i64
     %4 = llvm.intr.coro.align : i64
     %5 = llvm.add %3, %4 : i64
@@ -54,16 +54,16 @@ module {
     %9 = llvm.sub %8, %4 : i64
     %10 = llvm.and %7, %9 : i64
     %11 = llvm.call @aligned_alloc(%4, %10) : (i64, i64) -> !llvm.ptr
-    %12 = llvm.intr.coro.begin %2, %11 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %12 = llvm.intr.coro.begin %2, %11 : (token, !llvm.ptr) -> !llvm.ptr
     %13 = llvm.mlir.constant(false) : i1
-    %14 = llvm.mlir.none : !llvm.token
-    %15 = llvm.intr.coro.end %12, %13, %14 : (!llvm.ptr, i1, !llvm.token) -> i1
+    %14 = llvm.mlir.none : token
+    %15 = llvm.intr.coro.end %12, %13, %14 : (!llvm.ptr, i1, token) -> i1
     return
   }
   func.func @coro_save() {
     %0 = llvm.mlir.constant(0 : i32) : i32
     %1 = llvm.mlir.zero : !llvm.ptr
-    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %3 = llvm.intr.coro.size : i64
     %4 = llvm.intr.coro.align : i64
     %5 = llvm.add %3, %4 : i64
@@ -73,14 +73,14 @@ module {
     %9 = llvm.sub %8, %4 : i64
     %10 = llvm.and %7, %9 : i64
     %11 = llvm.call @aligned_alloc(%4, %10) : (i64, i64) -> !llvm.ptr
-    %12 = llvm.intr.coro.begin %2, %11 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %13 = llvm.intr.coro.save %12 : (!llvm.ptr) -> !llvm.token
+    %12 = llvm.intr.coro.begin %2, %11 : (token, !llvm.ptr) -> !llvm.ptr
+    %13 = llvm.intr.coro.save %12 : (!llvm.ptr) -> token
     return
   }
   func.func @coro_suspend() {
     %0 = llvm.mlir.constant(0 : i32) : i32
     %1 = llvm.mlir.zero : !llvm.ptr
-    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %2 = llvm.intr.coro.id %0, %1, %1, %1 : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %3 = llvm.intr.coro.size : i64
     %4 = llvm.intr.coro.align : i64
     %5 = llvm.add %3, %4 : i64
@@ -90,8 +90,8 @@ module {
     %9 = llvm.sub %8, %4 : i64
     %10 = llvm.and %7, %9 : i64
     %11 = llvm.call @aligned_alloc(%4, %10) : (i64, i64) -> !llvm.ptr
-    %12 = llvm.intr.coro.begin %2, %11 : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    %13 = llvm.intr.coro.save %12 : (!llvm.ptr) -> !llvm.token
+    %12 = llvm.intr.coro.begin %2, %11 : (token, !llvm.ptr) -> !llvm.ptr
+    %13 = llvm.intr.coro.save %12 : (!llvm.ptr) -> token
     %14 = llvm.mlir.constant(false) : i1
     %15 = llvm.intr.coro.suspend %13, %14 : i8
     %16 = llvm.sext %15 : i8 to i32

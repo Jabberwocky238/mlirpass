@@ -112,11 +112,11 @@
 
 // -----
 "builtin.module"() ({
-  "func.func"() <{function_type = (memref<4xf32>, f32) -> (), sym_name = "dead_atomic_add"}> ({
+  "func.func"() <{function_type = (memref<4xf32>, f32) -> f32, sym_name = "oob_atomic_add"}> ({
   ^bb0(%arg0: memref<4xf32>, %arg1: f32):
     %0 = "arith.constant"() <{value = 4 : i32}> : () -> i32
-    "amdgpu.raw_buffer_atomic_fadd"(%arg1, %arg0, %0) <{boundsCheck = true, operandSegmentSizes = array<i32: 1, 1, 1, 0>}> : (f32, memref<4xf32>, i32) -> ()
-    "func.return"() : () -> ()
+    %1 = "amdgpu.raw_buffer_atomic_fadd"(%arg1, %arg0, %0) <{boundsCheck = true, operandSegmentSizes = array<i32: 1, 1, 1, 0>}> : (f32, memref<4xf32>, i32) -> f32
+    "func.return"(%1) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -138,6 +138,28 @@
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
     %1 = "memref.cast"(%arg1) : (memref<64x64xf32, 3>) -> memref<?x?xf32, 3>
     "amdgpu.gather_to_lds"(%arg0, %0, %0, %1, %0, %0) <{operandSegmentSizes = array<i32: 1, 2, 1, 2>, transferType = f32}> : (memref<128x72xf32, 1>, index, index, memref<?x?xf32, 3>, index, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<16xf32, #gpu.address_space<global>>, memref<16xf32, #gpu.address_space<workgroup>>) -> (), sym_name = "global_load_async_to_lds_true_mask"}> ({
+  ^bb0(%arg0: memref<16xf32, #gpu.address_space<global>>, %arg1: memref<16xf32, #gpu.address_space<workgroup>>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = true}> : () -> i1
+    "amdgpu.global_load_async_to_lds"(%arg0, %0, %arg1, %0, %1) <{operandSegmentSizes = array<i32: 1, 1, 1, 1, 1>, transferType = f32}> : (memref<16xf32, #gpu.address_space<global>>, index, memref<16xf32, #gpu.address_space<workgroup>>, index, i1) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<16xf32, #gpu.address_space<global>>, memref<16xf32, #gpu.address_space<workgroup>>) -> (), sym_name = "global_load_async_to_lds_false_mask"}> ({
+  ^bb0(%arg0: memref<16xf32, #gpu.address_space<global>>, %arg1: memref<16xf32, #gpu.address_space<workgroup>>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = false}> : () -> i1
+    "amdgpu.global_load_async_to_lds"(%arg0, %0, %arg1, %0, %1) <{operandSegmentSizes = array<i32: 1, 1, 1, 1, 1>, transferType = f32}> : (memref<16xf32, #gpu.address_space<global>>, index, memref<16xf32, #gpu.address_space<workgroup>>, index, i1) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -171,6 +193,21 @@
     %2 = "vector.extract"(%arg2) <{static_position = array<i64: 0>}> : (vector<2xf8E8M0FNU>) -> f8E8M0FNU
     %3 = "vector.insert"(%2, %1) <{static_position = array<i64: 0>}> : (f8E8M0FNU, vector<4xf8E8M0FNU>) -> vector<4xf8E8M0FNU>
     %4 = "vector.extract"(%arg3) <{static_position = array<i64: 1>}> : (vector<2xf8E8M0FNU>) -> f8E8M0FNU
+    %5 = "vector.insert"(%4, %1) <{static_position = array<i64: 0>}> : (f8E8M0FNU, vector<4xf8E8M0FNU>) -> vector<4xf8E8M0FNU>
+    %6 = "amdgpu.scaled_mfma"(%arg0, %arg1, %0, %3, %5) <{k = 128 : i32, m = 16 : i32, n = 16 : i32, scalesIdxA = 0 : i32, scalesIdxB = 0 : i32}> : (vector<32xf4E2M1FN>, vector<32xf4E2M1FN>, vector<4xf32>, vector<4xf8E8M0FNU>, vector<4xf8E8M0FNU>) -> vector<4xf32>
+    "func.return"(%6) : (vector<4xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (vector<32xf4E2M1FN>, vector<32xf4E2M1FN>, vector<4xf8E8M0FNU>, vector<4xf8E8M0FNU>) -> vector<4xf32>, sym_name = "scaled_mfma_exactly_4"}> ({
+  ^bb0(%arg0: vector<32xf4E2M1FN>, %arg1: vector<32xf4E2M1FN>, %arg2: vector<4xf8E8M0FNU>, %arg3: vector<4xf8E8M0FNU>):
+    %0 = "arith.constant"() <{value = dense<0.000000e+00> : vector<4xf32>}> : () -> vector<4xf32>
+    %1 = "arith.constant"() <{value = dense<5.877470e-39> : vector<4xf8E8M0FNU>}> : () -> vector<4xf8E8M0FNU>
+    %2 = "vector.extract"(%arg2) <{static_position = array<i64: 0>}> : (vector<4xf8E8M0FNU>) -> f8E8M0FNU
+    %3 = "vector.insert"(%2, %1) <{static_position = array<i64: 0>}> : (f8E8M0FNU, vector<4xf8E8M0FNU>) -> vector<4xf8E8M0FNU>
+    %4 = "vector.extract"(%arg3) <{static_position = array<i64: 1>}> : (vector<4xf8E8M0FNU>) -> f8E8M0FNU
     %5 = "vector.insert"(%4, %1) <{static_position = array<i64: 0>}> : (f8E8M0FNU, vector<4xf8E8M0FNU>) -> vector<4xf8E8M0FNU>
     %6 = "amdgpu.scaled_mfma"(%arg0, %arg1, %0, %3, %5) <{k = 128 : i32, m = 16 : i32, n = 16 : i32, scalesIdxA = 0 : i32, scalesIdxB = 0 : i32}> : (vector<32xf4E2M1FN>, vector<32xf4E2M1FN>, vector<4xf32>, vector<4xf8E8M0FNU>, vector<4xf8E8M0FNU>) -> vector<4xf32>
     "func.return"(%6) : (vector<4xf32>) -> ()

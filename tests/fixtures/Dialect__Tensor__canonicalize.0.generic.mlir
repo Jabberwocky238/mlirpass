@@ -225,6 +225,24 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> tensor<1xindex>, sym_name = "from_elements_with_poison"}> ({
+    %0 = "ub.poison"() <{value = #ub.poison}> : () -> index
+    %1 = "tensor.from_elements"(%0) : (index) -> tensor<1xindex>
+    "func.return"(%1) : (tensor<1xindex>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = () -> tensor<1xvector<1xi1>>, sym_name = "from_elements_with_vector_element_type"}> ({
+    %0 = "arith.constant"() <{value = dense<true> : vector<1xi1>}> : () -> vector<1xi1>
+    %1 = "tensor.from_elements"(%0) : (vector<1xi1>) -> tensor<1xvector<1xi1>>
+    "func.return"(%1) : (tensor<1xvector<1xi1>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (index) -> index, sym_name = "extract_negative_from_tensor.from_elements"}> ({
   ^bb0(%arg0: index):
     %0 = "arith.constant"() <{value = -1 : index}> : () -> index
@@ -331,6 +349,15 @@
     %0 = "tensor.extract_slice"(%arg0, %arg1, %arg2) <{operandSegmentSizes = array<i32: 1, 1, 1, 0>, static_offsets = array<i64: 0, -9223372036854775808, 1>, static_sizes = array<i64: 4, 1, -9223372036854775808>, static_strides = array<i64: 1, 1, 1>}> : (tensor<?x?x?xf32>, index, index) -> tensor<4x?xf32>
     %1 = "tensor.cast"(%0) : (tensor<4x?xf32>) -> tensor<?x?xf32>
     "func.return"(%1) : (tensor<?x?xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<1x1x8x1xf16>, index) -> tensor<1x4xf16>, sym_name = "rank_reducing_slice_preserve_dropped_dims"}> ({
+  ^bb0(%arg0: tensor<1x1x8x1xf16>, %arg1: index):
+    %0 = "tensor.extract_slice"(%arg0, %arg1) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: 0, 0, -9223372036854775808, 0>, static_sizes = array<i64: 1, 1, 4, 1>, static_strides = array<i64: 1, 1, 1, 1>}> : (tensor<1x1x8x1xf16>, index) -> tensor<1x4xf16>
+    "func.return"(%0) : (tensor<1x4xf16>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -784,7 +811,7 @@
   "func.func"() <{function_type = (tensor<?xf16>, index, index) -> tensor<8x?x?xf16>, sym_name = "compose_collapse_of_expand_partially_dynamic"}> ({
   ^bb0(%arg0: tensor<?xf16>, %arg1: index, %arg2: index):
     %0 = "arith.constant"() <{value = 32 : index}> : () -> index
-    %1 = "arith.muli"(%arg2, %0) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+    %1 = "arith.muli"(%arg2, %0) <{overflowFlags = #arith.overflow<nsw>}> : (index, index) -> index
     %2 = "tensor.expand_shape"(%arg0, %arg1, %1) <{reassociation = [[0, 1, 2]], static_output_shape = array<i64: 8, -9223372036854775808, -9223372036854775808>}> : (tensor<?xf16>, index, index) -> tensor<8x?x?xf16>
     "func.return"(%2) : (tensor<8x?x?xf16>) -> ()
   }) : () -> ()
@@ -831,7 +858,7 @@
   "func.func"() <{function_type = (tensor<?x8x128x?xf16>, index) -> tensor<?x128x?xf16>, sym_name = "no_compose_collapse_of_expand_dynamic"}> ({
   ^bb0(%arg0: tensor<?x8x128x?xf16>, %arg1: index):
     %0 = "tensor.collapse_shape"(%arg0) <{reassociation = [[0, 1, 2, 3]]}> : (tensor<?x8x128x?xf16>) -> tensor<?xf16>
-    %1 = "tensor.expand_shape"(%0, %arg1, %arg1) <{reassociation = [[0, 1, 2]], static_output_shape = array<i64: -9223372036854775808, 8, -9223372036854775808>}> : (tensor<?xf16>, index, index) -> tensor<?x128x?xf16>
+    %1 = "tensor.expand_shape"(%0, %arg1, %arg1) <{reassociation = [[0, 1, 2]], static_output_shape = array<i64: -9223372036854775808, 128, -9223372036854775808>}> : (tensor<?xf16>, index, index) -> tensor<?x128x?xf16>
     "func.return"(%1) : (tensor<?x128x?xf16>) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -1030,6 +1057,16 @@
   "func.func"() <{function_type = () -> tensor<2x4x2xf64>, sym_name = "reshape_splat_constant_float64"}> ({
     %0 = "arith.constant"() <{value = dense<4.200000e+01> : tensor<2x4x2xf64>}> : () -> tensor<2x4x2xf64>
     "func.return"(%0) : (tensor<2x4x2xf64>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> tensor<?xi32>, sym_name = "expand_shape_splat_constant_dynamic_result"}> ({
+  ^bb0(%arg0: index):
+    %0 = "arith.constant"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
+    %1 = "tensor.expand_shape"(%0, %arg0) <{reassociation = [], static_output_shape = array<i64: -9223372036854775808>}> : (tensor<i32>, index) -> tensor<?xi32>
+    "func.return"(%1) : (tensor<?xi32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1416,6 +1453,15 @@
   ^bb0(%arg0: index):
     %0 = "tensor.empty"() : () -> tensor<1x12xf32>
     "func.return"(%0) : (tensor<1x12xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> tensor<1x12xf32, "foo">, sym_name = "fold_empty_tensor_with_cast_encoding"}> ({
+  ^bb0(%arg0: index):
+    %0 = "tensor.empty"() : () -> tensor<1x12xf32, "foo">
+    "func.return"(%0) : (tensor<1x12xf32, "foo">) -> ()
   }) : () -> ()
 }) : () -> ()
 

@@ -81,6 +81,18 @@
     "func.func"() <{function_type = () -> (), sym_name = "gpu_barrier"}> ({
       %0 = "llvm.mlir.constant"() <{value = 3 : i32}> : () -> i32
       "llvm.call"(%0) <{CConv = #llvm.cconv<spir_funccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @_Z7barrierj, convergent, fastmathFlags = #llvm.fastmath<none>, no_unwind, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>, will_return}> : (i32) -> ()
+      %1 = "llvm.mlir.constant"() <{value = 3 : i32}> : () -> i32
+      "llvm.call"(%1) <{CConv = #llvm.cconv<spir_funccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @_Z7barrierj, convergent, fastmathFlags = #llvm.fastmath<none>, no_unwind, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>, will_return}> : (i32) -> ()
+      %2 = "llvm.mlir.constant"() <{value = 1 : i32}> : () -> i32
+      "llvm.call"(%2) <{CConv = #llvm.cconv<spir_funccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @_Z7barrierj, convergent, fastmathFlags = #llvm.fastmath<none>, no_unwind, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>, will_return}> : (i32) -> ()
+      %3 = "llvm.mlir.constant"() <{value = 2 : i32}> : () -> i32
+      "llvm.call"(%3) <{CConv = #llvm.cconv<spir_funccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @_Z7barrierj, convergent, fastmathFlags = #llvm.fastmath<none>, no_unwind, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>, will_return}> : (i32) -> ()
+      %4 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
+      "llvm.call"(%4) <{CConv = #llvm.cconv<spir_funccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @_Z7barrierj, convergent, fastmathFlags = #llvm.fastmath<none>, no_unwind, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>, will_return}> : (i32) -> ()
+      %5 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
+      "llvm.call"(%5) <{CConv = #llvm.cconv<spir_funccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @_Z7barrierj, convergent, fastmathFlags = #llvm.fastmath<none>, no_unwind, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>, will_return}> : (i32) -> ()
+      %6 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
+      "llvm.call"(%6) <{CConv = #llvm.cconv<spir_funccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @_Z7barrierj, convergent, fastmathFlags = #llvm.fastmath<none>, no_unwind, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 1, 0>, will_return}> : (i32) -> ()
       "func.return"() : () -> ()
     }) : () -> ()
   }) : () -> ()
@@ -132,6 +144,21 @@
       %20 = "llvm.call"(%19, %arg9) <{CConv = #llvm.cconv<spir_funccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @_Z21sub_group_shuffle_xorcj, convergent, fastmathFlags = #llvm.fastmath<none>, no_unwind, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 2, 0>, will_return}> : (i8, i32) -> i8
       %21 = "llvm.trunc"(%20) <{overflowFlags = 0 : i32}> : (i8) -> i1
       %22 = "llvm.mlir.constant"() <{value = true}> : () -> i1
+      "llvm.return"() : () -> ()
+    }) : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "gpu.module"() <{sym_name = "shuffles_without_intel_reqd_sub_group_size_attribute"}> ({
+    "llvm.func"() <{CConv = #llvm.cconv<spir_funccc>, convergent, function_type = !llvm.func<i32 (i32, i32)>, linkage = #llvm.linkage<external>, no_unwind, sym_name = "_Z17sub_group_shuffleij", visibility_ = 0 : i64, will_return}> ({
+    }) : () -> ()
+    "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i32, i32)>, linkage = #llvm.linkage<external>, sym_name = "gpu_shuffles", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+    ^bb0(%arg0: i32, %arg1: i32):
+      %0 = "arith.constant"() <{value = 16 : i32}> : () -> i32
+      %1 = "llvm.call"(%arg0, %arg1) <{CConv = #llvm.cconv<spir_funccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @_Z17sub_group_shuffleij, convergent, fastmathFlags = #llvm.fastmath<none>, no_unwind, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 2, 0>, will_return}> : (i32, i32) -> i32
+      %2 = "llvm.mlir.constant"() <{value = true}> : () -> i1
       "llvm.return"() : () -> ()
     }) : () -> ()
   }) : () -> ()

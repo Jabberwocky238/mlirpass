@@ -58,10 +58,6 @@ module {
     %20 = llvm.extractvalue %19[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> 
     llvm.return %20 : !llvm.ptr
   }
-  func.func @check_return(%arg0: memref<?xi8>) -> memref<?xi8> {
-    %0 = builtin.unrealized_conversion_cast %arg0 : memref<?xi8> to !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
-    llvm.return %0 : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
-  }
   func.func @unconvertible_multiresult(%arg0: memref<?xf32>, %arg1: memref<?xf32>) -> (memref<?xf32>, memref<?xf32>) {
     return %arg0, %arg1 : memref<?xf32>, memref<?xf32>
   }

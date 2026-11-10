@@ -1,0 +1,3 @@
+-convert-func-to-emitc=lower-to-cpp=false
+-split-input-file
+-verify-diagnostics

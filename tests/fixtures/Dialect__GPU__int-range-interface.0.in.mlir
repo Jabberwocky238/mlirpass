@@ -20,7 +20,7 @@
       %14 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index
       %15 = "test.reflect_bounds"(%14) : (index) -> index
       "gpu.terminator"() : () -> ()
-    }) {workgroup_attributions = 0 : i64} : (index, index, index, index, index, index) -> ()
+    }) : (index, index, index, index, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
@@ -75,7 +75,7 @@
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "gpu_module"}> ({
-    "gpu.func"() <{function_type = () -> (), known_block_size = array<i32: 8, 12, 16>, known_grid_size = array<i32: 20, 24, 28>}> ({
+    "gpu.func"() <{function_type = () -> (), kernel, known_block_size = array<i32: 8, 12, 16>, known_grid_size = array<i32: 20, 24, 28>}> ({
       %0 = "gpu.grid_dim"() <{dimension = #gpu<dim x>}> : () -> index
       %1 = "gpu.grid_dim"() <{dimension = #gpu<dim y>}> : () -> index
       %2 = "gpu.grid_dim"() <{dimension = #gpu<dim z>}> : () -> index
@@ -115,7 +115,7 @@
       %36 = "test.reflect_bounds"(%32) : (index) -> index
       %37 = "test.reflect_bounds"(%33) : (index) -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "annotated_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "annotated_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 
@@ -141,7 +141,7 @@
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "gpu_module"}> ({
-    "gpu.func"() <{function_type = () -> ()}> ({
+    "gpu.func"() <{function_type = () -> (), kernel}> ({
       %0 = "gpu.grid_dim"() <{dimension = #gpu<dim x>, upper_bound = 20 : index}> : () -> index
       %1 = "gpu.grid_dim"() <{dimension = #gpu<dim y>, upper_bound = 24 : index}> : () -> index
       %2 = "gpu.grid_dim"() <{dimension = #gpu<dim z>, upper_bound = 28 : index}> : () -> index
@@ -181,7 +181,7 @@
       %36 = "test.reflect_bounds"(%32) : (index) -> index
       %37 = "test.reflect_bounds"(%33) : (index) -> index
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "local_bounds_kernel", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "local_bounds_kernel"} : () -> ()
   }) : () -> ()
 }) {gpu.container_module} : () -> ()
 

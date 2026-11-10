@@ -198,6 +198,28 @@ module {
       %0 = spirv.IAddCarry %arg0, %arg1 : !spirv.struct<(i16, i16)>
       spirv.ReturnValue %0 : !spirv.struct<(i16, i16)>
     }
+    spirv.func @isubborrow_i32(%arg0: i32, %arg1: i32) -> !spirv.struct<(i32, i32)> "None" {
+      %cst1_i32 = spirv.Constant 1 : i32
+      %cst0_i32 = spirv.Constant 0 : i32
+      %0 = spirv.ISub %arg0, %arg1 : i32
+      %1 = spirv.ULessThan %arg0, %arg1 : i32
+      %2 = spirv.Select %1, %cst1_i32, %cst0_i32 : i1, i32
+      %3 = spirv.CompositeConstruct %0, %2 : (i32, i32) -> !spirv.struct<(i32, i32)>
+      spirv.ReturnValue %3 : !spirv.struct<(i32, i32)>
+    }
+    spirv.func @isubborrow_vector_i32(%arg0: vector<3xi32>, %arg1: vector<3xi32>) -> !spirv.struct<(vector<3xi32>, vector<3xi32>)> "None" {
+      %cst_vec_3xi32 = spirv.Constant dense<1> : vector<3xi32>
+      %cst_vec_3xi32_0 = spirv.Constant dense<0> : vector<3xi32>
+      %0 = spirv.ISub %arg0, %arg1 : vector<3xi32>
+      %1 = spirv.ULessThan %arg0, %arg1 : vector<3xi32>
+      %2 = spirv.Select %1, %cst_vec_3xi32, %cst_vec_3xi32_0 : vector<3xi1>, vector<3xi32>
+      %3 = spirv.CompositeConstruct %0, %2 : (vector<3xi32>, vector<3xi32>) -> !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+      spirv.ReturnValue %3 : !spirv.struct<(vector<3xi32>, vector<3xi32>)>
+    }
+    spirv.func @isubborrow_i16(%arg0: i16, %arg1: i16) -> !spirv.struct<(i16, i16)> "None" {
+      %0 = spirv.ISubBorrow %arg0, %arg1 : !spirv.struct<(i16, i16)>
+      spirv.ReturnValue %0 : !spirv.struct<(i16, i16)>
+    }
     spirv.func @is_inf_f32(%arg0: f32) -> i1 "None" {
       %false = spirv.Constant false
       spirv.ReturnValue %false : i1

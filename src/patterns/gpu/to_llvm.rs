@@ -133,7 +133,7 @@ impl GpuToLlvm {
         let b = &*cr.rw.body;
         let name = String::from(b.sym_name(op).unwrap_or(""));
         let loc = b[op].loc.clone();
-        let kernel = b[op].get("gpu.kernel").is_some();
+        let kernel = b[op].gpu_kernel();
         let mut arg_attrs: Vec<Vec<NamedAttr<'a>>> = (0..n_in).map(|i| Self::dict(b[op].get("arg_attrs"), i)).collect();
         for a in &wg[..n_ptr] {
             let attribution = Attribute::dialect("llvm.mlir.workgroup_attribution", &format!("<{} : i64, {}>", a.elems, a.elem));

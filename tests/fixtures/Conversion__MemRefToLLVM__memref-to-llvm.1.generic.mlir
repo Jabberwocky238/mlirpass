@@ -482,6 +482,31 @@
 
 // -----
 "builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<external>, sym_name = "generic_atomic_rmw_f16", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+    %0 = "test.foo"() : () -> memref<10xf16>
+    %1 = "builtin.unrealized_conversion_cast"(%0) : (memref<10xf16>) -> !llvm.struct<(ptr, ptr, i32, array<1 x i32>, array<1 x i32>)>
+    %2 = "test.foo"() : () -> index
+    %3 = "builtin.unrealized_conversion_cast"(%2) : (index) -> i32
+    %4 = "llvm.extractvalue"(%1) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i32, array<1 x i32>, array<1 x i32>)>) -> !llvm.ptr
+    %5 = "llvm.getelementptr"(%4, %3) <{elem_type = f16, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i32) -> !llvm.ptr
+    %6 = "llvm.load"(%5) <{ordering = 0 : i64}> : (!llvm.ptr) -> f16
+    %7 = "llvm.bitcast"(%6) : (f16) -> i16
+    "llvm.br"(%7)[^bb1] : (i16) -> ()
+  ^bb1(%8: i16):  // 2 preds: ^bb0, ^bb1
+    %9 = "llvm.bitcast"(%8) : (i16) -> f16
+    %10 = "llvm.bitcast"(%9) : (f16) -> i16
+    %11 = "llvm.cmpxchg"(%5, %8, %10) <{failure_ordering = 2 : i64, success_ordering = 6 : i64}> : (!llvm.ptr, i16, i16) -> !llvm.struct<(i16, i1)>
+    %12 = "llvm.extractvalue"(%11) <{position = array<i64: 0>}> : (!llvm.struct<(i16, i1)>) -> i16
+    %13 = "llvm.extractvalue"(%11) <{position = array<i64: 1>}> : (!llvm.struct<(i16, i1)>) -> i1
+    "llvm.cond_br"(%13, %12)[^bb2, ^bb1] <{operandSegmentSizes = array<i32: 1, 0, 1>}> : (i1, i16) -> ()
+  ^bb2:  // pred: ^bb1
+    %14 = "llvm.bitcast"(%12) : (i16) -> f16
+    "llvm.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<ptr (i32)>, linkage = #llvm.linkage<external>, sym_name = "malloc", visibility_ = 0 : i64}> ({
   }) : () -> ()
   "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void ()>, linkage = #llvm.linkage<external>, sym_name = "generic_atomic_rmw_in_alloca_scope", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
@@ -836,6 +861,20 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<32xf32>) -> (), sym_name = "load_invariant"}> ({
+  ^bb0(%arg0: memref<32xf32>):
+    %0 = "builtin.unrealized_conversion_cast"(%arg0) : (memref<32xf32>) -> !llvm.struct<(ptr, ptr, i32, array<1 x i32>, array<1 x i32>)>
+    %1 = "arith.constant"() <{value = 7 : index}> : () -> index
+    %2 = "builtin.unrealized_conversion_cast"(%1) : (index) -> i32
+    %3 = "llvm.extractvalue"(%0) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i32, array<1 x i32>, array<1 x i32>)>) -> !llvm.ptr
+    %4 = "llvm.getelementptr"(%3, %2) <{elem_type = f32, noWrapFlags = 7 : i32, rawConstantIndices = array<i32: -2147483648>}> : (!llvm.ptr, i32) -> !llvm.ptr
+    %5 = "llvm.load"(%4) <{invariant, ordering = 0 : i64}> : (!llvm.ptr) -> f32
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<32xf32>, index) -> (), sym_name = "load_with_alignment"}> ({
   ^bb0(%arg0: memref<32xf32>, %arg1: index):
     %0 = "builtin.unrealized_conversion_cast"(%arg1) : (index) -> i32
@@ -882,6 +921,28 @@
 "builtin.module"() ({
   "func.func"() <{function_type = () -> (), sym_name = "alloca_unconvertable_memory_space"}> ({
     %0 = "memref.alloca"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<1x32x33xi32, #spirv.storage_class<StorageBuffer>>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (index) -> (), sym_name = "alloca_huge"}> ({
+  ^bb0(%arg0: index):
+    %0 = "llvm.mlir.constant"() <{value = 9223372036854775807 : index}> : () -> i32
+    %1 = "llvm.mlir.constant"() <{value = 3 : index}> : () -> i32
+    %2 = "llvm.mlir.constant"() <{value = 1 : index}> : () -> i32
+    %3 = "llvm.mlir.poison"() : () -> i32
+    %4 = "llvm.alloca"(%3) <{elem_type = i32}> : (i32) -> !llvm.ptr
+    %5 = "llvm.mlir.poison"() : () -> !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>
+    %6 = "llvm.insertvalue"(%5, %4) <{position = array<i64: 0>}> : (!llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>, !llvm.ptr) -> !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>
+    %7 = "llvm.insertvalue"(%6, %4) <{position = array<i64: 1>}> : (!llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>, !llvm.ptr) -> !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>
+    %8 = "llvm.mlir.constant"() <{value = 0 : index}> : () -> i32
+    %9 = "llvm.insertvalue"(%7, %8) <{position = array<i64: 2>}> : (!llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>, i32) -> !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>
+    %10 = "llvm.insertvalue"(%9, %0) <{position = array<i64: 3, 0>}> : (!llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>, i32) -> !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>
+    %11 = "llvm.insertvalue"(%10, %1) <{position = array<i64: 3, 1>}> : (!llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>, i32) -> !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>
+    %12 = "llvm.insertvalue"(%11, %1) <{position = array<i64: 4, 0>}> : (!llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>, i32) -> !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>
+    %13 = "llvm.insertvalue"(%12, %2) <{position = array<i64: 4, 1>}> : (!llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>, i32) -> !llvm.struct<(ptr, ptr, i32, array<2 x i32>, array<2 x i32>)>
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

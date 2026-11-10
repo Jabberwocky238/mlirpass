@@ -1,86 +1,104 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (memref<f32, #spirv.storage_class<StorageBuffer>>, memref<f32, #spirv.storage_class<StorageBuffer>>) -> (), sym_name = "load_store_zero_rank_float"}> ({
-  ^bb0(%arg24: memref<f32, #spirv.storage_class<StorageBuffer>>, %arg25: memref<f32, #spirv.storage_class<StorageBuffer>>):
-    %13 = "memref.load"(%arg24) : (memref<f32, #spirv.storage_class<StorageBuffer>>) -> f32
-    "memref.store"(%13, %arg25) : (f32, memref<f32, #spirv.storage_class<StorageBuffer>>) -> ()
+  ^bb0(%arg30: memref<f32, #spirv.storage_class<StorageBuffer>>, %arg31: memref<f32, #spirv.storage_class<StorageBuffer>>):
+    %16 = "memref.load"(%arg30) : (memref<f32, #spirv.storage_class<StorageBuffer>>) -> f32
+    "memref.store"(%16, %arg31) : (f32, memref<f32, #spirv.storage_class<StorageBuffer>>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<i32, #spirv.storage_class<StorageBuffer>>, memref<i32, #spirv.storage_class<StorageBuffer>>) -> (), sym_name = "load_store_zero_rank_int"}> ({
-  ^bb0(%arg22: memref<i32, #spirv.storage_class<StorageBuffer>>, %arg23: memref<i32, #spirv.storage_class<StorageBuffer>>):
-    %12 = "memref.load"(%arg22) : (memref<i32, #spirv.storage_class<StorageBuffer>>) -> i32
-    "memref.store"(%12, %arg23) : (i32, memref<i32, #spirv.storage_class<StorageBuffer>>) -> ()
+  ^bb0(%arg28: memref<i32, #spirv.storage_class<StorageBuffer>>, %arg29: memref<i32, #spirv.storage_class<StorageBuffer>>):
+    %15 = "memref.load"(%arg28) : (memref<i32, #spirv.storage_class<StorageBuffer>>) -> i32
+    "memref.store"(%15, %arg29) : (i32, memref<i32, #spirv.storage_class<StorageBuffer>>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (index, memref<?xi32, #spirv.storage_class<StorageBuffer>>, memref<?xi32, #spirv.storage_class<StorageBuffer>>) -> (), sym_name = "load_store_unknown_dim"}> ({
-  ^bb0(%arg19: index, %arg20: memref<?xi32, #spirv.storage_class<StorageBuffer>>, %arg21: memref<?xi32, #spirv.storage_class<StorageBuffer>>):
-    %11 = "memref.load"(%arg20, %arg19) : (memref<?xi32, #spirv.storage_class<StorageBuffer>>, index) -> i32
-    "memref.store"(%11, %arg21, %arg19) : (i32, memref<?xi32, #spirv.storage_class<StorageBuffer>>, index) -> ()
+  ^bb0(%arg25: index, %arg26: memref<?xi32, #spirv.storage_class<StorageBuffer>>, %arg27: memref<?xi32, #spirv.storage_class<StorageBuffer>>):
+    %14 = "memref.load"(%arg26, %arg25) : (memref<?xi32, #spirv.storage_class<StorageBuffer>>, index) -> i32
+    "memref.store"(%14, %arg27, %arg25) : (i32, memref<?xi32, #spirv.storage_class<StorageBuffer>>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1, sym_name = "load_i1"}> ({
-  ^bb0(%arg17: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg18: index):
-    %10 = "memref.load"(%arg17, %arg18) : (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1
-    "func.return"(%10) : (i1) -> ()
+  ^bb0(%arg23: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg24: index):
+    %13 = "memref.load"(%arg23, %arg24) : (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1
+    "func.return"(%13) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1, sym_name = "load_aligned"}> ({
-  ^bb0(%arg15: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg16: index):
-    %9 = "memref.load"(%arg15, %arg16) <{alignment = 32 : i64}> : (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1
-    "func.return"(%9) : (i1) -> ()
+  ^bb0(%arg21: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg22: index):
+    %12 = "memref.load"(%arg21, %arg22) <{alignment = 32 : i64}> : (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1
+    "func.return"(%12) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1, sym_name = "load_aligned_nontemporal"}> ({
-  ^bb0(%arg13: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg14: index):
-    %8 = "memref.load"(%arg13, %arg14) <{alignment = 32 : i64, nontemporal = true}> : (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1
-    "func.return"(%8) : (i1) -> ()
+  ^bb0(%arg19: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg20: index):
+    %11 = "memref.load"(%arg19, %arg20) <{alignment = 32 : i64, nontemporal = true}> : (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> i1
+    "func.return"(%11) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xi1, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> i1, sym_name = "load_aligned_psb"}> ({
-  ^bb0(%arg11: memref<4xi1, #spirv.storage_class<PhysicalStorageBuffer>>, %arg12: index):
-    %7 = "memref.load"(%arg11, %arg12) <{alignment = 32 : i64}> : (memref<4xi1, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> i1
-    "func.return"(%7) : (i1) -> ()
+  ^bb0(%arg17: memref<4xi1, #spirv.storage_class<PhysicalStorageBuffer>>, %arg18: index):
+    %10 = "memref.load"(%arg17, %arg18) <{alignment = 32 : i64}> : (memref<4xi1, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> i1
+    "func.return"(%10) : (i1) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> (), sym_name = "store_i1"}> ({
-  ^bb0(%arg9: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg10: index):
-    %6 = "arith.constant"() <{value = true}> : () -> i1
-    "memref.store"(%6, %arg9, %arg10) : (i1, memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> ()
+  ^bb0(%arg15: memref<4xi1, #spirv.storage_class<StorageBuffer>>, %arg16: index):
+    %9 = "arith.constant"() <{value = true}> : () -> i1
+    "memref.store"(%9, %arg15, %arg16) : (i1, memref<4xi1, #spirv.storage_class<StorageBuffer>>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<i16, #spirv.storage_class<StorageBuffer>>) -> (), sym_name = "load_i16"}> ({
-  ^bb0(%arg8: memref<i16, #spirv.storage_class<StorageBuffer>>):
-    %5 = "memref.load"(%arg8) : (memref<i16, #spirv.storage_class<StorageBuffer>>) -> i16
+  ^bb0(%arg14: memref<i16, #spirv.storage_class<StorageBuffer>>):
+    %8 = "memref.load"(%arg14) : (memref<i16, #spirv.storage_class<StorageBuffer>>) -> i16
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<10xi16, #spirv.storage_class<StorageBuffer>>, index, i16) -> (), sym_name = "store_i16"}> ({
-  ^bb0(%arg5: memref<10xi16, #spirv.storage_class<StorageBuffer>>, %arg6: index, %arg7: i16):
-    "memref.store"(%arg7, %arg5, %arg6) : (i16, memref<10xi16, #spirv.storage_class<StorageBuffer>>, index) -> ()
+  ^bb0(%arg11: memref<10xi16, #spirv.storage_class<StorageBuffer>>, %arg12: index, %arg13: i16):
+    "memref.store"(%arg13, %arg11, %arg12) : (i16, memref<10xi16, #spirv.storage_class<StorageBuffer>>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>) -> (), sym_name = "load_store_i32_physical"}> ({
-  ^bb0(%arg4: memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>):
-    %4 = "memref.load"(%arg4) : (memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>) -> i32
-    "memref.store"(%4, %arg4) : (i32, memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>) -> ()
+  ^bb0(%arg10: memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>):
+    %7 = "memref.load"(%arg10) : (memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>) -> i32
+    "memref.store"(%7, %arg10) : (i32, memref<i32, #spirv.storage_class<PhysicalStorageBuffer>>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>) -> (), sym_name = "load_store_i8_physical"}> ({
-  ^bb0(%arg3: memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>):
-    %3 = "memref.load"(%arg3) : (memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>) -> i8
-    "memref.store"(%3, %arg3) : (i8, memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>) -> ()
+  ^bb0(%arg9: memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>):
+    %6 = "memref.load"(%arg9) : (memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>) -> i8
+    "memref.store"(%6, %arg9) : (i8, memref<i8, #spirv.storage_class<PhysicalStorageBuffer>>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>) -> (), sym_name = "load_store_i1_physical"}> ({
-  ^bb0(%arg2: memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>):
-    %2 = "memref.load"(%arg2) : (memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>) -> i1
-    "memref.store"(%2, %arg2) : (i1, memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>) -> ()
+  ^bb0(%arg8: memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>):
+    %5 = "memref.load"(%arg8) : (memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>) -> i1
+    "memref.store"(%5, %arg8) : (i1, memref<i1, #spirv.storage_class<PhysicalStorageBuffer>>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>) -> (), sym_name = "load_store_f32_physical"}> ({
-  ^bb0(%arg1: memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>):
-    %1 = "memref.load"(%arg1) : (memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>) -> f32
-    "memref.store"(%1, %arg1) : (f32, memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>) -> ()
+  ^bb0(%arg7: memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>):
+    %4 = "memref.load"(%arg7) : (memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>) -> f32
+    "memref.store"(%4, %arg7) : (f32, memref<f32, #spirv.storage_class<PhysicalStorageBuffer>>) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>) -> (), sym_name = "load_store_f16_physical"}> ({
-  ^bb0(%arg0: memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>):
-    %0 = "memref.load"(%arg0) : (memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>) -> f16
-    "memref.store"(%0, %arg0) : (f16, memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>) -> ()
+  ^bb0(%arg6: memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>):
+    %3 = "memref.load"(%arg6) : (memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>) -> f16
+    "memref.store"(%3, %arg6) : (f16, memref<f16, #spirv.storage_class<PhysicalStorageBuffer>>) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (memref<5xvector<4xf16>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> (), sym_name = "load_store_vec4f16_physical"}> ({
+  ^bb0(%arg4: memref<5xvector<4xf16>, #spirv.storage_class<PhysicalStorageBuffer>>, %arg5: index):
+    %2 = "memref.load"(%arg4, %arg5) : (memref<5xvector<4xf16>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> vector<4xf16>
+    "memref.store"(%2, %arg4, %arg5) : (vector<4xf16>, memref<5xvector<4xf16>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (memref<8xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> (), sym_name = "load_store_vec4f32_physical"}> ({
+  ^bb0(%arg2: memref<8xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, %arg3: index):
+    %1 = "memref.load"(%arg2, %arg3) : (memref<8xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> vector<4xf32>
+    "memref.store"(%1, %arg2, %arg3) : (vector<4xf32>, memref<8xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (memref<?xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> (), sym_name = "load_store_vec4f32_dynamic_physical"}> ({
+  ^bb0(%arg0: memref<?xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, %arg1: index):
+    %0 = "memref.load"(%arg0, %arg1) : (memref<?xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> vector<4xf32>
+    "memref.store"(%0, %arg0, %arg1) : (vector<4xf32>, memref<?xvector<4xf32>, #spirv.storage_class<PhysicalStorageBuffer>>, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) {spirv.target_env = #spirv.target_env<#spirv.vce<v1.5, [Shader, Int8, Int16, Int64, Float16, Float64, StorageBuffer16BitAccess, StorageUniform16, StoragePushConstant16, StorageBuffer8BitAccess, UniformAndStorageBuffer8BitAccess, StoragePushConstant8, PhysicalStorageBufferAddresses], [SPV_KHR_16bit_storage, SPV_KHR_8bit_storage, SPV_KHR_storage_buffer_storage_class, SPV_KHR_physical_storage_buffer]>, #spirv.resource_limits<>>} : () -> ()

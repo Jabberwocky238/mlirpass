@@ -1,2 +1,2 @@
 -split-input-file
--convert-to-emitc=filter-dialects=func
+-convert-to-emitc=filter-dialects=func lower-to-cpp=false

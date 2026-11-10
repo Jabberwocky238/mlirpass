@@ -15,7 +15,7 @@ pub fn convert_gpu_to_agx<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error
     Kernels::inline_calls(body, op)?;
     let mut shaders = Vec::new();
     body.walk(op, &mut |f| {
-        if body[f].name == "gpu.func" && body[f].get("gpu.kernel").is_some() {
+        if body[f].name == "gpu.func" && body[f].gpu_kernel() {
             shaders.push(f);
         }
     });

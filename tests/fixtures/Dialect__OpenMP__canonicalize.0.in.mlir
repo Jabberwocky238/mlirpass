@@ -111,7 +111,7 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (!llvm.ptr) -> (), sym_name = "constant_hoisting_target"}> ({
   ^bb0(%arg0: !llvm.ptr):
-    "omp.target"() <{operandSegmentSizes = array<i32: 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>}> ({
+    "omp.target"() <{kernel_type = #omp<kernel_type(generic)>, operandSegmentSizes = array<i32: 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>}> ({
     ^bb0(%arg1: !llvm.ptr):
       %0 = "arith.constant"() <{value = 10 : i32}> : () -> i32
       "llvm.store"(%0, %arg1) <{ordering = 0 : i64}> : (i32, !llvm.ptr) -> ()

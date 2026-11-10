@@ -7,7 +7,7 @@
   "func.func"() <{function_type = (index) -> f32, sym_name = "caller"}> ({
   ^bb0(%arg0: index):
     %0 = "func.call"() <{callee = @create_tensor}> : () -> memref<10xf32>
-    %1 = "memref.load"(%0, %arg0) <{nontemporal = false}> : (memref<10xf32>, index) -> f32
+    %1 = "memref.load"(%0, %arg0) <{invariant = false, nontemporal = false}> : (memref<10xf32>, index) -> f32
     "func.return"(%1) : (f32) -> ()
   }) : () -> ()
 }) : () -> ()
@@ -31,8 +31,8 @@
     ^bb0(%arg3: f32, %arg4: f32):
       "linalg.yield"(%arg3) : (f32) -> ()
     }) : (f32, memref<?xf32, strided<[?], offset: ?>>) -> ()
-    %5 = "memref.load"(%4, %arg2) <{nontemporal = false}> : (memref<?xf32>, index) -> f32
-    %6 = "memref.load"(%arg0, %arg2) <{nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
+    %5 = "memref.load"(%4, %arg2) <{invariant = false, nontemporal = false}> : (memref<?xf32>, index) -> f32
+    %6 = "memref.load"(%arg0, %arg2) <{invariant = false, nontemporal = false}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> f32
     "func.return"(%5, %6) : (f32, f32) -> ()
   }) : () -> ()
 }) : () -> ()

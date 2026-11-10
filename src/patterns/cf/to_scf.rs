@@ -39,6 +39,10 @@ impl ControlFlowToScf {
 }
 
 impl<'a> CfgToScfInterface<'a> for ControlFlowToScf {
+    fn can_convert_multi_successor(&self, body: &Body<'a>, op: OpId) -> bool {
+        matches!(&*body[op].name, "cf.cond_br" | "cf.switch")
+    }
+
     fn branch_region_op(&mut self, body: &mut Body<'a>, at: At, cond: OpId, result_types: &[Type<'a>], regions: Vec<Vec<BlockId>>) -> Result<OpId, Error> {
         let loc = body[cond].loc.clone();
         match &*body[cond].name {

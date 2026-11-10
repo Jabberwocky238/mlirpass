@@ -1,6 +1,6 @@
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
-    "gpu.func"() <{function_type = (memref<4xi32>, memref<2xi32>, memref<2xi32>) -> ()}> ({
+    "gpu.func"() <{function_type = (memref<4xi32>, memref<2xi32>, memref<2xi32>) -> (), kernel}> ({
     ^bb0(%arg0: memref<4xi32>, %arg1: memref<2xi32>, %arg2: memref<2xi32>):
       %12 = "arith.constant"() <{value = 0 : index}> : () -> index
       %13 = "arith.constant"() <{value = 1 : index}> : () -> index
@@ -25,7 +25,7 @@
       "memref.store"(%28, %arg2, %12) : (i32, memref<2xi32>, index) -> ()
       "memref.store"(%29, %arg2, %13) : (i32, memref<2xi32>, index) -> ()
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [1, 1, 1]>, sym_name = "kernel_vector_deinterleave", workgroup_attributions = 0 : i64} : () -> ()
+    }) {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [1, 1, 1]>, sym_name = "kernel_vector_deinterleave"} : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = () -> (), sym_name = "main"}> ({
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index

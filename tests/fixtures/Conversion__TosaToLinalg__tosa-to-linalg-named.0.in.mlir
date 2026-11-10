@@ -252,6 +252,17 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (tensor<1x49x42x27xf8E5M2>, tensor<28x3x3x27xf8E5M2>, tensor<28xf32>) -> (), sym_name = "conv2d_f8_f32_acc"}> ({
+  ^bb0(%arg0: tensor<1x49x42x27xf8E5M2>, %arg1: tensor<28x3x3x27xf8E5M2>, %arg2: tensor<28xf32>):
+    %0 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %1 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %2 = "tosa.conv2d"(%arg0, %arg1, %arg2, %0, %1) <{acc_type = f32, dilation = array<i64: 2, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}> : (tensor<1x49x42x27xf8E5M2>, tensor<28x3x3x27xf8E5M2>, tensor<28xf32>, tensor<1xf8E5M2>, tensor<1xf8E5M2>) -> tensor<1x45x40x28xf32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (tensor<1x7x5x3xf32>, tensor<3x1x3x11xf32>, tensor<33xf32>) -> (), sym_name = "depthwise_conv"}> ({
   ^bb0(%arg0: tensor<1x7x5x3xf32>, %arg1: tensor<3x1x3x11xf32>, %arg2: tensor<33xf32>):
     %0 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
@@ -347,6 +358,17 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (tensor<1x7x5x3xf8E5M2>, tensor<3x1x3x11xf8E5M2>, tensor<33xf32>) -> (), sym_name = "depthwise_conv2d_f8_f32_acc"}> ({
+  ^bb0(%arg0: tensor<1x7x5x3xf8E5M2>, %arg1: tensor<3x1x3x11xf8E5M2>, %arg2: tensor<33xf32>):
+    %0 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %1 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %2 = "tosa.depthwise_conv2d"(%arg0, %arg1, %arg2, %0, %1) <{acc_type = f32, dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}> : (tensor<1x7x5x3xf8E5M2>, tensor<3x1x3x11xf8E5M2>, tensor<33xf32>, tensor<1xf8E5M2>, tensor<1xf8E5M2>) -> tensor<1x5x5x33xf32>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (tensor<1x49x48x47x27xf32>, tensor<43x3x4x5x27xf32>, tensor<43xf32>) -> (), sym_name = "conv3d_f32"}> ({
   ^bb0(%arg0: tensor<1x49x48x47x27xf32>, %arg1: tensor<43x3x4x5x27xf32>, %arg2: tensor<43xf32>):
     %0 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
@@ -385,6 +407,17 @@
     %0 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf16>}> : () -> tensor<1xf16>
     %1 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf16>}> : () -> tensor<1xf16>
     %2 = "tosa.conv3d"(%arg0, %arg1, %arg2, %0, %1) <{acc_type = f32, dilation = array<i64: 1, 1, 1>, pad = array<i64: 0, 0, 0, 0, 0, 0>, stride = array<i64: 1, 1, 1>}> : (tensor<1x49x48x47x27xf16>, tensor<43x3x4x5x27xf16>, tensor<43xf16>, tensor<1xf16>, tensor<1xf16>) -> tensor<1x47x45x43x43xf16>
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<1x49x48x47x27xf8E5M2>, tensor<43x3x4x5x27xf8E5M2>, tensor<43xf32>) -> (), sym_name = "conv3d_f8_f32_acc"}> ({
+  ^bb0(%arg0: tensor<1x49x48x47x27xf8E5M2>, %arg1: tensor<43x3x4x5x27xf8E5M2>, %arg2: tensor<43xf32>):
+    %0 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %1 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf8E5M2>}> : () -> tensor<1xf8E5M2>
+    %2 = "tosa.conv3d"(%arg0, %arg1, %arg2, %0, %1) <{acc_type = f32, dilation = array<i64: 1, 1, 1>, pad = array<i64: 0, 0, 0, 0, 0, 0>, stride = array<i64: 1, 1, 1>}> : (tensor<1x49x48x47x27xf8E5M2>, tensor<43x3x4x5x27xf8E5M2>, tensor<43xf32>, tensor<1xf8E5M2>, tensor<1xf8E5M2>) -> tensor<1x47x45x43x43xf32>
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

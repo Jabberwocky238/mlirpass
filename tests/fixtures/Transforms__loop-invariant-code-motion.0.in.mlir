@@ -1095,7 +1095,7 @@
     }) : (index, index, index) -> ()
     "scf.for"(%arg2, %arg3, %arg4) ({
     ^bb0(%arg5: index):
-      %0 = "linalg.unpack"(%arg1, %arg0) <{inner_dims_pos = array<i64: 0, 1>, static_inner_tiles = array<i64: 32, 16>}> : (tensor<4x16x32x16xf32>, tensor<128x256xf32>) -> tensor<128x256xf32>
+      %0 = "linalg.unpack"(%arg1, %arg0) <{inner_dims_pos = array<i64: 0, 1>, static_inner_tiles = array<i64: 32, 16>}> {operandSegmentSizes = array<i32: 1, 1, 0, 0>} : (tensor<4x16x32x16xf32>, tensor<128x256xf32>) -> tensor<128x256xf32>
       "scf.yield"() : () -> ()
     }) : (index, index, index) -> ()
     "func.return"() : () -> ()
@@ -1113,7 +1113,7 @@
     }) : (index, index, index) -> ()
     "scf.for"(%arg2, %arg3, %arg4) ({
     ^bb0(%arg9: index):
-      %1 = "linalg.unpack"(%arg1, %arg0, %arg6, %arg5) <{inner_dims_pos = array<i64: 0, 1>, static_inner_tiles = array<i64: -9223372036854775808, -9223372036854775808>}> : (tensor<?x?x?x?xf32>, tensor<?x?xf32>, index, index) -> tensor<?x?xf32>
+      %1 = "linalg.unpack"(%arg1, %arg0, %arg6, %arg5) <{inner_dims_pos = array<i64: 0, 1>, static_inner_tiles = array<i64: -9223372036854775808, -9223372036854775808>}> {operandSegmentSizes = array<i32: 1, 1, 0, 2>} : (tensor<?x?x?x?xf32>, tensor<?x?xf32>, index, index) -> tensor<?x?xf32>
       "scf.yield"() : () -> ()
     }) : (index, index, index) -> ()
     "scf.for"(%arg2, %arg3, %arg4) ({

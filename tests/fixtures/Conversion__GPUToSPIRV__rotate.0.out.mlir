@@ -1,6 +1,6 @@
 module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.4, [Shader, GroupNonUniformRotateKHR], []>, #spirv.resource_limits<subgroup_size = 16>>} {
   spirv.module @__spv__kernels Logical GLSL450 {
-    spirv.func @rotate() "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, workgroup_attributions = 0 : i64} {
+    spirv.func @rotate() "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} {
       %cst_f32 = spirv.Constant 4.200000e+01 : f32
       %cst4_i32 = spirv.Constant 4 : i32
       %cst16_i32 = spirv.Constant 16 : i32
@@ -22,7 +22,7 @@ module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#s
 module attributes {gpu.container_module, spirv.target_env = #spirv.target_env<#spirv.vce<v1.4, [Shader, GroupNonUniformRotateKHR], []>, #spirv.resource_limits<subgroup_size = 16>>} {
   spirv.module @__spv__kernels Logical GLSL450 {
     spirv.GlobalVariable @__builtin__SubgroupLocalInvocationId__ built_in("SubgroupLocalInvocationId") : !spirv.ptr<i32, Input>
-    spirv.func @rotate_width_less_than_subgroup_size() "None" attributes {spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>, workgroup_attributions = 0 : i64} {
+    spirv.func @rotate_width_less_than_subgroup_size() "None" attributes {kernel, spirv.entry_point_abi = #spirv.entry_point_abi<workgroup_size = [16, 1, 1]>} {
       %cst_f32 = spirv.Constant 4.200000e+01 : f32
       %cst4_i32 = spirv.Constant 4 : i32
       %cst8_i32 = spirv.Constant 8 : i32

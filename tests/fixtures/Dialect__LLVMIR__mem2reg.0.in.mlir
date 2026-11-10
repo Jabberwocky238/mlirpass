@@ -923,3 +923,34 @@
   }) : () -> ()
 }) : () -> ()
 
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i1)>, linkage = #llvm.linkage<external>, sym_name = "dead_direct_use", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg0: i1):
+    %0 = "llvm.mlir.constant"() <{value = 1 : i32}> : () -> i32
+    %1 = "llvm.alloca"(%0) <{elem_type = i32}> : (i32) -> !llvm.ptr
+    "scf.if"(%arg0) ({
+      %2 = "llvm.addrspacecast"(%1) : (!llvm.ptr) -> !llvm.ptr<5>
+      "scf.yield"() : () -> ()
+    }, {
+    }) : (i1) -> ()
+    "llvm.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i1)>, linkage = #llvm.linkage<external>, sym_name = "indirect_blocking_use_in_different_region", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
+  ^bb0(%arg0: i1):
+    %0 = "llvm.mlir.constant"() <{value = 1 : i32}> : () -> i32
+    %1 = "llvm.alloca"(%0) <{elem_type = i32}> : (i32) -> !llvm.ptr
+    %2 = "llvm.addrspacecast"(%1) : (!llvm.ptr) -> !llvm.ptr<5>
+    "scf.if"(%arg0) ({
+      %3 = "llvm.addrspacecast"(%2) : (!llvm.ptr<5>) -> !llvm.ptr
+      "scf.yield"() : () -> ()
+    }, {
+    }) : (i1) -> ()
+    "llvm.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+

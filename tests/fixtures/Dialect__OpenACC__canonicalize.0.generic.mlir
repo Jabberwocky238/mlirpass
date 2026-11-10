@@ -173,9 +173,7 @@
   ^bb0(%arg0: i32, %arg1: i32, %arg2: i32):
     "acc.wait"(%arg0, %arg1) <{operandSegmentSizes = array<i32: 2, 0, 0, 0>}> : (i32, i32) -> ()
     "acc.wait"() <{operandSegmentSizes = array<i32: 0, 0, 0, 0>}> : () -> ()
-    "acc.kernel_environment"(%arg2) <{hasWaitDevnum = [false], operandSegmentSizes = array<i32: 0, 0, 1>, waitOnly = [], waitOperandsDeviceType = [#acc.device_type<nvidia>], waitOperandsSegments = array<i32: 1>}> ({
-    ^bb0:
-    }) : (i32) -> ()
+    "acc.wait"(%arg2) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>}> : (i32) -> ()
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

@@ -521,6 +521,24 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = () -> i64, sym_name = "remove_while_zero_iteration_loop"}> ({
+    %0 = "test.init"() : () -> i32
+    %1 = "arith.constant"() <{value = false}> : () -> i1
+    %2 = "scf.while"(%0) ({
+    ^bb0(%arg1: i32):
+      %4 = "test.before"(%arg1) : (i32) -> i64
+      "scf.condition"(%1, %4) : (i1, i64) -> ()
+    }, {
+    ^bb0(%arg0: i64):
+      %3 = "test.before"(%arg0) : (i64) -> i32
+      "scf.yield"(%3) : (i32) -> ()
+    }) : (i32) -> i64
+    "func.return"(%2) : (i64) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (index) -> (), sym_name = "remove_zero_iteration_loop_vals"}> ({
   ^bb0(%arg0: index):
     %0 = "arith.constant"() <{value = 2 : index}> : () -> index
@@ -724,6 +742,33 @@
       "scf.yield"(%1) : (index) -> ()
     }) : (i1) -> index
     "func.return"(%0) : (index) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1) -> (), sym_name = "cond_prop_then"}> ({
+  ^bb0(%arg0: i1):
+    "scf.if"(%arg0) ({
+      "test.use"(%arg0) : (i1) -> ()
+      "scf.yield"() : () -> ()
+    }, {
+    }) : (i1) -> ()
+    "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (i1) -> (), sym_name = "cond_prop_else"}> ({
+  ^bb0(%arg0: i1):
+    "scf.if"(%arg0) ({
+      "scf.yield"() : () -> ()
+    }, {
+      "test.use"(%arg0) : (i1) -> ()
+      "scf.yield"() : () -> ()
+    }) : (i1) -> ()
+    "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1643,7 +1688,7 @@
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
     "scf.forall"(%0) <{operandSegmentSizes = array<i32: 0, 0, 1, 0>, staticLowerBound = array<i64: 0, 4>, staticStep = array<i64: -9223372036854775808, 8>, staticUpperBound = array<i64: 1, 5>}> ({
     ^bb0(%arg0: index, %arg1: index):
-      "vector.print"(%0) <{punctuation = #vector.punctuation<newline>}> : (index) -> ()
+      "vector.print"(%arg0) <{punctuation = #vector.punctuation<newline>}> : (index) -> ()
       "scf.forall.in_parallel"() ({
       ^bb0:
       }) : () -> ()
@@ -1696,6 +1741,25 @@
       "scf.yield"(%arg7, %arg8, %arg7) : (i32, i32, i32) -> ()
     }) : (index, index, index, i32, i32, i32) -> (i32, i32, i32)
     "func.return"(%0#0, %0#1, %0#2) : (i32, i32, i32) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<8x32xf32>, tensor<8x32xf32>) -> (tensor<?x32xf32>, tensor<?x32xf32>), sym_name = "fold_tensor_cast_into_forall_non_sequential_writes"}> ({
+  ^bb0(%arg0: tensor<8x32xf32>, %arg1: tensor<8x32xf32>):
+    %0 = "arith.constant"() <{value = 8 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 32 : index}> : () -> index
+    %2 = "tensor.empty"(%1) : (index) -> tensor<?x32xf32>
+    %3:2 = "scf.forall"(%2, %2) <{operandSegmentSizes = array<i32: 0, 0, 0, 2>, staticLowerBound = array<i64: 0>, staticStep = array<i64: 1>, staticUpperBound = array<i64: 4>}> ({
+    ^bb0(%arg2: index, %arg3: tensor<?x32xf32>, %arg4: tensor<?x32xf32>):
+      %4 = "arith.muli"(%0, %arg2) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
+      "scf.forall.in_parallel"() ({
+        "tensor.parallel_insert_slice"(%arg0, %arg4, %4) <{operandSegmentSizes = array<i32: 1, 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808, 0>, static_sizes = array<i64: 8, 32>, static_strides = array<i64: 1, 1>}> : (tensor<8x32xf32>, tensor<?x32xf32>, index) -> ()
+        "tensor.parallel_insert_slice"(%arg1, %arg3, %4) <{operandSegmentSizes = array<i32: 1, 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808, 0>, static_sizes = array<i64: 8, 32>, static_strides = array<i64: 1, 1>}> : (tensor<8x32xf32>, tensor<?x32xf32>, index) -> ()
+      }) : () -> ()
+    }) : (tensor<?x32xf32>, tensor<?x32xf32>) -> (tensor<?x32xf32>, tensor<?x32xf32>)
+    "func.return"(%3#0, %3#1) : (tensor<?x32xf32>, tensor<?x32xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 

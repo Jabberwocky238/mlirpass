@@ -17,12 +17,12 @@
     %8 = "vector.extract_strided_slice"(%6) <{offsets = [0, 0], sizes = [8, 16], strides = [1, 1]}> : (vector<16x16xf16>) -> vector<8x16xf16>
     %9 = "arith.extf"(%8) : (vector<8x16xf16>) -> vector<8x16xf32>
     %10 = "vector.extract_strided_slice"(%7) <{offsets = [0, 0], sizes = [16, 8], strides = [1, 1]}> : (vector<16x16xf32>) -> vector<16x8xf32>
-    %11 = "vector.contract"(%5, %9, %10) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf32>, vector<8x16xf32>, vector<16x8xf32>) -> vector<16x8xf32>
+    %11 = "vector.contract"(%5, %9, %10) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf32>, vector<8x16xf32>, vector<16x8xf32>) -> vector<16x8xf32>
     "vector.transfer_write"(%11, %arg2, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x8xf32>, memref<42x64xf32, #gpu.address_space<workgroup>>, index, index) -> ()
     %12 = "vector.extract_strided_slice"(%6) <{offsets = [8, 0], sizes = [8, 16], strides = [1, 1]}> : (vector<16x16xf16>) -> vector<8x16xf16>
     %13 = "arith.extf"(%12) : (vector<8x16xf16>) -> vector<8x16xf32>
     %14 = "vector.extract_strided_slice"(%7) <{offsets = [0, 8], sizes = [16, 8], strides = [1, 1]}> : (vector<16x16xf32>) -> vector<16x8xf32>
-    %15 = "vector.contract"(%5, %13, %14) <{indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf32>, vector<8x16xf32>, vector<16x8xf32>) -> vector<16x8xf32>
+    %15 = "vector.contract"(%5, %13, %14) <{fastmath = #arith.fastmath<none>, indexing_maps = [#map2, #map3, #map4], iterator_types = [#vector.iterator_type<parallel>, #vector.iterator_type<parallel>, #vector.iterator_type<reduction>], kind = #vector.kind<add>}> : (vector<16x16xf32>, vector<8x16xf32>, vector<16x8xf32>) -> vector<16x8xf32>
     "vector.transfer_write"(%15, %arg2, %0, %0) <{in_bounds = [true, true], operandSegmentSizes = array<i32: 1, 1, 2, 0>, permutation_map = #map}> : (vector<16x8xf32>, memref<42x64xf32, #gpu.address_space<workgroup>>, index, index) -> ()
     "func.return"() : () -> ()
   }) : () -> ()

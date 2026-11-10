@@ -883,6 +883,65 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x3xf32>) -> memref<?x?xf32, strided<[?, ?], offset: ?>>, sym_name = "reinterpret_cast_with_negative_size"}> ({
+  ^bb0(%arg0: memref<2x3xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 1 : index}> : () -> index
+    %2 = "arith.constant"() <{value = -1 : index}> : () -> index
+    %3 = "memref.reinterpret_cast"(%arg0, %0, %1, %2, %2, %1) <{operandSegmentSizes = array<i32: 1, 1, 2, 2>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: -9223372036854775808, -9223372036854775808>, static_strides = array<i64: -9223372036854775808, -9223372036854775808>}> : (memref<2x3xf32>, index, index, index, index, index) -> memref<?x?xf32, strided<[?, ?], offset: ?>>
+    "func.return"(%3) : (memref<?x?xf32, strided<[?, ?], offset: ?>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x3xf32>) -> memref<?x?xf32, strided<[?, ?], offset: ?>>, sym_name = "reinterpret_cast_with_negative_offset"}> ({
+  ^bb0(%arg0: memref<2x3xf32>):
+    %0 = "arith.constant"() <{value = 1 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 2 : index}> : () -> index
+    %2 = "arith.constant"() <{value = -1 : index}> : () -> index
+    %3 = "memref.reinterpret_cast"(%arg0, %2, %0, %1, %1, %0) <{operandSegmentSizes = array<i32: 1, 1, 2, 2>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: -9223372036854775808, -9223372036854775808>, static_strides = array<i64: -9223372036854775808, -9223372036854775808>}> : (memref<2x3xf32>, index, index, index, index, index) -> memref<?x?xf32, strided<[?, ?], offset: ?>>
+    "func.return"(%3) : (memref<?x?xf32, strided<[?, ?], offset: ?>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x3xf32>) -> memref<?x?xf32, strided<[?, ?], offset: ?>>, sym_name = "reinterpret_cast_with_negative_size_and_offset"}> ({
+  ^bb0(%arg0: memref<2x3xf32>):
+    %0 = "arith.constant"() <{value = 1 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 2 : index}> : () -> index
+    %2 = "arith.constant"() <{value = -1 : index}> : () -> index
+    %3 = "memref.reinterpret_cast"(%arg0, %2, %0, %2, %1, %0) <{operandSegmentSizes = array<i32: 1, 1, 2, 2>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: -9223372036854775808, -9223372036854775808>, static_strides = array<i64: -9223372036854775808, -9223372036854775808>}> : (memref<2x3xf32>, index, index, index, index, index) -> memref<?x?xf32, strided<[?, ?], offset: ?>>
+    "func.return"(%3) : (memref<?x?xf32, strided<[?, ?], offset: ?>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x3xf32>) -> memref<?x?xf32, strided<[?, ?], offset: ?>>, sym_name = "reinterpret_cast_no_fold_with_all_negative_size_and_offset"}> ({
+  ^bb0(%arg0: memref<2x3xf32>):
+    %0 = "arith.constant"() <{value = -1 : index}> : () -> index
+    %1 = "memref.reinterpret_cast"(%arg0, %0, %0, %0) <{operandSegmentSizes = array<i32: 1, 1, 2, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: -9223372036854775808, -9223372036854775808>, static_strides = array<i64: 2, 1>}> : (memref<2x3xf32>, index, index, index) -> memref<?x?xf32, strided<[?, ?], offset: ?>>
+    "func.return"(%1) : (memref<?x?xf32, strided<[?, ?], offset: ?>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<2x3xf32>) -> memref<?x?xf32, strided<[?, ?], offset: ?>>, sym_name = "reinterpret_cast_fold_negative_stride"}> ({
+  ^bb0(%arg0: memref<2x3xf32>):
+    %0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %1 = "arith.constant"() <{value = 1 : index}> : () -> index
+    %2 = "arith.constant"() <{value = 2 : index}> : () -> index
+    %3 = "arith.constant"() <{value = -1 : index}> : () -> index
+    %4 = "memref.reinterpret_cast"(%arg0, %0, %1, %2, %3, %1) <{operandSegmentSizes = array<i32: 1, 1, 2, 2>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: -9223372036854775808, -9223372036854775808>, static_strides = array<i64: -9223372036854775808, -9223372036854775808>}> : (memref<2x3xf32>, index, index, index, index, index) -> memref<?x?xf32, strided<[?, ?], offset: ?>>
+    "func.return"(%4) : (memref<?x?xf32, strided<[?, ?], offset: ?>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<8x?xf32>, index) -> memref<?xf32, strided<[?], offset: ?>>, sym_name = "canonicalize_rank_reduced_subview"}> ({
   ^bb0(%arg0: memref<8x?xf32>, %arg1: index):
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
@@ -915,6 +974,46 @@
 
 // -----
 "builtin.module"() ({
+  "func.func"() <{function_type = (memref<3x1x2x384xui8, strided<[1179648, 768, 384, 1]>>) -> memref<3x1x2x384xui8, strided<[1179648, 1179648, 384, 1]>>, sym_name = "expand_collapse_fold_to_internal_stride_cast"}> ({
+  ^bb0(%arg0: memref<3x1x2x384xui8, strided<[1179648, 768, 384, 1]>>):
+    %0 = "memref.collapse_shape"(%arg0) <{reassociation = [[0, 1], [2], [3]]}> : (memref<3x1x2x384xui8, strided<[1179648, 768, 384, 1]>>) -> memref<3x2x384xui8, strided<[1179648, 384, 1]>>
+    %1 = "memref.expand_shape"(%0) <{reassociation = [[0, 1], [2], [3]], static_output_shape = array<i64: 3, 1, 2, 384>}> : (memref<3x2x384xui8, strided<[1179648, 384, 1]>>) -> memref<3x1x2x384xui8, strided<[1179648, 1179648, 384, 1]>>
+    "func.return"(%1) : (memref<3x1x2x384xui8, strided<[1179648, 1179648, 384, 1]>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<1x3x2x384xui8, strided<[1179648, 768, 384, 1]>>) -> memref<1x3x2x384xui8, strided<[2304, 768, 384, 1]>>, sym_name = "expand_collapse_fold_to_outermost_stride_cast"}> ({
+  ^bb0(%arg0: memref<1x3x2x384xui8, strided<[1179648, 768, 384, 1]>>):
+    %0 = "memref.collapse_shape"(%arg0) <{reassociation = [[0, 1], [2], [3]]}> : (memref<1x3x2x384xui8, strided<[1179648, 768, 384, 1]>>) -> memref<3x2x384xui8, strided<[768, 384, 1]>>
+    %1 = "memref.expand_shape"(%0) <{reassociation = [[0, 1], [2], [3]], static_output_shape = array<i64: 1, 3, 2, 384>}> : (memref<3x2x384xui8, strided<[768, 384, 1]>>) -> memref<1x3x2x384xui8, strided<[2304, 768, 384, 1]>>
+    "func.return"(%1) : (memref<1x3x2x384xui8, strided<[2304, 768, 384, 1]>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<1x3x2x384xui8, strided<[1179648, 768, 384, 1]>>) -> memref<3x1x2x384xui8, strided<[768, 768, 384, 1]>>, sym_name = "expand_collapse_do_not_fold_to_cast"}> ({
+  ^bb0(%arg0: memref<1x3x2x384xui8, strided<[1179648, 768, 384, 1]>>):
+    %0 = "memref.collapse_shape"(%arg0) <{reassociation = [[0, 1], [2], [3]]}> : (memref<1x3x2x384xui8, strided<[1179648, 768, 384, 1]>>) -> memref<3x2x384xui8, strided<[768, 384, 1]>>
+    %1 = "memref.expand_shape"(%0) <{reassociation = [[0, 1], [2], [3]], static_output_shape = array<i64: 3, 1, 2, 384>}> : (memref<3x2x384xui8, strided<[768, 384, 1]>>) -> memref<3x1x2x384xui8, strided<[768, 768, 384, 1]>>
+    "func.return"(%1) : (memref<3x1x2x384xui8, strided<[768, 768, 384, 1]>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<1x?x1x32xsi8, strided<[?, 32, 32, 1]>>, index) -> memref<1x1x?x32xsi8, strided<[?, ?, 32, 1]>>, sym_name = "expand_collapse_dynamic_do_not_fold_to_cast"}> ({
+  ^bb0(%arg0: memref<1x?x1x32xsi8, strided<[?, 32, 32, 1]>>, %arg1: index):
+    %0 = "memref.collapse_shape"(%arg0) <{reassociation = [[0], [1, 2], [3]]}> : (memref<1x?x1x32xsi8, strided<[?, 32, 32, 1]>>) -> memref<1x?x32xsi8, strided<[?, 32, 1]>>
+    %1 = "memref.expand_shape"(%0, %arg1) <{reassociation = [[0, 1], [2], [3]], static_output_shape = array<i64: 1, 1, -9223372036854775808, 32>}> : (memref<1x?x32xsi8, strided<[?, 32, 1]>>, index) -> memref<1x1x?x32xsi8, strided<[?, ?, 32, 1]>>
+    "func.return"(%1) : (memref<1x1x?x32xsi8, strided<[?, ?, 32, 1]>>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
   "func.func"() <{function_type = (memref<?xf32, strided<[?], offset: ?>>, index) -> memref<?xf32, strided<[?], offset: ?>>, sym_name = "fold_trivial_subviews"}> ({
   ^bb0(%arg0: memref<?xf32, strided<[?], offset: ?>>, %arg1: index):
     %0 = "memref.subview"(%arg0, %arg1) <{operandSegmentSizes = array<i32: 1, 0, 1, 0>, static_offsets = array<i64: 5>, static_sizes = array<i64: -9223372036854775808>, static_strides = array<i64: 1>}> : (memref<?xf32, strided<[?], offset: ?>>, index) -> memref<?xf32, strided<[?], offset: ?>>
@@ -931,6 +1030,25 @@
     %1 = "memref.load"(%arg0, %0) <{nontemporal = true}> : (memref<32xf32>, index) -> f32
     "memref.store"(%1, %arg1, %0) <{nontemporal = true}> : (f32, memref<32xf32>, index) -> ()
     "func.return"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "memref.global"() <{constant, initial_value = dense<1.000000e+00> : tensor<32xf32>, sym_name = "__constant_32xf32", sym_visibility = "private", type = memref<32xf32>}> : () -> ()
+  "func.func"() <{function_type = () -> memref<32xf32>, sym_name = "fold_const_splat_global"}> ({
+    %0 = "memref.get_global"() <{name = @__constant_32xf32}> : () -> memref<32xf32>
+    %1 = "memref.alloc"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<32xf32>
+    %2 = "arith.constant"() <{value = 32 : index}> : () -> index
+    %3 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %4 = "arith.constant"() <{value = 1 : index}> : () -> index
+    "scf.for"(%3, %2, %4) ({
+    ^bb0(%arg0: index):
+      %5 = "memref.load"(%0, %arg0) : (memref<32xf32>, index) -> f32
+      "memref.store"(%5, %1, %arg0) : (f32, memref<32xf32>, index) -> ()
+      "scf.yield"() : () -> ()
+    }) : (index, index, index) -> ()
+    "func.return"(%1) : (memref<32xf32>) -> ()
   }) : () -> ()
 }) : () -> ()
 
@@ -1069,6 +1187,37 @@
     %0 = "arith.constant"() <{value = 0 : index}> : () -> index
     %1 = "memref.view"(%arg0, %0, %arg1) : (memref<?xi8>, index, index) -> memref<?xi8>
     "func.return"(%1) : (memref<?xi8>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<?xi8>, index) -> memref<?x4xi32>, sym_name = "replace_view_static_dims"}> ({
+  ^bb0(%arg0: memref<?xi8>, %arg1: index):
+    %0 = "arith.constant"() <{value = 5 : index}> : () -> index
+    %1 = "memref.view"(%arg0, %arg1, %0) : (memref<?xi8>, index, index) -> memref<?x4xi32>
+    "func.return"(%1) : (memref<?x4xi32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<?xi8>, index) -> memref<?x4xi32>, sym_name = "non_replace_view_negative_static_dims"}> ({
+  ^bb0(%arg0: memref<?xi8>, %arg1: index):
+    %0 = "arith.constant"() <{value = -1 : index}> : () -> index
+    %1 = "memref.view"(%arg0, %arg1, %0) : (memref<?xi8>, index, index) -> memref<?x4xi32>
+    "func.return"(%1) : (memref<?x4xi32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+"builtin.module"() ({
+  "func.func"() <{function_type = (memref<?x?x?xf32, strided<[?, ?, ?], offset: ?>>, index) -> index, sym_name = "no_crash_dim_of_ambiguous_subview"}> ({
+  ^bb0(%arg0: memref<?x?x?xf32, strided<[?, ?, ?], offset: ?>>, %arg1: index):
+    %0 = "arith.constant"() <{value = 1 : index}> : () -> index
+    %1 = "memref.subview"(%arg0, %arg1) <{operandSegmentSizes = array<i32: 1, 0, 1, 0>, static_offsets = array<i64: 0, 0, 0>, static_sizes = array<i64: 1, -9223372036854775808, 1>, static_strides = array<i64: 1, 1, 1>}> : (memref<?x?x?xf32, strided<[?, ?, ?], offset: ?>>, index) -> memref<1x?xf32, strided<[?, ?], offset: ?>>
+    %2 = "memref.dim"(%1, %0) : (memref<1x?xf32, strided<[?, ?], offset: ?>>, index) -> index
+    "func.return"(%2) : (index) -> ()
   }) : () -> ()
 }) : () -> ()
 

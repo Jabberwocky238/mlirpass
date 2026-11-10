@@ -1,0 +1,2 @@
+-convert-gpu-to-rocdl=chipset=gfx1201
+--mlir-print-local-scope

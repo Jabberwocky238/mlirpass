@@ -1,6 +1,6 @@
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "create_nd_tdesc"}> ({
-    "gpu.func"() <{function_type = (memref<16x32xf32, 1>, ui64, index, index, index, index, index, index, memref<?x?xf16>) -> ()}> ({
+    "gpu.func"() <{function_type = (memref<16x32xf32, 1>, ui64, index, index, index, index, index, index, memref<?x?xf16>) -> (), kernel}> ({
     ^bb0(%arg0: memref<16x32xf32, 1>, %arg1: ui64, %arg2: index, %arg3: index, %arg4: index, %arg5: index, %arg6: index, %arg7: index, %arg8: memref<?x?xf16>):
       %0 = "memref.extract_aligned_pointer_as_index"(%arg8) : (memref<?x?xf16>) -> index
       %1 = "arith.constant"() <{value = 0 : index}> : () -> index
@@ -56,7 +56,7 @@
       %51 = "vector.insert"(%45, %50) <{static_position = array<i64: 3>}> : (i32, vector<8xi32>) -> vector<8xi32>
       %52 = "vector.insert"(%46, %51) <{static_position = array<i64: 4>}> : (i32, vector<8xi32>) -> vector<8xi32>
       "gpu.return"() : () -> ()
-    }) {gpu.kernel, sym_name = "create_nd_tdesc", workgroup_attributions = 0 : i64} : () -> ()
+    }) {sym_name = "create_nd_tdesc"} : () -> ()
   }) : () -> ()
 }) : () -> ()
 

@@ -8,7 +8,7 @@
     %4 = "arith.muli"(%2#1, %0) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %5 = "arith.addi"(%3, %4) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %6 = "arith.index_cast"(%5) : (index) -> i64
-    %7 = "xegpu.create_nd_tdesc"(%6) <{const_offsets = array<i64>, const_shape = array<i64: 32>, const_strides = array<i64: 1>, operandSegmentSizes = array<i32: 1, 0, 0, 0>}> : (i64) -> !xegpu.tensor_desc<8xf32, #xegpu.block_tdesc_attr<boundary_check = false>>
+    %7 = "xegpu.create_nd_tdesc"(%6) <{const_shape = array<i64: 32>, const_strides = array<i64: 1>, operandSegmentSizes = array<i32: 1, 0, 0>}> : (i64) -> !xegpu.tensor_desc<8xf32, #xegpu.block_tdesc_attr<boundary_check = false>>
     %8 = "xegpu.load_nd"(%7, %arg1) <{const_offsets = array<i64: -9223372036854775808>}> : (!xegpu.tensor_desc<8xf32, #xegpu.block_tdesc_attr<boundary_check = false>>, index) -> vector<8xf32>
     "func.return"(%8) : (vector<8xf32>) -> ()
   }) : () -> ()
@@ -25,7 +25,7 @@
     %4 = "arith.muli"(%2#1, %0) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %5 = "arith.addi"(%3, %4) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %6 = "arith.index_cast"(%5) : (index) -> i64
-    %7 = "xegpu.create_nd_tdesc"(%6) <{const_offsets = array<i64>, const_shape = array<i64: 16, 32>, const_strides = array<i64: 32, 1>, operandSegmentSizes = array<i32: 1, 0, 0, 0>}> : (i64) -> !xegpu.tensor_desc<8x16xf32>
+    %7 = "xegpu.create_nd_tdesc"(%6) <{const_shape = array<i64: 16, 32>, const_strides = array<i64: 32, 1>, operandSegmentSizes = array<i32: 1, 0, 0>}> : (i64) -> !xegpu.tensor_desc<8x16xf32>
     %8 = "xegpu.load_nd"(%7, %arg1, %arg1) <{const_offsets = array<i64: -9223372036854775808, -9223372036854775808>}> : (!xegpu.tensor_desc<8x16xf32>, index, index) -> vector<8x16xf32>
     "func.return"(%8) : (vector<8x16xf32>) -> ()
   }) : () -> ()
@@ -43,7 +43,7 @@
     %5 = "arith.muli"(%3#1, %0) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %6 = "arith.addi"(%4, %5) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
     %7 = "arith.index_cast"(%6) : (index) -> i64
-    %8 = "xegpu.create_nd_tdesc"(%7, %3#2, %3#3, %3#4) <{const_offsets = array<i64>, const_shape = array<i64: -9223372036854775808, -9223372036854775808>, const_strides = array<i64: -9223372036854775808, 1>, operandSegmentSizes = array<i32: 1, 0, 2, 1>}> : (i64, index, index, index) -> !xegpu.tensor_desc<8x16xf32>
+    %8 = "xegpu.create_nd_tdesc"(%7, %3#2, %3#3, %3#4) <{const_shape = array<i64: -9223372036854775808, -9223372036854775808>, const_strides = array<i64: -9223372036854775808, 1>, operandSegmentSizes = array<i32: 1, 2, 1>}> : (i64, index, index, index) -> !xegpu.tensor_desc<8x16xf32>
     %9 = "xegpu.load_nd"(%8, %arg2, %arg3) <{const_offsets = array<i64: -9223372036854775808, -9223372036854775808>}> : (!xegpu.tensor_desc<8x16xf32>, index, index) -> vector<8x16xf32>
     "func.return"(%9) : (vector<8x16xf32>) -> ()
   }) : () -> ()
@@ -53,7 +53,7 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (memref<7x15xf32>, index) -> vector<8x16xf32>, sym_name = "load_out_of_bounds"}> ({
   ^bb0(%arg0: memref<7x15xf32>, %arg1: index):
-    %0 = "xegpu.create_nd_tdesc"(%arg0) <{operandSegmentSizes = array<i32: 1, 0, 0, 0>}> : (memref<7x15xf32>) -> !xegpu.tensor_desc<8x16xf32>
+    %0 = "xegpu.create_nd_tdesc"(%arg0) <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (memref<7x15xf32>) -> !xegpu.tensor_desc<8x16xf32>
     %1 = "xegpu.load_nd"(%0, %arg1, %arg1) <{const_offsets = array<i64: -9223372036854775808, -9223372036854775808>}> : (!xegpu.tensor_desc<8x16xf32>, index, index) -> vector<8x16xf32>
     "func.return"(%1) : (vector<8x16xf32>) -> ()
   }) : () -> ()

@@ -1,128 +1,143 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<2x2x2xf32>) -> vector<2x2x2xf32>, sym_name = "vec_bin"}> ({
-  ^bb0(%arg14: vector<2x2x2xf32>):
-    %115 = "builtin.unrealized_conversion_cast"(%arg14) : (vector<2x2x2xf32>) -> !llvm.array<2 x array<2 x vector<2xf32>>>
-    %116 = "llvm.mlir.poison"() : () -> !llvm.array<2 x array<2 x vector<2xf32>>>
-    %117 = "llvm.extractvalue"(%115) <{position = array<i64: 0, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
-    %118 = "llvm.extractvalue"(%115) <{position = array<i64: 0, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
-    %119 = "llvm.fadd"(%117, %118) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
-    %120 = "llvm.insertvalue"(%116, %119) <{position = array<i64: 0, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>, vector<2xf32>) -> !llvm.array<2 x array<2 x vector<2xf32>>>
-    %121 = "llvm.extractvalue"(%115) <{position = array<i64: 0, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
-    %122 = "llvm.extractvalue"(%115) <{position = array<i64: 0, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
-    %123 = "llvm.fadd"(%121, %122) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
-    %124 = "llvm.insertvalue"(%120, %123) <{position = array<i64: 0, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>, vector<2xf32>) -> !llvm.array<2 x array<2 x vector<2xf32>>>
-    %125 = "llvm.extractvalue"(%115) <{position = array<i64: 1, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
-    %126 = "llvm.extractvalue"(%115) <{position = array<i64: 1, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
-    %127 = "llvm.fadd"(%125, %126) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
-    %128 = "llvm.insertvalue"(%124, %127) <{position = array<i64: 1, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>, vector<2xf32>) -> !llvm.array<2 x array<2 x vector<2xf32>>>
-    %129 = "llvm.extractvalue"(%115) <{position = array<i64: 1, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
-    %130 = "llvm.extractvalue"(%115) <{position = array<i64: 1, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
-    %131 = "llvm.fadd"(%129, %130) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
-    %132 = "llvm.insertvalue"(%128, %131) <{position = array<i64: 1, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>, vector<2xf32>) -> !llvm.array<2 x array<2 x vector<2xf32>>>
-    %133 = "builtin.unrealized_conversion_cast"(%132) : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2x2x2xf32>
-    "func.return"(%133) : (vector<2x2x2xf32>) -> ()
+  ^bb0(%arg15: vector<2x2x2xf32>):
+    %126 = "builtin.unrealized_conversion_cast"(%arg15) : (vector<2x2x2xf32>) -> !llvm.array<2 x array<2 x vector<2xf32>>>
+    %127 = "llvm.mlir.poison"() : () -> !llvm.array<2 x array<2 x vector<2xf32>>>
+    %128 = "llvm.extractvalue"(%126) <{position = array<i64: 0, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
+    %129 = "llvm.extractvalue"(%126) <{position = array<i64: 0, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
+    %130 = "llvm.fadd"(%128, %129) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
+    %131 = "llvm.insertvalue"(%127, %130) <{position = array<i64: 0, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>, vector<2xf32>) -> !llvm.array<2 x array<2 x vector<2xf32>>>
+    %132 = "llvm.extractvalue"(%126) <{position = array<i64: 0, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
+    %133 = "llvm.extractvalue"(%126) <{position = array<i64: 0, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
+    %134 = "llvm.fadd"(%132, %133) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
+    %135 = "llvm.insertvalue"(%131, %134) <{position = array<i64: 0, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>, vector<2xf32>) -> !llvm.array<2 x array<2 x vector<2xf32>>>
+    %136 = "llvm.extractvalue"(%126) <{position = array<i64: 1, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
+    %137 = "llvm.extractvalue"(%126) <{position = array<i64: 1, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
+    %138 = "llvm.fadd"(%136, %137) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
+    %139 = "llvm.insertvalue"(%135, %138) <{position = array<i64: 1, 0>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>, vector<2xf32>) -> !llvm.array<2 x array<2 x vector<2xf32>>>
+    %140 = "llvm.extractvalue"(%126) <{position = array<i64: 1, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
+    %141 = "llvm.extractvalue"(%126) <{position = array<i64: 1, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2xf32>
+    %142 = "llvm.fadd"(%140, %141) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<2xf32>, vector<2xf32>) -> vector<2xf32>
+    %143 = "llvm.insertvalue"(%139, %142) <{position = array<i64: 1, 1>}> : (!llvm.array<2 x array<2 x vector<2xf32>>>, vector<2xf32>) -> !llvm.array<2 x array<2 x vector<2xf32>>>
+    %144 = "builtin.unrealized_conversion_cast"(%143) : (!llvm.array<2 x array<2 x vector<2xf32>>>) -> vector<2x2x2xf32>
+    "func.return"(%144) : (vector<2x2x2xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xi32>, vector<1x2x3xi64>) -> (), sym_name = "sexti_vector"}> ({
-  ^bb0(%arg12: vector<1x2x3xi32>, %arg13: vector<1x2x3xi64>):
-    %107 = "builtin.unrealized_conversion_cast"(%arg12) : (vector<1x2x3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
-    %108 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xi64>>>
-    %109 = "llvm.extractvalue"(%107) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
-    %110 = "llvm.sext"(%109) : (vector<3xi32>) -> vector<3xi64>
-    %111 = "llvm.insertvalue"(%108, %110) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi64>>>, vector<3xi64>) -> !llvm.array<1 x array<2 x vector<3xi64>>>
-    %112 = "llvm.extractvalue"(%107) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
-    %113 = "llvm.sext"(%112) : (vector<3xi32>) -> vector<3xi64>
-    %114 = "llvm.insertvalue"(%111, %113) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi64>>>, vector<3xi64>) -> !llvm.array<1 x array<2 x vector<3xi64>>>
+  ^bb0(%arg13: vector<1x2x3xi32>, %arg14: vector<1x2x3xi64>):
+    %118 = "builtin.unrealized_conversion_cast"(%arg13) : (vector<1x2x3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
+    %119 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xi64>>>
+    %120 = "llvm.extractvalue"(%118) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
+    %121 = "llvm.sext"(%120) : (vector<3xi32>) -> vector<3xi64>
+    %122 = "llvm.insertvalue"(%119, %121) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi64>>>, vector<3xi64>) -> !llvm.array<1 x array<2 x vector<3xi64>>>
+    %123 = "llvm.extractvalue"(%118) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
+    %124 = "llvm.sext"(%123) : (vector<3xi32>) -> vector<3xi64>
+    %125 = "llvm.insertvalue"(%122, %124) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi64>>>, vector<3xi64>) -> !llvm.array<1 x array<2 x vector<3xi64>>>
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xi32>, vector<1x2x3xi64>) -> (), sym_name = "zexti_vector"}> ({
-  ^bb0(%arg10: vector<1x2x3xi32>, %arg11: vector<1x2x3xi64>):
-    %99 = "builtin.unrealized_conversion_cast"(%arg10) : (vector<1x2x3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
-    %100 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xi64>>>
-    %101 = "llvm.extractvalue"(%99) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
-    %102 = "llvm.zext"(%101) : (vector<3xi32>) -> vector<3xi64>
-    %103 = "llvm.insertvalue"(%100, %102) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi64>>>, vector<3xi64>) -> !llvm.array<1 x array<2 x vector<3xi64>>>
-    %104 = "llvm.extractvalue"(%99) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
-    %105 = "llvm.zext"(%104) : (vector<3xi32>) -> vector<3xi64>
-    %106 = "llvm.insertvalue"(%103, %105) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi64>>>, vector<3xi64>) -> !llvm.array<1 x array<2 x vector<3xi64>>>
+  ^bb0(%arg11: vector<1x2x3xi32>, %arg12: vector<1x2x3xi64>):
+    %110 = "builtin.unrealized_conversion_cast"(%arg11) : (vector<1x2x3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
+    %111 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xi64>>>
+    %112 = "llvm.extractvalue"(%110) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
+    %113 = "llvm.zext"(%112) : (vector<3xi32>) -> vector<3xi64>
+    %114 = "llvm.insertvalue"(%111, %113) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi64>>>, vector<3xi64>) -> !llvm.array<1 x array<2 x vector<3xi64>>>
+    %115 = "llvm.extractvalue"(%110) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
+    %116 = "llvm.zext"(%115) : (vector<3xi32>) -> vector<3xi64>
+    %117 = "llvm.insertvalue"(%114, %116) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi64>>>, vector<3xi64>) -> !llvm.array<1 x array<2 x vector<3xi64>>>
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xi32>) -> vector<1x2x3xf32>, sym_name = "sitofp_vector"}> ({
-  ^bb0(%arg9: vector<1x2x3xi32>):
-    %90 = "builtin.unrealized_conversion_cast"(%arg9) : (vector<1x2x3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
-    %91 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xf32>>>
-    %92 = "llvm.extractvalue"(%90) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
-    %93 = "llvm.sitofp"(%92) : (vector<3xi32>) -> vector<3xf32>
-    %94 = "llvm.insertvalue"(%91, %93) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>, vector<3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
-    %95 = "llvm.extractvalue"(%90) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
-    %96 = "llvm.sitofp"(%95) : (vector<3xi32>) -> vector<3xf32>
-    %97 = "llvm.insertvalue"(%94, %96) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>, vector<3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
-    %98 = "builtin.unrealized_conversion_cast"(%97) : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<1x2x3xf32>
-    "func.return"(%98) : (vector<1x2x3xf32>) -> ()
+  ^bb0(%arg10: vector<1x2x3xi32>):
+    %101 = "builtin.unrealized_conversion_cast"(%arg10) : (vector<1x2x3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
+    %102 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xf32>>>
+    %103 = "llvm.extractvalue"(%101) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
+    %104 = "llvm.sitofp"(%103) : (vector<3xi32>) -> vector<3xf32>
+    %105 = "llvm.insertvalue"(%102, %104) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>, vector<3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
+    %106 = "llvm.extractvalue"(%101) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
+    %107 = "llvm.sitofp"(%106) : (vector<3xi32>) -> vector<3xf32>
+    %108 = "llvm.insertvalue"(%105, %107) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>, vector<3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
+    %109 = "builtin.unrealized_conversion_cast"(%108) : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<1x2x3xf32>
+    "func.return"(%109) : (vector<1x2x3xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xi32>) -> vector<1x2x3xf32>, sym_name = "uitofp_vector"}> ({
-  ^bb0(%arg8: vector<1x2x3xi32>):
-    %81 = "builtin.unrealized_conversion_cast"(%arg8) : (vector<1x2x3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
-    %82 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xf32>>>
-    %83 = "llvm.extractvalue"(%81) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
-    %84 = "llvm.uitofp"(%83) : (vector<3xi32>) -> vector<3xf32>
-    %85 = "llvm.insertvalue"(%82, %84) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>, vector<3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
-    %86 = "llvm.extractvalue"(%81) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
-    %87 = "llvm.uitofp"(%86) : (vector<3xi32>) -> vector<3xf32>
-    %88 = "llvm.insertvalue"(%85, %87) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>, vector<3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
-    %89 = "builtin.unrealized_conversion_cast"(%88) : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<1x2x3xf32>
-    "func.return"(%89) : (vector<1x2x3xf32>) -> ()
+  ^bb0(%arg9: vector<1x2x3xi32>):
+    %92 = "builtin.unrealized_conversion_cast"(%arg9) : (vector<1x2x3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
+    %93 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xf32>>>
+    %94 = "llvm.extractvalue"(%92) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
+    %95 = "llvm.uitofp"(%94) : (vector<3xi32>) -> vector<3xf32>
+    %96 = "llvm.insertvalue"(%93, %95) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>, vector<3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
+    %97 = "llvm.extractvalue"(%92) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<3xi32>
+    %98 = "llvm.uitofp"(%97) : (vector<3xi32>) -> vector<3xf32>
+    %99 = "llvm.insertvalue"(%96, %98) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>, vector<3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
+    %100 = "builtin.unrealized_conversion_cast"(%99) : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<1x2x3xf32>
+    "func.return"(%100) : (vector<1x2x3xf32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xf32>) -> vector<1x2x3xi32>, sym_name = "fptosi_vector"}> ({
-  ^bb0(%arg7: vector<1x2x3xf32>):
-    %72 = "builtin.unrealized_conversion_cast"(%arg7) : (vector<1x2x3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
-    %73 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xi32>>>
-    %74 = "llvm.extractvalue"(%72) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<3xf32>
-    %75 = "llvm.fptosi"(%74) : (vector<3xf32>) -> vector<3xi32>
-    %76 = "llvm.insertvalue"(%73, %75) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>, vector<3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
-    %77 = "llvm.extractvalue"(%72) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<3xf32>
-    %78 = "llvm.fptosi"(%77) : (vector<3xf32>) -> vector<3xi32>
-    %79 = "llvm.insertvalue"(%76, %78) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>, vector<3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
-    %80 = "builtin.unrealized_conversion_cast"(%79) : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<1x2x3xi32>
-    "func.return"(%80) : (vector<1x2x3xi32>) -> ()
+  ^bb0(%arg8: vector<1x2x3xf32>):
+    %83 = "builtin.unrealized_conversion_cast"(%arg8) : (vector<1x2x3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
+    %84 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xi32>>>
+    %85 = "llvm.extractvalue"(%83) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<3xf32>
+    %86 = "llvm.fptosi"(%85) : (vector<3xf32>) -> vector<3xi32>
+    %87 = "llvm.insertvalue"(%84, %86) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>, vector<3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
+    %88 = "llvm.extractvalue"(%83) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<3xf32>
+    %89 = "llvm.fptosi"(%88) : (vector<3xf32>) -> vector<3xi32>
+    %90 = "llvm.insertvalue"(%87, %89) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>, vector<3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
+    %91 = "builtin.unrealized_conversion_cast"(%90) : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<1x2x3xi32>
+    "func.return"(%91) : (vector<1x2x3xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xf32>) -> vector<1x2x3xi32>, sym_name = "fptoui_vector"}> ({
-  ^bb0(%arg6: vector<1x2x3xf32>):
-    %63 = "builtin.unrealized_conversion_cast"(%arg6) : (vector<1x2x3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
-    %64 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xi32>>>
-    %65 = "llvm.extractvalue"(%63) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<3xf32>
-    %66 = "llvm.fptoui"(%65) : (vector<3xf32>) -> vector<3xi32>
-    %67 = "llvm.insertvalue"(%64, %66) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>, vector<3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
-    %68 = "llvm.extractvalue"(%63) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<3xf32>
-    %69 = "llvm.fptoui"(%68) : (vector<3xf32>) -> vector<3xi32>
-    %70 = "llvm.insertvalue"(%67, %69) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>, vector<3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
-    %71 = "builtin.unrealized_conversion_cast"(%70) : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<1x2x3xi32>
-    "func.return"(%71) : (vector<1x2x3xi32>) -> ()
+  ^bb0(%arg7: vector<1x2x3xf32>):
+    %74 = "builtin.unrealized_conversion_cast"(%arg7) : (vector<1x2x3xf32>) -> !llvm.array<1 x array<2 x vector<3xf32>>>
+    %75 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xi32>>>
+    %76 = "llvm.extractvalue"(%74) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<3xf32>
+    %77 = "llvm.fptoui"(%76) : (vector<3xf32>) -> vector<3xi32>
+    %78 = "llvm.insertvalue"(%75, %77) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>, vector<3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
+    %79 = "llvm.extractvalue"(%74) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf32>>>) -> vector<3xf32>
+    %80 = "llvm.fptoui"(%79) : (vector<3xf32>) -> vector<3xi32>
+    %81 = "llvm.insertvalue"(%78, %80) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi32>>>, vector<3xi32>) -> !llvm.array<1 x array<2 x vector<3xi32>>>
+    %82 = "builtin.unrealized_conversion_cast"(%81) : (!llvm.array<1 x array<2 x vector<3xi32>>>) -> vector<1x2x3xi32>
+    "func.return"(%82) : (vector<1x2x3xi32>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xf16>) -> vector<1x2x3xf64>, sym_name = "fpext_vector"}> ({
-  ^bb0(%arg5: vector<1x2x3xf16>):
-    %54 = "builtin.unrealized_conversion_cast"(%arg5) : (vector<1x2x3xf16>) -> !llvm.array<1 x array<2 x vector<3xf16>>>
-    %55 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xf64>>>
-    %56 = "llvm.extractvalue"(%54) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf16>>>) -> vector<3xf16>
-    %57 = "llvm.fpext"(%56) : (vector<3xf16>) -> vector<3xf64>
-    %58 = "llvm.insertvalue"(%55, %57) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf64>>>, vector<3xf64>) -> !llvm.array<1 x array<2 x vector<3xf64>>>
-    %59 = "llvm.extractvalue"(%54) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf16>>>) -> vector<3xf16>
-    %60 = "llvm.fpext"(%59) : (vector<3xf16>) -> vector<3xf64>
-    %61 = "llvm.insertvalue"(%58, %60) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf64>>>, vector<3xf64>) -> !llvm.array<1 x array<2 x vector<3xf64>>>
-    %62 = "builtin.unrealized_conversion_cast"(%61) : (!llvm.array<1 x array<2 x vector<3xf64>>>) -> vector<1x2x3xf64>
-    "func.return"(%62) : (vector<1x2x3xf64>) -> ()
+  ^bb0(%arg6: vector<1x2x3xf16>):
+    %65 = "builtin.unrealized_conversion_cast"(%arg6) : (vector<1x2x3xf16>) -> !llvm.array<1 x array<2 x vector<3xf16>>>
+    %66 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xf64>>>
+    %67 = "llvm.extractvalue"(%65) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf16>>>) -> vector<3xf16>
+    %68 = "llvm.fpext"(%67) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xf16>) -> vector<3xf64>
+    %69 = "llvm.insertvalue"(%66, %68) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf64>>>, vector<3xf64>) -> !llvm.array<1 x array<2 x vector<3xf64>>>
+    %70 = "llvm.extractvalue"(%65) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf16>>>) -> vector<3xf16>
+    %71 = "llvm.fpext"(%70) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xf16>) -> vector<3xf64>
+    %72 = "llvm.insertvalue"(%69, %71) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf64>>>, vector<3xf64>) -> !llvm.array<1 x array<2 x vector<3xf64>>>
+    %73 = "builtin.unrealized_conversion_cast"(%72) : (!llvm.array<1 x array<2 x vector<3xf64>>>) -> vector<1x2x3xf64>
+    "func.return"(%73) : (vector<1x2x3xf64>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xf64>) -> vector<1x2x3xf16>, sym_name = "fptrunc_vector"}> ({
-  ^bb0(%arg4: vector<1x2x3xf64>):
-    %45 = "builtin.unrealized_conversion_cast"(%arg4) : (vector<1x2x3xf64>) -> !llvm.array<1 x array<2 x vector<3xf64>>>
-    %46 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xf16>>>
-    %47 = "llvm.extractvalue"(%45) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf64>>>) -> vector<3xf64>
-    %48 = "llvm.fptrunc"(%47) : (vector<3xf64>) -> vector<3xf16>
-    %49 = "llvm.insertvalue"(%46, %48) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf16>>>, vector<3xf16>) -> !llvm.array<1 x array<2 x vector<3xf16>>>
-    %50 = "llvm.extractvalue"(%45) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf64>>>) -> vector<3xf64>
-    %51 = "llvm.fptrunc"(%50) : (vector<3xf64>) -> vector<3xf16>
-    %52 = "llvm.insertvalue"(%49, %51) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf16>>>, vector<3xf16>) -> !llvm.array<1 x array<2 x vector<3xf16>>>
-    %53 = "builtin.unrealized_conversion_cast"(%52) : (!llvm.array<1 x array<2 x vector<3xf16>>>) -> vector<1x2x3xf16>
-    "func.return"(%53) : (vector<1x2x3xf16>) -> ()
+  ^bb0(%arg5: vector<1x2x3xf64>):
+    %56 = "builtin.unrealized_conversion_cast"(%arg5) : (vector<1x2x3xf64>) -> !llvm.array<1 x array<2 x vector<3xf64>>>
+    %57 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xf16>>>
+    %58 = "llvm.extractvalue"(%56) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf64>>>) -> vector<3xf64>
+    %59 = "llvm.fptrunc"(%58) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xf64>) -> vector<3xf16>
+    %60 = "llvm.insertvalue"(%57, %59) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf16>>>, vector<3xf16>) -> !llvm.array<1 x array<2 x vector<3xf16>>>
+    %61 = "llvm.extractvalue"(%56) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf64>>>) -> vector<3xf64>
+    %62 = "llvm.fptrunc"(%61) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xf64>) -> vector<3xf16>
+    %63 = "llvm.insertvalue"(%60, %62) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf16>>>, vector<3xf16>) -> !llvm.array<1 x array<2 x vector<3xf16>>>
+    %64 = "builtin.unrealized_conversion_cast"(%63) : (!llvm.array<1 x array<2 x vector<3xf16>>>) -> vector<1x2x3xf16>
+    "func.return"(%64) : (vector<1x2x3xf16>) -> ()
+  }) : () -> ()
+  "func.func"() <{function_type = (vector<1x2x3xf16>) -> vector<1x2x3xbf16>, sym_name = "convertf_vector"}> ({
+  ^bb0(%arg4: vector<1x2x3xf16>):
+    %45 = "builtin.unrealized_conversion_cast"(%arg4) : (vector<1x2x3xf16>) -> !llvm.array<1 x array<2 x vector<3xf16>>>
+    %46 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xbf16>>>
+    %47 = "llvm.extractvalue"(%45) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xf16>>>) -> vector<3xf16>
+    %48 = "llvm.fpext"(%47) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xf16>) -> vector<3xf32>
+    %49 = "llvm.fptrunc"(%48) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xf32>) -> vector<3xbf16>
+    %50 = "llvm.insertvalue"(%46, %49) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xbf16>>>, vector<3xbf16>) -> !llvm.array<1 x array<2 x vector<3xbf16>>>
+    %51 = "llvm.extractvalue"(%45) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xf16>>>) -> vector<3xf16>
+    %52 = "llvm.fpext"(%51) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xf16>) -> vector<3xf32>
+    %53 = "llvm.fptrunc"(%52) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xf32>) -> vector<3xbf16>
+    %54 = "llvm.insertvalue"(%50, %53) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xbf16>>>, vector<3xbf16>) -> !llvm.array<1 x array<2 x vector<3xbf16>>>
+    %55 = "builtin.unrealized_conversion_cast"(%54) : (!llvm.array<1 x array<2 x vector<3xbf16>>>) -> vector<1x2x3xbf16>
+    "func.return"(%55) : (vector<1x2x3xbf16>) -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xi64>) -> vector<1x2x3xi16>, sym_name = "trunci_vector"}> ({
   ^bb0(%arg3: vector<1x2x3xi64>):
@@ -207,30 +222,30 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (vector<4x3xi1>, vector<4x3xi32>, vector<4x3xi32>) -> (), sym_name = "select_2d"}> ({
   ^bb0(%arg1: vector<4x3xi1>, %arg2: vector<4x3xi32>, %arg3: vector<4x3xi32>):
-    %15 = "builtin.unrealized_conversion_cast"(%arg3) : (vector<4x3xi32>) -> !llvm.array<4 x vector<3xi32>>
-    %16 = "builtin.unrealized_conversion_cast"(%arg2) : (vector<4x3xi32>) -> !llvm.array<4 x vector<3xi32>>
-    %17 = "builtin.unrealized_conversion_cast"(%arg1) : (vector<4x3xi1>) -> !llvm.array<4 x vector<3xi1>>
-    %18 = "llvm.mlir.poison"() : () -> !llvm.array<4 x vector<3xi32>>
-    %19 = "llvm.extractvalue"(%17) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<3xi1>>) -> vector<3xi1>
-    %20 = "llvm.extractvalue"(%16) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
-    %21 = "llvm.extractvalue"(%15) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
-    %22 = "llvm.select"(%19, %20, %21) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xi1>, vector<3xi32>, vector<3xi32>) -> vector<3xi32>
-    %23 = "llvm.insertvalue"(%18, %22) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
-    %24 = "llvm.extractvalue"(%17) <{position = array<i64: 1>}> : (!llvm.array<4 x vector<3xi1>>) -> vector<3xi1>
-    %25 = "llvm.extractvalue"(%16) <{position = array<i64: 1>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
-    %26 = "llvm.extractvalue"(%15) <{position = array<i64: 1>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
-    %27 = "llvm.select"(%24, %25, %26) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xi1>, vector<3xi32>, vector<3xi32>) -> vector<3xi32>
-    %28 = "llvm.insertvalue"(%23, %27) <{position = array<i64: 1>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
-    %29 = "llvm.extractvalue"(%17) <{position = array<i64: 2>}> : (!llvm.array<4 x vector<3xi1>>) -> vector<3xi1>
-    %30 = "llvm.extractvalue"(%16) <{position = array<i64: 2>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
-    %31 = "llvm.extractvalue"(%15) <{position = array<i64: 2>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
-    %32 = "llvm.select"(%29, %30, %31) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xi1>, vector<3xi32>, vector<3xi32>) -> vector<3xi32>
-    %33 = "llvm.insertvalue"(%28, %32) <{position = array<i64: 2>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
-    %34 = "llvm.extractvalue"(%17) <{position = array<i64: 3>}> : (!llvm.array<4 x vector<3xi1>>) -> vector<3xi1>
-    %35 = "llvm.extractvalue"(%16) <{position = array<i64: 3>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
-    %36 = "llvm.extractvalue"(%15) <{position = array<i64: 3>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
-    %37 = "llvm.select"(%34, %35, %36) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xi1>, vector<3xi32>, vector<3xi32>) -> vector<3xi32>
-    %38 = "llvm.insertvalue"(%33, %37) <{position = array<i64: 3>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
+    %8 = "builtin.unrealized_conversion_cast"(%arg3) : (vector<4x3xi32>) -> !llvm.array<4 x vector<3xi32>>
+    %9 = "builtin.unrealized_conversion_cast"(%arg2) : (vector<4x3xi32>) -> !llvm.array<4 x vector<3xi32>>
+    %10 = "builtin.unrealized_conversion_cast"(%arg1) : (vector<4x3xi1>) -> !llvm.array<4 x vector<3xi1>>
+    %11 = "llvm.mlir.poison"() : () -> !llvm.array<4 x vector<3xi32>>
+    %12 = "llvm.extractvalue"(%10) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<3xi1>>) -> vector<3xi1>
+    %13 = "llvm.extractvalue"(%9) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %14 = "llvm.extractvalue"(%8) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %15 = "llvm.select"(%12, %13, %14) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xi1>, vector<3xi32>, vector<3xi32>) -> vector<3xi32>
+    %16 = "llvm.insertvalue"(%11, %15) <{position = array<i64: 0>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
+    %17 = "llvm.extractvalue"(%10) <{position = array<i64: 1>}> : (!llvm.array<4 x vector<3xi1>>) -> vector<3xi1>
+    %18 = "llvm.extractvalue"(%9) <{position = array<i64: 1>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %19 = "llvm.extractvalue"(%8) <{position = array<i64: 1>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %20 = "llvm.select"(%17, %18, %19) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xi1>, vector<3xi32>, vector<3xi32>) -> vector<3xi32>
+    %21 = "llvm.insertvalue"(%16, %20) <{position = array<i64: 1>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
+    %22 = "llvm.extractvalue"(%10) <{position = array<i64: 2>}> : (!llvm.array<4 x vector<3xi1>>) -> vector<3xi1>
+    %23 = "llvm.extractvalue"(%9) <{position = array<i64: 2>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %24 = "llvm.extractvalue"(%8) <{position = array<i64: 2>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %25 = "llvm.select"(%22, %23, %24) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xi1>, vector<3xi32>, vector<3xi32>) -> vector<3xi32>
+    %26 = "llvm.insertvalue"(%21, %25) <{position = array<i64: 2>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
+    %27 = "llvm.extractvalue"(%10) <{position = array<i64: 3>}> : (!llvm.array<4 x vector<3xi1>>) -> vector<3xi1>
+    %28 = "llvm.extractvalue"(%9) <{position = array<i64: 3>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %29 = "llvm.extractvalue"(%8) <{position = array<i64: 3>}> : (!llvm.array<4 x vector<3xi32>>) -> vector<3xi32>
+    %30 = "llvm.select"(%27, %28, %29) <{fastmathFlags = #llvm.fastmath<none>}> : (vector<3xi1>, vector<3xi32>, vector<3xi32>) -> vector<3xi32>
+    %31 = "llvm.insertvalue"(%26, %30) <{position = array<i64: 3>}> : (!llvm.array<4 x vector<3xi32>>, vector<3xi32>) -> !llvm.array<4 x vector<3xi32>>
     "func.return"() : () -> ()
   }) : () -> ()
   "func.func"() <{function_type = (vector<1x2x3xi1>) -> (), sym_name = "index_cast_2d"}> ({
@@ -243,13 +258,6 @@
     %5 = "llvm.extractvalue"(%0) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi1>>>) -> vector<3xi1>
     %6 = "llvm.sext"(%5) : (vector<3xi1>) -> vector<3xi64>
     %7 = "llvm.insertvalue"(%4, %6) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi64>>>, vector<3xi64>) -> !llvm.array<1 x array<2 x vector<3xi64>>>
-    %8 = "llvm.mlir.poison"() : () -> !llvm.array<1 x array<2 x vector<3xi1>>>
-    %9 = "llvm.extractvalue"(%7) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi64>>>) -> vector<3xi64>
-    %10 = "llvm.trunc"(%9) <{overflowFlags = 0 : i32}> : (vector<3xi64>) -> vector<3xi1>
-    %11 = "llvm.insertvalue"(%8, %10) <{position = array<i64: 0, 0>}> : (!llvm.array<1 x array<2 x vector<3xi1>>>, vector<3xi1>) -> !llvm.array<1 x array<2 x vector<3xi1>>>
-    %12 = "llvm.extractvalue"(%7) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi64>>>) -> vector<3xi64>
-    %13 = "llvm.trunc"(%12) <{overflowFlags = 0 : i32}> : (vector<3xi64>) -> vector<3xi1>
-    %14 = "llvm.insertvalue"(%11, %13) <{position = array<i64: 0, 1>}> : (!llvm.array<1 x array<2 x vector<3xi1>>>, vector<3xi1>) -> !llvm.array<1 x array<2 x vector<3xi1>>>
     "func.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()

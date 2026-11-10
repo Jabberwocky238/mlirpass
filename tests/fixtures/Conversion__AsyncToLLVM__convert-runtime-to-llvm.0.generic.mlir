@@ -67,7 +67,7 @@
   "func.func"() <{function_type = () -> (), sym_name = "await_and_resume_token"}> ({
     %66 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
     %67 = "llvm.mlir.zero"() : () -> !llvm.ptr
-    %68 = "llvm.intr.coro.id"(%66, %67, %67, %67) : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %68 = "llvm.intr.coro.id"(%66, %67, %67, %67) : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %69 = "llvm.intr.coro.size"() : () -> i64
     %70 = "llvm.intr.coro.align"() : () -> i64
     %71 = "llvm.add"(%69, %70) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
@@ -77,7 +77,7 @@
     %75 = "llvm.sub"(%74, %70) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
     %76 = "llvm.and"(%73, %75) : (i64, i64) -> i64
     %77 = "llvm.call"(%70, %76) <{CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @aligned_alloc, fastmathFlags = #llvm.fastmath<none>, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 2, 0>}> : (i64, i64) -> !llvm.ptr
-    %78 = "llvm.intr.coro.begin"(%68, %77) : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %78 = "llvm.intr.coro.begin"(%68, %77) : (token, !llvm.ptr) -> !llvm.ptr
     %79 = "func.call"() <{callee = @mlirAsyncRuntimeCreateToken}> : () -> !llvm.ptr
     %80 = "llvm.mlir.addressof"() <{global_name = @__resume}> : () -> !llvm.ptr
     "func.call"(%79, %78, %80) <{callee = @mlirAsyncRuntimeAwaitTokenAndExecute}> : (!llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
@@ -86,7 +86,7 @@
   "func.func"() <{function_type = () -> (), sym_name = "await_and_resume_value"}> ({
     %48 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
     %49 = "llvm.mlir.zero"() : () -> !llvm.ptr
-    %50 = "llvm.intr.coro.id"(%48, %49, %49, %49) : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %50 = "llvm.intr.coro.id"(%48, %49, %49, %49) : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %51 = "llvm.intr.coro.size"() : () -> i64
     %52 = "llvm.intr.coro.align"() : () -> i64
     %53 = "llvm.add"(%51, %52) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
@@ -96,7 +96,7 @@
     %57 = "llvm.sub"(%56, %52) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
     %58 = "llvm.and"(%55, %57) : (i64, i64) -> i64
     %59 = "llvm.call"(%52, %58) <{CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @aligned_alloc, fastmathFlags = #llvm.fastmath<none>, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 2, 0>}> : (i64, i64) -> !llvm.ptr
-    %60 = "llvm.intr.coro.begin"(%50, %59) : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %60 = "llvm.intr.coro.begin"(%50, %59) : (token, !llvm.ptr) -> !llvm.ptr
     %61 = "llvm.mlir.zero"() : () -> !llvm.ptr
     %62 = "llvm.getelementptr"(%61) <{elem_type = f32, noWrapFlags = 0 : i32, rawConstantIndices = array<i32: 1>}> : (!llvm.ptr) -> !llvm.ptr
     %63 = "llvm.ptrtoint"(%62) : (!llvm.ptr) -> i64
@@ -110,7 +110,7 @@
     %32 = "builtin.unrealized_conversion_cast"(%31) : (index) -> i64
     %33 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
     %34 = "llvm.mlir.zero"() : () -> !llvm.ptr
-    %35 = "llvm.intr.coro.id"(%33, %34, %34, %34) : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %35 = "llvm.intr.coro.id"(%33, %34, %34, %34) : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %36 = "llvm.intr.coro.size"() : () -> i64
     %37 = "llvm.intr.coro.align"() : () -> i64
     %38 = "llvm.add"(%36, %37) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
@@ -120,7 +120,7 @@
     %42 = "llvm.sub"(%41, %37) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
     %43 = "llvm.and"(%40, %42) : (i64, i64) -> i64
     %44 = "llvm.call"(%37, %43) <{CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @aligned_alloc, fastmathFlags = #llvm.fastmath<none>, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 2, 0>}> : (i64, i64) -> !llvm.ptr
-    %45 = "llvm.intr.coro.begin"(%35, %44) : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %45 = "llvm.intr.coro.begin"(%35, %44) : (token, !llvm.ptr) -> !llvm.ptr
     %46 = "func.call"(%32) <{callee = @mlirAsyncRuntimeCreateGroup}> : (i64) -> !llvm.ptr
     %47 = "llvm.mlir.addressof"() <{global_name = @__resume}> : () -> !llvm.ptr
     "func.call"(%46, %45, %47) <{callee = @mlirAsyncRuntimeAwaitAllInGroupAndExecute}> : (!llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
@@ -129,7 +129,7 @@
   "func.func"() <{function_type = () -> (), sym_name = "resume"}> ({
     %17 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
     %18 = "llvm.mlir.zero"() : () -> !llvm.ptr
-    %19 = "llvm.intr.coro.id"(%17, %18, %18, %18) : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
+    %19 = "llvm.intr.coro.id"(%17, %18, %18, %18) : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> token
     %20 = "llvm.intr.coro.size"() : () -> i64
     %21 = "llvm.intr.coro.align"() : () -> i64
     %22 = "llvm.add"(%20, %21) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
@@ -139,7 +139,7 @@
     %26 = "llvm.sub"(%25, %21) <{overflowFlags = 0 : i32}> : (i64, i64) -> i64
     %27 = "llvm.and"(%24, %26) : (i64, i64) -> i64
     %28 = "llvm.call"(%21, %27) <{CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>, callee = @aligned_alloc, fastmathFlags = #llvm.fastmath<none>, op_bundle_sizes = array<i32>, operandSegmentSizes = array<i32: 2, 0>}> : (i64, i64) -> !llvm.ptr
-    %29 = "llvm.intr.coro.begin"(%19, %28) : (!llvm.token, !llvm.ptr) -> !llvm.ptr
+    %29 = "llvm.intr.coro.begin"(%19, %28) : (token, !llvm.ptr) -> !llvm.ptr
     %30 = "llvm.mlir.addressof"() <{global_name = @__resume}> : () -> !llvm.ptr
     "func.call"(%29, %30) <{callee = @mlirAsyncRuntimeExecute}> : (!llvm.ptr, !llvm.ptr) -> ()
     "func.return"() : () -> ()

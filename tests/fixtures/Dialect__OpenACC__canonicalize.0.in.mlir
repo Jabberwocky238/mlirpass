@@ -203,16 +203,16 @@
 "builtin.module"() ({
   "func.func"() <{function_type = (i32, i32, i32) -> (), sym_name = "kernel_environment_canonicalization"}> ({
   ^bb0(%arg0: i32, %arg1: i32, %arg2: i32):
-    "acc.kernel_environment"() <{operandSegmentSizes = array<i32: 0, 0, 0>}> ({
+    "acc.kernel_environment"() <{operandSegmentSizes = array<i32: 0, 0, 0, 0>}> ({
     ^bb0:
     }) : () -> ()
-    "acc.kernel_environment"(%arg0, %arg1) <{hasWaitDevnum = [false], operandSegmentSizes = array<i32: 0, 0, 2>, waitOnly = [], waitOperandsDeviceType = [#acc.device_type<none>], waitOperandsSegments = array<i32: 2>}> ({
+    "acc.kernel_environment"(%arg0, %arg1) <{operandSegmentSizes = array<i32: 0, 0, 0, 2>}> ({
     ^bb0:
     }) : (i32, i32) -> ()
-    "acc.kernel_environment"() <{operandSegmentSizes = array<i32: 0, 0, 0>, waitOnly = [#acc.device_type<none>]}> ({
+    "acc.kernel_environment"() <{operandSegmentSizes = array<i32: 0, 0, 0, 0>, waitOnly}> ({
     ^bb0:
     }) : () -> ()
-    "acc.kernel_environment"(%arg2) <{hasWaitDevnum = [false], operandSegmentSizes = array<i32: 0, 0, 1>, waitOnly = [], waitOperandsDeviceType = [#acc.device_type<nvidia>], waitOperandsSegments = array<i32: 1>}> ({
+    "acc.kernel_environment"(%arg2) <{operandSegmentSizes = array<i32: 0, 0, 0, 1>}> ({
     ^bb0:
     }) : (i32) -> ()
     "func.return"() : () -> ()
