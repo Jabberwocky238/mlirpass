@@ -337,6 +337,19 @@ impl<'a> Body<'a> {
         crate::Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int().map(|i| i.signed())
     }
 
+    /// `m_IntRange…` (`constant_int_range_predicate_matcher`): the range of `v` from its
+    /// constant (or splat), or from the bounds `test.with_bounds` states; `None` when unknown
+    /// (other `InferIntRangeInterface` ops are not inferred, which only loses precision).
+    pub fn int_range(&self, v: ValueId) -> Option<IntRange> {
+        let int = |a: &Attribute<'_>| crate::Const::try_from(a).ok().and_then(|c| c.as_int());
+        if let Some(c) = self.constant_of(v).as_ref().and_then(int) {
+            return Some(IntRange { umin: c.unsigned(), umax: c.unsigned(), smin: c.signed(), smax: c.signed() });
+        }
+        let op = self.def_named(v, "test.with_bounds")?;
+        let bound = |n: &str| self[op].get(n).and_then(int);
+        Some(IntRange { umin: bound("umin")?.unsigned(), umax: bound("umax")?.unsigned(), smin: bound("smin")?.signed(), smax: bound("smax")?.signed() })
+    }
+
     /// Each operand's constant value, as fold hooks receive them.
     pub fn operand_constants(&self, op: OpId) -> Vec<Option<Attribute<'a>>> {
         self[op].operands.iter().map(|v| self.constant_of(*v)).collect()
@@ -440,5 +453,41 @@ impl<'a> Body<'a> {
     /// dialect can hold `value` as a `ty`.
     pub fn materialize(&self, of: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
         materialize(of.split_once('.').map_or(of, |(ns, _)| ns), value, ty).or_else(|| self.ctx.interfaces.of(of).and_then(|i| i.materialize(value, ty)))
+    }
+}
+
+/// `ConstantIntRanges`: the unsigned and the signed bounds of an integer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntRange {
+    pub umin: u128,
+    pub umax: u128,
+    pub smin: i128,
+    pub smax: i128,
+}
+
+impl IntRange {
+    /// `m_IntRangeWithoutZeroU`.
+    pub fn without_zero_u(self) -> bool {
+        self.umin > 0
+    }
+
+    /// `m_IntRangeWithoutZeroS`.
+    pub fn without_zero_s(self) -> bool {
+        self.smin > 0 || self.smax < 0
+    }
+
+    /// `m_IntRangeWithoutNegOneS`.
+    pub fn without_neg_one_s(self) -> bool {
+        self.smin > -1 || self.smax < -1
+    }
+
+    /// `getDivUISpeculatability`'s divisor: never zero.
+    pub fn unsigned_divisor(self) -> bool {
+        self.without_zero_u()
+    }
+
+    /// `getDivSISpeculatability`'s divisor: never zero nor minus one.
+    pub fn signed_divisor(self) -> bool {
+        self.without_zero_s() && self.without_neg_one_s()
     }
 }

@@ -66,10 +66,10 @@ impl OpInterfaces for LlvmDialect {
     }
 
     fn speculatability(&self, b: &Body<'_>, op: OpId) -> Option<bool> {
-        let divisor = || b.int_constant(b[op].operands[1]);
+        let divisor = || b.int_range(b[op].operands[1]);
         match &*b[op].name {
-            "llvm.udiv" => divisor().filter(|v| *v != 0).map(|_| false),
-            "llvm.sdiv" => divisor().filter(|v| *v != 0 && *v != -1).map(|_| false),
+            "llvm.udiv" => divisor().filter(|r| r.unsigned_divisor()).map(|_| false),
+            "llvm.sdiv" => divisor().filter(|r| r.signed_divisor()).map(|_| false),
             _ => None,
         }
     }

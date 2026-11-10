@@ -68,7 +68,7 @@ mod xegpu;
 mod xevm;
 
 pub use broadcast::Broadcast;
-pub use canonicalize::{fold, materialize, memref_cast_compatible, memref_cast_foldable, patterns as canonicalization_patterns, Fold, Folded};
+pub use canonicalize::{fold, materialize, memref_cast_compatible, memref_cast_foldable, patterns as canonicalization_patterns, Fold, Folded, IntRange};
 #[cfg(any(all(feature = "dialect.tensor", feature = "dialect.linalg"), feature = "dialect.tosa"))]
 pub(crate) use build::{Named, RegionLocs};
 #[cfg(feature = "dialect.tosa")]

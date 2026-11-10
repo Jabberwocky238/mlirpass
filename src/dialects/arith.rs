@@ -36,10 +36,10 @@ impl OpInterfaces for ArithDialect {
     }
 
     fn speculatability(&self, b: &Body<'_>, op: OpId) -> Option<bool> {
-        let divisor = || b.int_constant(b[op].operands[1]);
+        let divisor = || b.int_range(b[op].operands[1]);
         match &*b[op].name {
-            "arith.divui" | "arith.ceildivui" => divisor().filter(|v| *v != 0).map(|_| false),
-            "arith.divsi" | "arith.ceildivsi" => divisor().filter(|v| *v != 0 && *v != -1).map(|_| false),
+            "arith.divui" | "arith.ceildivui" => divisor().filter(|r| r.unsigned_divisor()).map(|_| false),
+            "arith.divsi" | "arith.ceildivsi" => divisor().filter(|r| r.signed_divisor()).map(|_| false),
             _ => None,
         }
     }
