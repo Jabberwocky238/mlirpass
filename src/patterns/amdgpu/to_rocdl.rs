@@ -12,24 +12,10 @@ type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
 /// `kGfx950`.
 const GFX950: AmdChipset = AmdChipset::new(9, 5, 0);
+/// `kGfx1200`.
+const GFX1200: AmdChipset = AmdChipset::new(12, 0, 0);
 /// `kGfx90a`.
 const GFX90A: AmdChipset = AmdChipset::new(9, 0, 0xa);
-
-/// `amdgpu::sched_barrier_opt_enum` bits.
-const SCHED_BARRIER_OPTS: [(&str, u32); 12] = [
-    ("none", 0),
-    ("non_mem_non_sideffect", 1),
-    ("valu", 2),
-    ("salu", 4),
-    ("mfma_wmma", 8),
-    ("all_vmem", 16),
-    ("vmem_read", 32),
-    ("vmem_write", 64),
-    ("all_ds", 128),
-    ("ds_read", 256),
-    ("ds_write", 512),
-    ("transcendental", 1024),
-];
 
 /// `amdgpu::DPPPerm` with its `DppCtrl` base (`SIDefines.h`); the row ops add their argument.
 const DPP_PERMS: [(&str, u32); 12] = [
@@ -85,17 +71,11 @@ impl AmdgpuToRocdl {
         Attribute::of_int(v.into(), Type::int(32))
     }
 
-    /// `SchedBarrierOpLowering`: the option bits as the mask.
+    /// `SchedBarrierOpLowering`: the options are the mask.
     #[convert("amdgpu.sched_barrier")]
     fn sched_barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: AmdgpuRocdlOptions) -> bool {
-        let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("opts") else { return false };
-        let Some(body) = ext.body.as_deref().and_then(|b| b.strip_prefix('<')?.strip_suffix('>')) else { return false };
-        let mut mask = 0;
-        for name in body.split('|').map(str::trim) {
-            let Some((_, bit)) = SCHED_BARRIER_OPTS.iter().find(|(n, _)| *n == name) else { return false };
-            mask |= bit;
-        }
-        cr.replace_new(op, OpData::build("rocdl.sched.barrier").with("mask", Self::i32(mask.into())), &[]);
+        let Some(mask) = cr.rw.body[op].get("opts").cloned() else { return false };
+        cr.replace_new(op, OpData::build("rocdl.sched.barrier").with("mask", mask), &[]);
         true
     }
 
@@ -254,6 +234,25 @@ impl AmdgpuToRocdl {
         }).collect();
         let ty = cr.rw.body[src].ty.clone();
         let r = cr.compose(&swizzled, ty);
+        cr.replace(op, alloc::vec![alloc::vec![r]]);
+        true
+    }
+
+    /// `AMDGPUPermlaneVarLowering` (gfx12+): each dword through `permlane16.var` /
+    /// `permlanex16.var` (`cross`).
+    #[convert("amdgpu.permlane_var")]
+    fn permlane_var(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
+        if o.chipset < GFX1200 {
+            return false;
+        }
+        let (src, selector) = (operands[0][0], operands[1][0]);
+        let name = if Self::flag(cr, op, "cross") { "rocdl.permlanex16.var" } else { "rocdl.permlane16.var" };
+        let (fi, bound) = (Self::flag(cr, op, "fetch_inactive"), Self::flag(cr, op, "bound_ctrl"));
+        cr.rw.set_before(op);
+        let parts = cr.decompose(src, Type::int(32));
+        let permuted: Vec<ValueId> = parts.into_iter().map(|v| cr.build(OpData::build(name).operands(&[v, v, selector]).with("fi", Attribute::Bool(fi)).with("boundControl", Attribute::Bool(bound)), Type::int(32))).collect();
+        let ty = cr.rw.body[src].ty.clone();
+        let r = cr.compose(&permuted, ty);
         cr.replace(op, alloc::vec![alloc::vec![r]]);
         true
     }

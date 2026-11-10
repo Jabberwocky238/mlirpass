@@ -260,9 +260,9 @@ impl AmdgpuBufferToRocdl {
         args.push(Self::arith(cr, "llvm.mul", voffset, width));
         let sgpr = sgpr.unwrap_or_else(|| Self::constant(cr, 0, 32));
         args.push(Self::arith(cr, "llvm.mul", sgpr, width));
-        args.push(Self::constant(cr, 0, 32));
         let results = if cr.rw.body[op].results.is_empty() { vec![] } else { vec![buf.clone()] };
-        let lowered = cr.rw.create(OpData::build(intrinsic).operands(&args), &results);
+        // (aux 0: GLC / SLC / DLC off, not swizzled)
+        let lowered = cr.rw.create(OpData::build(intrinsic).operands(&args).with("aux", Attribute::of_int(0, Type::int(32))), &results);
         match cr.rw.body[lowered].results.first().copied() {
             Some(mut r) => {
                 if buf != llvm {
