@@ -18,7 +18,7 @@ exclude = ["fuzz"]
 
 [dependencies]
 mlirpass-macros = { path = "macros", version = "0.5.0" }
-mlirformat = { git = "https://github.com/Jabberwocky238/mlirformat.git", rev = "0d314eebb3ac030f7f14550c8cb361678700aa4d", version = "0.7.0", default-features = false }
+mlirformat = { git = "https://github.com/Jabberwocky238/mlirformat.git", rev = "12a746782be95d68995d84e9de36d6d79678f142", version = "0.7.0", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }
 # f64 trunc / ldexp / rint without std (all exact).
@@ -38,7 +38,7 @@ cli = ["std"]
 # One feature per dialect: its op interfaces, folds, canonicalization patterns, its own
 # transforms and its lowerings to other dialects (`dialect.scf`). A lowering into a backend
 # also needs that `target.*`.
-all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bufferization", "dialect.cf", "dialect.complex", "dialect.emitc", "dialect.func", "dialect.gpu", "dialect.index", "dialect.linalg", "dialect.llvm", "dialect.math", "dialect.memref", "dialect.ml_program", "dialect.nvgpu", "dialect.nvvm", "dialect.ptr", "dialect.quant", "dialect.scf", "dialect.shape", "dialect.spirv", "dialect.tensor", "dialect.test", "dialect.tosa", "dialect.ub", "dialect.vector", "dialect.x86", "dialect.xegpu", "dialect.xevm"]
+all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bufferization", "dialect.cf", "dialect.complex", "dialect.emitc", "dialect.func", "dialect.gpu", "dialect.index", "dialect.linalg", "dialect.llvm", "dialect.math", "dialect.memref", "dialect.ml_program", "dialect.mpi", "dialect.nvgpu", "dialect.nvvm", "dialect.ptr", "dialect.quant", "dialect.scf", "dialect.shape", "dialect.sparse_tensor", "dialect.spirv", "dialect.tensor", "dialect.test", "dialect.tosa", "dialect.ub", "dialect.vector", "dialect.x86", "dialect.xegpu", "dialect.xevm"]
 "dialect.affine" = ["dialect.arith"]
 "dialect.amdgpu" = ["dialect.memref"]
 "dialect.arith" = []
@@ -54,12 +54,14 @@ all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bu
 "dialect.math" = ["dialect.arith", "dialect.vector"]
 "dialect.memref" = ["dialect.arith", "dialect.affine"]
 "dialect.ml_program" = []
+"dialect.mpi" = ["dialect.arith"]
 "dialect.nvgpu" = ["dialect.nvvm", "dialect.memref", "dialect.scf", "dialect.arith"]
 "dialect.nvvm" = []
 "dialect.ptr" = []
 "dialect.quant" = []
 "dialect.scf" = []
 "dialect.shape" = ["dialect.arith"]
+"dialect.sparse_tensor" = []
 "dialect.spirv" = []
 "dialect.tensor" = ["dialect.arith", "dialect.affine"]
 "dialect.test" = []
