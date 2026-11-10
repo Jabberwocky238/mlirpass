@@ -150,47 +150,15 @@ impl<'a> Rewriter<'_, 'a> {
         let (mut fs, mut fst) = (Vec::new(), Vec::new());
         for (g, group) in groups.iter().enumerate() {
             if expand {
-                // `getExpandedSizes`.
-                let mut sizes = vec![Ofr::C(0); group.len()];
-                let mut product = 1i64;
-                let mut dyn_idx = None;
-                for (i, d) in group.iter().enumerate() {
-                    if res_dims[*d] == Dim::DYNAMIC {
-                        dyn_idx = Some(i);
-                        continue;
-                    }
-                    product *= res_dims[*d];
-                    sizes[i] = Ofr::C(res_dims[*d]);
-                }
-                if let Some(i) = dyn_idx {
-                    sizes[i] = self.apply_expr(AffineExpr::Sym(0).floor_div(AffineExpr::Const(product)), &[orig_sizes[g]]);
-                }
-                // `getExpandedStrides`.
-                let mut ex_strides = vec![0i64; group.len()];
-                let mut current = 1i64;
-                let mut dyn_idx = None;
-                for i in (0..group.len()).rev() {
-                    ex_strides[i] = current;
-                    if res_dims[group[i]] == Dim::DYNAMIC {
-                        dyn_idx = Some(i);
-                        continue;
-                    }
-                    current *= res_dims[group[i]];
-                }
-                let orig_stride = if strides[g] == Dim::DYNAMIC { orig_strides[g] } else { Ofr::C(strides[g]) };
+                // `getExpandedSizes`: the output shape's.
+                let shape = Ofr::mixed(&self.body.dense_i64(r, "static_output_shape"), &self.body[r].operands[1..]);
+                let sizes: Vec<Ofr> = group.iter().map(|d| shape[*d]).collect();
+                // `getExpandedStrides`: the original stride times the inner output sizes.
+                let mut current = if strides[g] == Dim::DYNAMIC { orig_strides[g] } else { Ofr::C(strides[g]) };
                 let mut out = vec![Ofr::C(0); group.len()];
-                let mut done = 0;
-                if let Some(di) = dyn_idx {
-                    let product = current;
-                    while done < di {
-                        let e = AffineExpr::Sym(0).mul_const(ex_strides[done]).floor_div(AffineExpr::Const(product)).mul(AffineExpr::Sym(1));
-                        out[done] = self.apply_expr(e, &[orig_sizes[g], orig_stride]);
-                        done += 1;
-                    }
-                }
-                while done < group.len() {
-                    out[done] = self.apply_expr(AffineExpr::Sym(0).mul_const(ex_strides[done]), &[orig_stride]);
-                    done += 1;
+                for i in (0..group.len()).rev() {
+                    out[i] = current;
+                    current = self.apply_expr(AffineExpr::Sym(0).mul(AffineExpr::Sym(1)), &[current, shape[group[i]]]);
                 }
                 fs.extend(sizes);
                 fst.extend(out);

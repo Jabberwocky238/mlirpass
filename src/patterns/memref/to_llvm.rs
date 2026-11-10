@@ -145,18 +145,25 @@ impl MemrefToLlvm {
             sizes.push(if d == Dim::DYNAMIC { *dynamic.next()? } else { Self::const_index(cr, opts, d) });
         }
         let mut stride = 1i64;
+        // A static stride past `i64` is poison, and so is every stride outside it.
+        let mut overflowed = false;
         let mut running = Self::const_index(cr, opts, 1);
         let mut strides = vec![running; shape.len()];
         for i in (0..shape.len()).rev() {
-            strides[i] = running;
+            strides[i] = if overflowed { cr.build(OpData::build("llvm.mlir.poison"), opts.index()) } else { running };
             let use_size = stride == 1;
             if shape[i] == Dim::DYNAMIC {
                 stride = Dim::DYNAMIC;
             }
             if stride != Dim::DYNAMIC {
-                stride *= shape[i];
+                match stride.checked_mul(shape[i]) {
+                    Some(st) => stride = st,
+                    None => overflowed = true,
+                }
             }
-            running = if use_size {
+            running = if overflowed {
+                cr.build(OpData::build("llvm.mlir.poison"), opts.index())
+            } else if use_size {
                 sizes[i]
             } else if stride == Dim::DYNAMIC {
                 Self::arith(cr, "llvm.mul", running, sizes[i])
@@ -205,8 +212,21 @@ impl MemrefToLlvm {
         Some(Self::gep(cr, ty, elem, ptr, &[Gep::V(off)], 0))
     }
 
-    /// `kNoWrapFlags`: `inbounds | nuw`.
-    pub const NO_WRAP: i64 = 7;
+    /// `GEPNoWrapFlags::inbounds` (`inbounds_flag | nusw`).
+    pub const INBOUNDS: i64 = 3;
+    /// `GEPNoWrapFlags::nuw`.
+    pub const NUW: i64 = 4;
+    /// `inbounds | nuw`.
+    pub const NO_WRAP: i64 = Self::INBOUNDS | Self::NUW;
+
+    /// `getLoadStoreNoWrapFlags`: `inbounds`, and `nuw` when every stride is static and
+    /// non-negative.
+    fn load_store_flags(s: &Shaped<'_>) -> i64 {
+        match s.strides_and_offset() {
+            Some((strides, _)) if strides.iter().all(|st| *st != Dim::DYNAMIC && *st >= 0) => Self::NO_WRAP,
+            _ => Self::INBOUNDS,
+        }
+    }
 
     /// `getStridedElementPtr`.
     pub fn strided_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId, indices: &[ValueId], flags: i64) -> Option<ValueId> {
@@ -588,9 +608,19 @@ impl MemrefToLlvm {
         if !inside {
             return false;
         }
+        // `llvm.cmpxchg` takes integers or pointers: a float is swapped as the integer of its
+        // width, bitcast at the boundaries.
+        let swap_ty = match &value_ty {
+            Type::Float(_) => match value_ty.bit_width() {
+                Some(w) => Some(Type::int(w)),
+                None => return false,
+            },
+            _ => None,
+        };
+        let cmp_ty = swap_ty.clone().unwrap_or_else(|| value_ty.clone());
         let init_block = cr.rw.body[op].parent.expect("placed");
         let loop_block = cr.rw.split_block(init_block, op);
-        let arg = cr.rw.body.add_arg(loop_block, value_ty.clone());
+        let arg = cr.rw.body.add_arg(loop_block, cmp_ty.clone());
         cr.rw.body[arg].loc = loc.clone();
         let next = cr.rw.body.next_op(op);
         let end = match next {
@@ -601,23 +631,31 @@ impl MemrefToLlvm {
         let indices: Vec<ValueId> = operands[1..].iter().flatten().copied().collect();
         let Some(ptr) = Self::strided_ptr(cr, opts, &s, operands[0][0], &indices, 0) else { return false };
         let Some(elem) = Self::elem(cr, &s.elem) else { return false };
-        let init = Self::load(cr, elem, ptr);
+        let mut init = Self::load(cr, elem, ptr);
+        if swap_ty.is_some() {
+            init = Self::cast(cr, "llvm.bitcast", init, cmp_ty.clone());
+        }
         cr.rw.create(OpData { loc: loc.clone(), ..OpData::build("llvm.br").operands(&[init]).successors(&[loop_block]) }, &[]);
         cr.rw.set_start(loop_block);
+        let current = if swap_ty.is_some() { Self::cast(cr, "llvm.bitcast", arg, value_ty.clone()) } else { arg };
         let mut map = crate::Mapping::default();
-        map.map(cr.rw.body[entry].args[0], arg);
+        map.map(cr.rw.body[entry].args[0], current);
         let ops = cr.rw.body.block_ops(entry);
         let Some((&term, inner)) = ops.split_last() else { return false };
         for &o in inner {
             cr.rw.clone(o, &mut map);
         }
-        let result = map.get(cr.rw.body[term].operands[0]);
-        let pair = LlvmType::literal(vec![value_ty.clone(), Type::int(1)]);
+        let mut result = map.get(cr.rw.body[term].operands[0]);
+        if swap_ty.is_some() {
+            result = Self::cast(cr, "llvm.bitcast", result, cmp_ty.clone());
+        }
+        let pair = LlvmType::literal(vec![cmp_ty, Type::int(1)]);
         let cmpxchg = cr.build(OpData::build("llvm.cmpxchg").operands(&[ptr, arg, result]).with("success_ordering", Attribute::i64(6)).with("failure_ordering", Attribute::i64(2)), pair);
         let new_loaded = cr.extract(cmpxchg, &[0]);
         let ok = cr.extract(cmpxchg, &[1]);
         cr.rw.create(OpData { loc, ..OpData::build("llvm.cond_br").operands(&[ok, new_loaded]).successors(&[end, loop_block]).segments(&[1, 0, 1]) }, &[]);
         cr.rw.set_start(end);
+        let new_loaded = if swap_ty.is_some() { Self::cast(cr, "llvm.bitcast", new_loaded, value_ty) } else { new_loaded };
         cr.replace(op, vec![vec![new_loaded]]);
         true
     }
@@ -701,7 +739,7 @@ impl MemrefToLlvm {
     fn load_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let Some(s) = Self::operand_memref(cr, op, 0) else { return false };
         let indices: Vec<ValueId> = operands[1..].iter().flatten().copied().collect();
-        let Some(ptr) = Self::strided_ptr(cr, o.llvm, &s, operands[0][0], &indices, Self::NO_WRAP) else { return false };
+        let Some(ptr) = Self::strided_ptr(cr, o.llvm, &s, operands[0][0], &indices, Self::load_store_flags(&s)) else { return false };
         let Some(elem) = Self::elem(cr, &s.elem) else { return false };
         let data = Self::access(cr, op, OpData::build("llvm.load").operands(&[ptr]));
         cr.replace_new(op, data, &[elem]);
@@ -712,19 +750,21 @@ impl MemrefToLlvm {
     fn store_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let Some(s) = Self::operand_memref(cr, op, 1) else { return false };
         let indices: Vec<ValueId> = operands[2..].iter().flatten().copied().collect();
-        let Some(ptr) = Self::strided_ptr(cr, o.llvm, &s, operands[1][0], &indices, Self::NO_WRAP) else { return false };
+        let Some(ptr) = Self::strided_ptr(cr, o.llvm, &s, operands[1][0], &indices, Self::load_store_flags(&s)) else { return false };
         let data = Self::access(cr, op, OpData::build("llvm.store").operands(&[operands[0][0], ptr]));
         cr.replace_new(op, data, &[]);
         true
     }
 
-    /// The `alignment` and `nontemporal` of a memref access, for its llvm counterpart.
+    /// The `alignment`, `nontemporal` and `invariant` (loads) of a memref access, for its llvm counterpart.
     fn access<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, mut d: OpData<'a>) -> OpData<'a> {
         if let Some(a) = cr.rw.body[op].get("alignment").and_then(Self::int).filter(|a| *a != 0) {
             d.set("alignment", Attribute::i64(a));
         }
-        if matches!(cr.rw.body[op].get("nontemporal"), Some(Attribute::Bool(true))) {
-            d.set("nontemporal", Attribute::Unit);
+        for flag in ["nontemporal", "invariant"] {
+            if matches!(cr.rw.body[op].get(flag), Some(Attribute::Bool(true))) {
+                d.set(flag, Attribute::Unit);
+            }
         }
         d
     }

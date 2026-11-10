@@ -303,7 +303,7 @@ impl ParallelToLaunch {
         let loc = cr.rw.body[par].loc.clone();
         cr.rw.set_before(par);
         let one = Self::index(cr, 1);
-        let mut data = OpData::build("gpu.launch").operands(&[one; 6]).with("operandSegmentSizes", Attribute::dense_i32(&[0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0])).with("workgroup_attributions", Attribute::integer(0, Type::int(64)));
+        let mut data = OpData::build("gpu.launch").operands(&[one; 6]).with("operandSegmentSizes", Attribute::dense_i32(&[0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0]));
         data.loc = loc.clone();
         let launch = cr.rw.create_with(data, &[], |b, o| {
             let r = b.add_region(o);

@@ -78,6 +78,10 @@ impl ConvertAffineForToGpu {
         for i in 0..n {
             let segs = rw.body.segments(cur, "operandSegmentSizes").unwrap_or_default();
             let ops = rw.body[cur].operands.clone();
+            // ("affine loop with iter_args cannot be converted to GPU kernel")
+            if ops.len() > segs[0] + segs[1] {
+                return None;
+            }
             let (lbo, ubo) = (&ops[..segs[0]], &ops[segs[0]..segs[0] + segs[1]]);
             let (lbm, ubm) = (rw.body.affine_map(cur, "lowerBoundMap")?, rw.body.affine_map(cur, "upperBoundMap")?);
             let lb = rw.min_max(&lbm, lbo, true)?;
@@ -101,7 +105,7 @@ impl ConvertAffineForToGpu {
         let one = (blocks < 3 || threads < 3).then(|| rw.index_constant(1));
         let size = |k: usize, have: usize, off: usize| if k < have { Some(dims[off + k]) } else { one };
         let sizes: Vec<ValueId> = (0..3).map(|k| size(k, blocks, 0)).chain((0..3).map(|k| size(k, threads, blocks))).collect::<Option<_>>()?;
-        let mut data = OpData::build("gpu.launch").operands(&sizes).with("operandSegmentSizes", Attribute::dense_i32(&[0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0])).with("workgroup_attributions", Attribute::integer(0, Type::int(64)));
+        let mut data = OpData::build("gpu.launch").operands(&sizes).with("operandSegmentSizes", Attribute::dense_i32(&[0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0]));
         data.loc = loc.clone();
         let launch = rw.create_with(data, &[], |b, o| {
             let r = b.add_region(o);
