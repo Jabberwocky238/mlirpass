@@ -85,13 +85,16 @@ impl<'a> Rdv<'_, '_, 'a> {
         let entry = b[region].blocks[0];
         let args = b[entry].args.clone();
         let dead_args: Vec<bool> = self.lives(&args.iter().map(|v| Some(*v)).collect::<Vec<_>>()).iter().map(|l| !l).collect();
-        self.collect(&args, &dead_args);
-        let b = self.body();
         let name = b.sym_name(f).unwrap_or_default();
         let calls: Vec<OpId> = match self.users {
             Some(users) => users.get(name).cloned().unwrap_or_default(),
             None => b.ops_in(top).into_iter().filter(|o| b.symbol_uses_of(*o).iter().any(|p| p.last().is_some_and(|s| Body::symbol_eq(s, name)))).collect(),
         };
+        // A user that is not a call (`spirv.EntryPoint`): what it expects is unknown.
+        if !calls.iter().all(|c| self.body().has(*c, Trait::CallOpInterface)) {
+            return;
+        }
+        self.collect(&args, &dead_args);
         for c in &calls {
             let n = self.body()[*c].operands.len();
             self.cl.operands.push((*c, vec![false; n], Some(f), false));
@@ -200,7 +203,7 @@ impl<'a> Rdv<'_, '_, 'a> {
             self.region_branch(op);
         } else if b.forwards_to_successors(op) {
             self.branch(op);
-        } else if b.might_have(op, Trait::IsTerminator) || b.has(op, Trait::CallOpInterface) {
+        } else if b.has(op, Trait::IsTerminator) || b.has(op, Trait::CallOpInterface) {
         } else {
             self.simple(op);
         }
@@ -455,6 +458,18 @@ impl Cleanup {
 
     /// `cleanUpDeadVals`.
     fn apply(&self, body: &mut Body<'_>, erased_args: &[(OpId, Vec<bool>)]) {
+        // The poisons made here: those left unused at the end go again.
+        let mut poisons = Vec::new();
+        // Operands to poison first: they need the original values' types.
+        for (op, dead, _, poison) in &self.operands {
+            if !*poison {
+                continue;
+            }
+            for i in (0..dead.len()).filter(|i| dead[*i]) {
+                let r = Self::poison(body, body[*op].operands[i], *op, &mut poisons);
+                body.set_operand(*op, i, r);
+            }
+        }
         for (b, dead) in &self.blocks {
             if body[*b].args.len() != dead.len() {
                 continue;
@@ -477,8 +492,8 @@ impl Cleanup {
         for (f, args, rets) in &self.functions {
             body.erase_signature(*f, args, rets);
         }
-        for (op, dead, callee, poison) in &self.operands {
-            let (op, mut dead, callee, poison) = (*op, dead.clone(), *callee, *poison);
+        for (op, dead, callee, _) in self.operands.iter().filter(|o| !o.3) {
+            let (op, mut dead, callee) = (*op, dead.clone(), *callee);
             let mut handled = false;
             if let Some(c) = callee
                 && body.has(op, Trait::CallOpInterface)
@@ -497,18 +512,7 @@ impl Cleanup {
                 body.erase_flagged_operands(op, &flags);
                 handled = true;
             }
-            if handled || !dead.contains(&true) {
-                continue;
-            }
-            if poison {
-                for i in (0..dead.len()).filter(|i| dead[*i]) {
-                    let ty = body[body[op].operands[i]].ty.clone();
-                    let p = body.create(OpData::build("ub.poison").with("value", Attribute::Extended { ext: mlirformat::Extended { name: "ub.poison".into(), body: None, params: Vec::new() }, ty: None }), &[ty]);
-                    body.insert_before(p, op);
-                    let r = body[p].results[0];
-                    body.set_operand(op, i, r);
-                }
-            } else {
+            if !handled && dead.contains(&true) {
                 body.erase_flagged_operands(op, &dead);
             }
         }
@@ -519,15 +523,35 @@ impl Cleanup {
             if body[op].parent.is_none() {
                 continue;
             }
-            if body.might_have(op, Trait::IsTerminator) {
+            if body.has(op, Trait::IsTerminator) {
                 let u = body.create(OpData::build("ub.unreachable"), &[]);
                 body.insert_before(u, op);
             }
+            // Results still used get a poison: the users stay valid until cleaned up.
             for r in body[op].results.clone() {
-                body.drop_all_uses(r);
+                if !body[r].uses.is_empty() {
+                    let p = Self::poison(body, r, op, &mut poisons);
+                    body.replace_all_uses(r, p);
+                }
             }
             body.erase(op);
         }
+        for p in poisons {
+            if body[p].parent.is_some() && body[body[p].results[0]].uses.is_empty() {
+                body.erase(p);
+            }
+        }
+    }
+
+    /// `createPoisonedValue`: a `ub.poison` of `v`'s type before `at`, kept in `made`.
+    fn poison(body: &mut Body<'_>, v: ValueId, at: OpId, made: &mut Vec<OpId>) -> ValueId {
+        let ty = body[v].ty.clone();
+        let loc = body.value_loc(v);
+        let poison = Attribute::Extended { ext: mlirformat::Extended { name: "ub.poison".into(), body: None, params: Vec::new() }, ty: None };
+        let p = body.create(OpData { loc, ..OpData::build("ub.poison").with("value", poison) }, &[ty]);
+        body.insert_before(p, at);
+        made.push(p);
+        body[p].results[0]
     }
 }
 

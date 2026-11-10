@@ -4,10 +4,81 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Range;
 
-use crate::{BlockId, Body, BranchLayout, DialectInliner, InsertPoint, OpData, OpId, OpInterfaces, Operand, Point, Succ, ValueId};
+use mlirformat::Attribute;
+
+use crate::{BlockId, Body, EffectInstance, EffectKind, Resource, BranchLayout, DialectInliner, InsertPoint, OpData, OpId, OpInterfaces, Operand, Point, Succ, ValueId};
 
 /// The `test` dialect.
 pub struct TestDialect;
+
+/// The keys of one `test.side_effect_op` effect dictionary.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EffectKey {
+    Effect,
+    Resource(Resource),
+    OnResult,
+    OnReference,
+}
+
+impl EffectKey {
+    const TABLE: &[(&str, EffectKey)] = &[
+        ("effect", EffectKey::Effect),
+        ("test_resource", EffectKey::Resource(Resource::Test)),
+        ("test_nonaddressable_resource", EffectKey::Resource(Resource::TestNonAddressable)),
+        ("test_nonaddressable_resource_a", EffectKey::Resource(Resource::TestNonAddressableA)),
+        ("test_nonaddressable_resource_b", EffectKey::Resource(Resource::TestNonAddressableB)),
+        ("on_result", EffectKey::OnResult),
+        ("on_reference", EffectKey::OnReference),
+    ];
+    const KINDS: &[(&str, EffectKind)] = &[
+        ("allocate", EffectKind::Allocate),
+        ("free", EffectKind::Free),
+        ("read", EffectKind::Read),
+        ("write", EffectKind::Write),
+    ];
+}
+
+/// One entry of `test.side_effect_op`'s `effects`, read once.
+#[derive(Default)]
+struct SideEffectEntry {
+    kind: Option<EffectKind>,
+    resource: Option<Resource>,
+    on_result: bool,
+}
+
+impl From<&Attribute<'_>> for SideEffectEntry {
+    fn from(a: &Attribute<'_>) -> Self {
+        let mut out = SideEffectEntry::default();
+        let Attribute::Dict(d) = a else { return out };
+        for na in d {
+            let Some((_, key)) = EffectKey::TABLE.iter().find(|(n, _)| *n == &*na.name) else { continue };
+            match key {
+                EffectKey::Effect => {
+                    if let Some(Attribute::Str { lit, .. }) = &na.value {
+                        out.kind = EffectKey::KINDS.iter().find(|(n, _)| *n == &**lit).map(|(_, k)| *k);
+                    }
+                }
+                // The first resource key in `getEffects`' order wins.
+                EffectKey::Resource(r) => {
+                    let rank = |r: Resource| EffectKey::TABLE.iter().position(|(_, k)| *k == EffectKey::Resource(r));
+                    if out.resource.is_none_or(|o| rank(*r) < rank(o)) {
+                        out.resource = Some(*r);
+                    }
+                }
+                EffectKey::OnResult => out.on_result = true,
+                EffectKey::OnReference => {}
+            }
+        }
+        out
+    }
+}
+
+impl SideEffectEntry {
+    fn instance(&self, b: &Body<'_>, op: OpId) -> Option<EffectInstance> {
+        let value = if self.on_result { b[op].results.first().copied() } else { None };
+        Some(EffectInstance { kind: self.kind?, value, resource: self.resource.unwrap_or(Resource::Default) })
+    }
+}
 
 impl OpInterfaces for TestDialect {
     fn namespace(&self) -> &str {
@@ -16,6 +87,15 @@ impl OpInterfaces for TestDialect {
 
     fn inliner(&self) -> Option<&dyn DialectInliner> {
         Some(self)
+    }
+
+    /// `SideEffectOp::getEffects`: one effect per entry of the `effects` array.
+    fn effects(&self, b: &Body<'_>, op: OpId) -> Option<Vec<EffectInstance>> {
+        if !matches!(&*b[op].name, "test.side_effect_op" | "test.side_effect_with_region_op") {
+            return None;
+        }
+        let Some(Attribute::Array(entries)) = b[op].get("effects") else { return Some(Vec::new()) };
+        Some(entries.iter().filter_map(|e| SideEffectEntry::from(e).instance(b, op)).collect())
     }
 
     fn speculatability(&self, b: &Body<'_>, op: OpId) -> Option<bool> {

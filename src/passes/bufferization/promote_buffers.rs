@@ -148,7 +148,7 @@ impl Run for PromoteBuffersToStack {
         let mut allocs = Vec::new();
         for o in body.ops_in(op) {
             let Some(es) = body.effects_of(o) else { continue };
-            let heap: Vec<ValueId> = es.iter().filter(|e| e.kind == EffectKind::Allocate && e.resource != "AutomaticAllocationScopeResource").filter_map(|e| e.value).filter(|v| body[o].results.contains(v)).collect();
+            let heap: Vec<ValueId> = es.iter().filter(|e| e.kind == EffectKind::Allocate && e.resource != crate::Resource::AutomaticAllocationScope).filter_map(|e| e.value).filter(|v| body[o].results.contains(v)).collect();
             let [v] = heap[..] else { continue };
             if let Some(dealloc) = body.find_dealloc(v) {
                 allocs.push((v, dealloc));

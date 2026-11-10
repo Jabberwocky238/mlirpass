@@ -356,17 +356,86 @@ impl Body<'_> {
 // (`DeclareOpInterfaceMethods<MemoryEffectOpInterface>`) answer through their dialect's
 // [`OpInterfaces`](crate::OpInterfaces).
 
+/// `SideEffects::Resource`: what an effect touches. They form a tree by [`Resource::parent`]
+/// (rooted at `Default`); two effects can only conflict when neither resource is disjoint
+/// from the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Resource {
+    Default,
+    AutomaticAllocationScope,
+    /// The test dialect's `TestResource`, under `Default`.
+    Test,
+    /// `TestNonAddressableResource`: runtime state no pointer reaches.
+    TestNonAddressable,
+    /// `TestNonAddressableSubResourceA` / `B`: the disjoint parents of `A` / `B`.
+    TestNonAddressableSubA,
+    TestNonAddressableSubB,
+    TestNonAddressableA,
+    TestNonAddressableB,
+}
+
+impl Resource {
+    /// The C++ names ODS writes. An unknown one is taken as `Default`: it conflicts with all.
+    const TABLE: &[(&str, Resource)] = &[
+        ("DefaultResource", Resource::Default),
+        ("AutomaticAllocationScopeResource", Resource::AutomaticAllocationScope),
+        ("TestResource", Resource::Test),
+    ];
+
+    /// `getParent`: every resource not saying otherwise sits under `Default`.
+    pub fn parent(self) -> Option<Self> {
+        match self {
+            Resource::Default => None,
+            Resource::TestNonAddressableA => Some(Resource::TestNonAddressableSubA),
+            Resource::TestNonAddressableB => Some(Resource::TestNonAddressableSubB),
+            _ => Some(Resource::Default),
+        }
+    }
+
+    /// `isAddressable`: whether pointer-based memory can alias it.
+    pub fn addressable(self) -> bool {
+        !matches!(
+            self,
+            Resource::TestNonAddressable | Resource::TestNonAddressableSubA | Resource::TestNonAddressableSubB | Resource::TestNonAddressableA | Resource::TestNonAddressableB
+        )
+    }
+
+    /// `isSubresourceOf`: `self` is `other` or below it.
+    pub fn under(self, other: Self) -> bool {
+        core::iter::successors(Some(self), |r| r.parent()).any(|r| r == other)
+    }
+
+    /// `isDisjointFrom`: neither is an ancestor of the other.
+    pub fn disjoint(self, other: Self) -> bool {
+        !self.under(other) && !other.under(self)
+    }
+}
+
+impl From<&str> for Resource {
+    fn from(name: &str) -> Self {
+        Self::TABLE.iter().find(|(n, _)| *n == name).map_or(Resource::Default, |(_, r)| *r)
+    }
+}
+
 /// One effect, on a value when it names one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EffectInstance {
     pub kind: EffectKind,
     pub value: Option<ValueId>,
-    pub resource: &'static str,
+    pub resource: Resource,
 }
 
 impl EffectInstance {
     pub const fn on(kind: EffectKind, value: Option<ValueId>) -> Self {
-        Self { kind, value, resource: "DefaultResource" }
+        Self { kind, value, resource: Resource::Default }
+    }
+
+    /// Whether this write can touch what `read` reads, as CSE's
+    /// `hasOtherSideEffectingOpInBetween`.
+    pub fn conflicts(&self, read: &EffectInstance) -> bool {
+        !self.resource.disjoint(read.resource)
+            && !(read.value.is_some() && !self.resource.addressable())
+            && !(self.value.is_some() && !read.resource.addressable())
     }
 }
 
@@ -433,7 +502,7 @@ impl Body<'_> {
                             EffectOn::Operand(i) => self.operand_group(op, i as usize).iter().map(|v| Some(*v)).collect(),
                             EffectOn::Result(i) => vec![self[op].results.get(i as usize).copied()],
                         };
-                        values.into_iter().map(|value| EffectInstance { kind: e.kind, value, resource: e.resource })
+                        values.into_iter().map(|value| EffectInstance { kind: e.kind, value, resource: e.resource.into() })
                     })
                     .collect(),
             ),

@@ -44,11 +44,13 @@ struct Driver {
 }
 
 impl Driver {
-    /// No op between `from` and `to` (same block) might write.
+    /// Some op between `from` and `to` (same block) might write what `from` reads: a write on
+    /// a resource disjoint from all of them, or pointer-based against non-addressable, cannot.
     fn write_between(&self, body: &Body<'_>, from: OpId, to: OpId) -> bool {
+        let reads: Vec<_> = body.effects_of(from).unwrap_or_default().into_iter().filter(|e| e.kind == EffectKind::Read).collect();
         let mut at = body.next_op(from);
         while let Some(o) = at.filter(|o| *o != to) {
-            if body.effects_recursively(o).is_none_or(|e| e.iter().any(|x| x.kind == EffectKind::Write)) {
+            if body.effects_recursively(o).is_none_or(|e| e.iter().any(|w| w.kind == EffectKind::Write && reads.iter().any(|r| w.conflicts(r)))) {
                 return true;
             }
             at = body.next_op(o);
