@@ -276,10 +276,12 @@ impl<'x, 'a> Folder<'x, 'a> {
     }
 
     /// `getBoolAttribute`.
-    fn bool_attr(ty: &Type<'a>, v: bool) -> Attribute<'a> {
+    /// `getBoolAttribute`: none for a shape that is not static (no dense attribute of it).
+    fn bool_attr(ty: &Type<'a>, v: bool) -> Option<Attribute<'a>> {
         match ty {
-            Type::Shaped(_) => Const::splat(Scalar::Int(ApInt::new(1, i128::from(v))), ty.clone()).into(),
-            _ => Attribute::Bool(v),
+            Type::Shaped(s) if s.shape.as_ref().is_none_or(|d| d.contains(&mlirformat::Dim::Dynamic)) => None,
+            Type::Shaped(_) => Some(Const::splat(Scalar::Int(ApInt::new(1, i128::from(v))), ty.clone()).into()),
+            _ => Some(Attribute::Bool(v)),
         }
     }
 
@@ -819,7 +821,7 @@ impl<'x, 'a> Folder<'x, 'a> {
         let Some(pred) = pred_of(self.prop("predicate")) else { return Fold::Failed };
         let ty = self.ty();
         if self.v(0) == self.v(1) {
-            return Self::attr(Some(Self::bool_attr(&ty, matches!(pred, EQ | SLE | SGE | ULE | UGE))));
+            return Self::attr(Self::bool_attr(&ty, matches!(pred, EQ | SLE | SGE | ULE | UGE)));
         }
         if self.zero(1) {
             for ext in ["arith.extsi", "arith.extui"] {
@@ -1198,9 +1200,9 @@ impl Combine {
         let (x, c0_v) = if self.inner_const_first { (ir, il) } else { (il, ir) };
         let (Some((c0, t0)), Some((c1, t1))) = (b.int_attr(c0_v), b.int_attr(c1_v)) else { return false };
         let res_ty = b[b[op].results[0]].ty.clone();
-        // `IntAttrTypeMatchesResult` (the bitwise ones).
+        // `IntAttrTypeMatchesResult` (the bitwise ones and `muli`).
         let bitwise = matches!(self.fold, ConstFold::And | ConstFold::Or | ConstFold::Xor);
-        if bitwise && (t0 != res_ty || t1 != res_ty) {
+        if (bitwise || matches!(self.fold, ConstFold::Mul)) && (t0 != res_ty || t1 != res_ty) {
             return false;
         }
         let value: ApInt = match self.fold {
