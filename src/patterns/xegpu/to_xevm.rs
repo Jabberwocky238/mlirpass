@@ -18,6 +18,10 @@ type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 /// `systolicDepth`, `executionSize`.
 const SYSTOLIC_DEPTH: i64 = 8;
 const EXECUTION_SIZE: i64 = 16;
+/// Bits in a dword, which packs the operands of a systolic step.
+const DWORD_BITS: u32 = 32;
+/// Operand group of `xegpu.dpas_mx`'s accumulator.
+const DPAS_MX_ACC: usize = 2;
 
 /// `NdTdescOffset`: the payload's base pointer (as `i64` 0), width, height and pitch.
 const BASE_PTR: i64 = 0;
@@ -261,6 +265,8 @@ impl XegpuToXevm {
             let mut v = rw.mk(OpData::build("vector.extract").operands(&[*input]).with("static_position", Attribute::dense_i64(&at)), elem.clone());
             if matches!(elem, Type::Index) {
                 v = rw.unary("arith.index_castui", v, ty.clone());
+            } else if elem != *ty && vector_of(ty).is_none() {
+                v = rw.unary("arith.bitcast", v, ty.clone());
             }
             return Some(v);
         }
@@ -277,8 +283,17 @@ impl XegpuToXevm {
         if !matches!(rw.body[*input].ty, Type::Integer { .. } | Type::Index | Type::Float(_)) {
             return None;
         }
-        let (shape, _) = vector_of(ty)?;
-        (shape.iter().product::<i64>() == 1).then(|| rw.unary("vector.broadcast", *input, ty.clone()))
+        let (shape, elem) = vector_of(ty)?;
+        if shape.iter().product::<i64>() != 1 {
+            return None;
+        }
+        let elem = elem.clone();
+        let v = match elem {
+            Type::Index => rw.unary("arith.index_castui", *input, Type::Index),
+            ref e if *e != rw.body[*input].ty => rw.unary("arith.bitcast", *input, elem.clone()),
+            _ => *input,
+        };
+        Some(rw.unary("vector.broadcast", v, ty.clone()))
     }
 }
 
@@ -736,11 +751,13 @@ impl XegpuToXevm {
             }
             return true;
         }
-        if !matches!(Self::chip(cr, op), Some(Chip::Pvc | Chip::Bmg)) {
+        if !matches!(Self::chip(cr, op), Some(Chip::Pvc | Chip::Bmg | Chip::Cri)) {
             return false;
         }
         if load {
-            let ty = if shape.iter().product::<i64>() == 1 { elem } else { vec_ty };
+            // (a float LLVM has no type for loaded as the integer of its width)
+            let res = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
+            let Some(ty) = cr.converted(&res) else { return false };
             let r = cr.mk(OpData::build("llvm.load").operands(&[ptr]).with("ordering", Attribute::i64(0)), ty);
             cr.replace(op, vec![vec![r]]);
         } else {
@@ -823,7 +840,7 @@ impl XegpuToXevm {
             Type::Integer { width: 8, .. } => ("s8", 4),
             Type::Float(FloatKind::F32) => ("f32", 0),
             Type::Integer { width: 32, .. } => ("s32", 0),
-            _ => return None,
+            t => (mx_name(t)?, i64::from(DWORD_BITS / t.bit_width()?)),
         })
     }
 
@@ -871,6 +888,52 @@ impl XegpuToXevm {
         if cr.rw.body[r].ty != rt {
             r = cr.unary("vector.bitcast", r, rt);
         }
+        cr.replace(op, vec![vec![r]]);
+        true
+    }
+
+    /// `DpasMxToXeVMPattern`: `xevm.mma_mx` of `a`, `b` (4-bit ones packed in bytes), the scales and the
+    /// accumulator (zero when missing), on a known chip.
+    #[convert("xegpu.dpas_mx")]
+    fn dpas_mx<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        if Self::chip(cr, op).is_none() {
+            return false;
+        }
+        let b = &*cr.rw.body;
+        let has_acc = b.segments(op, "operandSegmentSizes").is_some_and(|s| s.get(DPAS_MX_ACC) == Some(&1));
+        let ops = b[op].operands.clone();
+        let (Some((_, ae)), Some((_, be))) = (vector_of(&b[ops[0]].ty), vector_of(&b[ops[1]].ty)) else { return false };
+        let (Some(pa), Some(pb)) = (Self::precision(ae), Self::precision(be)) else { return false };
+        let Some(res) = cr.converted(&cr.rw.body[cr.rw.body[op].results[0]].ty.clone()) else { return false };
+        let Some((_, re)) = vector_of(&res) else { return false };
+        let re = re.clone();
+        let Some(pd) = Self::precision(&re) else { return false };
+        let flat: Vec<ValueId> = operands.iter().map(|g| g[0]).collect();
+        let (scale_a, scale_b) = if has_acc { (flat[3], flat[4]) } else { (flat[2], flat[3]) };
+        cr.rw.set_before(op);
+        let c = if has_acc {
+            flat[2]
+        } else {
+            let zero = match &re {
+                Type::Float(k) => Scalar::Float(ApFloat::from_f64(*k, 0.0).expect("a float")),
+                t => Scalar::Int(ApInt::new(t.bit_width().unwrap_or(32), 0)),
+            };
+            cr.mk(OpData::build("arith.constant").with("value", Const::splat(zero, res.clone()).into()), res.clone())
+        };
+        let [a, bv] = [flat[0], flat[1]].map(|v| match vector_of(&cr.rw.body[v].ty).filter(|(_, e)| e.bit_width() == Some(4)) {
+            Some((shape, _)) => {
+                let n: i64 = shape.iter().product();
+                cr.unary("vector.bitcast", v, vector(n / 2, Type::int(8)))
+            }
+            None => v,
+        });
+        let c_ty = cr.rw.body[c].ty.clone();
+        let Some((cs, ce)) = vector_of(&c_ty) else { return false };
+        let Some(pc) = Self::precision(ce) else { return false };
+        let m: i64 = cs.iter().product();
+        let shape = Attribute::dialect("xevm.mma_shape", &alloc::format!("<m = {m}, n = {EXECUTION_SIZE}, k = {}>", SYSTOLIC_DEPTH * pa.1));
+        let types = Attribute::dialect("xevm.mma_types", &alloc::format!("<d = {}, a = {}, b = {}, c = {}>", pd.0, pa.0, pb.0, pc.0));
+        let r = cr.mk(xevm("xevm.mma_mx", &[a, bv, scale_a, scale_b, c], vec![("shape", shape), ("types", types)]), res);
         cr.replace(op, vec![vec![r]]);
         true
     }
