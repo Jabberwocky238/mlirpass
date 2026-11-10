@@ -297,9 +297,18 @@ impl Ptx {
         let constraints = Self::canonical(&self.constraints);
         let mut ptx = if manual { ptx } else { Self::rewrite_placeholders(&ptx) };
         if predicate {
-            ptx = format!("@%{} {ptx}", self.operands.len() - 1);
+            // `getPredicateConstraintIndex`: the last constraint but the tied ones after it.
+            let tokens: Vec<&str> = constraints.split(',').collect();
+            let tied = tokens.iter().rev().take_while(|t| t.trim().parse::<u32>().is_ok()).count();
+            ptx = format!("@%{} {ptx}", tokens.len() - tied - 1);
         }
-        let ptx = ptx.replace('%', "$");
+        // `%N` placeholders become `$N`; a `%` before anything else (`%tid.x`) stays.
+        let mut mapped = String::with_capacity(ptx.len());
+        let mut chars = ptx.chars().peekable();
+        while let Some(c) = chars.next() {
+            mapped.push(if c == '%' && chars.peek().is_some_and(char::is_ascii_digit) { '$' } else { c });
+        }
+        let ptx = mapped;
         let data = OpData::build("llvm.inline_asm")
             .operands(&self.operands)
             .with("asm_dialect", Attribute::i64(0))
@@ -309,17 +318,21 @@ impl Ptx {
             .with("tail_call_kind", Attribute::dialect("llvm.tailcallkind", "<none>"));
         let asm = cr.rw.create(data, &types);
         let asm_results = cr.rw.body[asm].results.clone();
-        if !self.has_result {
+        if manual || !pack {
+            if !results.is_empty() {
+                cr.replace(op, asm_results.into_iter().map(|r| vec![r]).collect());
+                return;
+            }
+            // Read-write only, no declared result: the asm's result is the operand's value after
+            // it, for the operand's other uses.
+            if let (Some(&post), Some(&(_, v))) = (asm_results.first(), zipped.iter().find(|(m, _)| *m == Mod::ReadWrite)) {
+                cr.rw.replace_uses_if(v, post, |_, u| u.op != op && u.op != asm);
+            }
             cr.erase(op);
             return;
         }
-        if manual || !pack {
-            if !asm_results.is_empty() || manual {
-                cr.replace(op, asm_results.into_iter().map(|r| vec![r]).collect());
-            } else {
-                let rw = zipped.iter().find(|(m, _)| *m == Mod::ReadWrite).map(|(_, v)| *v);
-                cr.replace(op, rw.into_iter().map(|r| vec![r]).collect());
-            }
+        if !self.has_result {
+            cr.erase(op);
             return;
         }
         let n = match LlvmType::try_from(&types[0]) {

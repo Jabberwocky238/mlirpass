@@ -206,7 +206,7 @@ impl<'a> Rw<'_, 'a> {
         self.make(data, &types)
     }
 
-    /// `memref.load`; without indices the builder sets no `nontemporal`.
+    /// `memref.load`; without indices the builder sets no `nontemporal` / `invariant`.
     fn mload(&mut self, buf: ValueId, indices: &[ValueId]) -> ValueId {
         let ty = elem(&self.body[buf].ty).clone();
         let mut ops = vec![buf];
@@ -214,6 +214,7 @@ impl<'a> Rw<'_, 'a> {
         let mut data = OpData::build("memref.load").operands(&ops);
         if indices.is_empty() {
             data.remove("nontemporal");
+            data.remove("invariant");
         }
         self.make1(data, ty)
     }
