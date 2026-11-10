@@ -1962,7 +1962,7 @@ impl ArithCanon {
             Attribute::Builtin { name, ty, .. } if matches!(&**name, "dense" | "dense_resource" | "sparse") => ty.clone(),
             _ => None,
         }?;
-        if typed != *ty || matches!(ty, Type::Integer { signedness, .. } if *signedness != mlirformat::Signedness::Signless) {
+        if typed != *ty || matches!(ty.element_type(), Type::Integer { signedness, .. } if *signedness != mlirformat::Signedness::Signless) {
             return None;
         }
         Some(OpData::build("arith.constant").with("value", value.clone()))

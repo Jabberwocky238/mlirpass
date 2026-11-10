@@ -19,7 +19,10 @@ impl ScfToSpirv {
     /// A `spirv.mlir.loop` / `spirv.mlir.selection` before `op`, its region empty.
     fn construct<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, name: &str, control: (&str, &str)) -> (OpId, RegionId) {
         cr.rw.set_before(op);
-        let new = cr.rw.create_with(OpData::build(name).with(control.0, Cr::spirv_enum(control.1, "None")), &[], |b, o| {
+        // The op's `spirv.loop_control` / `spirv.selection_control` hint, else None.
+        let hint = cr.rw.body[op].get(&alloc::format!("spirv.{}", control.0)).cloned();
+        let value = hint.unwrap_or_else(|| Cr::spirv_enum(control.1, "None"));
+        let new = cr.rw.create_with(OpData::build(name).with(control.0, value), &[], |b, o| {
             b.add_region(o);
         });
         let region = cr.rw.body[new].regions[0];
@@ -150,6 +153,49 @@ impl ScfToSpirv {
         true
     }
 
+    /// `IndexSwitchOpConversion`: a selection headed by `spirv.Switch` on the selector, each
+    /// case (then the default) inlined branching to the merge.
+    #[convert("scf.index_switch")]
+    fn index_switch<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let mut types = Vec::new();
+        for r in cr.rw.body[op].results.clone() {
+            let Some(t) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
+            types.push(t);
+        }
+        let selector = ops[0];
+        let Type::Integer { width, .. } = cr.rw.body[selector].ty else { return false };
+        let cases = cr.rw.body.dense_i64(op, "cases");
+        let (new, region) = Self::construct(cr, op, "spirv.mlir.selection", ("selection_control", "selection_control"));
+        let merge = cr.rw.create_block(region, &[]);
+        cr.rw.create(OpData::build("spirv.mlir.merge"), &[]);
+        let header = Self::block_at(cr, region, 0, &[]);
+        let regions = cr.rw.body[op].regions.clone();
+        let inline = |cr: &mut Cr<'_, 'a, '_>, r: RegionId| {
+            let first = cr.rw.body[r].blocks[0];
+            let last = *cr.rw.body[r].blocks.last().expect("a block");
+            Self::br(cr, last, merge, &[]);
+            cr.inline_region(r, region, Some(merge));
+            first
+        };
+        let case_blocks: Vec<BlockId> = regions[1..].iter().map(|r| inline(cr, *r)).collect();
+        let default = inline(cr, regions[0]);
+        cr.rw.set_end(header);
+        let lit = Type::vector(&[cases.len() as i64], &[], Type::int(width));
+        let values = cases.iter().map(|c| mlirformat::Scalar::Int(mlirformat::ApInt::new(width, i128::from(*c)))).collect();
+        let mut data = OpData::build("spirv.Switch")
+            .operands(&[selector])
+            .with("case_operand_segments", Attribute::dense_i32(&vec![0; cases.len()]))
+            .with("operandSegmentSizes", Attribute::dense_i32(&[1, 0, 0]));
+        if !cases.is_empty() {
+            data.set("literals", mlirformat::Const { ty: lit, values, elements: true }.into());
+        }
+        data.successors = core::iter::once(default).chain(case_blocks).collect();
+        cr.rw.create(data, &[]);
+        Self::outputs(cr, op, new, &types);
+        true
+    }
+
     /// `TerminatorOpConversion`: yielded values stored to the construct's variables (and, in
     /// a loop, passed along the back edge).
     #[convert("scf.yield")]
@@ -157,7 +203,7 @@ impl ScfToSpirv {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(parent) = cr.rw.body.parent_op(op) else { return false };
         let pname = cr.rw.body[parent].name.clone();
-        if pname.starts_with("scf.") && !matches!(&*pname, "scf.if" | "scf.for" | "scf.while") {
+        if pname.starts_with("scf.") && !matches!(&*pname, "scf.if" | "scf.for" | "scf.while" | "scf.index_switch") {
             return false;
         }
         if !ops.is_empty() {
