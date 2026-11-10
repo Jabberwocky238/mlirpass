@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
-use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, Scalar, ValueId};
+use crate::{ApInt, Body, Const, Def, Fold, Folded, OpData, OpId, Scalar, ValueId};
 
 /// `kPoisonIndex` of extract / insert positions and shuffle masks.
 const POISON: i64 = -1;
@@ -2061,6 +2061,26 @@ impl VectorCanon {
         true
     }
 
+    /// `StridedSliceFolder`: a slice of a slice (unit strides) as one slice of the source.
+    #[rewrite("vector.extract_strided_slice")]
+    fn strided_slice_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let Some(first) = b.def_named(b[op].operands[0], "vector.extract_strided_slice") else { return false };
+        if [op, first].iter().any(|o| i64_array(b, *o, "strides").iter().any(|s| *s != 1)) {
+            return false;
+        }
+        let (o1, s1, o2, s2) = (i64_array(b, first, "offsets"), i64_array(b, first, "sizes"), i64_array(b, op, "offsets"), i64_array(b, op, "sizes"));
+        let src = b[first].operands[0];
+        let Some(shape) = b[src].ty.shape().map(|d| d.iter().map(|x| if let mlirformat::Dim::Static(n) | mlirformat::Dim::Scalable(n) = x { *n } else { 0 }).collect::<Vec<i64>>()) else { return false };
+        let rank = o1.len().max(o2.len());
+        let offsets: Vec<i64> = (0..rank).map(|i| o1.get(i).copied().unwrap_or(0) + o2.get(i).copied().unwrap_or(0)).collect();
+        let sizes: Vec<i64> = (0..rank).map(|i| s2.get(i).or(s1.get(i)).copied().unwrap_or(shape[i])).collect();
+        let rt = b.result_ty(op);
+        let data = OpData::build("vector.extract_strided_slice").operands(&[src]).with("offsets", array_i64(&offsets)).with("sizes", array_i64(&sizes)).with("strides", array_i64(&vec![1; rank]));
+        rw.replace_with(op, data, &[rt]);
+        true
+    }
+
     /// `StridedSliceCreateMaskFolder`.
     #[rewrite("vector.extract_strided_slice")]
     fn strided_slice_create_mask_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
@@ -2562,6 +2582,21 @@ impl VectorCanon {
         true
     }
 
+    /// `InterleaveDeinterleaveFolder`: interleaving the two halves of a deinterleave, in order,
+    /// is its source.
+    #[rewrite("vector.interleave")]
+    fn interleave_deinterleave_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let (l, r) = (b[op].operands[0], b[op].operands[1]);
+        let (Def::Result(dl, 0), Def::Result(dr, 1)) = (b[l].def, b[r].def) else { return false };
+        if dl != dr || b[dl].name != "vector.deinterleave" {
+            return false;
+        }
+        let src = b[dl].operands[0];
+        rw.replace_op(op, &[src]);
+        true
+    }
+
     /// `CanonializeEmptyMaskOp`: an empty mask with a pass-through is a select.
     #[rewrite("vector.mask")]
     fn canonicalize_empty_mask_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
@@ -2574,6 +2609,11 @@ impl VectorCanon {
         let y = b.first_op(block).expect("an op in the block");
         let (m, p, v) = (b[op].operands[0], b[op].operands[1], b[y].operands[0]);
         let types = b.types(&b[op].results.clone());
+        // (a select on the mask needs results of its vector shape)
+        let mask_shape = vshape(&b[m].ty).map(|s| s.0);
+        if types.iter().any(|t| vshape(t).map(|s| s.0) != mask_shape) {
+            return false;
+        }
         rw.replace_with(op, OpData::build("arith.select").operands(&[m, v, p]), &types);
         true
     }
@@ -2700,6 +2740,8 @@ impl VectorCanon {
         set.add(FoldInsertStridedSliceSplat);
         set.add(FoldInsertStridedSliceOfExtract);
         set.add(InsertStridedSliceConstantFolder);
+        set.add(StridedSliceFolder);
+        set.add(InterleaveDeinterleaveFolder);
         set.add(StridedSliceCreateMaskFolder);
         set.add(StridedSliceConstantMaskFolder);
         set.add(StridedSliceBroadcast);
