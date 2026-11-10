@@ -466,6 +466,12 @@ impl ArithToAmdgpuPattern {
         let in_elem = rw.body[input].ty.element_type().owned();
         let out_elem = out_ty.element_type().owned();
         let scale_ty = rw.body[scale_orig].ty.clone();
+        // Scalable vectors and ranked tensors are left alone.
+        let tensor = |t: &Type<'_>| matches!(t, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Tensor && s.shape.is_some());
+        let scalable = matches!(&out_ty, Type::Shaped(s) if s.shape.as_ref().is_some_and(|d| d.iter().any(|x| matches!(x, mlirformat::Dim::Scalable(_)))));
+        if scalable || tensor(&out_ty) || tensor(&rw.body[input].ty) || tensor(&scale_ty) {
+            return false;
+        }
         let f32t = Type::Float(FloatKind::F32);
         rw.set_before(op);
         let mut scale = scale_orig;
