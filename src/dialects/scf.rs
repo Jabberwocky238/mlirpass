@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use mlirformat::Attribute;
 
-use crate::{Body, DialectInliner, OpId, OpInterfaces, Operand, Point, Succ, ValueId};
+use crate::{Body, DialectInliner, MemrefOfr as Ofr, OpId, OpInterfaces, Operand, Point, Succ, ValueId};
 
 /// The `scf` dialect.
 pub struct ScfDialect;
@@ -116,22 +116,40 @@ impl OpInterfaces for ScfDialect {
 }
 
 impl ScfDialect {
-    /// `ForOp::getStaticTripCount` = `constantTripCount(lb, ub, step, !unsignedCmp, computeUbMinusLb)`
-    /// (a zero step or, signed, a negative one is unknown, not 0).
+    /// `ForOp::getStaticTripCount`.
     fn static_trip_count(b: &Body<'_>, op: OpId) -> Option<mlirformat::ApInt> {
+        let [lb, ub, step] = [0, 1, 2].map(|i| Ofr::V(b[op].operands[i]));
+        b.const_trip_count(lb, ub, step, b[op].get("unsignedCmp").is_none())
+    }
+}
+
+impl Body<'_> {
+    /// `constantTripCount(lb, ub, step, signed, computeUbMinusLb)`: a zero step, or a negative
+    /// one when signed, is unknown.
+    pub fn const_trip_count(&self, lb: Ofr, ub: Ofr, step: Ofr, signed: bool) -> Option<mlirformat::ApInt> {
         use core::cmp::Ordering;
         use mlirformat::{ApInt, Const, Type};
-        let [lb, ub, step] = [0, 1, 2].map(|i| b[op].operands[i]);
-        let signed = b[op].get("unsignedCmp").is_none();
-        let shape = |v: ValueId| (b[v].ty.int_width().map_or(64, |w| w.0), matches!(b[v].ty, Type::Index));
+        /// The width of an index (`IndexType::kInternalStorageBitWidth`).
+        const INDEX_BITS: u32 = 64;
+        // A static bound is an index; so is any value not of an integer type.
+        let shape = |o: Ofr| match o {
+            Ofr::V(v) if !matches!(self[v].ty, Type::Index) => self[v].ty.int_width().map_or((INDEX_BITS, true), |w| (w.0, false)),
+            _ => (INDEX_BITS, true),
+        };
         let (width, _) = shape(lb);
         if shape(lb) != shape(ub) {
             return None;
         }
+        let cst = |o: Ofr| match o {
+            Ofr::C(c) => Some(ApInt::new(INDEX_BITS, c.into())),
+            Ofr::V(v) => Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int(),
+        };
         if lb == ub {
             return Some(ApInt::zero(width));
         }
-        let cst = |v: ValueId| Const::try_from(&b.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int();
+        if cst(lb).is_some_and(|l| l.is_zero()) && ub == step {
+            return Some(ApInt::new(width, 1));
+        }
         let step_c = cst(step);
         if step_c.is_some_and(|s| s.is_zero()) {
             return None;
@@ -142,30 +160,33 @@ impl ScfDialect {
                 if le {
                     return Some(ApInt::zero(width));
                 }
+                // ub > lb: the difference read unsigned.
                 u.sub(l)
             }
             (Some(_), None) | (None, Some(_)) => return None,
             (None, None) => {
                 // `computeUbMinusLb`: ub = lb + c, without wrapping.
-                let add = b.def_named(ub, "arith.addi")?;
-                let flags = match b[add].get("overflowFlags") {
+                let (Ofr::V(lb), Ofr::V(ub)) = (lb, ub) else { return None };
+                let add = self.def_named(ub, "arith.addi")?;
+                let flags = match self[add].get("overflowFlags") {
                     Some(mlirformat::Attribute::Extended { ext, .. }) => ext.body.as_deref().unwrap_or(""),
                     _ => "",
                 };
-                if !flags.contains(if signed { "nsw" } else { "nuw" }) || b[add].operands[0] != lb {
+                if !flags.contains(if signed { "nsw" } else { "nuw" }) || self[add].operands[0] != lb {
                     return None;
                 }
-                cst(b[add].operands[1])?
+                let d = cst(Ofr::V(self[add].operands[1]))?;
+                if d.is_negative() {
+                    return Some(ApInt::zero(width));
+                }
+                d
             }
         };
-        if signed && diff.is_negative() {
-            return Some(ApInt::zero(width));
-        }
         let s = step_c?;
         if signed && s.is_negative() {
             return None;
         }
-        let (q, r) = if signed { (diff.sdiv(s)?, diff.srem(s)?) } else { (diff.udiv(s)?, diff.urem(s)?) };
+        let (q, r) = (diff.udiv(s)?, diff.urem(s)?);
         Some(if r.is_zero() { q } else { q.add(ApInt::new(width, 1)) })
     }
 }

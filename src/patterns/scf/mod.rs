@@ -1,6 +1,7 @@
 //! `scf` rule sets.
 
 mod canonicalize;
+mod forall;
 mod structural;
 mod to_cf;
 #[cfg(all(feature = "dialect.gpu", feature = "dialect.affine"))]

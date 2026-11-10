@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Type};
 
-use crate::{ApInt, Body, BlockId, Const, Fold, Mapping, OpData, OpId, Point, RegionId, Rewriter, Succ, ValueId};
+use crate::{ApInt, Body, BlockId, Const, Fold, Mapping, MemrefOfr as Ofr, OpData, OpId, Point, RegionId, Rewriter, Succ, ValueId};
 
 impl<'a> Body<'a> {
     /// The terminator of `op`'s region `r` (its last block).
@@ -25,54 +25,6 @@ impl<'a> Body<'a> {
         Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int()
     }
 
-    /// `constantTripCount` with `computeUbMinusLb`.
-    fn trip_count(&self, lb: ValueId, ub: ValueId, step: ValueId, signed: bool) -> Option<ApInt> {
-        let width = self[lb].ty.int_width().map_or(64, |w| w.0);
-        if self[ub].ty.int_width().map(|w| w.0) != Some(width) || matches!(self[lb].ty, Type::Index) != matches!(self[ub].ty, Type::Index) {
-            return None;
-        }
-        if lb == ub {
-            return Some(ApInt::zero(width));
-        }
-        let step_c = self.const_int(step);
-        if let Some(s) = step_c {
-            if s.is_zero() {
-                return Some(s);
-            }
-            if s.is_negative() {
-                return Some(ApInt::zero(width));
-            }
-        }
-        let diff = match (self.const_int(lb), self.const_int(ub)) {
-            (Some(l), Some(u)) => {
-                let le = if signed { u.scmp(l) != core::cmp::Ordering::Greater } else { u.ucmp(l) != core::cmp::Ordering::Greater };
-                if le {
-                    return Some(ApInt::zero(width));
-                }
-                u.sub(l)
-            }
-            (Some(_), None) => return None,
-            (None, Some(_)) => return None,
-            (None, None) => {
-                // `computeUbMinusLb`: ub = lb + c, without wrapping.
-                let add = self.def_named(ub, "arith.addi")?;
-                let flags = match self[add].get("overflowFlags") {
-                    Some(Attribute::Extended { ext, .. }) => alloc::string::String::from(ext.body.as_deref().unwrap_or("")),
-                    _ => alloc::string::String::new(),
-                };
-                if !flags.contains(if signed { "nsw" } else { "nuw" }) || self[add].operands[0] != lb {
-                    return None;
-                }
-                self.const_int(self[add].operands[1])?
-            }
-        };
-        if signed && diff.is_negative() {
-            return Some(ApInt::zero(width));
-        }
-        let s = step_c?;
-        let (q, r) = if signed { (diff.sdiv(s)?, diff.srem(s)?) } else { (diff.udiv(s)?, diff.urem(s)?) };
-        Some(if r.is_zero() { q } else { q.add(ApInt::new(width, 1)) })
-    }
 
     /// Whether `region` is `inner` or encloses it.
     fn region_encloses(&self, region: RegionId, mut inner: RegionId) -> bool {
@@ -760,7 +712,7 @@ fn parallel_single_or_zero(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let mut map = Mapping::default();
     let (mut nl, mut nu, mut ns) = (Vec::new(), Vec::new(), Vec::new());
     for i in 0..n {
-        match b.trip_count(lbs[i], ubs[i], steps[i], true) {
+        match b.const_trip_count(Ofr::V(lbs[i]), Ofr::V(ubs[i]), Ofr::V(steps[i]), true) {
             Some(t) if t.is_zero() => {
                 let inits = inits.to_vec();
                 rw.replace_op(op, &inits);
@@ -1174,5 +1126,6 @@ impl ScfCanon {
         set.add(ParallelOpSingleOrZeroIterationDimsFolder).add(MergeNestedParallelLoops);
         set.add(WhileConditionTruth).add(WhileCmpCond).add(WhileOpAlignBeforeArgs).add(WhileMoveIfDown).add(RegionBranchPatterns("scf.while")).add(InlineRegionBranch("scf.while"));
         set.add(RegionBranchPatterns("scf.index_switch")).add(InlineRegionBranch("scf.index_switch"));
+        super::forall::ForallCanon::canonicalization(set);
     }
 }
