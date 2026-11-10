@@ -41,6 +41,19 @@ pub fn spirv_update_vce<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Err
             pick(&name, &c, true, &mut caps)?;
         }
         let d = &body[o];
+        // `bind(set, binding)` needs Shader; linkage attributes their linkage type's needs.
+        if name == "spirv.GlobalVariable" && (d.get("binding").is_some() || d.get("descriptor_set").is_some()) {
+            pick(&name, &alloc::vec![alloc::vec![String::from("Shader")]], true, &mut caps)?;
+        }
+        if matches!(&*name, "spirv.GlobalVariable" | "spirv.func")
+            && let Some(Attribute::Extended { ext, .. }) = d.get("linkage_attributes")
+            && let Some(kind) = ext.body.as_deref().and_then(|b| b.split("linkage_type = <").nth(1)).and_then(|r| r.split('>').next())
+            && let Some(case) = EnumSpec::of("LinkageType").and_then(|e| e.case(kind.trim()))
+        {
+            let to_needs = |groups: &[&[&str]]| -> Needs { groups.iter().map(|g| g.iter().map(|c| String::from(*c)).collect()).collect() };
+            pick(&name, &to_needs(case.avail.caps), true, &mut caps)?;
+            pick(&name, &to_needs(case.avail.exts), false, &mut exts)?;
+        }
         let mut types: Vec<Type<'_>> = d.operands.iter().chain(&d.results).map(|v| body[*v].ty.clone()).collect();
         if name == "spirv.GlobalVariable"
             && let Some(Attribute::Type(t)) = d.get("type")

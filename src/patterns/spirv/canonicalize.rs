@@ -333,19 +333,30 @@ fn construct<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, parts: &[ValueId]) {
     rw.replace_with(op, OpData::build("spirv.CompositeConstruct").operands(parts), &[ty]);
 }
 
-/// The two constituents inserted into an undef of the op's struct, the second replacing it.
-fn insert_pair<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, first: Attribute<'a>, second: Attribute<'a>) {
-    rw.set_before(op);
+/// The two constituents as one `spirv.Constant` of the op's struct.
+fn constant_pair<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, first: Attribute<'a>, second: Attribute<'a>) {
     let ty = rw.body[rw.body[op].results[0]].ty.clone();
-    let ct = rw.body[rw.body[op].operands[0]].ty.clone();
-    let c0 = rw.create(OpData::build("spirv.Constant").with("value", first), core::slice::from_ref(&ct));
-    let c1 = rw.create(OpData::build("spirv.Constant").with("value", second), core::slice::from_ref(&ct));
-    let undef = rw.create(OpData::build("spirv.Undef"), core::slice::from_ref(&ty));
-    let (c0, c1, undef) = (rw.body[c0].results[0], rw.body[c1].results[0], rw.body[undef].results[0]);
-    let index = |i: i128| Attribute::Array(alloc::vec![Attribute::integer(i, Type::int(32))]);
-    let mid = rw.create(OpData::build("spirv.CompositeInsert").operands(&[c0, undef]).with("indices", index(0)), core::slice::from_ref(&ty));
-    let mid = rw.body[mid].results[0];
-    rw.replace_with(op, OpData::build("spirv.CompositeInsert").operands(&[c1, mid]).with("indices", index(1)), &[ty]);
+    rw.replace_with(op, OpData::build("spirv.Constant").with("value", Attribute::Array(alloc::vec![first, second])), &[ty]);
+}
+
+/// `ArithmeticExtendedBinaryFold`: `(x, 0)` is `<0, x>` for a carry, `<x, 0>` for a borrow;
+/// constants fold to the low bits and the wrap bit.
+fn extended_binary(rw: &mut Rewriter<'_, '_>, op: OpId, sub: bool) -> bool {
+    let (lhs, rhs) = (rw.body[op].operands[0], rw.body[op].operands[1]);
+    if is_int(rw.body, rhs, 0) {
+        construct(rw, op, &if sub { [lhs, rhs] } else { [rhs, lhs] });
+        return true;
+    }
+    let (Some(a), Some(b)) = (constant(rw.body, lhs), constant(rw.body, rhs)) else { return false };
+    let ct = rw.body[lhs].ty.clone();
+    let Some(low) = fold_binary(&a, &b, &ct, |x, y| if sub { x.sub(y) } else { x.add(y) }) else { return false };
+    let wrap = fold_binary(&a, &b, &ct, |x, y| {
+        let wrapped = if sub { x.unsigned() < y.unsigned() } else { x.add(y).unsigned() < x.unsigned() };
+        ApInt::new(x.width, i128::from(wrapped))
+    });
+    let Some(wrap) = wrap else { return false };
+    constant_pair(rw, op, low, wrap);
+    true
 }
 
 /// `MulExtendedFold`: a zero rhs gives zeros; constants fold to the low and high halves.
@@ -370,7 +381,7 @@ fn mul_extended(rw: &mut Rewriter<'_, '_>, op: OpId, signed: bool) -> bool {
         if signed { ApInt::new(w, (x.signed() * y.signed()) >> w) } else { ApInt::from_bits(w, (x.unsigned() * y.unsigned()) >> w) }
     });
     let Some(high) = high else { return false };
-    insert_pair(rw, op, low, high);
+    constant_pair(rw, op, low, high);
     true
 }
 
@@ -441,21 +452,16 @@ impl SpirvCanon {
         true
     }
 
-    /// `IAddCarryFold`: a zero rhs is no carry; constants fold.
+    /// `ArithmeticExtendedBinaryFold<IAddCarryOp>`: a zero rhs is no carry; constants fold.
     #[rewrite("spirv.IAddCarry")]
     fn i_add_carry_fold(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        let (lhs, rhs) = (rw.body[op].operands[0], rw.body[op].operands[1]);
-        if is_int(rw.body, rhs, 0) {
-            construct(rw, op, &[rhs, lhs]);
-            return true;
-        }
-        let (Some(a), Some(b)) = (constant(rw.body, lhs), constant(rw.body, rhs)) else { return false };
-        let ct = rw.body[lhs].ty.clone();
-        let Some(sum) = fold_binary(&a, &b, &ct, |x, y| x.add(y)) else { return false };
-        let Ok(s) = Const::try_from(&sum) else { return false };
-        let Some(carry) = fold_binary(&s, &a, &ct, |x, y| ApInt::new(x.width, i128::from(x.unsigned() < y.unsigned()))) else { return false };
-        insert_pair(rw, op, sum, carry);
-        true
+        extended_binary(rw, op, false)
+    }
+
+    /// `ArithmeticExtendedBinaryFold<ISubBorrowOp>`: a zero rhs is no borrow; constants fold.
+    #[rewrite("spirv.ISubBorrow")]
+    fn i_sub_borrow_fold(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        extended_binary(rw, op, true)
     }
 
     /// `MulExtendedFold<SMulExtendedOp>`.
@@ -577,7 +583,7 @@ impl SpirvCanon {
     /// The spirv canonicalization patterns, in op registration order.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(CombineChainedAccessChain);
-        set.add(IAddCarryFold);
+        set.add(IAddCarryFold).add(ISubBorrowFold);
         set.add(SMulExtendedFold);
         set.add(UMulExtendedFold);
         set.add(UMulExtendedOpXOne);

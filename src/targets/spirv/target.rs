@@ -210,6 +210,9 @@ impl TargetEnv {
                 if matches!(t, Type::Float(FloatKind::BF16)) {
                     exts.push(one(&["SPV_KHR_bfloat16"]));
                 }
+                if matches!(t, Type::Float(FloatKind::F8E4M3FN | FloatKind::F8E5M2)) {
+                    exts.push(one(&["SPV_EXT_float8"]));
+                }
                 match storage {
                     Some("PushConstant" | "StorageBuffer" | "Uniform") if w == 8 => exts.push(one(&["SPV_KHR_8bit_storage"])),
                     Some("PushConstant" | "StorageBuffer" | "Uniform" | "Input" | "Output") if w == 16 => exts.push(one(&["SPV_KHR_16bit_storage"])),
@@ -234,6 +237,7 @@ impl TargetEnv {
                     (Type::Integer { .. }, 16) => Some("Int16"),
                     (Type::Integer { .. }, 64) => Some("Int64"),
                     (Type::Float(FloatKind::BF16), _) => Some("BFloat16TypeKHR"),
+                    (Type::Float(FloatKind::F8E4M3FN | FloatKind::F8E5M2), _) => Some("Float8EXT"),
                     (Type::Float(_), 16) => Some("Float16"),
                     (Type::Float(_), 64) => Some("Float64"),
                     _ => None,
@@ -263,16 +267,55 @@ impl TargetEnv {
                 }
                 Ok(SpirvType::SampledImage(i)) => Self::type_needs(&i, storage, caps, exts),
                 Ok(SpirvType::Image { elem, params }) => {
+                    // By Dim, sampling, arrayedness and sampler use jointly (OpTypeImage's
+                    // capabilities), then the format's, then a 64-bit integer element's.
+                    let p = |i: usize| params.get(i).map(|x| x.trim()).unwrap_or("");
+                    let (multisampled, arrayed) = (p(3) == "MultiSampled", p(2) == "Arrayed");
+                    let (no_sampler, need_sampler) = (p(4) == "NoSampler", p(4) == "NeedSampler");
+                    let mut push = |c: &[&str]| caps.push(one(c));
+                    match p(0) {
+                        "Dim1D" if need_sampler => push(&["Sampled1D"]),
+                        "Dim1D" if no_sampler => push(&["Image1D"]),
+                        "Dim1D" => push(&["Image1D", "Sampled1D"]),
+                        "Dim2D" => {
+                            if multisampled && no_sampler {
+                                push(&["StorageImageMultisample"]);
+                            }
+                            if multisampled && arrayed {
+                                push(&["ImageMSArray"]);
+                            }
+                        }
+                        "Cube" => {
+                            push(&["Shader"]);
+                            if arrayed {
+                                push(&["ImageCubeArray"]);
+                            }
+                        }
+                        "Rect" => push(&["ImageRect", "SampledRect"]),
+                        "Buffer" if need_sampler => push(&["SampledBuffer"]),
+                        "Buffer" if no_sampler => push(&["ImageBuffer"]),
+                        "Buffer" => push(&["ImageBuffer", "SampledBuffer"]),
+                        "SubpassData" => push(&["InputAttachment"]),
+                        _ => {}
+                    }
                     let (mut c, mut e) = (Needs::new(), Needs::new());
-                    Self::case_needs("Dim", &params[0], &mut c, &mut e);
                     Self::case_needs("ImageFormat", &params[5], &mut c, &mut e);
                     caps.extend(c);
+                    if matches!(*elem, Type::Integer { width: 64, .. }) {
+                        caps.push(one(&["Int64ImageEXT"]));
+                        exts.push(one(&["SPV_EXT_shader_image_int64"]));
+                    }
                     Self::type_needs(&elem, storage, caps, exts);
                 }
                 Ok(SpirvType::CoopMatrix { elem, .. }) => {
                     Self::type_needs(&elem, storage, caps, exts);
                     exts.push(one(&["SPV_KHR_cooperative_matrix"]));
                     caps.push(one(&["CooperativeMatrixKHR"]));
+                    match &*elem {
+                        Type::Float(FloatKind::BF16) => caps.push(one(&["BFloat16CooperativeMatrixKHR"])),
+                        Type::Float(FloatKind::F8E4M3FN | FloatKind::F8E5M2) => caps.push(one(&["Float8CooperativeMatrixEXT"])),
+                        _ => {}
+                    }
                 }
                 Ok(SpirvType::TensorArm { elem, .. }) => {
                     Self::type_needs(&elem, storage, caps, exts);

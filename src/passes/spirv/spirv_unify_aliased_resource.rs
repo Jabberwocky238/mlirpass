@@ -65,7 +65,9 @@ impl AliasAnalysis {
 
     /// `getSizeInBytes` of a scalar or vector.
     fn bytes(t: &Type<'_>) -> Option<i64> {
-        Some(i64::from(t.element_type().bit_width()? / 8) * t.element_count()? as i64)
+        // (a bool has no defined byte size)
+        let bits = t.element_type().bit_width().filter(|b| *b != 1)?;
+        Some(i64::from(bits / 8) * t.element_count()? as i64)
     }
 
     /// `deduceCanonicalResource`: the smallest vector (its scalars dividing everything), else

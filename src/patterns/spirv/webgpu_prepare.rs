@@ -100,17 +100,13 @@ impl WebgpuPrepare {
     /// `ExpandAddCarryPattern`: the carry is whether the sum wrapped below the lhs.
     #[rewrite("spirv.IAddCarry")]
     fn expand_add_carry_pattern(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        let Some((l, r, ty)) = i32_operands(rw, op) else { return false };
-        rw.set_before(op);
-        let one = rw.spirv_constant(&ty, 1);
-        let zero = rw.spirv_constant(&ty, 0);
-        let out = rw.spirv("spirv.IAdd", &[l, r], &ty);
-        let cmp = rw.spirv("spirv.ULessThan", &[out, l], &ty.with_element(Type::I1));
-        let carry = rw.spirv("spirv.Select", &[cmp, one, zero], &ty);
-        let rt = rw.body[rw.body[op].results[0]].ty.clone();
-        let v = rw.spirv("spirv.CompositeConstruct", &[out, carry], &rt);
-        rw.replace_op(op, &[v]);
-        true
+        expand_carry_borrow(rw, op, false)
+    }
+
+    /// `ExpandSubBorrowPattern`: the borrow is whether the lhs is below the rhs.
+    #[rewrite("spirv.ISubBorrow")]
+    fn expand_sub_borrow_pattern(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        expand_carry_borrow(rw, op, true)
     }
 
     /// `ExpandIsInfPattern` / `ExpandIsNanPattern`: values are assumed finite.
@@ -127,4 +123,20 @@ impl WebgpuPrepare {
         rw.replace_with(op, OpData::build("spirv.Constant").with("value", scalar_or_splat(&ty, 0)), &[ty]);
         true
     }
+}
+
+/// `ExpandAddCarryOrSubBorrowPattern`: the result and its wrap flag as a struct.
+fn expand_carry_borrow(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId, sub: bool) -> bool {
+    let Some((l, r, ty)) = i32_operands(rw, op) else { return false };
+    rw.set_before(op);
+    let one = rw.spirv_constant(&ty, 1);
+    let zero = rw.spirv_constant(&ty, 0);
+    let out = rw.spirv(if sub { "spirv.ISub" } else { "spirv.IAdd" }, &[l, r], &ty);
+    let wrapped = if sub { [l, r] } else { [out, l] };
+    let cmp = rw.spirv("spirv.ULessThan", &wrapped, &ty.with_element(Type::I1));
+    let flag = rw.spirv("spirv.Select", &[cmp, one, zero], &ty);
+    let rt = rw.body[rw.body[op].results[0]].ty.clone();
+    let v = rw.spirv("spirv.CompositeConstruct", &[out, flag], &rt);
+    rw.replace_op(op, &[v]);
+    true
 }
