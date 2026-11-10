@@ -93,11 +93,14 @@ impl BufferizationCanon {
         true
     }
 
-    /// `LoadOfToBuffer`: a load of a `to_buffer` is an extract of its tensor.
+    /// `LoadOfToBuffer`: a load of a `read_only` `to_buffer` is an extract of its tensor.
     #[rewrite("memref.load")]
     fn load_of_to_buffer(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
         let Some(t) = b.def_named(b[op].operands[0], "bufferization.to_buffer") else { return false };
+        if b[t].get("read_only").is_none() {
+            return false;
+        }
         let mut operands = alloc::vec![b[t].operands[0]];
         operands.extend(b[op].operands[1..].iter().copied());
         let ty = b[b[op].results[0]].ty.clone();

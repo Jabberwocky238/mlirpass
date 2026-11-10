@@ -44,6 +44,8 @@ impl crate::Passes {
         #[cfg(feature = "dialect.bufferization")]
         p.register::<crate::ConvertBufferizationToMemref>(); // convert-bufferization-to-memref
         #[cfg(feature = "dialect.bufferization")]
+        p.register::<crate::DropEquivalentBufferResults>(); // drop-equivalent-buffer-results
+        #[cfg(feature = "dialect.bufferization")]
         p.register::<crate::OneShotBufferize>(); // one-shot-bufferize
         #[cfg(feature = "dialect.bufferization")]
         p.register::<crate::PromoteBuffersToStack>(); // promote-buffers-to-stack
