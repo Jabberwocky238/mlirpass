@@ -72,10 +72,13 @@ fn space_int(s: &Shaped<'_>) -> u32 {
     }
 }
 
-/// `translateLoadXeGPUCacheHint`.
+/// `translateLoadXeGPUCacheHint`: no hints, the default; a missing one cached.
 fn load_cache(l1: Option<CachePolicy>, l3: Option<CachePolicy>) -> Option<LoadCacheControl> {
     use CachePolicy::*;
-    let (l1, l3) = (l1.unwrap_or(Uncached), l3.unwrap_or(Uncached));
+    if l1.is_none() && l3.is_none() {
+        return Some(LoadCacheControl::UseDefault);
+    }
+    let (l1, l3) = (l1.unwrap_or(Cached), l3.unwrap_or(Cached));
     Some(match (l1, l3) {
         (Cached, Cached) => LoadCacheControl::L1cL2ucL3c,
         (Cached, Uncached) => LoadCacheControl::L1cL2ucL3uc,
@@ -88,10 +91,13 @@ fn load_cache(l1: Option<CachePolicy>, l3: Option<CachePolicy>) -> Option<LoadCa
     })
 }
 
-/// `translateStoreXeGPUCacheHint`.
+/// `translateStoreXeGPUCacheHint`: no hints, the default; a missing L1 uncached, L3 write-back.
 fn store_cache(l1: Option<CachePolicy>, l3: Option<CachePolicy>) -> Option<StoreCacheControl> {
     use CachePolicy::*;
-    let (l1, l3) = (l1.unwrap_or(Uncached), l3.unwrap_or(Uncached));
+    if l1.is_none() && l3.is_none() {
+        return Some(StoreCacheControl::UseDefault);
+    }
+    let (l1, l3) = (l1.unwrap_or(Uncached), l3.unwrap_or(WriteBack));
     Some(match (l1, l3) {
         (Uncached, Uncached) => StoreCacheControl::L1ucL2ucL3uc,
         (Uncached, WriteBack) => StoreCacheControl::L1ucL2ucL3wb,
