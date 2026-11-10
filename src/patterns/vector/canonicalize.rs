@@ -1552,6 +1552,115 @@ impl VectorCanon {
         true
     }
 
+    /// `ExtractOpFromConstantMask`: an extract of a `constant_mask` is all false outside the
+    /// mask, else the inner `constant_mask` (true for a scalar).
+    #[rewrite("vector.extract")]
+    fn extract_op_from_constant_mask(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let Some(cm) = b.def_named(b[op].operands[0], "vector.constant_mask") else { return false };
+        let rt = b.result_ty(op);
+        let pos = b.static_position(op);
+        let sizes = b.dense_array(cm, "mask_dim_sizes");
+        let (mshape, _) = vshape(&b.result_ty(cm)).unwrap_or_default();
+        let constant = |rw: &mut crate::Rewriter<'_, '_>, v: bool| {
+            let value: Attribute = match &rt {
+                Type::Shaped(_) => Const::splat(Scalar::Int(ApInt::new(1, i128::from(v))), rt.clone()).into(),
+                _ => Attribute::Bool(v),
+            };
+            rw.replace_by(op, &arith::Constant::new(value, rt.clone()));
+        };
+        for (i, p) in pos.iter().enumerate() {
+            if *p == Dim::DYNAMIC {
+                // (a dynamic position is fine in an all-true dim)
+                if sizes[i] == mshape[i] {
+                    continue;
+                }
+                return false;
+            }
+            if *p >= sizes[i] {
+                constant(rw, false);
+                return true;
+            }
+        }
+        if vrank(&rt).is_some() {
+            let inner = sizes[pos.len()..].to_vec();
+            rw.replace_with(op, OpData::build("vector.constant_mask").with("mask_dim_sizes", Attribute::dense_i64(&inner)), &[rt]);
+        } else {
+            constant(rw, true);
+        }
+        true
+    }
+
+    /// `ExtractToShapeCast`: an extract at zeros keeping every element is a `shape_cast`.
+    #[rewrite("vector.extract")]
+    fn extract_to_shape_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let rt = b.result_ty(op);
+        let (Some(n), Some(m)) = (vshape(&rt).map(|(s, _)| s.iter().product::<i64>()), vshape(&b.operand_ty(op, 0)).map(|(s, _)| s.iter().product::<i64>())) else { return false };
+        if vrank(&rt).is_none() || n != m {
+            return false;
+        }
+        if !b.mixed_position(op).iter().all(|p| *p == Ok(0) || p.err().is_some_and(|v| b.ofr_int(crate::MemrefOfr::V(v)) == Some(0))) {
+            return false;
+        }
+        let src = b[op].operands[0];
+        rw.replace_with(op, OpData::build("vector.shape_cast").operands(&[src]), &[rt]);
+        true
+    }
+
+    /// `FoldExtractFromInsertUnitDim`: extracting a prefix of an insert's position whose
+    /// remaining dims are all 1 is the inserted value, shape-cast or broadcast.
+    #[rewrite("vector.extract")]
+    fn fold_extract_from_insert_unit_dim(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        if b.has_dynamic_position(op) {
+            return false;
+        }
+        let Some(ins) = b.def_named(b[op].operands[0], "vector.insert") else { return false };
+        if b.has_dynamic_position(ins) {
+            return false;
+        }
+        let (ep, ip) = (b.static_position(op), b.static_position(ins));
+        if ep.len() >= ip.len() || ep[..] != ip[..ep.len()] {
+            return false;
+        }
+        let Some((ss, _)) = vshape(&b.operand_ty(op, 0)) else { return false };
+        if ss[ep.len()..].iter().any(|d| *d != 1) {
+            return false;
+        }
+        let value = b[ins].operands[0];
+        let rt = b.result_ty(op);
+        let name = if vrank(&b[value].ty).is_some() { "vector.shape_cast" } else { "vector.broadcast" };
+        rw.replace_with(op, OpData::build(name).operands(&[value]), &[rt]);
+        true
+    }
+
+    /// `BroadcastToShapeCast`: a vector broadcast keeping the element count is a `shape_cast`.
+    #[rewrite("vector.broadcast")]
+    fn broadcast_to_shape_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let src = b[op].operands[0];
+        let rt = b.result_ty(op);
+        let (Some((ss, _)), Some((ds, _))) = (vshape(&b[src].ty), vshape(&rt)) else { return false };
+        if ss.iter().product::<i64>() != ds.iter().product::<i64>() {
+            return false;
+        }
+        rw.replace_with(op, OpData::build("vector.shape_cast").operands(&[src]), &[rt]);
+        true
+    }
+
+    /// `FoldShapeCastOfFromElements`: a `shape_cast` of a `from_elements` is one of the result
+    /// type.
+    #[rewrite("vector.shape_cast")]
+    fn fold_shape_cast_of_from_elements(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let Some(fe) = b.def_named(b[op].operands[0], "vector.from_elements") else { return false };
+        let elems = b[fe].operands.to_vec();
+        let rt = b.result_ty(op);
+        rw.replace_with(op, OpData::build("vector.from_elements").operands(&elems), &[rt]);
+        true
+    }
+
     /// `foldExtractFromShapeCastToShapeCast`.
     #[rewrite("vector.extract")]
     fn extract_from_shape_cast_to_shape_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
@@ -2533,12 +2642,16 @@ impl VectorCanon {
         set.add(ElideSingleElementReduction);
         set.add(ExtractOpFromBroadcast);
         set.add(ExtractOpFromCreateMask);
+        set.add(ExtractOpFromConstantMask);
+        set.add(ExtractToShapeCast);
+        set.add(FoldExtractFromInsertUnitDim);
         set.add(ExtractFromShapeCastToShapeCast);
         set.add(ExtractFromFromElements);
         set.add(ToElementsOfBroadcast);
         set.add(FromElementsAsBroadcast);
         set.add(FromElementsToShapeCast);
         set.add(BroadcastFolder);
+        set.add(BroadcastToShapeCast);
         set.add(ShuffleSplat);
         set.add(ShuffleInterleave);
         set.add(Canonicalize0DShuffleOp);
@@ -2564,6 +2677,7 @@ impl VectorCanon {
         set.add(CompressStoreFolder);
         set.add(ShapeCastCreateMaskFolderTrailingOneDim);
         set.add(ShapeCastBroadcastFolder);
+        set.add(FoldShapeCastOfFromElements);
         set.add(FoldTransposeCreateMask);
         set.add(FoldTransposeShapeCast);
         set.add(TransposeFolder);
