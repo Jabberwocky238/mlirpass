@@ -400,7 +400,7 @@ impl ArithToLlvm {
 
     /// The `Constrained*Lowering`s (`AttrConverterConstrainedFPToLLVM`): with a rounding mode,
     /// the constrained intrinsic, the mode in LLVM's numbering, exceptions ignored, no fastmath.
-    fn constrained(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], intr: &str) -> bool {
+    pub(crate) fn constrained(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], intr: &str) -> bool {
         let Some(mode) = cr.rw.body[op].get("roundingmode").cloned() else { return false };
         if cr.unsupported_fp_op(op) {
             return false;

@@ -25,7 +25,7 @@ pub struct MathToLlvm;
 #[map("math.exp" => "llvm.intr.exp", fastmath, fp)]
 #[map("math.fpowi" => "llvm.intr.powi", fastmath, fp)]
 #[map("math.floor" => "llvm.intr.floor", fastmath, fp)]
-#[map("math.fma" => "llvm.intr.fma", fastmath, fp)]
+#[map("math.fma" => "llvm.intr.fma", fastmath, fp, unconstrained)]
 #[map("math.log10" => "llvm.intr.log10", fastmath, fp)]
 #[map("math.log2" => "llvm.intr.log2", fastmath, fp)]
 #[map("math.log" => "llvm.intr.log", fastmath, fp)]
@@ -80,7 +80,8 @@ impl MathToLlvm {
             cr.replace_new(op, data(&[x]), &[res]);
             return true;
         }
-        if !matches!(res, Type::Shaped(_)) {
+        // (an n-D vector result, unrolled)
+        if !matches!(cr.rw.body[cr.rw.body[op].results[0]].ty, Type::Shaped(_)) {
             return false;
         }
         cr.unroll_vectors(op, &[x], |cr, ty, p| cr.build(data(p), ty))
@@ -94,6 +95,12 @@ impl MathToLlvm {
     #[convert("math.cttz")]
     fn cttz(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::int_with_flag(cr, op, operands, "llvm.intr.cttz", "is_zero_poison")
+    }
+
+    /// `ConstrainedFmaOpLowering`: with a rounding mode, the constrained intrinsic.
+    #[convert("math.fma")]
+    fn constrained_fma(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        crate::ArithToLlvm::constrained(cr, op, operands, "llvm.intr.experimental.constrained.fma")
     }
 
     #[convert("math.absi")]
