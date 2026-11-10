@@ -1,636 +1,1183 @@
+#loc19 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":72:29)
+#loc31 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":106:9)
+#loc32 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":106:21)
+#loc63 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":203:33)
+#loc71 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":234:36)
+#loc76 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":252:23)
+#loc77 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":252:39)
+#loc83 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":267:23)
+#loc84 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":267:39)
+#loc90 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":282:23)
+#loc91 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":282:39)
+#loc97 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":297:24)
+#loc98 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":297:40)
+#loc104 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":313:22)
+#loc105 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":313:38)
+#loc112 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":330:22)
+#loc113 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":330:38)
+#loc120 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":346:23)
+#loc121 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":346:39)
+#loc127 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":362:22)
+#loc128 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":362:38)
+#loc135 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":380:24)
+#loc136 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":380:40)
+#loc143 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":397:24)
+#loc144 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":397:40)
+#loc150 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":413:23)
+#loc151 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":413:39)
+#loc158 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":431:22)
+#loc159 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":431:38)
+#loc166 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":449:22)
+#loc167 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":449:38)
+#loc168 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":449:54)
+#loc176 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":470:23)
+#loc177 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":470:39)
+#loc178 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":470:55)
+#loc185 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":489:24)
+#loc186 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":489:40)
+#loc187 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":489:56)
+#loc194 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":509:23)
+#loc195 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":509:39)
+#loc196 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":509:55)
+#loc203 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":529:23)
+#loc204 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":529:39)
+#loc205 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":529:55)
+#loc212 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":549:24)
+#loc213 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":549:40)
+#loc214 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":549:56)
+#loc222 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":574:24)
+#loc223 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":574:40)
+#loc231 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":593:24)
+#loc232 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":593:40)
+#loc238 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":609:22)
+#loc239 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":609:38)
+#loc246 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":624:25)
+#loc258 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":679:25)
+#loc259 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":679:37)
+#loc264 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":699:33)
+#loc265 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":699:46)
+#loc270 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":706:35)
+#loc271 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":706:48)
+#loc276 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":713:35)
+#loc277 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":713:48)
+#loc282 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":720:33)
+#loc283 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":720:46)
+#loc288 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":727:32)
+#loc289 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":727:45)
+#loc294 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":734:33)
+#loc295 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":734:46)
+#loc301 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":746:23)
+#loc302 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":746:39)
+#loc308 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":759:22)
+#loc309 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":759:38)
+#loc315 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":771:36)
+#loc326 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":805:30)
+#loc327 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":805:49)
+#loc331 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":814:23)
+#loc332 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":814:39)
+#loc338 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":827:24)
+#loc339 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":827:40)
+#loc345 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":840:23)
+#loc346 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":840:39)
+#loc352 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":853:24)
+#loc353 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":853:40)
+#loc359 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":866:24)
+#loc360 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":866:40)
+#loc361 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":866:56)
+#loc368 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":884:27)
+#loc369 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":884:43)
+#loc375 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":897:23)
+#loc376 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":897:39)
+#loc382 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":910:22)
+#loc383 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":910:38)
+#loc389 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":923:24)
+#loc390 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":923:40)
+#loc396 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":936:28)
+#loc397 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":936:44)
+#loc403 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":949:23)
+#loc404 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":949:39)
+#loc410 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":962:37)
+#loc411 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":962:53)
+#loc417 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":975:37)
+#loc418 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":975:53)
+#loc424 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":988:36)
+#loc425 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":988:52)
+#loc438 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1015:35)
+#loc449 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1055:25)
+#loc454 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1062:46)
+#loc472 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1101:22)
+#loc477 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1112:23)
+#loc478 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1112:39)
+#loc479 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1112:55)
+#loc485 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1129:25)
+#loc486 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1129:36)
+#loc496 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1163:23)
+#loc497 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1163:39)
+#loc503 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1180:25)
+#loc504 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1180:41)
+#loc505 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1180:57)
+#loc511 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1197:34)
+#loc512 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1197:50)
+#loc513 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1197:66)
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "test_module_0"}> ({
     "func.func"() <{function_type = () -> (index, index, index, index, index, index, index, index, index, index, index, index, index), sym_name = "gpu_index_ops"}> ({
-      %154 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index
-      %155 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index
-      %156 = "gpu.thread_id"() <{dimension = #gpu<dim z>}> : () -> index
-      %157 = "gpu.block_dim"() <{dimension = #gpu<dim x>}> : () -> index
-      %158 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index
-      %159 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index
-      %160 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
-      %161 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
-      %162 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
-      %163 = "gpu.grid_dim"() <{dimension = #gpu<dim x>}> : () -> index
-      %164 = "gpu.grid_dim"() <{dimension = #gpu<dim y>}> : () -> index
-      %165 = "gpu.grid_dim"() <{dimension = #gpu<dim z>}> : () -> index
-      %166 = "gpu.lane_id"() : () -> index
-      "func.return"(%154, %155, %156, %157, %158, %159, %160, %161, %162, %163, %164, %165, %166) : (index, index, index, index, index, index, index, index, index, index, index, index, index) -> ()
-    }) : () -> ()
-  }) : () -> ()
+      %154 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index loc(#loc3)
+      %155 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index loc(#loc4)
+      %156 = "gpu.thread_id"() <{dimension = #gpu<dim z>}> : () -> index loc(#loc5)
+      %157 = "gpu.block_dim"() <{dimension = #gpu<dim x>}> : () -> index loc(#loc6)
+      %158 = "gpu.block_dim"() <{dimension = #gpu<dim y>}> : () -> index loc(#loc7)
+      %159 = "gpu.block_dim"() <{dimension = #gpu<dim z>}> : () -> index loc(#loc8)
+      %160 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index loc(#loc9)
+      %161 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index loc(#loc10)
+      %162 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index loc(#loc11)
+      %163 = "gpu.grid_dim"() <{dimension = #gpu<dim x>}> : () -> index loc(#loc12)
+      %164 = "gpu.grid_dim"() <{dimension = #gpu<dim y>}> : () -> index loc(#loc13)
+      %165 = "gpu.grid_dim"() <{dimension = #gpu<dim z>}> : () -> index loc(#loc14)
+      %166 = "gpu.lane_id"() : () -> index loc(#loc15)
+      "func.return"(%154, %155, %156, %157, %158, %159, %160, %161, %162, %163, %164, %165, %166) : (index, index, index, index, index, index, index, index, index, index, index, index, index) -> () loc(#loc16)
+    }) : () -> () loc(#loc2)
+  }) : () -> () loc(#loc1)
   "gpu.module"() <{sym_name = "test_module_1"}> ({
     "func.func"() <{function_type = (index) -> index, sym_name = "gpu_index_comp"}> ({
-    ^bb0(%arg120: index):
-      %153 = "arith.addi"(%arg120, %arg120) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      "func.return"(%153) : (index) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg120: index loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":72:29)):
+      %153 = "arith.addi"(%arg120, %arg120) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index loc(#loc20)
+      "func.return"(%153) : (index) -> () loc(#loc21)
+    }) : () -> () loc(#loc18)
+  }) : () -> () loc(#loc17)
   "gpu.module"() <{sym_name = "test_module_2"}> ({
     "gpu.func"() <{function_type = () -> ()}> ({
-      %151 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
+      %151 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32 loc(#loc24)
       %152 = "gpu.all_reduce"(%151) <{op = #gpu<all_reduce_op add>, uniform}> ({
-      }) : (f32) -> f32
-      "gpu.return"() : () -> ()
-    }) {sym_name = "gpu_all_reduce_op"} : () -> ()
-  }) : () -> ()
+      }) : (f32) -> f32 loc(#loc25)
+      "gpu.return"() : () -> () loc(#loc26)
+    }) {sym_name = "gpu_all_reduce_op"} : () -> () loc(#loc23)
+  }) : () -> () loc(#loc22)
   "gpu.module"() <{sym_name = "test_module_3"}> ({
     "gpu.func"() <{function_type = () -> ()}> ({
-      %148 = "arith.constant"() <{value = 1 : i32}> : () -> i32
+      %148 = "arith.constant"() <{value = 1 : i32}> : () -> i32 loc(#loc29)
       %149 = "gpu.all_reduce"(%148) <{uniform}> ({
-      ^bb0(%arg118: i32, %arg119: i32):
-        %150 = "arith.xori"(%arg118, %arg119) : (i32, i32) -> i32
-        "gpu.yield"(%150) : (i32) -> ()
-      }) : (i32) -> i32
-      "gpu.return"() : () -> ()
-    }) {sym_name = "gpu_all_reduce_region"} : () -> ()
-  }) : () -> ()
+      ^bb0(%arg118: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":106:9), %arg119: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":106:21)):
+        %150 = "arith.xori"(%arg118, %arg119) : (i32, i32) -> i32 loc(#loc33)
+        "gpu.yield"(%150) : (i32) -> () loc(#loc34)
+      }) : (i32) -> i32 loc(#loc30)
+      "gpu.return"() : () -> () loc(#loc35)
+    }) {sym_name = "gpu_all_reduce_region"} : () -> () loc(#loc28)
+  }) : () -> () loc(#loc27)
   "gpu.module"() <{sym_name = "test_module_4"}> ({
     "func.func"() <{function_type = () -> (f32, f32, f32, f32, i1, i1, i1, i1), sym_name = "gpu_shuffle"}> ({
-      %141 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-      %142 = "arith.constant"() <{value = 4 : i32}> : () -> i32
-      %143 = "arith.constant"() <{value = 23 : i32}> : () -> i32
-      %144:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode xor>}> : (f32, i32, i32) -> (f32, i1)
-      %145:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode up>}> : (f32, i32, i32) -> (f32, i1)
-      %146:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode down>}> : (f32, i32, i32) -> (f32, i1)
-      %147:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode idx>}> : (f32, i32, i32) -> (f32, i1)
-      "func.return"(%144#0, %145#0, %146#0, %147#0, %144#1, %145#1, %146#1, %147#1) : (f32, f32, f32, f32, i1, i1, i1, i1) -> ()
-    }) : () -> ()
+      %141 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32 loc(#loc38)
+      %142 = "arith.constant"() <{value = 4 : i32}> : () -> i32 loc(#loc39)
+      %143 = "arith.constant"() <{value = 23 : i32}> : () -> i32 loc(#loc40)
+      %144:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode xor>}> : (f32, i32, i32) -> (f32, i1) loc(#loc41)
+      %145:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode up>}> : (f32, i32, i32) -> (f32, i1) loc(#loc42)
+      %146:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode down>}> : (f32, i32, i32) -> (f32, i1) loc(#loc43)
+      %147:2 = "gpu.shuffle"(%141, %142, %143) <{mode = #gpu<shuffle_mode idx>}> : (f32, i32, i32) -> (f32, i1) loc(#loc44)
+      "func.return"(%144#0, %145#0, %146#0, %147#0, %144#1, %145#1, %146#1, %147#1) : (f32, f32, f32, f32, i1, i1, i1, i1) -> () loc(#loc45)
+    }) : () -> () loc(#loc37)
     "func.func"() <{function_type = () -> (f32, f32, f32, f32), sym_name = "gpu_shuffle_unused_pred"}> ({
-      %134 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-      %135 = "arith.constant"() <{value = 4 : i32}> : () -> i32
-      %136 = "arith.constant"() <{value = 23 : i32}> : () -> i32
-      %137:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode xor>}> : (f32, i32, i32) -> (f32, i1)
-      %138:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode up>}> : (f32, i32, i32) -> (f32, i1)
-      %139:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode down>}> : (f32, i32, i32) -> (f32, i1)
-      %140:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode idx>}> : (f32, i32, i32) -> (f32, i1)
-      "func.return"(%137#0, %138#0, %139#0, %140#0) : (f32, f32, f32, f32) -> ()
-    }) : () -> ()
-  }) : () -> ()
+      %134 = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32 loc(#loc47)
+      %135 = "arith.constant"() <{value = 4 : i32}> : () -> i32 loc(#loc48)
+      %136 = "arith.constant"() <{value = 23 : i32}> : () -> i32 loc(#loc49)
+      %137:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode xor>}> : (f32, i32, i32) -> (f32, i1) loc(#loc50)
+      %138:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode up>}> : (f32, i32, i32) -> (f32, i1) loc(#loc51)
+      %139:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode down>}> : (f32, i32, i32) -> (f32, i1) loc(#loc52)
+      %140:2 = "gpu.shuffle"(%134, %135, %136) <{mode = #gpu<shuffle_mode idx>}> : (f32, i32, i32) -> (f32, i1) loc(#loc53)
+      "func.return"(%137#0, %138#0, %139#0, %140#0) : (f32, f32, f32, f32) -> () loc(#loc54)
+    }) : () -> () loc(#loc46)
+  }) : () -> () loc(#loc36)
   "gpu.module"() <{sym_name = "test_module_5"}> ({
     "func.func"() <{function_type = () -> (), sym_name = "gpu_sync"}> ({
-      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> ()
-      "func.return"() : () -> ()
-    }) : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<workgroup>}> : () -> () loc(#loc57)
+      "func.return"() : () -> () loc(#loc58)
+    }) : () -> () loc(#loc56)
     "func.func"() <{function_type = () -> (), sym_name = "gpu_sync_subgroup"}> ({
-      "gpu.barrier"() <{scope = #gpu.barrier_scope<subgroup>}> : () -> ()
-      "func.return"() : () -> ()
-    }) : () -> ()
+      "gpu.barrier"() <{scope = #gpu.barrier_scope<subgroup>}> : () -> () loc(#loc60)
+      "func.return"() : () -> () loc(#loc61)
+    }) : () -> () loc(#loc59)
     "func.func"() <{function_type = (i32) -> (), sym_name = "gpu_named_barriers"}> ({
-    ^bb0(%arg117: i32):
-      %131 = "gpu.initialize_named_barrier"(%arg117) : (i32) -> !gpu.named_barrier
-      %132 = "arith.constant"() <{value = 2 : i32}> : () -> i32
-      %133 = "gpu.initialize_named_barrier"(%132) : (i32) -> !gpu.named_barrier
-      "gpu.barrier"(%131) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> ()
-      "gpu.barrier"(%133) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> ()
-      "func.return"() : () -> ()
-    }) : () -> ()
+    ^bb0(%arg117: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":203:33)):
+      %131 = "gpu.initialize_named_barrier"(%arg117) : (i32) -> !gpu.named_barrier loc(#loc64)
+      %132 = "arith.constant"() <{value = 2 : i32}> : () -> i32 loc(#loc65)
+      %133 = "gpu.initialize_named_barrier"(%132) : (i32) -> !gpu.named_barrier loc(#loc66)
+      "gpu.barrier"(%131) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> () loc(#loc67)
+      "gpu.barrier"(%133) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> () loc(#loc68)
+      "func.return"() : () -> () loc(#loc69)
+    }) : () -> () loc(#loc62)
     "func.func"() <{function_type = (!gpu.named_barrier) -> (), sym_name = "gpu_named_barrier_arg"}> ({
-    ^bb0(%arg116: !gpu.named_barrier):
-      "gpu.barrier"(%arg116) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> ()
-      "func.return"() : () -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg116: !gpu.named_barrier loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":234:36)):
+      "gpu.barrier"(%arg116) <{scope = #gpu.barrier_scope<workgroup>}> : (!gpu.named_barrier) -> () loc(#loc72)
+      "func.return"() : () -> () loc(#loc73)
+    }) : () -> () loc(#loc70)
+  }) : () -> () loc(#loc55)
   "gpu.module"() <{sym_name = "test_module_6"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_fabs"}> ({
-    ^bb0(%arg114: f32, %arg115: f64):
-      %129 = "math.absf"(%arg114) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %130 = "math.absf"(%arg115) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%129, %130) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg114: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":252:23), %arg115: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":252:39)):
+      %129 = "math.absf"(%arg114) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc78)
+      %130 = "math.absf"(%arg115) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc79)
+      "func.return"(%129, %130) : (f32, f64) -> () loc(#loc80)
+    }) : () -> () loc(#loc75)
+  }) : () -> () loc(#loc74)
   "gpu.module"() <{sym_name = "test_module_7"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_cbrt"}> ({
-    ^bb0(%arg112: f32, %arg113: f64):
-      %127 = "math.cbrt"(%arg112) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %128 = "math.cbrt"(%arg113) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%127, %128) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg112: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":267:23), %arg113: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":267:39)):
+      %127 = "math.cbrt"(%arg112) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc85)
+      %128 = "math.cbrt"(%arg113) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc86)
+      "func.return"(%127, %128) : (f32, f64) -> () loc(#loc87)
+    }) : () -> () loc(#loc82)
+  }) : () -> () loc(#loc81)
   "gpu.module"() <{sym_name = "test_module_8"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_ceil"}> ({
-    ^bb0(%arg110: f32, %arg111: f64):
-      %125 = "math.ceil"(%arg110) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %126 = "math.ceil"(%arg111) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%125, %126) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg110: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":282:23), %arg111: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":282:39)):
+      %125 = "math.ceil"(%arg110) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc92)
+      %126 = "math.ceil"(%arg111) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc93)
+      "func.return"(%125, %126) : (f32, f64) -> () loc(#loc94)
+    }) : () -> () loc(#loc89)
+  }) : () -> () loc(#loc88)
   "gpu.module"() <{sym_name = "test_module_9"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_floor"}> ({
-    ^bb0(%arg108: f32, %arg109: f64):
-      %123 = "math.floor"(%arg108) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %124 = "math.floor"(%arg109) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%123, %124) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg108: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":297:24), %arg109: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":297:40)):
+      %123 = "math.floor"(%arg108) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc99)
+      %124 = "math.floor"(%arg109) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc100)
+      "func.return"(%123, %124) : (f32, f64) -> () loc(#loc101)
+    }) : () -> () loc(#loc96)
+  }) : () -> () loc(#loc95)
   "gpu.module"() <{sym_name = "test_module_10"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_cos"}> ({
-    ^bb0(%arg106: f32, %arg107: f64):
-      %120 = "math.cos"(%arg106) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %121 = "math.cos"(%arg107) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %122 = "math.cos"(%arg106) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
-      "func.return"(%120, %121, %122) : (f32, f64, f32) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg106: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":313:22), %arg107: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":313:38)):
+      %120 = "math.cos"(%arg106) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc106)
+      %121 = "math.cos"(%arg107) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc107)
+      %122 = "math.cos"(%arg106) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32 loc(#loc108)
+      "func.return"(%120, %121, %122) : (f32, f64, f32) -> () loc(#loc109)
+    }) : () -> () loc(#loc103)
+  }) : () -> () loc(#loc102)
   "gpu.module"() <{sym_name = "test_module_11"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_exp"}> ({
-    ^bb0(%arg104: f32, %arg105: f64):
-      %117 = "math.exp"(%arg104) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %118 = "math.exp"(%arg105) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %119 = "math.exp"(%arg104) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
-      "func.return"(%117, %118, %119) : (f32, f64, f32) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg104: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":330:22), %arg105: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":330:38)):
+      %117 = "math.exp"(%arg104) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc114)
+      %118 = "math.exp"(%arg105) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc115)
+      %119 = "math.exp"(%arg104) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32 loc(#loc116)
+      "func.return"(%117, %118, %119) : (f32, f64, f32) -> () loc(#loc117)
+    }) : () -> () loc(#loc111)
+  }) : () -> () loc(#loc110)
   "gpu.module"() <{sym_name = "test_module_12"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_exp2"}> ({
-    ^bb0(%arg102: f32, %arg103: f64):
-      %115 = "math.exp2"(%arg102) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %116 = "math.exp2"(%arg103) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%115, %116) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg102: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":346:23), %arg103: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":346:39)):
+      %115 = "math.exp2"(%arg102) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc122)
+      %116 = "math.exp2"(%arg103) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc123)
+      "func.return"(%115, %116) : (f32, f64) -> () loc(#loc124)
+    }) : () -> () loc(#loc119)
+  }) : () -> () loc(#loc118)
   "gpu.module"() <{sym_name = "test_module_13"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_log"}> ({
-    ^bb0(%arg100: f32, %arg101: f64):
-      %112 = "math.log"(%arg100) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %113 = "math.log"(%arg101) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %114 = "math.log"(%arg100) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
-      "func.return"(%112, %113, %114) : (f32, f64, f32) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg100: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":362:22), %arg101: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":362:38)):
+      %112 = "math.log"(%arg100) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc129)
+      %113 = "math.log"(%arg101) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc130)
+      %114 = "math.log"(%arg100) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32 loc(#loc131)
+      "func.return"(%112, %113, %114) : (f32, f64, f32) -> () loc(#loc132)
+    }) : () -> () loc(#loc126)
+  }) : () -> () loc(#loc125)
   "gpu.module"() <{sym_name = "test_module_14"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_log10"}> ({
-    ^bb0(%arg98: f32, %arg99: f64):
-      %109 = "math.log10"(%arg98) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %110 = "math.log10"(%arg99) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %111 = "math.log10"(%arg98) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
-      "func.return"(%109, %110, %111) : (f32, f64, f32) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg98: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":380:24), %arg99: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":380:40)):
+      %109 = "math.log10"(%arg98) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc137)
+      %110 = "math.log10"(%arg99) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc138)
+      %111 = "math.log10"(%arg98) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32 loc(#loc139)
+      "func.return"(%109, %110, %111) : (f32, f64, f32) -> () loc(#loc140)
+    }) : () -> () loc(#loc134)
+  }) : () -> () loc(#loc133)
   "gpu.module"() <{sym_name = "test_module_15"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_log1p"}> ({
-    ^bb0(%arg96: f32, %arg97: f64):
-      %107 = "math.log1p"(%arg96) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %108 = "math.log1p"(%arg97) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%107, %108) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg96: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":397:24), %arg97: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":397:40)):
+      %107 = "math.log1p"(%arg96) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc145)
+      %108 = "math.log1p"(%arg97) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc146)
+      "func.return"(%107, %108) : (f32, f64) -> () loc(#loc147)
+    }) : () -> () loc(#loc142)
+  }) : () -> () loc(#loc141)
   "gpu.module"() <{sym_name = "test_module_16"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_log2"}> ({
-    ^bb0(%arg94: f32, %arg95: f64):
-      %104 = "math.log2"(%arg94) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %105 = "math.log2"(%arg95) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %106 = "math.log2"(%arg94) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
-      "func.return"(%104, %105, %106) : (f32, f64, f32) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg94: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":413:23), %arg95: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":413:39)):
+      %104 = "math.log2"(%arg94) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc152)
+      %105 = "math.log2"(%arg95) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc153)
+      %106 = "math.log2"(%arg94) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32 loc(#loc154)
+      "func.return"(%104, %105, %106) : (f32, f64, f32) -> () loc(#loc155)
+    }) : () -> () loc(#loc149)
+  }) : () -> () loc(#loc148)
   "gpu.module"() <{sym_name = "test_module_17"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_sin"}> ({
-    ^bb0(%arg92: f32, %arg93: f64):
-      %101 = "math.sin"(%arg92) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %102 = "math.sin"(%arg93) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %103 = "math.sin"(%arg92) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
-      "func.return"(%101, %102, %103) : (f32, f64, f32) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg92: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":431:22), %arg93: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":431:38)):
+      %101 = "math.sin"(%arg92) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc160)
+      %102 = "math.sin"(%arg93) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc161)
+      %103 = "math.sin"(%arg92) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32 loc(#loc162)
+      "func.return"(%101, %102, %103) : (f32, f64, f32) -> () loc(#loc163)
+    }) : () -> () loc(#loc157)
+  }) : () -> () loc(#loc156)
   "gpu.module"() <{sym_name = "test_module_18"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64, f32), sym_name = "gpu_tan"}> ({
-    ^bb0(%arg89: f16, %arg90: f32, %arg91: f64):
-      %97 = "math.tan"(%arg89) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
-      %98 = "math.tan"(%arg90) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %99 = "math.tan"(%arg91) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      %100 = "math.tan"(%arg90) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
-      "func.return"(%97, %98, %99, %100) : (f16, f32, f64, f32) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg89: f16 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":449:22), %arg90: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":449:38), %arg91: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":449:54)):
+      %97 = "math.tan"(%arg89) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16 loc(#loc169)
+      %98 = "math.tan"(%arg90) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc170)
+      %99 = "math.tan"(%arg91) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc171)
+      %100 = "math.tan"(%arg90) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32 loc(#loc172)
+      "func.return"(%97, %98, %99, %100) : (f16, f32, f64, f32) -> () loc(#loc173)
+    }) : () -> () loc(#loc165)
+  }) : () -> () loc(#loc164)
   "gpu.module"() <{sym_name = "test_module_19"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64), sym_name = "gpu_tanh"}> ({
-    ^bb0(%arg86: f16, %arg87: f32, %arg88: f64):
-      %94 = "math.tanh"(%arg86) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
-      %95 = "math.tanh"(%arg87) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %96 = "math.tanh"(%arg88) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%94, %95, %96) : (f16, f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg86: f16 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":470:23), %arg87: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":470:39), %arg88: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":470:55)):
+      %94 = "math.tanh"(%arg86) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16 loc(#loc179)
+      %95 = "math.tanh"(%arg87) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc180)
+      %96 = "math.tanh"(%arg88) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc181)
+      "func.return"(%94, %95, %96) : (f16, f32, f64) -> () loc(#loc182)
+    }) : () -> () loc(#loc175)
+  }) : () -> () loc(#loc174)
   "gpu.module"() <{sym_name = "test_module_20"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64), sym_name = "gpu_rsqrt"}> ({
-    ^bb0(%arg83: f16, %arg84: f32, %arg85: f64):
-      %91 = "math.rsqrt"(%arg83) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
-      %92 = "math.rsqrt"(%arg84) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %93 = "math.rsqrt"(%arg85) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%91, %92, %93) : (f16, f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg83: f16 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":489:24), %arg84: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":489:40), %arg85: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":489:56)):
+      %91 = "math.rsqrt"(%arg83) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16 loc(#loc188)
+      %92 = "math.rsqrt"(%arg84) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc189)
+      %93 = "math.rsqrt"(%arg85) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc190)
+      "func.return"(%91, %92, %93) : (f16, f32, f64) -> () loc(#loc191)
+    }) : () -> () loc(#loc184)
+  }) : () -> () loc(#loc183)
   "gpu.module"() <{sym_name = "test_module_21"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64), sym_name = "gpu_sqrt"}> ({
-    ^bb0(%arg80: f16, %arg81: f32, %arg82: f64):
-      %88 = "math.sqrt"(%arg80) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
-      %89 = "math.sqrt"(%arg81) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %90 = "math.sqrt"(%arg82) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%88, %89, %90) : (f16, f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg80: f16 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":509:23), %arg81: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":509:39), %arg82: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":509:55)):
+      %88 = "math.sqrt"(%arg80) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16 loc(#loc197)
+      %89 = "math.sqrt"(%arg81) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc198)
+      %90 = "math.sqrt"(%arg82) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc199)
+      "func.return"(%88, %89, %90) : (f16, f32, f64) -> () loc(#loc200)
+    }) : () -> () loc(#loc193)
+  }) : () -> () loc(#loc192)
   "gpu.module"() <{sym_name = "test_module_22"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64), sym_name = "gpu_atan"}> ({
-    ^bb0(%arg77: f16, %arg78: f32, %arg79: f64):
-      %85 = "math.atan"(%arg77) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
-      %86 = "math.atan"(%arg78) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %87 = "math.atan"(%arg79) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%85, %86, %87) : (f16, f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg77: f16 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":529:23), %arg78: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":529:39), %arg79: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":529:55)):
+      %85 = "math.atan"(%arg77) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16 loc(#loc206)
+      %86 = "math.atan"(%arg78) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc207)
+      %87 = "math.atan"(%arg79) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc208)
+      "func.return"(%85, %86, %87) : (f16, f32, f64) -> () loc(#loc209)
+    }) : () -> () loc(#loc202)
+  }) : () -> () loc(#loc201)
   "gpu.module"() <{sym_name = "test_module_23"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64), sym_name = "gpu_atan2"}> ({
-    ^bb0(%arg74: f16, %arg75: f32, %arg76: f64):
-      %82 = "math.atan2"(%arg74, %arg74) <{fastmath = #arith.fastmath<none>}> : (f16, f16) -> f16
-      %83 = "math.atan2"(%arg75, %arg75) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %84 = "math.atan2"(%arg76, %arg76) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64
-      "func.return"(%82, %83, %84) : (f16, f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg74: f16 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":549:24), %arg75: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":549:40), %arg76: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":549:56)):
+      %82 = "math.atan2"(%arg74, %arg74) <{fastmath = #arith.fastmath<none>}> : (f16, f16) -> f16 loc(#loc215)
+      %83 = "math.atan2"(%arg75, %arg75) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32 loc(#loc216)
+      %84 = "math.atan2"(%arg76, %arg76) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64 loc(#loc217)
+      "func.return"(%82, %83, %84) : (f16, f32, f64) -> () loc(#loc218)
+    }) : () -> () loc(#loc211)
+  }) : () -> () loc(#loc210)
   "gpu.module"() <{sym_name = "test_module_24"}> ({
     "test.symbol_scope"() ({
       "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_exp"}> ({
-      ^bb0(%arg72: f32, %arg73: f64):
-        %79 = "math.exp"(%arg72) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-        %80 = "math.exp"(%arg73) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-        %81 = "math.exp"(%arg72) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32
-        "func.return"(%79, %80, %81) : (f32, f64, f32) -> ()
-      }) : () -> ()
-      "test.finish"() : () -> ()
-    }) : () -> ()
-  }) : () -> ()
+      ^bb0(%arg72: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":574:24), %arg73: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":574:40)):
+        %79 = "math.exp"(%arg72) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc224)
+        %80 = "math.exp"(%arg73) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc225)
+        %81 = "math.exp"(%arg72) <{fastmath = #arith.fastmath<afn>}> : (f32) -> f32 loc(#loc226)
+        "func.return"(%79, %80, %81) : (f32, f64, f32) -> () loc(#loc227)
+      }) : () -> () loc(#loc221)
+      "test.finish"() : () -> () loc(#loc228)
+    }) : () -> () loc(#loc220)
+  }) : () -> () loc(#loc219)
   "gpu.module"() <{sym_name = "test_module_25"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_expm1"}> ({
-    ^bb0(%arg70: f32, %arg71: f64):
-      %77 = "math.expm1"(%arg70) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %78 = "math.expm1"(%arg71) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%77, %78) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg70: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":593:24), %arg71: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":593:40)):
+      %77 = "math.expm1"(%arg70) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc233)
+      %78 = "math.expm1"(%arg71) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc234)
+      "func.return"(%77, %78) : (f32, f64) -> () loc(#loc235)
+    }) : () -> () loc(#loc230)
+  }) : () -> () loc(#loc229)
   "gpu.module"() <{sym_name = "test_module_26"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_pow"}> ({
-    ^bb0(%arg68: f32, %arg69: f64):
-      %74 = "math.powf"(%arg68, %arg68) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %75 = "math.powf"(%arg69, %arg69) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64
-      %76 = "math.powf"(%arg68, %arg68) <{fastmath = #arith.fastmath<fast>}> : (f32, f32) -> f32
-      "func.return"(%74, %75, %76) : (f32, f64, f32) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg68: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":609:22), %arg69: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":609:38)):
+      %74 = "math.powf"(%arg68, %arg68) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32 loc(#loc240)
+      %75 = "math.powf"(%arg69, %arg69) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64 loc(#loc241)
+      %76 = "math.powf"(%arg68, %arg68) <{fastmath = #arith.fastmath<fast>}> : (f32, f32) -> f32 loc(#loc242)
+      "func.return"(%74, %75, %76) : (f32, f64, f32) -> () loc(#loc243)
+    }) : () -> () loc(#loc237)
+  }) : () -> () loc(#loc236)
   "gpu.module"() <{sym_name = "test_module_27"}> ({
     "func.func"() <{function_type = (vector<4xf32>) -> vector<4xf32>, sym_name = "gpu_unroll"}> ({
-    ^bb0(%arg67: vector<4xf32>):
-      %73 = "math.exp"(%arg67) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32>
-      "func.return"(%73) : (vector<4xf32>) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg67: vector<4xf32> loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":624:25)):
+      %73 = "math.exp"(%arg67) <{fastmath = #arith.fastmath<none>}> : (vector<4xf32>) -> vector<4xf32> loc(#loc247)
+      "func.return"(%73) : (vector<4xf32>) -> () loc(#loc248)
+    }) : () -> () loc(#loc245)
+  }) : () -> () loc(#loc244)
   "gpu.module"() <{sym_name = "test_module_28"}> ({
     "gpu.func"() <{function_type = () -> (), kernel}> ({
-      "gpu.return"() : () -> ()
-    }) {sym_name = "kernel_func"} : () -> ()
-  }) : () -> ()
+      "gpu.return"() : () -> () loc(#loc251)
+    }) {sym_name = "kernel_func"} : () -> () loc(#loc250)
+  }) : () -> () loc(#loc249)
   "gpu.module"() <{sym_name = "test_module_29"}> ({
     "gpu.func"() <{function_type = () -> ()}> ({
-      "gpu.printf"() <{format = "Hello, world\0A"}> : () -> ()
-      "gpu.printf"() <{format = "Hello, world\0A"}> : () -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "test_const_printf"} : () -> ()
+      "gpu.printf"() <{format = "Hello, world\0A"}> : () -> () loc(#loc254)
+      "gpu.printf"() <{format = "Hello, world\0A"}> : () -> () loc(#loc255)
+      "gpu.return"() : () -> () loc(#loc256)
+    }) {sym_name = "test_const_printf"} : () -> () loc(#loc253)
     "gpu.func"() <{function_type = (i32, f32) -> ()}> ({
-    ^bb0(%arg65: i32, %arg66: f32):
-      "gpu.printf"(%arg65, %arg66) <{format = "Hello: %d\0A"}> : (i32, f32) -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "test_printf"} : () -> ()
-  }) : () -> ()
+    ^bb0(%arg65: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":679:25), %arg66: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":679:37)):
+      "gpu.printf"(%arg65, %arg66) <{format = "Hello: %d\0A"}> : (i32, f32) -> () loc(#loc260)
+      "gpu.return"() : () -> () loc(#loc261)
+    }) {sym_name = "test_printf"} : () -> () loc(#loc257)
+  }) : () -> () loc(#loc252)
   "gpu.module"() <{sym_name = "test_module_30"}> ({
     "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
-    ^bb0(%arg63: i32, %arg64: memref<i32>):
-      %72 = "gpu.subgroup_reduce"(%arg63) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op add>, uniform}> : (i32) -> i32
-      "memref.store"(%72, %arg64) : (i32, memref<i32>) -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_add"} : () -> ()
+    ^bb0(%arg63: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":699:33), %arg64: memref<i32> loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":699:46)):
+      %72 = "gpu.subgroup_reduce"(%arg63) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op add>, uniform}> : (i32) -> i32 loc(#loc266)
+      "memref.store"(%72, %arg64) : (i32, memref<i32>) -> () loc(#loc267)
+      "gpu.return"() : () -> () loc(#loc268)
+    }) {sym_name = "subgroup_reduce_add"} : () -> () loc(#loc263)
     "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
-    ^bb0(%arg61: i32, %arg62: memref<i32>):
-      %71 = "gpu.subgroup_reduce"(%arg61) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op minsi>, uniform}> : (i32) -> i32
-      "memref.store"(%71, %arg62) : (i32, memref<i32>) -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_minsi"} : () -> ()
+    ^bb0(%arg61: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":706:35), %arg62: memref<i32> loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":706:48)):
+      %71 = "gpu.subgroup_reduce"(%arg61) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op minsi>, uniform}> : (i32) -> i32 loc(#loc272)
+      "memref.store"(%71, %arg62) : (i32, memref<i32>) -> () loc(#loc273)
+      "gpu.return"() : () -> () loc(#loc274)
+    }) {sym_name = "subgroup_reduce_minsi"} : () -> () loc(#loc269)
     "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
-    ^bb0(%arg59: i32, %arg60: memref<i32>):
-      %70 = "gpu.subgroup_reduce"(%arg59) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op maxsi>, uniform}> : (i32) -> i32
-      "memref.store"(%70, %arg60) : (i32, memref<i32>) -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_maxsi"} : () -> ()
+    ^bb0(%arg59: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":713:35), %arg60: memref<i32> loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":713:48)):
+      %70 = "gpu.subgroup_reduce"(%arg59) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op maxsi>, uniform}> : (i32) -> i32 loc(#loc278)
+      "memref.store"(%70, %arg60) : (i32, memref<i32>) -> () loc(#loc279)
+      "gpu.return"() : () -> () loc(#loc280)
+    }) {sym_name = "subgroup_reduce_maxsi"} : () -> () loc(#loc275)
     "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
-    ^bb0(%arg57: i32, %arg58: memref<i32>):
-      %69 = "gpu.subgroup_reduce"(%arg57) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op and>, uniform}> : (i32) -> i32
-      "memref.store"(%69, %arg58) : (i32, memref<i32>) -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_and"} : () -> ()
+    ^bb0(%arg57: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":720:33), %arg58: memref<i32> loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":720:46)):
+      %69 = "gpu.subgroup_reduce"(%arg57) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op and>, uniform}> : (i32) -> i32 loc(#loc284)
+      "memref.store"(%69, %arg58) : (i32, memref<i32>) -> () loc(#loc285)
+      "gpu.return"() : () -> () loc(#loc286)
+    }) {sym_name = "subgroup_reduce_and"} : () -> () loc(#loc281)
     "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
-    ^bb0(%arg55: i32, %arg56: memref<i32>):
-      %68 = "gpu.subgroup_reduce"(%arg55) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op or>, uniform}> : (i32) -> i32
-      "memref.store"(%68, %arg56) : (i32, memref<i32>) -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_or"} : () -> ()
+    ^bb0(%arg55: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":727:32), %arg56: memref<i32> loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":727:45)):
+      %68 = "gpu.subgroup_reduce"(%arg55) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op or>, uniform}> : (i32) -> i32 loc(#loc290)
+      "memref.store"(%68, %arg56) : (i32, memref<i32>) -> () loc(#loc291)
+      "gpu.return"() : () -> () loc(#loc292)
+    }) {sym_name = "subgroup_reduce_or"} : () -> () loc(#loc287)
     "gpu.func"() <{function_type = (i32, memref<i32>) -> ()}> ({
-    ^bb0(%arg53: i32, %arg54: memref<i32>):
-      %67 = "gpu.subgroup_reduce"(%arg53) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op xor>, uniform}> : (i32) -> i32
-      "memref.store"(%67, %arg54) : (i32, memref<i32>) -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "subgroup_reduce_xor"} : () -> ()
-  }) : () -> ()
+    ^bb0(%arg53: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":734:33), %arg54: memref<i32> loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":734:46)):
+      %67 = "gpu.subgroup_reduce"(%arg53) <{cluster_stride = 1 : i32, op = #gpu<all_reduce_op xor>, uniform}> : (i32) -> i32 loc(#loc296)
+      "memref.store"(%67, %arg54) : (i32, memref<i32>) -> () loc(#loc297)
+      "gpu.return"() : () -> () loc(#loc298)
+    }) {sym_name = "subgroup_reduce_xor"} : () -> () loc(#loc293)
+  }) : () -> () loc(#loc262)
   "gpu.module"() <{sym_name = "test_module_31"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_fmod"}> ({
-    ^bb0(%arg51: f32, %arg52: f64):
-      %65 = "arith.remf"(%arg51, %arg51) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %66 = "arith.remf"(%arg52, %arg52) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64
-      "func.return"(%65, %66) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg51: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":746:23), %arg52: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":746:39)):
+      %65 = "arith.remf"(%arg51, %arg51) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32 loc(#loc303)
+      %66 = "arith.remf"(%arg52, %arg52) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64 loc(#loc304)
+      "func.return"(%65, %66) : (f32, f64) -> () loc(#loc305)
+    }) : () -> () loc(#loc300)
+  }) : () -> () loc(#loc299)
   "gpu.module"() <{sym_name = "test_module_32"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_erf"}> ({
-    ^bb0(%arg49: f32, %arg50: f64):
-      %63 = "math.erf"(%arg49) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %64 = "math.erf"(%arg50) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%63, %64) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg49: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":759:22), %arg50: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":759:38)):
+      %63 = "math.erf"(%arg49) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc310)
+      %64 = "math.erf"(%arg50) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc311)
+      "func.return"(%63, %64) : (f32, f64) -> () loc(#loc312)
+    }) : () -> () loc(#loc307)
+  }) : () -> () loc(#loc306)
   "gpu.module"() <{sym_name = "test_module_33"}> ({
     "gpu.func"() <{function_type = (!llvm.ptr) -> (), kernel, known_block_size = array<i32: 32, 4, 2>}> ({
-    ^bb0(%arg48: !llvm.ptr):
-      %57 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index
-      %58 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index
-      %59 = "gpu.thread_id"() <{dimension = #gpu<dim z>}> : () -> index
-      %60 = "arith.addi"(%57, %58) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %61 = "arith.addi"(%60, %59) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %62 = "arith.index_cast"(%61) : (index) -> i64
-      "llvm.store"(%62, %arg48) <{ordering = 0 : i64}> : (i64, !llvm.ptr) -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "kernel_with_block_size"} : () -> ()
-  }) : () -> ()
+    ^bb0(%arg48: !llvm.ptr loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":771:36)):
+      %57 = "gpu.thread_id"() <{dimension = #gpu<dim x>}> : () -> index loc(#loc316)
+      %58 = "gpu.thread_id"() <{dimension = #gpu<dim y>}> : () -> index loc(#loc317)
+      %59 = "gpu.thread_id"() <{dimension = #gpu<dim z>}> : () -> index loc(#loc318)
+      %60 = "arith.addi"(%57, %58) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index loc(#loc319)
+      %61 = "arith.addi"(%60, %59) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index loc(#loc320)
+      %62 = "arith.index_cast"(%61) : (index) -> i64 loc(#loc321)
+      "llvm.store"(%62, %arg48) <{ordering = 0 : i64}> : (i64, !llvm.ptr) -> () loc(#loc322)
+      "gpu.return"() : () -> () loc(#loc323)
+    }) {sym_name = "kernel_with_block_size"} : () -> () loc(#loc314)
+  }) : () -> () loc(#loc313)
   "gpu.module"() <{sym_name = "test_module_34"}> ({
     "gpu.func"() <{function_type = (memref<2xf32>, f32) -> (memref<2xf32>, f32)}> ({
-    ^bb0(%arg46: memref<2xf32>, %arg47: f32):
-      "gpu.return"(%arg46, %arg47) : (memref<2xf32>, f32) -> ()
-    }) {sym_name = "memref_signature"} : () -> ()
-  }) : () -> ()
+    ^bb0(%arg46: memref<2xf32> loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":805:30), %arg47: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":805:49)):
+      "gpu.return"(%arg46, %arg47) : (memref<2xf32>, f32) -> () loc(#loc328)
+    }) {sym_name = "memref_signature"} : () -> () loc(#loc325)
+  }) : () -> () loc(#loc324)
   "gpu.module"() <{sym_name = "test_module_35"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_acos"}> ({
-    ^bb0(%arg44: f32, %arg45: f64):
-      %55 = "math.acos"(%arg44) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %56 = "math.acos"(%arg45) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%55, %56) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg44: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":814:23), %arg45: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":814:39)):
+      %55 = "math.acos"(%arg44) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc333)
+      %56 = "math.acos"(%arg45) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc334)
+      "func.return"(%55, %56) : (f32, f64) -> () loc(#loc335)
+    }) : () -> () loc(#loc330)
+  }) : () -> () loc(#loc329)
   "gpu.module"() <{sym_name = "test_module_36"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_acosh"}> ({
-    ^bb0(%arg42: f32, %arg43: f64):
-      %53 = "math.acosh"(%arg42) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %54 = "math.acosh"(%arg43) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%53, %54) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg42: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":827:24), %arg43: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":827:40)):
+      %53 = "math.acosh"(%arg42) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc340)
+      %54 = "math.acosh"(%arg43) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc341)
+      "func.return"(%53, %54) : (f32, f64) -> () loc(#loc342)
+    }) : () -> () loc(#loc337)
+  }) : () -> () loc(#loc336)
   "gpu.module"() <{sym_name = "test_module_37"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_asin"}> ({
-    ^bb0(%arg40: f32, %arg41: f64):
-      %51 = "math.asin"(%arg40) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %52 = "math.asin"(%arg41) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%51, %52) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg40: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":840:23), %arg41: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":840:39)):
+      %51 = "math.asin"(%arg40) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc347)
+      %52 = "math.asin"(%arg41) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc348)
+      "func.return"(%51, %52) : (f32, f64) -> () loc(#loc349)
+    }) : () -> () loc(#loc344)
+  }) : () -> () loc(#loc343)
   "gpu.module"() <{sym_name = "test_module_38"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_asinh"}> ({
-    ^bb0(%arg38: f32, %arg39: f64):
-      %49 = "math.asinh"(%arg38) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %50 = "math.asinh"(%arg39) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%49, %50) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg38: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":853:24), %arg39: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":853:40)):
+      %49 = "math.asinh"(%arg38) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc354)
+      %50 = "math.asinh"(%arg39) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc355)
+      "func.return"(%49, %50) : (f32, f64) -> () loc(#loc356)
+    }) : () -> () loc(#loc351)
+  }) : () -> () loc(#loc350)
   "gpu.module"() <{sym_name = "test_module_39"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f32, f64), sym_name = "gpu_atanh"}> ({
-    ^bb0(%arg35: f16, %arg36: f32, %arg37: f64):
-      %46 = "math.atanh"(%arg35) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16
-      %47 = "math.atanh"(%arg36) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %48 = "math.atanh"(%arg37) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%46, %47, %48) : (f16, f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg35: f16 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":866:24), %arg36: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":866:40), %arg37: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":866:56)):
+      %46 = "math.atanh"(%arg35) <{fastmath = #arith.fastmath<none>}> : (f16) -> f16 loc(#loc362)
+      %47 = "math.atanh"(%arg36) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc363)
+      %48 = "math.atanh"(%arg37) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc364)
+      "func.return"(%46, %47, %48) : (f16, f32, f64) -> () loc(#loc365)
+    }) : () -> () loc(#loc358)
+  }) : () -> () loc(#loc357)
   "gpu.module"() <{sym_name = "test_module_40"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_copysign"}> ({
-    ^bb0(%arg33: f32, %arg34: f64):
-      %44 = "math.copysign"(%arg33, %arg33) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32
-      %45 = "math.copysign"(%arg34, %arg34) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64
-      "func.return"(%44, %45) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg33: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":884:27), %arg34: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":884:43)):
+      %44 = "math.copysign"(%arg33, %arg33) <{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32 loc(#loc370)
+      %45 = "math.copysign"(%arg34, %arg34) <{fastmath = #arith.fastmath<none>}> : (f64, f64) -> f64 loc(#loc371)
+      "func.return"(%44, %45) : (f32, f64) -> () loc(#loc372)
+    }) : () -> () loc(#loc367)
+  }) : () -> () loc(#loc366)
   "gpu.module"() <{sym_name = "test_module_41"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_cosh"}> ({
-    ^bb0(%arg31: f32, %arg32: f64):
-      %42 = "math.cosh"(%arg31) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %43 = "math.cosh"(%arg32) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%42, %43) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg31: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":897:23), %arg32: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":897:39)):
+      %42 = "math.cosh"(%arg31) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc377)
+      %43 = "math.cosh"(%arg32) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc378)
+      "func.return"(%42, %43) : (f32, f64) -> () loc(#loc379)
+    }) : () -> () loc(#loc374)
+  }) : () -> () loc(#loc373)
   "gpu.module"() <{sym_name = "test_module_42"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_fma"}> ({
-    ^bb0(%arg29: f32, %arg30: f64):
-      %40 = "math.fma"(%arg29, %arg29, %arg29) <{fastmath = #arith.fastmath<none>}> : (f32, f32, f32) -> f32
-      %41 = "math.fma"(%arg30, %arg30, %arg30) <{fastmath = #arith.fastmath<none>}> : (f64, f64, f64) -> f64
-      "func.return"(%40, %41) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg29: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":910:22), %arg30: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":910:38)):
+      %40 = "math.fma"(%arg29, %arg29, %arg29) <{fastmath = #arith.fastmath<none>}> : (f32, f32, f32) -> f32 loc(#loc384)
+      %41 = "math.fma"(%arg30, %arg30, %arg30) <{fastmath = #arith.fastmath<none>}> : (f64, f64, f64) -> f64 loc(#loc385)
+      "func.return"(%40, %41) : (f32, f64) -> () loc(#loc386)
+    }) : () -> () loc(#loc381)
+  }) : () -> () loc(#loc380)
   "gpu.module"() <{sym_name = "test_module_43"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_round"}> ({
-    ^bb0(%arg27: f32, %arg28: f64):
-      %38 = "math.round"(%arg27) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %39 = "math.round"(%arg28) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%38, %39) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg27: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":923:24), %arg28: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":923:40)):
+      %38 = "math.round"(%arg27) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc391)
+      %39 = "math.round"(%arg28) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc392)
+      "func.return"(%38, %39) : (f32, f64) -> () loc(#loc393)
+    }) : () -> () loc(#loc388)
+  }) : () -> () loc(#loc387)
   "gpu.module"() <{sym_name = "test_module_44"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_roundeven"}> ({
-    ^bb0(%arg25: f32, %arg26: f64):
-      %36 = "math.roundeven"(%arg25) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %37 = "math.roundeven"(%arg26) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%36, %37) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg25: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":936:28), %arg26: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":936:44)):
+      %36 = "math.roundeven"(%arg25) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc398)
+      %37 = "math.roundeven"(%arg26) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc399)
+      "func.return"(%36, %37) : (f32, f64) -> () loc(#loc400)
+    }) : () -> () loc(#loc395)
+  }) : () -> () loc(#loc394)
   "gpu.module"() <{sym_name = "test_module_45"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_sinh"}> ({
-    ^bb0(%arg23: f32, %arg24: f64):
-      %34 = "math.sinh"(%arg23) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %35 = "math.sinh"(%arg24) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%34, %35) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg23: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":949:23), %arg24: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":949:39)):
+      %34 = "math.sinh"(%arg23) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc405)
+      %35 = "math.sinh"(%arg24) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc406)
+      "func.return"(%34, %35) : (f32, f64) -> () loc(#loc407)
+    }) : () -> () loc(#loc402)
+  }) : () -> () loc(#loc401)
   "gpu.module"() <{sym_name = "test_module_46"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_cosh_with_fastmath"}> ({
-    ^bb0(%arg21: f32, %arg22: f64):
-      %32 = "math.cosh"(%arg21) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32
-      %33 = "math.cosh"(%arg22) <{fastmath = #arith.fastmath<afn>}> : (f64) -> f64
-      "func.return"(%32, %33) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg21: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":962:37), %arg22: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":962:53)):
+      %32 = "math.cosh"(%arg21) <{fastmath = #arith.fastmath<fast>}> : (f32) -> f32 loc(#loc412)
+      %33 = "math.cosh"(%arg22) <{fastmath = #arith.fastmath<afn>}> : (f64) -> f64 loc(#loc413)
+      "func.return"(%32, %33) : (f32, f64) -> () loc(#loc414)
+    }) : () -> () loc(#loc409)
+  }) : () -> () loc(#loc408)
   "gpu.module"() <{sym_name = "test_module_47"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_sinh_with_fastmath"}> ({
-    ^bb0(%arg19: f32, %arg20: f64):
-      %30 = "math.sinh"(%arg19) <{fastmath = #arith.fastmath<contract>}> : (f32) -> f32
-      %31 = "math.sinh"(%arg20) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%30, %31) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg19: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":975:37), %arg20: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":975:53)):
+      %30 = "math.sinh"(%arg19) <{fastmath = #arith.fastmath<contract>}> : (f32) -> f32 loc(#loc419)
+      %31 = "math.sinh"(%arg20) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc420)
+      "func.return"(%30, %31) : (f32, f64) -> () loc(#loc421)
+    }) : () -> () loc(#loc416)
+  }) : () -> () loc(#loc415)
   "gpu.module"() <{sym_name = "test_module_48"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64, f32), sym_name = "gpu_exp_with_fastmath"}> ({
-    ^bb0(%arg17: f32, %arg18: f64):
-      %27 = "math.exp"(%arg17) <{fastmath = #arith.fastmath<reassoc>}> : (f32) -> f32
-      %28 = "math.exp"(%arg18) <{fastmath = #arith.fastmath<contract>}> : (f64) -> f64
-      %29 = "math.exp"(%arg17) <{fastmath = #arith.fastmath<ninf>}> : (f32) -> f32
-      "func.return"(%27, %28, %29) : (f32, f64, f32) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg17: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":988:36), %arg18: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":988:52)):
+      %27 = "math.exp"(%arg17) <{fastmath = #arith.fastmath<reassoc>}> : (f32) -> f32 loc(#loc426)
+      %28 = "math.exp"(%arg18) <{fastmath = #arith.fastmath<contract>}> : (f64) -> f64 loc(#loc427)
+      %29 = "math.exp"(%arg17) <{fastmath = #arith.fastmath<ninf>}> : (f32) -> f32 loc(#loc428)
+      "func.return"(%27, %28, %29) : (f32, f64, f32) -> () loc(#loc429)
+    }) : () -> () loc(#loc423)
+  }) : () -> () loc(#loc422)
   "gpu.module"() <{sym_name = "test_module_49"}> ({
     "func.func"() <{function_type = () -> (index, index, index), sym_name = "explicit_id_bounds"}> ({
-      %24 = "gpu.thread_id"() <{dimension = #gpu<dim x>, upper_bound = 32 : index}> : () -> index
-      %25 = "gpu.block_dim"() <{dimension = #gpu<dim x>, upper_bound = 32 : index}> : () -> index
-      %26 = "gpu.lane_id"() <{upper_bound = 16 : index}> : () -> index
-      "func.return"(%24, %25, %26) : (index, index, index) -> ()
-    }) : () -> ()
-  }) : () -> ()
+      %24 = "gpu.thread_id"() <{dimension = #gpu<dim x>, upper_bound = 32 : index}> : () -> index loc(#loc432)
+      %25 = "gpu.block_dim"() <{dimension = #gpu<dim x>, upper_bound = 32 : index}> : () -> index loc(#loc433)
+      %26 = "gpu.lane_id"() <{upper_bound = 16 : index}> : () -> index loc(#loc434)
+      "func.return"(%24, %25, %26) : (index, index, index) -> () loc(#loc435)
+    }) : () -> () loc(#loc431)
+  }) : () -> () loc(#loc430)
   "gpu.module"() <{sym_name = "test_module_50"}> ({
     "gpu.func"() <{function_type = (!llvm.ptr) -> (), kernel, known_grid_size = array<i32: 32, 4, 2>}> ({
-    ^bb0(%arg16: !llvm.ptr):
-      %18 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index
-      %19 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index
-      %20 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index
-      %21 = "arith.addi"(%18, %19) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %22 = "arith.addi"(%21, %20) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %23 = "arith.index_cast"(%22) : (index) -> i64
-      "llvm.store"(%23, %arg16) <{ordering = 0 : i64}> : (i64, !llvm.ptr) -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "kernel_with_grid_size"} : () -> ()
-  }) : () -> ()
+    ^bb0(%arg16: !llvm.ptr loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1015:35)):
+      %18 = "gpu.block_id"() <{dimension = #gpu<dim x>}> : () -> index loc(#loc439)
+      %19 = "gpu.block_id"() <{dimension = #gpu<dim y>}> : () -> index loc(#loc440)
+      %20 = "gpu.block_id"() <{dimension = #gpu<dim z>}> : () -> index loc(#loc441)
+      %21 = "arith.addi"(%18, %19) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index loc(#loc442)
+      %22 = "arith.addi"(%21, %20) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index loc(#loc443)
+      %23 = "arith.index_cast"(%22) : (index) -> i64 loc(#loc444)
+      "llvm.store"(%23, %arg16) <{ordering = 0 : i64}> : (i64, !llvm.ptr) -> () loc(#loc445)
+      "gpu.return"() : () -> () loc(#loc446)
+    }) {sym_name = "kernel_with_grid_size"} : () -> () loc(#loc437)
+  }) : () -> () loc(#loc436)
   "gpu.module"() <{sym_name = "test_module_51"}> ({
     "gpu.func"() <{function_type = (i1) -> (), kernel}> ({
-    ^bb0(%arg15: i1):
-      "cf.assert"(%arg15) <{msg = "assert message"}> : (i1) -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "test_assert"} : () -> ()
-  }) : () -> ()
+    ^bb0(%arg15: i1 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1055:25)):
+      "cf.assert"(%arg15) <{msg = "assert message"}> : (i1) -> () loc(#loc450)
+      "gpu.return"() : () -> () loc(#loc451)
+    }) {sym_name = "test_assert"} : () -> () loc(#loc448)
+  }) : () -> () loc(#loc447)
   "builtin.module"() ({
     "transform.named_sequence"() <{arg_attrs = [{transform.readonly}], function_type = (!transform.any_op) -> (), sym_name = "__transform_main"}> ({
-    ^bb0(%arg14: !transform.any_op):
-      %17 = "transform.structured.match"(%arg14) <{ops = ["gpu.module"]}> : (!transform.any_op) -> !transform.any_op
+    ^bb0(%arg14: !transform.any_op loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1062:46)):
+      %17 = "transform.structured.match"(%arg14) <{ops = ["gpu.module"]}> : (!transform.any_op) -> !transform.any_op loc(#loc455)
       "transform.apply_patterns"(%17) <{max_iterations = -1 : i64, max_num_rewrites = -1 : i64}> ({
-        "transform.apply_patterns.gpu.gpu_rewrite_patterns"() : () -> ()
-      }) : (!transform.any_op) -> ()
+        "transform.apply_patterns.gpu.gpu_rewrite_patterns"() : () -> () loc(#loc457)
+      }) : (!transform.any_op) -> () loc(#loc456)
       "transform.apply_conversion_patterns"(%17) <{illegal_dialects = ["gpu"], illegal_ops = ["llvm.copysign", "llvm.cos", "llvm.exp", "llvm.exp2", "llvm.fabs", "llvm.fceil", "llvm.ffloor", "llvm.frem", "llvm.log", "llvm.log10", "llvm.log2", "llvm.pow", "llvm.roundeven", "llvm.round", "llvm.sin", "llvm.sqrt"], legal_dialects = ["llvm", "memref", "nvvm", "test"], legal_ops = ["gpu.module", "gpu.yield"], partial_conversion}> ({
-        "transform.apply_conversion_patterns.dialect_to_llvm"() <{dialect_name = "arith"}> : () -> ()
-        "transform.apply_conversion_patterns.dialect_to_llvm"() <{dialect_name = "cf"}> : () -> ()
-        "transform.apply_conversion_patterns.vector.vector_to_llvm"() <{force_32bit_vector_indices = true, reassociate_fp_reductions = false, use_vector_alignment = false}> : () -> ()
-        "transform.apply_conversion_patterns.func.func_to_llvm"() : () -> ()
-        "transform.apply_conversion_patterns.dialect_to_llvm"() <{dialect_name = "memref"}> : () -> ()
-        "transform.apply_conversion_patterns.gpu.gpu_to_nvvm"() <{benefit = 10 : i16}> : () -> ()
-        "transform.apply_conversion_patterns.gpu.gpu_wmma_to_nvvm"() : () -> ()
-        "transform.apply_conversion_patterns.gpu.gpu_subgroup_reduce_to_nvvm"() : () -> ()
-        "transform.apply_conversion_patterns.nvgpu.nvgpu_to_nvvm"() : () -> ()
+        "transform.apply_conversion_patterns.dialect_to_llvm"() <{dialect_name = "arith"}> : () -> () loc(#loc459)
+        "transform.apply_conversion_patterns.dialect_to_llvm"() <{dialect_name = "cf"}> : () -> () loc(#loc460)
+        "transform.apply_conversion_patterns.vector.vector_to_llvm"() <{force_32bit_vector_indices = true, reassociate_fp_reductions = false, use_vector_alignment = false}> : () -> () loc(#loc461)
+        "transform.apply_conversion_patterns.func.func_to_llvm"() : () -> () loc(#loc462)
+        "transform.apply_conversion_patterns.dialect_to_llvm"() <{dialect_name = "memref"}> : () -> () loc(#loc463)
+        "transform.apply_conversion_patterns.gpu.gpu_to_nvvm"() <{benefit = 10 : i16}> : () -> () loc(#loc464)
+        "transform.apply_conversion_patterns.gpu.gpu_wmma_to_nvvm"() : () -> () loc(#loc465)
+        "transform.apply_conversion_patterns.gpu.gpu_subgroup_reduce_to_nvvm"() : () -> () loc(#loc466)
+        "transform.apply_conversion_patterns.nvgpu.nvgpu_to_nvvm"() : () -> () loc(#loc467)
       }, {
-        "transform.apply_conversion_patterns.memref.memref_to_llvm_type_converter"() <{index_bitwidth = 64 : i64, use_bare_ptr_call_conv = false}> : () -> ()
-      }) : (!transform.any_op) -> ()
-      "transform.yield"() : () -> ()
-    }) : () -> ()
-  }) {transform.with_named_sequence} : () -> ()
+        "transform.apply_conversion_patterns.memref.memref_to_llvm_type_converter"() <{index_bitwidth = 64 : i64, use_bare_ptr_call_conv = false}> : () -> () loc(#loc468)
+      }) : (!transform.any_op) -> () loc(#loc458)
+      "transform.yield"() : () -> () loc(#loc469)
+    }) : () -> () loc(#loc453)
+  }) {transform.with_named_sequence} : () -> () loc(#loc452)
   "gpu.module"() <{sym_name = "test_module_52"}> ({
     "func.func"() <{function_type = (i32) -> i32, sym_name = "gpu_abs"}> ({
-    ^bb0(%arg13: i32):
-      %16 = "math.absi"(%arg13) : (i32) -> i32
-      "func.return"(%16) : (i32) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg13: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1101:22)):
+      %16 = "math.absi"(%arg13) : (i32) -> i32 loc(#loc473)
+      "func.return"(%16) : (i32) -> () loc(#loc474)
+    }) : () -> () loc(#loc471)
+  }) : () -> () loc(#loc470)
   "gpu.module"() <{sym_name = "test_module_53"}> ({
     "func.func"() <{function_type = (f32, f64, i32) -> (f32, f64), sym_name = "gpu_powi"}> ({
-    ^bb0(%arg10: f32, %arg11: f64, %arg12: i32):
-      %14 = "math.fpowi"(%arg10, %arg12) <{fastmath = #arith.fastmath<none>}> : (f32, i32) -> f32
-      %15 = "math.fpowi"(%arg11, %arg12) <{fastmath = #arith.fastmath<none>}> : (f64, i32) -> f64
-      "func.return"(%14, %15) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg10: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1112:23), %arg11: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1112:39), %arg12: i32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1112:55)):
+      %14 = "math.fpowi"(%arg10, %arg12) <{fastmath = #arith.fastmath<none>}> : (f32, i32) -> f32 loc(#loc480)
+      %15 = "math.fpowi"(%arg11, %arg12) <{fastmath = #arith.fastmath<none>}> : (f64, i32) -> f64 loc(#loc481)
+      "func.return"(%14, %15) : (f32, f64) -> () loc(#loc482)
+    }) : () -> () loc(#loc476)
+  }) : () -> () loc(#loc475)
   "gpu.module"() <{sym_name = "test_module_54"}> ({
     "func.func"() <{function_type = (f32, f64) -> (i1, i1, i1, i1, i1, i1), sym_name = "fpclassify"}> ({
-    ^bb0(%arg8: f32, %arg9: f64):
-      %8 = "math.isinf"(%arg8) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1
-      %9 = "math.isinf"(%arg9) <{fastmath = #arith.fastmath<none>}> : (f64) -> i1
-      %10 = "math.isnan"(%arg8) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1
-      %11 = "math.isnan"(%arg9) <{fastmath = #arith.fastmath<none>}> : (f64) -> i1
-      %12 = "math.isfinite"(%arg8) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1
-      %13 = "math.isfinite"(%arg9) <{fastmath = #arith.fastmath<none>}> : (f64) -> i1
-      "func.return"(%8, %9, %10, %11, %12, %13) : (i1, i1, i1, i1, i1, i1) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg8: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1129:25), %arg9: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1129:36)):
+      %8 = "math.isinf"(%arg8) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1 loc(#loc487)
+      %9 = "math.isinf"(%arg9) <{fastmath = #arith.fastmath<none>}> : (f64) -> i1 loc(#loc488)
+      %10 = "math.isnan"(%arg8) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1 loc(#loc489)
+      %11 = "math.isnan"(%arg9) <{fastmath = #arith.fastmath<none>}> : (f64) -> i1 loc(#loc490)
+      %12 = "math.isfinite"(%arg8) <{fastmath = #arith.fastmath<none>}> : (f32) -> i1 loc(#loc491)
+      %13 = "math.isfinite"(%arg9) <{fastmath = #arith.fastmath<none>}> : (f64) -> i1 loc(#loc492)
+      "func.return"(%8, %9, %10, %11, %12, %13) : (i1, i1, i1, i1, i1, i1) -> () loc(#loc493)
+    }) : () -> () loc(#loc484)
+  }) : () -> () loc(#loc483)
   "gpu.module"() <{sym_name = "test_module_55"}> ({
     "func.func"() <{function_type = (f32, f64) -> (f32, f64), sym_name = "gpu_erfc"}> ({
-    ^bb0(%arg6: f32, %arg7: f64):
-      %6 = "math.erfc"(%arg6) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32
-      %7 = "math.erfc"(%arg7) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64
-      "func.return"(%6, %7) : (f32, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
+    ^bb0(%arg6: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1163:23), %arg7: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1163:39)):
+      %6 = "math.erfc"(%arg6) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32 loc(#loc498)
+      %7 = "math.erfc"(%arg7) <{fastmath = #arith.fastmath<none>}> : (f64) -> f64 loc(#loc499)
+      "func.return"(%6, %7) : (f32, f64) -> () loc(#loc500)
+    }) : () -> () loc(#loc495)
+  }) : () -> () loc(#loc494)
   "gpu.module"() <{sym_name = "test_module_56"}> ({
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f16, f32, f32, f64, f64), sym_name = "gpu_sincos"}> ({
-    ^bb0(%arg3: f16, %arg4: f32, %arg5: f64):
-      %3:2 = "math.sincos"(%arg3) <{fastmath = #arith.fastmath<none>}> : (f16) -> (f16, f16)
-      %4:2 = "math.sincos"(%arg4) <{fastmath = #arith.fastmath<none>}> : (f32) -> (f32, f32)
-      %5:2 = "math.sincos"(%arg5) <{fastmath = #arith.fastmath<none>}> : (f64) -> (f64, f64)
-      "func.return"(%3#0, %3#1, %4#0, %4#1, %5#0, %5#1) : (f16, f16, f32, f32, f64, f64) -> ()
-    }) : () -> ()
+    ^bb0(%arg3: f16 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1180:25), %arg4: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1180:41), %arg5: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1180:57)):
+      %3:2 = "math.sincos"(%arg3) <{fastmath = #arith.fastmath<none>}> : (f16) -> (f16, f16) loc(#loc506)
+      %4:2 = "math.sincos"(%arg4) <{fastmath = #arith.fastmath<none>}> : (f32) -> (f32, f32) loc(#loc507)
+      %5:2 = "math.sincos"(%arg5) <{fastmath = #arith.fastmath<none>}> : (f64) -> (f64, f64) loc(#loc508)
+      "func.return"(%3#0, %3#1, %4#0, %4#1, %5#0, %5#1) : (f16, f16, f32, f32, f64, f64) -> () loc(#loc509)
+    }) : () -> () loc(#loc502)
     "func.func"() <{function_type = (f16, f32, f64) -> (f16, f16, f32, f32, f64, f64), sym_name = "gpu_sincos_fastmath"}> ({
-    ^bb0(%arg0: f16, %arg1: f32, %arg2: f64):
-      %0:2 = "math.sincos"(%arg0) <{fastmath = #arith.fastmath<afn>}> : (f16) -> (f16, f16)
-      %1:2 = "math.sincos"(%arg1) <{fastmath = #arith.fastmath<afn>}> : (f32) -> (f32, f32)
-      %2:2 = "math.sincos"(%arg2) <{fastmath = #arith.fastmath<afn>}> : (f64) -> (f64, f64)
-      "func.return"(%0#0, %0#1, %1#0, %1#1, %2#0, %2#1) : (f16, f16, f32, f32, f64, f64) -> ()
-    }) : () -> ()
-  }) : () -> ()
-}) : () -> ()
+    ^bb0(%arg0: f16 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1197:34), %arg1: f32 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1197:50), %arg2: f64 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1197:66)):
+      %0:2 = "math.sincos"(%arg0) <{fastmath = #arith.fastmath<afn>}> : (f16) -> (f16, f16) loc(#loc514)
+      %1:2 = "math.sincos"(%arg1) <{fastmath = #arith.fastmath<afn>}> : (f32) -> (f32, f32) loc(#loc515)
+      %2:2 = "math.sincos"(%arg2) <{fastmath = #arith.fastmath<afn>}> : (f64) -> (f64, f64) loc(#loc516)
+      "func.return"(%0#0, %0#1, %1#0, %1#1, %2#0, %2#1) : (f16, f16, f32, f32, f64, f64) -> () loc(#loc517)
+    }) : () -> () loc(#loc510)
+  }) : () -> () loc(#loc501)
+}) : () -> () loc(#loc)
+#loc = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":0:0)
+#loc1 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":7:1)
+#loc2 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":9:3)
+#loc3 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":16:13)
+#loc4 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":19:13)
+#loc5 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":22:13)
+#loc6 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":26:14)
+#loc7 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":29:14)
+#loc8 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":32:14)
+#loc9 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":36:13)
+#loc10 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":39:13)
+#loc11 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":42:13)
+#loc12 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":46:14)
+#loc13 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":49:14)
+#loc14 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":52:14)
+#loc15 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":57:15)
+#loc16 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":59:5)
+#loc17 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":70:1)
+#loc18 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":72:3)
+#loc20 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":74:10)
+#loc21 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":76:5)
+#loc22 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":82:1)
+#loc23 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":84:3)
+#loc24 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":85:13)
+#loc25 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":90:15)
+#loc26 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":92:5)
+#loc27 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":98:1)
+#loc28 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":100:3)
+#loc29 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":101:13)
+#loc30 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":105:15)
+#loc33 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":107:14)
+#loc34 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":108:7)
+#loc35 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":110:5)
+#loc36 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":116:1)
+#loc37 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":118:3)
+#loc38 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":120:13)
+#loc39 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":122:13)
+#loc40 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":124:13)
+#loc41 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":134:20)
+#loc42 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":143:22)
+#loc43 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":145:22)
+#loc44 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":147:22)
+#loc45 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":149:5)
+#loc46 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":154:3)
+#loc47 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":156:13)
+#loc48 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":158:13)
+#loc49 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":160:13)
+#loc50 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":168:20)
+#loc51 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":175:22)
+#loc52 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":177:22)
+#loc53 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":179:22)
+#loc54 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":181:5)
+#loc55 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":185:1)
+#loc56 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":187:3)
+#loc57 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":189:5)
+#loc58 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":190:5)
+#loc59 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":194:3)
+#loc60 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":197:5)
+#loc61 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":198:5)
+#loc62 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":203:3)
+#loc64 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":211:12)
+#loc65 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":212:11)
+#loc66 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":220:12)
+#loc67 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":224:5)
+#loc68 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":228:5)
+#loc69 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":229:5)
+#loc70 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":234:3)
+#loc72 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":238:5)
+#loc73 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":239:5)
+#loc74 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":248:1)
+#loc75 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":252:3)
+#loc78 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":253:17)
+#loc79 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":255:17)
+#loc80 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":257:5)
+#loc81 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":263:1)
+#loc82 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":267:3)
+#loc85 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":268:17)
+#loc86 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":270:17)
+#loc87 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":272:5)
+#loc88 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":278:1)
+#loc89 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":282:3)
+#loc92 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":283:17)
+#loc93 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":285:17)
+#loc94 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":287:5)
+#loc95 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":293:1)
+#loc96 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":297:3)
+#loc99 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":298:17)
+#loc100 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":300:17)
+#loc101 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":302:5)
+#loc102 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":308:1)
+#loc103 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":313:3)
+#loc106 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":314:17)
+#loc107 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":316:17)
+#loc108 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":318:21)
+#loc109 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":320:5)
+#loc110 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":325:1)
+#loc111 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":330:3)
+#loc114 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":331:17)
+#loc115 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":333:17)
+#loc116 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":335:21)
+#loc117 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":337:5)
+#loc118 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":342:1)
+#loc119 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":346:3)
+#loc122 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":347:17)
+#loc123 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":349:17)
+#loc124 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":351:5)
+#loc125 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":357:1)
+#loc126 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":362:3)
+#loc129 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":363:17)
+#loc130 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":365:17)
+#loc131 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":367:21)
+#loc132 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":369:5)
+#loc133 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":375:1)
+#loc134 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":380:3)
+#loc137 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":381:17)
+#loc138 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":383:17)
+#loc139 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":385:21)
+#loc140 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":387:5)
+#loc141 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":393:1)
+#loc142 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":397:3)
+#loc145 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":398:17)
+#loc146 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":400:17)
+#loc147 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":402:5)
+#loc148 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":408:1)
+#loc149 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":413:3)
+#loc152 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":414:17)
+#loc153 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":416:17)
+#loc154 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":418:21)
+#loc155 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":420:5)
+#loc156 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":426:1)
+#loc157 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":431:3)
+#loc160 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":432:17)
+#loc161 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":434:17)
+#loc162 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":436:21)
+#loc163 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":438:5)
+#loc164 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":444:1)
+#loc165 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":449:3)
+#loc169 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":450:17)
+#loc170 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":454:17)
+#loc171 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":456:17)
+#loc172 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":458:21)
+#loc173 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":460:5)
+#loc174 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":466:1)
+#loc175 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":470:3)
+#loc179 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":471:17)
+#loc180 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":475:17)
+#loc181 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":477:17)
+#loc182 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":479:5)
+#loc183 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":485:1)
+#loc184 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":489:3)
+#loc188 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":491:17)
+#loc189 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":495:17)
+#loc190 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":497:17)
+#loc191 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":499:5)
+#loc192 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":505:1)
+#loc193 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":509:3)
+#loc197 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":511:17)
+#loc198 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":515:17)
+#loc199 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":517:17)
+#loc200 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":519:5)
+#loc201 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":525:1)
+#loc202 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":529:3)
+#loc206 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":531:17)
+#loc207 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":535:17)
+#loc208 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":537:17)
+#loc209 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":539:5)
+#loc210 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":545:1)
+#loc211 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":549:3)
+#loc215 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":551:17)
+#loc216 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":556:17)
+#loc217 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":558:17)
+#loc218 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":560:5)
+#loc219 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":567:1)
+#loc220 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":568:3)
+#loc221 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":574:5)
+#loc224 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":575:19)
+#loc225 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":577:19)
+#loc226 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":579:23)
+#loc227 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":581:7)
+#loc228 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":583:5)
+#loc229 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":589:1)
+#loc230 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":593:3)
+#loc233 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":594:17)
+#loc234 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":596:17)
+#loc235 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":598:5)
+#loc236 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":604:1)
+#loc237 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":609:3)
+#loc240 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":610:17)
+#loc241 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":612:17)
+#loc242 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":614:21)
+#loc243 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":616:5)
+#loc244 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":622:1)
+#loc245 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":624:3)
+#loc247 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":625:15)
+#loc248 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":636:5)
+#loc249 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":642:1)
+#loc250 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":647:3)
+#loc251 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":648:5)
+#loc252 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":654:1)
+#loc253 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":660:3)
+#loc254 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":666:5)
+#loc255 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":672:5)
+#loc256 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":674:5)
+#loc257 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":679:3)
+#loc260 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":690:5)
+#loc261 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":691:5)
+#loc262 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":697:1)
+#loc263 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":699:3)
+#loc266 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":701:15)
+#loc267 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":702:5)
+#loc268 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":703:5)
+#loc269 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":706:3)
+#loc272 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":708:15)
+#loc273 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":709:5)
+#loc274 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":710:5)
+#loc275 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":713:3)
+#loc278 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":715:15)
+#loc279 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":716:5)
+#loc280 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":717:5)
+#loc281 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":720:3)
+#loc284 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":722:15)
+#loc285 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":723:5)
+#loc286 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":724:5)
+#loc287 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":727:3)
+#loc290 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":729:15)
+#loc291 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":730:5)
+#loc292 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":731:5)
+#loc293 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":734:3)
+#loc296 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":736:15)
+#loc297 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":737:5)
+#loc298 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":738:5)
+#loc299 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":742:1)
+#loc300 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":746:3)
+#loc303 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":747:17)
+#loc304 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":749:17)
+#loc305 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":751:5)
+#loc306 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":755:1)
+#loc307 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":759:3)
+#loc310 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":760:17)
+#loc311 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":762:17)
+#loc312 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":764:5)
+#loc313 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":768:1)
+#loc314 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":771:3)
+#loc316 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":773:10)
+#loc317 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":775:10)
+#loc318 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":777:10)
+#loc319 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":780:10)
+#loc320 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":781:10)
+#loc321 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":782:10)
+#loc322 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":783:5)
+#loc323 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":784:5)
+#loc324 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":789:1)
+#loc325 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":805:3)
+#loc328 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":806:5)
+#loc329 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":810:1)
+#loc330 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":814:3)
+#loc333 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":815:17)
+#loc334 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":817:17)
+#loc335 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":819:5)
+#loc336 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":823:1)
+#loc337 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":827:3)
+#loc340 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":828:17)
+#loc341 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":830:17)
+#loc342 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":832:5)
+#loc343 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":836:1)
+#loc344 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":840:3)
+#loc347 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":841:17)
+#loc348 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":843:17)
+#loc349 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":845:5)
+#loc350 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":849:1)
+#loc351 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":853:3)
+#loc354 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":854:17)
+#loc355 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":856:17)
+#loc356 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":858:5)
+#loc357 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":862:1)
+#loc358 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":866:3)
+#loc362 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":868:17)
+#loc363 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":872:17)
+#loc364 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":874:17)
+#loc365 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":876:5)
+#loc366 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":880:1)
+#loc367 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":884:3)
+#loc370 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":885:17)
+#loc371 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":887:17)
+#loc372 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":889:5)
+#loc373 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":893:1)
+#loc374 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":897:3)
+#loc377 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":898:17)
+#loc378 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":900:17)
+#loc379 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":902:5)
+#loc380 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":906:1)
+#loc381 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":910:3)
+#loc384 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":911:17)
+#loc385 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":913:17)
+#loc386 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":915:5)
+#loc387 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":919:1)
+#loc388 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":923:3)
+#loc391 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":924:17)
+#loc392 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":926:17)
+#loc393 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":928:5)
+#loc394 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":932:1)
+#loc395 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":936:3)
+#loc398 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":937:17)
+#loc399 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":939:17)
+#loc400 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":941:5)
+#loc401 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":945:1)
+#loc402 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":949:3)
+#loc405 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":950:17)
+#loc406 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":952:17)
+#loc407 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":954:5)
+#loc408 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":958:1)
+#loc409 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":962:3)
+#loc412 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":963:17)
+#loc413 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":965:17)
+#loc414 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":967:5)
+#loc415 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":971:1)
+#loc416 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":975:3)
+#loc419 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":976:17)
+#loc420 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":978:17)
+#loc421 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":980:5)
+#loc422 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":984:1)
+#loc423 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":988:3)
+#loc426 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":989:17)
+#loc427 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":991:17)
+#loc428 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":993:21)
+#loc429 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":995:5)
+#loc430 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":999:1)
+#loc431 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1001:3)
+#loc432 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1003:10)
+#loc433 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1005:10)
+#loc434 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1007:10)
+#loc435 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1009:5)
+#loc436 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1013:1)
+#loc437 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1015:3)
+#loc439 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1017:10)
+#loc440 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1019:10)
+#loc441 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1021:10)
+#loc442 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1024:10)
+#loc443 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1025:10)
+#loc444 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1026:10)
+#loc445 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1027:5)
+#loc446 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1028:5)
+#loc447 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1054:1)
+#loc448 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1055:3)
+#loc450 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1056:5)
+#loc451 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1057:5)
+#loc452 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1061:1)
+#loc453 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1062:3)
+#loc455 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1063:19)
+#loc456 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1066:5)
+#loc457 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1067:7)
+#loc458 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1070:5)
+#loc459 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1071:7)
+#loc460 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1072:7)
+#loc461 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1073:7)
+#loc462 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1074:7)
+#loc463 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1075:7)
+#loc464 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1076:7)
+#loc465 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1077:7)
+#loc466 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1078:7)
+#loc467 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1079:7)
+#loc468 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1081:7)
+#loc469 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1093:5)
+#loc470 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1098:1)
+#loc471 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1101:3)
+#loc473 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1102:17)
+#loc474 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1104:5)
+#loc475 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1108:1)
+#loc476 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1112:3)
+#loc480 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1113:17)
+#loc481 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1115:17)
+#loc482 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1117:5)
+#loc483 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1121:1)
+#loc484 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1129:3)
+#loc487 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1133:10)
+#loc488 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1137:10)
+#loc489 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1141:10)
+#loc490 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1145:10)
+#loc491 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1149:10)
+#loc492 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1153:10)
+#loc493 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1155:5)
+#loc494 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1159:1)
+#loc495 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1163:3)
+#loc498 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1164:17)
+#loc499 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1166:17)
+#loc500 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1168:5)
+#loc501 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1172:1)
+#loc502 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1180:3)
+#loc506 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1187:22)
+#loc507 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1188:22)
+#loc508 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1189:22)
+#loc509 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1190:5)
+#loc510 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1197:3)
+#loc514 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1204:22)
+#loc515 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1205:22)
+#loc516 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1206:22)
+#loc517 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1207:5)
 
 // -----
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "test_module_cluster_size"}> ({
     "gpu.func"() <{function_type = () -> (), kernel, known_cluster_size = array<i32: 8, 2, 4>}> ({
-      "gpu.return"() : () -> ()
-    }) {sym_name = "kernel_with_cluster_size"} : () -> ()
-  }) : () -> ()
-}) : () -> ()
+      "gpu.return"() : () -> () loc(#loc3)
+    }) {sym_name = "kernel_with_cluster_size"} : () -> () loc(#loc2)
+  }) : () -> () loc(#loc1)
+}) : () -> () loc(#loc)
+#loc = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1211:9)
+#loc1 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1213:1)
+#loc2 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1216:3)
+#loc3 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1217:5)
 
 // -----
+#loc3 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1227:38)
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "test_module_cluster_block_ops"}> ({
     "gpu.func"() <{function_type = (!llvm.ptr) -> (), kernel, known_cluster_size = array<i32: 8, 4, 2>}> ({
-    ^bb0(%arg0: !llvm.ptr):
-      %0 = "gpu.cluster_block_id"() <{dimension = #gpu<dim x>}> : () -> index
-      %1 = "gpu.cluster_block_id"() <{dimension = #gpu<dim y>}> : () -> index
-      %2 = "gpu.cluster_block_id"() <{dimension = #gpu<dim z>}> : () -> index
-      %3 = "gpu.cluster_dim_blocks"() <{dimension = #gpu<dim x>}> : () -> index
-      %4 = "gpu.cluster_dim_blocks"() <{dimension = #gpu<dim y>}> : () -> index
-      %5 = "gpu.cluster_dim_blocks"() <{dimension = #gpu<dim z>}> : () -> index
-      %6 = "arith.addi"(%0, %1) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %7 = "arith.addi"(%6, %2) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %8 = "arith.addi"(%7, %3) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %9 = "arith.addi"(%8, %4) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %10 = "arith.addi"(%9, %5) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index
-      %11 = "arith.index_cast"(%10) : (index) -> i64
-      "llvm.store"(%11, %arg0) <{ordering = 0 : i64}> : (i64, !llvm.ptr) -> ()
-      "gpu.return"() : () -> ()
-    }) {sym_name = "kernel_with_cluster_size"} : () -> ()
-  }) : () -> ()
-}) : () -> ()
+    ^bb0(%arg0: !llvm.ptr loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1227:38)):
+      %0 = "gpu.cluster_block_id"() <{dimension = #gpu<dim x>}> : () -> index loc(#loc4)
+      %1 = "gpu.cluster_block_id"() <{dimension = #gpu<dim y>}> : () -> index loc(#loc5)
+      %2 = "gpu.cluster_block_id"() <{dimension = #gpu<dim z>}> : () -> index loc(#loc6)
+      %3 = "gpu.cluster_dim_blocks"() <{dimension = #gpu<dim x>}> : () -> index loc(#loc7)
+      %4 = "gpu.cluster_dim_blocks"() <{dimension = #gpu<dim y>}> : () -> index loc(#loc8)
+      %5 = "gpu.cluster_dim_blocks"() <{dimension = #gpu<dim z>}> : () -> index loc(#loc9)
+      %6 = "arith.addi"(%0, %1) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index loc(#loc10)
+      %7 = "arith.addi"(%6, %2) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index loc(#loc11)
+      %8 = "arith.addi"(%7, %3) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index loc(#loc12)
+      %9 = "arith.addi"(%8, %4) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index loc(#loc13)
+      %10 = "arith.addi"(%9, %5) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index loc(#loc14)
+      %11 = "arith.index_cast"(%10) : (index) -> i64 loc(#loc15)
+      "llvm.store"(%11, %arg0) <{ordering = 0 : i64}> : (i64, !llvm.ptr) -> () loc(#loc16)
+      "gpu.return"() : () -> () loc(#loc17)
+    }) {sym_name = "kernel_with_cluster_size"} : () -> () loc(#loc2)
+  }) : () -> () loc(#loc1)
+}) : () -> () loc(#loc)
+#loc = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1221:9)
+#loc1 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1223:1)
+#loc2 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1227:3)
+#loc4 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1229:10)
+#loc5 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1231:10)
+#loc6 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1233:10)
+#loc7 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1235:10)
+#loc8 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1237:10)
+#loc9 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1239:10)
+#loc10 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1241:10)
+#loc11 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1242:10)
+#loc12 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1243:10)
+#loc13 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1244:10)
+#loc14 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1245:11)
+#loc15 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1246:11)
+#loc16 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1247:5)
+#loc17 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1248:5)
 
 // -----
+#loc3 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1257:26)
 "builtin.module"() ({
   "gpu.module"() <{sym_name = "kernels"}> ({
     "gpu.func"() <{function_type = (i1) -> (i32, i64)}> ({
-    ^bb0(%arg0: i1):
-      %0 = "gpu.ballot"(%arg0) : (i1) -> i32
-      %1 = "gpu.ballot"(%arg0) : (i1) -> i64
-      "gpu.return"(%0, %1) : (i32, i64) -> ()
-    }) {sym_name = "gpu_ballot"} : () -> ()
-  }) : () -> ()
-}) {gpu.container_module} : () -> ()
+    ^bb0(%arg0: i1 loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1257:26)):
+      %0 = "gpu.ballot"(%arg0) : (i1) -> i32 loc(#loc4)
+      %1 = "gpu.ballot"(%arg0) : (i1) -> i64 loc(#loc5)
+      "gpu.return"(%0, %1) : (i32, i64) -> () loc(#loc6)
+    }) {sym_name = "gpu_ballot"} : () -> () loc(#loc2)
+  }) : () -> () loc(#loc1)
+}) {gpu.container_module} : () -> () loc(#loc)
+#loc = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1254:1)
+#loc1 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1255:3)
+#loc2 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1257:5)
+#loc4 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1260:12)
+#loc5 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1264:12)
+#loc6 = loc("/home/zq/coding/clone/llvm-project-23.1.5/mlir/test/Conversion/GPUToNVVM/gpu-to-nvvm.mlir":1265:7)
 

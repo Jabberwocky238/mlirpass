@@ -106,6 +106,11 @@ LOGS = ("log-actions", "mlir-print-ir", "mlir-timing", "dump-pass-pipeline", "de
 READING = ("-allow-unregistered-dialect", "--allow-unregistered-dialect", "-split-input-file", "--split-input-file")
 
 
+# Tests whose output depends on source locations (`cf.assert` lowered with its file and line):
+# their input keeps the locations (`--mlir-print-debuginfo`), the outputs are printed without.
+LOCATIONS = ("Conversion/GPUToNVVM/gpu-to-nvvm.mlir",)
+
+
 def mlir_opt(binary: str, args, input_path: Path, generic: bool):
     extra = ["--mlir-print-op-generic"] if generic else []
     return subprocess.run([binary, *args, *extra, str(input_path)], capture_output=True, text=True, timeout=120)
@@ -149,7 +154,8 @@ def main():
             if generic.returncode != 0:
                 skipped.append(f"{name}.{k}\tmlir-opt failed (generic)")
                 continue
-            reading = mlir_opt(opts.mlir_opt, [a for a in args if a in READING or a.lstrip("-").startswith("mlir-print")], path, True)
+            locations = ["--mlir-print-debuginfo"] if any(rel.match(g) for g in LOCATIONS) else []
+            reading = mlir_opt(opts.mlir_opt, [a for a in args if a in READING or a.lstrip("-").startswith("mlir-print")] + locations, path, True)
             if reading.returncode != 0:
                 skipped.append(f"{name}.{k}\tmlir-opt failed (reading the input)")
                 continue
