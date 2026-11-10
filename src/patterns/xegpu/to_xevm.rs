@@ -256,7 +256,9 @@ impl XegpuToXevm {
         let (shape, elem) = vector_of(&in_ty)?;
         let elem = elem.clone();
         if shape.iter().product::<i64>() == 1 {
-            let mut v = rw.vextract(*input, 0, elem.clone());
+            // (at zeros, one per dim)
+            let at = alloc::vec![0; shape.len()];
+            let mut v = rw.mk(OpData::build("vector.extract").operands(&[*input]).with("static_position", Attribute::dense_i64(&at)), elem.clone());
             if matches!(elem, Type::Index) {
                 v = rw.unary("arith.index_castui", v, ty.clone());
             }
