@@ -22,6 +22,10 @@ type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
 /// `kWarpSize`.
 const WARP: i64 = 32;
+/// The globals holding named barrier ids, and the ids NVVM has for them.
+const NAMED_BARRIER_ID: &str = "__named_barrier_id";
+const FIRST_NAMED_BARRIER: i64 = 1;
+const LAST_NAMED_BARRIER: i64 = 15;
 
 /// The libdevice functions of each op (`populateLibDeviceConversionPatterns`).
 const LIBDEVICE: [(&str, LibFns); 41] = [
@@ -209,10 +213,59 @@ impl GpuToNvvm {
 
     /// `GPUBarrierOpToNVVMLowering`: a workgroup barrier is `nvvm.barrier`, a subgroup one
     /// `__syncwarp(0xFFFFFFFF)` (named barriers are not ported).
+    /// `GPUInitializeNamedBarrierOpToNVVMLowering`: the next free barrier id (1 to 15, one
+    /// internal constant global each) and the member count in threads.
+    #[convert("gpu.initialize_named_barrier")]
+    fn initialize_named_barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
+        let Some(count) = operands.first().and_then(|v| v.first().copied()) else { return false };
+        let b = &*cr.rw.body;
+        let mut func = b.parent_op(op);
+        while let Some(f) = func.filter(|f| !b.has(*f, crate::Trait::FunctionOpInterface)) {
+            func = b.parent_op(f);
+        }
+        let Some(table) = func.and_then(|f| b.parent_op(f)).filter(|t| b.is_symbol_table(*t)) else { return false };
+        let top = b.top_block(table);
+        let taken = b.ops(top).filter(|o| b[*o].name == "llvm.mlir.global" && b.sym_name(*o).is_some_and(|n| n.starts_with(NAMED_BARRIER_ID))).count() as i64;
+        let id = FIRST_NAMED_BARRIER + taken;
+        if id > LAST_NAMED_BARRIER {
+            return false;
+        }
+        let name = b.unique_symbol(table, NAMED_BARRIER_ID, None);
+        let loc = b[op].loc.clone();
+        let saved = cr.rw.ip;
+        cr.rw.set_end(top);
+        let data = OpData { loc, ..OpData::build("llvm.mlir.global") }
+            .with("constant", Attribute::Unit)
+            .with("global_type", Attribute::Type(Type::int(32)))
+            .with("linkage", Attribute::dialect("llvm.linkage", "<internal>"))
+            .with("sym_name", Attribute::str(&name))
+            .with("value", Attribute::of_int(id.into(), Type::int(32)));
+        cr.rw.create_with(data, &[], |b, g| {
+            b.add_region(g);
+        });
+        cr.rw.ip = saved;
+        cr.rw.set_before(op);
+        let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![name.into()])), LlvmType::ptr());
+        let id = cr.build(OpData::build("llvm.load").operands(&[addr]).with("ordering", Attribute::i64(0)), Type::int(32));
+        let warp = cr.llvm_constant(Attribute::of_int(WARP.into(), Type::int(32)), Type::int(32));
+        let threads = cr.build(OpData::build("llvm.mul").operands(&[count, warp]).with("overflowFlags", Attribute::of_int(0, Type::int(32))), Type::int(32));
+        let ty = LlvmType::literal(vec![Type::int(32), Type::int(32)]);
+        let mut r = cr.poison(ty.clone());
+        for (i, v) in [id, threads].into_iter().enumerate() {
+            r = cr.build(OpData::build("llvm.insertvalue").operands(&[r, v]).with("position", Attribute::dense_i64(&[i as i64])), ty.clone());
+        }
+        cr.replace(op, vec![vec![r]]);
+        true
+    }
+
     #[convert("gpu.barrier", benefit = 10)]
     fn barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
-        if operands.iter().any(|v| !v.is_empty()) {
-            return false;
+        if let Some(named) = operands.iter().find_map(|v| v.first().copied()) {
+            // A named barrier: its id and thread count.
+            cr.rw.set_before(op);
+            let [id, threads] = [0i64, 1].map(|i| cr.build(OpData::build("llvm.extractvalue").operands(&[named]).with("position", Attribute::dense_i64(&[i])), Type::int(32)));
+            cr.replace_new(op, OpData::build("nvvm.barrier").operands(&[id, threads]).with("aligned", Attribute::Bool(true)).segments(&[1, 1]), &[]);
+            return true;
         }
         match cr.rw.body[op].get("scope").and_then(|a| BarrierScope::try_from(a).ok()).unwrap_or(BarrierScope::Workgroup) {
             BarrierScope::Workgroup => {
@@ -292,7 +345,7 @@ impl GpuReduxToNvvm {
         };
         cr.rw.set_before(op);
         let offset = cr.llvm_constant(Attribute::of_int(-1, Type::int(32)), Type::int(32));
-        let data = OpData::build("nvvm.redux.sync").operands(&[value, offset]).with("kind", Attribute::dialect("nvvm", &format!("<redux_kind {kind}>"))).with("abs", Attribute::Bool(false)).with("nan", Attribute::Bool(false));
+        let data = OpData::build("nvvm.redux.sync").operands(&[value, offset]).with("kind", Attribute::dialect("nvvm", &format!("<reduction_kind {kind}>"))).with("abs", Attribute::Bool(false)).with("nan", Attribute::Bool(false));
         let r = cr.build(data, Type::int(32));
         cr.replace(op, vec![vec![r]]);
         true

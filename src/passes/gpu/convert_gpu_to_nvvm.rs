@@ -84,6 +84,8 @@ impl crate::Run for ConvertGpuToNvvm {
         }
         let mut tc = LlvmConverter::build(llvm);
         crate::convert_mma_types(&mut tc);
+        // A named barrier is its id and thread count.
+        tc.conversion(|t| matches!(t, mlirformat::Type::Extended(e) if e.name == "gpu.named_barrier").then(|| Some(alloc::vec![mlirformat::llvm_types::LlvmType::literal(alloc::vec![mlirformat::Type::int(32), mlirformat::Type::int(32)])])));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         if self.has_redux {
