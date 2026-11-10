@@ -118,10 +118,12 @@ impl MemrefToSpirv {
         if preferred == 0 && storage != "PhysicalStorageBuffer" {
             return Some(if nontemporal { vec![("memory_access", Cr::spirv_enum("memory_access", "Nontemporal"))] } else { Vec::new() });
         }
-        if !crate::TargetEnv::is_scalar(&pointee) {
-            return None;
-        }
-        let size = u64::from(pointee.bit_width()? / 8);
+        // A scalar's size, or a vector of scalars' whole size.
+        let size = match &*pointee {
+            Type::Shaped(v) if v.kind == ShapedKind::Vector && crate::TargetEnv::is_scalar(&v.elem) => u64::from(v.elem.bit_width()? / 8) * u64::try_from(pointee.element_count()?).ok()?,
+            t if crate::TargetEnv::is_scalar(t) => u64::from(t.bit_width()? / 8),
+            _ => return None,
+        };
         let access = if nontemporal { "Aligned|Nontemporal" } else { "Aligned" };
         let align = if preferred != 0 { preferred } else { size };
         Some(vec![("memory_access", Cr::spirv_enum("memory_access", access)), ("alignment", Attribute::integer(i128::from(align), Type::int(32)))])
@@ -136,6 +138,7 @@ impl MemrefToSpirv {
         }
         let elem = match &*s.elem {
             Type::Shaped(v) if v.kind == ShapedKind::Vector => (*v.elem).clone(),
+            Type::Complex(c) => (**c).clone(),
             e => e.clone(),
         };
         matches!(elem, Type::Integer { .. } | Type::Float(_))
@@ -221,33 +224,64 @@ impl MemrefToSpirv {
         true
     }
 
-    /// `AtomicRMWOpPattern`: the integer kinds, as `spirv.Atomic*` on the element.
+    /// `AtomicRMWOpPattern`: `spirv.Atomic*` on the element, acquire-release with the storage
+    /// class's memory bit; an element narrower than its storage word only for `ori` / `andi`,
+    /// on the word, the old element shifted back out.
     #[convert("memref.atomic_rmw")]
     fn atomic_rmw<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefSpirvOptions) -> bool {
         let r = cr.rw.body[op].results[0];
-        if matches!(cr.rw.body[r].ty, Type::Float(_)) {
-            return false;
-        }
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let m = cr.rw.body[op].operands[1];
-        let Some(s) = Self::memref(&cr.rw.body[m].ty).cloned() else { return false };
+        let mt = cr.rw.body[m].ty.clone();
+        let Some(s) = Self::memref(&mt).cloned() else { return false };
         let Some(scope) = Self::atomic_scope(&s) else { return false };
         let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
         let Some(ptr) = Self::element_ptr(cr, &s, ops[1], &ops[2..], o) else { return false };
         let kind = cr.rw.body[op].get("kind").and_then(|a| mlirformat::Const::try_from(a).ok()).and_then(|c| c.as_int()).map(|i| i.signed());
-        // `arith::AtomicRMWKind`.
-        let name = match kind {
-            Some(1) => "spirv.AtomicIAdd",
-            Some(6) => "spirv.AtomicSMax",
-            Some(7) => "spirv.AtomicUMax",
-            Some(10) => "spirv.AtomicSMin",
-            Some(11) => "spirv.AtomicUMin",
-            Some(14) => "spirv.AtomicOr",
-            Some(2) => "spirv.AtomicAnd",
-            _ => return false,
+        let src_bits = s.elem.bit_width().unwrap_or(32);
+        let Some(dst) = cr.converted(&mt).and_then(|t| Self::pointee_elem(&t, o.kernel)) else { return false };
+        let dst_bits = dst.bit_width().unwrap_or(32);
+        let semantics = Self::acq_rel_semantics(&s);
+        let atomic = |name: &str, ptr: ValueId, v: ValueId| OpData::build(name).operands(&[ptr, v]).with("memory_scope", Cr::spirv_enum("scope", scope)).with("semantics", Cr::spirv_enum("memory_semantics", semantics));
+        if src_bits == dst_bits {
+            // `arith::AtomicRMWKind`.
+            let name = match kind {
+                Some(0) => "spirv.EXT.AtomicFAdd",
+                Some(1) => "spirv.AtomicIAdd",
+                Some(6) => "spirv.AtomicSMax",
+                Some(7) => "spirv.AtomicUMax",
+                Some(10) => "spirv.AtomicSMin",
+                Some(11) => "spirv.AtomicUMin",
+                Some(14) => "spirv.AtomicOr",
+                Some(2) => "spirv.AtomicAnd",
+                _ => return false,
+            };
+            cr.replace_new(op, atomic(name, ptr, ops[0]), &[ty]);
+            return true;
+        }
+        let (ori, andi) = (kind == Some(14), kind == Some(2));
+        if !(ori || andi) || o.kernel {
+            return false;
+        }
+        let Some(chain) = cr.rw.body.def_op(ptr).filter(|d| cr.rw.body[*d].name == "spirv.AccessChain") else { return false };
+        let last = *cr.rw.body[chain].operands.last().expect("indices");
+        let offset = Self::bit_offset(cr, last, src_bits, dst_bits);
+        let adjusted = Self::adjust_chain(cr, chain, src_bits, dst_bits);
+        let elem_mask = Self::int_const(cr, &dst, (1i128 << src_bits) - 1);
+        let value = Self::shift_value(cr, ops[0], offset, elem_mask, &dst);
+        let result = if ori {
+            cr.build(atomic("spirv.AtomicOr", adjusted, value), dst.clone())
+        } else {
+            // (the operand in its bits, every other bit kept)
+            let shifted = cr.create_or_fold(OpData::build("spirv.ShiftLeftLogical").operands(&[elem_mask, offset]), dst.clone());
+            let inverted = cr.create_or_fold(OpData::build("spirv.Not").operands(&[shifted]), dst.clone());
+            let mask = cr.create_or_fold(OpData::build("spirv.BitwiseOr").operands(&[value, inverted]), dst.clone());
+            cr.build(atomic("spirv.AtomicAnd", adjusted, mask), dst.clone())
         };
-        let data = OpData::build(name).operands(&[ptr, ops[0]]).with("memory_scope", Cr::spirv_enum("scope", scope)).with("semantics", Cr::spirv_enum("memory_semantics", "AcquireRelease"));
-        cr.replace_new(op, data, &[ty]);
+        let result = cr.create_or_fold(OpData::build("spirv.ShiftRightLogical").operands(&[result, offset]), dst.clone());
+        let mask = Self::int_const(cr, &dst, (1i128 << src_bits) - 1);
+        let result = cr.create_or_fold(OpData::build("spirv.BitwiseAnd").operands(&[result, mask]), dst);
+        cr.replace_values(op, &[result]);
         true
     }
 
@@ -401,22 +435,12 @@ impl MemrefToSpirv {
         let mask = Self::int_const(cr, &dst, (1i128 << src_bits) - 1);
         let clear = cr.create_or_fold(OpData::build("spirv.ShiftLeftLogical").operands(&[mask, offset]), dst.clone());
         let clear = cr.create_or_fold(OpData::build("spirv.Not").operands(&[clear]), dst.clone());
-        // `shiftValue`.
-        let mut v = ops[0];
-        let vbits = cr.rw.body[v].ty.bit_width().unwrap_or(32);
-        if vbits == 1 {
-            v = Self::bool_to_int(cr, v, dst.clone());
-        } else {
-            if vbits < dst_bits {
-                v = cr.build(OpData::build("spirv.UConvert").operands(&[v]), Type::int(dst_bits));
-            }
-            v = cr.create_or_fold(OpData::build("spirv.BitwiseAnd").operands(&[v, mask]), dst.clone());
-        }
-        let v = cr.create_or_fold(OpData::build("spirv.ShiftLeftLogical").operands(&[v, offset]), dst.clone());
+        let v = Self::shift_value(cr, ops[0], offset, mask, &dst);
         let adjusted = Self::adjust_chain(cr, chain, src_bits, dst_bits);
         let Some(scope) = Self::atomic_scope(&s) else { return false };
+        let semantics = Self::acq_rel_semantics(&s);
         for (name, val) in [("spirv.AtomicAnd", clear), ("spirv.AtomicOr", v)] {
-            let data = OpData::build(name).operands(&[adjusted, val]).with("memory_scope", Cr::spirv_enum("scope", scope)).with("semantics", Cr::spirv_enum("memory_semantics", "AcquireRelease"));
+            let data = OpData::build(name).operands(&[adjusted, val]).with("memory_scope", Cr::spirv_enum("scope", scope)).with("semantics", Cr::spirv_enum("memory_semantics", semantics));
             cr.build(data, dst.clone());
         }
         cr.erase(op);
@@ -519,6 +543,34 @@ impl MemrefToSpirv {
             _ => None,
         }
     }
+    /// `getAtomicAcqRelMemorySemantics`: acquire-release with the storage class's memory bit.
+    fn acq_rel_semantics(s: &Shaped<'_>) -> &'static str {
+        match SpirvTypes::storage_class(s).as_deref() {
+            Some("StorageBuffer" | "Uniform") => "AcquireRelease|UniformMemory",
+            Some("Workgroup") => "AcquireRelease|WorkgroupMemory",
+            Some("CrossWorkgroup") => "AcquireRelease|CrossWorkgroupMemory",
+            Some("AtomicCounter") => "AcquireRelease|AtomicCounterMemory",
+            Some("Image") => "AcquireRelease|ImageMemory",
+            _ => "AcquireRelease",
+        }
+    }
+
+    /// `shiftValue`: `value` widened to the word (a bool as 0 / 1), masked, shifted to `offset`.
+    fn shift_value<'a>(cr: &mut Cr<'_, 'a, '_>, value: ValueId, offset: ValueId, mask: ValueId, dst: &Type<'a>) -> ValueId {
+        let dst_bits = dst.bit_width().unwrap_or(32);
+        let mut v = value;
+        let vbits = cr.rw.body[v].ty.bit_width().unwrap_or(32);
+        if vbits == 1 {
+            v = Self::bool_to_int(cr, v, dst.clone());
+        } else {
+            if vbits < dst_bits {
+                v = cr.build(OpData::build("spirv.UConvert").operands(&[v]), Type::int(dst_bits));
+            }
+            v = cr.create_or_fold(OpData::build("spirv.BitwiseAnd").operands(&[v, mask]), dst.clone());
+        }
+        cr.create_or_fold(OpData::build("spirv.ShiftLeftLogical").operands(&[v, offset]), dst.clone())
+    }
+
     fn with_req<'a>(mut data: OpData<'a>, req: Vec<(&str, Attribute<'a>)>) -> OpData<'a> {
         for (k, v) in req {
             data.set(k, v);
