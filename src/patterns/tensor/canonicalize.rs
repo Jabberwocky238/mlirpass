@@ -669,7 +669,9 @@ impl TensorCanon {
                 kept.push(v);
             }
         }
-        let ty = Tn::tensor(&dims, rt.element_type().clone(), Vec::new());
+        // (the cast's encoding kept)
+        let encoding = Tn::ranked(&rt).map(|s| s.extras.clone()).unwrap_or_default();
+        let ty = Tn::tensor(&dims, rt.element_type().clone(), encoding);
         rw.replace_with(op, OpData::build("tensor.empty").operands(&kept), &[ty]);
         true
     }

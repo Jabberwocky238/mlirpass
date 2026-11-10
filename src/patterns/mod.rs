@@ -18,7 +18,7 @@ mod complex;
 mod func;
 #[cfg(feature = "dialect.gpu")]
 mod gpu;
-#[cfg(all(feature = "dialect.index", any(feature = "target.llvm", feature = "target.spirv")))]
+#[cfg(feature = "dialect.index")]
 mod index;
 #[cfg(feature = "dialect.linalg")]
 mod linalg;
@@ -92,7 +92,7 @@ pub use complex::*;
 pub use func::*;
 #[cfg(feature = "dialect.gpu")]
 pub use gpu::*;
-#[cfg(all(feature = "dialect.index", any(feature = "target.llvm", feature = "target.spirv")))]
+#[cfg(feature = "dialect.index")]
 pub use index::*;
 #[cfg(feature = "dialect.linalg")]
 pub use linalg::*;

@@ -1,5 +1,8 @@
 //! `index` rule sets.
 
+mod canonicalize;
+pub use canonicalize::IndexCanon;
+
 #[cfg(feature = "target.llvm")]
 mod to_llvm;
 #[cfg(feature = "target.llvm")]

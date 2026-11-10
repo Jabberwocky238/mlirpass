@@ -125,6 +125,8 @@ pub fn fold<'a>(body: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>])
         Some("llvm") => crate::LlvmCanon::fold(body, op, consts),
         #[cfg(feature = "dialect.vector")]
         Some("vector") => crate::VectorFolder { b: body, op, c: consts }.fold(),
+        #[cfg(feature = "dialect.index")]
+        Some("index") => crate::IndexCanon::fold(body, op, consts),
         #[cfg(feature = "dialect.shape")]
         Some("shape") => crate::ShapeCanon::fold(body, op, consts),
         #[cfg(feature = "dialect.tensor")]
@@ -190,6 +192,8 @@ pub fn materialize<'a>(ns: &str, value: &Attribute<'a>, ty: &Type<'a>) -> Option
         "tosa" => crate::TosaCanon::materialize(value, ty),
         #[cfg(feature = "dialect.spirv")]
         "spirv" => crate::SpirvCanon::materialize(value, ty),
+        #[cfg(feature = "dialect.index")]
+        "index" => crate::IndexCanon::materialize(value, ty),
         #[cfg(feature = "dialect.ub")]
         "ub" => value.is_poison().then(|| OpData::build("ub.poison").with("value", value.clone())),
         _ => None,
