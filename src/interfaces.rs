@@ -11,6 +11,9 @@ use crate::{BlockId, Body, InsertPoint, OpId, RegionId, ValueId, BranchLayout as
 
 pub use mlirformat::{Effect, EffectKind, EffectOn, Effects, OpInfo, Trait};
 
+/// A conditional branch's operand groups: the condition, then one per successor.
+pub const CONDITIONAL_GROUPS: [usize; 2] = [1, 2];
+
 /// The upstream ops that get the `getAsmResultNames` ODS generates (`genOpAsmInterface`):
 /// several results, some named, no `OpAsmOpInterface` of their own. Each result group by its ODS
 /// name, and whether it is variable length (`Optional` / `Variadic`); sorted by op name.
@@ -85,8 +88,8 @@ const ODS_RESULT_NAMES: &[(&str, &[(&str, bool)])] = &[
 pub enum BranchLayout {
     /// All operands go to successor 0.
     All,
-    /// Operand group `first + i` (by `operandSegmentSizes`) goes to successor `i`.
-    Groups { first: usize },
+    /// Operand group `groups[i]` (by `operandSegmentSizes`) goes to successor `i`.
+    Groups { groups: &'static [usize] },
     /// Group `default` goes to successor 0; group `cases`, split by the dense array property
     /// `split`, to successors 1, 2, …
     Cases { default: Option<usize>, cases: usize, split: &'static str },
@@ -668,10 +671,11 @@ impl Body<'_> {
         let n = self[op].operands.len();
         match self.layout(op)? {
             Layout::All => Some(0..n),
-            Layout::Groups { first } => {
+            Layout::Groups { groups } => {
                 let sizes = self.segments(op, "operandSegmentSizes")?;
-                let start = self.group_start(op, first + i);
-                Some(start..start + sizes.get(first + i).copied().unwrap_or(0))
+                let g = *groups.get(i)?;
+                let start = self.group_start(op, g);
+                Some(start..start + sizes.get(g).copied().unwrap_or(0))
             }
             Layout::Cases { default, cases, split } => {
                 if let (Some(d), 0) = (default, i) {
@@ -701,6 +705,21 @@ impl Body<'_> {
         }
     }
 
+    /// `getSuccessorOperands(i)[arg]`: what `op` passes to argument `arg` of successor `i`
+    /// (`Some(None)`: an argument the branch produces; `None`: not a branch this crate knows).
+    pub fn successor_arg_value(&self, op: OpId, i: usize, arg: usize) -> Option<Option<crate::ValueId>> {
+        let (produced, range) = self.successor_layout(op, i)?;
+        Some(arg.checked_sub(produced).and_then(|j| range.clone().nth(j)).map(|k| self[op].operands[k]))
+    }
+
+    /// Drops what `op` passes to the arguments `args` (ascending) of successor `i`; a produced
+    /// one has no operand.
+    pub fn erase_successor_args(&mut self, op: OpId, i: usize, args: &[usize]) {
+        let produced = self.successor_layout(op, i).map_or(0, |(p, _)| p);
+        let dead: Vec<usize> = args.iter().filter_map(|a| a.checked_sub(produced)).collect();
+        self.erase_successor_operands(op, i, &dead);
+    }
+
     /// Whether `op` forwards operands to its successors: a branch, or a terminator whose
     /// successor operands also produce arguments.
     pub fn forwards_to_successors(&self, op: OpId) -> bool {
@@ -719,7 +738,7 @@ impl Body<'_> {
     /// Grows (or shrinks) the segment sizes of successor `i`'s operand group by `by`.
     fn resize_successor_group(&mut self, op: OpId, i: usize, by: isize) {
         let group = match self.layout(op) {
-            Some(Layout::Groups { first }) => Some(first + i),
+            Some(Layout::Groups { groups }) => groups.get(i).copied(),
             Some(Layout::Cases { default: Some(d), .. }) if i == 0 => Some(d),
             Some(Layout::Cases { default, cases, split }) => {
                 let k = i - usize::from(default.is_some());

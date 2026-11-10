@@ -32,7 +32,7 @@ impl OpInterfaces for CfDialect {
     fn branch_layout(&self, b: &Body<'_>, op: OpId) -> Option<BranchLayout> {
         Some(match &*b[op].name {
             "cf.br" => BranchLayout::All,
-            "cf.cond_br" => BranchLayout::Groups { first: 1 },
+            "cf.cond_br" => BranchLayout::Groups { groups: &crate::CONDITIONAL_GROUPS },
             "cf.switch" => BranchLayout::Cases { default: Some(1), cases: 2, split: "case_operand_segments" },
             _ => return None,
         })

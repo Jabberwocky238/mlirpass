@@ -120,7 +120,17 @@ impl OpInterfaces for TestDialect {
     }
 
     fn branch_layout(&self, b: &Body<'_>, op: OpId) -> Option<BranchLayout> {
-        (b[op].name == "test.br").then_some(BranchLayout::All)
+        /// `test.producing_br`: successor 0 takes the second operand group, successor 1 the first.
+        const PRODUCING_GROUPS: [usize; 2] = [1, 0];
+        /// `test.internal_br`: successor `i` takes operand group `i`.
+        const INTERNAL_GROUPS: [usize; 2] = [0, 1];
+        match &*b[op].name {
+            "test.br" => Some(BranchLayout::All),
+            "test.producing_br" => Some(BranchLayout::Groups { groups: &PRODUCING_GROUPS }),
+            // Its successors also take produced arguments (`produced_successor_operands`).
+            "test.internal_br" => Some(BranchLayout::Groups { groups: &INTERNAL_GROUPS }),
+            _ => None,
+        }
     }
 
     /// `test.internal_br`: successor `i` gets `i` produced arguments, then operand group `i`.

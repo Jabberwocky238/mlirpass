@@ -31,8 +31,8 @@ impl Body<'_> {
     /// The successor argument a branch operand feeds, if it feeds one.
     fn fed_argument(&self, op: OpId, index: usize) -> Option<ValueId> {
         (0..self[op].successors.len()).find_map(|i| {
-            let range = self.successor_operands(op, i)?;
-            range.contains(&index).then(|| self[self[op].successors[i]].args.get(index - range.start).copied()).flatten()
+            let (produced, range) = self.successor_layout(op, i)?;
+            range.contains(&index).then(|| self[self[op].successors[i]].args.get(produced + index - range.start).copied()).flatten()
         })
     }
 
@@ -54,12 +54,11 @@ impl Body<'_> {
 
     fn propagate_terminator(&self, op: OpId, live: &mut LiveMap) {
         live.set_op(op);
-        // Not a branch: every successor argument is live. A branch only produces none itself.
-        if !self.is_branch(op) {
-            for s in &self[op].successors {
-                for a in &self[*s].args {
-                    live.set_value(self, *a);
-                }
+        // Not a branch: every successor argument is live. A branch: those it produces.
+        for (i, s) in self[op].successors.iter().enumerate() {
+            let live_args = if self.is_branch(op) { self.successor_layout(op, i).map_or(0, |(p, _)| p) } else { self[*s].args.len() };
+            for a in self[*s].args.iter().take(live_args) {
+                live.set_value(self, *a);
             }
         }
     }
@@ -104,10 +103,10 @@ impl Body<'_> {
             return;
         }
         for i in (0..self[terminator].successors.len()).rev() {
-            let Some(range) = self.successor_operands(terminator, i) else { continue };
+            let Some((produced, range)) = self.successor_layout(terminator, i) else { continue };
             let succ = self[terminator].successors[i];
-            let dead: Vec<usize> = (0..range.len()).filter(|j| !live.args.contains(&self[succ].args[*j])).collect();
-            self.erase_successor_operands(terminator, i, &dead);
+            let dead: Vec<usize> = (produced..produced + range.len()).filter(|a| !live.args.contains(&self[succ].args[*a])).collect();
+            self.erase_successor_args(terminator, i, &dead);
         }
     }
 
@@ -222,11 +221,10 @@ impl Body<'_> {
             let mut common = None;
             let mut same = true;
             for (t, s) in &preds {
-                let Some(range) = self.successor_operands(*t, *s) else {
+                let Some(Some(v)) = self.successor_arg_value(*t, *s, i) else {
                     same = false;
                     break;
                 };
-                let v = self[*t].operands[range.start + i];
                 match common {
                     None => common = Some(v),
                     Some(c) if c != v => {
@@ -243,7 +241,7 @@ impl Body<'_> {
         }
         self.erase_args(block, &erase);
         for (t, s) in self.predecessors(block) {
-            self.erase_successor_operands(t, s, &erase);
+            self.erase_successor_args(t, s, &erase);
         }
         !erase.is_empty()
     }

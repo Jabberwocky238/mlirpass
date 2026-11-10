@@ -33,7 +33,7 @@ impl OpInterfaces for SpirvDialect {
     fn branch_layout(&self, b: &Body<'_>, op: OpId) -> Option<BranchLayout> {
         Some(match &*b[op].name {
             "spirv.Branch" => BranchLayout::All,
-            "spirv.BranchConditional" => BranchLayout::Groups { first: 1 },
+            "spirv.BranchConditional" => BranchLayout::Groups { groups: &crate::CONDITIONAL_GROUPS },
             "spirv.Switch" => BranchLayout::Cases { default: Some(1), cases: 2, split: "case_operand_segments" },
             _ => return None,
         })

@@ -137,8 +137,20 @@ impl CfCanon {
         if succ == parent {
             return false;
         }
-        let Some((dest, fwd)) = b.collapse_branch(succ, &operands) else { return false };
-        rw.br(op, dest, &fwd)
+        if let Some((dest, fwd)) = b.collapse_branch(succ, &operands) {
+            return rw.br(op, dest, &fwd);
+        }
+        CfCanon::uniform_block_args(rw, succ)
+    }
+
+    /// `SimplifyUniformBlockArguments`: for any branch, its successors' uniform arguments.
+    #[rewrite("_")]
+    fn simplify_uniform_block_arguments(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        if !rw.body.has(op, crate::Trait::BranchOpInterface) {
+            return false;
+        }
+        let succs = rw.body[op].successors.to_vec();
+        succs.into_iter().fold(false, |changed, s| CfCanon::uniform_block_args(rw, s) | changed)
     }
 
     #[rewrite("cf.cond_br")]
@@ -385,10 +397,48 @@ impl CfCanon {
 }
 
 impl CfCanon {
+    /// `simplifyUniformBlockArgs`: an argument of `dest` that every edge into it passes the
+    /// same value (none produced by the branch) is that value.
+    fn uniform_block_args(rw: &mut crate::Rewriter<'_, '_>, dest: crate::BlockId) -> bool {
+        let b = &*rw.body;
+        let preds = b.predecessors(dest);
+        if preds.len() < 2 {
+            return false;
+        }
+        let mut replace = Vec::new();
+        for (i, arg) in b[dest].args.iter().enumerate() {
+            if b[*arg].uses.is_empty() {
+                continue;
+            }
+            let mut common = None;
+            for (t, k) in &preds {
+                if !b.has(*t, crate::Trait::BranchOpInterface) {
+                    common = None;
+                    break;
+                }
+                // A produced operand has no value.
+                let val = b.successor_arg_value(*t, *k, i).flatten();
+                if val.is_none() || (common.is_some() && common != val) {
+                    common = None;
+                    break;
+                }
+                common = val;
+            }
+            if let Some(v) = common.filter(|v| v != arg) {
+                replace.push((*arg, v));
+            }
+        }
+        let changed = !replace.is_empty();
+        for (arg, v) in replace {
+            rw.replace_all_uses(arg, v);
+        }
+        changed
+    }
+
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(AssertTrue);
         set.add(BranchCanonicalize);
-        set.add(SimplifyConstCondBranchPred).add(SimplifyPassThroughCondBranch).add(SimplifyCondBranchIdenticalSuccessors).add(SimplifyCondBranchFromCondBranchOnSameCondition).add(CondBranchTruthPropagation).add(DropUnreachableCondBranch);
+        set.add(SimplifyConstCondBranchPred).add(SimplifyPassThroughCondBranch).add(SimplifyCondBranchIdenticalSuccessors).add(SimplifyCondBranchFromCondBranchOnSameCondition).add(CondBranchTruthPropagation).add(DropUnreachableCondBranch).add(SimplifyUniformBlockArguments);
         set.add(SimplifySwitchWithOnlyDefault).add(DropSwitchCasesThatMatchDefault).add(SimplifyConstSwitchValue).add(SimplifyPassThroughSwitch).add(SimplifySwitchFromSwitchOnSameCondition).add(SimplifySwitchFromDefaultSwitchOnSameCondition);
     }
 }

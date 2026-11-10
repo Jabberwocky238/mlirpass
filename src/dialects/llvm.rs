@@ -77,7 +77,7 @@ impl OpInterfaces for LlvmDialect {
     fn branch_layout(&self, b: &Body<'_>, op: OpId) -> Option<BranchLayout> {
         Some(match &*b[op].name {
             "llvm.br" => BranchLayout::All,
-            "llvm.cond_br" | "llvm.invoke" => BranchLayout::Groups { first: 1 },
+            "llvm.cond_br" | "llvm.invoke" => BranchLayout::Groups { groups: &crate::CONDITIONAL_GROUPS },
             "llvm.switch" => BranchLayout::Cases { default: Some(1), cases: 2, split: "case_operand_segments" },
             "llvm.indirectbr" => BranchLayout::Cases { default: None, cases: 1, split: "indbr_operand_segments" },
             _ => return None,
