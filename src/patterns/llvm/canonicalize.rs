@@ -26,33 +26,60 @@ fn extract_value<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         b.set_operand(op, 0, c);
         return Fold::InPlace;
     }
-    let mut cur = b.def_op(container);
-    let mut result = Fold::Failed;
+    // A constant container: the element at each position.
+    if let Some(mut attr) = b.constant_of(container) {
+        for p in positions(b, op) {
+            match element_at(attr, p) {
+                Some(x) => attr = x,
+                None => return Fold::Failed,
+            }
+        }
+        return Folded::Attr(attr).into();
+    }
+    let mut cur = container;
     let mut extract = positions(b, op);
-    let mut switched = false;
-    while let Some(ins) = cur.filter(|c| b[*c].name == "llvm.insertvalue") {
+    while let Some(ins) = b.def_named(cur, "llvm.insertvalue") {
         let ip = positions(b, ins);
         if extract == ip {
             return Folded::Value(b[ins].operands[1]).into();
         }
+        // The insert position a prefix: into the inserted value.
         if extract.len() > ip.len() && extract[..ip.len()] == ip[..] {
-            cur = b.def_op(b[ins].operands[1]);
+            cur = b[ins].operands[1];
             extract.drain(..ip.len());
-            switched = true;
             continue;
         }
-        let m = extract.len().min(ip.len());
-        if extract[..m] == ip[..m] {
-            return result;
+        // The extract position a prefix: the insert overlaps it.
+        if ip.len() > extract.len() && ip[..extract.len()] == extract[..] {
+            break;
         }
-        if !switched {
-            let c = b[ins].operands[0];
-            b.set_operand(op, 0, c);
-            result = Fold::InPlace;
-        }
-        cur = b.def_op(b[ins].operands[0]);
+        cur = b[ins].operands[0];
     }
-    result
+    // Read from where the traversal stopped.
+    if cur == container {
+        return Fold::Failed;
+    }
+    set_positions(b, op, &extract);
+    b.set_operand(op, 0, cur);
+    Fold::InPlace
+}
+
+/// `extractElementAt`: element `i` of a rank-1 elements attribute or an array; a zero, undef
+/// or poison is its own element.
+fn element_at(attr: Attribute<'_>, i: i64) -> Option<Attribute<'_>> {
+    let i = usize::try_from(i).ok()?;
+    match attr {
+        Attribute::Array(xs) => xs.into_iter().nth(i),
+        Attribute::Extended { ref ext, .. } if matches!(&*ext.name, "llvm.zero" | "llvm.undef" | "llvm.poison") => Some(attr),
+        a => {
+            let c = Const::try_from(&a).ok().filter(|c| c.elements)?;
+            if c.ty.shape().is_none_or(|d| d.len() != 1) || i >= c.ty.element_count()? {
+                return None;
+            }
+            let elem = c.ty.element_type().clone();
+            Some(Const::scalar(c.at(i), elem).into())
+        }
+    }
 }
 
 /// `ICmpOp::fold`.
@@ -211,6 +238,16 @@ impl LlvmCanon {
                 Folded::Attr(Const::int(v, ty).into()).into()
             }
             "llvm.getelementptr" => gep(b, op, consts),
+            // A one-element vector shuffled by `[0]` is itself.
+            "llvm.shufflevector" => {
+                let v1 = b[op].operands[0];
+                let single = matches!(&b[v1].ty, Type::Shaped(s) if s.shape.as_deref() == Some(&[mlirformat::Dim::Static(1)][..]));
+                if single && b.dense_i64(op, "mask") == [0] {
+                    Folded::Value(v1).into()
+                } else {
+                    Fold::Failed
+                }
+            }
             _ => Fold::Failed,
         }
     }
