@@ -1070,6 +1070,8 @@ impl<'a> Folder<'_, 'a> {
                 && b.transfer_rank(read) == b.transfer_rank(op)
                 && !b.out_of_bounds(read)
                 && !b.out_of_bounds(op)
+                && b.transfer_mask(read).is_none()
+                && b.transfer_mask(op).is_none()
                 && b[b[read].operands[0]].ty == b[base].ty
                 && b.result_ty(read) == b.operand_ty(op, 0)
                 && rshape == tshape
@@ -2582,6 +2584,66 @@ impl VectorCanon {
         true
     }
 
+    /// `TransferReadAfterWriteToBroadcast`: reading back (unmasked, in bounds, at the same
+    /// indices and chunk) what a tensor transfer write wrote is a transpose of a broadcast of the
+    /// written vector.
+    #[rewrite("vector.transfer_read")]
+    fn transfer_read_after_write_to_broadcast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let Some(write) = b.def_named(b[op].operands[0], "vector.transfer_write") else { return false };
+        let tensor = |v: ValueId| matches!(&b[v].ty, Type::Shaped(s) if s.kind == ShapedKind::Tensor);
+        if !tensor(b[op].operands[0]) || !tensor(b[write].operands[1]) {
+            return false;
+        }
+        if b.transfer_mask(op).is_some() || b.transfer_mask(write).is_some() || b.transfer_indices(op) != b.transfer_indices(write) || b.out_of_bounds(op) || b.out_of_bounds(write) {
+            return false;
+        }
+        let (Some(rp), Some(wp)) = (b.perm(op), b.perm(write)) else { return false };
+        let read_ty = b.result_ty(op);
+        let written = b[write].operands[0];
+        let (Some((rshape, rscal)), Some((wshape, _))) = (vshape(&read_ty), vshape(&b[written].ty)) else { return false };
+        // `getTransferChunkAccessed`.
+        let chunk = |p: &Perm, shape: &[i64]| {
+            let mut c = vec![0i64; p.dims];
+            for (r, n) in p.results.iter().zip(shape) {
+                if let Some(d) = r {
+                    c[*d] = *n;
+                }
+            }
+            c
+        };
+        if chunk(&rp, &rshape) != chunk(&wp, &wshape) {
+            return false;
+        }
+        // `inverseWithUnusedDims(write)` then the read map composed with it.
+        let inv: Vec<Option<usize>> = (0..wp.dims).map(|t| wp.results.iter().position(|r| *r == Some(t))).collect();
+        let composed: Vec<Option<usize>> = rp.results.iter().map(|r| r.and_then(|t| inv[t])).collect();
+        if (0..wp.results.len()).any(|i| !composed.contains(&Some(i))) {
+            return false;
+        }
+        let broadcast: Vec<usize> = composed.iter().enumerate().filter(|(_, c)| c.is_none()).map(|(i, _)| i).collect();
+        let nb = broadcast.len();
+        let mut inv_perm = broadcast.clone();
+        inv_perm.resize(composed.len(), 0);
+        for (i, c) in composed.iter().enumerate() {
+            if let Some(d) = c {
+                inv_perm[d + nb] = i;
+            }
+        }
+        let shape: Vec<i64> = inv_perm.iter().map(|i| rshape[*i]).collect();
+        let scal: Vec<bool> = inv_perm.iter().map(|i| rscal[*i]).collect();
+        let mut perm = vec![0i64; inv_perm.len()];
+        for (i, p) in inv_perm.iter().enumerate() {
+            perm[*p] = i as i64;
+        }
+        let bty = Type::vector(&shape, &scal, read_ty.element_type().clone());
+        rw.set_before(op);
+        let bc = rw.create(OpData::build("vector.broadcast").operands(&[written]), &[bty]);
+        let bv = rw.body[bc].results[0];
+        rw.replace_with(op, OpData::build("vector.transpose").operands(&[bv]).with("permutation", Attribute::dense_i64(&perm)), &[read_ty]);
+        true
+    }
+
     /// `InterleaveDeinterleaveFolder`: interleaving the two halves of a deinterleave, in order,
     /// is its source.
     #[rewrite("vector.interleave")]
@@ -2742,6 +2804,7 @@ impl VectorCanon {
         set.add(InsertStridedSliceConstantFolder);
         set.add(StridedSliceFolder);
         set.add(InterleaveDeinterleaveFolder);
+        set.add(TransferReadAfterWriteToBroadcast);
         set.add(StridedSliceCreateMaskFolder);
         set.add(StridedSliceConstantMaskFolder);
         set.add(StridedSliceBroadcast);
