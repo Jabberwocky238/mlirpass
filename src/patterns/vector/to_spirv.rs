@@ -90,6 +90,9 @@ impl VectorToSpirv {
             ("minsi", _, false) => "spirv.CL.s_min",
             ("maxui", _, false) => "spirv.CL.u_max",
             ("maxsi", _, false) => "spirv.CL.s_max",
+            ("and", false, _) => "spirv.BitwiseAnd",
+            ("or", false, _) => "spirv.BitwiseOr",
+            ("xor", false, _) => "spirv.BitwiseXor",
             _ => return None,
         };
         Some(cr.build(OpData::build(name).operands(&[l, r]), ty.clone()))
@@ -107,6 +110,16 @@ impl VectorToSpirv {
         let n = src.element_count().unwrap_or(0) as i64;
         let elem = src.element_type().clone();
         let mut values: Vec<ValueId> = (0..n).map(|i| Self::extract(cr, ops[0], i, elem.clone())).collect();
+        // A boolean `or` / `and` is `spirv.Any` / `spirv.All` (the extracts made all the same).
+        if ty == Type::I1 && matches!(&*kind, "or" | "and") {
+            let (all, combine) = if kind == "or" { ("spirv.Any", "spirv.LogicalOr") } else { ("spirv.All", "spirv.LogicalAnd") };
+            let mut r = cr.build(OpData::build(all).operands(&[ops[0]]), ty.clone());
+            if let Some(&acc) = ops.get(1) {
+                r = cr.build(OpData::build(combine).operands(&[r, acc]), ty);
+            }
+            cr.replace_values(op, &[r]);
+            return true;
+        }
         values.extend(ops.get(1).copied());
         let mut acc = values[0];
         for next in &values[1..] {
@@ -505,7 +518,8 @@ impl VectorToSpirv {
     fn store<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let mt = cr.rw.body[cr.rw.body[op].operands[1]].ty.clone();
-        let vt = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
+        // (the converted vector type: a size-1 vector is a scalar)
+        let Some(vt) = cr.converted(&cr.rw.body[cr.rw.body[op].operands[0]].ty.clone()) else { return false };
         let Some(ptr) = Self::vector_ptr(cr, &mt, ops[1], &ops[2..], &vt, o) else { return false };
         let mut data = OpData::build("spirv.Store").operands(&[ptr, ops[0]]);
         for (k, v) in Self::alignment(cr, op).unwrap_or_default() {
@@ -517,11 +531,12 @@ impl VectorToSpirv {
 
     /// `VectorStepOpConvert`.
     #[convert("vector.step")]
-    fn step<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: VectorSpirvOptions) -> bool {
+    fn step<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ty) = Self::result_ty(cr, op, 0) else { return false };
         let r = cr.rw.body[op].results[0];
         let n = cr.rw.body[r].ty.element_count().unwrap_or(1) as i64;
-        let it = Type::int(if o.index64 { 64 } else { 32 });
+        // The converted element type (a size-1 vector is already the scalar).
+        let it = ty.element_type().clone();
         if n == 1 {
             let z = cr.spirv_int_like(&it, 0);
             cr.replace_values(op, &[z]);
