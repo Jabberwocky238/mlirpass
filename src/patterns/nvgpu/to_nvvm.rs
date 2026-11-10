@@ -25,6 +25,7 @@ const WARP_SIZE: i64 = 32;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MmaType {
     F16,
+    Bf16,
     F32,
     Tf32,
     F64,
@@ -37,6 +38,7 @@ impl MmaType {
     const fn name(self) -> &'static str {
         match self {
             MmaType::F16 => "f16",
+            MmaType::Bf16 => "bf16",
             MmaType::F32 => "f32",
             MmaType::Tf32 => "tf32",
             MmaType::F64 => "f64",
@@ -52,6 +54,7 @@ impl MmaType {
             Type::Integer { width: 8, .. } => MmaType::S8,
             Type::Integer { width: 4, .. } => MmaType::S4,
             Type::Float(FloatKind::F16) => MmaType::F16,
+            Type::Float(FloatKind::BF16) => MmaType::Bf16,
             Type::Float(FloatKind::F64) => MmaType::F64,
             Type::Float(FloatKind::F32) => MmaType::Tf32,
             _ => return None,
@@ -230,6 +233,7 @@ impl NvgpuToNvvm {
             let to_i32 = match &inner {
                 Some((4, Type::Integer { width: 8, .. })) | Some((8, Type::Integer { width: 4, .. })) => true,
                 Some((1, Type::Float(FloatKind::F32))) => ptx == MmaType::Tf32,
+                Some((2, Type::Float(FloatKind::BF16))) => ptx == MmaType::Bf16,
                 _ => false,
             };
             if to_i32 {
@@ -622,8 +626,12 @@ impl NvgpuToNvvm {
         let tx = Self::trunc32(cr, operands[1][0]);
         let mut args = vec![p, tx];
         args.extend(operands.get(3).and_then(|v| v.first()));
+        // (its builder gives it the i64 state result, unused, but with a predicate)
+        let predicated = args.len() > 2;
         let data = OpData::build("nvvm.mbarrier.arrive.expect_tx").operands(&args).with("scope", Self::mem_scope("cta")).with("relaxed", Attribute::Bool(false));
-        cr.replace_new(op, data, &[]);
+        let types = if predicated { Vec::new() } else { vec![Type::int(64)] };
+        cr.rw.create(data, &types);
+        cr.erase(op);
         true
     }
 
