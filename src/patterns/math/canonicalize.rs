@@ -31,6 +31,8 @@ macro_rules! cmath {
                 pub safe fn atan2(y: f64, x: f64) -> f64;
                 pub safe fn atan2f(y: f32, x: f32) -> f32;
                 pub safe fn pow(x: f64, y: f64) -> f64;
+                pub safe fn cbrt(x: f64) -> f64;
+                pub safe fn cbrtf(x: f32) -> f32;
                 pub safe fn powf(x: f32, y: f32) -> f32;
             }
         }
@@ -40,6 +42,8 @@ macro_rules! cmath {
         fn cmath(op: &str) -> Option<(fn(f64) -> f64, fn(f32) -> f32, bool)> {
             match op {
                 $(stringify!($e) => Some((libm::$e, libm::$ef, true)),)*
+                #[cfg(feature = "std")]
+                "cbrt" => Some((|x| c::cbrt(x), |x| c::cbrtf(x), false)),
                 $(#[cfg(feature = "std")]
                 stringify!($f) => Some((|x| c::$f(x), |x| c::$ff(x), false)),)*
                 _ => None,
@@ -187,7 +191,48 @@ impl<'x, 'a> Folder<'x, 'a> {
             "ctlz" => self.int_unary(|a| ApInt::new(a.width, a.count_leading_zeros().into())),
             "cttz" => self.int_unary(|a| ApInt::new(a.width, a.count_trailing_zeros().into())),
             "ctpop" => self.int_unary(|a| ApInt::new(a.width, a.popcount().into())),
-            "ipowi" => self.binary(None, |a, b| Some(Scalar::Int(a.int()?.ipowi(b.int()?)?))).map(Folded::Attr).into(),
+            // (an i1 is ambiguous with signed semantics: not folded)
+            "ipowi" => self.binary(None, |a, b| Some(Scalar::Int(a.int().filter(|a| a.width != 1)?.ipowi(b.int()?)?))).map(Folded::Attr).into(),
+            // `1 / sqrt(a)`, refusing a negative operand.
+            "rsqrt" => self.float_unary(|a| match a.kind {
+                _ if a.is_negative() => None,
+                FloatKind::F64 => ApFloat::from_bits(FloatKind::F64, (1.0 / f64::from_bits(a.bits).sqrt()).to_bits()),
+                FloatKind::F32 => ApFloat::from_bits(FloatKind::F32, (1.0 / f32::from_bits(a.bits as u32).sqrt()).to_bits().into()),
+                _ => None,
+            }),
+            // `pow(base, exp)` when the exponent is exactly a value of the base's type.
+            "fpowi" => {
+                let Some((f, ff)) = cmath2("powf") else { return Fold::Failed };
+                let (Some(l), Some(r)) = (self.cst(0), self.cst(1)) else { return Fold::Failed };
+                if l.elements != r.elements || l.ty.shape() != r.ty.shape() {
+                    return Fold::Failed;
+                }
+                let n = if l.is_splat() && r.is_splat() { 1 } else { l.values.len().max(r.values.len()) };
+                let pow = |a: Scalar, b: Scalar| -> Option<Scalar> {
+                    let (a, e) = (a.float()?, b.int()?.signed());
+                    let exp = match a.kind {
+                        FloatKind::F64 => ((e as f64) as i128 == e).then(|| e as f64)?,
+                        FloatKind::F32 => ((e as f32) as i128 == e).then(|| f64::from(e as f32))?,
+                        _ => return None,
+                    };
+                    Some(Scalar::Float(a.through2(ApFloat::from_f64(a.kind, exp)?, f, ff)?))
+                };
+                let Some(values) = (0..n).map(|i| pow(l.at(i), r.at(i))).collect::<Option<alloc::vec::Vec<_>>>() else { return Fold::Failed };
+                Folded::Attr(Const { ty: l.ty.clone(), values, elements: l.elements }.into()).into()
+            }
+            // Both `sin` and `cos` fold, or neither.
+            "sincos" => {
+                let (Some((sin, sinf, _)), Some((cos, cosf, _))) = (cmath("sin"), cmath("cos")) else { return Fold::Failed };
+                let ty = self.ty();
+                let folded = |f: fn(f64) -> f64, ff: fn(f32) -> f32| match self.unary(ty.clone(), |x| Some(Scalar::Float(x.float()?.through(f, ff)?))) {
+                    Fold::Results(r) => r.into_iter().next(),
+                    _ => None,
+                };
+                match (folded(sin, sinf), folded(cos, cosf)) {
+                    (Some(s), Some(c)) => Fold::Results(alloc::vec![s, c]),
+                    _ => Fold::Failed,
+                }
+            }
             "isfinite" => self.classify(|a| Some(!a.is_nan() && !a.is_inf())),
             "isinf" => self.classify(|a| Some(a.is_inf())),
             "isnan" => self.classify(|a| Some(a.is_nan())),
