@@ -97,7 +97,9 @@ impl crate::Run for ConvertGpuToRocdl {
         for r in body[op].regions.clone() {
             body.apply_greedily(r, &set, &config);
         }
-        let tc = LlvmConverter::build(llvm);
+        let mut tc = LlvmConverter::build(llvm);
+        // A named barrier is the LDS pointer to its global.
+        tc.conversion(|t| matches!(t, mlirformat::Type::Extended(e) if e.name == "gpu.named_barrier").then(|| Some(alloc::vec![mlirformat::llvm_types::LlvmType::Ptr(3).into()])));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         // Ahead of the dialects' own lowerings: mlir-opt picks the OCML calls where both apply.

@@ -105,64 +105,151 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         self.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(32))
     }
 
-    /// `LLVM::decomposeValue`: `src` as values of `dst` (bitcast, zero-extended, or split
-    /// through a vector).
-    pub fn decompose(&mut self, src: ValueId, dst: Type<'a>) -> Vec<ValueId> {
-        let st = self.rw.body[src].ty.clone();
-        if st == dst {
-            return vec![src];
+    /// An int, float or vector type: what has a fixed bit width.
+    fn sized_leaf(t: &Type<'_>) -> bool {
+        matches!(t, Type::Integer { .. } | Type::Float(_)) || matches!(t, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Vector)
+    }
+
+    /// The fields of an LLVM array or struct type.
+    fn aggregate_fields<'t>(t: &Type<'t>) -> Option<Vec<Type<'t>>> {
+        match LlvmType::try_from(t).ok()? {
+            LlvmType::Array(n, e) => Some(vec![(*e).clone(); n as usize]),
+            LlvmType::Struct { body: Some(body), .. } => Some(body),
+            _ => None,
         }
-        let (sb, db) = (Self::value_bits(&st), Self::value_bits(&dst));
+    }
+
+    /// `isFixedSizeAggregate`: every leaf of `t` is `dst` or has a fixed bit width.
+    fn fixed_size_aggregate(t: &Type<'_>, dst: &Type<'_>) -> bool {
+        if t == dst {
+            return true;
+        }
+        match Self::aggregate_fields(t) {
+            Some(fields) => fields.iter().all(|f| Self::fixed_size_aggregate(f, dst)),
+            None => Self::sized_leaf(t),
+        }
+    }
+
+    /// `LLVM::decomposeValue`: `src` as values of `dst` (aggregates field by field; leaves
+    /// bitcast, zero-extended, or split through a vector); `None` when a leaf has no fixed size
+    /// and `variable` does not let it through as it is.
+    pub fn decompose(&mut self, src: ValueId, dst: Type<'a>, variable: bool) -> Option<Vec<ValueId>> {
+        if !variable && !Self::fixed_size_aggregate(&self.rw.body[src].ty.clone(), &dst) {
+            return None;
+        }
+        let mut out = Vec::new();
+        self.decompose_into(src, &dst, &mut out);
+        Some(out)
+    }
+
+    fn decompose_into(&mut self, src: ValueId, dst: &Type<'a>, out: &mut Vec<ValueId>) {
+        let st = self.rw.body[src].ty.clone();
+        if st == *dst {
+            out.push(src);
+            return;
+        }
+        if let Some(fields) = Self::aggregate_fields(&st) {
+            for (i, f) in fields.into_iter().enumerate() {
+                let e = self.build(OpData::build("llvm.extractvalue").operands(&[src]).with("position", Attribute::dense_i64(&[i as i64])), f);
+                self.decompose_into(e, dst, out);
+            }
+            return;
+        }
+        if !Self::sized_leaf(&st) {
+            out.push(src);
+            return;
+        }
+        let (sb, db) = (Self::value_bits(&st), Self::value_bits(dst));
         if sb == db {
-            return vec![self.build(OpData::build("llvm.bitcast").operands(&[src]), dst)];
+            out.push(self.build(OpData::build("llvm.bitcast").operands(&[src]), dst.clone()));
+            return;
         }
         if db > sb {
             let mut v = src;
             if st != Type::int(sb) {
                 v = self.build(OpData::build("llvm.bitcast").operands(&[v]), Type::int(sb));
             }
-            return vec![self.build(OpData::build("llvm.zext").operands(&[v]), Type::int(db))];
+            out.push(self.build(OpData::build("llvm.zext").operands(&[v]), Type::int(db)));
+            return;
         }
-        let n = i64::from(sb / db);
+        let n = i64::from(sb.div_ceil(db));
+        let rounded = n as u32 * db;
+        let mut v = src;
+        // (padded out when it does not split evenly)
+        if rounded != sb {
+            if st != Type::int(sb) {
+                v = self.build(OpData::build("llvm.bitcast").operands(&[v]), Type::int(sb));
+            }
+            v = self.build(OpData::build("llvm.zext").operands(&[v]), Type::int(rounded));
+        }
         let vt = Type::vector(&[n], &[], dst.clone());
-        let v = self.build(OpData::build("llvm.bitcast").operands(&[src]), vt);
-        (0..n)
-            .map(|i| {
-                let idx = self.i32_const(i);
-                self.build(OpData::build("llvm.extractelement").operands(&[v, idx]), dst.clone())
-            })
-            .collect()
+        let v = self.build(OpData::build("llvm.bitcast").operands(&[v]), vt);
+        for i in 0..n {
+            let idx = self.i32_const(i);
+            out.push(self.build(OpData::build("llvm.extractelement").operands(&[v, idx]), dst.clone()));
+        }
     }
 
     /// `LLVM::composeValue`: the inverse of [`decompose`](Self::decompose).
     pub fn compose(&mut self, src: &[ValueId], dst: Type<'a>) -> ValueId {
-        if let [one] = src {
-            let mut r = *one;
-            let rt = self.rw.body[r].ty.clone();
-            if rt == dst {
-                return r;
+        let mut at = 0;
+        self.compose_from(src, &mut at, &dst)
+    }
+
+    fn compose_from(&mut self, src: &[ValueId], at: &mut usize, dst: &Type<'a>) -> ValueId {
+        if let Some(fields) = Self::aggregate_fields(dst) {
+            let mut r = self.poison(dst.clone());
+            for (i, f) in fields.iter().enumerate() {
+                let v = self.compose_from(src, at, f);
+                r = self.build(OpData::build("llvm.insertvalue").operands(&[r, v]).with("position", Attribute::dense_i64(&[i as i64])), dst.clone());
             }
-            let (sb, db) = (Self::value_bits(&rt), Self::value_bits(&dst));
+            return r;
+        }
+        if !Self::sized_leaf(dst) {
+            *at += 1;
+            return src[*at - 1];
+        }
+        let db = Self::value_bits(dst);
+        let front = src[*at];
+        let ft = self.rw.body[front].ty.clone();
+        if ft == *dst {
+            *at += 1;
+            return front;
+        }
+        if Self::sized_leaf(&ft) && Self::value_bits(&ft) >= db {
+            *at += 1;
+            let sb = Self::value_bits(&ft);
+            let mut r = front;
             if db < sb {
-                if rt != Type::int(sb) {
+                if ft != Type::int(sb) {
                     r = self.build(OpData::build("llvm.bitcast").operands(&[r]), Type::int(sb));
                 }
                 r = self.build(OpData::build("llvm.trunc").operands(&[r]), Type::int(db));
             }
-            if self.rw.body[r].ty != dst {
-                r = self.build(OpData::build("llvm.bitcast").operands(&[r]), dst);
+            if self.rw.body[r].ty != *dst {
+                r = self.build(OpData::build("llvm.bitcast").operands(&[r]), dst.clone());
             }
             return r;
         }
-        let et = self.rw.body[src[0]].ty.clone();
-        let vt = Type::vector(&[src.len() as i64], &[], et);
+        let eb = Self::value_bits(&ft);
+        let n = i64::from(db.div_ceil(eb));
+        let rounded = n as u32 * eb;
+        let vt = Type::vector(&[n], &[], ft);
         let mut r = self.poison(vt.clone());
-        for (i, v) in src.iter().enumerate() {
-            let idx = self.i32_const(i as i64);
-            r = self.build(OpData::build("llvm.insertelement").operands(&[r, *v, idx]), vt.clone());
+        for i in 0..n {
+            let idx = self.i32_const(i);
+            r = self.build(OpData::build("llvm.insertelement").operands(&[r, src[*at], idx]), vt.clone());
+            *at += 1;
         }
-        if vt != dst {
-            r = self.build(OpData::build("llvm.bitcast").operands(&[r]), dst);
+        // (the padding of the decomposition undone)
+        if rounded != db {
+            r = self.build(OpData::build("llvm.bitcast").operands(&[r]), Type::int(rounded));
+            r = self.build(OpData::build("llvm.trunc").operands(&[r]), Type::int(db));
+            if Type::int(db) != *dst {
+                r = self.build(OpData::build("llvm.bitcast").operands(&[r]), dst.clone());
+            }
+        } else if vt != *dst {
+            r = self.build(OpData::build("llvm.bitcast").operands(&[r]), dst.clone());
         }
         r
     }

@@ -29,6 +29,13 @@ const CLUSTER_BARRIERS: AmdChipset = AmdChipset { major: 12, minor: 5, stepping:
 const WHOLE_WORKGROUP_BARRIER: i64 = -1;
 const WHOLE_CLUSTER_BARRIER: i64 = -3;
 /// `LLVM::AtomicOrdering::release` / `acquire`.
+/// The wait class of the last named barrier the wave joined.
+const NAMED_BARRIER_WAIT: i64 = 1;
+/// The global a named barrier lives in, and its type.
+const NAMED_BARRIER_GLOBAL: &str = "__named_barrier";
+const NAMED_BARRIER_TYPE: &str = "amdgcn.named.barrier";
+/// `ROCDLDialect::kSharedMemoryAddressSpace`.
+const LDS_ADDRESS_SPACE: u32 = 3;
 const ORDERING_RELEASE: i64 = 5;
 const ORDERING_ACQUIRE: i64 = 4;
 /// `IntegerOverflowFlags::nsw | nuw` of the llvm ops.
@@ -75,11 +82,22 @@ impl GpuToRocdl {
             Some(Attribute::Array(xs)) => xs.iter().map(|x| AddressSpace::try_from(x).ok()).collect(),
             _ => None,
         };
-        if operands.iter().any(|v| !v.is_empty()) {
-            // (named barriers are not ported)
-            return false;
-        }
         let gfx12 = o.chipset.major >= GFX12;
+        if let Some(named) = operands.iter().find_map(|v| v.first().copied()) {
+            // A named barrier (workgroup scope, gfx12+): joined, signalled keeping its count,
+            // then the named-barrier wait class waited on.
+            if scope != BarrierScope::Workgroup || !gfx12 {
+                return false;
+            }
+            cr.rw.set_before(op);
+            Self::fence(cr, spaces.as_deref(), "workgroup", ORDERING_RELEASE);
+            cr.rw.create(OpData::build("rocdl.s.barrier.join").operands(&[named]), &[]);
+            cr.rw.create(OpData::build("rocdl.s.barrier.signal.var").operands(&[named]).with("memberCnt", Attribute::of_int(0, Type::int(32))), &[]);
+            cr.rw.create(OpData::build("rocdl.s.barrier.wait").with("id", Attribute::of_int(NAMED_BARRIER_WAIT.into(), Type::int(16))), &[]);
+            Self::fence(cr, spaces.as_deref(), "workgroup", ORDERING_ACQUIRE);
+            cr.erase(op);
+            return true;
+        }
         let (sync, ops): (&str, Vec<OpData<'_>>) = match scope {
             BarrierScope::Subgroup => ("wavefront", vec![OpData::build("rocdl.wave.barrier")]),
             BarrierScope::Cluster => {
@@ -98,6 +116,50 @@ impl GpuToRocdl {
         }
         Self::fence(cr, spaces.as_deref(), sync, ORDERING_ACQUIRE);
         cr.erase(op);
+        true
+    }
+
+    /// `GPUInitializeNamedBarrierOpLowering` (gfx12+): an LDS `amdgcn.named.barrier` global in
+    /// the function's symbol table, initialized with the constant member count.
+    #[convert("gpu.initialize_named_barrier")]
+    fn initialize_named_barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
+        if o.chipset.major < GFX12 {
+            return false;
+        }
+        let b = &*cr.rw.body;
+        let Some(count) = b.int_constant(b[op].operands[0]) else { return false };
+        let mut func = b.parent_op(op);
+        while let Some(f) = func.filter(|f| !b.has(*f, crate::Trait::FunctionOpInterface)) {
+            func = b.parent_op(f);
+        }
+        let Some(table) = func.and_then(|f| b.parent_op(f)).filter(|t| b.is_symbol_table(*t)) else { return false };
+        let name = b.unique_symbol(table, NAMED_BARRIER_GLOBAL, None);
+        let target = Type::Extended(mlirformat::Extended { name: "llvm.target".into(), body: Some(alloc::format!("<\"{NAMED_BARRIER_TYPE}\", 0>").into()), params: Vec::new() });
+        let lds = Type::from(LlvmType::Ptr(LDS_ADDRESS_SPACE));
+        let loc = b[op].loc.clone();
+        // (appended to the symbol table's body, as `SymbolTable::insert` does)
+        let saved = cr.rw.ip;
+        let block = cr.rw.body.top_block(table);
+        cr.rw.set_end(block);
+        let data = OpData { loc: loc.clone(), ..OpData::build("llvm.mlir.global") }
+            .with("addr_space", Attribute::of_int(LDS_ADDRESS_SPACE.into(), Type::int(32)))
+            .with("global_type", Attribute::Type(target.clone()))
+            .with("linkage", Attribute::dialect("llvm.linkage", "<internal>"))
+            .with("sym_name", Attribute::str(&name));
+        let global = cr.rw.create_with(data, &[], |b, g| {
+            let r = b.add_region(g);
+            b.add_block(r, &[]);
+        });
+        let init = cr.rw.body[cr.rw.body[global].regions[0]].blocks[0];
+        cr.rw.set_start(init);
+        let poison = cr.rw.create(OpData { loc: loc.clone(), ..OpData::build("llvm.mlir.poison") }, &[target]);
+        let pv = cr.rw.body[poison].results[0];
+        cr.rw.create(OpData { loc, ..OpData::build("llvm.return").operands(&[pv]) }, &[]);
+        cr.rw.ip = saved;
+        cr.rw.set_before(op);
+        let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![name.into()])), lds);
+        cr.rw.create(OpData::build("rocdl.s.barrier.init").operands(&[addr]).with("memberCnt", Attribute::of_int(count, Type::int(32))), &[]);
+        cr.replace(op, vec![vec![addr]]);
         true
     }
 
@@ -221,7 +283,7 @@ impl GpuToRocdl {
         let r = if Self::readlane_type(&ty) {
             read(cr, src)
         } else {
-            let parts = cr.decompose(src, Type::int(32));
+            let Some(parts) = cr.decompose(src, Type::int(32), true) else { return false };
             let read: Vec<ValueId> = parts.into_iter().map(|p| read(cr, p)).collect();
             cr.compose(&read, ty)
         };
@@ -254,7 +316,7 @@ impl GpuToRocdl {
         let sel = cr.build(OpData::build("llvm.select").operands(&[active, dst, src_lane]), i32t.clone());
         let two = c(cr, 2);
         let aligned = bin(cr, "llvm.shl", sel, two);
-        let parts = cr.decompose(value, i32t.clone());
+        let Some(parts) = cr.decompose(value, i32t.clone(), false) else { return false };
         let swizzled: Vec<ValueId> = parts.into_iter().map(|p| cr.build(OpData::build("rocdl.ds_bpermute").operands(&[aligned, p]), Type::int(32))).collect();
         let ty = cr.rw.body[value].ty.clone();
         let r = cr.compose(&swizzled, ty);
