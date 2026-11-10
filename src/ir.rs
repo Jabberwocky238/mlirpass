@@ -1618,11 +1618,21 @@ impl<'a> Body<'a> {
         self.create(data, &types)
     }
 
+    /// Whether `name` is the segment sizes of an op with `AttrSizedOperandSegments` /
+    /// `AttrSizedResultSegments` (inherent there, discardable elsewhere).
+    fn segment_sizes(info: &crate::OpInfo, name: &str) -> bool {
+        match name {
+            "operandSegmentSizes" => info.traits.contains(&crate::Trait::AttrSizedOperandSegments),
+            "resultSegmentSizes" => info.traits.contains(&crate::Trait::AttrSizedResultSegments),
+            _ => false,
+        }
+    }
+
     /// Whether attribute `name` of an op `op_name` is inherent (declared by its ODS, so in the
     /// `<{...}>` properties); `None` when the context does not know the op.
     pub fn inherent(&self, op_name: &str, name: &str) -> Option<bool> {
         let info = self.ctx.opt.op_info(op_name)?;
-        Some(info.inherent.contains(&name) || matches!(name, "operandSegmentSizes" | "resultSegmentSizes"))
+        Some(info.inherent.contains(&name) || Self::segment_sizes(info, name))
     }
 
     /// Puts each attribute of `data` among its properties or its discardable attributes, as
@@ -1630,7 +1640,7 @@ impl<'a> Body<'a> {
     pub fn place(&self, data: &mut OpData<'a>) {
         // One lookup for the op (none once it is in a body), not one per attribute (`inherent`).
         let Some(info) = data.info.or_else(|| self.ctx.opt.op_info(&data.name)) else { return };
-        let inherent = |a: &NamedAttr<'_>| info.inherent.contains(&&*a.name) || matches!(&*a.name, "operandSegmentSizes" | "resultSegmentSizes");
+        let inherent = |a: &NamedAttr<'_>| info.inherent.contains(&&*a.name) || Self::segment_sizes(info, &a.name);
         // Already where they belong (what the parser gives): each list sorted in place, nothing
         // moved or allocated.
         if data.properties.iter().all(inherent) && !data.attributes.iter().any(inherent) {
@@ -1660,7 +1670,7 @@ impl<'a> Body<'a> {
         let mut all: Vec<&NamedAttr<'a>> = data.properties.iter().collect();
         all.extend(&data.attributes);
         all.sort_by(|a, b| a.name.cmp(&b.name));
-        let (props, attrs): (Vec<_>, Vec<_>) = all.into_iter().map(|a| a.reborrow()).partition(|a| info.inherent.contains(&&*a.name) || matches!(&*a.name, "operandSegmentSizes" | "resultSegmentSizes"));
+        let (props, attrs): (Vec<_>, Vec<_>) = all.into_iter().map(|a| a.reborrow()).partition(|a| info.inherent.contains(&&*a.name) || Self::segment_sizes(info, &a.name));
         (dict(props), attrs)
     }
 

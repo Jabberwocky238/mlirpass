@@ -248,12 +248,15 @@ mod bufferizable {
     /// A structured op (`LinalgOpInterface`), and `linalg.softmax`.
     struct Structured;
     struct Softmax;
+    /// `linalg.pack` / `linalg.unpack` (`PackOpInterface` / `UnPackOpInterface`).
+    struct Relayout;
 
     impl LinalgDialect {
         pub(crate) fn bufferizable_op(name: &str) -> Option<&'static dyn Bufferizable> {
             match name {
                 "linalg.softmax" => Some(&Softmax),
-                "linalg.yield" | "linalg.index" | "linalg.pack" | "linalg.unpack" => None,
+                "linalg.pack" | "linalg.unpack" => Some(&Relayout),
+                "linalg.yield" | "linalg.index" => None,
                 _ => Some(&Structured),
             }
         }
@@ -352,6 +355,44 @@ mod bufferizable {
             data.properties.clone_from(&rw.body[op].properties);
             rw.create(data, &[]);
             replace_with_buffers(rw, op, &[ob]);
+            Ok(())
+        }
+    }
+
+    /// The destination is operand 1; the source (and a pack's padding and tiles) are read.
+    const RELAYOUT_DEST: usize = 1;
+
+    impl Bufferizable for Relayout {
+        fn reads(&self, _: &AnalysisState<'_>, _: &Body<'_>, (_, i): Operand) -> bool {
+            i != RELAYOUT_DEST
+        }
+
+        fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, (_, i): Operand) -> bool {
+            i == RELAYOUT_DEST
+        }
+
+        fn aliasing_values(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> Vec<AliasingValue> {
+            match b[op].results.first() {
+                Some(r) if i == RELAYOUT_DEST => vec![AliasingValue::equivalent(*r)],
+                _ => Vec::new(),
+            }
+        }
+
+        fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
+            let mut operands = rw.body[op].operands.to_vec();
+            if !crate::is_tensor(&rw.body[operands[0]].ty) || !crate::is_tensor(&rw.body[operands[RELAYOUT_DEST]].ty) {
+                return Err(Error(alloc::format!("'{}' op mixed tensor/buffer semantic op not supported yet", rw.body[op].name)));
+            }
+            operands[0] = buffer_of(rw, o, operands[0])?;
+            operands[RELAYOUT_DEST] = buffer_of(rw, o, operands[RELAYOUT_DEST])?;
+            let dest = operands[RELAYOUT_DEST];
+            rw.set_before(op);
+            let old = rw.body[op].clone();
+            let mut data = OpData::named(old.name.clone()).operands(&operands);
+            data.properties.clone_from(&old.properties);
+            data.attributes.clone_from(&old.attributes);
+            rw.create(data, &[]);
+            replace_with_buffers(rw, op, &[dest]);
             Ok(())
         }
     }

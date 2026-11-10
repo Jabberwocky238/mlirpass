@@ -307,7 +307,9 @@ impl<'a> Relayout<'a> {
     /// `paddingIsNotNeeded`.
     fn padding_not_needed(&self, b: &Body<'_>) -> bool {
         let (Some(src), Some(dst)) = (Lg::dims(&b[self.source].ty), Lg::dims(&b[self.dest].ty)) else { return false };
-        !self.inner.iter().any(|p| src[*p as usize] == Dim::DYNAMIC) && !self.tiles.iter().any(|t| matches!(t, Ofr::V(_))) && !self.requires_padding(b, &src, &dst)
+        // (a dynamic source dim is fine under a unit tile)
+        let unit_or_static = self.inner.iter().zip(&self.tiles).all(|(p, t)| src[*p as usize] != Dim::DYNAMIC || matches!(t, Ofr::C(1)));
+        !self.tiles.iter().any(|t| matches!(t, Ofr::V(_))) && unit_or_static && !self.requires_padding(b, &src, &dst)
     }
 
     /// `inferStaticShape`: the source and dest shapes with the untiled dims each side knows.
@@ -352,10 +354,12 @@ impl<'a> Relayout<'a> {
         if !self.outer.is_empty() {
             outer = Lg::permute(&outer, &Lg::invert(&self.outer));
         }
-        self.inner.iter().zip(&self.tiles).all(|(pos, tile)| {
+        let tiled = self.inner.iter().zip(&self.tiles).all(|(pos, tile)| {
             let (p, tile) = (*pos as usize, if let Ofr::C(c) = tile { *c } else { Dim::DYNAMIC });
             st[p] != Dim::DYNAMIC && outer[p] != Dim::DYNAMIC && tile != Dim::DYNAMIC && outer[p] * tile - st[p] < tile
-        })
+        });
+        // The slice must keep every dim that is not unpacked whole.
+        tiled && (0..outer.len()).filter(|p| !self.inner.contains(&(*p as i64))).all(|p| outer[p] != Dim::DYNAMIC && outer[p] == st[p])
     }
 }
 
@@ -506,9 +510,31 @@ impl<'a> Rewriter<'_, 'a> {
         true
     }
 
+    /// `getScalarConstantAttrFromDenseSplat` of `op`'s input as a constant of its result type
+    /// (`static_only`: only a static one).
+    fn splat_through(&mut self, op: OpId, static_only: bool) -> bool {
+        let b = &*self.body;
+        let Some(&r) = b[op].results.first() else { return false };
+        if !b.pure_tensor(op) {
+            return false;
+        }
+        let Some(k) = b.constant_of(b[op].operands[0]).and_then(|a| Const::try_from(&a).ok()).filter(|k| k.elements && k.is_splat()) else { return false };
+        let ty = b[r].ty.clone();
+        if static_only && !Lg::static_shape(&ty) {
+            return false;
+        }
+        let value: Attribute<'a> = Const::splat(k.values[0], ty.clone()).into();
+        self.replace_with(op, OpData::build("arith.constant").with("value", value), &[ty]);
+        true
+    }
+
     /// `FoldTensorCastPackOp` / `FoldTensorCastUnPackOp`.
     fn relayout_cast(&mut self, op: OpId) -> bool {
         let b = &*self.body;
+        // (memref packs are not handled)
+        if b[op].results.is_empty() {
+            return false;
+        }
         let foldable = |v: &ValueId| !matches!(b[*v].def, Def::Arg(..)) && b.foldable_cast(*v).is_some();
         if !b[op].operands.iter().any(foldable) {
             return false;
@@ -519,6 +545,10 @@ impl<'a> Rewriter<'_, 'a> {
         let packed = Lg::dims(&b[if r.pack { r.dest } else { r.source }].ty).unwrap_or_default();
         let tail = &packed[packed.len() - r.tiles.len()..];
         r.tiles = tail.iter().zip(&r.tiles).map(|(s, t)| if *s == Dim::DYNAMIC || matches!(t, Ofr::C(_)) { *t } else { Ofr::C(*s) }).collect();
+        // (a tile the cast makes zero is left alone)
+        if r.tiles.iter().any(|t| matches!(t, Ofr::C(0))) {
+            return false;
+        }
         let old = b[b[op].results[0]].ty.clone();
         self.set_before(op);
         let mut new = r.create(self);
@@ -591,7 +621,7 @@ impl<'a> Rewriter<'_, 'a> {
             self.modify(op, |b| b.set_operand(op, 1, init));
             return true;
         }
-        let r = b[op].results[0];
+        let Some(&r) = b[op].results.first() else { return false };
         if let Some(user) = b[r].uses.single()
             && b[user.op].name == "tensor.extract_slice"
             && u.can_fold_slice(b, user.op)
@@ -779,6 +809,19 @@ impl LinalgCanon {
         let r = rw.broadcast(src, init, &folded);
         rw.replace_op(op, &r);
         true
+    }
+
+    /// `FoldBroadcastSplatConstant`: a broadcast of a splat constant, a splat of the result's
+    /// static shape.
+    #[rewrite("linalg.broadcast")]
+    fn fold_broadcast_splat_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        rw.splat_through(op, true)
+    }
+
+    /// `FoldTransposeSplatConstant`.
+    #[rewrite("linalg.transpose")]
+    fn fold_transpose_splat_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        rw.splat_through(op, false)
     }
 
     /// `EraseSelfCopy`.
@@ -1041,7 +1084,7 @@ impl LinalgCanon {
                 }
             }
             // `reshapeConstantSource`: a splat source (equal to the padding value, if constant).
-            "linalg.pack" | "linalg.unpack" => {
+            "linalg.pack" | "linalg.unpack" if !b[op].results.is_empty() => {
                 let rt = b[b[op].results[0]].ty.clone();
                 let Some(k) = c[0].as_ref().and_then(|a| Const::try_from(a).ok()).filter(|k| k.elements && k.is_splat()) else { return Fold::Failed };
                 let pad = Relayout::of(b, op).padding.and_then(|_| c[2].as_ref());
@@ -1060,13 +1103,13 @@ impl LinalgCanon {
     /// `LinalgDialect::getCanonicalizationPatterns`, then the ops', by op name.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(EraseDeadLinalgOp).add(FoldTensorCastConsumerOp).add(FoldTensorCastPackOp).add(FoldTensorCastUnPackOp).add(InferStaticShapeOfOperands);
-        set.add(EraseIdentityBroadcastOp).add(FoldBroadcasts);
+        set.add(EraseIdentityBroadcastOp).add(FoldBroadcasts).add(FoldBroadcastSplatConstant);
         set.add(EraseSelfCopy);
         set.add(FoldConcatsOfFill).add(FoldFillWithCopy).add(FoldFillWithTensorExtract).add(FoldFillWithPack).add(FoldFillWithPad);
         set.add(FoldFillWithCollapse).add(FoldFillWithExpand).add(FoldInsertPadIntoFill).add(FoldFillWithTranspose);
         set.add(EraseIdentityGenericOp);
         set.add(CanonicalizePackOp);
-        set.add(FoldTransposeWithTranspose).add(SwapTransposeWithBroadcast);
+        set.add(FoldTransposeWithTranspose).add(FoldTransposeSplatConstant).add(SwapTransposeWithBroadcast);
         set.add(CanonicalizeUnPackOp);
     }
 }
