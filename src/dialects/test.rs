@@ -89,6 +89,15 @@ impl OpInterfaces for TestDialect {
         Some(self)
     }
 
+    /// `TestOpWithRegionFold::fold` (its operand), `TestOpWithVariadicResultsAndFolder::fold`
+    /// (its operands).
+    fn fold<'a>(&self, b: &mut Body<'a>, op: OpId, _: &[Option<Attribute<'a>>]) -> crate::Fold<'a> {
+        match &*b[op].name {
+            "test.op_with_region_fold" | "test.op_with_variadic_results_and_folder" => crate::Fold::Results(b[op].operands.iter().map(|v| crate::Folded::Value(*v)).collect()),
+            _ => crate::Fold::Failed,
+        }
+    }
+
     /// `SideEffectOp::getEffects`: one effect per entry of the `effects` array.
     fn effects(&self, b: &Body<'_>, op: OpId) -> Option<Vec<EffectInstance>> {
         if !matches!(&*b[op].name, "test.side_effect_op" | "test.side_effect_with_region_op") {
