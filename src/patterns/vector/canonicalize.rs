@@ -1120,7 +1120,7 @@ impl<'a> Folder<'_, 'a> {
             let v = self.b[op].operands[i];
             let Some(cast) = self.b.def_named(v, "tensor.cast") else { continue };
             let src = self.b[cast].operands[0];
-            if tensor_cast_foldable(&self.b[src].ty, &self.b[v].ty) {
+            if Body::preserves_static(&self.b[v].ty, &self.b[src].ty) {
                 self.b.set_operand(op, i, src);
                 changed = true;
             }
@@ -1181,13 +1181,6 @@ impl<'a> Body<'a> {
             _ => None,
         }
     }
-}
-
-/// `tensor::preservesStaticInformation(dst, src)`.
-fn tensor_cast_foldable(src: &Type<'_>, dst: &Type<'_>) -> bool {
-    let (Type::Shaped(s), Type::Shaped(d)) = (src, dst) else { return false };
-    let (Some(ss), Some(ds)) = (&s.shape, &d.shape) else { return false };
-    s.kind == ShapedKind::Tensor && d.kind == s.kind && s.elem == d.elem && s.extras == d.extras && ss.len() == ds.len() && !ds.iter().zip(ss).any(|(a, b)| matches!(a, Dim::Static(_)) && !matches!(b, Dim::Static(_)))
 }
 
 /// A transfer op's permutation map: per result, the dim it reads, or `None` for a

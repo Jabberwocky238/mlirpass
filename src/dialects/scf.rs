@@ -38,7 +38,6 @@ impl OpInterfaces for ScfDialect {
     fn region_successors(&self, b: &Body<'_>, op: OpId, point: Point) -> Vec<(Succ, Vec<ValueId>)> {
         let results = b[op].results.clone();
         match &*b[op].name {
-            #[cfg(feature = "scf-for-trip-count")]
             "scf.for" => {
                 let body = (Succ::Region(0), b.region_args(op, 0, 1));
                 let parent = (Succ::Parent, results.to_vec());
@@ -49,8 +48,6 @@ impl OpInterfaces for ScfDialect {
                     _ => vec![body, parent],
                 }
             }
-            #[cfg(not(feature = "scf-for-trip-count"))]
-            "scf.for" => vec![(Succ::Region(0), b.region_args(op, 0, 1)), (Succ::Parent, results.to_vec())],
             "scf.if" => match point {
                 Point::Parent => {
                     let else_empty = b[b[op].regions[1]].blocks.is_empty();
@@ -118,10 +115,9 @@ impl OpInterfaces for ScfDialect {
     }
 }
 
-#[cfg(feature = "scf-for-trip-count")]
 impl ScfDialect {
-    /// `ForOp::getStaticTripCount` = `constantTripCount(lb, ub, step, !unsignedCmp, computeUbMinusLb)` as LLVM
-    /// 1f126a6d has it (newer than 22.1.8: a zero step or, signed, a negative one is unknown, not 0).
+    /// `ForOp::getStaticTripCount` = `constantTripCount(lb, ub, step, !unsignedCmp, computeUbMinusLb)`
+    /// (a zero step or, signed, a negative one is unknown, not 0).
     fn static_trip_count(b: &Body<'_>, op: OpId) -> Option<mlirformat::ApInt> {
         use core::cmp::Ordering;
         use mlirformat::{ApInt, Const, Type};

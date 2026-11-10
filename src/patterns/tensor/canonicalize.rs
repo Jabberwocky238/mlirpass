@@ -36,16 +36,6 @@ impl Tn {
         t.dims().is_some_and(|d| !d.contains(&Dim::DYNAMIC))
     }
 
-    /// `preservesStaticInformation`.
-    fn preserves(src: &Type<'_>, dst: &Type<'_>) -> bool {
-        let (Some(s), Some(d)) = (Self::ranked(src), Self::ranked(dst)) else { return false };
-        if s.elem != d.elem || s.extras != d.extras {
-            return false;
-        }
-        let (Some(a), Some(b)) = (src.dims(), dst.dims()) else { return false };
-        a.len() == b.len() && !a.iter().zip(&b).any(|(x, y)| *x != Dim::DYNAMIC && *y == Dim::DYNAMIC)
-    }
-
     /// `joinShapes`.
     fn join<'a>(one: &Type<'a>, two: &Type<'a>) -> Option<Type<'a>> {
         let (Some(a), Some(b)) = (one.dims(), two.dims()) else {
@@ -214,12 +204,12 @@ impl<'a> Body<'a> {
 
     /// `canFoldIntoConsumerOp`: a cast from a more static type.
     fn cast_into_consumer(&self, cast: OpId) -> bool {
-        Tn::preserves(&self[self[cast].results[0]].ty, &self[self[cast].operands[0]].ty)
+        Body::preserves_static(&self[self[cast].results[0]].ty, &self[self[cast].operands[0]].ty)
     }
 
     /// `canFoldIntoProducerOp`.
     pub fn cast_into_producer(&self, cast: OpId) -> bool {
-        Tn::preserves(&self[self[cast].operands[0]].ty, &self[self[cast].results[0]].ty)
+        Body::preserves_static(&self[self[cast].operands[0]].ty, &self[self[cast].results[0]].ty)
     }
 
     /// The `tensor.cast` defining `v`, if it can fold into its consumer.
@@ -466,7 +456,7 @@ fn insert_slice_source_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     }
     let new_ty = Tn::with_dims(&st, &shape);
     let compatible = sd.iter().zip(&shape).all(|(a, c)| *a == Dim::DYNAMIC || *c == Dim::DYNAMIC || a == c);
-    if b[src].ty == new_ty || !Tn::preserves(&b[src].ty, &new_ty) || !compatible {
+    if b[src].ty == new_ty || !Body::preserves_static(&b[src].ty, &new_ty) || !compatible {
         return false;
     }
     let name = b[op].name.clone();
@@ -597,7 +587,7 @@ impl TensorCanon {
             let Some(d) = b[*v].ty.dims() else { return false };
             shape[dim] = d[dim];
             let t = Tn::tensor(&shape, inferred.element_type().clone(), Vec::new());
-            if !Tn::preserves(&t, &b[*v].ty) {
+            if !Body::preserves_static(&t, &b[*v].ty) {
                 casts.push((i, *v, t));
             }
         }
@@ -619,7 +609,7 @@ impl TensorCanon {
         let dim = concat_dim(b, op);
         let Some(inferred) = b.concat_type(&b[op].operands, dim) else { return false };
         let rt = b[b[op].results[0]].ty.clone();
-        if Tn::preserves(&inferred, &rt) {
+        if Body::preserves_static(&inferred, &rt) {
             return false;
         }
         let data = OpData::build("tensor.concat").operands(&b[op].operands.clone()).with("dim", b[op].get("dim").cloned().unwrap_or(Attribute::Unit));
@@ -968,7 +958,7 @@ impl TensorCanon {
             return false;
         }
         let ct = b[b[cast].results[0]].ty.clone();
-        if !Tn::preserves(&b[r].ty, &ct) {
+        if !Body::preserves_static(&b[r].ty, &ct) {
             return false;
         }
         let [l, h] = b.pad_lists(op);

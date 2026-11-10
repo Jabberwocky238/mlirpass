@@ -794,6 +794,25 @@ impl<'a> Body<'a> {
         self.interfaces(op).map(|i| i.region_successors(self, op, point)).unwrap_or_default()
     }
 
+    /// `getEntrySuccessorRegions(operands)`: the successors taken for `op`'s operand constants
+    /// `c`.
+    pub fn entry_successors(&self, op: OpId, c: &[Option<Attribute<'a>>]) -> Vec<(Succ, Vec<ValueId>)> {
+        let all = self.region_successors(op, Point::Parent);
+        match self.interfaces(op) {
+            Some(i) => i.entry_successors(self, op, c, all),
+            None => all,
+        }
+    }
+
+    /// A region terminator `t`'s `getSuccessorRegions(operands)` in region-branch `op`.
+    pub fn terminator_successors(&self, op: OpId, t: OpId, c: &[Option<Attribute<'a>>]) -> Vec<(Succ, Vec<ValueId>)> {
+        let all = self.region_successors(op, Point::Terminator(t));
+        match self.interfaces(t) {
+            Some(i) => i.terminator_successors(self, t, c, all),
+            None => all,
+        }
+    }
+
     /// `isRegionReachable` (`traverseRegionGraph`): whether region `to` of region-branch `op` is
     /// reached from region `from` through its regions' terminators.
     pub fn region_reachable(&self, op: OpId, from: usize, to: usize) -> bool {

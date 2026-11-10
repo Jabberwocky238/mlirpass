@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Type};
 
-use crate::{ApInt, Body, BlockId, Const, Fold, Mapping, OpData, OpId, RegionId, Rewriter, ValueId};
+use crate::{ApInt, Body, BlockId, Const, Fold, Mapping, OpData, OpId, Point, RegionId, Rewriter, Succ, ValueId};
 
 impl<'a> Body<'a> {
     /// The terminator of `op`'s region `r` (its last block).
@@ -74,19 +74,6 @@ impl<'a> Body<'a> {
         Some(if r.is_zero() { q } else { q.add(ApInt::new(width, 1)) })
     }
 
-    /// Whether `v` is defined in `region` or a region nested in it.
-    fn defined_in(&self, v: ValueId, region: RegionId) -> bool {
-        let mut block = self.value_block(v);
-        while let Some(b) = block {
-            let r = self[b].parent.expect("block in region");
-            if r == region {
-                return true;
-            }
-            block = self[self[r].parent].parent;
-        }
-        false
-    }
-
     /// Whether `region` is `inner` or encloses it.
     fn region_encloses(&self, region: RegionId, mut inner: RegionId) -> bool {
         loop {
@@ -102,19 +89,6 @@ impl<'a> Body<'a> {
 }
 
 impl<'a> Rewriter<'_, 'a> {
-    /// `replaceOpWithRegion`: the region's single block inlined before `op`, which its
-    /// terminator's operands replace.
-    fn replace_op_with_region(&mut self, op: OpId, region: RegionId, args: &[ValueId]) {
-        let block = self.body[region].blocks[0];
-        let term = self.body.last_op(block).expect("terminator");
-        let parent = self.body[op].parent.expect("placed");
-        self.inline_block_before(block, parent, Some(op), args);
-        // Read after inlining: a yielded block argument is by now what replaced it.
-        let results = self.body[term].operands.clone();
-        self.replace_op(op, &results);
-        self.erase_op(term);
-    }
-
     /// An `scf.yield` of `values` at the end of `block`.
     fn yield_at_end(&mut self, block: BlockId, values: &[ValueId]) -> OpId {
         self.set_end(block);
@@ -132,17 +106,6 @@ pub struct ScfCanon;
 
 #[crate::patterns]
 impl ScfCanon {
-    #[rewrite("scf.execute_region")]
-    fn single_block_execute_inliner(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        let b = &*rw.body;
-        let r = b[op].regions[0];
-        if b[r].blocks.len() != 1 || b[op].get("no_inline").is_some() {
-            return false;
-        }
-        rw.replace_op_with_region(op, r, &[]);
-        true
-    }
-
     #[rewrite("scf.execute_region")]
     fn multi_block_execute_inliner(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -178,52 +141,46 @@ impl ScfCanon {
         true
     }
 
+    /// `ForOpTensorCastFolder`: an iter arg fed by a `tensor.cast` that only loses static
+    /// information runs on the cast's source, cast back inside the body and after the loop
+    /// (`replaceAndCastForOpIterArg`, the op kept in place).
     #[rewrite("scf.for")]
-    fn simplify_trivial_loops(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+    fn for_op_tensor_cast_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        /// `scf.for`'s lower bound, upper bound and step come before the inits.
+        const CONTROL: usize = 3;
         let b = &*rw.body;
-        let d = &b[op];
-        let (lb, ub, step) = (d.operands[0], d.operands[1], d.operands[2]);
-        let signed = d.get("unsignedCmp").is_none();
-        let Some(trips) = b.trip_count(lb, ub, step, signed) else { return false };
-        let inits: Vec<ValueId> = d.operands[3..].to_vec();
-        if trips.is_zero() {
-            rw.replace_op(op, &inits);
-            return true;
-        }
-        if trips.signed() == 1 {
-            let mut args = vec![lb];
-            args.extend(inits);
-            let r = b[op].regions[0];
-            rw.replace_op_with_region(op, r, &args);
-            return true;
-        }
-        let block = b.entry(op, 0).expect("body");
-        if b.len_ops(block) != 1 {
-            return false;
-        }
-        let y = b.first_op(block).expect("an op in the block");
-        let yielded = b[y].operands.clone();
-        let region = b[op].regions[0];
-        if yielded.iter().any(|v| b.defined_in(*v, region)) {
-            return false;
-        }
-        rw.replace_op(op, &yielded);
-        true
-    }
-
-    #[rewrite("scf.if")]
-    fn remove_static_condition(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        let b = &*rw.body;
-        let Some(c) = b.constant_of(b[op].operands[0]) else { return false };
-        let Attribute::Bool(v) = c else { return false };
-        let (t, e) = (b[op].regions[0], b[op].regions[1]);
-        if v {
-            rw.replace_op_with_region(op, t, &[]);
-        } else if !b[e].blocks.is_empty() {
-            rw.replace_op_with_region(op, e, &[]);
-        } else {
-            rw.erase_op(op);
-        }
+        let inits = b[op].operands.get(CONTROL..).unwrap_or_default();
+        let found = b[op].results.iter().zip(inits).enumerate().find_map(|(k, (r, init))| {
+            let cast = b.def_named(*init, "tensor.cast")?;
+            let (src, dst) = (b[cast].operands[0], b[cast].results[0]);
+            (b[src].ty != b[dst].ty && Body::preserves_static(&b[dst].ty, &b[src].ty) && b[*r].uses.len() == 1).then_some((k, src))
+        });
+        let Some((k, src)) = found else { return false };
+        let (old_ty, new_ty) = (b[b[op].operands[CONTROL + k]].ty.clone(), b[src].ty.clone());
+        let loc = b[op].loc.clone();
+        let block = b.entry(op, 0).expect("a body");
+        let arg = b[block].args[1 + k];
+        let result = b[op].results[k];
+        let cast = |v: ValueId| OpData { loc: loc.clone(), ..OpData::build("tensor.cast").operands(&[v]) };
+        rw.modify(op, |body| {
+            body.set_operand(op, CONTROL + k, src);
+            body[arg].ty = new_ty.clone();
+            body[result].ty = new_ty.clone();
+        });
+        rw.set_start(block);
+        let into = rw.create(cast(arg), &[old_ty.clone()]);
+        let into = rw.body[into].results[0];
+        rw.replace_uses_if(arg, into, |b, u| b[u.op].results.first() != Some(&into));
+        let y = rw.body.last_op(block).expect("a terminator");
+        rw.set_before(y);
+        let yielded = rw.body[y].operands[k];
+        let out = rw.create(cast(yielded), &[new_ty.clone()]);
+        let out = rw.body[out].results[0];
+        rw.modify(y, |body| body.set_operand(y, k, out));
+        rw.set_after(op);
+        let after = rw.create(cast(result), &[old_ty]);
+        let after = rw.body[after].results[0];
+        rw.replace_uses_if(result, after, |b, u| b[u.op].results.first() != Some(&after));
         true
     }
 
@@ -461,27 +418,6 @@ impl ScfCanon {
     #[rewrite("scf.while")]
     fn while_move_if_down(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         while_move_if_down(rw, op)
-    }
-
-    #[rewrite("scf.index_switch")]
-    fn fold_constant_case(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        let b = &*rw.body;
-        let Some(c) = b.const_int(b[op].operands[0]) else { return false };
-        let cases: Vec<i64> = match b[op].get("cases") {
-            Some(Attribute::DenseArray { values, .. }) => values.iter().filter_map(|v| v.parse().ok()).collect(),
-            _ => Vec::new(),
-        };
-        let idx = cases.iter().position(|x| *x == c.signed() as i64).unwrap_or(cases.len());
-        // Regions: the default first, then the cases.
-        let region = if idx < cases.len() { b[op].regions[idx + 1] } else { b[op].regions[0] };
-        let source = b[region].blocks[0];
-        let term = b.last_op(source).expect("terminator");
-        let results = b[term].operands.clone();
-        let parent = b[op].parent.expect("placed");
-        rw.inline_block_before(source, parent, Some(op), &[]);
-        rw.erase_op(term);
-        rw.replace_op(op, &results);
-        true
     }
 
     #[rewrite("scf.parallel")]
@@ -1104,6 +1040,105 @@ impl crate::Pattern for RegionBranchPatterns {
     }
 }
 
+/// `InlineRegionBranchOp`: a region-branch op with exactly one acyclic path from the parent
+/// back to it, through single-block regions, is replaced by those regions inlined in order.
+pub struct InlineRegionBranch(pub &'static str);
+
+impl InlineRegionBranch {
+    /// The operand constants (`extractConstants`).
+    fn constants<'a>(b: &Body<'a>, op: OpId) -> Vec<Option<Attribute<'a>>> {
+        b[op].operands.iter().map(|v| b.constant_of(*v)).collect()
+    }
+
+    /// `computeSingleAcyclicRegionBranchPath`: each step's successor with its inputs, and the
+    /// terminator leaving it when it is a region.
+    fn path(b: &Body<'_>, op: OpId) -> Option<Vec<(Succ, Vec<ValueId>, Option<OpId>)>> {
+        let mut out = Vec::new();
+        let mut visited = BTreeSet::new();
+        let mut succs = b.entry_successors(op, &Self::constants(b, op));
+        loop {
+            let [(s, inputs)] = <[_; 1]>::try_from(succs).ok()?;
+            let Succ::Region(i) = s else {
+                out.push((s, inputs, None));
+                return Some(out);
+            };
+            let region = b[op].regions[i];
+            let [block] = b[region].blocks[..] else { return None };
+            if !visited.insert(i) {
+                return None;
+            }
+            let t = b.last_op(block)?;
+            if !b.interfaces(t).is_some_and(|x| x.is_region_terminator(b, t)) {
+                return None;
+            }
+            out.push((s, inputs, Some(t)));
+            succs = b.terminator_successors(op, t, &Self::constants(b, t));
+        }
+    }
+
+    /// The value for a block argument that is no successor input: only `scf.for`'s induction
+    /// variable, replaced by the lower bound.
+    fn non_input(b: &Body<'_>, op: OpId) -> Option<ValueId> {
+        (b[op].name == "scf.for").then(|| b[op].operands[0])
+    }
+}
+
+impl crate::Pattern for InlineRegionBranch {
+    fn name(&self) -> &str {
+        "InlineRegionBranchOp"
+    }
+
+    fn root(&self) -> Option<&str> {
+        Some(self.0)
+    }
+
+    fn rewrite(&self, rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
+        let b = &*rw.body;
+        if b[op].name == "scf.execute_region" && b[op].get("no_inline").is_some() {
+            return false;
+        }
+        if !b.has(op, crate::Trait::HasRecursiveMemoryEffects) {
+            return false;
+        }
+        let Some(path) = Self::path(b, op) else { return false };
+        // A region's arguments before its first input need a value only `scf.for` has.
+        let first_input = |b: &Body<'_>, inputs: &[ValueId]| inputs.first().map_or(0, |v| match b[*v].def {
+            crate::Def::Arg(_, i) | crate::Def::Result(_, i) => i as usize,
+        });
+        for (s, inputs, _) in &path {
+            if let Succ::Region(i) = s {
+                let args = b.region_args(op, *i, 0).len();
+                if (first_input(b, inputs) > 0 || inputs.len() < args) && Self::non_input(b, op).is_none() {
+                    return false;
+                }
+            }
+        }
+        let mut operands: Vec<ValueId> = b.forwarded(op, Point::Parent).into_iter().map(|(o, i)| b[o].operands[i]).collect();
+        for (s, inputs, t) in path {
+            let b = &*rw.body;
+            let Succ::Region(i) = s else {
+                rw.replace_op(op, &operands);
+                return true;
+            };
+            let block = b[b[op].regions[i]].blocks[0];
+            let first = first_input(b, &inputs);
+            let filler = Self::non_input(b, op);
+            let n = b[block].args.len();
+            let mut repl: Vec<ValueId> = (0..first).filter_map(|_| filler).collect();
+            repl.extend(operands.iter().copied());
+            repl.extend((repl.len()..n).filter_map(|_| filler));
+            let t = t.expect("a region's terminator");
+            let parent = b[op].parent.expect("placed");
+            rw.inline_block_before(block, parent, Some(op), &repl);
+            // Read after inlining: a forwarded block argument is by now what replaced it.
+            let b = &*rw.body;
+            operands = b.forwarded(op, Point::Terminator(t)).into_iter().map(|(o, i)| b[o].operands[i]).collect();
+            rw.erase_op(t);
+        }
+        unreachable!("a path ends at the parent")
+    }
+}
+
 impl ScfCanon {
     /// `scf.if`'s fold: `if (!c)` with an else region swaps the regions.
     pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
@@ -1133,11 +1168,11 @@ impl ScfCanon {
     }
 
     pub fn canonicalization(set: &mut crate::PatternSet) {
-        set.add(SingleBlockExecuteInliner).add(MultiBlockExecuteInliner).add(RegionBranchPatterns("scf.execute_region"));
-        set.add(SimplifyTrivialLoops).add(RegionBranchPatterns("scf.for"));
-        set.add(CombineIfs).add(CombineNestedIfs).add(ConditionPropagation).add(ConvertTrivialIfToSelect).add(RemoveEmptyElseBranch).add(RemoveStaticCondition).add(ReplaceIfYieldWithConditionOrValue).add(RegionBranchPatterns("scf.if"));
+        set.add(MultiBlockExecuteInliner).add(RegionBranchPatterns("scf.execute_region")).add(InlineRegionBranch("scf.execute_region"));
+        set.add(ForOpTensorCastFolder).add(RegionBranchPatterns("scf.for")).add(InlineRegionBranch("scf.for"));
+        set.add(CombineIfs).add(CombineNestedIfs).add(ConditionPropagation).add(ConvertTrivialIfToSelect).add(RemoveEmptyElseBranch).add(ReplaceIfYieldWithConditionOrValue).add(RegionBranchPatterns("scf.if")).add(InlineRegionBranch("scf.if"));
         set.add(ParallelOpSingleOrZeroIterationDimsFolder).add(MergeNestedParallelLoops);
-        set.add(WhileConditionTruth).add(WhileCmpCond).add(WhileOpAlignBeforeArgs).add(WhileMoveIfDown).add(RegionBranchPatterns("scf.while"));
-        set.add(FoldConstantCase).add(RegionBranchPatterns("scf.index_switch"));
+        set.add(WhileConditionTruth).add(WhileCmpCond).add(WhileOpAlignBeforeArgs).add(WhileMoveIfDown).add(RegionBranchPatterns("scf.while")).add(InlineRegionBranch("scf.while"));
+        set.add(RegionBranchPatterns("scf.index_switch")).add(InlineRegionBranch("scf.index_switch"));
     }
 }

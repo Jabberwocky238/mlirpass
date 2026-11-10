@@ -297,6 +297,15 @@ impl<'a> Body<'a> {
         }
     }
 
+    /// `tensor::preservesStaticInformation(source, target)`: both ranked tensors alike but in
+    /// shape, and no static dim of `source` dynamic in `target`.
+    pub fn preserves_static(source: &Type<'_>, target: &Type<'_>) -> bool {
+        use mlirformat::{Dim, ShapedKind};
+        let (Type::Shaped(s), Type::Shaped(t)) = (source, target) else { return false };
+        let (Some(ss), Some(ts)) = (&s.shape, &t.shape) else { return false };
+        s.kind == ShapedKind::Tensor && t.kind == s.kind && s.elem == t.elem && s.extras == t.extras && ss.len() == ts.len() && !ss.iter().zip(ts).any(|(a, b)| matches!(a, Dim::Static(_)) && !matches!(b, Dim::Static(_)))
+    }
+
     /// The constant behind `v`, if its defining op is one.
     pub fn constant_of(&self, v: ValueId) -> Option<Attribute<'a>> {
         self.def_op(v).and_then(|o| self.constant_value(o))

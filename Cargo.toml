@@ -56,10 +56,6 @@ all-dialects = ["dialect.affine", "dialect.amdgpu", "dialect.arith", "dialect.bu
 "dialect.nvgpu" = ["dialect.nvvm", "dialect.memref", "dialect.scf", "dialect.arith"]
 "dialect.nvvm" = []
 "dialect.scf" = []
-# scf.for's successors by its static trip count, as LLVM 1f126a6d (Triton's pin, newer than 22.1.8) gives them:
-# at least one iteration enters only the body, none only returns, exactly one yields only back. Off: 22.1.8.
-# For comparing against tools built on that LLVM (tritonpass / calcc against dope-opt).
-scf-for-trip-count = ["dialect.scf"]
 "dialect.shape" = ["dialect.arith"]
 "dialect.spirv" = []
 "dialect.tensor" = ["dialect.arith", "dialect.affine"]

@@ -457,22 +457,12 @@ impl<'b, 'a> Solver<'b, 'a> {
 
     /// `getEntrySuccessorRegions(operands)`.
     fn entry_successors(&self, op: OpId, c: &[Option<Attribute<'a>>]) -> Vec<(Succ, Vec<ValueId>)> {
-        let b = &*self.body;
-        let all = b.region_successors(op, Point::Parent);
-        match b.interfaces(op) {
-            Some(i) => i.entry_successors(b, op, c, all),
-            None => all,
-        }
+        self.body.entry_successors(op, c)
     }
 
     /// A region terminator's `getSuccessorRegions(operands)`.
     fn terminator_successors(&self, op: OpId, t: OpId, c: &[Option<Attribute<'a>>]) -> Vec<(Succ, Vec<ValueId>)> {
-        let b = &*self.body;
-        let all = b.region_successors(op, Point::Terminator(t));
-        match b.interfaces(t) {
-            Some(i) => i.terminator_successors(b, t, c, all),
-            None => all,
-        }
+        self.body.terminator_successors(op, t, c)
     }
 
     fn edges_to(&mut self, branch: OpId, pred: OpId, succs: &[(Succ, Vec<ValueId>)]) {
