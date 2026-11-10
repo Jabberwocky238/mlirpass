@@ -64,6 +64,18 @@ impl IndexToSpirv {
         ArithToSpirv::elementwise(cr, op, operands, spirv, ArithSpirvOptions { no_wrap: false, emulate_floats: true })
     }
 
+    /// The OpenCL min / max, where the target has no GLSL ones.
+    #[convert("index.maxs", "index.maxu", "index.mins", "index.minu")]
+    fn min_max_cl(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        let spirv = match &*cr.rw.body[op].name {
+            "index.maxs" => "spirv.CL.s_max",
+            "index.maxu" => "spirv.CL.u_max",
+            "index.mins" => "spirv.CL.s_min",
+            _ => "spirv.CL.u_min",
+        };
+        ArithToSpirv::elementwise(cr, op, operands, spirv, ArithSpirvOptions { no_wrap: false, emulate_floats: true })
+    }
+
     /// `ConvertIndexConstantBoolOpPattern`.
     #[convert("index.bool.constant")]
     fn bool_constant(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {

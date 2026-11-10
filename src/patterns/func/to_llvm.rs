@@ -65,7 +65,19 @@ impl FuncToLlvm {
         let readnone = b[op].get("llvm.readnone").is_some();
         let name = String::from(b.sym_name(op).unwrap_or(""));
         let visibility = b.visibility(op);
-        let attrs = Self::func_attrs(cr, op);
+        // `lowerDiscardableAttrsForLLVMFunc`: of the discardable attributes, an `llvm.X` with X
+        // an `llvm.func` attribute becomes that attribute, a bare X is dropped, the rest carry
+        // over.
+        let llvm_func = b.ctx.opt.op_info("llvm.func").map_or(&[][..], |i| i.inherent);
+        let attrs: Vec<NamedAttr<'_>> = b
+            .discardable(op)
+            .into_iter()
+            .filter(|a| !llvm_func.contains(&&*a.name) && &*a.name != "llvm.linkage")
+            .map(|a| match a.name.strip_prefix("llvm.").filter(|n| llvm_func.contains(n)) {
+                Some(n) => NamedAttr { name: String::from(n).into(), value: a.value },
+                None => a,
+            })
+            .collect();
         let loc = cr.rw.body[op].loc.clone();
         let arg_attrs = cr.rw.body[op].get("arg_attrs").cloned();
         let res_attrs = cr.rw.body[op].get("res_attrs").cloned();

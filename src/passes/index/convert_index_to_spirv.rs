@@ -18,7 +18,7 @@ impl crate::Run for ConvertIndexToSpirv {
         let i = patterns.converter(&tc);
         IndexToSpirv::populate(&mut patterns, i);
         let mut target = env.conversion_target();
-        target.legal_op("builtin.unrealized_conversion_cast").legal_dialect("spirv").illegal_dialect("index");
+        target.legal_op("builtin.unrealized_conversion_cast").illegal_dialect("index");
         crate::Converter::new(&target, &patterns, crate::ConversionConfig::default()).apply(body, &[op], crate::Mode::Partial)
     }
 }
