@@ -174,7 +174,7 @@ impl TargetEnv {
     pub fn is_scalar(t: &Type<'_>) -> bool {
         match t {
             Type::Integer { width, .. } => matches!(width, 1 | 8 | 16 | 32 | 64),
-            Type::Float(k) => matches!(k, FloatKind::F16 | FloatKind::BF16 | FloatKind::F32 | FloatKind::F64),
+            Type::Float(k) => matches!(k, FloatKind::F8E4M3FN | FloatKind::F8E5M2 | FloatKind::F16 | FloatKind::BF16 | FloatKind::F32 | FloatKind::F64),
             _ => false,
         }
     }

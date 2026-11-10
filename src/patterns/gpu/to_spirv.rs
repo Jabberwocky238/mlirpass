@@ -303,12 +303,79 @@ impl GpuToSpirv {
         true
     }
 
-    /// `GPUBarrierConversion`.
+    /// `GPUBarrierConversion`: of the barrier's scope (a cluster has none), on workgroup memory;
+    /// through a named barrier when given one.
     #[convert("gpu.barrier")]
-    fn barrier<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
-        let scope = Cr::spirv_enum("scope", "Workgroup");
-        let data = OpData::build("spirv.ControlBarrier").with("execution_scope", scope.clone()).with("memory_scope", scope).with("memory_semantics", Cr::spirv_enum("memory_semantics", "AcquireRelease|WorkgroupMemory"));
-        cr.replace_new(op, data, &[]);
+    fn barrier<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
+        let scope = match cr.rw.body[op].get("scope") {
+            Some(Attribute::Extended { ext, .. }) if ext.body.as_deref().is_some_and(|b| b.contains("cluster")) => return false,
+            Some(Attribute::Extended { ext, .. }) if ext.body.as_deref().is_some_and(|b| b.contains("subgroup")) => "Subgroup",
+            _ => "Workgroup",
+        };
+        let memory = Cr::spirv_enum("scope", "Workgroup");
+        let semantics = Cr::spirv_enum("memory_semantics", "AcquireRelease|WorkgroupMemory");
+        match operands.first().and_then(|g| g.first()) {
+            Some(named) => {
+                let data = OpData::build("spirv.MemoryNamedBarrier").operands(&[*named]).with("memory_scope", memory).with("memory_semantics", semantics);
+                cr.replace_new(op, data, &[]);
+            }
+            None => {
+                let data = OpData::build("spirv.ControlBarrier").with("execution_scope", Cr::spirv_enum("scope", scope)).with("memory_scope", memory).with("memory_semantics", semantics);
+                cr.replace_new(op, data, &[]);
+            }
+        }
+        true
+    }
+
+    /// `GPUInitializeNamedBarrierConversion`.
+    #[convert("gpu.initialize_named_barrier")]
+    fn initialize_named_barrier<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        cr.replace_new(op, OpData::build("spirv.NamedBarrierInitialize").operands(&ops), &[mlirformat::spirv_types::SpirvType::NamedBarrier.into()]);
+        true
+    }
+
+    /// `GPUSubgroupBroadcastConversion`.
+    #[convert("gpu.subgroup_broadcast")]
+    fn subgroup_broadcast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let Some(kind) = Self::gpu_case(cr, op, "broadcast_type") else { return false };
+        let ty = cr.rw.body[ops[0]].ty.clone();
+        let scope = Cr::spirv_enum("scope", "Subgroup");
+        let data = match &*kind {
+            "specific_lane" => OpData::build("spirv.GroupNonUniformBroadcast").operands(&ops),
+            "first_active_lane" => OpData::build("spirv.GroupNonUniformBroadcastFirst").operands(&ops[..1]),
+            _ => return false,
+        };
+        cr.replace_new(op, data.with("execution_scope", scope), &[ty]);
+        true
+    }
+
+    /// `GPUBallotConversion`: the ballot's `vector<4xi32>`, its first word (i32) or first two
+    /// (i64).
+    #[convert("gpu.ballot")]
+    fn ballot<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let width = match cr.rw.body[cr.rw.body[op].results[0]].ty {
+            Type::Integer { width: w @ (32 | 64), .. } => w,
+            _ => return false,
+        };
+        let words = Type::vector(&[4], &[false], Type::int(32));
+        let ballot = cr.build(OpData::build("spirv.GroupNonUniformBallot").operands(&ops).with("execution_scope", Cr::spirv_enum("scope", "Subgroup")), words);
+        let word = |cr: &mut Cr<'_, 'a, '_>, i: i128| cr.build(OpData::build("spirv.CompositeExtract").operands(&[ballot]).with("indices", Attribute::Array(vec![Attribute::integer(i, Type::int(32))])), Type::int(32));
+        let low = word(cr, 0);
+        if width == 32 {
+            cr.replace_values(op, &[low]);
+            return true;
+        }
+        let high = word(cr, 1);
+        let i64t = Type::int(64);
+        let low = cr.build(OpData::build("spirv.UConvert").operands(&[low]), i64t.clone());
+        let high = cr.build(OpData::build("spirv.UConvert").operands(&[high]), i64t.clone());
+        let shift = cr.build(OpData::build("spirv.Constant").with("value", Attribute::integer(32, i64t.clone())), i64t.clone());
+        let high = cr.build(OpData::build("spirv.ShiftLeftLogical").operands(&[high, shift]), i64t.clone());
+        let r = cr.build(OpData::build("spirv.BitwiseOr").operands(&[low, high]), i64t);
+        cr.replace_values(op, &[r]);
         true
     }
 

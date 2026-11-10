@@ -4,7 +4,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use mlirformat::spirv_types::SpirvType;
-use mlirformat::{Attribute, Const, Type};
+use mlirformat::{Attribute, Const, Signedness, Type};
 
 use crate::patterns;
 
@@ -100,7 +100,16 @@ impl WmmaToSpirv {
     fn compute(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MemrefSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ty = cr.rw.body[ops[2]].ty.clone();
-        cr.replace_new(op, OpData::build("spirv.KHR.CooperativeMatrixMulAdd").operands(&ops[..3]), &[ty]);
+        let Some(res) = Self::result_ty(cr, op) else { return false };
+        // `getSignedCoopMatrixOperands`: which of A, B, C and the result hold signed integers.
+        let signed = |t: &Type<'_>| matches!(SpirvType::try_from(t), Ok(SpirvType::CoopMatrix { elem, .. }) if matches!(*elem, Type::Integer { signedness: Signedness::Signed, .. }));
+        let types = [cr.rw.body[ops[0]].ty.clone(), cr.rw.body[ops[1]].ty.clone(), ty.clone(), res];
+        let names: Vec<&str> = ["ASigned", "BSigned", "CSigned", "ResultSigned"].into_iter().zip(&types).filter(|(_, t)| signed(t)).map(|(n, _)| n).collect();
+        let mut data = OpData::build("spirv.KHR.CooperativeMatrixMulAdd").operands(&ops[..3]);
+        if !names.is_empty() {
+            data.set("matrix_operands", Attribute::dialect("spirv.cooperative_matrix_operands_khr", &alloc::format!("<{}>", names.join("|"))));
+        }
+        cr.replace_new(op, data, &[ty]);
         true
     }
 
@@ -166,7 +175,7 @@ impl WmmaToSpirv {
             "divu" => "spirv.UDiv",
             "negatef" => "spirv.FNegate",
             "negates" => "spirv.SNegate",
-            "extf" => "spirv.FConvert",
+            "extf" | "truncf" => "spirv.FConvert",
             _ => return false,
         };
         cr.replace_new(op, OpData::build(name).operands(&ops), &[ty]);

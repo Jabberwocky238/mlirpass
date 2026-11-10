@@ -50,6 +50,8 @@ impl crate::Run for ConvertGpuToSpirv {
             let types = crate::SpirvTypes { env: &env, opts };
             let mut tc = types.converter();
             crate::WmmaToSpirv::convert_types(&mut tc);
+            // `populateGPUNamedBarrierToSPIRVTypeConversion`.
+            tc.conversion(|t| matches!(t, mlirformat::Type::Extended(e) if e.name == "gpu.named_barrier").then(|| Some(alloc::vec![mlirformat::spirv_types::SpirvType::NamedBarrier.into()])));
             let gpu = GpuSpirvOptions { index64: self.index64, shader: env.allows_cap("Shader"), kernel: env.allows_cap("Kernel"), interface_abi: env.shader(), subgroup_size: env.subgroup_size(), addressing: env.addressing_model(self.index64) };
             let mut patterns = crate::ConversionPatterns::default();
             let i = patterns.converter(&tc);
