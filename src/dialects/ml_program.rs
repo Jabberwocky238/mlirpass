@@ -128,10 +128,6 @@ mod bufferizable {
     }
 
     impl Bufferizable for GlobalStore {
-        fn reads(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
-            false
-        }
-
         fn aliasing_values(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> Vec<AliasingValue> {
             Vec::new()
         }

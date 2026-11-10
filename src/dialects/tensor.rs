@@ -751,6 +751,8 @@ mod bufferizable {
             }
             let t = AnalysisState::new(o).allocate_tensor_for(rw, r, false)?;
             let filled = rw.lower_generate_like(t, rw.body[op].regions[0]);
+            // Back before the pad: the body's lowering left the insertion point in the map.
+            rw.set_before(op);
             let sizes = rw.mixed_sizes(src);
             let strides = vec![Ofr::C(1); sizes.len()];
             let lists = [low, sizes, strides];

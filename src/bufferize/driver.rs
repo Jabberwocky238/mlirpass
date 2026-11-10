@@ -379,8 +379,10 @@ fn fold_memref_casts(body: &mut Body<'_>, f: OpId) {
     }
     let returns = super::return_ops(body, f);
     let Some(&first) = returns.first() else { return };
+    // `unpackCast`: not from an unranked memref to a ranked one (the result would lose its rank).
+    let unranked = |t: &Type<'_>| matches!(t, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::MemRef && s.shape.is_none());
     let unpack = |b: &Body<'_>, v: ValueId| match b[v].def {
-        Def::Result(c, _) if b[c].name == "memref.cast" => b[c].operands[0],
+        Def::Result(c, _) if b[c].name == "memref.cast" && !(unranked(&b[b[c].operands[0]].ty) && !unranked(&b[v].ty)) => b[c].operands[0],
         _ => v,
     };
     let n = body[first].operands.len();
