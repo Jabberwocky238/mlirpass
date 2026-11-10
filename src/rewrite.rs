@@ -619,7 +619,7 @@ pub struct GreedyConfig {
 impl Default for GreedyConfig {
     fn default() -> Self {
         // `GreedyRewriteConfig` 的缺省是 Aggressive（合并相同的块）；canonicalize pass 的选项缺省才是 normal
-        Self { top_down: true, region_simplify: RegionSimplify::Aggressive, max_iterations: Some(10), max_rewrites: None, fold: true, cse_constants: true }
+        Self { top_down: false, region_simplify: RegionSimplify::Aggressive, max_iterations: Some(10), max_rewrites: None, fold: true, cse_constants: true }
     }
 }
 
