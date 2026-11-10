@@ -457,8 +457,20 @@ impl XegpuToXevm {
             let dst = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
             let Some((_, dst_elem)) = vector_of(&dst) else { return false };
             let dst_elem = dst_elem.clone();
-            let vnni = cr.rw.body[op].get("packed").is_some();
+            let mut vnni = cr.rw.body[op].get("packed").is_some();
             let transpose = cr.rw.body.dense_i64(op, "transpose").first() == Some(&1);
+            // (8-bit 32×16 without vnni or transpose: the hardware has only the vnni form, the same data)
+            if bits == 8 && tile_w == 16 && tile_h == 32 && !vnni && !transpose {
+                vnni = true;
+            }
+            // (a transpose is of 32-bit elements: the offset and the width rescaled)
+            let (mut args, mut bits, mut tile_w) = (args, bits, tile_w);
+            if transpose && bits < 32 {
+                let log2 = cr.int(i64::from((32 / bits).trailing_zeros()), i32t.clone());
+                args[4] = cr.mk(OpData::build("arith.shrsi").operands(&[args[4], log2]), Type::int(32));
+                tile_w = tile_w * bits / 32;
+                bits = 32;
+            }
             let loaded = encode(&dst, if vnni { i32t.clone() } else { Type::int(bits as u32) });
             let data = xevm("xevm.blockload2d", &args, vec![("elem_size_in_bits", i32a(bits)), ("tile_width", i32a(tile_w)), ("tile_height", i32a(tile_h)), ("v_blocks", i32a(td.array_length)), ("transpose", Attribute::Bool(transpose)), ("pack_register", Attribute::Bool(vnni)), ("cache_control", cc.into())]);
             let r = cr.mk(data, loaded.clone());
