@@ -291,7 +291,7 @@ impl<'a> Rewriter<'_, 'a> {
     }
 
     fn index_mul(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        let o = self.create(OpData::build("arith.muli").operands(&[a, b]), &[Type::Index]);
+        let o = self.create(OpData::build("arith.muli").operands(&[a, b]).with("overflowFlags", Attribute::dialect("arith.overflow", "<nsw>")), &[Type::Index]);
         self.body[o].results[0]
     }
 }
@@ -471,6 +471,12 @@ impl Pattern for ComposeExpandOfCollapse {
         let src = b[c].operands[0];
         let (st, rt) = (b[src].ty.clone(), b[b[op].results[0]].ty.clone());
         if Reshape::non_identity(&b[b[op].operands[0]].ty) || Reshape::non_identity(&st) || Reshape::non_identity(&b[b[c].results[0]].ty) {
+            // Back to a static source's shape and layout: a cast.
+            let fixed = st.dims().is_some_and(|d| d.iter().all(|x| *x != Dim::DYNAMIC));
+            if fixed && crate::memref_cast_compatible(&st, &rt) {
+                rw.replace_with(op, OpData::build(&format!("{}.cast", self.dialect)).operands(&[src]), &[rt]);
+                return true;
+            }
             return false;
         }
         let (sr, rr) = (Reshape::rank(&st), Reshape::rank(&rt));

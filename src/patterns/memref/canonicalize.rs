@@ -216,7 +216,9 @@ impl MemrefCanon {
         let mut work: Vec<OpId> = children(op);
         let mut potential = false;
         while let Some(o) = work.pop() {
-            if !b.has(o, crate::Trait::MemoryEffectOpInterface) || b[o].name == "memref.alloca" {
+            // (an op with recursive effects allocates nothing itself; what it holds is walked)
+            let itself = !b.has(o, crate::Trait::HasRecursiveMemoryEffects) && (!b.has(o, crate::Trait::MemoryEffectOpInterface) || b[o].name == "memref.alloca");
+            if itself {
                 potential = true;
                 break;
             }
@@ -240,6 +242,114 @@ impl MemrefCanon {
         rw.inline_block_before(block, parent, Some(op), &[]);
         rw.replace_op(op, &results);
         rw.erase_op(term);
+        true
+    }
+
+    /// `AllocaScopeHoister`: the allocas of a scope, their operands available there, move
+    /// before the outermost op between it and the enclosing allocation scope, when the scope
+    /// and every op on the way are the last before their terminator in a one-block region.
+    #[rewrite("memref.alloca_scope")]
+    fn alloca_scope_hoister(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let auto = |o: OpId| b.has(o, crate::Trait::AutomaticAllocationScope);
+        // `lastNonTerminatorInRegion`.
+        let last = |o: OpId| {
+            let Some(block) = b[o].parent else { return false };
+            let ops = b.block_ops(block);
+            let one = b[block].parent.is_some_and(|r| b[r].blocks.len() == 1);
+            one && ops.len() >= 2 && ops[ops.len() - 2] == o && ops.last().is_some_and(|t| b.might_have(*t, crate::Trait::IsTerminator))
+        };
+        let mut up = op;
+        let has_scope = loop {
+            match b.parent_op(up) {
+                Some(p) if auto(p) => break true,
+                Some(p) => up = p,
+                None => break false,
+            }
+        };
+        let Some(mut outer) = b.parent_op(op) else { return false };
+        if !has_scope || auto(outer) || !last(op) || !last(outer) {
+            return false;
+        }
+        loop {
+            let Some(p) = b.parent_op(outer) else { return false };
+            if auto(p) {
+                break;
+            }
+            outer = p;
+            if !last(outer) {
+                return false;
+            }
+        }
+        // The region of `outer` holding the scope: an operand defined in it cannot move.
+        let inside = |v: ValueId| {
+            let mut r = b.value_block(v).and_then(|k| b[k].parent);
+            while let Some(region) = r {
+                if b[region].parent == outer {
+                    return true;
+                }
+                r = b[b[region].parent].parent.and_then(|k| b[k].parent);
+            }
+            false
+        };
+        let hoist: Vec<OpId> = b.ops_in(op).into_iter().filter(|a| b[*a].name == "memref.alloca" && !b[*a].operands.iter().any(|v| inside(*v))).collect();
+        if hoist.is_empty() {
+            return false;
+        }
+        rw.set_before(outer);
+        for a in hoist {
+            let mut map = crate::Mapping::default();
+            let c = rw.clone(a, &mut map);
+            let rs = rw.body[c].results.clone();
+            rw.replace_op(a, &rs);
+        }
+        true
+    }
+
+    /// `ViewOpShapeFolder`: constant non-negative sizes made static; the new view cast back.
+    #[rewrite("memref.view")]
+    fn view_op_shape_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let rt = b[b[op].results[0]].ty.clone();
+        let Type::Shaped(s) = &rt else { return false };
+        let sizes = &b[op].operands[2..];
+        let mut next = sizes.iter();
+        let mut dynamic = Vec::new();
+        let Some(shape) = s.shape.as_ref().map(|dims| dims.iter().map(|d| match d {
+            Dim::Dynamic => {
+                let v = *next.next().expect("a size per dynamic dim");
+                match b.ofr_int(Ofr::V(v)).filter(|c| *c >= 0) {
+                    Some(c) => Dim::Static(c),
+                    None => {
+                        dynamic.push(v);
+                        Dim::Dynamic
+                    }
+                }
+            }
+            d => d.clone(),
+        }).collect::<Vec<_>>()) else { return false };
+        if dynamic.len() == sizes.len() {
+            return false;
+        }
+        let ty = Type::Shaped(mlirformat::Shaped { shape: Some(shape), ..s.clone() });
+        let mut ops = b[op].operands[..2].to_vec();
+        ops.extend(dynamic);
+        rw.set_before(op);
+        let new = rw.create(OpData::build("memref.view").operands(&ops), &[ty]);
+        let new = rw.body[new].results[0];
+        rw.replace_with(op, OpData::build("memref.cast").operands(&[new]), &[rt]);
+        true
+    }
+
+    /// `ViewOpMemrefCastFolder`: a view of a cast views the cast's source.
+    #[rewrite("memref.view")]
+    fn view_op_memref_cast_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let Some(c) = b.def_named(b[op].operands[0], "memref.cast") else { return false };
+        let mut ops = b[op].operands.clone();
+        ops[0] = b[c].operands[0];
+        let rt = b[b[op].results[0]].ty.clone();
+        rw.replace_with(op, OpData::build("memref.view").operands(&ops), &[rt]);
         true
     }
 
@@ -637,12 +747,49 @@ impl Ofr {
 
 /// A `memref.reinterpret_cast`'s constified offset, sizes and strides
 /// (`getConstifiedMixed*`, from its result type).
+/// `LoadOp::fold`: a load from a `memref.get_global` of a constant global with a splat
+/// initial value is that value.
+fn fold_load_of_global<'a>(b: &Body<'a>, op: OpId) -> Fold<'a> {
+    let Some(get) = b.def_named(b[op].operands[0], "memref.get_global") else { return Fold::Failed };
+    let Some(Attribute::SymbolRef(path)) = b[get].get("name") else { return Fold::Failed };
+    let [name] = &path[..] else { return Fold::Failed };
+    let mut table = get;
+    let table = loop {
+        match b.parent_op(table) {
+            Some(p) if b.is_symbol_table(p) => break p,
+            Some(p) => table = p,
+            None => return Fold::Failed,
+        }
+    };
+    let global = match b.find_symbol(table, name) {
+        Some(g) => &b[g],
+        None => match b.outside_symbol(table, name) {
+            Some(g) => g,
+            None => return Fold::Failed,
+        },
+    };
+    if global.name != "memref.global" || global.get("constant").is_none() {
+        return Fold::Failed;
+    }
+    match global.get("initial_value").and_then(|a| mlirformat::Const::try_from(a).ok()) {
+        Some(c) if c.elements && c.is_splat() => Folded::Attr(mlirformat::Const::scalar(c.values[0], c.ty.element_type().clone()).into()).into(),
+        _ => Fold::Failed,
+    }
+}
+
 fn reinterpret_lists(b: &Body<'_>, op: OpId) -> Option<[Vec<Ofr>; 3]> {
     let [mut o, mut s, mut t] = b.slice_lists(op);
     let (sizes, strides, offset) = Ofr::statics(&b[b[op].results[0]].ty)?;
+    let (o0, s0) = (o.clone(), s.clone());
     Ofr::constify(b, &mut o, &[offset]);
     Ofr::constify(b, &mut s, &sizes);
     Ofr::constify(b, &mut t, &strides);
+    // A negative constant offset or size stays as it was (its memref type would be invalid).
+    for (now, was) in o.iter_mut().zip(o0).chain(s.iter_mut().zip(s0)) {
+        if matches!(now, Ofr::C(c) if *c < 0) {
+            *now = was;
+        }
+    }
     Some([o, s, t])
 }
 
@@ -712,7 +859,11 @@ impl MemrefCanon {
                     _ => Fold::Failed,
                 }
             }
-            "memref.cast" | "memref.dealloc" | "memref.load" | "memref.prefetch" => in_place(b.fold_memref_cast(op, None)),
+            "memref.load" => match b.fold_memref_cast(op, None) {
+                true => Fold::InPlace,
+                false => fold_load_of_global(b, op),
+            },
+            "memref.cast" | "memref.dealloc" | "memref.prefetch" => in_place(b.fold_memref_cast(op, None)),
             "memref.store" => {
                 let v = b[op].operands[0];
                 in_place(b.fold_memref_cast(op, Some(v)))
@@ -775,7 +926,8 @@ impl MemrefCanon {
         set.add(CollapseShapeOpMemRefCastFolder);
         set.add(ReinterpretCastOpExtractStridedMetadataFolder).add(ReinterpretCastOpConstantFolder);
         set.add(FoldEmptyCopy).add(FoldSelfCopy).add(DimOfMemRefReshape);
-        set.add(AllocaScopeInliner);
+        set.add(AllocaScopeInliner).add(AllocaScopeHoister);
+        set.add(ViewOpShapeFolder).add(ViewOpMemrefCastFolder);
         set.add(SubViewConstantArguments).add(SubViewOpMemRefCastFolder).add(TrivialSubViewOpFolder);
     }
 }

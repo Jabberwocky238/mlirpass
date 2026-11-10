@@ -76,7 +76,8 @@ pub fn memref_cast_foldable(src: &Type<'_>, dst: &Type<'_>) -> bool {
 }
 
 /// `memref::CastOp::areCastCompatible` for ranked memrefs: same element type and memory
-/// space, same rank, and no static size, stride or offset that differ.
+/// space, same rank, and no static size, stride (but along unit dimensions) or offset that
+/// differ.
 pub fn memref_cast_compatible(a: &Type<'_>, b: &Type<'_>) -> bool {
     let (Type::Shaped(s), Type::Shaped(d)) = (a, b) else { return false };
     let space = |t: &mlirformat::Shaped<'_>| t.extras.iter().find(|x| !matches!(x, Attribute::Builtin { name, .. } if name == "strided" || name == "affine_map")).map(Attribute::owned);
@@ -90,7 +91,9 @@ pub fn memref_cast_compatible(a: &Type<'_>, b: &Type<'_>) -> bool {
     let ok = |x: i64, y: i64| x == mlirformat::Dim::DYNAMIC || y == mlirformat::Dim::DYNAMIC || x == y;
     let dim = |x: &mlirformat::Dim| if let mlirformat::Dim::Static(n) = x { *n } else { mlirformat::Dim::DYNAMIC };
     let (Some((sst, so)), Some((dst_, doff))) = (s.strides_and_offset(), d.strides_and_offset()) else { return false };
-    ok(so, doff) && sst.iter().zip(&dst_).all(|(x, y)| ok(*x, *y)) && ss.iter().zip(ds).all(|(x, y)| ok(dim(x), dim(y)))
+    // (a stride along a unit dimension may differ)
+    let strides = sst.iter().zip(&dst_).zip(ss.iter().zip(ds)).all(|((x, y), (a, b))| dim(a) == 1 || dim(b) == 1 || ok(*x, *y));
+    a == b || (ok(so, doff) && strides && ss.iter().zip(ds).all(|(x, y)| ok(dim(x), dim(y))))
 }
 
 impl<'a> Body<'a> {
