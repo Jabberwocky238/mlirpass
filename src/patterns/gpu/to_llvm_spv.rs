@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, FloatKind, Type};
 
-use super::attrs::{Dimension, ShuffleMode};
+use super::attrs::{AddressSpace, Dimension, ShuffleMode};
 use crate::patterns;
 use crate::{CConv, ConversionRewriter, LlvmOptions, OpData, OpId, ValueId};
 
@@ -85,15 +85,29 @@ impl ShuffleMode {
 /// `gpu.func` / `gpu.return` / `gpu.printf`: [`GpuToLlvm`](crate::GpuToLlvm)).
 pub struct GpuToLlvmSpv;
 
+/// The SPIR-V backend's `CLK_LOCAL_MEM_FENCE` / `CLK_GLOBAL_MEM_FENCE`.
+const LOCAL_MEM_FENCE: i64 = 1;
+const GLOBAL_MEM_FENCE: i64 = 2;
+
 #[patterns(converter, options = LlvmOptions)]
 impl GpuToLlvmSpv {
-    /// `GPUBarrierConversion`: `barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE)`.
+    /// `GPUBarrierConversion`: `barrier(flags)`, `CLK_LOCAL_MEM_FENCE` for workgroup memory and
+    /// `CLK_GLOBAL_MEM_FENCE` for global memory among the address spaces it orders (both when
+    /// none are named).
     #[convert("gpu.barrier")]
     fn barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let i32t = Type::int(32);
+        let flags = match cr.rw.body[op].get("address_spaces") {
+            Some(Attribute::Array(xs)) => xs.iter().filter_map(|x| AddressSpace::try_from(x).ok()).fold(0, |f, s| match s {
+                AddressSpace::Global => f | GLOBAL_MEM_FENCE,
+                AddressSpace::Workgroup => f | LOCAL_MEM_FENCE,
+                AddressSpace::Private | AddressSpace::Constant => f,
+            }),
+            _ => LOCAL_MEM_FENCE | GLOBAL_MEM_FENCE,
+        };
         let f = SpirvFn { name: "_Z7barrierj", params: vec![i32t.clone()], ret: LlvmType::void(), mem_none: false, convergent: true };
         cr.rw.set_before(op);
-        let flag = cr.llvm_constant(Attribute::of_int(3, i32t.clone()), i32t);
+        let flag = cr.llvm_constant(Attribute::of_int(flags.into(), i32t.clone()), i32t);
         if f.call(cr, op, &[flag]).is_none() {
             return false;
         }
@@ -171,7 +185,8 @@ impl GpuToLlvmSpv {
     #[convert("gpu.shuffle")]
     fn shuffle<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let width = cr.rw.body[op].operands[2];
-        if cr.rw.body.int_constant(width).is_none_or(|w| Some(w) != Self::subgroup_size(cr, op)) {
+        // (without a required subgroup size, any width)
+        if Self::subgroup_size(cr, op).is_some_and(|n| cr.rw.body.int_constant(width) != Some(n)) {
             return false;
         }
         let Some(mode) = cr.rw.body[op].get("mode").and_then(|a| ShuffleMode::try_from(a).ok()) else { return false };
