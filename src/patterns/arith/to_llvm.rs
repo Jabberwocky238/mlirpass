@@ -76,16 +76,15 @@ pub struct ArithToLlvm;
 
 #[patterns(converter, builder = Self::ar)]
 #[map("arith.truncf" => "llvm.fptrunc", fp, unconstrained)]
-#[map("arith.addf" => "llvm.fadd", fastmath, fp)]
+#[map("arith.addf" => "llvm.fadd", fastmath, fp, unconstrained)]
 #[map("arith.addi" => "llvm.add", overflow)]
 #[map("arith.andi" => "llvm.and")]
 #[map("arith.bitcast" => "llvm.bitcast")]
-#[map("arith.divf" => "llvm.fdiv", fastmath, fp)]
+#[map("arith.divf" => "llvm.fdiv", fastmath, fp, unconstrained)]
 #[map("arith.divsi" => "llvm.sdiv")]
 #[map("arith.divui" => "llvm.udiv")]
 #[map("arith.extf" => "llvm.fpext", fp)]
 #[map("arith.extsi" => "llvm.sext")]
-#[map("arith.extui" => "llvm.zext")]
 #[map("arith.fptosi" => "llvm.fptosi", fp)]
 #[map("arith.fptoui" => "llvm.fptoui", fp)]
 #[map("arith.maximumf" => "llvm.intr.maximum", fastmath, fp)]
@@ -96,7 +95,7 @@ pub struct ArithToLlvm;
 #[map("arith.minnumf" => "llvm.intr.minnum", fastmath, fp)]
 #[map("arith.minsi" => "llvm.intr.smin")]
 #[map("arith.minui" => "llvm.intr.umin")]
-#[map("arith.mulf" => "llvm.fmul", fastmath, fp)]
+#[map("arith.mulf" => "llvm.fmul", fastmath, fp, unconstrained)]
 #[map("arith.muli" => "llvm.mul", overflow)]
 #[map("arith.negf" => "llvm.fneg", fastmath, fp)]
 #[map("arith.ori" => "llvm.or")]
@@ -108,10 +107,9 @@ pub struct ArithToLlvm;
 #[map("arith.shrsi" => "llvm.ashr")]
 #[map("arith.shrui" => "llvm.lshr")]
 #[map("arith.sitofp" => "llvm.sitofp")]
-#[map("arith.subf" => "llvm.fsub", fastmath, fp)]
+#[map("arith.subf" => "llvm.fsub", fastmath, fp, unconstrained)]
 #[map("arith.subi" => "llvm.sub", overflow)]
 #[map("arith.trunci" => "llvm.trunc", overflow)]
-#[map("arith.uitofp" => "llvm.uitofp", fp)]
 #[map("arith.xori" => "llvm.xor")]
 impl ArithToLlvm {
     /// `IdentityBitcastLowering`: a bitcast between types that convert alike.
@@ -133,13 +131,40 @@ impl ArithToLlvm {
         cr.one_to_one_rewrite(op, "llvm.mlir.constant", &operands, &attrs)
     }
 
-    /// `IndexCastOpLowering`: an extension, a truncation, or nothing.
+    /// `ExtUIOpLowering` / `UIToFPOpLowering` (`AttrConvertNonNegToLLVM`): `nneg` is LLVM's
+    /// `nonNeg`.
+    fn nneg_cast(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
+        if to == "llvm.uitofp" && cr.unsupported_fp_op(op) {
+            return false;
+        }
+        let Some(ops) = ConversionRewriter::one_to_one(operands) else { return false };
+        let attrs = cr.all_attrs(op);
+        cr.vector_one_to_one(op, to, &ops, &attrs)
+    }
+
+    #[convert("arith.extui")]
+    fn extui(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        Self::nneg_cast(cr, op, operands, "llvm.zext")
+    }
+
+    #[convert("arith.uitofp")]
+    fn uitofp(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        Self::nneg_cast(cr, op, operands, "llvm.uitofp")
+    }
+
+    /// `IndexCastOpLowering`: an extension, a truncation, or nothing (a memref's: nothing, its
+    /// descriptor the same).
     fn index_cast(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], ext: &str) -> bool {
         let Some([src]) = ConversionRewriter::one_to_one(operands).and_then(|s| <[ValueId; 1]>::try_from(s).ok()) else { return false };
         let Some(tc) = cr.type_converter() else { return false };
         let b = &*cr.rw.body;
         let res_ty = b[b[op].results[0]].ty.clone();
         let in_ty = b[b[op].operands[0]].ty.clone();
+        if matches!(&in_ty, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::MemRef) {
+            cr.replace_values(op, &[src]);
+            return true;
+        }
+        let nneg = ext == "llvm.zext" && b[op].get("nonNeg").is_some();
         let (Some(t), Some(s)) = (tc.convert(res_ty.element_type()), tc.convert(in_ty.element_type())) else { return false };
         let (tb, sb) = (t.bit_width(), s.bit_width());
         if tb == sb {
@@ -147,15 +172,19 @@ impl ArithToLlvm {
             return true;
         }
         let name = if tb < sb { "llvm.trunc" } else { ext };
+        let data = |p: &[ValueId]| {
+            let d = OpData::build(name).operands(p);
+            if nneg && tb > sb { d.flag("nonNeg") } else { d }
+        };
         if !matches!(LlvmType::try_from(&cr.rw.body[src].ty), Ok(LlvmType::Array(..))) {
             let Some(target) = tc.convert(&res_ty) else { return false };
-            cr.replace_new(op, OpData::build(name).operands(&[src]), &[target]);
+            cr.replace_new(op, data(&[src]), &[target]);
             return true;
         }
         if !matches!(res_ty, Type::Shaped(_)) {
             return false;
         }
-        cr.unroll_vectors(op, &[src], |cr, ty, p| cr.build(OpData::build(name).operands(p), ty))
+        cr.unroll_vectors(op, &[src], |cr, ty, p| cr.build(data(p), ty))
     }
 
     #[convert("arith.index_cast")]
@@ -168,8 +197,46 @@ impl ArithToLlvm {
         Self::index_cast(cr, op, operands, "llvm.zext")
     }
 
+    /// `SubUIExtendedOpLowering`: `llvm.intr.usub.with.overflow` (scalars and 1-D vectors).
+    #[convert("arith.subui_extended")]
+    fn subui_extended(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        Self::with_overflow(cr, op, operands, "llvm.intr.usub.with.overflow")
+    }
+
+    /// `ConvertFOpLowering`: bf16 ⇄ f16 through f32 (`fpext` then `fptrunc`).
+    #[convert("arith.convertf")]
+    fn convertf(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        if cr.unsupported_fp_op(op) {
+            return false;
+        }
+        let Some([src]) = ConversionRewriter::one_to_one(operands).and_then(|s| <[ValueId; 1]>::try_from(s).ok()) else { return false };
+        let Some(target) = cr.converted_result(op) else { return false };
+        if !matches!(LlvmType::try_from(&cr.rw.body[src].ty), Ok(LlvmType::Array(..))) {
+            let r = Self::via_f32(cr, target, src);
+            cr.replace_values(op, &[r]);
+            return true;
+        }
+        let res_ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
+        if !matches!(res_ty, Type::Shaped(_)) {
+            return false;
+        }
+        cr.unroll_vectors(op, &[src], |cr, ty, p| Self::via_f32(cr, ty, p[0]))
+    }
+
+    /// `ConvertFOpLowering::emitConversion`: `v` extended to f32 (of its shape), truncated to `ty`.
+    fn via_f32<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, ty: Type<'a>, v: ValueId) -> ValueId {
+        let f32_ty = ty.with_element(Type::Float(mlirformat::FloatKind::F32));
+        let ext = cr.build(OpData::build("llvm.fpext").operands(&[v]), f32_ty);
+        cr.build(OpData::build("llvm.fptrunc").operands(&[ext]), ty)
+    }
+
     #[convert("arith.addui_extended")]
     fn addui_extended(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        Self::with_overflow(cr, op, operands, "llvm.intr.uadd.with.overflow")
+    }
+
+    /// `{Add,Sub}UIExtendedOpLowering`: `intr` gives the value and the carry / borrow.
+    fn with_overflow(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], intr: &str) -> bool {
         let Some(ops) = ConversionRewriter::one_to_one(operands) else { return false };
         let ty = cr.rw.body[ops[0]].ty.clone();
         if !LlvmType::compatible(&ty) || matches!(LlvmType::try_from(&ty), Ok(LlvmType::Array(..))) {
@@ -180,7 +247,7 @@ impl ArithToLlvm {
         let (sum_ty, ovf_ty) = (b[b[op].results[0]].ty.clone(), b[b[op].results[1]].ty.clone());
         let Some(ovf) = tc.convert(&ovf_ty) else { return false };
         let st = LlvmType::literal(vec![sum_ty, ovf]);
-        let r = cr.build(OpData::build("llvm.intr.uadd.with.overflow").operands(&ops), st);
+        let r = cr.build(OpData::build(intr).operands(&ops), st);
         let (s, o) = (cr.extract(r, &[0]), cr.extract(r, &[1]));
         cr.replace_values(op, &[s, o]);
         true
@@ -308,6 +375,32 @@ impl ArithToLlvm {
     /// `ConstrainedTruncFOpLowering` (the `#[map]` row is `TruncFOpLowering`, without one).
     #[convert("arith.truncf")]
     fn truncf(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        Self::constrained(cr, op, operands, "llvm.intr.experimental.constrained.fptrunc")
+    }
+
+    #[convert("arith.addf")]
+    fn constrained_addf(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        Self::constrained(cr, op, operands, "llvm.intr.experimental.constrained.fadd")
+    }
+
+    #[convert("arith.subf")]
+    fn constrained_subf(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        Self::constrained(cr, op, operands, "llvm.intr.experimental.constrained.fsub")
+    }
+
+    #[convert("arith.mulf")]
+    fn constrained_mulf(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        Self::constrained(cr, op, operands, "llvm.intr.experimental.constrained.fmul")
+    }
+
+    #[convert("arith.divf")]
+    fn constrained_divf(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        Self::constrained(cr, op, operands, "llvm.intr.experimental.constrained.fdiv")
+    }
+
+    /// The `Constrained*Lowering`s (`AttrConverterConstrainedFPToLLVM`): with a rounding mode,
+    /// the constrained intrinsic, the mode in LLVM's numbering, exceptions ignored, no fastmath.
+    fn constrained(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], intr: &str) -> bool {
         let Some(mode) = cr.rw.body[op].get("roundingmode").cloned() else { return false };
         if cr.unsupported_fp_op(op) {
             return false;
@@ -324,10 +417,10 @@ impl ArithToLlvm {
             },
             _ => 1,
         };
-        let mut attrs: Vec<NamedAttr> = cr.all_attrs(op).into_iter().filter(|a| a.name != "roundingmode").collect();
+        let mut attrs: Vec<NamedAttr> = cr.all_attrs(op).into_iter().filter(|a| a.name != "roundingmode" && a.name != "fastmath").collect();
         attrs.push(NamedAttr { name: "roundingmode".into(), value: Some(Attribute::i64(llvm_mode)) });
         attrs.push(NamedAttr { name: "fpExceptionBehavior".into(), value: Some(Attribute::i64(0)) });
-        cr.vector_one_to_one(op, "llvm.intr.experimental.constrained.fptrunc", &ops, &attrs)
+        cr.vector_one_to_one(op, intr, &ops, &attrs)
     }
 }
 

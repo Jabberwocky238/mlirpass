@@ -52,6 +52,10 @@ pub struct ArithToEmitc;
 impl ArithToEmitc {
     fn constant(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], to: &str) -> bool {
         let (Some(ty), Some(v)) = (cr.converted_result(op), cr.rw.body[op].get("value").cloned()) else { return false };
+        // Memref constants are not supported.
+        if matches!(cr.ty(cr.rw.body[op].results[0]), mlirformat::Type::Shaped(s) if s.kind == mlirformat::ShapedKind::MemRef) {
+            return false;
+        }
         cr.replace_new(op, OpData::build(to).with("value", v), &[ty]);
         true
     }

@@ -14,8 +14,7 @@ pub struct ConvertMemrefToEmitc {
 
 impl Run for ConvertMemrefToEmitc {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        let mut tc = Emitc::converter(true);
-        Emitc::memref_conversions(&mut tc, false);
+        let tc = Emitc::type_converter(false);
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         MemrefToEmitc::populate(&mut patterns, i);

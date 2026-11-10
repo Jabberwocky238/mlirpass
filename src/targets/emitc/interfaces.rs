@@ -22,7 +22,7 @@ struct ToEmitc {
     /// Its conversions need `size_t`.
     size_t: bool,
     types: Option<fn(&mut TypeConverter<'_>, bool)>,
-    populate: for<'p> fn(&mut ConversionPatterns<'p>, usize),
+    populate: for<'p> fn(&mut ConversionPatterns<'p>, usize, Option<bool>),
 }
 
 /// The `ConvertToEmitCPatternInterface`s; [`Default`]: the upstream dialects this crate lowers.
@@ -35,7 +35,7 @@ impl ToEmitcInterfaces {
         Self { by_dialect: Vec::new() }
     }
 
-    pub fn register(&mut self, ns: &'static str, size_t: bool, types: Option<fn(&mut TypeConverter<'_>, bool)>, populate: for<'p> fn(&mut ConversionPatterns<'p>, usize)) -> &mut Self {
+    pub fn register(&mut self, ns: &'static str, size_t: bool, types: Option<fn(&mut TypeConverter<'_>, bool)>, populate: for<'p> fn(&mut ConversionPatterns<'p>, usize, Option<bool>)) -> &mut Self {
         self.by_dialect.push(ToEmitc { ns, size_t, types, populate });
         self
     }
@@ -59,27 +59,30 @@ impl Default for ToEmitcInterfaces {
         #[allow(unused_mut)]
         let mut s = Self::new();
         #[cfg(feature = "dialect.arith")]
-        s.register("arith", true, Some(|tc, _| Emitc::size_t_conversions(tc)), |p, i| ArithToEmitc::populate(p, i));
+        s.register("arith", true, Some(|tc, _| Emitc::size_t_conversions(tc)), |p, i, _| ArithToEmitc::populate(p, i));
         #[cfg(feature = "dialect.func")]
-        s.register("func", false, None, |p, i| FuncToEmitc::populate(p, i));
+        s.register("func", false, None, |p, i, cpp| FuncToEmitc::populate(p, i, cpp.unwrap_or(true)));
         #[cfg(feature = "dialect.memref")]
-        s.register("memref", false, Some(|tc, size_t| Emitc::memref_conversions(tc, size_t)), |p, i| MemrefToEmitc::populate(p, i));
+        s.register("memref", false, None, |p, i, _| MemrefToEmitc::populate(p, i));
         #[cfg(feature = "dialect.scf")]
-        s.register("scf", true, Some(|tc, _| Emitc::size_t_conversions(tc)), |p, i| ScfToEmitc::populate(p, i));
+        s.register("scf", true, Some(|tc, _| Emitc::size_t_conversions(tc)), |p, i, _| ScfToEmitc::populate(p, i));
+        // The test dialect's (`TestToEmitCDialectInterface`): only its memref element type.
+        s.register("test", false, Some(|tc, _| Emitc::test_conversions(tc)), |_, _, _| {});
         s
     }
 }
 
 impl DialectInterfaces for ToEmitcInterfaces {
-    type Env<'e> = ();
+    /// `lowerToCpp`, if the pass sets it.
+    type Env<'e> = Option<bool>;
 
     fn dialects(&self) -> Vec<&'static str> {
         self.by_dialect.iter().map(|d| d.ns).collect()
     }
 
-    fn populate<'p>(&self, ns: &str, patterns: &mut ConversionPatterns<'p>, tc: usize, _: &()) {
+    fn populate<'p>(&self, ns: &str, patterns: &mut ConversionPatterns<'p>, tc: usize, cpp: &Option<bool>) {
         if let Some(d) = self.by_dialect.iter().find(|d| d.ns == ns) {
-            (d.populate)(patterns, tc);
+            (d.populate)(patterns, tc, *cpp);
         }
     }
 }

@@ -8,7 +8,8 @@ use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Conver
 /// `convert-arith-to-emitc`.
 #[pass("convert-arith-to-emitc")]
 pub fn convert_arith_to_emitc<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-    let mut tc = Emitc::converter(false);
+    // `EmitCTypeConverter`.
+    let mut tc = Emitc::type_converter(false);
     Emitc::size_t_conversions(&mut tc);
     let mut patterns = ConversionPatterns::default();
     let i = patterns.converter(&tc);

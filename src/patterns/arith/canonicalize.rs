@@ -75,6 +75,17 @@ fn nan_convert(f: ApFloat, to: FloatKind) -> Option<ApFloat> {
     ApFloat::from_bits(to, sign | (((1 << ed) - 1) << md) | mant)
 }
 
+/// `f`, or a zero of its sign if it is denormal (a zero exponent, a nonzero mantissa).
+fn flush_denormal(f: ApFloat) -> Option<ApFloat> {
+    let (e, m) = float_layout(f.kind)?;
+    let exp = (f.bits >> m) & ((1 << e) - 1);
+    let mant = f.bits & ((1 << m) - 1);
+    if exp != 0 || mant == 0 {
+        return Some(f);
+    }
+    ApFloat::from_bits(f.kind, u64::from(f.is_negative()) << (e + m))
+}
+
 /// Whether fastmath flags `a` include every flag named.
 fn fastmath_has(a: Option<&Attribute<'_>>, flags: &[&str]) -> bool {
     let Some(Attribute::Extended { ext, .. }) = a else { return false };
@@ -348,13 +359,13 @@ impl<'x, 'a> Folder<'x, 'a> {
                 if self.float(1).is_some_and(|f| f.is_zero() && f.is_negative()) {
                     return Self::value(self.v(0));
                 }
-                self.float_binary(ApFloat::add)
+                self.rounded_binary(Rounded::Add)
             }
             "subf" => {
                 if self.float(1).is_some_and(|f| f.is_zero() && !f.is_negative()) {
                     return Self::value(self.v(0));
                 }
-                self.float_binary(ApFloat::sub)
+                self.rounded_binary(Rounded::Sub)
             }
             "maximumf" | "minimumf" | "maxnumf" | "minnumf" => {
                 if self.v(0) == self.v(1) {
@@ -376,14 +387,26 @@ impl<'x, 'a> Folder<'x, 'a> {
                 if fastmath_has(self.prop("fastmath"), &["nnan", "nsz"]) && self.float(1).is_some_and(ApFloat::is_zero) {
                     return Self::value(self.v(1));
                 }
-                self.float_binary(ApFloat::mul)
+                self.rounded_binary(Rounded::Mul)
             }
             "divf" => {
                 if self.float(1).is_some_and(|f| f.to_f64() == 1.0) {
                     return Self::value(self.v(0));
                 }
-                self.float_binary(ApFloat::div)
+                self.rounded_binary(Rounded::Div)
             }
+            "flush_denormals" => {
+                // `flush_denormals(flush_denormals(x))`.
+                if let Some(inner) = self.def(0, "arith.flush_denormals") {
+                    return Self::value(self.b[inner].results[0]);
+                }
+                let ty = self.ty();
+                self.unary(ty, |a| {
+                    let f = a.float()?;
+                    Some(Scalar::Float(flush_denormal(f)?))
+                })
+            }
+            "convertf" => self.float_convert(),
             "remf" => self.float_binary(|a, b| a.binary(b, |x, y| x % y, |x, y| x % y)),
             "extui" | "extsi" => {
                 if let Some(inner) = self.def(0, &name) {
@@ -436,10 +459,22 @@ impl<'x, 'a> Folder<'x, 'a> {
                 let ty = self.ty();
                 let w = ty.element_type().int_width().map_or(64, |w| w.0);
                 let signed = op == "index_cast";
-                self.unary(ty, move |a| {
-                    let i = a.int()?;
-                    Some(Scalar::Int(if signed { i.sext(w.max(i.width)).trunc(w) } else { i.zext(w.max(i.width)).trunc(w) }))
-                })
+                if let Some(c) = self.cst(0) {
+                    let _ = c;
+                    return self.unary(ty, move |a| {
+                        let i = a.int()?;
+                        Some(Scalar::Int(if signed { i.sext(w.max(i.width)).trunc(w) } else { i.zext(w.max(i.width)).trunc(w) }))
+                    });
+                }
+                // `index_cast(index_cast(x : A) : B) : A` is `x` when `B` is at least as wide as `A`.
+                if let Some(inner) = self.def(0, &name) {
+                    let x = self.b[inner].operands[0];
+                    let width = |t: &Type<'_>| t.element_type().int_width().map_or(64, |w| w.0);
+                    if self.b[x].ty == ty && width(&self.b[self.b[inner].results[0]].ty) >= width(&self.b[x].ty) {
+                        return Self::value(x);
+                    }
+                }
+                Fold::Failed
             }
             "bitcast" => self.bitcast(),
             "cmpi" => self.cmpi(),
@@ -473,6 +508,7 @@ impl<'x, 'a> Folder<'x, 'a> {
                 })
             }
             "addui_extended" => self.addui_extended(),
+            "subui_extended" => self.subui_extended(),
             "mulsi_extended" | "mului_extended" => self.mul_extended(op == "mulsi_extended"),
             _ => Fold::Failed,
         }
@@ -505,6 +541,12 @@ impl<'x, 'a> Folder<'x, 'a> {
         }
         if self.zero(1) {
             return Self::value(self.v(0));
+        }
+        // `subi(a, subi(a, b))` is `b`.
+        if let Some(sub) = self.def(1, "arith.subi")
+            && self.b[sub].operands[0] == self.v(0)
+        {
+            return Self::value(self.b[sub].operands[1]);
         }
         if let Some(add) = self.def(0, "arith.addi") {
             let (x, y) = (self.b[add].operands[0], self.b[add].operands[1]);
@@ -868,11 +910,52 @@ impl<'x, 'a> Folder<'x, 'a> {
             return Fold::Results(vec![Folded::Value(self.v(0)), Folded::Attr(z)]);
         }
         let Some(sum) = self.binary(None, |a, b| Some(Scalar::Int(a.int()?.add(b.int()?)))) else { return Fold::Failed };
+        // Poison: both results.
+        if sum.is_poison() {
+            return Fold::Results(vec![Folded::Attr(sum.clone()), Folded::Attr(sum)]);
+        }
         let (Ok(s), Some(l)) = (Const::try_from(&sum), self.cst(0)) else { return Fold::Failed };
         let i1 = s.ty.with_element(Type::I1);
         let n = s.values.len().max(l.values.len());
         let values = (0..n).map(|i| Scalar::Int(ApInt::new(1, i128::from(s.at(i).int().zip(l.at(i).int()).is_some_and(|(x, y)| x.ucmp(y) == Ordering::Less))))).collect();
         Fold::Results(vec![Folded::Attr(sum), Folded::Attr(Const { ty: i1, values, elements: s.elements }.into())])
+    }
+
+    /// `SubUIExtendedOp::fold`: `(x, 0)` ⇒ `x, false`; `(x, x)` ⇒ `0, false`; constants ⇒ the
+    /// difference and whether it borrowed (`lhs <u rhs`), poison passing through.
+    fn subui_extended(&mut self) -> Fold<'a> {
+        let borrow_ty = self.b[self.b[self.op].results[1]].ty.clone();
+        if self.zero(1) {
+            let Some(z) = Self::zero_attr(&borrow_ty) else { return Fold::Failed };
+            return Fold::Results(vec![Folded::Value(self.v(0)), Folded::Attr(z)]);
+        }
+        if self.v(0) == self.v(1) {
+            let diff_ty = self.b[self.b[self.op].results[0]].ty.clone();
+            let (Some(d), Some(z)) = (Self::zero_attr(&diff_ty), Self::zero_attr(&borrow_ty)) else { return Fold::Failed };
+            return Fold::Results(vec![Folded::Attr(d), Folded::Attr(z)]);
+        }
+        let Some(diff) = self.binary(None, |a, b| Some(Scalar::Int(a.int()?.sub(b.int()?)))) else { return Fold::Failed };
+        if diff.is_poison() {
+            return Fold::Results(vec![Folded::Attr(diff.clone()), Folded::Attr(diff)]);
+        }
+        let Ok(d) = Const::try_from(&diff) else { return Fold::Failed };
+        let i1 = d.ty.with_element(Type::I1);
+        let Some(borrow) = self.binary(Some(i1), |a, b| Some(Scalar::Int(ApInt::new(1, i128::from(a.int()?.ucmp(b.int()?) == Ordering::Less))))) else { return Fold::Failed };
+        Fold::Results(vec![Folded::Attr(diff), Folded::Attr(borrow)])
+    }
+
+    /// A float `add` / `sub` / `mul` / `div` constant fold in the op's `roundingmode` (none:
+    /// to nearest, ties to even).
+    fn rounded_binary(&self, kind: Rounded) -> Fold<'a> {
+        let mode = match self.prop("roundingmode") {
+            None => RoundingMode::NearestEven,
+            Some(Attribute::Int { lit, .. }) => match lit.parse::<i64>().ok().and_then(|m| RoundingMode::try_from(m).ok()) {
+                Some(m) => m,
+                None => return Fold::Failed,
+            },
+            Some(_) => return Fold::Failed,
+        };
+        self.binary(None, |a, b| Some(Scalar::Float(kind.apply(a.float()?, b.float()?, mode)?))).map(Folded::Attr).into()
     }
 
     fn mul_extended(&mut self, signed: bool) -> Fold<'a> {
@@ -896,6 +979,119 @@ impl<'x, 'a> Folder<'x, 'a> {
         });
         let Some(high) = high else { return Fold::Failed };
         Fold::Results(vec![Folded::Attr(low), Folded::Attr(high)])
+    }
+}
+
+/// `arith`'s `RoundingMode` cases, by value.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RoundingMode {
+    NearestEven,
+    Downward,
+    Upward,
+    TowardZero,
+    NearestAway,
+}
+
+impl TryFrom<i64> for RoundingMode {
+    type Error = ();
+
+    fn try_from(v: i64) -> Result<Self, ()> {
+        Ok(match v {
+            0 => Self::NearestEven,
+            1 => Self::Downward,
+            2 => Self::Upward,
+            3 => Self::TowardZero,
+            4 => Self::NearestAway,
+            _ => return Err(()),
+        })
+    }
+}
+
+/// The float operations that take a rounding mode.
+#[derive(Clone, Copy)]
+enum Rounded {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+impl Rounded {
+    /// `a op b` rounded by `mode` (`APFloat::add` etc. with an `llvm::RoundingMode`): the
+    /// nearest-even result, moved one ulp when the exact result (an error-free transform's
+    /// remainder) lies on the other side. `f32` / `f64` only for a directed mode; none for a
+    /// tie under nearest-away it cannot tell.
+    fn apply(self, a: ApFloat, b: ApFloat, mode: RoundingMode) -> Option<ApFloat> {
+        let nearest = match self {
+            Rounded::Add => a.add(b),
+            Rounded::Sub => a.sub(b),
+            Rounded::Mul => a.mul(b),
+            Rounded::Div => a.div(b),
+        };
+        if mode == RoundingMode::NearestEven || nearest.is_nan() {
+            return Some(nearest);
+        }
+        let (x, y) = (a.to_f64(), b.to_f64());
+        // The sign of the exact result minus the nearest one (0: exact).
+        let err = match a.kind {
+            FloatKind::F64 => {
+                let r = nearest.to_f64();
+                if r.is_infinite() && x.is_finite() && y.is_finite() {
+                    // Overflowed: the exact value is past the largest finite.
+                    -r
+                } else {
+                    match self {
+                        Rounded::Add | Rounded::Sub => {
+                            let y = if matches!(self, Rounded::Sub) { -y } else { y };
+                            let bb = r - x;
+                            (x - (r - bb)) + (y - bb)
+                        }
+                        Rounded::Mul => x.mul_add(y, -r),
+                        Rounded::Div => (-r).mul_add(y, x) * y.signum(),
+                    }
+                }
+            }
+            FloatKind::F32 => {
+                let (x, y, r) = (x as f32, y as f32, nearest.to_f64() as f32);
+                let e = if r.is_infinite() && x.is_finite() && y.is_finite() {
+                    -r
+                } else {
+                    match self {
+                        Rounded::Add | Rounded::Sub => {
+                            let y = if matches!(self, Rounded::Sub) { -y } else { y };
+                            let bb = r - x;
+                            (x - (r - bb)) + (y - bb)
+                        }
+                        Rounded::Mul => x.mul_add(y, -r),
+                        Rounded::Div => (-r).mul_add(y, x) * y.signum(),
+                    }
+                };
+                f64::from(e)
+            }
+            _ => return (mode == RoundingMode::NearestEven).then_some(nearest),
+        };
+        if err == 0.0 {
+            return Some(nearest);
+        }
+        let r = nearest.to_f64();
+        let step = |up: bool| -> Option<ApFloat> {
+            match a.kind {
+                FloatKind::F64 => ApFloat::from_f64(a.kind, if up { r.next_up() } else { r.next_down() }),
+                _ => {
+                    let f = r as f32;
+                    ApFloat::from_bits(a.kind, u64::from(if up { f.next_up() } else { f.next_down() }.to_bits()))
+                }
+            }
+        };
+        let r_inf = r.is_infinite();
+        match mode {
+            RoundingMode::Downward if err < 0.0 => step(false),
+            RoundingMode::Upward if err > 0.0 => step(true),
+            RoundingMode::TowardZero if (r > 0.0 && err < 0.0) || (r < 0.0 && err > 0.0) => step(r < 0.0),
+            RoundingMode::NearestAway => None,
+            _ if r_inf => Some(nearest),
+            _ => Some(nearest),
+        }
     }
 }
 
@@ -971,6 +1167,9 @@ enum ConstFold {
     /// `c1 - c0`.
     Sub10,
     Mul,
+    And,
+    Or,
+    Xor,
 }
 
 /// A constant-combining DRR pattern: `root(inner(x, c0), c1)` into
@@ -997,13 +1196,21 @@ impl Combine {
         let Some(inner) = b.def_named(inner_v, self.inner) else { return false };
         let (il, ir) = b.operands2(inner);
         let (x, c0_v) = if self.inner_const_first { (ir, il) } else { (il, ir) };
-        let (Some((c0, _)), Some((c1, _))) = (b.int_attr(c0_v), b.int_attr(c1_v)) else { return false };
+        let (Some((c0, t0)), Some((c1, t1))) = (b.int_attr(c0_v), b.int_attr(c1_v)) else { return false };
         let res_ty = b[b[op].results[0]].ty.clone();
+        // `IntAttrTypeMatchesResult` (the bitwise ones).
+        let bitwise = matches!(self.fold, ConstFold::And | ConstFold::Or | ConstFold::Xor);
+        if bitwise && (t0 != res_ty || t1 != res_ty) {
+            return false;
+        }
         let value: ApInt = match self.fold {
             ConstFold::Add => c0.add(c1),
             ConstFold::Sub01 => c0.sub(c1),
             ConstFold::Sub10 => c1.sub(c0),
             ConstFold::Mul => c0.mul(c1),
+            ConstFold::And => c0.and(c1),
+            ConstFold::Or => c0.or(c1),
+            ConstFold::Xor => c0.xor(c1),
         };
         let flags = if self.merge_flags { overflow_attr(overflow(b[inner].get("overflowFlags")) & overflow(b[op].get("overflowFlags"))) } else { overflow_attr(0) };
         // `tblgen_ops[1]`: the first constant op the DAG walk meets, the root's own when it is on the root's left
@@ -1014,12 +1221,21 @@ impl Combine {
         rw.set_before(op);
         let c = rw.constant(Const::int(value, res_ty.clone()).into(), res_ty);
         let operands = if self.const_first { [c, x] } else { [x, c] };
-        rw.replace_new(op, OpData::build(self.new).operands(&operands).with("overflowFlags", flags))
+        let data = OpData::build(self.new).operands(&operands);
+        rw.replace_new(op, if bitwise { data } else { data.with("overflowFlags", flags) })
     }
 }
 
+/// How `ext(x) root ext(y)` keeps the `extui`s' `nneg`: when both have it (`xori`, `ori`), or
+/// either (`andi`).
+#[derive(Clone, Copy, PartialEq)]
+enum Nneg {
+    Both,
+    Either,
+}
+
 /// `ext(x) root ext(y)` into `ext(x root y)` when `x` and `y` have the same type.
-fn hoist_ext(rw: &mut Rewriter<'_, '_>, op: OpId, root: &str, ext: &str) -> bool {
+fn hoist_ext(rw: &mut Rewriter<'_, '_>, op: OpId, root: &str, ext: &str, nneg: Nneg) -> bool {
     let b = &*rw.body;
     let (l, r) = b.operands2(op);
     let (Some(el), Some(er)) = (b.def_named(l, ext), b.def_named(r, ext)) else { return false };
@@ -1028,9 +1244,12 @@ fn hoist_ext(rw: &mut Rewriter<'_, '_>, op: OpId, root: &str, ext: &str) -> bool
         return false;
     }
     let ty = b[x].ty.clone();
+    let (nl, nr) = (b[el].get("nonNeg").is_some(), b[er].get("nonNeg").is_some());
+    let keep = ext == "arith.extui" && if nneg == Nneg::Both { nl && nr } else { nl || nr };
     rw.fuse_locs(&[op, el, er]);
     let inner = rw.make(op, OpData::build(root).operands(&[x, y]), ty);
-    rw.replace_new(op, OpData::build(ext).operands(&[inner]))
+    let data = OpData::build(ext).operands(&[inner]);
+    rw.replace_new(op, if keep { data.flag("nonNeg") } else { data })
 }
 
 /// `outer(inner(x))` into `new(x)`, or into `x` itself (`new` none: when the types agree).
@@ -1038,10 +1257,13 @@ fn collapse(rw: &mut Rewriter<'_, '_>, op: OpId, inner: &str, new: Option<&str>)
     let b = &*rw.body;
     let Some(i) = b.def_named(b[op].operands[0], inner) else { return false };
     let x = b[i].operands[0];
+    // `(Arith_ExtUIOp $x, $nneg)` ⇒ `(.. $x, $nneg)`: the inner `extui`'s `nneg` carries over.
+    let nneg = b[i].name == "arith.extui" && b[i].get("nonNeg").is_some();
     match new {
         Some(n) => {
             rw.fuse_locs(&[op, i]);
-            rw.replace_new(op, OpData::build(n).operands(&[x]))
+            let data = OpData::build(n).operands(&[x]);
+            rw.replace_new(op, if nneg { data.flag("nonNeg") } else { data })
         }
         None => {
             if rw.body[rw.body[op].results[0]].ty != rw.body[x].ty {
@@ -1118,58 +1340,108 @@ impl ArithCanon {
         Combine { inner: "arith.subi", inner_const_first: true, const_on_lhs: true, fold: ConstFold::Sub10, merge_flags: true, new: "arith.addi", const_first: false }.rewrite(rw, op)
     }
 
+    /// `XOrIXOrIConstant` (DRR).
+    #[rewrite("arith.xori", benefit = 2)]
+    fn x_or_i_x_or_i_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        Combine { inner: "arith.xori", inner_const_first: false, const_on_lhs: false, fold: ConstFold::Xor, merge_flags: false, new: "arith.xori", const_first: false }.rewrite(rw, op)
+    }
+
+    /// `AndIAndIConstant` (DRR).
+    #[rewrite("arith.andi", benefit = 2)]
+    fn and_i_and_i_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        Combine { inner: "arith.andi", inner_const_first: false, const_on_lhs: false, fold: ConstFold::And, merge_flags: false, new: "arith.andi", const_first: false }.rewrite(rw, op)
+    }
+
+    /// `OrIOrIConstant` (DRR).
+    #[rewrite("arith.ori", benefit = 2)]
+    fn or_i_or_i_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        Combine { inner: "arith.ori", inner_const_first: false, const_on_lhs: false, fold: ConstFold::Or, merge_flags: false, new: "arith.ori", const_first: false }.rewrite(rw, op)
+    }
+
+    /// `SubUIExtendedToSubI`: the borrow unused, a plain `subi`.
+    #[rewrite("arith.subui_extended", name = "SubUIExtendedToSubI")]
+    fn sub_ui_extended_to_sub_i(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        extended_to_plain(rw, op, "arith.subi")
+    }
+
+    /// `SIToFPOfExtSI`: `sitofp(extsi(x))` is `sitofp(x)`.
+    #[rewrite("arith.sitofp", benefit = 2, name = "SIToFPOfExtSI")]
+    fn si_to_fp_of_ext_si(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        collapse(rw, op, "arith.extsi", Some("arith.sitofp"))
+    }
+
+    /// `SIToFPOfExtUI`: `sitofp(extui(x))` is `uitofp(x)`.
+    #[rewrite("arith.sitofp", benefit = 2, name = "SIToFPOfExtUI")]
+    fn si_to_fp_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        collapse(rw, op, "arith.extui", Some("arith.uitofp"))
+    }
+
+    /// `UIToFPOfExtUI`: `uitofp(extui(x))` is `uitofp(x)`.
+    #[rewrite("arith.uitofp", benefit = 2, name = "UIToFPOfExtUI")]
+    fn ui_to_fp_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        collapse(rw, op, "arith.extui", Some("arith.uitofp"))
+    }
+
+    /// `SubFOfNegZero`: `subf(-0.0, x)` is `negf(x)` (default rounding only).
+    #[rewrite("arith.subf", name = "SubFOfNegZero")]
+    fn sub_f_of_neg_zero(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let (c, x) = b.operands2(op);
+        if b[op].get("roundingmode").is_some() {
+            return false;
+        }
+        // `m_NegZeroFloat`: a scalar or splat -0.0.
+        let neg_zero = b.constant_of(c).and_then(|a| Const::try_from(&a).ok()).and_then(|k| k.as_float()).is_some_and(|f| f.is_zero() && f.is_negative());
+        if !neg_zero {
+            return false;
+        }
+        let mut data = OpData::build("arith.negf").operands(&[x]);
+        if let Some(f) = b[op].get("fastmath").cloned() {
+            data = data.with("fastmath", f);
+        }
+        rw.replace_new(op, data)
+    }
+
     /// `XOrIOfExtUI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.xori", benefit = 3, name = "XOrIOfExtUI")]
     fn x_or_i_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        hoist_ext(rw, op, "arith.xori", "arith.extui")
+        hoist_ext(rw, op, "arith.xori", "arith.extui", Nneg::Both)
     }
 
     /// `XOrIOfExtSI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.xori", benefit = 3, name = "XOrIOfExtSI")]
     fn x_or_i_of_ext_si(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        hoist_ext(rw, op, "arith.xori", "arith.extsi")
+        hoist_ext(rw, op, "arith.xori", "arith.extsi", Nneg::Both)
     }
 
     /// `AndOfExtUI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.andi", benefit = 3, name = "AndOfExtUI")]
     fn and_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        hoist_ext(rw, op, "arith.andi", "arith.extui")
+        hoist_ext(rw, op, "arith.andi", "arith.extui", Nneg::Either)
     }
 
     /// `AndOfExtSI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.andi", benefit = 3, name = "AndOfExtSI")]
     fn and_of_ext_si(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        hoist_ext(rw, op, "arith.andi", "arith.extsi")
+        hoist_ext(rw, op, "arith.andi", "arith.extsi", Nneg::Either)
     }
 
     /// `OrOfExtUI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.ori", benefit = 3, name = "OrOfExtUI")]
     fn or_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        hoist_ext(rw, op, "arith.ori", "arith.extui")
+        hoist_ext(rw, op, "arith.ori", "arith.extui", Nneg::Both)
     }
 
     /// `OrOfExtSI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.ori", benefit = 3, name = "OrOfExtSI")]
     fn or_of_ext_si(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        hoist_ext(rw, op, "arith.ori", "arith.extsi")
-    }
-
-    /// `IndexCastOfIndexCast`: `arith.index_cast(arith.index_cast(x))` collapsed.
-    #[rewrite("arith.index_cast", benefit = 2)]
-    fn index_cast_of_index_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        collapse(rw, op, "arith.index_cast", None)
+        hoist_ext(rw, op, "arith.ori", "arith.extsi", Nneg::Both)
     }
 
     /// `IndexCastOfExtSI`: `arith.index_cast(arith.extsi(x))` collapsed.
     #[rewrite("arith.index_cast", benefit = 2, name = "IndexCastOfExtSI")]
     fn index_cast_of_ext_si(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         collapse(rw, op, "arith.extsi", Some("arith.index_cast"))
-    }
-
-    /// `IndexCastUIOfIndexCastUI`: `arith.index_castui(arith.index_castui(x))` collapsed.
-    #[rewrite("arith.index_castui", benefit = 2, name = "IndexCastUIOfIndexCastUI")]
-    fn index_cast_ui_of_index_cast_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        collapse(rw, op, "arith.index_castui", None)
     }
 
     /// `IndexCastUIOfExtUI`: `arith.index_castui(arith.extui(x))` collapsed.
@@ -1363,6 +1635,39 @@ impl ArithCanon {
         rw.replace_new(op, OpData::build("arith.xori").operands(&[p, one]))
     }
 
+    /// `SelectCmpI{Pred}To{Min,Max}{SI,UI}`: `select(cmpi(p, a, b), a, b)` (or `b, a`) is a
+    /// `min*` / `max*`.
+    #[rewrite("arith.select", benefit = 2, name = "SelectCmpIToMinMax")]
+    fn select_cmp_i_to_min_max(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        let b = &*rw.body;
+        let (c, t, f) = (b[op].operands[0], b[op].operands[1], b[op].operands[2]);
+        let Some(cmp) = b.def_named(c, "arith.cmpi") else { return false };
+        let (x, y) = b.operands2(cmp);
+        let Some(p) = pred_of(b[cmp].get("predicate")) else { return false };
+        // The op when the select picks `a` for `a p b`.
+        let direct = match p {
+            SLT | SLE => "arith.minsi",
+            SGT | SGE => "arith.maxsi",
+            ULT | ULE => "arith.minui",
+            UGT | UGE => "arith.maxui",
+            _ => return false,
+        };
+        let new = if (t, f) == (x, y) {
+            direct
+        } else if (t, f) == (y, x) {
+            match direct {
+                "arith.minsi" => "arith.maxsi",
+                "arith.maxsi" => "arith.minsi",
+                "arith.minui" => "arith.maxui",
+                _ => "arith.minui",
+            }
+        } else {
+            return false;
+        };
+        rw.fuse_locs(&[op, cmp]);
+        rw.replace_new(op, OpData::build(new).operands(&[x, y]))
+    }
+
     #[rewrite("arith.select", name = "SelectToExtUI")]
     fn select_to_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1486,8 +1791,10 @@ fn trunc_of_ext(rw: &mut Rewriter<'_, '_>, op: OpId, ext: &str) -> bool {
     if !(we > wt && wt > 0 && wt > wx && wx > 0) {
         return false;
     }
+    let nneg = b[e].get("nonNeg").is_some();
     rw.fuse_locs(&[op, e]);
-    rw.replace_new(op, OpData::build(ext).operands(&[x]))
+    let data = OpData::build(ext).operands(&[x]);
+    rw.replace_new(op, if nneg { data.flag("nonNeg") } else { data })
 }
 
 fn truncf_of_itofp(rw: &mut Rewriter<'_, '_>, op: OpId, itofp: &str) -> bool {
@@ -1497,8 +1804,10 @@ fn truncf_of_itofp(rw: &mut Rewriter<'_, '_>, op: OpId, itofp: &str) -> bool {
         return false;
     }
     let x = b[fp].operands[0];
+    let nneg = b[fp].get("nonNeg").is_some();
     rw.fuse_locs(&[op, fp]);
-    rw.replace_new(op, OpData::build(itofp).operands(&[x]))
+    let data = OpData::build(itofp).operands(&[x]);
+    rw.replace_new(op, if nneg { data.flag("nonNeg") } else { data })
 }
 
 fn negf_pair(rw: &mut Rewriter<'_, '_>, op: OpId, name: &str) -> bool {
@@ -1506,7 +1815,7 @@ fn negf_pair(rw: &mut Rewriter<'_, '_>, op: OpId, name: &str) -> bool {
     let (l, r) = b.operands2(op);
     let (Some(nl), Some(nr)) = (b.def_named(l, "arith.negf"), b.def_named(r, "arith.negf")) else { return false };
     let (x, y) = (b[nl].operands[0], b[nr].operands[0]);
-    if b[x].ty != b[y].ty {
+    if b[x].ty != b[y].ty || b[op].get("roundingmode").is_some() {
         return false;
     }
     let fmf = b[op].get("fastmath").cloned();
@@ -1663,23 +1972,27 @@ impl ArithCanon {
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(AddIAddConstant).add(AddISubConstantRHS).add(AddISubConstantLHS).add(AddIMulNegativeOneRhs).add(AddIMulNegativeOneLhs);
         set.add(AddUIExtendedToAddI);
+        set.add(SubUIExtendedToSubI);
         set.add(SubIRHSAddConstant).add(SubILHSAddConstant).add(SubIRHSSubConstantRHS).add(SubIRHSSubConstantLHS).add(SubILHSSubConstantRHS).add(SubILHSSubConstantLHS).add(SubISubILHSRHSLHS);
         set.add(MulIMulIConstant);
         set.add(MulSIExtendedToMulI).add(MulSIExtendedRHSOne);
         set.add(MulUIExtendedToMulI);
-        set.add(XOrINotCmpI).add(XOrIOfExtUI).add(XOrIOfExtSI);
+        set.add(XOrIXOrIConstant).add(XOrINotCmpI).add(XOrIOfExtUI).add(XOrIOfExtSI);
+        set.add(SubFOfNegZero);
         set.add(MulFOfNegF);
         set.add(DivFOfNegF);
         set.add(ExtSIOfExtUI);
         set.add(TruncIExtSIToExtSI).add(TruncIExtUIToExtUI).add(TruncIShrSIToTrunciShrUI);
         set.add(TruncFSIToFPToSIToFP).add(TruncFUIToFPToUIToFP);
-        set.add(AndOfExtUI).add(AndOfExtSI);
-        set.add(OrOfExtUI).add(OrOfExtSI);
-        set.add(IndexCastOfIndexCast).add(IndexCastOfExtSI);
-        set.add(IndexCastUIOfIndexCastUI).add(IndexCastUIOfExtUI);
+        set.add(AndIAndIConstant).add(AndOfExtUI).add(AndOfExtSI);
+        set.add(OrIOrIConstant).add(OrOfExtUI).add(OrOfExtSI);
+        set.add(UIToFPOfExtUI);
+        set.add(SIToFPOfExtSI).add(SIToFPOfExtUI);
+        set.add(IndexCastOfExtSI);
+        set.add(IndexCastUIOfExtUI);
         set.add(BitcastOfBitcast);
         set.add(CmpIExtSI).add(CmpIExtUI);
         set.add(CmpFIntToFPConst);
-        set.add(RedundantSelectFalse).add(RedundantSelectTrue).add(SelectNotCond).add(SelectI1ToNot).add(SelectToExtUI);
+        set.add(RedundantSelectFalse).add(RedundantSelectTrue).add(SelectNotCond).add(SelectI1ToNot).add(SelectCmpIToMinMax).add(SelectToExtUI);
     }
 }

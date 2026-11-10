@@ -75,6 +75,17 @@ impl OptionValue for bool {
     }
 }
 
+/// An option that may be left unset (`Option<bool> lowerToCpp` with no default:
+/// `hasValue()`).
+impl OptionValue for Option<bool> {
+    fn read(o: &Options<'_>, key: &str, default: Self) -> Result<Self, Error> {
+        match o.get(key) {
+            Some(_) => o.flag(key, false).map(Some),
+            None => Ok(default),
+        }
+    }
+}
+
 impl OptionValue for Vec<String> {
     fn read(o: &Options<'_>, key: &str, default: Self) -> Result<Self, Error> {
         Ok(o.get(key).map_or(default, |_| o.list(key).into_iter().map(String::from).collect()))

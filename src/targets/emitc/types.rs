@@ -13,23 +13,26 @@ use crate::{ConversionRewriter, MemrefLayout, OpData, OpId, Rewriter, TypeConver
 pub struct Emitc;
 
 impl Emitc {
-    /// `isMemRefTypeLegalForEmitC`: static, identity layout, ranked and not empty.
+    /// `isMemRefTypeLegalForEmitC`: static (rank 0 too), identity layout, not empty.
     pub fn memref_legal(s: &Shaped<'_>) -> bool {
         let dims = s.dims().unwrap_or_default();
-        s.kind == ShapedKind::MemRef && s.shape.is_some() && !dims.is_empty() && dims.iter().all(|d| *d > 0) && s.identity_layout()
+        s.kind == ShapedKind::MemRef && s.shape.is_some() && dims.iter().all(|d| *d > 0) && s.identity_layout()
     }
 
-    /// `populateMemRefToEmitCTypeConversion`: legal memrefs are arrays; `size_t` says whether
-    /// `index` elements convert too.
+    /// `EmitCTypeConverter`'s memrefs: a legal one is an array, of rank 0 a pointer; `size_t`
+    /// says whether `index` elements convert too.
     pub fn memref_conversions(tc: &mut TypeConverter<'_>, size_t: bool) {
-        tc.conversion(move |t| match t {
+        tc.conversion_with(move |convert, t| match t {
             Type::Shaped(s) if s.kind == ShapedKind::MemRef && Self::memref_legal(s) => {
                 let elem = match &*s.elem {
                     Type::Index if size_t => EmitcType::size_t(),
-                    e if EmitcType::supported(e) => e.clone(),
-                    _ => return None,
+                    e => match convert(e) {
+                        Some(c) => c,
+                        None => return Some(None),
+                    },
                 };
-                Some(Some(vec![EmitcType::array(&s.dims().unwrap_or_default(), &elem)]))
+                let dims = s.dims().unwrap_or_default();
+                Some(Some(vec![if dims.is_empty() { EmitcType::ptr(&elem) } else { EmitcType::array(&dims, &elem) }]))
             }
             _ => None,
         });
@@ -93,6 +96,22 @@ impl Emitc {
             tc.conversion(|t| Some(Some(vec![t.clone()])));
         }
         tc
+    }
+
+    /// `EmitCTypeConverter`: the types EmitC supports as they are, legal memrefs as arrays
+    /// (`index` elements as `size_t` when `size_t`).
+    pub fn type_converter<'c>(size_t: bool) -> TypeConverter<'c> {
+        let mut tc = Self::converter(true);
+        Self::memref_conversions(&mut tc, size_t);
+        tc
+    }
+
+    /// `TestToEmitCDialectInterface`: `!test.memref_element` is `!emitc.opaque<"TestElementT">`.
+    pub fn test_conversions(tc: &mut TypeConverter<'_>) {
+        tc.conversion(|t| match t {
+            Type::Extended(e) if e.name == "test.memref_element" => Some(Some(vec![Type::Extended(mlirformat::Extended { name: Cow::Borrowed("emitc.opaque"), body: Some(Cow::Borrowed("<\"TestElementT\">")), params: alloc::vec::Vec::new() })])),
+            _ => None,
+        });
     }
 
     /// `populateEmitCSizeTTypeConversions`: `index` is `!emitc.size_t`.

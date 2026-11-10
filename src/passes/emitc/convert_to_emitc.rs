@@ -15,6 +15,9 @@ use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Conver
 pub struct ConvertToEmitc {
     #[opt("filter-dialects")]
     filter: Vec<String>,
+    /// Unset unless given: each dialect's own default.
+    #[opt("lower-to-cpp")]
+    lower_to_cpp: Option<bool>,
     /// The dialects' `ConvertToEmitCPatternInterface`s.
     interfaces: ToEmitcInterfaces,
 }
@@ -25,15 +28,15 @@ impl Run for ConvertToEmitc {
         if let Some(d) = dialects.iter().find(|d| !self.interfaces.knows(d)) {
             return Err(Error(format!("dialect does not implement ConvertToEmitCPatternInterface: {d}")));
         }
-        let mut tc = Emitc::converter(true);
         let size_t = dialects.iter().any(|d| self.interfaces.uses_size_t(d));
+        let mut tc = Emitc::type_converter(size_t);
         for d in &dialects {
             self.interfaces.types(d, &mut tc, size_t);
         }
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
         for d in dialects {
-            self.interfaces.populate(d, &mut patterns, i, &());
+            self.interfaces.populate(d, &mut patterns, i, &self.lower_to_cpp);
         }
         let mut target = ConversionTarget::default();
         target.legal_dialect("emitc");

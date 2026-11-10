@@ -1,41 +1,63 @@
 //! `func` ⇒ `emitc`, as `FuncToEmitC.cpp`.
 
+use alloc::borrow::Cow;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::patterns;
-use mlirformat::{Attribute, FunctionType, Type};
+use mlirformat::emitc_types::EmitcType;
+use mlirformat::{Attribute, Extended, FunctionType, Type};
 
 use crate::{ConversionRewriter, OpData, OpId, SignatureConversion, ValueId, Visibility};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The func ⇒ emitc patterns.
+/// The func ⇒ emitc patterns; their option is `lowerToCpp`: C++ leaves functions of several
+/// results alone (the translator returns a `std::tuple`), C packs the results in a `struct`.
 pub struct FuncToEmitc;
 
-#[patterns(converter)]
+#[patterns(converter, options = bool)]
 impl FuncToEmitc {
     /// `CallOpConversion`.
     #[convert("func.call")]
-    fn call(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+    fn call(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], cpp: bool) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let results = cr.rw.body[op].results.clone();
-        if results.len() > 1 {
+        if results.len() > 1 && cpp {
             return false;
         }
-        let types = cr.rw.body.types(&results);
-        let mut data = OpData::build("emitc.call").operands(&ops);
-        for a in cr.all_attrs(op) {
-            data.set(&a.name, a.value.unwrap_or(Attribute::Unit));
+        let Some(types) = Self::converted(cr, &cr.rw.body.types(&results)) else { return false };
+        if results.len() <= 1 {
+            let mut data = OpData::build("emitc.call").operands(&ops);
+            for a in cr.all_attrs(op) {
+                data.set(&a.name, a.value.unwrap_or(Attribute::Unit));
+            }
+            cr.replace_new(op, data, &types);
+            return true;
         }
-        cr.replace_new(op, data, &types);
+        let Some(st) = Self::multi_return_type(cr, op, &types) else { return false };
+        cr.rw.set_before(op);
+        let callee = cr.rw.body[op].get("callee").cloned().unwrap_or(Attribute::Unit);
+        let call = cr.rw.create(OpData::build("emitc.call").operands(&ops).with("callee", callee), &[st]);
+        let packed = cr.rw.body[call].results[0];
+        let mut values = Vec::new();
+        for (i, (r, t)) in results.iter().zip(&types).enumerate() {
+            if !cr.rw.body[*r].uses.is_empty() {
+                let m = cr.rw.create(OpData::build("emitc.member").operands(&[packed]).with("member", Attribute::str(&Self::field(i))), &[t.clone()]);
+                values.push(alloc::vec![cr.rw.body[m].results[0]]);
+            } else {
+                values.push(Vec::new());
+            }
+        }
+        cr.replace(op, values);
         true
     }
 
     /// `FuncOpConversion`.
     #[convert("func.func")]
-    fn func(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+    fn func(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], cpp: bool) -> bool {
         let Some(Attribute::Type(Type::Function(fty))) = cr.rw.body[op].get("function_type").cloned() else { return false };
-        if fty.results.len() > 1 {
+        if fty.results.len() > 1 && cpp {
             return false;
         }
         let Some(tc) = cr.type_converter() else { return false };
@@ -44,12 +66,13 @@ impl FuncToEmitc {
             let Some(c) = tc.convert(t) else { return false };
             sig.add_inputs(i, alloc::vec![c]);
         }
-        let results = match fty.results.first() {
-            Some(t) => match tc.convert(t) {
-                Some(c) => alloc::vec![c],
+        let Some(converted) = Self::converted(cr, &fty.results) else { return false };
+        let results = match converted.as_slice() {
+            [] | [_] => converted,
+            _ => match Self::multi_return_type(cr, op, &converted) {
+                Some(st) => alloc::vec![st],
                 None => return false,
             },
-            None => Vec::new(),
         };
         let new_ty = Type::Function(FunctionType { inputs: sig.converted_types().to_vec(), results });
         let mut data = OpData::build("emitc.func").with("sym_name", cr.rw.body[op].get("sym_name").cloned().unwrap_or(Attribute::Unit)).with("function_type", Attribute::Type(new_ty));
@@ -82,13 +105,103 @@ impl FuncToEmitc {
 
     /// `ReturnOpConversion`.
     #[convert("func.return")]
-    fn ret(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+    fn ret(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], cpp: bool) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
-        if ops.len() > 1 {
+        if ops.len() > 1 && cpp {
             return false;
         }
-        cr.replace_new(op, OpData::build("emitc.return").operands(&ops), &[]);
+        let types = cr.rw.body.types(&ops);
+        if types.iter().any(Self::array) {
+            return false;
+        }
+        if ops.len() <= 1 {
+            cr.replace_new(op, OpData::build("emitc.return").operands(&ops), &[]);
+            return true;
+        }
+        let Some(st) = Self::multi_return_type(cr, op, &types) else { return false };
+        cr.rw.set_before(op);
+        // `packValuesIntoStruct`.
+        let var = cr.rw.create(OpData::build("emitc.variable").with("value", Attribute::dialect("emitc.opaque", "<\"\">")), &[EmitcType::lvalue(&st)]);
+        let lv = cr.rw.body[var].results[0];
+        for (i, (v, t)) in ops.iter().zip(&types).enumerate() {
+            let m = cr.rw.create(OpData::build("emitc.member").operands(&[lv]).with("member", Attribute::str(&Self::field(i))), &[EmitcType::lvalue(t)]);
+            let field = cr.rw.body[m].results[0];
+            cr.rw.create(OpData::build("emitc.assign").operands(&[field, *v]), &[]);
+        }
+        let load = cr.rw.create(OpData::build("emitc.load").operands(&[lv]), &[st]);
+        let packed = cr.rw.body[load].results[0];
+        cr.replace_new(op, OpData::build("emitc.return").operands(&[packed]), &[]);
         true
     }
+}
 
+impl FuncToEmitc {
+    /// `fieldN`.
+    fn field(i: usize) -> String {
+        alloc::format!("field{i}")
+    }
+
+    /// An `!emitc.array`: no function takes or returns one.
+    fn array(t: &Type<'_>) -> bool {
+        matches!(t, Type::Extended(e) if e.name == "emitc.array")
+    }
+
+    /// The result types converted, none of them an array.
+    fn converted<'a>(cr: &Cr<'_, 'a, '_>, types: &[Type<'a>]) -> Option<Vec<Type<'a>>> {
+        let tc = cr.type_converter()?;
+        types.iter().map(|t| tc.convert(t).filter(|c| !Self::array(c))).collect()
+    }
+
+    /// `getOrCreateMultiReturnType`: `!emitc.opaque<"struct return_T_U">` of the
+    /// `emitc.class` struct `return_T_U` with fields `field0: T`, `field1: U`, made before the
+    /// nearest symbol table's child holding `op` unless already there (with exactly those
+    /// fields and no methods).
+    fn multi_return_type<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, types: &[Type<'a>]) -> Option<Type<'a>> {
+        let mut name = String::from("return");
+        for t in types {
+            name.push('_');
+            name.extend(alloc::format!("{t}").chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }));
+        }
+        let body = &*cr.rw.body;
+        let mut child = op;
+        let table = loop {
+            let parent = body.parent_op(child)?;
+            if body.is_symbol_table(parent) {
+                break parent;
+            }
+            child = parent;
+        };
+        match body.find_symbol(table, &name) {
+            Some(class) => {
+                if body[class].name != "emitc.class" || !matches!(body[class].get("class_type"), Some(Attribute::Int { lit, .. }) if lit == "1") {
+                    return None;
+                }
+                let fields: Vec<OpId> = body.ops_in(class).into_iter().filter(|f| body.parent_op(*f) == Some(class)).collect();
+                if fields.iter().any(|f| body[*f].name == "emitc.func") {
+                    return None;
+                }
+                let fields: Vec<OpId> = fields.into_iter().filter(|f| body[*f].name == "emitc.field").collect();
+                let same = fields.len() == types.len()
+                    && fields.iter().zip(types).enumerate().all(|(i, (f, t))| body[*f].get_str("sym_name") == Some(&Self::field(i)) && body[*f].get("type") == Some(&Attribute::Type(t.clone())));
+                if !same {
+                    return None;
+                }
+            }
+            None => {
+                let saved = cr.rw.ip;
+                cr.rw.set_before(child);
+                let class = cr.rw.create_with(OpData::build("emitc.class").with("sym_name", Attribute::str(&name)).with("class_type", Attribute::integer(1, Type::int(32))), &[], |b, c| {
+                    let r = b.add_region(c);
+                    b.add_block(r, &[]);
+                });
+                let block = cr.rw.body[cr.rw.body[class].regions[0]].blocks[0];
+                cr.rw.set_start(block);
+                for (i, t) in types.iter().enumerate() {
+                    cr.rw.create(OpData::build("emitc.field").with("sym_name", Attribute::str(&Self::field(i))).with("type", Attribute::Type(t.clone())), &[]);
+                }
+                cr.rw.ip = saved;
+            }
+        }
+        Some(Type::Extended(Extended { name: Cow::Borrowed("emitc.opaque"), body: Some(Cow::Owned(alloc::format!("<\"struct {name}\">"))), params: Vec::new() }))
+    }
 }

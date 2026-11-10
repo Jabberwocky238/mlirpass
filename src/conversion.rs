@@ -135,6 +135,14 @@ impl<'c> ConversionTarget<'c> {
 
 /// A type conversion: `None` when it does not apply, `Some(None)` when the type cannot convert.
 pub type ConvertFn<'c> = Box<dyn for<'a> Fn(&Type<'a>) -> Option<Option<Vec<Type<'a>>>> + 'c>;
+/// A conversion that converts parts of the type through the converter itself (a memref's
+/// element).
+pub type RecConvertFn<'c> = Box<dyn for<'a> Fn(&dyn Fn(&Type<'a>) -> Option<Type<'a>>, &Type<'a>) -> Option<Option<Vec<Type<'a>>>> + 'c>;
+/// One conversion of a [`TypeConverter`], in the order added.
+enum Conversion<'c> {
+    Plain(ConvertFn<'c>),
+    Recursive(RecConvertFn<'c>),
+}
 /// A source materialization: one value of the type given, from the inputs.
 pub type SourceMatFn<'c> = Box<dyn for<'r, 'a> Fn(&mut Rewriter<'r, 'a>, &Type<'a>, &[ValueId]) -> Option<ValueId> + 'c>;
 /// A target materialization: values of the types given, from the inputs (and the original type).
@@ -143,14 +151,20 @@ pub type TargetMatFn<'c> = Box<dyn for<'r, 'a> Fn(&mut Rewriter<'r, 'a>, &[Type<
 /// ⭐ `TypeConverter`: conversions and materializations, the last added tried first.
 #[derive(Default)]
 pub struct TypeConverter<'c> {
-    conversions: Vec<ConvertFn<'c>>,
+    conversions: Vec<Conversion<'c>>,
     sources: Vec<SourceMatFn<'c>>,
     targets: Vec<TargetMatFn<'c>>,
 }
 
 impl<'c> TypeConverter<'c> {
     pub fn conversion(&mut self, f: impl for<'a> Fn(&Type<'a>) -> Option<Option<Vec<Type<'a>>>> + 'c) -> &mut Self {
-        self.conversions.push(Box::new(f));
+        self.conversions.push(Conversion::Plain(Box::new(f)));
+        self
+    }
+
+    /// [`Self::conversion`] that may convert parts of the type with the converter itself.
+    pub fn conversion_with(&mut self, f: impl for<'a> Fn(&dyn Fn(&Type<'a>) -> Option<Type<'a>>, &Type<'a>) -> Option<Option<Vec<Type<'a>>>> + 'c) -> &mut Self {
+        self.conversions.push(Conversion::Recursive(Box::new(f)));
         self
     }
 
@@ -166,7 +180,13 @@ impl<'c> TypeConverter<'c> {
 
     /// `convertType` into a list; `None` on failure.
     pub fn convert_types<'a>(&self, t: &Type<'a>) -> Option<Vec<Type<'a>>> {
-        self.conversions.iter().rev().find_map(|f| f(t))?
+        self.conversions
+            .iter()
+            .rev()
+            .find_map(|c| match c {
+                Conversion::Plain(f) => f(t),
+                Conversion::Recursive(f) => f(&|x| self.convert(x), t),
+            })?
     }
 
     /// `convertType` to exactly one type.
@@ -323,6 +343,8 @@ pub struct ConvState<'a> {
     depth: u32,
     /// A rewrite pattern is running ([`Plain`]): its replacements are recorded, not done.
     recording: bool,
+    /// `allowPatternRollback = false`: materializations are not mapped (each use casts anew).
+    no_rollback: bool,
 }
 
 /// One change to [`ConvState`] to undo on rollback.
@@ -780,7 +802,7 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         let results = self.rw.body[op].results.clone();
         let st = self.state();
         st.set_unresolved(op, Some(MatInfo { kind, original, converter }));
-        if !to_map.is_empty() {
+        if !to_map.is_empty() && !st.no_rollback {
             st.map(to_map, results.clone().to_vec());
         }
         results.to_vec()
@@ -1247,7 +1269,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
 
     /// ⭐ `applyPartialConversion` / `applyFullConversion` on `roots`.
     pub fn apply<'a>(&mut self, body: &mut Body<'a>, roots: &[OpId], mode: Mode) -> Result<(), Error> {
-        let mut state = ConvState::default();
+        let mut state = ConvState { no_rollback: !self.config.rollback, ..ConvState::default() };
         let mut ops = Vec::new();
         for r in roots {
             self.collect(body, *r, &mut ops);
