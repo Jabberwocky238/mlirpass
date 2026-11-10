@@ -302,12 +302,10 @@ impl XegpuToXevm {
         let b = &*cr.rw.body;
         let ops = b[op].operands.clone();
         let seg = b.dense_i64(op, "operandSegmentSizes");
-        let seg: Vec<usize> = if seg.len() == 4 { seg.iter().map(|&n| n as usize).collect() } else { vec![1, 0, 0, 0] };
-        if seg[1] != 0 || !b.dense_i64(op, "const_offsets").is_empty() {
-            return false;
-        }
-        let shape_ops = &ops[1 + seg[1]..1 + seg[1] + seg[2]];
-        let stride_ops = &ops[1 + seg[1] + seg[2]..];
+        // source, shape, strides (MLIR 23 dropped the offsets).
+        let seg: Vec<usize> = if seg.len() == 3 { seg.iter().map(|&n| n as usize).collect() } else { vec![1, 0, 0] };
+        let shape_ops = &ops[1..1 + seg[1]];
+        let stride_ops = &ops[1 + seg[1]..];
         let src_ty = b[ops[0]].ty.clone();
         let mut sizes: Vec<i64> = Vec::new();
         let mut strides: Vec<i64> = Vec::new();

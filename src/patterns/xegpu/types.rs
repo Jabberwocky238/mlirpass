@@ -265,6 +265,7 @@ impl MemorySpace {
 pub enum Chip {
     Pvc,
     Bmg,
+    Cri,
     Other,
 }
 
@@ -278,6 +279,7 @@ impl Chip {
         Some(match &*lit {
             "pvc" => Chip::Pvc,
             "bmg" => Chip::Bmg,
+            "cri" => Chip::Cri,
             _ => Chip::Other,
         })
     }

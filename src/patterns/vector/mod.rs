@@ -25,4 +25,4 @@ pub use to_spirv::{VectorSpirvOptions, VectorToSpirv};
 #[cfg(feature = "dialect.xegpu")]
 mod to_xegpu;
 #[cfg(feature = "dialect.xegpu")]
-pub use to_xegpu::VectorToXegpu;
+pub use to_xegpu::{PrepareVectorToMma, VectorToXegpu};

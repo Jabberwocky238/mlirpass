@@ -85,7 +85,7 @@ impl<'a> Xg<'a> for Rw<'_, 'a> {
 pub struct VectorToXegpu;
 
 impl VectorToXegpu {
-    /// `xegpu::getChipStr` is pvc or bmg (2-D block I/O).
+    /// `xegpu::getChipStr` is pvc, bmg or cri (2-D block I/O).
     fn block_io(rw: &Rw<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
         let mut at = b.parent_op(op);
@@ -93,7 +93,7 @@ impl VectorToXegpu {
             at = b.parent_op(o);
         }
         let Some(Attribute::Array(ts)) = at.and_then(|m| b[m].get("targets")) else { return false };
-        matches!(ts.iter().find_map(Chip::of_target), Some(Chip::Pvc | Chip::Bmg))
+        matches!(ts.iter().find_map(Chip::of_target), Some(Chip::Pvc | Chip::Bmg | Chip::Cri))
     }
 
     /// `transferPreconditions`.
@@ -104,16 +104,50 @@ impl VectorToXegpu {
             return false;
         }
         let Some(s) = memref_of(&b[base].ty) else { return false };
+        // Strides known, not a 0-D memref, contiguous innermost.
         if !s.strides_and_offset().is_some_and(|(st, _)| st.last() == Some(&1)) {
             return false;
         }
         let Some(shape) = vector_shape(&b.xfer_vector_type(op)) else { return false };
         let rank = shape.len() as u32;
+        if rank == 0 {
+            return false;
+        }
         if b.xfer_out_of_bounds(op) && rank < 2 {
             return false;
         }
         let Some(map) = b.affine_map(op, "permutation_map") else { return false };
         Self::projected_permutation(&map) && map.results.iter().rev().take(rank as usize).all(|e| matches!(e, AffineExpr::Dim(d) if *d >= map.dims - rank))
+    }
+
+    /// `XeGPUDialect::isSharedMemory`: memory space 3, `#xegpu.memory_space<slm>`,
+    /// `#xevm.addr_space<shared>` or `#gpu.address_space<workgroup>`.
+    pub(crate) fn shared_memory(t: &Type<'_>) -> bool {
+        let Some(s) = memref_of(t) else { return false };
+        match s.memory_space() {
+            Some(Attribute::Int { lit, .. }) => lit == "3",
+            Some(a) => {
+                let text = format!("{a}");
+                text.contains("memory_space<slm>") || text.contains("addr_space<shared>") || text == "#gpu.address_space<workgroup>"
+            }
+            None => false,
+        }
+    }
+
+    /// `storeLoadPreconditions`: a 1-D or 2-D vector of integers or floats, the memref's
+    /// elements integers or floats.
+    fn store_load_ok(vt: &Type<'_>, mt: &Type<'_>) -> bool {
+        let scalar = |t: &Type<'_>| matches!(t, Type::Integer { .. } | Type::Float(_));
+        let (Type::Shaped(v), Some(m)) = (vt, memref_of(mt)) else { return false };
+        matches!(v.dims().map(|d| d.len()), Some(1 | 2)) && scalar(&v.elem) && scalar(&m.elem)
+    }
+
+    /// `xegpu.create_mem_desc` of SLM memref `base`: `!xegpu.mem_desc<shape x elem>`.
+    fn mem_desc(rw: &mut Rw<'_, '_>, base: ValueId) -> Option<ValueId> {
+        let s = memref_of(&rw.body[base].ty)?.clone();
+        let dims: String = s.dims()?.iter().map(|d| format!("{d}x")).collect();
+        let ty = mlirformat::Parser::read(&format!("!xegpu.mem_desc<{dims}{}>", s.elem), |p| p.ty()).ok()?.owned();
+        Some(rw.mk(OpData::build("xegpu.create_mem_desc").operands(&[base]), ty))
     }
 
     /// `isProjectedPermutation(false)`: distinct dims.
@@ -197,24 +231,24 @@ impl VectorToXegpu {
             }
             offset = offset.or(Some(r[1]));
         }
-        if matches!(&*rw.body[op].name, "vector.transfer_read" | "vector.transfer_write") {
-            let map = rw.body.affine_map(op, "permutation_map")?;
-            strides = Self::permute_strides(&map, strides);
-        }
+        let _ = op;
         Some((strides, offset?))
     }
 
-    /// `computeOffsets` of a transfer: the strided steps of each vector dimension, broadcast and
-    /// summed, plus the linearized indices.
+    /// `computeOffsets` of a transfer: the strided steps of each vector dimension (the strides
+    /// permuted to the vector's order), broadcast and summed, plus the linearized indices (the
+    /// memref's order).
     fn transfer_offsets(rw: &mut Rw<'_, '_>, op: OpId, strides: &[ValueId], mut base: ValueId) -> Option<ValueId> {
         let shape = vector_shape(&rw.body.xfer_vector_type(op))?;
         let (_, indices, _, _) = rw.body.xfer_parts(op);
+        let map = rw.body.affine_map(op, "permutation_map")?;
+        let permuted = Self::permute_strides(&map, strides.to_vec());
         let steps: Vec<ValueId> = shape.iter().map(|&d| rw.mk(OpData::build("vector.step"), shaped(ShapedKind::Vector, &[d], Type::Index))).collect();
-        let (mr, vr) = (strides.len(), shape.len());
+        let (mr, vr) = (permuted.len(), shape.len());
         let mut muls = Vec::new();
         for i in 0..vr {
             let ty = rw.body[steps[i]].ty.clone();
-            let b = rw.splat_to(strides[mr - vr + i], ty);
+            let b = rw.splat_to(permuted[mr - vr + i], ty);
             muls.push(rw.bin("arith.muli", steps[i], b));
         }
         let full = shaped(ShapedKind::Vector, &shape, Type::Index);
@@ -295,7 +329,7 @@ impl VectorToXegpu {
         let (strides, offset) = s.strides_and_offset()?;
         let static_shape = s.shape.as_ref()?.iter().all(|d| matches!(d, Dim::Static(_)));
         if static_shape && offset != Dim::DYNAMIC && !strides.contains(&Dim::DYNAMIC) {
-            return Some(rw.mk(OpData::build("xegpu.create_nd_tdesc").operands(&[src]).segments(&[1, 0, 0, 0]), desc));
+            return Some(rw.mk(OpData::build("xegpu.create_nd_tdesc").operands(&[src]).segments(&[1, 0, 0]), desc));
         }
         let (base, off, sizes_v, strides_v) = rw.strided_metadata(src)?;
         let ptr = rw.mk(OpData::build("memref.extract_aligned_pointer_as_index").operands(&[base]), Type::Index);
@@ -308,8 +342,7 @@ impl VectorToXegpu {
         let shape = s.dims()?;
         let sizes = constify(rw, &sizes_v, &shape);
         let strides = constify(rw, &strides_v, &strides);
-        let mut data = OpData::mixed("xegpu.create_nd_tdesc", &[addr], &[&[], &sizes, &strides], &["const_offsets", "const_shape", "const_strides"]);
-        data.set("const_offsets", Attribute::dense_i64(&[]));
+        let data = OpData::mixed("xegpu.create_nd_tdesc", &[addr], &[&sizes, &strides], &["const_shape", "const_strides"]);
         Some(rw.mk(data, desc))
     }
 
@@ -363,35 +396,55 @@ impl VectorToXegpu {
         let oob = rw.body.xfer_out_of_bounds(op);
         let vt = rw.body.xfer_vector_type(op);
         let Some(shape) = vector_shape(&vt) else { return false };
-        if !Self::block_io(rw, op) || (shape.len() == 1 && !oob) {
+        let (base, indices, padding, _) = rw.body.xfer_parts(op);
+        let Some(map) = rw.body.affine_map(op, "permutation_map") else { return false };
+        let mt = rw.body[base].ty.clone();
+        // Shared local memory: `xegpu.load_matrix` of a mem_desc (1-D / 2-D, no transpose, in
+        // bounds).
+        if Self::shared_memory(&mt) {
+            if !matches!(shape.len(), 1 | 2) || !Self::minor_identity(&map) || oob {
+                return false;
+            }
+            rw.set_before(op);
+            let Some(md) = Self::mem_desc(rw, base) else { return false };
+            let offs: Vec<Ofr> = indices.iter().map(|v| rw.ofr_of(*v)).collect();
+            let r = rw.mk(Self::nd_op("xegpu.load_matrix", &[md], &offs), vt);
+            rw.replace_op(op, &[r]);
+            return true;
+        }
+        if !Self::block_io(rw, op) || shape.len() > 2 {
             return !oob && Self::scattered(rw, op);
         }
-        if !matches!(shape.len(), 1 | 2) {
+        if shape.len() == 1 && !oob {
+            return Self::scattered(rw, op);
+        }
+        if !Self::store_load_ok(&vt, &mt) {
             return false;
         }
-        let (base, indices, padding, _) = rw.body.xfer_parts(op);
         if oob && !Self::zero_constant(rw, padding) {
             return false;
         }
-        let Some(map) = rw.body.affine_map(op, "permutation_map") else { return false };
-        let transpose = !Self::minor_identity(&map);
+        // A transpose: two results, the last two inputs swapped.
+        let n = map.dims;
+        let transpose = map.results.len() == 2 && n >= 2 && map.results[0] == AffineExpr::Dim(n - 1) && map.results[1] == AffineExpr::Dim(n - 2);
         let Type::Shaped(s) = &vt else { return false };
         let elem = (*s.elem).clone();
-        if transpose && elem.bit_width().is_none_or(|w| w < 32) {
-            return false;
-        }
         let mut dshape = shape.clone();
-        if transpose {
-            dshape.reverse();
-        }
+        let loaded = if transpose {
+            let r = dshape.len();
+            dshape.swap(r - 1, r - 2);
+            shaped(ShapedKind::Vector, &dshape, elem.clone())
+        } else {
+            vt.clone()
+        };
         let Some(desc) = tensor_desc(&dshape, &elem, oob) else { return false };
         rw.set_before(op);
         let Some((d, offs)) = Self::nd_source(rw, base, &indices, desc, shape.len()) else { return false };
-        let mut data = Self::nd_op("xegpu.load_nd", &[d], &offs);
+        let mut r = rw.mk(Self::nd_op("xegpu.load_nd", &[d], &offs), loaded);
         if transpose {
-            data.set("transpose", Attribute::dense_i64(&[1, 0]));
+            let perm: Vec<i64> = (0..map.results.len() as i64).rev().collect();
+            r = rw.mk(OpData::build("vector.transpose").operands(&[r]).with("permutation", Attribute::dense_i64(&perm)), vt);
         }
-        let r = rw.mk(data, vt);
         rw.replace_op(op, &[r]);
         true
     }
@@ -403,19 +456,32 @@ impl VectorToXegpu {
             return false;
         }
         let oob = rw.body.xfer_out_of_bounds(op);
-        if !Self::block_io(rw, op) {
-            return !oob && Self::scattered(rw, op);
-        }
         let vt = rw.body.xfer_vector_type(op);
         let Some(shape) = vector_shape(&vt) else { return false };
-        if !matches!(shape.len(), 1 | 2) {
+        let (base, indices, value, _) = rw.body.xfer_parts(op);
+        let mt = rw.body[base].ty.clone();
+        // Shared local memory: `xegpu.store_matrix` into a mem_desc (1-D / 2-D).
+        if Self::shared_memory(&mt) {
+            if !matches!(shape.len(), 1 | 2) {
+                return false;
+            }
+            rw.set_before(op);
+            let Some(md) = Self::mem_desc(rw, base) else { return false };
+            let offs: Vec<Ofr> = indices.iter().map(|v| rw.ofr_of(*v)).collect();
+            rw.create(Self::nd_op("xegpu.store_matrix", &[value, md], &offs), &[]);
+            rw.erase_op(op);
+            return true;
+        }
+        if !Self::block_io(rw, op) || shape.len() > 2 {
+            return !oob && Self::scattered(rw, op);
+        }
+        if !Self::store_load_ok(&vt, &mt) {
             return false;
         }
         let Some(map) = rw.body.affine_map(op, "permutation_map") else { return false };
         if !Self::minor_identity(&map) {
             return false;
         }
-        let (base, indices, value, _) = rw.body.xfer_parts(op);
         let Type::Shaped(s) = &vt else { return false };
         let Some(desc) = tensor_desc(&shape, &s.elem, oob) else { return false };
         rw.set_before(op);
@@ -430,10 +496,10 @@ impl VectorToXegpu {
     fn load_lowering(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let vt = rw.body[rw.body[op].results[0]].ty.clone();
         let Some(shape) = vector_shape(&vt) else { return false };
-        if !matches!(shape.len(), 1 | 2) {
+        let ops = rw.body[op].operands.clone();
+        if !Self::store_load_ok(&vt, &rw.body[ops[0]].ty) {
             return false;
         }
-        let ops = rw.body[op].operands.clone();
         let Type::Shaped(s) = &vt else { return false };
         let Some(desc) = tensor_desc(&shape, &s.elem, shape.len() > 1) else { return false };
         rw.set_before(op);
@@ -449,7 +515,7 @@ impl VectorToXegpu {
         let ops = rw.body[op].operands.clone();
         let vt = rw.body[ops[0]].ty.clone();
         let Some(shape) = vector_shape(&vt) else { return false };
-        if !matches!(shape.len(), 1 | 2) {
+        if !Self::store_load_ok(&vt, &rw.body[ops[1]].ty) {
             return false;
         }
         let Type::Shaped(s) = &vt else { return false };
@@ -548,5 +614,172 @@ impl VectorToXegpu {
         let (m, n, k) = (&c.results[0], &c.results[1], &a.results[1]);
         let dims = [m, n, k].iter().filter_map(|e| if let AffineExpr::Dim(d) = e { Some(*d + 1) } else { None }).max().unwrap_or(0);
         [(a, [m, k]), (b, [k, n]), (c, [m, n])].iter().all(|(map, want)| map.dims == dims && map.results.iter().zip(want).all(|(x, y)| x == *y))
+    }
+}
+
+/// `populatePrepareVectorToMMAPatterns` (without nvgpu): contractions into `(m, k) × (k, n) ⇒
+/// (m, n)` form, transposes folded into the transfer reads they read.
+pub struct PrepareVectorToMma;
+
+#[crate::patterns]
+impl PrepareVectorToMma {
+    /// `PrepareContractToGPUMMA`: a gemm contraction's operands transposed / swapped so its maps
+    /// are the row-major matmul's.
+    #[rewrite("vector.contract")]
+    fn prepare_contract_to_gpu_mma(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
+        let b = &*rw.body;
+        let Some(Attribute::Array(iters)) = b[op].get("iterator_types") else { return false };
+        let kinds: Vec<String> = iters.iter().map(|a| format!("{a}")).collect();
+        if kinds.len() != 3 || !kinds[0].contains("parallel") || !kinds[1].contains("parallel") || !kinds[2].contains("reduction") {
+            return false;
+        }
+        let Some(Attribute::Array(maps)) = b[op].get("indexing_maps") else { return false };
+        let Some(maps) = maps.iter().map(|m| AffineMap::try_from(m).ok()).collect::<Option<Vec<AffineMap>>>() else { return false };
+        // The maps' results as (m, n, k) = (d0, d1, d2) positions.
+        let pairs: Option<Vec<[u32; 2]>> = maps
+            .iter()
+            .map(|m| match (m.dims, m.syms, m.results.as_slice()) {
+                (3, 0, [AffineExpr::Dim(x), AffineExpr::Dim(y)]) => Some([*x, *y]),
+                _ => None,
+            })
+            .collect();
+        let Some(pairs) = pairs else { return false };
+        let (m, n, k) = (0, 1, 2);
+        let is = |want: [[u32; 2]; 3]| pairs.as_slice() == want.as_slice();
+        // (transpose lhs, transpose rhs, swap first)
+        let (swap, t_lhs, t_rhs) = if is([[m, k], [k, n], [m, n]]) {
+            return false;
+        } else if is([[m, k], [n, k], [m, n]]) {
+            (false, false, true)
+        } else if is([[k, m], [k, n], [m, n]]) {
+            (false, true, false)
+        } else if is([[k, m], [n, k], [m, n]]) {
+            (false, true, true)
+        } else if is([[m, k], [k, n], [n, m]]) {
+            (true, true, true)
+        } else if is([[m, k], [n, k], [n, m]]) {
+            (true, false, true)
+        } else if is([[k, m], [k, n], [n, m]]) {
+            (true, true, false)
+        } else if is([[k, m], [n, k], [n, m]]) {
+            (true, false, false)
+        } else {
+            return false;
+        };
+        let ops = b[op].operands.clone();
+        let (mut lhs, mut rhs, acc) = (ops[0], ops[1], ops[2]);
+        let props: Vec<_> = b[op].all_attrs().into_iter().filter(|a| a.name != "indexing_maps").collect();
+        rw.set_before(op);
+        if swap {
+            core::mem::swap(&mut lhs, &mut rhs);
+        }
+        let transpose = |rw: &mut Rw<'_, '_>, v: ValueId| {
+            let Some(d) = vector_shape(&rw.body[v].ty) else { return v };
+            let Type::Shaped(s) = rw.body[v].ty.clone() else { return v };
+            let t = shaped(ShapedKind::Vector, &[d[1], d[0]], (*s.elem).clone());
+            rw.mk(OpData::build("vector.transpose").operands(&[v]).with("permutation", Attribute::dense_i64(&[1, 0])), t)
+        };
+        // As upstream creates them: the rhs transpose first.
+        if t_rhs {
+            rhs = transpose(rw, rhs);
+        }
+        if t_lhs {
+            lhs = transpose(rw, lhs);
+        }
+        let row = |rs: [u32; 2]| Attribute::from(&AffineMap { dims: 3, syms: 0, results: rs.iter().map(|d| AffineExpr::Dim(*d)).collect() });
+        let mut data = OpData::build("vector.contract").operands(&[lhs, rhs, acc]).with("indexing_maps", Attribute::Array(vec![row([m, k]), row([k, n]), row([m, n])]));
+        for a in props {
+            data.set(&a.name, a.value.unwrap_or(Attribute::Unit));
+        }
+        let ty = rw.body[rw.body[op].results[0]].ty.clone();
+        rw.replace_with(op, data, &[ty]);
+        true
+    }
+
+    /// `CombineTransferReadOpTranspose`: `transpose(transfer_read)` (through an `ext`) as one
+    /// transfer read with the permutation composed.
+    #[rewrite("vector.transpose")]
+    fn combine_transfer_read_op_transpose(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
+        let b = &*rw.body;
+        let mut source = b[op].operands[0];
+        let res_ty = b[b[op].results[0]].ty.clone();
+        let ext = ["arith.extsi", "arith.extui", "arith.extf"].iter().find_map(|n| b.def_named(source, n));
+        let mut read_ty = res_ty.clone();
+        if let Some(e) = ext {
+            source = b[e].operands[0];
+            let Type::Shaped(s) = &b[source].ty else { return false };
+            read_ty = res_ty.with_element((*s.elem).clone());
+        }
+        let Some(read) = b.def_named(source, "vector.transfer_read") else { return false };
+        let Some(map) = b.affine_map(read, "permutation_map") else { return false };
+        if map.results.is_empty() {
+            return false;
+        }
+        let (_, _, _, mask) = b.xfer_parts(read);
+        if mask.is_some() || b.xfer_out_of_bounds(read) {
+            return false;
+        }
+        let perm = b.dense_i64(op, "permutation");
+        let pmap = AffineMap { dims: perm.len() as u32, syms: 0, results: perm.iter().map(|p| AffineExpr::Dim(*p as u32)).collect() };
+        let new_map = pmap.compose(&map);
+        let mut data = OpData::named(b[read].name.clone()).operands(&b[read].operands.clone());
+        data.properties.clone_from(&b[read].properties);
+        data.set("permutation_map", Attribute::from(&new_map));
+        let ext_name = ext.map(|e| b[e].name.clone());
+        rw.set_before(op);
+        let mut r = rw.mk(data, read_ty);
+        if let Some(n) = ext_name {
+            r = rw.mk(OpData::named(n).operands(&[r]), res_ty);
+        }
+        rw.replace_op(op, &[r]);
+        true
+    }
+}
+
+impl PrepareVectorToMma {
+    /// `promoteAllocasToSLM`: every `memref.alloca` outside shared local memory moved into it
+    /// (memory space 3), the new type carried through the side-effect-free ops that make memrefs
+    /// of it.
+    pub fn promote_allocas(body: &mut crate::Body<'_>, root: OpId) {
+        let mut allocas = Vec::new();
+        body.walk(root, &mut |o| allocas.push(o));
+        let allocas: Vec<OpId> = allocas.into_iter().filter(|o| body[*o].name == "memref.alloca" && memref_of(&body[body[*o].results[0]].ty).is_some() && !VectorToXegpu::shared_memory(&body[body[*o].results[0]].ty)).collect();
+        for a in allocas {
+            let r = body[a].results[0];
+            Self::to_slm(body, r);
+        }
+    }
+
+    /// `v`'s type in memory space 3, and so on through the memref-making users.
+    fn to_slm(body: &mut crate::Body<'_>, v: ValueId) {
+        let ty = body[v].ty.clone();
+        let Type::Shaped(mut s) = ty else { return };
+        if s.kind != ShapedKind::MemRef || VectorToXegpu::shared_memory(&body[v].ty) {
+            return;
+        }
+        // `IntegerAttr 3 : i64`, which a memref type prints (and reads) bare.
+        let space = Attribute::Int { lit: "3".into(), ty: None };
+        match s.memory_space().is_some() {
+            true => {
+                if let Some(last) = s.extras.last_mut() {
+                    *last = space;
+                }
+            }
+            false => s.extras.push(space),
+        }
+        body[v].ty = Type::Shaped(s);
+        let mut users: Vec<OpId> = body[v].uses.iter().map(|u| u.op).collect();
+        users.dedup();
+        for u in users {
+            if !body.is_memory_effect_free(u) {
+                continue;
+            }
+            let results = body[u].results.clone();
+            if results.iter().any(|r| matches!(&body[*r].ty, Type::Shaped(s) if s.kind == ShapedKind::MemRef)) {
+                for r in results {
+                    Self::to_slm(body, r);
+                }
+            }
+        }
     }
 }
