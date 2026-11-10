@@ -240,7 +240,9 @@ impl<'a> Body<'a> {
         if self[src].ty == self[res].ty {
             return Folded::Value(src).into();
         }
-        if let Some(c) = src_const.and_then(|a| Const::try_from(a).ok()).filter(|c| c.elements) {
+        // (a dense constant needs a static shape)
+        let static_res = self[res].ty.dims().is_some_and(|d| !d.contains(&Dim::DYNAMIC));
+        if let Some(c) = src_const.and_then(|a| Const::try_from(a).ok()).filter(|c| c.elements && static_res) {
             return Folded::Attr(Const { ty: self[res].ty.clone(), ..c }.into()).into();
         }
         let Some(p) = self.def_named(src, inverse) else { return Fold::Failed };

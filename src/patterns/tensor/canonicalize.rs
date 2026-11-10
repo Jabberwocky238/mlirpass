@@ -100,6 +100,33 @@ impl Tn {
     }
 
     /// `inferCanonicalRankReducedResultType`.
+    /// `SliceReturnTypeCanonicalizer`: the slice type of `sizes`, without the dims the slice
+    /// typed `result` drops (`getDroppedDims`: a unit size where the result's next dim is not 1).
+    fn slice_type_dropping<'a>(src: &Shaped<'a>, original: &[Ofr], sizes: &[Ofr], result: &Type<'a>) -> Type<'a> {
+        let inferred = Self::slice_type(src, sizes);
+        let (shape, rshape) = (inferred.dims().unwrap_or_default(), result.dims().unwrap_or_default());
+        // (from the back: a static unit size of the op is dropped unless the result's dim is 1)
+        let mut at = rshape.len();
+        let mut keep = vec![true; original.len()];
+        for (i, o) in original.iter().enumerate().rev() {
+            let unit = matches!(o, Ofr::C(1));
+            if at == 0 {
+                keep[i] = false;
+                continue;
+            }
+            if !unit || rshape[at - 1] == 1 {
+                at -= 1;
+                continue;
+            }
+            keep[i] = false;
+        }
+        let kept: Vec<i64> = shape.iter().zip(&keep).filter(|(_, k)| **k).map(|(d, _)| *d).collect();
+        if kept.len() == shape.len() {
+            return inferred;
+        }
+        Self::tensor(&kept, (*src.elem).clone(), src.extras.iter().filter(|x| !x.is_layout()).cloned().collect())
+    }
+
     fn rank_reduced_slice_type<'a>(rank: usize, src: &Shaped<'a>, sizes: &[Ofr]) -> Type<'a> {
         let inferred = Self::slice_type(src, sizes);
         let shape = inferred.dims().unwrap_or_default();
@@ -355,8 +382,8 @@ fn constant_slice_arguments(rw: &mut Rewriter<'_, '_>, op: OpId, insert: bool) -
         rw.replace_with(op, OpData::sliced(&name, &[to_insert, dst], &lists), &result_types);
     } else {
         let rt = b[b[op].results[0]].ty.clone();
-        let rank = rt.dims().map_or(0, |d| d.len());
-        let ty = Tn::rank_reduced_slice_type(rank, &bt, &lists[1]);
+        let original = b.slice_lists(op);
+        let ty = Tn::slice_type_dropping(&bt, &original[1], &lists[1], &rt);
         rw.set_before(op);
         let mut v = rw.single(OpData::sliced(&name, &[base], &lists), ty.clone());
         if ty != rt {
@@ -1220,6 +1247,10 @@ fn reshape_with_constant(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let Some(c) = b.constant_of(b[op].operands[0]).and_then(|a| Const::try_from(&a).ok()).filter(|c| c.elements && c.is_splat()) else { return false };
     let ty = b[b[op].results[0]].ty.clone();
+    // (a dense constant needs a static shape)
+    if !Tn::static_shape(&ty) {
+        return false;
+    }
     rw.replace_by(op, &arith::Constant::new(Const { ty: ty.clone(), ..c }.into(), ty));
     true
 }
