@@ -240,6 +240,117 @@ impl AffineToStd {
         true
     }
 
+    /// `AffineDmaStartLowering`: each memref's indices through its map, as `memref.dma_start`
+    /// (source, its indices, destination, its indices, element count, tag, its indices, then the
+    /// stride operands).
+    #[convert("affine.dma_start")]
+    fn dma_start(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let maps = ["src_map", "dst_map", "tag_map"].map(|n| Self::map_of(cr, op, n));
+        let [Some(src), Some(dst), Some(tag)] = maps else { return false };
+        let ops = cr.rw.body[op].operands.clone();
+        let inputs = |m: &AffineMap| (m.dims + m.syms) as usize;
+        let src_at = 0;
+        let dst_at = src_at + 1 + inputs(&src);
+        let tag_at = dst_at + 1 + inputs(&dst);
+        let num_at = tag_at + 1 + inputs(&tag);
+        let Some(si) = cr.expand_map(&src, &ops[src_at + 1..dst_at]) else { return false };
+        let Some(di) = cr.expand_map(&dst, &ops[dst_at + 1..tag_at]) else { return false };
+        let Some(ti) = cr.expand_map(&tag, &ops[tag_at + 1..num_at]) else { return false };
+        let mut operands = vec![ops[src_at]];
+        operands.extend(si);
+        operands.push(ops[dst_at]);
+        operands.extend(di);
+        operands.push(ops[num_at]);
+        operands.push(ops[tag_at]);
+        operands.extend(ti);
+        operands.extend_from_slice(&ops[num_at + 1..]);
+        cr.replace_new(op, OpData::build("memref.dma_start").operands(&operands), &[]);
+        true
+    }
+
+    /// `AffineDmaWaitLowering`.
+    #[convert("affine.dma_wait")]
+    fn dma_wait(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let Some(tag) = Self::map_of(cr, op, "tag_map") else { return false };
+        let ops = cr.rw.body[op].operands.clone();
+        let n = (tag.dims + tag.syms) as usize;
+        let Some(ti) = cr.expand_map(&tag, &ops[1..1 + n]) else { return false };
+        let mut operands = vec![ops[0]];
+        operands.extend(ti);
+        operands.extend_from_slice(&ops[1 + n..]);
+        cr.replace_new(op, OpData::build("memref.dma_wait").operands(&operands), &[]);
+        true
+    }
+
+    /// `AffineParallelLowering`: an `scf.parallel` over each dimension's max of lower bounds
+    /// and min of upper bounds, the reductions starting at their identities.
+    #[convert("affine.parallel")]
+    fn parallel(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let (Some(lbm), Some(ubm)) = (Self::map_of(cr, op, "lowerBoundsMap"), Self::map_of(cr, op, "upperBoundsMap")) else { return false };
+        let b = &*cr.rw.body;
+        let groups = |n: &str| b[op].get(n).and_then(|a| mlirformat::Const::try_from(a).ok()).and_then(|c| c.ints());
+        let ints = |n: &str| match b[op].get(n) {
+            // Untyped `i64` literals.
+            Some(Attribute::Array(xs)) => xs.iter().map(|x| if let Attribute::Int { lit, .. } = x { lit.parse::<i64>().ok() } else { None }).collect::<Option<Vec<_>>>(),
+            _ => None,
+        };
+        let (Some(lg), Some(ug), Some(steps), Some(reductions)) = (groups("lowerBoundsGroups"), groups("upperBoundsGroups"), ints("steps"), ints("reductions")) else { return false };
+        let Some(kinds) = reductions.iter().map(|k| Reduction::of(*k)).collect::<Option<Vec<_>>>() else { return false };
+        let ops = b[op].operands.clone();
+        let (lbo, ubo) = ops.split_at((lbm.dims + lbm.syms) as usize);
+        let sub = |m: &AffineMap, groups: &[i64], i: usize| {
+            let start: i64 = groups[..i].iter().sum();
+            AffineMap { dims: m.dims, syms: m.syms, results: m.results[start as usize..(start + groups[i]) as usize].to_vec() }
+        };
+        let (mut lbs, mut ubs) = (Vec::new(), Vec::new());
+        for i in 0..lg.len() {
+            let Some(l) = cr.min_max(&sub(&lbm, &lg, i), lbo, true) else { return false };
+            lbs.push(l);
+            let Some(u) = cr.min_max(&sub(&ubm, &ug, i), ubo, false) else { return false };
+            ubs.push(u);
+        }
+        let steps: Vec<ValueId> = steps.iter().map(|s| cr.index_constant(*s)).collect();
+        let types = cr.rw.body.types(&cr.rw.body[op].results.clone());
+        let mut inits = Vec::new();
+        for (k, ty) in kinds.iter().zip(&types) {
+            let Some(v) = k.identity(ty) else { return false };
+            inits.push(cr.emit(&arith::Constant::new(v, ty.clone())));
+        }
+        let n = lbs.len();
+        let mut operands = lbs;
+        operands.extend(ubs);
+        operands.extend(steps);
+        operands.extend(&inits);
+        let new = cr.rw.create_with(OpData::build("scf.parallel").operands(&operands).segments(&[n, n, n, inits.len()]), &types, |b, f| {
+            b.add_region(f);
+        });
+        let (from, into) = (cr.rw.body[op].regions[0], cr.rw.body[new].regions[0]);
+        cr.inline_region(from, into, None);
+        let block = cr.rw.body[into].blocks[0];
+        let Some(term) = cr.terminator(block) else { return false };
+        let yielded = cr.rw.body[term].operands.clone();
+        cr.rw.set_before(term);
+        let reduce = cr.rw.create_with(OpData::build("scf.reduce").operands(&yielded), &[], |b, r| {
+            for v in &yielded {
+                let region = b.add_region(r);
+                let ty = b[*v].ty.clone();
+                b.add_block(region, &[(ty.clone(), None), (ty, None)]);
+            }
+        });
+        for (i, k) in kinds.iter().enumerate() {
+            let region = cr.rw.body[reduce].regions[i];
+            let blk = cr.rw.body[region].blocks[0];
+            let (l, r) = (cr.rw.body[blk].args[0], cr.rw.body[blk].args[1]);
+            cr.rw.set_end(blk);
+            let v = cr.arith2(k.op(), l, r);
+            cr.rw.create(OpData::build("scf.reduce.return").operands(&[v]), &[]);
+        }
+        cr.erase(term);
+        let r = cr.rw.body[new].results.clone();
+        cr.replace_values(op, &r);
+        true
+    }
+
     /// `computeStrides` of the index-op expansion.
     fn strides(cr: &mut Cr<'_, '_, '_>, dynamic: &[ValueId], basis: &[i64], non_negative: bool) -> Vec<ValueId> {
         if basis.is_empty() {
@@ -364,4 +475,76 @@ impl AffineToStd {
         true
     }
 
+}
+
+/// `arith::AtomicRMWKind`, as `affine.parallel`'s `reductions` number them.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reduction {
+    AddF,
+    AddI,
+    AndI,
+    MaximumF,
+    MaxNumF,
+    MaxS,
+    MaxU,
+    MinimumF,
+    MinNumF,
+    MinS,
+    MinU,
+    MulF,
+    MulI,
+    OrI,
+    XorI,
+}
+
+impl Reduction {
+    /// The enum values (`assign`, 3, reduces nothing).
+    const TABLE: [(i64, Reduction, &str); 15] = [
+        (0, Reduction::AddF, "arith.addf"),
+        (1, Reduction::AddI, "arith.addi"),
+        (2, Reduction::AndI, "arith.andi"),
+        (4, Reduction::MaximumF, "arith.maximumf"),
+        (5, Reduction::MaxNumF, "arith.maxnumf"),
+        (6, Reduction::MaxS, "arith.maxsi"),
+        (7, Reduction::MaxU, "arith.maxui"),
+        (8, Reduction::MinimumF, "arith.minimumf"),
+        (9, Reduction::MinNumF, "arith.minnumf"),
+        (10, Reduction::MinS, "arith.minsi"),
+        (11, Reduction::MinU, "arith.minui"),
+        (12, Reduction::MulF, "arith.mulf"),
+        (13, Reduction::MulI, "arith.muli"),
+        (14, Reduction::OrI, "arith.ori"),
+        (15, Reduction::XorI, "arith.xori"),
+    ];
+
+    fn of(k: i64) -> Option<Self> {
+        Self::TABLE.iter().find(|(n, _, _)| *n == k).map(|(_, r, _)| *r)
+    }
+
+    /// `getReductionOp`.
+    fn op(self) -> &'static str {
+        Self::TABLE.iter().find(|(_, r, _)| *r == self).map(|(_, _, n)| *n).expect("in the table")
+    }
+
+    /// `getIdentityValueAttr` (not only finite values).
+    fn identity<'a>(self, ty: &Type<'a>) -> Option<Attribute<'a>> {
+        use mlirformat::{ApFloat, ApInt, Const, Scalar};
+        let float = |f: fn(mlirformat::FloatKind) -> Option<ApFloat>| match ty {
+            Type::Float(k) => f(*k).map(|v| Const::scalar(Scalar::Float(v), ty.clone()).into()),
+            _ => None,
+        };
+        let int = |f: fn(u32) -> ApInt| ty.int_width().map(|(w, _)| Const::scalar(Scalar::Int(f(w)), ty.clone()).into());
+        match self {
+            Reduction::AddF | Reduction::AddI | Reduction::MaxU | Reduction::OrI | Reduction::XorI => Scalar::zero(ty).map(|z| Const::scalar(z, ty.clone()).into()),
+            Reduction::AndI | Reduction::MinU => int(|w| ApInt::new(w, -1)),
+            Reduction::MaxS => int(|w| ApInt::from_bits(w, 1u128 << (w - 1))),
+            Reduction::MinS => int(|w| ApInt::from_bits(w, (1u128 << (w - 1)) - 1)),
+            Reduction::MulI => int(|w| ApInt::new(w, 1)),
+            Reduction::MulF => float(|k| ApFloat::from_f64(k, 1.0)),
+            Reduction::MaximumF => float(|k| ApFloat::from_f64(k, f64::NEG_INFINITY)),
+            Reduction::MinimumF => float(|k| ApFloat::from_f64(k, f64::INFINITY)),
+            Reduction::MaxNumF => float(|k| Some(ApFloat::nan(k).neg())),
+            Reduction::MinNumF => float(|k| Some(ApFloat::nan(k))),
+        }
+    }
 }
