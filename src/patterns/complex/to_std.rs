@@ -43,6 +43,8 @@ impl<'a> Cx<'_, '_, 'a, '_> {
                 "math.absf" => "llvm.intr.fabs",
                 "math.copysign" => "llvm.intr.copysign",
                 "math.sqrt" => "llvm.intr.sqrt",
+                "math.fma" => "llvm.intr.fma",
+                "arith.negf" => "llvm.fneg",
                 n => n,
             };
             return self.mk(OpData::build(name).operands(ops).with("fastmathFlags", crate::llvm_fastmath(Some(&fmf.attr()))), ty);
@@ -281,8 +283,13 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         (self.select(both, rs1, r5), self.select(both, is1, i5))
     }
 
-    fn neg(&mut self, x: ValueId, f: Fmf) -> ValueId {
+    pub(crate) fn neg(&mut self, x: ValueId, f: Fmf) -> ValueId {
         self.f("arith.negf", &[x], f)
+    }
+
+    /// `a * b + c`, fused.
+    pub(crate) fn fma(&mut self, a: ValueId, b: ValueId, c: ValueId, f: Fmf) -> ValueId {
+        self.f("math.fma", &[a, b, c], f)
     }
 
     fn xor(&mut self, a: ValueId, b: ValueId) -> ValueId {
@@ -607,8 +614,19 @@ impl ComplexToStd {
     #[ops(b, fmf = fmf)]
     fn mul(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId, fmf: Fmf) -> ValueId {
         let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
-        let re = lr * rr - li * ri;
-        let im = li * rr + lr * ri;
+        // `contract`: fused, `re = fma(lr, rr, -(li * ri))`, `im = fma(lr, ri, li * rr)`.
+        if fmf.contract() {
+            let ii = b.mul(li, ri, fmf);
+            let neg = b.neg(ii, fmf);
+            let re = b.fma(lr, rr, neg, fmf);
+            let ir = b.mul(li, rr, fmf);
+            let im = b.fma(lr, ri, ir, fmf);
+            return b.create(re, im);
+        }
+        let (lr_rr, li_ri) = (b.mul(lr, rr, fmf), b.mul(li, ri, fmf));
+        let (li_rr, lr_ri) = (b.mul(li, rr, fmf), b.mul(lr, ri, fmf));
+        let re = b.sub(lr_rr, li_ri, fmf);
+        let im = b.add(li_rr, lr_ri, fmf);
         b.create(re, im)
     }
 

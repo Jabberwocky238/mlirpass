@@ -89,13 +89,20 @@ impl ComplexToLlvm {
         let (re, im) = match &*name {
             "complex.add" => (b.add(lr, rr, fmf), b.add(li, ri, fmf)),
             "complex.sub" => (b.sub(lr, rr, fmf), b.sub(li, ri, fmf)),
+            // `contract`: fused, `re = fma(lr, rr, -(li * ri))`, `im = fma(lr, ri, li * rr)`.
+            "complex.mul" if fmf.contract() => {
+                let ii = b.mul(li, ri, fmf);
+                let neg = b.neg(ii, fmf);
+                let re = b.fma(lr, rr, neg, fmf);
+                let ir = b.mul(li, rr, fmf);
+                (re, b.fma(lr, ri, ir, fmf))
+            }
             "complex.mul" => {
-                let a = b.mul(rr, lr, fmf);
-                let c = b.mul(ri, li, fmf);
-                let re = b.sub(a, c, fmf);
-                let a = b.mul(li, rr, fmf);
-                let c = b.mul(lr, ri, fmf);
-                (re, b.add(a, c, fmf))
+                let rr_lr = b.mul(rr, lr, fmf);
+                let ri_li = b.mul(ri, li, fmf);
+                let li_rr = b.mul(li, rr, fmf);
+                let lr_ri = b.mul(lr, ri, fmf);
+                (b.sub(rr_lr, ri_li, fmf), b.add(li_rr, lr_ri, fmf))
             }
             _ => return false,
         };

@@ -15,6 +15,7 @@ impl Fmf {
     pub const NONE: Fmf = Fmf(0);
     const NNAN_NINF: u8 = 0b110;
     const AFN: u8 = 0b100_0000;
+    const CONTRACT: u8 = 0b10_0000;
 
     pub fn of(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Self {
         let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("fastmath") else { return Self::NONE };
@@ -47,6 +48,11 @@ impl Fmf {
             b => alloc::format!("<{}>", Self::NAMES.iter().enumerate().filter(|(i, _)| b & (1 << i) != 0).map(|(_, n)| *n).collect::<Vec<_>>().join(",")),
         };
         Attribute::dialect("arith.fastmath", &body)
+    }
+
+    /// `bitEnumContainsAll(fmf, contract)`.
+    pub fn contract(self) -> bool {
+        self.0 & Self::CONTRACT != 0
     }
 
     /// `bitEnumContainsAll(fmf, afn)`.
