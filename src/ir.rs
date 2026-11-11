@@ -482,7 +482,7 @@ impl PartialEq for Seg<'_> {
 
 /// The ids an op or a block holds (operands, results, successors, regions, arguments, blocks):
 /// up to four inline, as big as a `Vec` and no allocation for the usual handful.
-pub type Ids<T> = smallvec::SmallVec<[T; 4]>;
+pub type Ids<T> = smallvec::SmallVec<[T; 2]>;
 
 /// A slot no use holds ([`Uses`]), or an operand whose slot is unknown ([`UseSlots`]).
 const HOLE: u32 = u32::MAX;
