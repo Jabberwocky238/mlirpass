@@ -469,7 +469,7 @@ impl GpuToSpirv {
             let Some(c) = tc.convert(t) else { return false };
             sig.add_inputs(i, vec![c]);
         }
-        let new_ty = Type::Function(FunctionType { inputs: sig.converted_types().to_vec(), results: Vec::new() });
+        let new_ty = Type::Function(alloc::boxed::Box::new(FunctionType { inputs: sig.converted_types().to_vec(), results: Vec::new() }));
         let mut data = OpData::build("spirv.func")
             .with("sym_name", cr.rw.body[op].get("sym_name").cloned().unwrap_or(Attribute::Unit))
             .with("function_type", Attribute::Type(new_ty))

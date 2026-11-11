@@ -46,12 +46,12 @@ impl Lg {
     fn with_dims<'a>(t: &Type<'a>, dims: &[i64]) -> Type<'a> {
         let Type::Shaped(s) = t else { return t.clone() };
         let shape = dims.iter().map(|d| if *d == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
-        Type::Shaped(Shaped { shape: Some(shape), ..s.clone() })
+        Type::Shaped(alloc::boxed::Box::new(Shaped { shape: Some(shape), ..*s.clone() }))
     }
 
     /// `RankedTensorType::get(dims, elem)`.
     fn tensor<'a>(dims: &[i64], elem: Type<'a>) -> Type<'a> {
-        Self::with_dims(&Type::Shaped(Shaped { kind: ShapedKind::Tensor, shape: None, elem: elem.into(), extras: Vec::new() }), dims)
+        Self::with_dims(&Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Tensor, shape: None, elem: elem.into(), extras: Vec::new() })), dims)
     }
 
     /// The result types of a destination-style op writing `init`: its type, when a tensor.

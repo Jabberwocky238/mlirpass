@@ -141,7 +141,7 @@ impl MathToFuncs {
         let inputs = ty.inputs.clone();
         let data = OpData::build("func.func")
             .with("sym_name", Attribute::str(name))
-            .with("function_type", Attribute::Type(Type::Function(ty)))
+            .with("function_type", Attribute::Type(Type::Function(alloc::boxed::Box::new(ty))))
             .with("llvm.linkage", Attribute::dialect("llvm.linkage", "<linkonce_odr>"))
             .with("sym_visibility", Attribute::str("private"));
         let f = b.create(data, &[]);

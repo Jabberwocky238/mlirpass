@@ -21,7 +21,7 @@ impl OpInterfaces for UbDialect {
     }
 
     fn constant_value<'a>(&self, b: &Body<'a>, op: OpId) -> Option<Attribute<'a>> {
-        let poison = || Attribute::Extended { ext: Extended { name: String::from("ub.poison").into(), body: None, params: Vec::new() }, ty: None };
+        let poison = || Attribute::Extended { ext: alloc::boxed::Box::new(Extended { name: String::from("ub.poison").into(), body: None, params: Vec::new() }), ty: None };
         Some(b[op].get("value").cloned().unwrap_or_else(poison))
     }
 }

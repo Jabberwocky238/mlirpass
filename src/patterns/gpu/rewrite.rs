@@ -241,7 +241,7 @@ impl<'k> AllReduce<'k> {
     /// `addWorkgroupAttribution`: a `memref<32 x value, workgroup>` block argument after the
     /// existing workgroup attributions.
     fn workgroup_buffer<'a>(&self, rw: &mut Rw<'_, 'a>) -> ValueId {
-        let ty = Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(vec![Dim::Static(SUBGROUP)]), elem: self.value_ty.clone().into(), extras: vec![Attribute::dialect("gpu.address_space", "<workgroup>")] });
+        let ty = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(vec![Dim::Static(SUBGROUP)]), elem: self.value_ty.clone().into(), extras: vec![Attribute::dialect("gpu.address_space", "<workgroup>")] }));
         let b = &*rw.body;
         let Some(Attribute::Type(Type::Function(fty))) = b[self.func].get("function_type") else { unreachable!("gpu.func") };
         let n_in = fty.inputs.len();

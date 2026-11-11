@@ -234,7 +234,7 @@ impl ShapeToStd {
         let st = match &cr.rw.body[v].ty {
             t if t.shape().is_some() => Type::tensor(&[t.dims().unwrap_or_default().len() as i64], Type::Index),
             Type::Shaped(_) => Self::extent_tensor(),
-            _ => Type::Extended(mlirformat::Extended { name: "shape.shape".into(), body: None, params: Vec::new() }),
+            _ => Type::Extended(alloc::boxed::Box::new(mlirformat::Extended { name: "shape.shape".into(), body: None, params: Vec::new() })),
         };
         let s = Self::make1(cr, OpData::build("shape.shape_of").operands(&[v]), st);
         cr.replace_new(op, OpData::build("shape.get_extent").operands(&[s, i]), &[rt]);

@@ -179,7 +179,7 @@ impl NvgpuToNvvm {
 
     fn memref<'a>(cr: &Cr<'_, 'a, '_>, v: ValueId) -> Option<Shaped<'a>> {
         match &cr.rw.body[v].ty {
-            Type::Shaped(s) if s.kind == ShapedKind::MemRef => Some(s.clone()),
+            Type::Shaped(s) if s.kind == ShapedKind::MemRef => Some(*s.clone()),
             _ => None,
         }
     }
@@ -520,7 +520,7 @@ impl NvgpuToNvvm {
     fn mbarrier_create(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let res = cr.rw.body[op].results[0];
         let Some(NvgpuType::MbarrierGroup { shared, barriers }) = Self::nv(cr, res) else { return false };
-        let ty = Type::Shaped(NvgpuType::mbarrier_memref(shared, barriers));
+        let ty = Type::Shaped(alloc::boxed::Box::new(NvgpuType::mbarrier_memref(shared, barriers)));
         let Some(func) = cr.rw.body.parent_op(op) else { return false };
         let body = &cr.rw.body;
         let mut m = func;

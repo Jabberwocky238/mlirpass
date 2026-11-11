@@ -27,7 +27,7 @@ impl TosaToTensor {
         let mut tc = TypeConverter::default();
         tc.conversion(|t| Some(Some(vec![scalar(t)])));
         tc.conversion(|t| match t {
-            Type::Shaped(s) if s.kind == ShapedKind::Tensor => Some(Some(vec![Type::Shaped(Shaped { elem: scalar(&s.elem).into(), ..s.clone() })])),
+            Type::Shaped(s) if s.kind == ShapedKind::Tensor => Some(Some(vec![Type::Shaped(alloc::boxed::Box::new(Shaped { elem: scalar(&s.elem).into(), ..*s.clone() }))])),
             _ => None,
         });
         fn cast<'a>(rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, inputs: &[ValueId]) -> Option<ValueId> {
@@ -47,7 +47,7 @@ impl TosaToTensor {
     fn with_shape<'a>(t: &Type<'a>, dims: &[i64]) -> Type<'a> {
         let Type::Shaped(s) = t else { return t.clone() };
         let shape = dims.iter().map(|d| if *d == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
-        Type::Shaped(Shaped { kind: ShapedKind::Tensor, shape: Some(shape), elem: s.elem.clone(), extras: if s.shape.is_some() { s.extras.clone() } else { Vec::new() } })
+        Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Tensor, shape: Some(shape), elem: s.elem.clone(), extras: if s.shape.is_some() { s.extras.clone() } else { Vec::new() } }))
     }
 
     /// The values of the `tosa.const_shape` defining `v`.
@@ -365,10 +365,10 @@ impl TosaToTensor {
                 dyn_dims.push(Self::value_of(cr, sizes[i]));
             }
         }
-        let empty_ty = Type::Shaped(Shaped { extras: Vec::new(), ..match &rt {
-            Type::Shaped(s) => s.clone(),
+        let empty_ty = Type::Shaped(alloc::boxed::Box::new(Shaped { extras: Vec::new(), ..match &rt {
+            Type::Shaped(s) => *s.clone(),
             _ => return false,
-        } });
+        } }));
         let mut result = cr.build(OpData::build("tensor.empty").operands(&dyn_dims), empty_ty);
         for (a, off) in args.iter().zip(axis_offsets) {
             let sz = Self::mixed_sizes(cr, *a);

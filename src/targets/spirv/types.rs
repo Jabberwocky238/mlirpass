@@ -57,8 +57,8 @@ impl<'t> SpirvTypes<'t> {
     }
 
     fn owned_shape(s: &Shaped<'_>) -> Shaped<'static> {
-        match Type::Shaped(s.clone()).owned() {
-            Type::Shaped(s) => s,
+        match Type::Shaped(alloc::boxed::Box::new(s.clone())).owned() {
+            Type::Shaped(s) => *s,
             _ => unreachable!("a shaped type stays shaped"),
         }
     }
@@ -137,7 +137,7 @@ impl<'t> SpirvTypes<'t> {
     /// `convertVectorType`.
     pub fn vector(&self, s: &Shaped<'_>, storage: Option<&str>) -> Option<Type<'static>> {
         let s = self.element_converted(s);
-        let t = Type::Shaped(s.clone());
+        let t = Type::Shaped(alloc::boxed::Box::new(s.clone()));
         let single = s.shape.as_ref().is_some_and(|d| d.len() <= 1) && t.element_count() == Some(1);
         if !TargetEnv::is_scalar(&s.elem) {
             let elem = self.sub_byte(&s.elem)?;
@@ -147,7 +147,7 @@ impl<'t> SpirvTypes<'t> {
             if t.element_count()? > 4 {
                 return None;
             }
-            return Some(Type::Shaped(Shaped { elem: elem.into(), ..s }));
+            return Some(Type::Shaped(alloc::boxed::Box::new(Shaped { elem: elem.into(), ..s })));
         }
         if single {
             return self.scalar(&s.elem, storage);
@@ -159,7 +159,7 @@ impl<'t> SpirvTypes<'t> {
             return Some(t);
         }
         let elem = self.scalar(&s.elem, storage)?;
-        Some(Type::Shaped(Shaped { elem: elem.into(), ..s }))
+        Some(Type::Shaped(alloc::boxed::Box::new(Shaped { elem: elem.into(), ..s })))
     }
 
     /// `convertComplexType`.
@@ -177,7 +177,7 @@ impl<'t> SpirvTypes<'t> {
         if s.dims()?.contains(&Dim::DYNAMIC) || !TargetEnv::is_scalar(&s.elem) {
             return None;
         }
-        let count = self.num_bytes(&Type::Shaped(s.clone()))? / self.num_bytes(&s.elem)?;
+        let count = self.num_bytes(&Type::Shaped(alloc::boxed::Box::new(s.clone())))? / self.num_bytes(&s.elem)?;
         if count == 0 || count > i64::from(u32::MAX) {
             return None;
         }
@@ -220,7 +220,7 @@ impl<'t> SpirvTypes<'t> {
         let storage = Self::storage_class(s)?;
         let st = Some(&*storage);
         let fixed = !s.dims()?.contains(&Dim::DYNAMIC);
-        let elements = Type::Shaped(s.clone()).element_count().unwrap_or(0) as i64;
+        let elements = Type::Shaped(alloc::boxed::Box::new(s.clone())).element_count().unwrap_or(0) as i64;
         if storage == "Image" {
             // A sampled image of single-element texels (`R32f`, ...), whatever the rank.
             let dim = match s.dims()?.len() {
@@ -293,7 +293,7 @@ impl<'t> SpirvTypes<'t> {
         if !fixed {
             return self.array_ptr(elem, size, None, &storage);
         }
-        let bytes = self.num_bytes(&Type::Shaped(s))?;
+        let bytes = self.num_bytes(&Type::Shaped(alloc::boxed::Box::new(s)))?;
         if bytes == 0 {
             return None;
         }

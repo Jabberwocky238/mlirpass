@@ -80,7 +80,7 @@ impl<'a> Attribution<'a> {
         }
         let elems = s.shape.as_ref()?.iter().map(|d| if let Dim::Static(n) = d { Some(*n) } else { None }).product::<Option<i64>>()?;
         let elem = cr.type_converter()?.convert(&s.elem)?;
-        Some(Self { ty: s.clone(), elems, elem })
+        Some(Self { ty: *s.clone(), elems, elem })
     }
 
     /// `MemRefDescriptor::fromStaticShape` over `ptr`.
@@ -101,8 +101,8 @@ impl GpuToLlvm {
         let b = &*cr.rw.body;
         let Type::Shaped(s) = b[b[op].results[0]].ty.clone() else { return false };
         let Some(elem) = MemrefToLlvm::elem(cr, &s.elem) else { return false };
-        let zero = Shaped { shape: Some(vec![mlirformat::Dim::Static(0)]), elem: elem.clone().into(), extras: s.extras.iter().filter(|x| !x.is_layout()).cloned().collect(), ..s.clone() };
-        let Some(desc_ty) = cr.converted(&Type::Shaped(zero.clone())) else { return false };
+        let zero = Shaped { shape: Some(vec![mlirformat::Dim::Static(0)]), elem: elem.clone().into(), extras: s.extras.iter().filter(|x| !x.is_layout()).cloned().collect(), ..*s.clone() };
+        let Some(desc_ty) = cr.converted(&Type::Shaped(alloc::boxed::Box::new(zero.clone()))) else { return false };
         let Some(LlvmType::Ptr(space)) = LlvmType::try_from(&desc_ty).ok().and_then(|t| if let LlvmType::Struct { body: Some(f), .. } = t { f.first().and_then(|p| LlvmType::try_from(p).ok()) } else { None }) else { return false };
         let align = i64::from(bits / zero.elem.bit_width().unwrap_or(8).max(1));
         let b = &*cr.rw.body;

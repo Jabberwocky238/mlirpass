@@ -20,7 +20,7 @@ impl MemrefToEmitc {
     /// The memref type of `v`, if legal for EmitC.
     fn legal<'a>(cr: &Cr<'_, 'a, '_>, v: ValueId) -> Option<mlirformat::Shaped<'a>> {
         match cr.ty(v) {
-            Type::Shaped(s) if Emitc::memref_legal(&s) => Some(s),
+            Type::Shaped(s) if Emitc::memref_legal(&s) => Some(*s),
             _ => None,
         }
     }

@@ -159,7 +159,7 @@ mod bufferizable {
             let (inputs, results) = func_signature(rw.body, op);
             let args: Vec<Type<'_>> = (0..inputs.len()).map(|i| o.bufferized_arg_type(rw.body, op, i)).collect();
             let rets: Vec<Type<'_>> = results.iter().map(|t| if is_tensor(t) { o.function_arg_type(t) } else { t.clone() }).collect();
-            let ty = Attribute::Type(Type::Function(FunctionType { inputs: args, results: rets.clone() }));
+            let ty = Attribute::Type(Type::Function(alloc::boxed::Box::new(FunctionType { inputs: args, results: rets.clone() })));
             if rw.body[op].regions.first().is_none_or(|r| rw.body[*r].blocks.is_empty()) {
                 rw.modify(op, |b| b[op].set("function_type", ty));
                 return Ok(());

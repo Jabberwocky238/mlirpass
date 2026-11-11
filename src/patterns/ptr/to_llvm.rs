@@ -47,7 +47,7 @@ impl PtrToLlvm {
         }
         let inner = e.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?;
         match Parser::new(inner, opt).ty().ok()?.owned() {
-            Type::Shaped(s) if s.kind == ShapedKind::MemRef && s.shape.is_some() => Some(s),
+            Type::Shaped(s) if s.kind == ShapedKind::MemRef && s.shape.is_some() => Some(*s),
             _ => None,
         }
     }
@@ -91,7 +91,7 @@ impl PtrToLlvm {
         let mut operands = vec![base];
         operands.extend(dynamic);
         let raw = if dynamic.is_some() { GEP_DYNAMIC } else { constant };
-        let raw = Attribute::DenseArray { ty: Type::int(32), values: vec![alloc::format!("{raw}").into()] };
+        let raw = Attribute::DenseArray { ty: Type::int(32), values: vec![alloc::format!("{raw}").into()].into() };
         let ty = cr.rw.body[base].ty.clone();
         let data = OpData::build("llvm.getelementptr").operands(&operands).with("elem_type", Attribute::Type(elem)).with("rawConstantIndices", raw).with("noWrapFlags", Attribute::Int { lit: alloc::format!("{flags}").into(), ty: Some(Type::int(32)) });
         cr.build(data, ty)

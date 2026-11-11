@@ -583,7 +583,7 @@ impl<'a> Tf<'_, '_, 'a> {
     /// A `tensor<Nxindex>` of `values`.
     fn index_tensor(values: Vec<ApInt>) -> Fold<'a> {
         let n = values.len() as i64;
-        let ty = Type::Shaped(mlirformat::Shaped { kind: mlirformat::ShapedKind::Tensor, shape: Some(alloc::vec![Dim::Static(n)]), elem: Type::Index.into(), extras: Vec::new() });
+        let ty = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { kind: mlirformat::ShapedKind::Tensor, shape: Some(alloc::vec![Dim::Static(n)]), elem: Type::Index.into(), extras: Vec::new() }));
         Self::attr(Const { ty, values: values.into_iter().map(Scalar::Int).collect(), elements: true })
     }
 
@@ -942,7 +942,7 @@ impl TosaCanon {
         if !updated {
             return false;
         }
-        let pad_ty = Type::Shaped(mlirformat::Shaped { kind: mlirformat::ShapedKind::Tensor, shape: Some(shape), elem: b[input].ty.element_type().clone().into(), extras: Vec::new() });
+        let pad_ty = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { kind: mlirformat::ShapedKind::Tensor, shape: Some(shape), elem: b[input].ty.element_type().clone().into(), extras: Vec::new() }));
         let (pad_const, size, ty) = (b[pad].operands[2], b[op].operands[2], b[b[op].results[0]].ty.clone());
         rw.set_before(op);
         let paddings = const_shape(rw, &new_paddings);
@@ -1318,8 +1318,8 @@ impl TosaLevel {
 fn const_shape<'a>(rw: &mut crate::Rewriter<'_, 'a>, shape: &[i64]) -> ValueId {
     let values = shape.iter().map(|d| Scalar::Int(ApInt::new(64, i128::from(if *d == i64::MIN { -1 } else { *d })))).collect();
     let n = shape.len() as i64;
-    let tensor = Type::Shaped(mlirformat::Shaped { kind: mlirformat::ShapedKind::Tensor, shape: Some(alloc::vec![Dim::Static(n)]), elem: Type::Index.into(), extras: Vec::new() });
-    let ty = Type::Extended(mlirformat::Extended { name: "tosa.shape".into(), body: Some(alloc::format!("<{n}>").into()), params: Vec::new() });
+    let tensor = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { kind: mlirformat::ShapedKind::Tensor, shape: Some(alloc::vec![Dim::Static(n)]), elem: Type::Index.into(), extras: Vec::new() }));
+    let ty = Type::Extended(alloc::boxed::Box::new(mlirformat::Extended { name: "tosa.shape".into(), body: Some(alloc::format!("<{n}>").into()), params: Vec::new() }));
     let o = rw.create(OpData::build("tosa.const_shape").with("values", Const { ty: tensor, values, elements: true }.into()), &[ty]);
     rw.body[o].results[0]
 }

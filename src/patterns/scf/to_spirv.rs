@@ -56,7 +56,7 @@ impl ScfToSpirv {
 
     fn cond_br<'a>(cr: &mut Cr<'_, 'a, '_>, at: BlockId, cond: ValueId, t: BlockId, f: BlockId) {
         cr.rw.set_end(at);
-        let mut data = OpData::build("spirv.BranchConditional").operands(&[cond]).with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec!["1".into(), "0".into(), "0".into()] });
+        let mut data = OpData::build("spirv.BranchConditional").operands(&[cond]).with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec!["1".into(), "0".into(), "0".into()].into() });
         data.successors = smallvec::smallvec![t, f];
         cr.rw.create(data, &[]);
     }
@@ -268,7 +268,7 @@ impl ScfToSpirv {
         cr.rw.set_before(cond);
         let mut ops = vec![cond_v];
         ops.extend(cond_args.iter().copied());
-        let mut data = OpData::build("spirv.BranchConditional").operands(&ops).with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec!["1".into(), alloc::format!("{}", cond_args.len()).into(), "0".into()] });
+        let mut data = OpData::build("spirv.BranchConditional").operands(&ops).with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec!["1".into(), alloc::format!("{}", cond_args.len()).into(), "0".into()].into() });
         data.successors = smallvec::smallvec![after, merge];
         cr.rw.create(data, &[]);
         cr.erase(cond);

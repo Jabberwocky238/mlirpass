@@ -17,9 +17,9 @@ impl OpenClGlobal {
                 let mut extras = s.extras.clone();
                 // An `i64` memory space prints (and parses back) bare.
                 extras.push(Attribute::of_int(GpuSpaces::OPENCL.global.into(), Type::int(64)).untyped());
-                Type::Shaped(Shaped { extras, ..s.clone() })
+                Type::Shaped(alloc::boxed::Box::new(Shaped { extras, ..*s.clone() }))
             }
-            Type::Function(f) => Type::Function(mlirformat::FunctionType { inputs: f.inputs.iter().map(Self::map_type).collect(), results: f.results.iter().map(Self::map_type).collect() }),
+            Type::Function(f) => Type::Function(alloc::boxed::Box::new(mlirformat::FunctionType { inputs: f.inputs.iter().map(Self::map_type).collect(), results: f.results.iter().map(Self::map_type).collect() })),
             Type::Tuple(ts) => Type::Tuple(ts.iter().map(Self::map_type).collect()),
             t => t.clone(),
         }

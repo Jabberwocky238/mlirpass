@@ -60,7 +60,7 @@ impl BufferizationCanon {
                 _ => dynamic.push(v),
             }
         }
-        let new_ty = Type::Shaped(Shaped { shape: Some(shape.iter().map(|d| Dim::from(*d)).collect()), ..t.clone() });
+        let new_ty = Type::Shaped(alloc::boxed::Box::new(Shaped { shape: Some(shape.iter().map(|d| Dim::from(*d)).collect()), ..*t.clone() }));
         if new_ty == ty {
             return false;
         }
@@ -122,7 +122,7 @@ impl BufferizationCanon {
         }
         let out = b[b[op].results[0]].ty.clone();
         let Type::Shaped(m) = &out else { return false };
-        let ty = Type::Shaped(Shaped { shape: st.shape.clone(), elem: st.elem.clone(), ..m.clone() });
+        let ty = Type::Shaped(alloc::boxed::Box::new(Shaped { shape: st.shape.clone(), elem: st.elem.clone(), ..*m.clone() }));
         let mut data = OpData::build("bufferization.to_buffer").operands(&[src]);
         if b[op].get("read_only").is_some() {
             data = data.flag("read_only");

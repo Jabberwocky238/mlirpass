@@ -331,7 +331,7 @@ impl MemrefCanon {
         if dynamic.len() == sizes.len() {
             return false;
         }
-        let ty = Type::Shaped(mlirformat::Shaped { shape: Some(shape), ..s.clone() });
+        let ty = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { shape: Some(shape), ..*s.clone() }));
         let mut ops = b[op].operands[..2].to_vec();
         ops.extend(dynamic);
         rw.set_before(op);
@@ -542,7 +542,7 @@ impl MemrefCanon {
             shape.push(if band.iter().any(|d| !matches!(d, Dim::Static(_))) { Dim::Dynamic } else { Dim::Static(band.iter().map(|d| if let Dim::Static(n) = d { *n } else { 1 }).product()) });
             at += g.len();
         }
-        let ty = Type::Shaped(mlirformat::Shaped { shape: Some(shape), ..st.clone() });
+        let ty = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { shape: Some(shape), ..*st.clone() }));
         let rt = b[b[op].results[0]].ty.clone();
         if ty == rt {
             rw.modify(op, |b| b.set_operand(op, 0, from));
@@ -587,7 +587,7 @@ impl MemrefCanon {
             at += g.len();
         }
         let dims = shape.iter().map(|o| if let Ofr::C(n) = o { Dim::Static(*n) } else { Dim::Dynamic }).collect();
-        let ty = Type::Shaped(mlirformat::Shaped { shape: Some(dims), ..st.clone() });
+        let ty = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { shape: Some(dims), ..*st.clone() }));
         let rt = b[b[op].results[0]].ty.clone();
         if ty == rt {
             rw.modify(op, |b| b.set_operand(op, 0, from));
@@ -648,7 +648,7 @@ impl MemrefCanon {
         let mut extras = alloc::vec![layout.into()];
         extras.extend(st.extras.iter().filter(|a| !a.is_layout()).cloned());
         let shape = lists[1].iter().map(|o| if let Ofr::C(n) = o { Dim::Static(*n) } else { Dim::Dynamic }).collect();
-        let ty = Type::Shaped(mlirformat::Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: st.elem.clone(), extras });
+        let ty = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: st.elem.clone(), extras }));
         let rt = b[b[op].results[0]].ty.clone();
         rw.set_before(op);
         let new = rw.create(OpData::sliced("memref.reinterpret_cast", &[src], &lists), &[ty]);
@@ -686,7 +686,7 @@ fn simplify_alloc_const(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
         }
         d => d.clone(),
     }).collect());
-    let ty = Type::Shaped(mlirformat::Shaped { shape, ..s.clone() });
+    let ty = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { shape, ..*s.clone() }));
     let mut ops = dynamic.clone();
     ops.extend(&b[op].operands[n..]);
     let mut data = OpData::build(&b[op].name).operands(&ops).segments(&[dynamic.len(), b[op].operands.len() - n]);
@@ -842,7 +842,7 @@ impl Ofr {
         }
         let mut extras = alloc::vec![StridedLayout { strides: out_strides, offset }.into()];
         extras.extend(src.extras.iter().filter(|a| !a.is_layout()).cloned());
-        Some(Type::Shaped(mlirformat::Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: src.elem.clone(), extras }))
+        Some(Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: src.elem.clone(), extras })))
     }
 }
 

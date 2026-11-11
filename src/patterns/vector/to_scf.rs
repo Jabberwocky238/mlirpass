@@ -320,7 +320,7 @@ impl<'a> Rw<'_, 'a> {
         let block = self.body.top_block(scope);
         let saved = self.ip;
         self.set_start(block);
-        let memref = |t: &Type<'a>| Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(Vec::new()), elem: t.clone().into(), extras: Vec::new() });
+        let memref = |t: &Type<'a>| Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(Vec::new()), elem: t.clone().into(), extras: Vec::new() }));
         let data = self.make1(OpData::build("memref.alloca").segments(&[0, 0]), memref(&x.vt));
         let mut mask = None;
         if let Some(m) = x.mask {
@@ -366,7 +366,7 @@ fn unpack_one_dim<'a>(t: &Type<'a>) -> Option<Type<'a>> {
     let mut shape = m.shape.clone()?;
     shape.push(Dim::Static(vs[0]));
     let inner = Type::vector(&vs[1..], &sc[1..], elem(&m.elem).clone());
-    Some(Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: inner.into(), extras: Vec::new() }))
+    Some(Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: inner.into(), extras: Vec::new() })))
 }
 
 /// A vector type with its leading dim dropped (`VectorType::Builder::dropDim(0)`).

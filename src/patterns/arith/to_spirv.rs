@@ -276,7 +276,7 @@ impl ArithToSpirv {
             }
             values = out;
             attr_ty = match &attr_ty {
-                Type::Shaped(a) => Type::Shaped(mlirformat::Shaped { elem: dst_elem.clone().into(), ..a.clone() }),
+                Type::Shaped(a) => Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { elem: dst_elem.clone().into(), ..*a.clone() })),
                 t => t.clone(),
             };
         } else if c.is_splat() {
@@ -352,7 +352,7 @@ impl ArithToSpirv {
     /// `i1` of `t`'s shape.
     fn bool_like<'a>(t: &Type<'a>) -> Type<'a> {
         match t {
-            Type::Shaped(s) => Type::Shaped(mlirformat::Shaped { elem: Type::I1.into(), ..s.clone() }),
+            Type::Shaped(s) => Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { elem: Type::I1.into(), ..*s.clone() })),
             _ => Type::I1,
         }
     }
@@ -598,7 +598,7 @@ impl ArithToSpirv {
             "ne" => "spirv.LogicalNotEqual",
             "uge" | "ugt" | "ule" | "ult" => {
                 let ty = match &dst {
-                    Type::Shaped(s) => Type::Shaped(mlirformat::Shaped { elem: Type::int(32).into(), ..s.clone() }),
+                    Type::Shaped(s) => Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { elem: Type::int(32).into(), ..*s.clone() })),
                     _ => Type::int(32),
                 };
                 let l = cr.build(OpData::build("arith.extui").operands(&[ops[0]]), ty.clone());

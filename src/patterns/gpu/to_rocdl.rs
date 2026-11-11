@@ -134,7 +134,7 @@ impl GpuToRocdl {
         }
         let Some(table) = func.and_then(|f| b.parent_op(f)).filter(|t| b.is_symbol_table(*t)) else { return false };
         let name = b.unique_symbol(table, NAMED_BARRIER_GLOBAL, None);
-        let target = Type::Extended(mlirformat::Extended { name: "llvm.target".into(), body: Some(alloc::format!("<\"{NAMED_BARRIER_TYPE}\", 0>").into()), params: Vec::new() });
+        let target = Type::Extended(alloc::boxed::Box::new(mlirformat::Extended { name: "llvm.target".into(), body: Some(alloc::format!("<\"{NAMED_BARRIER_TYPE}\", 0>").into()), params: Vec::new() }));
         let lds = Type::from(LlvmType::Ptr(LDS_ADDRESS_SPACE));
         let loc = b[op].loc.clone();
         // (appended to the symbol table's body, as `SymbolTable::insert` does)

@@ -259,7 +259,7 @@ impl Unit {
             (ShapedKind::MemRef, _) if !sh.identity_layout() => return None,
             (ShapedKind::MemRef, Strategy::ExtractInsertSlice) => return Some(Self::rank_reduce(rw, v, target, "memref.subview")),
             (ShapedKind::MemRef, Strategy::ReassociativeReshape) => {
-                let result = Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(target.iter().map(|d| Dim::from(*d)).collect()), elem: sh.elem.clone(), extras: sh.extras.iter().filter(|a| !a.is_layout()).cloned().collect() });
+                let result = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(target.iter().map(|d| Dim::from(*d)).collect()), elem: sh.elem.clone(), extras: sh.extras.iter().filter(|a| !a.is_layout()).cloned().collect() }));
                 rw.emit(&memref::CollapseShapeOp::new(v.into(), reassociation, src_ty, result))
             }
             (ShapedKind::Tensor, _) if sh.extras.iter().any(|a| !a.is_layout()) => return None,

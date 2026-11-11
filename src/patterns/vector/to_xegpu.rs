@@ -28,7 +28,7 @@ fn vector_shape(t: &Type<'_>) -> Option<Vec<i64>> {
 }
 
 fn shaped<'a>(kind: ShapedKind, shape: &[i64], elem: Type<'a>) -> Type<'a> {
-    Type::Shaped(Shaped { kind, shape: Some(shape.iter().map(|&n| if n == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(n) }).collect()), elem: elem.into(), extras: Vec::new() })
+    Type::Shaped(alloc::boxed::Box::new(Shaped { kind, shape: Some(shape.iter().map(|&n| if n == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(n) }).collect()), elem: elem.into(), extras: Vec::new() }))
 }
 
 /// `TensorDescType::get(shape, elem, array_length 1, boundary_check, global)`: the encoding
@@ -73,7 +73,7 @@ impl<'a> Xg<'a> for Rw<'_, 'a> {
     fn strided_metadata(&mut self, m: ValueId) -> Option<(ValueId, ValueId, Vec<ValueId>, Vec<ValueId>)> {
         let s = memref_of(&self.body[m].ty)?.clone();
         let rank = s.shape.as_ref().map_or(0, Vec::len);
-        let base = Type::Shaped(Shaped { shape: Some(Vec::new()), extras: s.memory_space().cloned().into_iter().collect(), ..s.clone() });
+        let base = Type::Shaped(alloc::boxed::Box::new(Shaped { shape: Some(Vec::new()), extras: s.memory_space().cloned().into_iter().collect(), ..s.clone() }));
         let types: Vec<Type<'a>> = [base, Type::Index].into_iter().chain(core::iter::repeat_n(Type::Index, 2 * rank)).collect();
         let o = self.create(OpData::build("memref.extract_strided_metadata").operands(&[m]), &types);
         let r = self.body[o].results.clone();

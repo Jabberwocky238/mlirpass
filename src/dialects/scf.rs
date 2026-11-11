@@ -501,7 +501,7 @@ mod bufferizable {
                 return Err(Error(format!("'{}' op inconsistent memory space on then/else branches", b[op].name)));
             }
             let Type::Shaped(t) = &b[v].ty else { return Err(Error("expected a tensor".into())) };
-            Ok(BufferizationOptions::fully_dynamic(&Shaped { kind: ShapedKind::Tensor, ..t.clone() }, space(&types[0])))
+            Ok(BufferizationOptions::fully_dynamic(&Shaped { kind: ShapedKind::Tensor, ..*t.clone() }, space(&types[0])))
         }
 
         fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {

@@ -49,7 +49,7 @@ pub struct AmdgpuMemToRocdl;
 impl AmdgpuMemToRocdl {
     fn memref<'a>(cr: &Cr<'_, 'a, '_>, v: ValueId) -> Option<Shaped<'a>> {
         match &cr.rw.body[v].ty {
-            Type::Shaped(s) if s.kind == ShapedKind::MemRef => Some(s.clone()),
+            Type::Shaped(s) if s.kind == ShapedKind::MemRef => Some(*s.clone()),
             _ => None,
         }
     }

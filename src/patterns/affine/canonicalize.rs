@@ -1134,7 +1134,7 @@ impl<'a> Body<'a> {
         operands.extend(&keep);
         self.set_operands(op, operands);
         if !delin {
-            self[op].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec![format!("{n}").into(), format!("{}", keep.len()).into()] });
+            self[op].set("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec![format!("{n}").into(), format!("{}", keep.len()).into()].into() });
         }
         self[op].set("static_basis", Attribute::dense_i64(&statics));
         true
@@ -1241,7 +1241,7 @@ impl<'a> crate::Rewriter<'_, 'a> {
         OpData::build("affine.linearize_index")
             .operands(&ops)
             .with("disjoint", if disjoint { Attribute::Unit } else { Attribute::Bool(false) })
-            .with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec![format!("{}", multi.len()).into(), format!("{}", dynamic.len()).into()] })
+            .with("operandSegmentSizes", Attribute::DenseArray { ty: Type::int(32), values: vec![format!("{}", multi.len()).into(), format!("{}", dynamic.len()).into()].into() })
             .with("static_basis", Attribute::dense_i64(&statics))
     }
 

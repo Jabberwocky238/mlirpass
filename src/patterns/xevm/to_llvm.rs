@@ -380,7 +380,7 @@ impl FnAttrs {
 /// The Itanium mangling of a builtin's parameter type (`getTypeMangling`): `isUnsigned` integers as unsigned.
 fn mangled(t: &Type<'_>, unsigned: bool) -> String {
     match t {
-        Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(dims), elem, .. }) => {
+        Type::Shaped(s) if let Shaped { kind: ShapedKind::Vector, shape: Some(dims), elem, .. } = &**s => {
             let n: i64 = dims.iter().map(|d| if let Dim::Static(n) = d { *n } else { 0 }).product();
             format!("Dv{n}_{}", mangled(elem, unsigned))
         }
@@ -434,13 +434,13 @@ fn int(a: &Attribute<'_>) -> Option<i64> {
 
 /// A vector type's elements and their count.
 fn vector<'a>(t: &Type<'a>) -> Option<(Type<'a>, i64)> {
-    let Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(dims), elem, .. }) = t else { return None };
+    let Some(Shaped { kind: ShapedKind::Vector, shape: Some(dims), elem, .. }) = t.shaped() else { return None };
     let n = dims.iter().map(|d| if let Dim::Static(n) = d { *n } else { 0 }).product();
     Some(((**elem).clone(), n))
 }
 
 fn vector_of<'a>(n: i64, elem: Type<'a>) -> Type<'a> {
-    Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(vec![Dim::Static(n)]), elem: elem.into(), extras: Vec::new() })
+    Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Vector, shape: Some(vec![Dim::Static(n)]), elem: elem.into(), extras: Vec::new() }))
 }
 
 /// A builtin called: its name, result, parameters, their attributes (`(index, name)`), what it is.

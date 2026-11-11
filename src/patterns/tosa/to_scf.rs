@@ -76,7 +76,7 @@ impl TosaToScf {
                 let cast = Self::result(rw, &arith::IndexCast::new(index.into(), Type::int(32), Type::Index));
                 let (sizes, strides) = (Self::values(&[one, one, c]), Self::values(&[one, one, one]));
                 let Type::Shaped(s) = &in_ty else { unreachable!("tosa.scatter takes tensors") };
-                let slice_ty = Type::Shaped(Shaped { shape: Some(vec![Dim::Dynamic; 3]), ..s.clone() });
+                let slice_ty = Type::Shaped(alloc::boxed::Box::new(Shaped { shape: Some(vec![Dim::Dynamic; 3]), ..*s.clone() }));
                 let slice = Self::result(rw, &tensor::ExtractSliceOp::new(input.into(), Self::values(&[i, j, zero]), sizes.clone(), strides.clone(), dyn3.clone(), dyn3.clone(), dyn3.clone(), in_ty.clone(), Type::Index, Type::Index, Type::Index, slice_ty.clone()));
                 let acc_ty = rw.body[acc[0]].ty.clone();
                 vec![Self::result(rw, &tensor::InsertSliceOp::new(slice.into(), acc[0].into(), Self::values(&[i, cast, zero]), sizes, strides, dyn3.clone(), dyn3.clone(), dyn3.clone(), slice_ty, Type::Index, Type::Index, Type::Index, acc_ty))]

@@ -771,7 +771,7 @@ impl TosaToLinalg {
 
     /// `!tosa.shape<n>`.
     fn shape_type<'a>(n: usize) -> Type<'a> {
-        Type::Extended(mlirformat::Extended { name: "tosa.shape".into(), body: Some(alloc::format!("<{n}>").into()), params: Vec::new() })
+        Type::Extended(alloc::boxed::Box::new(mlirformat::Extended { name: "tosa.shape".into(), body: Some(alloc::format!("<{n}>").into()), params: Vec::new() }))
     }
 
     /// `TileConverter`.

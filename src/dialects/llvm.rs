@@ -13,7 +13,7 @@ pub struct LlvmDialect;
 
 impl LlvmDialect {
     fn ext<'a>(name: &str) -> Attribute<'a> {
-        Attribute::Extended { ext: Extended { name: String::from(name).into(), body: None, params: Vec::new() }, ty: None }
+        Attribute::Extended { ext: alloc::boxed::Box::new(Extended { name: String::from(name).into(), body: None, params: Vec::new() }), ty: None }
     }
 }
 

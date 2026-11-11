@@ -44,10 +44,10 @@ impl ClientApi {
                 let sc = self.storage_class(s.memory_space())?;
                 let mut extras: Vec<Attribute<'a>> = s.extras.iter().filter(|a| a.is_layout()).cloned().collect();
                 extras.push(Attribute::dialect("spirv.storage_class", &format!("<{sc}>")));
-                Type::Shaped(Shaped { extras, elem: self.map_type(&s.elem)?.into(), ..s.clone() })
+                Type::Shaped(alloc::boxed::Box::new(Shaped { extras, elem: self.map_type(&s.elem)?.into(), ..*s.clone() }))
             }
-            Type::Shaped(s) => Type::Shaped(Shaped { elem: self.map_type(&s.elem)?.into(), ..s.clone() }),
-            Type::Function(f) => Type::Function(mlirformat::FunctionType { inputs: f.inputs.iter().map(|t| self.map_type(t)).collect::<Option<_>>()?, results: f.results.iter().map(|t| self.map_type(t)).collect::<Option<_>>()? }),
+            Type::Shaped(s) => Type::Shaped(alloc::boxed::Box::new(Shaped { elem: self.map_type(&s.elem)?.into(), ..*s.clone() })),
+            Type::Function(f) => Type::Function(alloc::boxed::Box::new(mlirformat::FunctionType { inputs: f.inputs.iter().map(|t| self.map_type(t)).collect::<Option<_>>()?, results: f.results.iter().map(|t| self.map_type(t)).collect::<Option<_>>()? })),
             Type::Tuple(ts) => Type::Tuple(ts.iter().map(|t| self.map_type(t)).collect::<Option<_>>()?),
             t => t.clone(),
         })

@@ -129,7 +129,7 @@ impl<'a> Cx<'_, '_, 'a, '_> {
     /// `ComplexStructBuilder`: field `i` of the struct `v`.
     pub fn field(&mut self, v: ValueId, i: i64) -> ValueId {
         let ty = self.et.clone();
-        self.mk(OpData::build("llvm.extractvalue").operands(&[v]).with("position", Attribute::DenseArray { ty: Type::int(64), values: alloc::vec![alloc::format!("{i}").into()] }), ty)
+        self.mk(OpData::build("llvm.extractvalue").operands(&[v]).with("position", Attribute::DenseArray { ty: Type::int(64), values: alloc::vec![alloc::format!("{i}").into()].into() }), ty)
     }
 
     /// `ComplexStructBuilder::poison` with both fields set.
@@ -142,7 +142,7 @@ impl<'a> Cx<'_, '_, 'a, '_> {
     pub fn insert(&mut self, mut v: ValueId, re: ValueId, im: ValueId) -> ValueId {
         let st = self.cr.rw.body[v].ty.clone();
         for (i, x) in [re, im].into_iter().enumerate() {
-            let p = Attribute::DenseArray { ty: Type::int(64), values: alloc::vec![alloc::format!("{i}").into()] };
+            let p = Attribute::DenseArray { ty: Type::int(64), values: alloc::vec![alloc::format!("{i}").into()].into() };
             v = self.mk(OpData::build("llvm.insertvalue").operands(&[v, x]).with("position", p), st.clone());
         }
         v

@@ -1302,7 +1302,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
 
     /// `prepareGraphType`: a graph's type is not a function's, though both print alike.
     fn graph_type_id(&mut self, f: &mlirformat::FunctionType<'_>) -> Result<u32, Error> {
-        let key = format!("graph {}", Self::key(&Type::Function(f.clone())));
+        let key = format!("graph {}", Self::key(&Type::Function(alloc::boxed::Box::new(f.clone()))));
         if let Some(id) = self.type_ids.get(&key) {
             return Ok(*id);
         }

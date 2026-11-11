@@ -23,7 +23,7 @@ impl<'a> Sc<'_, '_, 'a, '_> {
     /// `matchContainerType`.
     fn container(elem: Type<'a>, like: &Type<'a>) -> Type<'a> {
         match like {
-            Type::Shaped(s) => Type::Shaped(Shaped { elem: elem.into(), ..s.clone() }),
+            Type::Shaped(s) => Type::Shaped(alloc::boxed::Box::new(Shaped { elem: elem.into(), ..*s.clone() })),
             _ => elem,
         }
     }

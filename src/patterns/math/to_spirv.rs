@@ -147,7 +147,7 @@ impl MathToSpirv {
         let mut value = cr.spirv_const(int.clone(), crate::Const::int(ApInt::from_bits(bits, sign_bit - 1), int.clone()).into());
         if let Type::Shaped(s) = &ty {
             let n = ty.element_count().unwrap_or(1);
-            int = Type::Shaped(mlirformat::Shaped { elem: int.into(), ..s.clone() });
+            int = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { elem: int.into(), ..*s.clone() }));
             sign = Self::op(cr, "spirv.CompositeConstruct", &alloc::vec![sign; n], &int);
             value = Self::op(cr, "spirv.CompositeConstruct", &alloc::vec![value; n], &int);
         }

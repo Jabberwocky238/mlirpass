@@ -547,7 +547,7 @@ impl Cleanup {
     fn poison(body: &mut Body<'_>, v: ValueId, at: OpId, made: &mut Vec<OpId>) -> ValueId {
         let ty = body[v].ty.clone();
         let loc = body.value_loc(v);
-        let poison = Attribute::Extended { ext: mlirformat::Extended { name: "ub.poison".into(), body: None, params: Vec::new() }, ty: None };
+        let poison = Attribute::Extended { ext: alloc::boxed::Box::new(mlirformat::Extended { name: "ub.poison".into(), body: None, params: Vec::new() }), ty: None };
         let block = body[at].parent.expect("placed");
         let p = body.create_for(block, OpData { loc, ..OpData::build("ub.poison").with("value", poison) }, &[ty]);
         body.insert_before(p, at);

@@ -73,7 +73,7 @@ impl FuncToEmitc {
                 None => return false,
             },
         };
-        let new_ty = Type::Function(FunctionType { inputs: sig.converted_types().to_vec(), results });
+        let new_ty = Type::Function(alloc::boxed::Box::new(FunctionType { inputs: sig.converted_types().to_vec(), results }));
         let mut data = OpData::build("emitc.func").with("sym_name", cr.rw.body[op].get("sym_name").cloned().unwrap_or(Attribute::Unit)).with("function_type", Attribute::Type(new_ty));
         for a in cr.all_attrs(op) {
             if a.name != "function_type" && a.name != "sym_name" {
@@ -201,6 +201,6 @@ impl FuncToEmitc {
                 cr.rw.ip = saved;
             }
         }
-        Some(Type::Extended(Extended { name: mlirformat::Str::Borrowed("emitc.opaque"), body: Some(mlirformat::Str::Owned(alloc::format!("<\"struct {name}\">"))), params: Vec::new() }))
+        Some(Type::Extended(alloc::boxed::Box::new(Extended { name: mlirformat::Str::Borrowed("emitc.opaque"), body: Some(mlirformat::Str::Owned(alloc::format!("<\"struct {name}\">"))), params: Vec::new() })))
     }
 }

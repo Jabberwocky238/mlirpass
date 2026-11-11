@@ -181,7 +181,7 @@ impl Abi {
         for i in (0..body[entry].args.len()).rev() {
             body.erase_arg(entry, i);
         }
-        body[f].set("function_type", Attribute::Type(Type::Function(FunctionType { inputs: Vec::new(), results: Vec::new() })));
+        body[f].set("function_type", Attribute::Type(Type::Function(alloc::boxed::Box::new(FunctionType { inputs: Vec::new(), results: Vec::new() }))));
         body[f].remove("arg_attrs");
 
         Ok(())

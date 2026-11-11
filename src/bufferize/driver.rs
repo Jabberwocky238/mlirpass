@@ -402,7 +402,7 @@ fn fold_memref_casts(body: &mut Body<'_>, f: OpId) {
     }
     let (inputs, results) = super::func_signature(body, f);
     let results = results.into_iter().zip(types).map(|(old, t)| t.unwrap_or(old)).collect();
-    body[f].set("function_type", mlirformat::Attribute::Type(Type::Function(mlirformat::FunctionType { inputs, results })));
+    body[f].set("function_type", mlirformat::Attribute::Type(Type::Function(alloc::boxed::Box::new(mlirformat::FunctionType { inputs, results }))));
 }
 
 /// ⭐ `runOneShotModuleBufferize`: the module analysis, the copies, then each function callees

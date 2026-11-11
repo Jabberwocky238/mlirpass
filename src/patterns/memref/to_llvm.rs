@@ -62,7 +62,7 @@ impl MemrefToLlvm {
 
     /// `isConvertibleAndHasIdentityMaps`.
     fn convertible_identity<'a>(cr: &Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>) -> bool {
-        s.identity_layout() && cr.type_converter().is_some_and(|tc| tc.convert(&Type::Shaped(s.clone())).is_some()) && opts.address_space(s).is_some()
+        s.identity_layout() && cr.type_converter().is_some_and(|tc| tc.convert(&Type::Shaped(alloc::boxed::Box::new(s.clone()))).is_some()) && opts.address_space(s).is_some()
     }
 
     pub fn elem<'a>(cr: &Cr<'_, 'a, '_>, t: &Type<'a>) -> Option<Type<'a>> {
@@ -499,7 +499,7 @@ impl MemrefToLlvm {
 
     fn assume<'a>(cr: &mut Cr<'_, 'a, '_>, operands: &[ValueId], tag: &str) {
         let tags = Attribute::Array(vec![Attribute::str(tag)]);
-        let sizes = Attribute::DenseArray { ty: Type::int(32), values: vec!["2".into()] };
+        let sizes = Attribute::DenseArray { ty: Type::int(32), values: vec!["2".into()].into() };
         cr.rw.create(OpData::build("llvm.intr.assume").operands(operands).with("op_bundle_sizes", sizes).with("op_bundle_tags", tags), &[]);
     }
 
@@ -552,7 +552,7 @@ impl MemrefToLlvm {
         let idx = opts.index();
         if s.shape.is_none() {
             let Some(space) = opts.address_space(&s) else { return false };
-            let scalar = Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(Vec::new()), elem: s.elem.clone(), extras: Vec::new() });
+            let scalar = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(Vec::new()), elem: s.elem.clone(), extras: Vec::new() }));
             let Some(elem) = Self::elem(cr, &scalar) else { return false };
             let ranked = cr.extract(desc, &[1]);
             let ptr: Type = LlvmType::Ptr(space).into();

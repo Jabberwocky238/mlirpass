@@ -30,7 +30,7 @@ const BASE_SHAPE_H: i64 = 3;
 const BASE_PITCH: i64 = 4;
 
 fn vector<'a>(n: i64, elem: Type<'a>) -> Type<'a> {
-    Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(vec![Dim::Static(n)]), elem: elem.into(), extras: Vec::new() })
+    Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Vector, shape: Some(vec![Dim::Static(n)]), elem: elem.into(), extras: Vec::new() }))
 }
 
 /// A vector type's static shape and element.
@@ -228,7 +228,7 @@ impl XegpuToXevm {
             }
             _ => {
                 let rank = s.shape.as_ref().map_or(0, Vec::len);
-                let base = Type::Shaped(Shaped { shape: Some(Vec::new()), extras: s.memory_space().cloned().into_iter().collect(), ..s.clone() });
+                let base = Type::Shaped(alloc::boxed::Box::new(Shaped { shape: Some(Vec::new()), extras: s.memory_space().cloned().into_iter().collect(), ..s.clone() }));
                 let types: Vec<Type<'a>> = [base, Type::Index].into_iter().chain(core::iter::repeat_n(Type::Index, 2 * rank)).collect();
                 let meta = rw.create(OpData::build("memref.extract_strided_metadata").operands(&[*input]), &types);
                 let r = rw.body[meta].results.clone();
@@ -734,7 +734,7 @@ impl XegpuToXevm {
         let addr = Self::add_offset(cr, base, linear, i64::from(bits / 8));
         let ptr = cr.unary("llvm.inttoptr", addr, ptr_ty);
         if cr.rw.body[op].get("subgroup_block_io").is_some() {
-            let int_ty = Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(shape.iter().map(|&n| Dim::Static(n)).collect()), elem: Type::int(bits).into(), extras: Vec::new() });
+            let int_ty = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Vector, shape: Some(shape.iter().map(|&n| Dim::Static(n)).collect()), elem: Type::int(bits).into(), extras: Vec::new() }));
             if load {
                 let mut r = cr.mk(xevm("xevm.blockload", &[ptr], vec![]), int_ty.clone());
                 if int_ty != vec_ty {

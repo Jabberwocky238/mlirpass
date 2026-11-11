@@ -24,7 +24,7 @@ impl BufferizationToMemref {
         let alloc = match &s.shape {
             None => Self::unranked(&mut cr.rw, input, s),
             Some(shape) => {
-                let alloc_ty = Type::Shaped(Shaped { extras: s.extras.iter().filter(|a| !a.is_layout()).cloned().collect(), ..s.clone() });
+                let alloc_ty = Type::Shaped(alloc::boxed::Box::new(Shaped { extras: s.extras.iter().filter(|a| !a.is_layout()).cloned().collect(), ..*s.clone() }));
                 if !crate::memref_cast_compatible(&alloc_ty, &ty) {
                     return false;
                 }
@@ -88,7 +88,7 @@ impl BufferizationToMemref {
         let in_ty = rw.body[input].ty.clone();
         let (zero, one) = (Self::cidx(rw, 0), Self::cidx(rw, 1));
         let rank = Self::result(rw, &memref::RankOp::new(input.into(), in_ty.clone(), Type::Index));
-        let shape_ty = Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(vec![Dim::Dynamic]), elem: Type::Index.into(), extras: Vec::new() });
+        let shape_ty = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(vec![Dim::Dynamic]), elem: Type::Index.into(), extras: Vec::new() }));
         let shape = Self::result(rw, &memref::AllocaOp::new(vec![rank.into()], Vec::new(), None, Type::Index, Type::Index, shape_ty.clone()));
         let lp = rw.build_for(zero, rank, one, &[one], &mut |rw, i, acc| {
             let dim = Self::result(rw, &memref::DimOp::new(input.into(), i.into(), in_ty.clone(), Type::Index, Type::Index));
@@ -96,9 +96,9 @@ impl BufferizationToMemref {
             vec![Self::result(rw, &arith::MulI::new(acc[0].into(), dim.into(), None, Type::Index))]
         });
         let size = rw.body[lp].results[0];
-        let flat = Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(vec![Dim::Dynamic]), elem: s.elem.clone(), extras: Vec::new() });
+        let flat = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(vec![Dim::Dynamic]), elem: s.elem.clone(), extras: Vec::new() }));
         let alloc = Self::result(rw, &memref::AllocOp::new(vec![size.into()], Vec::new(), None, Type::Index, Type::Index, flat.clone()));
-        Self::result(rw, &memref::ReshapeOp::new(alloc.into(), shape.into(), flat, shape_ty, Type::Shaped(s.clone())))
+        Self::result(rw, &memref::ReshapeOp::new(alloc.into(), shape.into(), flat, shape_ty, Type::Shaped(alloc::boxed::Box::new(s.clone()))))
     }
 }
 

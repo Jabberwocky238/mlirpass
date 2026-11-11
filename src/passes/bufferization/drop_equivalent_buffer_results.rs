@@ -51,7 +51,7 @@ impl DropEquivalentBufferResults {
             }
         }
         // `eraseResults`: the type, the result attributes, the return operands.
-        b[f].set("function_type", Attribute::Type(Type::Function(FunctionType { inputs: ft.inputs.clone(), results: Self::kept(ft.results.clone(), &to_arg) })));
+        b[f].set("function_type", Attribute::Type(Type::Function(alloc::boxed::Box::new(FunctionType { inputs: ft.inputs.clone(), results: Self::kept(ft.results.clone(), &to_arg) }))));
         if let Some(Attribute::Array(xs)) = b[f].get("res_attrs").cloned() {
             b[f].set("res_attrs", Attribute::Array(Self::kept(xs, &to_arg)));
         }

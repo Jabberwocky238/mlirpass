@@ -25,7 +25,7 @@ impl FuncToLlvm {
 
     fn function_type<'a>(cr: &ConversionRewriter<'_, 'a, '_>, op: OpId) -> Option<mlirformat::FunctionType<'a>> {
         match cr.rw.body[op].get("function_type")? {
-            Attribute::Type(Type::Function(f)) => Some(f.clone()),
+            Attribute::Type(Type::Function(f)) => Some(*f.clone()),
             _ => None,
         }
     }
@@ -365,7 +365,7 @@ impl FuncToLlvm {
         if indirect {
             data.remove("callee");
         }
-        data.set("op_bundle_sizes", Attribute::DenseArray { ty: Type::int(32), values: Vec::new() });
+        data.set("op_bundle_sizes", Attribute::DenseArray { ty: Type::int(32), values: Vec::new().into() });
         let types: Vec<Type> = packed.iter().map(|p| p.0.clone()).collect();
         let call = cr.rw.create(data, &types);
         let mut results = Vec::new();

@@ -458,13 +458,13 @@ impl MemrefToSpirv {
         let (src, r) = (cr.rw.body[op].operands[0], cr.rw.body[op].results[0]);
         let (Some(st), Some(rt)) = (Self::memref(&cr.rw.body[src].ty).cloned(), Self::memref(&cr.rw.body[r].ty).cloned()) else { return false };
         let (Some(ssc), Some(rsc)) = (SpirvTypes::storage_class(&st), SpirvTypes::storage_class(&rt)) else { return false };
-        let Some(result_ptr) = cr.converted(&Type::Shaped(rt)) else { return false };
+        let Some(result_ptr) = cr.converted(&Type::Shaped(alloc::boxed::Box::new(rt))) else { return false };
         let mut generic = result_ptr.clone();
         if ssc != "Generic" && rsc != "Generic" {
             let mut via = st.clone();
             via.extras.retain(|a| a.is_layout());
             via.extras.push(Cr::spirv_enum("storage_class", "Generic"));
-            let Some(g) = cr.converted(&Type::Shaped(via)) else { return false };
+            let Some(g) = cr.converted(&Type::Shaped(alloc::boxed::Box::new(via))) else { return false };
             generic = g;
         }
         let mut v = ops[0];

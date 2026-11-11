@@ -446,7 +446,7 @@ impl LlvmConverter {
     fn vector<'a>(s: &Shaped<'a>, options: LlvmOptions) -> Option<Type<'a>> {
         let elem = Self::scalar(&s.elem, options)?;
         let shape = s.shape.as_ref()?;
-        let vec1 = |d: Dim| Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(vec![d]), elem: elem.clone().into(), extras: Vec::new() });
+        let vec1 = |d: Dim| Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Vector, shape: Some(vec![d]), elem: elem.clone().into(), extras: Vec::new() }));
         let Some(last) = shape.last() else { return Some(vec1(Dim::Static(1))) };
         if shape[..shape.len() - 1].iter().any(|d| matches!(d, Dim::Scalable(_))) {
             return None;
@@ -647,7 +647,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         data.push(0);
         let n = data.len();
         let arr = LlvmType::array(n as u64, Type::int(8));
-        let tensor = Type::Shaped(Shaped { kind: ShapedKind::Tensor, shape: Some(vec![Dim::Static(n as i64)]), elem: Type::int(8).into(), extras: Vec::new() });
+        let tensor = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Tensor, shape: Some(vec![Dim::Static(n as i64)]), elem: Type::int(8).into(), extras: Vec::new() }));
         let value = crate::Const { ty: tensor, values: data.iter().map(|b| crate::Scalar::Int(crate::ApInt::new(8, *b as i8 as i128))).collect(), elements: true };
         let name = self.unique_symbol(module, symbol, counter);
         let saved = self.rw.ip;
@@ -660,7 +660,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         });
         self.rw.ip = saved;
         let addr = self.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![mlirformat::Str::Owned(name)])), LlvmType::ptr());
-        let gep = self.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::DenseArray { ty: Type::int(32), values: vec![mlirformat::Str::Borrowed("0")] }), LlvmType::ptr());
+        let gep = self.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::DenseArray { ty: Type::int(32), values: vec![mlirformat::Str::Borrowed("0")].into() }), LlvmType::ptr());
         self.llvm_func(module, runtime, vec![LlvmType::ptr()], LlvmType::void(), false)?;
         self.llvm_call(runtime, &[gep], &[]);
         Some(())

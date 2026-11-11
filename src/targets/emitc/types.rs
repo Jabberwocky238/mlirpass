@@ -108,7 +108,7 @@ impl Emitc {
     /// `TestToEmitCDialectInterface`: `!test.memref_element` is `!emitc.opaque<"TestElementT">`.
     pub fn test_conversions(tc: &mut TypeConverter<'_>) {
         tc.conversion(|t| match t {
-            Type::Extended(e) if e.name == "test.memref_element" => Some(Some(vec![Type::Extended(mlirformat::Extended { name: mlirformat::Str::Borrowed("emitc.opaque"), body: Some(mlirformat::Str::Borrowed("<\"TestElementT\">")), params: alloc::vec::Vec::new() })])),
+            Type::Extended(e) if e.name == "test.memref_element" => Some(Some(vec![Type::Extended(alloc::boxed::Box::new(mlirformat::Extended { name: mlirformat::Str::Borrowed("emitc.opaque"), body: Some(mlirformat::Str::Borrowed("<\"TestElementT\">")), params: alloc::vec::Vec::new() }))])),
             _ => None,
         });
     }

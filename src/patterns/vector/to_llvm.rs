@@ -207,7 +207,7 @@ impl VectorToLlvm {
     /// `getIndexedPtrs`: a vector of element pointers.
     fn indexed_ptrs<'a>(cr: &mut Cr<'_, 'a, '_>, o: VectorOptions<'_>, m: &Shaped<'a>, vs: &Shaped<'a>, base: ValueId, index: ValueId) -> Option<ValueId> {
         let d = vs.shape.as_ref()?.first()?.clone();
-        let ptrs = Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(vec![d]), elem: Type::from(LlvmType::Ptr(o.llvm.address_space(m)?)).into(), extras: Vec::new() });
+        let ptrs = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Vector, shape: Some(vec![d]), elem: Type::from(LlvmType::Ptr(o.llvm.address_space(m)?)).into(), extras: Vec::new() }));
         let elem = M::elem(cr, &m.elem)?;
         Some(M::gep(cr, ptrs, elem, base, &[Gep::V(index)], 0))
     }
@@ -688,7 +688,7 @@ impl VectorToLlvm {
         }
         let it = Type::int(if o.force_32bit_indices { 32 } else { 64 });
         let d = s.shape.as_ref().expect("rank 1")[0].clone();
-        let vt = Type::Shaped(Shaped { kind: ShapedKind::Vector, shape: Some(vec![d]), elem: it.clone().into(), extras: Vec::new() });
+        let vt = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Vector, shape: Some(vec![d]), elem: it.clone().into(), extras: Vec::new() }));
         let indices = cr.build(OpData::build("llvm.intr.stepvector"), vt.clone());
         let bound = operands[0][0];
         // (capped at INT32_MAX before the cast to 32 bits)
@@ -708,7 +708,7 @@ impl VectorToLlvm {
         };
         let bounds = cr.build(OpData::build("vector.broadcast").operands(&[bound]), vt);
         let cmp = OpData::build("arith.cmpi").operands(&[indices, bounds]).with("predicate", Attribute::i64(2));
-        let mt = Type::Shaped(Shaped { elem: Type::int(1).into(), ..s.clone() });
+        let mt = Type::Shaped(alloc::boxed::Box::new(Shaped { elem: Type::int(1).into(), ..s.clone() }));
         let c = cr.build(cmp, mt);
         cr.replace(op, vec![vec![c]]);
         true

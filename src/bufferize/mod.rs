@@ -217,7 +217,7 @@ impl BufferizationOptions {
         // One with symbols is another type, which only prints the same.
         let layout = layout.filter(|l| !crate::AffineMap::try_from(l).is_ok_and(|m| m.syms == 0 && m.is_identity()));
         let extras = layout.into_iter().chain(space).collect();
-        Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: tensor.shape.clone(), elem: tensor.elem.clone(), extras })
+        Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: tensor.shape.clone(), elem: tensor.elem.clone(), extras }))
     }
 
     /// `getMemRefTypeWithFullyDynamicLayout`.
@@ -227,7 +227,7 @@ impl BufferizationOptions {
         const TENSOR_LIKE: &[(&str, &str)] = &[("test.test_tensor", "test.test_memref")];
         let Type::Extended(e) = t else { return None };
         let (_, memref) = TENSOR_LIKE.iter().find(|(tensor, _)| *tensor == &*e.name)?;
-        Some(Type::Extended(mlirformat::Extended { name: (*memref).into(), body: e.body.clone(), params: e.params.clone() }))
+        Some(Type::Extended(alloc::boxed::Box::new(mlirformat::Extended { name: (*memref).into(), body: e.body.clone(), params: e.params.clone() })))
     }
 
     /// `BaseMemRefType::isValidElementType`: builtin scalars, complex, vector and memref, and

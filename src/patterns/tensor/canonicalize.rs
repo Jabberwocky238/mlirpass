@@ -24,7 +24,7 @@ impl Tn {
     /// `RankedTensorType::get(dims, elem, encoding)`.
     fn tensor<'a>(dims: &[i64], elem: Type<'a>, extras: Vec<Attribute<'a>>) -> Type<'a> {
         let shape = dims.iter().map(|d| if *d == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
-        Type::Shaped(Shaped { kind: ShapedKind::Tensor, shape: Some(shape), elem: elem.into(), extras })
+        Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Tensor, shape: Some(shape), elem: elem.into(), extras }))
     }
 
     /// `t` with other dims (element type and encoding kept).
@@ -138,7 +138,7 @@ impl Tn {
 
     /// `PadOp::inferResultType`.
     fn pad_type<'a>(src: &Shaped<'a>, low: &[i64], high: &[i64], result: &[i64]) -> Option<Type<'a>> {
-        let dims = (Type::Shaped(src.clone())).dims()?;
+        let dims = (Type::Shaped(alloc::boxed::Box::new(src.clone()))).dims()?;
         if low.len() != dims.len() || high.len() != dims.len() || (!result.is_empty() && result.len() != dims.len()) {
             return None;
         }
@@ -150,7 +150,7 @@ impl Tn {
 
     /// `CollapseShapeOp::inferCollapsedType`.
     fn collapsed_type<'a>(src: &Shaped<'a>, r: &Reassoc) -> Type<'a> {
-        let dims = (Type::Shaped(src.clone())).dims().unwrap_or_default();
+        let dims = (Type::Shaped(alloc::boxed::Box::new(src.clone()))).dims().unwrap_or_default();
         let mut at = 0;
         let mut shape = Vec::new();
         for g in r {
@@ -411,7 +411,7 @@ fn insert_slice_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         }
     }
     let expected = Tn::with_dims(&dt, &static_sizes);
-    if !Tn::rank_reduced(&expected, &Type::Shaped(st)) {
+    if !Tn::rank_reduced(&expected, &Type::Shaped(alloc::boxed::Box::new(st))) {
         return false;
     }
     if !Ofr::in_bounds(&b[dst].ty.dims().unwrap_or_default(), &o, &s, &t) {

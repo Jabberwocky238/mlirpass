@@ -65,7 +65,7 @@ impl MemrefSlots {
         let loc = rw.body[alloc].loc.clone();
         let mut sub = |index: &Attribute<'a>| {
             let elem = slot.subelements.iter().find(|(i, _)| i == index).expect("a used index is a subelement").1.clone();
-            let ty = Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(Vec::new()), elem: elem.clone().into(), extras: Vec::new() });
+            let ty = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(Vec::new()), elem: elem.clone().into(), extras: Vec::new() }));
             let data = OpData { loc: loc.clone(), ..OpData::build(name) };
             let op = rw.create(if name == "memref.alloca" { data.segments(&[0, 0]) } else { data }, &[ty]);
             allocators.push(op);

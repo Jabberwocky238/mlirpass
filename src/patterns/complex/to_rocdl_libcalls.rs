@@ -72,7 +72,7 @@ impl ComplexToRocdlLibCalls {
         let Type::Float(k) = elem else { return false };
         let rhs_ty = b[rhs].ty.clone();
         let exp_ty = match &rhs_ty {
-            Type::Shaped(s) => Type::Shaped(mlirformat::Shaped { elem: elem.clone().into(), ..s.clone() }),
+            Type::Shaped(s) => Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { elem: elem.clone().into(), ..*s.clone() })),
             _ => elem.clone(),
         };
         let fm = b[op].get("fastmath").cloned();

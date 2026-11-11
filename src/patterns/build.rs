@@ -70,7 +70,7 @@ pub fn iterators<'a>(kinds: &[bool]) -> Attribute<'a> {
 pub fn i64_elements<'a>(v: &[i64], vector: bool) -> Attribute<'a> {
     use mlirformat::{Shaped, ShapedKind};
     let kind = if vector { ShapedKind::Vector } else { ShapedKind::Tensor };
-    let ty = Type::Shaped(Shaped { kind, shape: Some(vec![Dim::Static(v.len() as i64)]), elem: Type::int(64).into(), extras: Vec::new() });
+    let ty = Type::Shaped(alloc::boxed::Box::new(Shaped { kind, shape: Some(vec![Dim::Static(v.len() as i64)]), elem: Type::int(64).into(), extras: Vec::new() }));
     let values = v.iter().map(|x| crate::Scalar::Int(crate::ApInt::new(64, i128::from(*x)))).collect();
     crate::Const { ty, values, elements: true }.into()
 }

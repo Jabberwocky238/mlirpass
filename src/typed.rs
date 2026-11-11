@@ -26,7 +26,7 @@ pub struct RegType<'t> {
 
 impl<'a> From<RegType<'_>> for Type<'a> {
     fn from(r: RegType<'_>) -> Self {
-        Type::Extended(Extended { name: r.name.to_owned().into(), body: Some(format!("<{}>", r.elem).into()), params: Vec::new() })
+        Type::Extended(alloc::boxed::Box::new(Extended { name: r.name.to_owned().into(), body: Some(format!("<{}>", r.elem).into()), params: Vec::new() }))
     }
 }
 

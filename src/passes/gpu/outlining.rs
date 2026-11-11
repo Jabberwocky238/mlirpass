@@ -148,7 +148,7 @@ impl<'a> Body<'a> {
         let workgroup = self[launch].get("workgroup_attributions").and_then(|a| mlirformat::Const::try_from(a).ok()?.as_int()).map_or(0, |i| i.signed() as usize);
         let attributions = &args[fixed..];
         let inputs = self.types(&operands);
-        let mut data = OpData::build("gpu.func").with("function_type", Attribute::Type(Type::Function(FunctionType { inputs: inputs.clone(), results: Vec::new() })));
+        let mut data = OpData::build("gpu.func").with("function_type", Attribute::Type(Type::Function(alloc::boxed::Box::new(FunctionType { inputs: inputs.clone(), results: Vec::new() }))));
         if let Some(b) = self.constant_dims(&self.launch_group(launch, BLOCK)) {
             data.set("known_block_size", b);
         }

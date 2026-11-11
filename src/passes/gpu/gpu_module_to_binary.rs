@@ -70,7 +70,7 @@ impl Run for GpuModuleToBinary {
             let mut data = OpData::build("gpu.binary");
             data.set("sym_name", name);
             data.set("objects", Attribute::Array(objects));
-            data.set("offloadingHandler", Attribute::Extended { ext: Extended { name: String::from("gpu.select_object").into(), body: None, params: Vec::new() }, ty: None });
+            data.set("offloadingHandler", Attribute::Extended { ext: alloc::boxed::Box::new(Extended { name: String::from("gpu.select_object").into(), body: None, params: Vec::new() }), ty: None });
             rw.create(data, &[]);
             rw.erase_op(m);
         }
@@ -133,7 +133,7 @@ impl GpuModuleToBinary {
         };
         let props = properties.map(|p| format!("properties = {p}, ")).unwrap_or_default();
         let body = format!("<{t}, {props}{key}\"{}\">", escape(bytes));
-        Attribute::Extended { ext: Extended { name: String::from("gpu.object").into(), body: Some(body.into()), params: Vec::new() }, ty: None }
+        Attribute::Extended { ext: alloc::boxed::Box::new(Extended { name: String::from("gpu.object").into(), body: Some(body.into()), params: Vec::new() }), ty: None }
     }
 
     /// Kernels of machine code (name, alignment, padding after, bytes, what the driver needs) one after another: the

@@ -71,7 +71,7 @@ impl Reshaped {
     fn memref<'a>(src: &Shaped<'a>, shape: &[i64], layout: Option<StridedLayout>) -> Type<'a> {
         let space = src.extras.iter().find(|a| !a.is_layout()).cloned();
         let extras = layout.map(Attribute::from).into_iter().chain(space).collect();
-        Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(shape.iter().map(|d| Dim::from(*d)).collect()), elem: src.elem.clone(), extras })
+        Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(shape.iter().map(|d| Dim::from(*d)).collect()), elem: src.elem.clone(), extras }))
     }
 
     /// `computeCollapsedLayoutMap` (`strict`: a dynamic stride cannot be checked, so fails).

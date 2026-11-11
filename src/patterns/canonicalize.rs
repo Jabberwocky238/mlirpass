@@ -54,7 +54,7 @@ fn builder_sets<'a>(name: &str) -> Vec<(&'static str, Attribute<'a>)> {
     match name {
         "memref.load" => alloc::vec![("nontemporal", Attribute::Bool(false)), ("invariant", Attribute::Bool(false))],
         "vector.load" | "vector.store" | "memref.store" => alloc::vec![("nontemporal", Attribute::Bool(false))],
-        "llvm.call" | "llvm.call_intrinsic" => alloc::vec![("op_bundle_sizes", Attribute::DenseArray { ty: Type::int(32), values: Vec::new() })],
+        "llvm.call" | "llvm.call_intrinsic" => alloc::vec![("op_bundle_sizes", Attribute::DenseArray { ty: Type::int(32), values: Vec::new().into() })],
         _ => Vec::new(),
     }
 }

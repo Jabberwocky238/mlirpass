@@ -241,7 +241,7 @@ impl FoldAlias {
         // A vector operand of the access's vector type, without the `n` leading dims.
         fn lower<'a>(t: &Type<'a>, vs: &mlirformat::Shaped<'_>, n: usize) -> Option<Type<'a>> {
             let Type::Shaped(s) = t else { return None };
-            (s.kind == vs.kind && s.shape == vs.shape).then(|| Type::Shaped(mlirformat::Shaped { shape: s.shape.as_ref().map(|d| d[n..].to_vec()), ..s.clone() }))
+            (s.kind == vs.kind && s.shape == vs.shape).then(|| Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { shape: s.shape.as_ref().map(|d| d[n..].to_vec()), ..*s.clone() })))
         }
         let mut cast: Vec<(ValueId, ValueId)> = Vec::new();
         for i in 0..operands.len() {

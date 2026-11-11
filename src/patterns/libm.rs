@@ -33,7 +33,7 @@ impl Libm {
         let results = b.types(&b[op].results);
         if b.lookup(table, name).is_none() {
             let ty = FunctionType { inputs: b.types(&operands), results: results.clone() };
-            let mut data = OpData::build("func.func").with("sym_name", Attribute::str(name)).with("function_type", Attribute::Type(Type::Function(ty))).with("sym_visibility", Attribute::str("private"));
+            let mut data = OpData::build("func.func").with("sym_name", Attribute::str(name)).with("function_type", Attribute::Type(Type::Function(alloc::boxed::Box::new(ty)))).with("sym_visibility", Attribute::str("private"));
             if readnone {
                 data.set("llvm.readnone", Attribute::Unit);
             }

@@ -95,7 +95,7 @@ impl<'a> Rewriter<'_, 'a> {
         }
         let mut data = OpData::build("cf.switch").operands(&operands).successors(&core::iter::once(default.0).chain(cases.iter().map(|c| c.1)).collect::<Vec<_>>()).segments(&[1, default.1.len(), segs.iter().sum()]).with("case_operand_segments", Attribute::dense_i32(&segs));
         if !cases.is_empty() {
-            let shape = Type::Shaped(mlirformat::Shaped { kind: mlirformat::ShapedKind::Vector, shape: Some(vec![mlirformat::Dim::Static(cases.len() as i64)]), elem: flag_ty.into(), extras: Vec::new() });
+            let shape = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { kind: mlirformat::ShapedKind::Vector, shape: Some(vec![mlirformat::Dim::Static(cases.len() as i64)]), elem: flag_ty.into(), extras: Vec::new() }));
             let values = cases.iter().map(|c| crate::Scalar::Int(c.0)).collect();
             data = data.with("case_values", Const { ty: shape, values, elements: true }.into());
         }

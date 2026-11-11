@@ -168,7 +168,7 @@ mod bufferizable {
                         name = format!("{base}_{k}");
                         k += 1;
                     }
-                    let ty = BufferizationOptions::identity(&Shaped { kind: ShapedKind::Tensor, ..t.clone() }, space);
+                    let ty = BufferizationOptions::identity(&Shaped { kind: ShapedKind::Tensor, ..*t.clone() }, space);
                     let mut data = OpData::build("memref.global")
                         .with("sym_name", Attribute::str(&name))
                         .with("sym_visibility", Attribute::str(&String::from("private")))
@@ -211,7 +211,7 @@ mod bufferizable {
             let source = buffer_of(rw, o, src)?;
             let elem = rw.body[rw.body[op].results[0]].ty.element_type().clone();
             let Type::Shaped(m) = rw.body[source].ty.clone() else { return Err(Error("expected a memref".into())) };
-            let ty = Type::Shaped(Shaped { elem: elem.into(), ..m });
+            let ty = Type::Shaped(alloc::boxed::Box::new(Shaped { elem: elem.into(), ..*m }));
             let c = rw.create(OpData::build("arith.index_cast").operands(&[source]), &[ty]);
             let v = rw.body[c].results[0];
             replace_with_buffers(rw, op, &[v]);
@@ -245,7 +245,7 @@ mod bufferizable {
             if space(tm) != space(fm) {
                 return Err(Error(format!("'{}' op inconsistent memory space on true/false operands", b[op].name)));
             }
-            Ok(BufferizationOptions::fully_dynamic(&Shaped { kind: ShapedKind::Tensor, extras: Vec::new(), ..tm.clone() }, space(tm)))
+            Ok(BufferizationOptions::fully_dynamic(&Shaped { kind: ShapedKind::Tensor, extras: Vec::new(), ..*tm.clone() }, space(tm)))
         }
 
         fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {

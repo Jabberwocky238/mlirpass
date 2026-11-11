@@ -46,7 +46,7 @@ impl Memref {
     /// The type without its layout (`MemRefType::get(shape, elem, {}, space)`).
     fn without_layout<'a>(s: &Shaped<'a>) -> Type<'a> {
         let extras = s.extras.iter().filter(|a| !a.is_layout()).cloned().collect();
-        Type::Shaped(Shaped { extras, ..s.clone() })
+        Type::Shaped(alloc::boxed::Box::new(Shaped { extras, ..s.clone() }))
     }
 }
 
@@ -57,7 +57,7 @@ impl BufferResultsToOutParams {
 
     fn function_type<'a>(b: &Body<'a>, f: OpId) -> FunctionType<'a> {
         match b[f].get("function_type") {
-            Some(Attribute::Type(Type::Function(t))) => t.clone(),
+            Some(Attribute::Type(Type::Function(t))) => *t.clone(),
             _ => FunctionType { inputs: Vec::new(), results: Vec::new() },
         }
     }
@@ -94,7 +94,7 @@ impl BufferResultsToOutParams {
         let mut inputs = ft.inputs.clone();
         inputs.extend(types.iter().cloned());
         let results: Vec<Type> = ft.results.iter().enumerate().filter(|(i, _)| !erased.contains(i)).map(|(_, t)| t.clone()).collect();
-        b[f].set("function_type", Attribute::Type(Type::Function(FunctionType { inputs, results })));
+        b[f].set("function_type", Attribute::Type(Type::Function(alloc::boxed::Box::new(FunctionType { inputs, results }))));
         let res = Self::dicts(b, f, "res_attrs", ft.results.len());
         let mut args = Self::dicts(b, f, "arg_attrs", ft.inputs.len());
         for i in &erased {

@@ -46,7 +46,7 @@ impl<'a> Rewriter<'_, 'a> {
         let s = memref(&self.body[src].ty).expect("a ranked memref").clone();
         let rank = s.shape.as_ref().map_or(0, Vec::len);
         let space: Vec<Attribute> = s.extras.iter().filter(|a| !a.is_layout()).cloned().collect();
-        let base = Type::Shaped(Shaped { kind: ShapedKind::MemRef, shape: Some(Vec::new()), elem: s.elem.clone(), extras: space });
+        let base = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(Vec::new()), elem: s.elem.clone(), extras: space }));
         let mut types = vec![base, Type::Index];
         types.extend(vec![Type::Index; 2 * rank]);
         self.create(OpData::build("memref.extract_strided_metadata").operands(&[src]), &types)
@@ -465,7 +465,7 @@ impl Rules {
         if base_used {
             let Type::Shaped(bt) = rw.body[results[0]].ty.clone() else { return false };
             let space: Vec<Attribute> = memref(&cast_ty).map_or(Vec::new(), |s| s.extras.iter().filter(|a| !a.is_layout()).cloned().collect());
-            let nt = Type::Shaped(Shaped { extras: space, ..bt });
+            let nt = Type::Shaped(alloc::boxed::Box::new(Shaped { extras: space, ..*bt }));
             let o = rw.create(OpData::build("memref.memory_space_cast").operands(&[results[0]]), &[nt]);
             results[0] = rw.body[o].results[0];
         } else {

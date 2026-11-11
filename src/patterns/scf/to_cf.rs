@@ -228,9 +228,9 @@ impl ScfToCf {
         let v = cr.op1("arith.index_cast", &[arg], Type::int(64));
         let mut all = vec![default];
         all.extend(&succs);
-        let mut data = OpData::build("cf.switch").operands(&[v]).successors(&all).segments(&[1, 0, 0]).with("case_operand_segments", Attribute::DenseArray { ty: Type::int(32), values: vec!["0".into(); succs.len()] });
+        let mut data = OpData::build("cf.switch").operands(&[v]).successors(&all).segments(&[1, 0, 0]).with("case_operand_segments", Attribute::DenseArray { ty: Type::int(32), values: vec!["0".into(); succs.len()].into() });
         if !cases.is_empty() {
-            let ty = Type::Shaped(mlirformat::Shaped { kind: mlirformat::ShapedKind::Vector, shape: Some(vec![mlirformat::Dim::Static(cases.len() as i64)]), elem: Type::int(64).into(), extras: Vec::new() });
+            let ty = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { kind: mlirformat::ShapedKind::Vector, shape: Some(vec![mlirformat::Dim::Static(cases.len() as i64)]), elem: Type::int(64).into(), extras: Vec::new() }));
             let values = cases.iter().map(|c| crate::Scalar::Int(crate::ApInt::new(64, i128::from(*c as i64)))).collect();
             data.set("case_values", crate::Const { ty, values, elements: true }.into());
         }
