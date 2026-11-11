@@ -19,7 +19,7 @@ Anything goes. For a bug, the MLIR text, the pipeline, and what `mlir-opt` 23.1.
    cargo build -p mlirpass --no-default-features
    ```
 
-4. Open the pull request. CI runs the same tests.
+4. Open the pull request.
 
 Unfinished or draft pull requests are fine too.
 
