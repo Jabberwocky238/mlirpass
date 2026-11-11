@@ -1,9 +1,9 @@
 # mlirpass-fuzz
 
-Random valid MLIR, run through mlirpass and `mlir-opt` 22.1.8 side by side (对拍), and timed.
+Random valid MLIR, run through mlirpass and `mlir-opt` 23.1.5 side by side (对拍), and timed.
 A crate of its own (outside the workspace, never published): `cargo run --release -- <command>`.
 
-`mlir-opt` is `$MLIR_OPT`, else the one on `PATH`; it must be 22.1.8, as for the fixtures.
+`mlir-opt` is `$MLIR_OPT`, else the one on `PATH`; it must be 23.1.5, as for the fixtures.
 
 ```sh
 export MLIR_OPT=$LLVM_BUILD/bin/mlir-opt

@@ -1,6 +1,44 @@
-# Benchmark: mlirpass 0.8.1 (mlirformat 0.6.2) vs `mlir-opt` 22.1.8
+# Benchmark: mlirpass vs `mlir-opt`
 
-## 0.8.1: jemalloc, every CPU
+## main after 0.9.0: against `mlir-opt` 23.1.5
+
+Measured 2026-11-11 on the machine of the setup below (load average ~3), mlirpass `634a31d`
+(mlirformat 0.7.0), against a Release build of `mlir-opt` 23.1.5 (`llvmorg-23.1.5`, no
+assertions). Same seed 5 module, in process (`fuzz/`: `bench --seed 5 --reps 3`); run 1t / Nt is
+the pass on one thread / on 16, "total Nt" is parse + run Nt + print, against the threaded
+`mlir-opt` process:
+
+| pipeline | parse | run 1t | run Nt | print | **total Nt** | **`mlir-opt` Nt** | speed-up | same |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
+| `func.func(canonicalize)` | 123 | 787 | 89 | 11 | **222** | 1,658 | **7.5×** | yes |
+| `func.func(cse)` | 121 | 152 | 19 | 56 | **196** | 1,837 | **9.4×** | yes |
+| `func.func(canonicalize,cse)` | 122 | 802 | 88 | 11 | **221** | 1,648 | **7.5×** | yes |
+| `sccp` | 120 | 763 | 118 | 91 | **329** | 3,086 | **9.4×** | yes |
+| `func.func(loop-invariant-code-motion)` | 120 | 83 | 12 | 99 | **231** | 1,966 | **8.5×** | yes |
+| `func.func(mem2reg)` | 123 | 42 | 8 | 97 | **228** | 1,977 | **8.7×** | yes |
+| `convert-scf-to-cf` | 121 | 222 | 40 | 105 | **266** | 2,175 | **8.2×** | yes |
+| `remove-dead-values` | 119 | 1,189 | 231 | 17 | **367** | 3,982 | **10.8×** | yes ¹ |
+| the `-to-llvm` pipeline | 121 | 2,681 | 373 | 226 | **720** | 5,317 | **7.4×** | yes |
+
+¹ `mlir-opt` 23.1.5's `remove-dead-values` output for this module is not deterministic: run after
+run it alternates between two (the order of a pointer-keyed set), and mlirpass prints one of them,
+so `same` says yes or no by the run.
+
+Before the work of this section (0.9.0 as released, same machine, same day), against after:
+
+| pipeline | run 1t | run Nt | what changed |
+| --- | ---: | ---: | --- |
+| `func.func(canonicalize)` | 971 ⇒ 787 | 107 ⇒ 89 | patterns kept per root op name: `for_op` merges two lists instead of filtering every pattern per op visit |
+| `sccp` | 838 ⇒ 763 | 309 ⇒ 118 | callee lookup through a symbol table (it scanned the module per call); symbol uses, nested tables and calls found on the pool; each function enqueues its own body on its own thread |
+| `remove-dead-values` | 1,373 ⇒ 1,189 | 401 ⇒ 231 | the same solver work; poisons made in their function's seg |
+| the `-to-llvm` pipeline | 3,512 ⇒ 2,681 | 363 ⇒ 373 | a symbol index per pass (`func.call` lowering looked every callee up linearly); ops made in the seg of the block they go into |
+
+Where serial time still goes: the arenas. `OpData` is 344 bytes and an `Attribute` 160, so walking
+a block's ops misses cache, and an arena that doubles moves hundreds of megabytes; shrinking those
+types breaks mlirformat's API.
+
+## 0.8.1 (mlirformat 0.6.2) vs `mlir-opt` 22.1.8: jemalloc, every CPU
+
 
 mlirformat 0.6.2's `std` makes jemalloc the global allocator, so mlirpass (and its command line)
 runs on it. Measured 2026-11-06, the machine of the setup below, again **not idle** (load average
