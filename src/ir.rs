@@ -481,7 +481,7 @@ impl PartialEq for Seg<'_> {
 }
 
 /// The ids an op or a block holds (operands, results, successors, regions, arguments, blocks):
-/// up to four inline, as big as a `Vec` and no allocation for the usual handful.
+/// two inline, as big as a `Vec`: no allocation for most ops, and a small `OpData`.
 pub type Ids<T> = smallvec::SmallVec<[T; 2]>;
 
 /// A slot no use holds ([`Uses`]), or an operand whose slot is unknown ([`UseSlots`]).
