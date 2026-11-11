@@ -442,12 +442,19 @@ pub trait Pattern: Send + Sync {
     fn rewrite(&self, rw: &mut Rewriter<'_, '_>, op: OpId) -> bool;
 }
 
+/// Where a pattern is tried: benefit (highest first), then op-specific before any-op, then the
+/// order it was added in.
+type Place = ((core::cmp::Reverse<u16>, bool), u32);
+
 /// Patterns ordered as `PatternApplicator` tries them: by benefit, highest first, stable. Kept
-/// in that order as they are added, so [`PatternSet::for_op`] just filters.
+/// per root op name (and the any-op ones apart), each list in that order, so
+/// [`PatternSet::for_op`] merges two lists instead of filtering them all.
 #[derive(Default)]
 pub struct PatternSet {
-    /// Each with its place in that order: benefit (highest first), then op-specific before any-op.
-    patterns: Vec<((core::cmp::Reverse<u16>, bool), Box<dyn Pattern>)>,
+    by_root: BTreeMap<String, Vec<(Place, Box<dyn Pattern>)>>,
+    any: Vec<(Place, Box<dyn Pattern>)>,
+    /// How many were added: the next one's place among equals.
+    added: u32,
 }
 
 impl PatternSet {
@@ -457,24 +464,45 @@ impl PatternSet {
 
     /// Goes after every pattern tried before it or alongside it (stable).
     pub fn add_boxed(&mut self, p: Box<dyn Pattern>) -> &mut Self {
-        let key = (core::cmp::Reverse(p.benefit()), p.root().is_none());
-        let at = self.patterns.partition_point(|q| q.0 <= key);
-        self.patterns.insert(at, (key, p));
+        let place = ((core::cmp::Reverse(p.benefit()), p.root().is_none()), self.added);
+        self.added += 1;
+        let list = match p.root() {
+            Some(r) => self.by_root.entry(String::from(r)).or_default(),
+            None => &mut self.any,
+        };
+        let at = list.partition_point(|q| q.0 <= place);
+        list.insert(at, (place, p));
         self
     }
 
     /// Keeps the patterns `keep` accepts.
     pub fn retain(&mut self, keep: impl Fn(&dyn Pattern) -> bool) {
-        self.patterns.retain(|p| keep(p.1.as_ref()));
+        self.any.retain(|p| keep(p.1.as_ref()));
+        self.by_root.retain(|_, list| {
+            list.retain(|p| keep(p.1.as_ref()));
+            !list.is_empty()
+        });
     }
 
     /// The patterns for op `name`, in the order they are tried.
-    pub fn for_op<'s>(&'s self, name: &'s str) -> impl Iterator<Item = &'s dyn Pattern> {
-        self.patterns.iter().map(|p| p.1.as_ref()).filter(move |p| p.root().is_none_or(|r| r == name))
+    pub fn for_op<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s dyn Pattern> {
+        let (mut own, mut any) = (self.by_root.get(name).map_or(&[][..], |l| &l[..]), &self.any[..]);
+        core::iter::from_fn(move || {
+            let take_own = match (own.first(), any.first()) {
+                (Some(a), Some(b)) => a.0 < b.0,
+                (Some(_), None) => true,
+                (None, Some(_)) => false,
+                (None, None) => return None,
+            };
+            let list = if take_own { &mut own } else { &mut any };
+            let (first, rest) = list.split_first()?;
+            *list = rest;
+            Some(first.1.as_ref())
+        })
     }
 
     pub fn is_empty(&self) -> bool {
-        self.patterns.is_empty()
+        self.any.is_empty() && self.by_root.is_empty()
     }
 }
 
