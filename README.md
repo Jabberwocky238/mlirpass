@@ -24,7 +24,7 @@ own target env (`tests/support/vkinfo.c`) is checked against the host's product 
 
 | part | what it is | upstream |
 |---|---|---|
-| `ir` | arena IR with use-def chains (an op's operands, results, successors and regions inline up to four, `Ids`); `Module` ⇄ IR; printed straight from the IR (`Body::show`, read through mlirformat's `Source`); cloning (`Mapping`) | `mlir/IR` |
+| `ir` | arena IR with use-def chains (an op's operands, results, successors and regions inline up to two, `Ids`); `Module` ⇄ IR; printed straight from the IR (`Body::show`, read through mlirformat's `Source`); cloning (`Mapping`) | `mlir/IR` |
 | `pass` | pass manager, `--pass-pipeline` syntax, the registry (`registry.gen.rs`), the `mlir-opt` command line (`Invocation`), the verifiers run after each pass, and `Exec` ([moremath](https://crates.io/crates/moremath)'s `ThreadMulti`, or any `Executor` — the kind mlirformat's `parse_in` / `print_in` take too): nested pipelines over isolated ops (functions) as parallel tasks | `mlir/Pass`, `OpToOpPassAdaptor`, `MlirOptMain` |
 | `rewrite` | patterns, rewriter, greedy and walk drivers | `PatternMatch`, `GreedyPatternRewriteDriver`, `WalkPatternRewriteDriver` |
 | `region` | region simplification (unreachable blocks, region DCE, block merging) and dominance | `RegionUtils`, `Dominance` |
@@ -36,30 +36,83 @@ own target env (`tests/support/vkinfo.c`) is checked against the host's product 
 | `dialects` | each upstream dialect's `OpInterfaces`, one unit struct each (`ScfDialect`, ...) | `mlir/lib/Dialect/*/IR` |
 | `targets` | the `Emit` trait, and what each backend below shares (type converters, `convert-to-*` interfaces, serializers) | `mlir-translate` |
 
-Two kinds of cargo features, all on by default (`all-dialects`, `all-targets`), so a user builds
-only what it runs (`default-features = false, features = ["std", "dialect.scf", "dialect.arith",
-"target.llvm"]`):
+## Features
 
-- `dialect.<name>` (`dialect.scf`, `dialect.linalg`, ...): one dialect's op interfaces, folds,
-  canonicalization patterns, its own transforms and its lowerings to other dialects
-  (`dialects/<name>.rs`, `patterns/<name>/`, `passes/<name>/`). A dialect whose code uses another's
-  turns that one on (`dialect.math` = `dialect.arith`). Without a dialect's feature its ops still
-  parse and print (mlirformat knows them all); they are just opaque to folds and patterns.
-- `dialect.rdna2` / `dialect.agx` / `dialect.apple9` / `dialect.xe3` / `dialect.image`: the GPU instruction sets, command streams and
-  images mlirpass encodes itself (not upstream dialects; not in `all-dialects`).
-- `target.<backend>`: a backend, below. Its rules and passes sit in `patterns/` / `passes/` like
-  any other (`arith/to_llvm.rs` needs `dialect.arith` and `target.llvm`); `src/targets` keeps what
-  they share.
+The default build has every upstream dialect and the three upstream backends (`all-dialects`,
+`all-targets`); a user builds only what it runs (`default-features = false, features = ["std",
+"dialect.scf", "dialect.arith", "target.llvm"]`):
 
-| feature | what it is | upstream |
+- `dialect.<name>`: one dialect's op interfaces, folds, canonicalization patterns, its own
+  transforms and its lowerings to other dialects (`dialects/<name>.rs`, `patterns/<name>/`,
+  `passes/<name>/`). A dialect whose code uses another's turns that one on. Without a dialect's
+  feature its ops still parse and print (mlirformat knows them all); they are just opaque to folds
+  and patterns.
+- `target.<backend>`: a backend. Its rules and passes sit in `patterns/` / `passes/` like any other
+  (`arith/to_llvm.rs` needs `dialect.arith` and `target.llvm`); `src/targets` keeps what they share.
+- The GPU instruction sets (`dialect.rdna2`, `dialect.agx`, `dialect.apple9`, `dialect.xe3`,
+  `dialect.image`) and their `target.*` are mlirpass's own, in neither `all-*`.
+
+A pass is listed under the feature that compiles it in, with the others it needs too
+(`scripts/features.py` writes the table from `Cargo.toml` and `src/registry.gen.rs`):
+
+<!-- features -->
+| feature | default | what it is |
 |---|---|---|
-| `target.llvm` | the type converter, dialect → `llvm` (the CPU dialect `x86` too: `convert-vector-to-llvm=enable-x86`); `dialect.llvm` (the llvm folds, the llvm memory-slot interfaces) | `mlir/lib/Conversion/*ToLLVM`, `Dialect/LLVMIR` |
-| `target.emitc` | dialect → `emitc`: the EmitC type converter, `convert-to-emitc` | `mlir/lib/Conversion/*ToEmitC` |
-| `target.rdna2` / `target.agx` / `target.apple9` / `target.xe3` | a GPU's own machine code, without LLVM (not in `all-targets`): `convert-gpu-to-<isa>` (upstream `gpu.func` kernels: arith / math / vector / scf, `gpu.block_id` / `thread_id` / `barrier`, flat 32-bit memory as `llvm.inttoptr` + `llvm.load` / `store` / `atomicrmw`), register allocation, waits, encoding; command streams (PM4, CDM, genxml batches), the image's layout; `gpu-module-to-binary` encodes a module of kernels into a `#gpu.object`. AMD RDNA2 (gfx1036), Apple AGX (G13), Apple9 (M3 / M4, compute: workgroups of 32 (or 16, two a hardware workgroup), i32 and f32 arithmetic with correctly rounded division and square root, `scf.if` / `scf.for` / `scf.while` on the execution-mask stack, threadgroup memory (`!llvm.ptr<3>`) and `gpu.barrier`, `llvm.atomicrmw` / `llvm.cmpxchg` (memory and threadgroup memory), 3-D grids of workgroups (`gpu.grid_dim` from the parameter buffer); no Mesa model, checked by running on an M4 through Metal: `scripts/apple9_check.py`), Intel Xe3 (compute: a `#xevm.target` module's kernels, SIMD16, `known_block_size` its workgroup, workgroup attributions its shared memory, exact f32 / f64 division and square root; vertex and fragment shaders through `convert-spirv-entry-points`: textures, buffers, push constants, multisample resolve, several targets). Encoders checked against llvm-mc, Mesa, gentool and the M4 (`tests/{rdna2,agx,apple9,xe3}.rs`) | Mesa radv / asahi / anv, LLVM AMDGPU |
-| `target.spirv` | target env, type converter, `gpu` / `func` / `arith` / `cf` / `complex` / `index` / `math` / `memref` / `scf` / `tensor` / `vector` / `ub` → `spirv`, `spirv-lower-abi-attrs`, `spirv-update-vce`, the spirv dialect's own transforms (`spirv-canonicalize-gl`, `spirv-unify-aliased-resource`, `spirv-rewrite-inserts`, `spirv-promote-to-replicated-constants`, `spirv-webgpu-prepare`, `decorate-spirv-composite-type-layout`); `SpirvBinary` (the serializer) and `SpirvGlsl` (GLSL 4.50) emit | `mlir/lib/Conversion/*ToSPIRV`, `Target/SPIRV` |
+| `std` | yes | the standard library (without it the crate is `no_std` and needs `alloc`), threads (moremath's `ThreadMulti`, the default `Exec`), mlirformat's `std` |
+| `cli` | yes | the `mlirpass` command line: `mlir-opt`'s, for the passes this crate has; turns on `std` |
+| `all-dialects` | yes | every upstream `dialect.*` below (not the GPU instruction sets) |
+| `all-targets` | yes | `target.llvm`, `target.emitc` and `target.spirv` |
+| `dialect.acc` | yes | `acc`: its op interfaces, folds and patterns |
+| `dialect.affine` | yes | `affine`: its op interfaces, folds and patterns; turns on `dialect.arith`; passes: `convert-affine-for-to-gpu`, `lower-affine` |
+| `dialect.amdgpu` | yes | `amdgpu`: its op interfaces, folds and patterns; turns on `dialect.memref`; passes: `convert-amdgpu-to-rocdl` (with `target.llvm`), `convert-arith-to-amdgpu` (with `dialect.vector`, one of `target.emitc` / `target.llvm` / `target.spirv`) |
+| `dialect.arith` | yes | `arith`: its op interfaces, folds and patterns; passes: `convert-arith-to-emitc` (with `target.emitc`), `convert-arith-to-llvm` (with `target.llvm`), `convert-arith-to-spirv` (with `target.spirv`) |
+| `dialect.bufferization` | yes | `bufferization`: its op interfaces, folds and patterns; turns on `dialect.memref`; passes: `buffer-results-to-out-params`, `convert-bufferization-to-memref`, `drop-equivalent-buffer-results`, `one-shot-bufferize`, `promote-buffers-to-stack` |
+| `dialect.cf` | yes | `cf`: its op interfaces, folds and patterns; passes: `convert-cf-to-llvm` (with `target.llvm`), `convert-cf-to-spirv` (with `target.spirv`), `lift-cf-to-scf` (with `dialect.scf`, `dialect.func`) |
+| `dialect.complex` | yes | `complex`: its op interfaces, folds and patterns; turns on `dialect.arith`; passes: `convert-complex-to-libm`, `convert-complex-to-llvm` (with `target.llvm`), `convert-complex-to-rocdl-library-calls` (with `dialect.func`), `convert-complex-to-spirv` (with `target.spirv`), `convert-complex-to-standard` |
+| `dialect.emitc` | yes | `emitc`: its op interfaces, folds and patterns |
+| `dialect.func` | yes | `func`: its op interfaces, folds and patterns; passes: `convert-func-to-emitc` (with `target.emitc`), `convert-func-to-llvm` (with `target.llvm`), `convert-func-to-spirv` (with `target.spirv`) |
+| `dialect.gpu` | yes | `gpu`: its op interfaces, folds and patterns; turns on `dialect.arith`, `dialect.memref`; passes: `convert-gpu-to-llvm-spv` (with `target.llvm`), `convert-gpu-to-nvvm` (with `target.llvm`, `dialect.nvvm`), `convert-gpu-to-rocdl` (with `target.llvm`, `dialect.amdgpu`, `dialect.math`), `convert-gpu-to-spirv` (with `target.spirv`, `dialect.func`, `dialect.scf`, `dialect.vector`), `gpu-kernel-outlining`, `gpu-launch-sink-index-computations`, `gpu-module-to-binary`, `xevm-attach-target` |
+| `dialect.index` | yes | `index`: its op interfaces, folds and patterns; turns on `dialect.arith`; passes: `convert-index-to-llvm` (with `target.llvm`), `convert-index-to-spirv` (with `target.spirv`) |
+| `dialect.linalg` | yes | `linalg`: its op interfaces, folds and patterns; turns on `dialect.arith`, `dialect.affine`, `dialect.memref`, `dialect.tensor`; passes: `convert-elementwise-to-linalg`, `convert-linalg-to-affine-loops`, `convert-linalg-to-loops`, `convert-linalg-to-parallel-loops`, `convert-tensor-to-linalg`, `convert-tensor-to-spirv` (with `target.spirv`, `dialect.func`), `linalg-fold-unit-extent-dims` |
+| `dialect.llvm` | yes | `llvm`: its op interfaces, folds and patterns |
+| `dialect.math` | yes | `math`: its op interfaces, folds and patterns; turns on `dialect.arith`, `dialect.vector`; passes: `convert-math-to-emitc` (with `target.emitc`), `convert-math-to-funcs`, `convert-math-to-libm`, `convert-math-to-llvm` (with `target.llvm`), `convert-math-to-rocdl` (with `target.llvm`), `convert-math-to-spirv` (with `target.spirv`), `convert-math-to-xevm` (with `target.llvm`) |
+| `dialect.memref` | yes | `memref`: its op interfaces, folds and patterns; turns on `dialect.arith`, `dialect.affine`; passes: `convert-memref-to-emitc` (with `target.emitc`), `convert-memref-to-spirv` (with `target.spirv`), `expand-strided-metadata`, `finalize-memref-to-llvm` (with `target.llvm`), `fold-memref-alias-ops`, `map-memref-spirv-storage-class` (with `target.spirv`), `resolve-ranked-shaped-type-result-dims`, `resolve-shaped-type-result-dims` |
+| `dialect.ml_program` | yes | `ml_program`: its op interfaces, folds and patterns |
+| `dialect.mpi` | yes | `mpi`: its op interfaces, folds and patterns; turns on `dialect.arith` |
+| `dialect.nvgpu` | yes | `nvgpu`: its op interfaces, folds and patterns; turns on `dialect.nvvm`, `dialect.memref`, `dialect.scf`, `dialect.arith`; passes: `convert-nvgpu-to-nvvm` (with `target.llvm`) |
+| `dialect.nvvm` | yes | `nvvm`: its op interfaces, folds and patterns; passes: `convert-nvvm-to-llvm` (with `target.llvm`) |
+| `dialect.omp` | yes | `omp`: its op interfaces, folds and patterns |
+| `dialect.ptr` | yes | `ptr`: its op interfaces, folds and patterns |
+| `dialect.quant` | yes | `quant`: its op interfaces, folds and patterns |
+| `dialect.scf` | yes | `scf`: its op interfaces, folds and patterns; passes: `convert-parallel-loops-to-gpu` (with `dialect.gpu`), `convert-scf-to-cf`, `convert-scf-to-emitc` (with `target.emitc`), `convert-scf-to-spirv` (with `target.spirv`, `dialect.func`, `dialect.index`, `dialect.memref`), `gpu-map-parallel-loops` (with `dialect.gpu`) |
+| `dialect.shape` | yes | `shape`: its op interfaces, folds and patterns; turns on `dialect.arith`; passes: `convert-shape-to-std` |
+| `dialect.sparse_tensor` | yes | `sparse_tensor`: its op interfaces, folds and patterns |
+| `dialect.spirv` | yes | `spirv`: its op interfaces, folds and patterns |
+| `dialect.tensor` | yes | `tensor`: its op interfaces, folds and patterns; turns on `dialect.arith`, `dialect.affine` |
+| `dialect.test` | yes | `test`: its op interfaces, folds and patterns |
+| `dialect.tosa` | yes | `tosa`: its op interfaces, folds and patterns; passes: `tosa-to-arith`, `tosa-to-linalg`, `tosa-to-linalg-named`, `tosa-to-scf`, `tosa-to-tensor` |
+| `dialect.ub` | yes | `ub`: its op interfaces, folds and patterns; passes: `convert-ub-to-llvm` (with `target.llvm`), `convert-ub-to-spirv` (with `target.spirv`) |
+| `dialect.vector` | yes | `vector`: its op interfaces, folds and patterns; turns on `dialect.affine`, `dialect.arith`, `dialect.memref`, `dialect.ub`; passes: `convert-vector-to-llvm` (with `target.llvm`), `convert-vector-to-scf`, `convert-vector-to-spirv` (with `target.spirv`) |
+| `dialect.x86` | yes | `x86`: its op interfaces, folds and patterns; turns on `dialect.memref` |
+| `dialect.xegpu` | yes | `xegpu`: its op interfaces, folds and patterns; turns on `dialect.xevm`, `dialect.vector`, `dialect.memref`, `dialect.arith`, `dialect.index`, `dialect.scf`, `dialect.gpu`; passes: `convert-vector-to-xegpu`, `convert-xegpu-to-xevm` (with `target.llvm`) |
+| `dialect.xevm` | yes | `xevm`: its op interfaces, folds and patterns; passes: `convert-xevm-to-llvm` (with `target.llvm`) |
+| `dialect.agx` | no | Apple AGX (G13)'s instruction set and CDM command stream (not an upstream dialect); turns on `dialect.image` |
+| `dialect.apple9` | no | Apple9 (M3 / M4)'s instruction set (not an upstream dialect) |
+| `dialect.image` | no | the images of the GPU instruction sets below (not an upstream dialect) |
+| `dialect.rdna2` | no | AMD RDNA2's instruction set and PM4 command stream, as mlirpass encodes them (not an upstream dialect); turns on `dialect.image` |
+| `dialect.xe3` | no | Intel Xe3's instruction set and genxml batches (not an upstream dialect); turns on `dialect.image` |
+| `target.agx` | no | Apple AGX (G13) machine code without LLVM, CDM command streams; checked against Mesa asahi (`tests/agx.rs`); turns on `dialect.agx`, `dialect.spirv`, `dialect.gpu`, `dialect.arith`, `dialect.math`, `dialect.vector`, `dialect.func`, `dialect.scf`; passes: `agx-end`, `agx-layout`, `agx-regalloc`, `agx-wait`, `convert-gpu-to-agx`, `convert-spirv-entry-points` (or with `target.rdna2` / `target.xe3` instead), `gpu-inline-calls` (or with `target.apple9` / `target.rdna2` / `target.xe3` instead) |
+| `target.apple9` | no | Apple9 (M3 / M4) compute kernels without LLVM; checked by running on an M4 through Metal (`scripts/apple9_check.py`, `tests/apple9.rs`); turns on `dialect.apple9`, `dialect.spirv`, `dialect.gpu`, `dialect.arith`, `dialect.math`, `dialect.vector`, `dialect.func`, `dialect.scf`; passes: `apple9-control`, `apple9-regalloc`, `apple9-wait`, `convert-gpu-to-apple9` |
+| `target.emitc` | yes | dialect → `emitc`: the EmitC type converter; turns on `dialect.emitc`; passes: `convert-to-emitc` |
+| `target.llvm` | yes | the type converter, dialect → `llvm` (the CPU dialect `x86` too: `convert-vector-to-llvm=enable-x86`), the llvm folds and memory-slot interfaces; turns on `dialect.llvm`; passes: `convert-to-llvm`, `llvm-request-c-wrappers`, `set-llvm-module-datalayout` |
+| `target.rdna2` | no | AMD RDNA2 (gfx1036) machine code without LLVM: `gpu.func` kernels, register allocation, waits, encoding, PM4, the image; checked against llvm-mc and Mesa radv (`tests/rdna2.rs`); turns on `dialect.rdna2`, `dialect.spirv`, `dialect.gpu`, `dialect.arith`, `dialect.math`, `dialect.vector`, `dialect.func`, `dialect.scf`; passes: `convert-gpu-to-rdna2`, `rdna2-layout`, `rdna2-pad`, `rdna2-pm4`, `rdna2-regalloc`, `rdna2-waitcnt` |
+| `target.spirv` | yes | target env, type converter, dialect → `spirv`, the spirv dialect's own transforms; `SpirvBinary` (the serializer) and `SpirvGlsl` (GLSL 4.50) emit; turns on `dialect.spirv`; passes: `decorate-spirv-composite-type-layout`, `spirv-attach-target`, `spirv-canonicalize-gl`, `spirv-lower-abi-attrs`, `spirv-promote-to-replicated-constants`, `spirv-rewrite-inserts`, `spirv-unify-aliased-resource`, `spirv-update-vce`, `spirv-webgpu-prepare` |
+| `target.xe3` | no | Intel Xe3 machine code without LLVM: compute kernels, vertex and fragment shaders through `convert-spirv-entry-points`, genxml batches; checked against Mesa anv and gentool (`tests/xe3.rs`); turns on `dialect.xe3`, `dialect.spirv`, `dialect.gpu`, `dialect.arith`, `dialect.math`, `dialect.vector`, `dialect.func`, `dialect.scf`; passes: `convert-gpu-to-xe3`, `xe3-branches`, `xe3-control`, `xe3-end`, `xe3-layout`, `xe3-pad`, `xe3-regalloc`, `xe3-swsb` |
 
-Dialects: every dialect mlirformat describes parses and prints; those with a `dialect.*` feature
-also fold, canonicalize and lower.
+Always compiled in, whatever the features: `canonicalize`, `cse`, `inline`, `loop-invariant-code-motion`, `mem2reg`, `reconcile-unrealized-casts`, `remove-dead-values`, `sccp`, `sroa`, `strip-debuginfo`, `symbol-dce`, `symbol-privatize`.
+<!-- /features -->
+
+GPU machine code (`target.rdna2` / `target.agx` / `target.apple9` / `target.xe3`): a GPU's own machine code, without LLVM (not in `all-targets`): `convert-gpu-to-<isa>` (upstream `gpu.func` kernels: arith / math / vector / scf, `gpu.block_id` / `thread_id` / `barrier`, flat 32-bit memory as `llvm.inttoptr` + `llvm.load` / `store` / `atomicrmw`), register allocation, waits, encoding; command streams (PM4, CDM, genxml batches), the image's layout; `gpu-module-to-binary` encodes a module of kernels into a `#gpu.object`. AMD RDNA2 (gfx1036), Apple AGX (G13), Apple9 (M3 / M4, compute: workgroups of 32 (or 16, two a hardware workgroup), i32 and f32 arithmetic with correctly rounded division and square root, `scf.if` / `scf.for` / `scf.while` on the execution-mask stack, threadgroup memory (`!llvm.ptr<3>`) and `gpu.barrier`, `llvm.atomicrmw` / `llvm.cmpxchg` (memory and threadgroup memory), 3-D grids of workgroups (`gpu.grid_dim` from the parameter buffer); no Mesa model, checked by running on an M4 through Metal: `scripts/apple9_check.py`), Intel Xe3 (compute: a `#xevm.target` module's kernels, SIMD16, `known_block_size` its workgroup, workgroup attributions its shared memory, exact f32 / f64 division and square root; vertex and fragment shaders through `convert-spirv-entry-points`: textures, buffers, push constants, multisample resolve, several targets). Encoders checked against llvm-mc, Mesa, gentool and the M4 (`tests/{rdna2,agx,apple9,xe3}.rs`).
 
 ## Declaring passes and lowerings
 
