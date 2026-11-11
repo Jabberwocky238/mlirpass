@@ -58,6 +58,7 @@ impl Buf {
                 Type::Float(k) => u128::from(mlirpass::mlirformat::ApFloat::from_f64(k, f.to_f64()).expect("a float").bits),
                 _ => u128::from(f.bits),
             },
+            other => panic!("no buffer element for {other:?}"),
         };
         self.data[i * n..(i + 1) * n].copy_from_slice(&bits.to_le_bytes()[..n]);
     }
@@ -214,7 +215,7 @@ impl<'b, 'a> Host<'b, 'a> {
     fn int(&self, v: ValueId) -> Result<i64, String> {
         match self.scalar(v)?.0 {
             Scalar::Int(i) => Ok(i.signed() as i64),
-            Scalar::Float(_) => Err(String::from("not an integer")),
+            _ => Err(String::from("not an integer")),
         }
     }
 

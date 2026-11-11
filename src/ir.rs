@@ -2295,7 +2295,7 @@ impl<'a> Aliases<'a> {
             rest = &tail[end..];
         }
         out.push_str(rest);
-        Some(Cow::Owned(out))
+        Some(Str::Owned(out))
     }
 
     /// `name` names an alias rather than a dialect symbol (`#map`, not `#arith.fastmath<...>`).
@@ -2390,7 +2390,7 @@ impl<'a> Aliases<'a> {
         }
         if at != 0 {
             out.push_str(&body[at..]);
-            *body = Cow::Owned(out);
+            *body = Str::Owned(out);
         }
     }
 
@@ -2774,9 +2774,10 @@ impl<'a> Body<'a> {
             match item {
                 // Location aliases are spelled out where used (so the IR prints them inline).
                 Item::AttrAlias { name, value: Attribute::Builtin { name: kw, body, .. } } if kw == "loc" => {
-                    let inner = match body {
-                        Cow::Borrowed(b) => Cow::Borrowed(b.strip_prefix('(').and_then(|b| b.strip_suffix(')')).unwrap_or(b)),
-                        Cow::Owned(b) => Cow::Owned(String::from(b.strip_prefix('(').and_then(|b| b.strip_suffix(')')).unwrap_or(&b))),
+                    let strip = |b: &str| b.strip_prefix('(').and_then(|b| b.strip_suffix(')')).map_or(0..b.len(), |i| 1..1 + i.len());
+                    let inner = match body.borrowed() {
+                        Some(b) => Str::Borrowed(&b[strip(b)]),
+                        None => Str::Owned(String::from(&body[strip(&body)])),
                     };
                     let resolved = aliases.loc(Some(inner)).unwrap_or_default();
                     aliases.locs.insert(name, resolved);
@@ -3276,14 +3277,14 @@ impl<'n, 'a> Export<'n, 'a> {
     /// `%INVALID` so that it shows.
     fn value(&self, v: ValueId) -> Value<'n> {
         match *self.names.values.get(v) {
-            Some(Name { head, index }) => Value { name: Cow::Borrowed(self.names.head(head, v.seg())), index },
+            Some(Name { head, index }) => Value { name: Str::Borrowed(self.names.head(head, v.seg())), index },
             // Its id says where it sits in memory, which the threads change: not printed.
-            None => Value { name: Cow::Borrowed("INVALID"), index: None },
+            None => Value { name: Str::Borrowed("INVALID"), index: None },
         }
     }
 
     fn label(&self, b: BlockId) -> Str<'n> {
-        Cow::Borrowed(&self.names.bbs[(*self.names.labels.get(b)).expect("placed block") as usize])
+        Str::Borrowed(&self.names.bbs[(*self.names.labels.get(b)).expect("placed block") as usize])
     }
 
     fn types(&self, vs: &[ValueId]) -> Vec<Type<'n>> {

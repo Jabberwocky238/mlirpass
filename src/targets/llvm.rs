@@ -11,7 +11,6 @@ pub use interfaces::{LlvmEnv, ToLlvmInterfaces};
 pub use libcall::{file_line_col, LibFns};
 pub use signature::LlvmSignature;
 
-use alloc::borrow::Cow;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -492,7 +491,7 @@ pub fn llvm_overflow<'a>(arith: Option<&Attribute<'_>>) -> Attribute<'a> {
         _ => "",
     };
     let v = i64::from(body.contains("nsw")) | (i64::from(body.contains("nuw")) << 1);
-    Attribute::Int { lit: Cow::Owned(format!("{v}")), ty: Some(Type::int(32)) }
+    Attribute::Int { lit: mlirformat::Str::Owned(format!("{v}")), ty: Some(Type::int(32)) }
 }
 
 /// `LLVMConversionTarget`: the llvm dialect and unrealized casts are legal.
@@ -628,7 +627,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
 
     /// `llvm.call @callee(args)`.
     pub fn llvm_call(&mut self, callee: &str, args: &[ValueId], results: &[Type<'a>]) -> OpId {
-        let data = OpData::build("llvm.call").operands(args).with("callee", Attribute::SymbolRef(vec![Cow::Owned(String::from(callee))])).segments(&[args.len(), 0]);
+        let data = OpData::build("llvm.call").operands(args).with("callee", Attribute::SymbolRef(vec![mlirformat::Str::Owned(String::from(callee))])).segments(&[args.len(), 0]);
         self.rw.create(data, results)
     }
 
@@ -660,8 +659,8 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
             b.add_region(g);
         });
         self.rw.ip = saved;
-        let addr = self.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![Cow::Owned(name)])), LlvmType::ptr());
-        let gep = self.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::DenseArray { ty: Type::int(32), values: vec![Cow::Borrowed("0")] }), LlvmType::ptr());
+        let addr = self.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![mlirformat::Str::Owned(name)])), LlvmType::ptr());
+        let gep = self.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::DenseArray { ty: Type::int(32), values: vec![mlirformat::Str::Borrowed("0")] }), LlvmType::ptr());
         self.llvm_func(module, runtime, vec![LlvmType::ptr()], LlvmType::void(), false)?;
         self.llvm_call(runtime, &[gep], &[]);
         Some(())

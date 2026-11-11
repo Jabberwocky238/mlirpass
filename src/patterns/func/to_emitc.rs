@@ -1,6 +1,5 @@
 //! `func` ⇒ `emitc`, as `FuncToEmitC.cpp`.
 
-use alloc::borrow::Cow;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -202,6 +201,6 @@ impl FuncToEmitc {
                 cr.rw.ip = saved;
             }
         }
-        Some(Type::Extended(Extended { name: Cow::Borrowed("emitc.opaque"), body: Some(Cow::Owned(alloc::format!("<\"struct {name}\">"))), params: Vec::new() }))
+        Some(Type::Extended(Extended { name: mlirformat::Str::Borrowed("emitc.opaque"), body: Some(mlirformat::Str::Owned(alloc::format!("<\"struct {name}\">"))), params: Vec::new() }))
     }
 }

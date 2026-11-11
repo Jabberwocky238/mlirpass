@@ -2,7 +2,6 @@
 //! module with the SPIR calling convention and the attributes the builtin has; cache controls as the
 //! `xevm.DecorationCacheControl` the SPIR-V backend reads.
 
-use alloc::borrow::Cow;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -476,7 +475,7 @@ impl<'a> DeviceFn<'_, 'a> {
                     let mut names: Vec<&str> = self.param_attrs.iter().filter(|(k, _)| *k == i).map(|(_, n)| *n).collect();
                     names.sort_unstable();
                     names.dedup();
-                    Attribute::Dict(names.into_iter().map(|n| NamedAttr { name: Cow::Borrowed(n), value: None }).collect())
+                    Attribute::Dict(names.into_iter().map(|n| NamedAttr { name: mlirformat::Str::Borrowed(n), value: None }).collect())
                 })
                 .collect();
             fn_attrs.push(("arg_attrs", Attribute::Array(dicts)));

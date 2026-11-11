@@ -2,7 +2,6 @@
 //! loads, stores and the memory intrinsics read and write, casts, no-op GEPs and the lifetime /
 //! invariant / debug intrinsics only need their uses gone.
 
-use alloc::borrow::Cow;
 use alloc::format;
 use alloc::vec::Vec;
 
@@ -93,7 +92,7 @@ impl Ty {
     fn int_attr<'a>(v: u128, ty: &Type<'a>) -> Attribute<'a> {
         let Type::Integer { width: bits, .. } = ty else { unreachable!("an integer type") };
         let shift = 128 - bits;
-        Attribute::Int { lit: Cow::Owned(format!("{}", ((v << shift) as i128) >> shift)), ty: Some(ty.clone()) }
+        Attribute::Int { lit: mlirformat::Str::Owned(format!("{}", ((v << shift) as i128) >> shift)), ty: Some(ty.clone()) }
     }
 
     fn width(t: &Type<'_>) -> Option<u64> {

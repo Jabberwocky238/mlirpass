@@ -1,6 +1,5 @@
 //! `index` ⇒ `llvm`, as `IndexToLLVM.cpp`.
 
-use alloc::borrow::Cow;
 use alloc::format;
 use alloc::vec::Vec;
 
@@ -25,7 +24,7 @@ impl Ll<'_, '_, '_, '_> {
     /// `LLVM::ConstantOp::create(type, int)`.
     fn int(&mut self, v: i64) -> ValueId {
         let ty = self.ty.clone();
-        self.cr.llvm_constant(Attribute::Int { lit: Cow::Owned(format!("{v}")), ty: Some(ty.clone()) }, ty)
+        self.cr.llvm_constant(Attribute::Int { lit: mlirformat::Str::Owned(format!("{v}")), ty: Some(ty.clone()) }, ty)
     }
 
     fn bin(&mut self, name: &str, l: ValueId, r: ValueId) -> ValueId {

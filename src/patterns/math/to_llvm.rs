@@ -44,7 +44,7 @@ pub struct MathToLlvm;
 impl MathToLlvm {
     /// The op's attributes with `fastmath` as `fastmathFlags` (`AttrConvertFastMathToLLVM`).
     fn fmf_attrs(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Vec<NamedAttr<'static>> {
-        let mut attrs: Vec<NamedAttr<'static>> = cr.all_attrs(op).iter().map(|a| NamedAttr { name: alloc::borrow::Cow::Owned(alloc::string::String::from(&*a.name)), value: a.value.as_ref().map(Attribute::owned) }).collect();
+        let mut attrs: Vec<NamedAttr<'static>> = cr.all_attrs(op).iter().map(|a| NamedAttr { name: mlirformat::Str::Owned(alloc::string::String::from(&*a.name)), value: a.value.as_ref().map(Attribute::owned) }).collect();
         if let Some(i) = attrs.iter().position(|a| a.name == "fastmath") {
             let a = attrs.remove(i);
             attrs.push(NamedAttr { name: "fastmathFlags".into(), value: Some(llvm_fastmath(a.value.as_ref())) });
@@ -199,7 +199,7 @@ impl MathToLlvm {
         let Some([x]) = ConversionRewriter::one_to_one(operands).and_then(|v| <[ValueId; 1]>::try_from(v).ok()) else { return false };
         let Some(tc) = cr.type_converter() else { return false };
         let Some(res) = tc.convert(&cr.rw.body[cr.rw.body[op].results[0]].ty.clone()) else { return false };
-        let b = Attribute::Int { lit: alloc::borrow::Cow::Owned(alloc::format!("{bit}")), ty: Some(Type::int(32)) };
+        let b = Attribute::Int { lit: mlirformat::Str::Owned(alloc::format!("{bit}")), ty: Some(Type::int(32)) };
         cr.replace_new(op, OpData::build("llvm.intr.is.fpclass").operands(&[x]).with("bit", b), &[res]);
         true
     }

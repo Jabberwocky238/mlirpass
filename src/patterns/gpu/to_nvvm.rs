@@ -435,7 +435,7 @@ impl AssertToNvvm {
         let global = |cr: &mut Cr<'_, 'a, '_>, prefix: &str, bytes: &[u8]| {
             let (g, arr) = crate::GpuToLlvm::string_constant(cr, module, prefix, bytes, 0, loc.clone());
             cr.rw.set_before(op);
-            let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![alloc::borrow::Cow::Owned(g)])), LlvmType::ptr());
+            let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![mlirformat::Str::Owned(g)])), LlvmType::ptr());
             cr.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::dense_i32(&[0, 0])), LlvmType::ptr())
         };
         let m = global(cr, "assert_message_", &msg);

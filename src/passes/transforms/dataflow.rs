@@ -39,10 +39,10 @@ impl PartialEq for Cv<'_> {
 impl<'a> Cv<'a> {
     /// The dialect of op `name`: borrowed from it when it is.
     pub fn dialect(name: &mlirformat::Str<'a>) -> mlirformat::Str<'a> {
-        use alloc::borrow::Cow;
-        match name {
-            Cow::Borrowed(n) => Cow::Borrowed(n.split_once('.').map_or("", |(d, _)| d)),
-            Cow::Owned(n) => Cow::Owned(n.split_once('.').map_or("", |(d, _)| d).into()),
+        let of = |n: &str| -> usize { n.split_once('.').map_or(0, |(d, _)| d.len()) };
+        match name.borrowed() {
+            Some(n) => mlirformat::Str::Borrowed(&n[..of(n)]),
+            None => mlirformat::Str::Owned(String::from(&name[..of(name)])),
         }
     }
 

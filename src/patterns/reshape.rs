@@ -1,7 +1,6 @@
 //! What the `tensor` and `memref` reshapes share, as `ReshapeOpsUtils`: reassociations, the
 //! reshape fold, and the patterns composing reshapes.
 
-use alloc::borrow::Cow;
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -76,7 +75,7 @@ pub struct Reshape;
 
 impl Reshape {
     pub fn attr<'a>(r: &Reassoc) -> Attribute<'a> {
-        let int = |x: &i64| Attribute::Int { lit: Cow::Owned(format!("{x}")), ty: None };
+        let int = |x: &i64| Attribute::Int { lit: mlirformat::Str::Owned(format!("{x}")), ty: None };
         Attribute::Array(r.iter().map(|g| Attribute::Array(g.iter().map(int).collect())).collect())
     }
 
@@ -288,7 +287,7 @@ impl<'a> Rewriter<'_, 'a> {
                 }
             }
         }
-        let values = statics.iter().map(|x| Cow::Owned(format!("{x}"))).collect();
+        let values = statics.iter().map(|x| mlirformat::Str::Owned(format!("{x}"))).collect();
         OpData::build(&format!("{dialect}.expand_shape")).operands(&ops).with("reassociation", Reshape::attr(r)).with("static_output_shape", Attribute::DenseArray { ty: Type::int(64), values })
     }
 

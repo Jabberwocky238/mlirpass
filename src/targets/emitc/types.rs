@@ -1,7 +1,6 @@
 //! What the `*-to-emitc` lowerings share: the type converters (`TypeConversions.cpp`) and
 //! builders for the ops they create; the EmitC types are mlirformat's [`EmitcType`].
 
-use alloc::borrow::Cow;
 use alloc::vec;
 
 use mlirformat::{Attribute, Shaped, ShapedKind, Signedness, Type};
@@ -76,7 +75,7 @@ impl Emitc {
 
     /// An integer attribute `v : ty`.
     pub fn int<'a>(v: i64, ty: Type<'a>) -> Attribute<'a> {
-        Attribute::Int { lit: Cow::Owned(alloc::format!("{v}")), ty: Some(ty) }
+        Attribute::Int { lit: mlirformat::Str::Owned(alloc::format!("{v}")), ty: Some(ty) }
     }
 
     /// `materializeAsUnrealizedCast`.
@@ -109,7 +108,7 @@ impl Emitc {
     /// `TestToEmitCDialectInterface`: `!test.memref_element` is `!emitc.opaque<"TestElementT">`.
     pub fn test_conversions(tc: &mut TypeConverter<'_>) {
         tc.conversion(|t| match t {
-            Type::Extended(e) if e.name == "test.memref_element" => Some(Some(vec![Type::Extended(mlirformat::Extended { name: Cow::Borrowed("emitc.opaque"), body: Some(Cow::Borrowed("<\"TestElementT\">")), params: alloc::vec::Vec::new() })])),
+            Type::Extended(e) if e.name == "test.memref_element" => Some(Some(vec![Type::Extended(mlirformat::Extended { name: mlirformat::Str::Borrowed("emitc.opaque"), body: Some(mlirformat::Str::Borrowed("<\"TestElementT\">")), params: alloc::vec::Vec::new() })])),
             _ => None,
         });
     }

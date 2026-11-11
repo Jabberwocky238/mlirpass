@@ -94,7 +94,7 @@ impl CfToLlvm {
             all.extend(g);
             segs.push(g.len());
         }
-        let segments = Attribute::DenseArray { ty: mlirformat::Type::int(32), values: segs.iter().map(|s| alloc::borrow::Cow::Owned(alloc::format!("{s}"))).collect() };
+        let segments = Attribute::DenseArray { ty: mlirformat::Type::int(32), values: segs.iter().map(|s| mlirformat::Str::Owned(alloc::format!("{s}"))).collect() };
         let mut data = OpData::build("llvm.switch").operands(&all).successors(&dests).segments(&[1, groups[0].len(), segs.iter().sum()]).with("case_operand_segments", segments);
         if let Some(cv) = case_values {
             data = data.with("case_values", cv);

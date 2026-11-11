@@ -1,6 +1,5 @@
 //! `tosa` ⇒ `arith`, as `TosaToArith.cpp`: constants and `apply_scale`.
 
-use alloc::borrow::Cow;
 use alloc::format;
 use alloc::vec::Vec;
 
@@ -36,7 +35,7 @@ impl<'a> Sc<'_, '_, 'a, '_> {
                 let w = s.elem.int_width().map_or(64, |w| w.0);
                 Const::splat(Scalar::Int(ApInt::new(w, i128::from(v))), ty.clone()).into()
             }
-            _ => Attribute::Int { lit: Cow::Owned(format!("{v}")), ty: Some(ty.clone()) },
+            _ => Attribute::Int { lit: mlirformat::Str::Owned(format!("{v}")), ty: Some(ty.clone()) },
         };
         self.cr.emit(&arith::Constant::new(attr, ty.clone()))
     }

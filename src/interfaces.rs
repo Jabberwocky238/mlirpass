@@ -671,7 +671,7 @@ impl Body<'_> {
 
     pub fn set_segments(&mut self, op: OpId, name: &str, sizes: &[usize]) {
         let Some(Attribute::DenseArray { ty, .. }) = self[op].get(name).cloned() else { return };
-        let values = sizes.iter().map(|s| Cow::Owned(format!("{s}"))).collect();
+        let values = sizes.iter().map(|s| Str::Owned(format!("{s}"))).collect();
         self[op].set(name, Attribute::DenseArray { ty, values });
     }
 

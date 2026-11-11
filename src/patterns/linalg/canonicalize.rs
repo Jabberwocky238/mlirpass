@@ -1,6 +1,5 @@
 //! `linalg`: folds and canonicalization patterns, as `LinalgOps.cpp`.
 
-use alloc::borrow::Cow;
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -61,11 +60,11 @@ impl Lg {
     }
 
     fn dense<'a>(v: &[i64]) -> Attribute<'a> {
-        Attribute::DenseArray { ty: Type::int(64), values: v.iter().map(|x| Cow::Owned(format!("{x}"))).collect() }
+        Attribute::DenseArray { ty: Type::int(64), values: v.iter().map(|x| Str::Owned(format!("{x}"))).collect() }
     }
 
     fn index<'a>(v: i64) -> Attribute<'a> {
-        Attribute::Int { lit: Cow::Owned(format!("{v}")), ty: Some(Type::Index) }
+        Attribute::Int { lit: Str::Owned(format!("{v}")), ty: Some(Type::Index) }
     }
 
     fn int(a: Option<&Attribute<'_>>) -> Option<i64> {

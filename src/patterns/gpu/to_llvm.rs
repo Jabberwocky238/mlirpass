@@ -1,7 +1,6 @@
 //! `gpu` ⇒ `llvm` shared by the vendor lowerings, as `GPUOpsLowering.cpp`: `gpu.func` (with its
 //! attributions), `gpu.return` and `gpu.printf` as a call.
 
-use alloc::borrow::Cow;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -262,7 +261,7 @@ impl GpuToLlvm {
                 Some(p) => *p,
                 None => {
                     let ty: Type<'a> = LlvmType::Ptr(o.workgroup_space).into();
-                    let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![Cow::Owned(globals[i].clone())])), ty.clone());
+                    let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![mlirformat::Str::Owned(globals[i].clone())])), ty.clone());
                     let arr = LlvmType::array(a.elems as u64, a.elem.clone());
                     cr.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::dense_i32(&[0, 0])), ty)
                 }
@@ -348,7 +347,7 @@ impl GpuToLlvm {
         let mut data = bytes.to_vec();
         data.push(0);
         let ty = LlvmType::array(data.len() as u64, Type::int(8));
-        let value = Attribute::Str { lit: Cow::Owned(Self::escaped(&data)), ty: None };
+        let value = Attribute::Str { lit: mlirformat::Str::Owned(Self::escaped(&data)), ty: None };
         let block = cr.rw.body.top_block(module);
         let space_attr = Attribute::of_int(space.into(), Type::int(32));
         let b = &*cr.rw.body;
@@ -401,7 +400,7 @@ impl GpuToLlvm {
         let loc = cr.rw.body[op].loc.clone();
         let (global, arr) = Self::string_constant(cr, module, "printfFormat_", &bytes, p.space, loc);
         cr.rw.set_before(op);
-        let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![Cow::Owned(global)])), ptr.clone());
+        let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![mlirformat::Str::Owned(global)])), ptr.clone());
         let start = cr.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::dense_i32(&[0, 0])), ptr);
         let mut args = vec![start];
         args.extend(operands.iter().flatten().copied());
@@ -462,7 +461,7 @@ impl GpuToLlvm {
         let mut desc = cr.rw.body[begin].results[0];
         let (global, arr) = Self::string_constant(cr, module, "printfFormat_", &bytes, 0, loc.clone());
         cr.rw.set_before(op);
-        let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![Cow::Owned(global)])), ptr.clone());
+        let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![mlirformat::Str::Owned(global)])), ptr.clone());
         let start = cr.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::dense_i32(&[0, 0])), ptr);
         let len = c(cr, bytes.len() as i64 + 1, &i64t);
         let one = c(cr, 1, &i32t);
@@ -510,7 +509,7 @@ impl GpuToLlvm {
         }
         let (global, arr) = Self::string_constant(cr, module, "printfFormat_", &bytes, 0, gloc);
         cr.rw.set_before(op);
-        let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![Cow::Owned(global)])), ptr.clone());
+        let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![mlirformat::Str::Owned(global)])), ptr.clone());
         let start = cr.build(OpData::build("llvm.getelementptr").operands(&[addr]).with("elem_type", Attribute::Type(arr)).with("rawConstantIndices", Attribute::dense_i32(&[0, 0])), ptr.clone());
         let mut types = Vec::new();
         let mut args = Vec::new();
