@@ -35,28 +35,47 @@ pub trait Id: Copy {
 macro_rules! ids {
     ($($(#[$m:meta])* $id:ident => $data:ident $(<$lt:lifetime>)?, $field:ident, $kind:ident;)*) => {$(
         $(#[$m])*
-        /// Its seg in the high half, its index in the seg in the low half: ids order by seg, then
-        /// by creation in the seg.
+        /// Its seg plus one in the high half (never zero, so an `Option` of it is no bigger),
+        /// its index in the seg in the low half: ids order by seg, then by creation in the seg.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        pub struct $id(pub(crate) u64);
+        pub struct $id(core::num::NonZeroU64);
 
         impl $id {
             /// Entry `index` of seg `seg`.
             #[inline]
             pub(crate) const fn at(seg: u32, index: u32) -> Self {
-                Self(((seg as u64) << 32) | index as u64)
+                match core::num::NonZeroU64::new(((seg as u64 + 1) << 32) | index as u64) {
+                    Some(n) => Self(n),
+                    None => unreachable!(),
+                }
+            }
+
+            /// The id as one number, increasing with it (what the printer passes regions by).
+            #[inline]
+            pub(crate) const fn raw(self) -> u64 {
+                self.0.get()
+            }
+
+            /// [`raw`](Self::raw) back to the id.
+            #[inline]
+            #[allow(dead_code)]
+            pub(crate) const fn from_raw(raw: u64) -> Self {
+                match core::num::NonZeroU64::new(raw) {
+                    Some(n) => Self(n),
+                    None => unreachable!(),
+                }
             }
         }
 
         impl Id for $id {
             #[inline]
             fn seg(self) -> u32 {
-                (self.0 >> 32) as u32
+                ((self.0.get() >> 32) - 1) as u32
             }
 
             #[inline]
             fn index(self) -> u32 {
-                self.0 as u32
+                self.0.get() as u32
             }
         }
 
@@ -1422,7 +1441,7 @@ impl<'a> Body<'a> {
 /// A value as an operand of one of mlirformat's typed ops: named by its id.
 impl From<ValueId> for Value<'_> {
     fn from(v: ValueId) -> Self {
-        Value { name: Str::Owned(alloc::format!("{}", v.0)), index: None }
+        Value { name: Str::Owned(alloc::format!("{}", v.raw())), index: None }
     }
 }
 
@@ -3221,24 +3240,24 @@ struct Export<'n, 'a> {
 /// Regions go to the printer by reference as their ids: threads printing apart share it.
 impl Source for Export<'_, '_> {
     fn region(&self, id: u64) -> Region<'_> {
-        self.region(RegionId(id))
+        self.region(RegionId::from_raw(id))
     }
 
     fn blocks(&self, id: u64) -> Vec<Block<'_>> {
-        self.body[RegionId(id)].blocks.iter().enumerate().map(|(i, b)| self.block(i, *b, Vec::new())).collect()
+        self.body[RegionId::from_raw(id)].blocks.iter().enumerate().map(|(i, b)| self.block(i, *b, Vec::new())).collect()
     }
 
     fn len(&self, id: u64, b: usize) -> usize {
-        self.body.len_ops(self.body[RegionId(id)].blocks[b])
+        self.body.len_ops(self.body[RegionId::from_raw(id)].blocks[b])
     }
 
     fn op(&self, id: u64, b: usize, k: usize) -> Operation<'_> {
-        self.op(self.body.ops(self.body[RegionId(id)].blocks[b]).nth(k).expect("an op of the block"))
+        self.op(self.body.ops(self.body[RegionId::from_raw(id)].blocks[b]).nth(k).expect("an op of the block"))
     }
 
     /// Along the block's list, once.
     fn ops_iter<'s>(&'s self, id: u64, b: usize, range: core::ops::Range<usize>) -> alloc::boxed::Box<dyn Iterator<Item = Operation<'s>> + 's> {
-        let block = self.body[RegionId(id)].blocks[b];
+        let block = self.body[RegionId::from_raw(id)].blocks[b];
         alloc::boxed::Box::new(self.body.ops(block).skip(range.start).take(range.len()).map(move |o| self.op(o)))
     }
 }
@@ -3250,7 +3269,7 @@ impl<'n, 'a> Export<'n, 'a> {
 
     /// Region `r` handed to the printer by reference.
     fn source(&self, r: RegionId) -> Region<'n> {
-        Region::sourced(r.0)
+        Region::sourced(r.raw())
     }
 
     /// The name of `v`; a value outside the IR (a dangling use, which is a bug) prints as

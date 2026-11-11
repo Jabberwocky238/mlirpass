@@ -890,8 +890,8 @@ impl RegionBranchPatterns {
         let mut inputs: Vec<ValueId> = map.iter().map(|e| e.0).collect();
         inputs.sort_by_key(|v| number(rw.body, *v));
         let owner = |b: &Body<'_>, v: ValueId| match b[v].def {
-            crate::Def::Result(o, _) => (0usize, o.0),
-            crate::Def::Arg(blk, _) => (1, blk.0),
+            crate::Def::Result(o, _) => (0usize, o.raw()),
+            crate::Def::Arg(blk, _) => (1, blk.raw()),
         };
         let mut changed = false;
         for i in 0..inputs.len() {
