@@ -1045,7 +1045,24 @@ impl<'a> Body<'a> {
     /// [`lookup`](Self::lookup) of what this body holds, nothing more asked.
     pub fn find_symbol(&self, table: OpId, name: &str) -> Option<OpId> {
         let region = *self[table].regions.first()?;
+        let indexed = self.symbols.table.filter(|t| *t == table).and_then(|_| self.symbols.names.get(name).copied());
+        if let Some(o) = indexed.filter(|o| self.holds(*o) && self[*o].parent.is_some_and(|b| self[b].parent == Some(region)) && self.sym_name(*o) == Some(name)) {
+            return Some(o);
+        }
         self[region].blocks.iter().flat_map(|b| self.ops(*b)).find(|o| self.sym_name(*o) == Some(name))
+    }
+
+    /// Indexes `table`'s symbols for [`find_symbol`](Self::find_symbol) (the last index goes).
+    pub fn index_symbols(&mut self, table: OpId) {
+        let mut names = alloc::collections::BTreeMap::new();
+        if let Some(region) = self[table].regions.first() {
+            for o in self[*region].blocks.iter().flat_map(|b| self.ops(*b)) {
+                if let Some(n) = self.sym_name(o) {
+                    names.entry(alloc::string::String::from(n)).or_insert(o);
+                }
+            }
+        }
+        self.symbols = crate::ir::SymbolIndex { table: Some(table), names };
     }
 
     /// Attribute `attr` of symbol `name` in `table`: in a lent body, read off the module's

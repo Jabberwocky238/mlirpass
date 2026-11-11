@@ -321,6 +321,9 @@ impl PassManager {
         for e in &self.entries {
             match e {
                 Entry::Pass(p) => {
+                    if body.is_symbol_table(op) {
+                        body.index_symbols(op);
+                    }
                     p.run_in(body, op, exec)?;
                     if self.verify_each {
                         body.verify_in(op, exec)?;

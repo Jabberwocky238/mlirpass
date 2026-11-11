@@ -1277,12 +1277,18 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         // A failure leaves the IR as it was: rolled back from the undo log, which keeps one save
         // per entry touched (`Journal`), not a copy of the whole body
         let cp = body.checkpoint();
+        // What replaces an op is made in the op's seg: a function's ops stay in its own (small,
+        // and lendable later), not all in one that grows by copying.
+        let home = body.home;
         for op in ops {
+            body.home = crate::Id::seg(op);
             if let Err(e) = self.convert_op(body, &mut state, op, mode) {
+                body.home = home;
                 body.rollback(cp);
                 return Err(e);
             }
         }
+        body.home = home;
         body.release(cp);
         self.commit(body, &mut state);
         self.finish(body, &mut state)
