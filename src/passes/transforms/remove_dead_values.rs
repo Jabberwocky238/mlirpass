@@ -579,7 +579,16 @@ impl Run for RemoveDeadValues {
             // In `Operation::walk`'s order (postorder): the worklist pops the last first. A
             // function's region branches are its own: each function's go on its own thread, the
             // rest here, each in that order.
-            let patterns = crate::canonicalization_patterns();
+            // Only the region branch ops' own patterns (`getCanonicalizationPatterns` of each
+            // one's name); folding still reaches every op on the worklist.
+            let mut names = alloc::collections::BTreeSet::new();
+            body.walk_post(op, &mut |o| {
+                if body.is_region_branch(o) {
+                    names.insert(body[o].name.clone());
+                }
+            });
+            let mut patterns = crate::canonicalization_patterns();
+            patterns.retain(|p| p.root().is_some_and(|r| names.contains(r)));
             let branches = |b: &Body<'a>, top: OpId, ops: &mut Vec<OpId>| {
                 b.walk_post(top, &mut |o| {
                     if b.is_region_branch(o) {

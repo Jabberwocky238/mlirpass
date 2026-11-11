@@ -38,8 +38,10 @@ impl OpInterfaces for ArithDialect {
     fn speculatability(&self, b: &Body<'_>, op: OpId) -> Option<bool> {
         let divisor = || b.int_range(b[op].operands[1]);
         match &*b[op].name {
-            "arith.divui" | "arith.ceildivui" => divisor().filter(|r| r.unsigned_divisor()).map(|_| false),
+            "arith.divui" | "arith.ceildivui" | "arith.remui" => divisor().filter(|r| r.unsigned_divisor()).map(|_| false),
             "arith.divsi" | "arith.ceildivsi" => divisor().filter(|r| r.signed_divisor()).map(|_| false),
+            // `X % -1` is defined (0): only a zero divisor is undefined.
+            "arith.remsi" => divisor().filter(|r| r.without_zero_s()).map(|_| false),
             _ => None,
         }
     }
