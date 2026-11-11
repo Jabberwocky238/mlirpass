@@ -1591,6 +1591,19 @@ impl<'a> Body<'a> {
         self.adopt(data, types.iter().cloned())
     }
 
+    /// [`create`](Self::create) in the seg of `block`, where it is going: a function's ops stay
+    /// in its own seg (small, and lendable), not in one that grows by copying.
+    /// The root's own block keeps [`home`](Self::home): a lent body's is a stand-in's.
+    pub fn create_for(&mut self, block: BlockId, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
+        if self[block].parent.is_some_and(|r| self[r].parent == self.root) {
+            return self.create(data, types);
+        }
+        let home = core::mem::replace(&mut self.home, block.seg());
+        let op = self.create(data, types);
+        self.home = home;
+        op
+    }
+
     /// [`Body::create`] with result types it takes over rather than copies.
     pub fn adopt(&mut self, mut data: OpData<'a>, types: impl IntoIterator<Item = Type<'a>>) -> OpId {
         if data.defaults {

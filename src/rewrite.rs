@@ -171,8 +171,16 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
 
     /// ⭐ Builds an op at the insertion point.
     pub fn create(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
-        let op = self.body.create(data, types);
+        let op = self.create_here(data, types);
         self.insert(op)
+    }
+
+    /// The op made where the insertion point is ([`Body::create_for`]).
+    fn create_here(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
+        match self.ip {
+            Some(ip) => self.body.create_for(ip.block, data, types),
+            None => self.body.create(data, types),
+        }
     }
 
     /// ⭐ Builds mlirformat's typed op `op` at the insertion point.
@@ -184,7 +192,7 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
     /// `createOrFold`: builds an op at the insertion point and folds it; when the fold yields
     /// values (constants materialized in its place) the op goes again, unannounced.
     pub fn create_or_fold(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> Vec<ValueId> {
-        let op = self.body.create(data, types);
+        let op = self.create_here(data, types);
         let ip = self.ip.expect("no insertion point");
         self.stamp(op);
         match ip.before {
@@ -245,7 +253,7 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
     /// Builds an op with regions: `regions` fills them (on the body) before it is inserted, so
     /// the listener hears about the op once, whole.
     pub fn create_with(&mut self, data: OpData<'a>, types: &[Type<'a>], regions: impl FnOnce(&mut Body<'a>, OpId)) -> OpId {
-        let op = self.body.create(data, types);
+        let op = self.create_here(data, types);
         regions(self.body, op);
         self.insert(op)
     }

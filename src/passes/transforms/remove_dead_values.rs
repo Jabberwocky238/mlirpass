@@ -548,7 +548,8 @@ impl Cleanup {
         let ty = body[v].ty.clone();
         let loc = body.value_loc(v);
         let poison = Attribute::Extended { ext: mlirformat::Extended { name: "ub.poison".into(), body: None, params: Vec::new() }, ty: None };
-        let p = body.create(OpData { loc, ..OpData::build("ub.poison").with("value", poison) }, &[ty]);
+        let block = body[at].parent.expect("placed");
+        let p = body.create_for(block, OpData { loc, ..OpData::build("ub.poison").with("value", poison) }, &[ty]);
         body.insert_before(p, at);
         made.push(p);
         body[p].results[0]
