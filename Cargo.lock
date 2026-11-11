@@ -78,6 +78,7 @@ dependencies = [
 name = "mlirpass"
 version = "0.10.1"
 dependencies = [
+ "libc",
  "libm",
  "mlirformat",
  "mlirpass-macros",

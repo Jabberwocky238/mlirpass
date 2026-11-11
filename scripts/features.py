@@ -36,6 +36,7 @@ WHAT = {
     "target.rdna2": "AMD RDNA2 (gfx1036) machine code without LLVM: `gpu.func` kernels, register allocation, waits, encoding, PM4, the image; checked against llvm-mc and Mesa radv (`tests/rdna2.rs`)",
     "target.agx": "Apple AGX (G13) machine code without LLVM, CDM command streams; checked against Mesa asahi (`tests/agx.rs`)",
     "target.apple9": "Apple9 (M3 / M4) compute kernels without LLVM; checked by running on an M4 through Metal (`scripts/apple9_check.py`, `tests/apple9.rs`)",
+    "target.x86_64": "x86-64 machine code without LLVM: each `llvm.func` (integers, `!llvm.ptr`, `f64`; arithmetic, compares, casts, memory, calls of symbols, branches) ⇒ System V code and the absolute addresses its calls need (`X86_64Emit`); first tier: a stack slot per value, no register allocation yet; run in-process (`tests/x86_64.rs`)",
     "target.xe3": "Intel Xe3 machine code without LLVM: compute kernels, vertex and fragment shaders through `convert-spirv-entry-points`, genxml batches; checked against Mesa anv and gentool (`tests/xe3.rs`)",
 }
 

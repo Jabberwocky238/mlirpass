@@ -92,6 +92,7 @@ all-targets = ["target.llvm", "target.emitc", "target.spirv"]
 "target.apple9" = ["dialect.apple9", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
 "target.agx" = ["dialect.agx", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
 "target.rdna2" = ["dialect.rdna2", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
+"target.x86_64" = ["dialect.llvm"]
 "target.xe3" = ["dialect.xe3", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
 
 [[bin]]
@@ -100,6 +101,14 @@ path = "src/main.rs"
 required-features = ["cli"]
 
 # The fixtures run every dialect's and backend's passes.
+[dev-dependencies]
+# tests/x86_64.rs maps the machine code executable to run it
+libc = "0.2"
+
+[[test]]
+name = "x86_64"
+required-features = ["target.x86_64"]
+
 [[test]]
 name = "passes"
 required-features = ["all-dialects", "all-targets"]
