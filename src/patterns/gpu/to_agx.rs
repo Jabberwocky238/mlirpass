@@ -214,6 +214,8 @@ impl GpuToAgx {
         let bits = |s: Scalar| match s {
             Scalar::Float(f) => (f.kind == FloatKind::F32).then_some(f.bits as u32),
             Scalar::Int(i) => (i.width == 32 || i.width == 1).then_some(i.bits() as u32),
+            // complex and the wide floats (f80 / f128) are not one 32-bit register
+            Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => None,
         };
         (0..n).map(|i| bits(c.at(i))).collect()
     }

@@ -418,6 +418,8 @@ impl GpuToXe3 {
             // an i1 is a mask: true all ones (as cmp writes it), so xori with it is a not
             Scalar::Int(i) if i.width == 1 => Some(if i.bits() != 0 { 0xffff_ffff } else { 0 }),
             Scalar::Int(i) => (i.width <= 64).then_some(i.bits() as u64),
+            // complex and the wide floats (f80 / f128) are not one register
+            Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => None,
         };
         (0..n).map(|i| bits(c.at(i))).collect()
     }

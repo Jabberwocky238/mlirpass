@@ -348,15 +348,18 @@ impl Image {
         let c = Const::try_from(a).map_err(|()| Error("bytes: not a dense constant".into()))?;
         let n = c.ty.element_count().unwrap_or(1);
         let width = c.ty.element_type().bit_width().ok_or_else(|| Error("bytes: element without a width".into()))? as usize / 8;
-        Ok((0..n)
-            .flat_map(|i| {
-                let bits = match c.at(i) {
-                    mlirformat::Scalar::Float(f) => u128::from(f.bits),
-                    mlirformat::Scalar::Int(v) => v.bits(),
-                };
-                bits.to_le_bytes()[..width].to_vec()
-            })
-            .collect())
+        let mut out = Vec::with_capacity(n * width);
+        for i in 0..n {
+            let bits = match c.at(i) {
+                mlirformat::Scalar::Float(f) => u128::from(f.bits),
+                mlirformat::Scalar::Int(v) => v.bits(),
+                mlirformat::Scalar::Complex(..) | mlirformat::Scalar::ComplexFloat(..) | mlirformat::Scalar::Wide(_) => {
+                    return Err(Error("bytes: complex and wide float elements have no image layout".into()));
+                }
+            };
+            out.extend_from_slice(&bits.to_le_bytes()[..width]);
+        }
+        Ok(out)
     }
 }
 

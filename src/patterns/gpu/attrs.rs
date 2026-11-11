@@ -119,6 +119,7 @@ impl TryFrom<&Attribute<'_>> for BroadcastType {
 }
 
 /// The case of a `#gpu.<mnemonic><case>` attribute among `names`.
+#[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 fn mnemonic_case_of<T: Copy>(a: &Attribute<'_>, name: &str, names: &[(&'static str, T)]) -> Option<T> {
     let Attribute::Extended { ext, .. } = a else { return None };
     if ext.name != name {
@@ -129,6 +130,7 @@ fn mnemonic_case_of<T: Copy>(a: &Attribute<'_>, name: &str, names: &[(&'static s
 }
 
 /// `gpu::BarrierScope` (`#gpu.barrier_scope<..>`).
+#[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BarrierScope {
     Subgroup,
@@ -136,10 +138,12 @@ pub enum BarrierScope {
     Cluster,
 }
 
+#[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 impl BarrierScope {
     const NAMES: [(&'static str, Self); 3] = [("subgroup", Self::Subgroup), ("workgroup", Self::Workgroup), ("cluster", Self::Cluster)];
 }
 
+#[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 impl TryFrom<&Attribute<'_>> for BarrierScope {
     type Error = ();
     fn try_from(a: &Attribute<'_>) -> Result<Self, ()> {
@@ -148,6 +152,7 @@ impl TryFrom<&Attribute<'_>> for BarrierScope {
 }
 
 /// `gpu::AddressSpace` (`#gpu.address_space<..>`).
+#[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressSpace {
     Global,
@@ -156,10 +161,12 @@ pub enum AddressSpace {
     Constant,
 }
 
+#[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 impl AddressSpace {
     const NAMES: [(&'static str, Self); 4] = [("global", Self::Global), ("workgroup", Self::Workgroup), ("private", Self::Private), ("constant", Self::Constant)];
 }
 
+#[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 impl TryFrom<&Attribute<'_>> for AddressSpace {
     type Error = ();
     fn try_from(a: &Attribute<'_>) -> Result<Self, ()> {

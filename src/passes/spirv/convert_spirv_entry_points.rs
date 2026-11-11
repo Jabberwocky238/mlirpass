@@ -12,6 +12,7 @@
 //!
 //! What has no upstream counterpart stays SPIR-V for the target: the resources' loads, access chains and image ops.
 
+use alloc::boxed::Box;
 use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -67,7 +68,7 @@ impl<'a> Var<'a> {
 
     /// `#spirv.interface_var_abi<(set, binding), Class>`.
     fn abi(&self) -> Attribute<'a> {
-        Attribute::Extended { ext: Extended { name: String::from("spirv.interface_var_abi").into(), body: Some(format!("<({}, {}), {}>", self.set, self.binding, self.storage).into()), params: Vec::new() }, ty: None }
+        Attribute::Extended { ext: Box::new(Extended { name: String::from("spirv.interface_var_abi").into(), body: Some(format!("<({}, {}), {}>", self.set, self.binding, self.storage).into()), params: Vec::new() }), ty: None }
     }
 }
 
@@ -103,7 +104,7 @@ impl<'a> Entry<'_, '_, 'a> {
         args.extend(used.iter().map(|(_, v)| v.ptr.clone()));
         let fty = FunctionType { inputs: args.clone(), results: outputs.iter().map(|(_, v)| v.ty.clone()).collect() };
         let name = self.rw.body[f].get("sym_name").cloned().ok_or_else(|| Error("spirv.func without a name".into()))?;
-        let mut data = OpData::build("func.func").with("sym_name", name).with("function_type", Attribute::Type(Type::Function(fty)));
+        let mut data = OpData::build("func.func").with("sym_name", name).with("function_type", Attribute::Type(Type::Function(Box::new(fty))));
         data.set("spirv.execution_model", model);
         if !used.is_empty() {
             let dict = |a: Option<Attribute<'a>>| Attribute::Dict(a.into_iter().map(|v| NamedAttr { name: String::from("spirv.interface_var_abi").into(), value: Some(v) }).collect());

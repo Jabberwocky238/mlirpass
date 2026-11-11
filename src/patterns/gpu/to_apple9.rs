@@ -249,6 +249,8 @@ impl GpuToApple9 {
             Scalar::Float(f) => (f.kind == FloatKind::F32).then_some(f.bits as u32),
             // i32, i1, and index (32 bits in a GPR: the value's low 32 bits; the result type admits nothing wider)
             Scalar::Int(i) => (i.width == 32 || i.width == 1 || i.width == 64).then_some(i.bits() as u32),
+            // complex and the wide floats (f80 / f128) are not one 32-bit register
+            Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => None,
         };
         (0..n).map(|i| bits(c.at(i))).collect()
     }
