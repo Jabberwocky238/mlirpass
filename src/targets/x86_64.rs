@@ -472,8 +472,11 @@ impl<'b, 'a> Lower<'b, 'a> {
         let bits: u64 = match (value, self.kind(r)?) {
             (Attribute::Bool(b), _) => u64::from(*b),
             (Attribute::Float { lit, .. }, Kind::F64) => lit.parse::<f64>().map_err(|_| Error(format!("bad float {lit}")))?.to_bits(),
-            (Attribute::Int { .. }, Kind::F64) => Attrs::as_int(value)?.cast_unsigned(),
-            (Attribute::Int { .. }, Kind::Int(_)) => Attrs::as_int(value)?.cast_unsigned(),
+            // `0x…`: the bits as written (a float's sign bit included); decimal: a signed integer
+            (Attribute::Int { lit, .. }, _) => match lit.strip_prefix("0x") {
+                Some(h) => u64::from_str_radix(h, 16).map_err(|_| Error(format!("bad integer {lit}")))?,
+                None => Attrs::as_int(value)?.cast_unsigned(),
+            },
             (a, _) => return Err(Error(format!("constant {a} is not supported"))),
         };
         let bits = match self.kind(r)? {
