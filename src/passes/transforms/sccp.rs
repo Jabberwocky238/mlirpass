@@ -2,7 +2,6 @@
 //! materialized in it.
 
 use alloc::collections::BTreeMap;
-use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::pass;
@@ -16,7 +15,7 @@ struct Rewrite<'s, 'b, 'a> {
     body: &'b mut Body<'a>,
     lat: &'s IdVec<ValueId, Cv<'a>>,
     /// `OperationFolder`'s table: per insertion region, (dialect, value, type) ⇒ the constant.
-    folder: BTreeMap<RegionId, Vec<(String, Attribute<'a>, Type<'a>, ValueId)>>,
+    folder: BTreeMap<RegionId, Vec<(mlirformat::Str<'a>, Attribute<'a>, Type<'a>, ValueId)>>,
 }
 
 impl Rewrite<'_, '_, '_> {
@@ -30,7 +29,7 @@ impl Rewrite<'_, '_, '_> {
             Some(k) => k.3,
             None => {
                 let Some(data) = body.materialize(&dialect, &attr, &ty) else { return false };
-                let made: String = data.name.split_once('.').map_or(&*data.name, |(ns, _)| ns).into();
+                let made = Cv::dialect(&data.name);
                 // `tryGetOrCreateConstant`: a constant one dialect materializes as another's
                 // (`math` ⇒ `arith.constant`) is that dialect's too: one it already has wins.
                 let existing = (made != dialect).then(|| table.iter().find(|k| k.0 == made && k.1 == attr && k.2 == ty).map(|k| k.3)).flatten();

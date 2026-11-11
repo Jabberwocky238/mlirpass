@@ -271,6 +271,10 @@ impl ExactSizeIterator for BlockOps<'_, '_> {}
 #[derive(Debug, Clone, Copy)]
 pub struct Lent(Links);
 
+/// How many parts per thread [`Body::map_ops_in`] splits a block's ops into: a few, so a
+/// thread that is done early takes another.
+const PARTS_PER_THREAD: usize = 4;
+
 /// ⭐ A table by id, one `Vec` per seg, each as long as the highest index written in it: what a
 /// `Vec` indexed by id was while there was one arena.
 #[derive(Debug, Clone)]
@@ -1244,6 +1248,21 @@ impl<'a> Body<'a> {
     /// threads: lent, and back ([`Body::lend`]); the ops it ran on. `f` stays inside its op (as
     /// a rewrite whose constants go into the op's own region): the module a lent op sits in is a
     /// stand-in. On one thread, or with fewer than two such ops, nothing: the caller does all.
+    /// `f` on the ops of `op`'s regions' blocks, in parts split among `exec`'s threads, reading
+    /// only; what each part gave, in block order.
+    pub fn map_ops_in<X: moremath::Executor + Sync, T: Send>(&self, op: OpId, exec: &X, f: &(dyn Fn(&Self, &[OpId]) -> T + Sync)) -> Vec<T> {
+        let ops: Vec<OpId> = self[op].regions.iter().flat_map(|r| self[*r].blocks.iter()).flat_map(|b| self.ops(*b)).collect();
+        let chunk = ops.len().div_ceil(moremath::Executor::threads(exec).max(1) * PARTS_PER_THREAD).max(1);
+        let mut found: Vec<Option<T>> = ops.chunks(chunk).map(|_| None).collect();
+        let tasks = found
+            .iter_mut()
+            .zip(ops.chunks(chunk))
+            .map(|(slot, part)| alloc::boxed::Box::new(move || *slot = Some(f(self, part))) as crate::Task<'_>)
+            .collect();
+        moremath::Executor::execute(exec, tasks);
+        found.into_iter().map(|t| t.expect("every task ran")).collect()
+    }
+
     pub fn for_each_child<X: moremath::Executor + Sync>(&mut self, op: OpId, exec: &X, f: &(dyn Fn(&mut Body<'a>, OpId) + Sync)) -> Vec<OpId> {
         let children = self.children(op);
         if moremath::Executor::threads(exec) < 2 || self.journal.depth > 0 || children.iter().filter(|c| self.lendable(**c)).count() < 2 {

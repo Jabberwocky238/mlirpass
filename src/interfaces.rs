@@ -1070,7 +1070,7 @@ impl<'a> Body<'a> {
     }
 
     /// `"name"` ⇒ `name`; symbol references keep their quotes when they need them.
-    fn unquote(s: &str) -> &str {
+    pub(crate) fn unquote(s: &str) -> &str {
         s.strip_prefix('"').and_then(|s| s.strip_suffix('"')).unwrap_or(s)
     }
 
@@ -1114,6 +1114,26 @@ impl<'a> Body<'a> {
         let mut out = Vec::new();
         self.region_refs(op, &mut out)?;
         Some(out)
+    }
+
+    /// [`region_symbol_uses`](Self::region_symbol_uses) with `op`'s ops split among `exec`'s
+    /// threads ([`Body::map_ops_in`]; in no particular order).
+    pub fn region_symbol_uses_in<X: moremath::Executor + Sync>(&self, op: OpId, exec: &X) -> Option<Vec<SymbolUse<'a>>> {
+        let parts = self.map_ops_in(op, exec, &|b: &Self, part: &[OpId]| {
+            let mut out = Vec::new();
+            let ok = part.iter().all(|o| {
+                if b.maybe_unknown_symbol_table(*o) {
+                    return false;
+                }
+                b.own_refs(*o, &mut out);
+                b.is_symbol_table(*o) || b.region_refs(*o, &mut out).is_some()
+            });
+            ok.then_some(out)
+        });
+        parts.into_iter().try_fold(Vec::new(), |mut all, part| {
+            all.extend(part?);
+            Some(all)
+        })
     }
 
     /// ⭐ `SymbolTable::getSymbolUses(op)`: the references on `op` and nested in it, not entering

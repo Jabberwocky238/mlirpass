@@ -20,7 +20,7 @@ use crate::{Body, BlockId, Const, Def, Fold, Folded, OpId, RegionId, Trait, Valu
 pub enum Cv<'a> {
     Uninit,
     /// A constant, with the dialect that produced it.
-    Known(Attribute<'a>, String),
+    Known(Attribute<'a>, mlirformat::Str<'a>),
     Unknown,
 }
 
@@ -37,6 +37,15 @@ impl PartialEq for Cv<'_> {
 }
 
 impl<'a> Cv<'a> {
+    /// The dialect of op `name`: borrowed from it when it is.
+    pub fn dialect(name: &mlirformat::Str<'a>) -> mlirformat::Str<'a> {
+        use alloc::borrow::Cow;
+        match name {
+            Cow::Borrowed(n) => Cow::Borrowed(n.split_once('.').map_or("", |(d, _)| d)),
+            Cow::Owned(n) => Cow::Owned(n.split_once('.').map_or("", |(d, _)| d).into()),
+        }
+    }
+
     fn join(&self, o: &Self) -> Self {
         match (self, o) {
             (Cv::Uninit, x) | (x, Cv::Uninit) => x.clone(),
@@ -196,6 +205,11 @@ pub struct Solver<'b, 'a> {
     folded_in: crate::IdVec<OpId, u32>,
     /// Each call's [`resolve`](Self::resolve): the IR does not change while solving.
     callees: BTreeMap<OpId, Option<OpId>>,
+    /// `SymbolTableCollection`: each symbol table's symbols by name, built the first time it is
+    /// looked into (a scan per lookup is quadratic in the module).
+    symbols: BTreeMap<OpId, BTreeMap<String, OpId>>,
+    /// The top's symbol uses, found ahead on many threads ([`Body::region_symbol_uses_in`]).
+    uses: Option<Option<Vec<crate::SymbolUse<'a>>>>,
     /// What to visit again, and whether each op and block is in it already.
     work: VecDeque<Item>,
     queued_ops: crate::IdVec<OpId, bool>,
@@ -213,7 +227,7 @@ impl<'b, 'a> Solver<'b, 'a> {
     }
 
     fn with(body: BodyRef<'b, 'a>, top: OpId) -> Self {
-        Self { unit: None, body, top, live: BTreeSet::new(), edges: BTreeSet::new(), preds: BTreeMap::new(), lat: crate::IdVec::new(Cv::Uninit), changed: false, alive: crate::IdVec::new(false), round: 0, changed_in: crate::IdVec::new(0), folded_in: crate::IdVec::new(0), callees: BTreeMap::new(), work: VecDeque::new(), queued_ops: crate::IdVec::new(false), queued_blocks: crate::IdVec::new(false), reads: BTreeMap::new() }
+        Self { unit: None, body, top, live: BTreeSet::new(), edges: BTreeSet::new(), preds: BTreeMap::new(), lat: crate::IdVec::new(Cv::Uninit), changed: false, alive: crate::IdVec::new(false), round: 0, changed_in: crate::IdVec::new(0), folded_in: crate::IdVec::new(0), callees: BTreeMap::new(), symbols: BTreeMap::new(), uses: None, work: VecDeque::new(), queued_ops: crate::IdVec::new(false), queued_blocks: crate::IdVec::new(false), reads: BTreeMap::new() }
     }
 
     pub fn get(&self, v: ValueId) -> Cv<'a> {
@@ -396,7 +410,7 @@ impl<'b, 'a> Solver<'b, 'a> {
     }
 
     /// `CallOpInterface::resolveCallable`.
-    fn resolve(&self, call: OpId) -> Option<OpId> {
+    fn resolve(&mut self, call: OpId) -> Option<OpId> {
         let b = &*self.body;
         if let Some(callee) = b.interfaces(call).and_then(|i| i.indirect_callee(b, call)) {
             return b.def_op(callee);
@@ -405,11 +419,35 @@ impl<'b, 'a> Solver<'b, 'a> {
         let mut t = b.parent_op(call);
         while let Some(o) = t {
             if b.is_symbol_table(o) {
-                return b.lookup_path(o, path)?.last().copied();
+                let path = path.clone();
+                return self.lookup_path(o, &path);
             }
             t = b.parent_op(o);
         }
         None
+    }
+
+    /// `SymbolTableCollection::lookupSymbolIn` of a nested reference: its last symbol.
+    fn lookup_path(&mut self, table: OpId, path: &[mlirformat::Str<'_>]) -> Option<OpId> {
+        path.iter().try_fold(table, |at, seg| self.lookup(at, Body::unquote(seg)))
+    }
+
+    /// One symbol of `table`, through its table; what is not there, the way [`Body::lookup`]
+    /// finds it (outside a lent body).
+    fn lookup(&mut self, table: OpId, name: &str) -> Option<OpId> {
+        let b = &*self.body;
+        let map = self.symbols.entry(table).or_insert_with(|| {
+            let mut map = BTreeMap::new();
+            if let Some(region) = b[table].regions.first() {
+                for o in b[*region].blocks.iter().flat_map(|bl| b.ops(*bl)) {
+                    if let Some(n) = b.sym_name(o) {
+                        map.entry(String::from(n)).or_insert(o);
+                    }
+                }
+            }
+            map
+        });
+        map.get(name).copied().or_else(|| b.lookup(table, name))
     }
 
     /// [`resolve`](Self::resolve), once per call.
@@ -651,7 +689,7 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
         self.folded_in.set(op, self.round);
         let Some(consts) = self.operand_values(op) else { return };
-        let dialect = |s: &Self| String::from(s.body[op].name.split_once('.').map_or("", |(d, _)| d));
+        let dialect = |s: &Self| Cv::dialect(&s.body[op].name);
         if self.body.has(op, Trait::ConstantLike)
             && let Some(v) = self.body.constant_value(op)
         {
@@ -763,23 +801,75 @@ impl<'b, 'a> Solver<'b, 'a> {
     }
 
     /// `initializeSymbolCallables` over `SymbolTable::walkSymbolTables`.
-    fn symbol_callables(&mut self, op: OpId, mut visible: bool) {
-        let table = self.body.is_symbol_table(op);
+    fn symbol_callables(&mut self, op: OpId, visible: bool) {
+        let mut tables = Vec::new();
+        Self::tables(&self.body, op, visible, &mut tables);
+        for (t, v) in tables {
+            self.table_callables(t, v);
+        }
+    }
+
+    /// The symbol tables in `op` and itself (postorder), each with whether its parent sees it.
+    fn tables(b: &Body<'a>, op: OpId, mut visible: bool, out: &mut Vec<(OpId, bool)>) {
+        let table = b.is_symbol_table(op);
         if table {
-            visible |= !self.body.has(op, Trait::SymbolOpInterface) || self.body.visibility(op) == Visibility::Private;
+            visible |= !b.has(op, Trait::SymbolOpInterface) || b.visibility(op) == Visibility::Private;
         } else {
             visible = true;
         }
-        for r in self.body[op].regions.clone() {
-            for b in self.body[r].blocks.clone() {
-                for o in self.body.block_ops(b) {
-                    self.symbol_callables(o, visible);
+        for r in &b[op].regions {
+            for blk in &b[*r].blocks {
+                for o in b.block_ops(*blk) {
+                    Self::tables(b, o, visible, out);
                 }
             }
         }
-        if !table {
-            return;
+        if table {
+            out.push((op, visible));
         }
+    }
+
+    /// [`symbol_callables`](Self::symbol_callables) of `top` with what is under it found on
+    /// `exec`'s threads: the tables, the symbol uses and the calls ([`call_infos`](Self::call_infos)).
+    fn symbol_callables_in<X: moremath::Executor + Sync>(&mut self, visible: bool, exec: &X) -> Vec<OpId> {
+        let top = self.top;
+        let b = &*self.body;
+        let mut inner = visible;
+        let table = b.is_symbol_table(top);
+        if table {
+            inner |= !b.has(top, Trait::SymbolOpInterface) || b.visibility(top) == Visibility::Private;
+        } else {
+            inner = true;
+        }
+        let parts = b.map_ops_in(top, exec, &|b: &Body<'a>, part: &[OpId]| {
+            let (mut tables, mut calls) = (Vec::new(), Vec::new());
+            for o in part {
+                Self::tables(b, *o, inner, &mut tables);
+                b.walk(*o, &mut |c| {
+                    if b.has(c, Trait::CallOpInterface) {
+                        calls.push(c);
+                    }
+                });
+            }
+            (tables, calls)
+        });
+        self.uses = table.then(|| self.body.region_symbol_uses_in(top, exec));
+        let mut calls = Vec::new();
+        for (tables, cs) in parts {
+            for (t, v) in tables {
+                self.table_callables(t, v);
+            }
+            calls.extend(cs);
+        }
+        if table {
+            self.table_callables(top, inner);
+        }
+        calls
+    }
+
+    /// One symbol table's part of [`symbol_callables`](Self::symbol_callables): `visible`,
+    /// whether its parent sees it.
+    fn table_callables(&mut self, op: OpId, visible: bool) {
         let Some(&blk) = self.body[op].regions.first().and_then(|r| self.body[*r].blocks.first()) else { return };
         let mut found = false;
         for c in self.body.block_ops(blk) {
@@ -795,7 +885,9 @@ impl<'b, 'a> Solver<'b, 'a> {
         if !found {
             return;
         }
-        let Some(uses) = self.body.region_symbol_uses(op) else {
+        let pre = if op == self.top { self.uses.take() } else { None };
+        let uses = pre.unwrap_or_else(|| self.body.region_symbol_uses(op));
+        let Some(uses) = uses else {
             for c in self.body.ops_in(self.top) {
                 if self.is_callable(c) {
                     self.set_unknown_preds(Pt::After(c));
@@ -807,7 +899,7 @@ impl<'b, 'a> Solver<'b, 'a> {
             if self.body.has(u.user, Trait::CallOpInterface) {
                 continue;
             }
-            if let Some(s) = self.body.lookup_path(self.top, &u.path).and_then(|p| p.last().copied()) {
+            if let Some(s) = self.lookup_path(self.top, &u.path) {
                 self.set_unknown_preds(Pt::After(s));
             }
         }
@@ -857,12 +949,9 @@ impl<'b, 'a> Solver<'b, 'a> {
     }
 
     /// Every call under `top`, resolved on the whole body.
-    fn call_infos(&mut self, top: OpId) -> BTreeMap<OpId, CallInfo> {
+    fn call_infos(&mut self, top: OpId, calls: Vec<OpId>) -> BTreeMap<OpId, CallInfo> {
         let mut out = BTreeMap::new();
-        for op in self.body.ops_in(top) {
-            if !self.body.has(op, Trait::CallOpInterface) {
-                continue;
-            }
+        for op in calls {
             let callee = self.resolve(op);
             let bodiless = callee.is_some_and(|c| self.is_callable(c) && self.callable_region(c).is_none());
             let internal = callee.is_some_and(|c| self.body.has(c, Trait::SymbolOpInterface) && self.is_ancestor(top, c) && !bodiless);
@@ -902,8 +991,8 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
         let mut main = Solver::new(body, top);
         let visible = main.body[top].parent.is_none();
-        main.symbol_callables(top, visible);
-        let calls = alloc::sync::Arc::new(main.call_infos(top));
+        let calls = main.symbol_callables_in(visible, exec);
+        let calls = alloc::sync::Arc::new(main.call_infos(top, calls));
         let base: BTreeMap<OpId, Callers<'a>> = main
             .preds
             .iter()
@@ -925,9 +1014,6 @@ impl<'b, 'a> Solver<'b, 'a> {
             if let Some((sub, parent)) = main.body.lend(c) {
                 let mut u = Solver::with(BodyRef::Owned(sub), c);
                 u.unit = Some(Boundary { calls: calls.clone(), ..Boundary::default() });
-                let stand_in = u.body.top_block(u.body.root);
-                u.mark_live(stand_in);
-                u.enqueue_all(c);
                 lent.push((c, parent));
                 units.push(u);
             }
@@ -948,6 +1034,7 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
         main.enqueue_all(top);
         let (mut callers, mut returns): (BTreeMap<OpId, Callers<'a>>, BTreeMap<OpId, Returns<'a>>) = (base.clone(), BTreeMap::new());
+        let mut first = true;
         loop {
             let (ca, re) = (alloc::sync::Arc::new(callers.clone()), alloc::sync::Arc::new(returns.clone()));
             for s in units.iter_mut().chain(core::iter::once(&mut main)) {
@@ -962,6 +1049,12 @@ impl<'b, 'a> Solver<'b, 'a> {
                 .map(|slot| {
                     alloc::boxed::Box::new(move || {
                         let mut s = slot.take().expect("a solver");
+                        if first {
+                            // Its body all to visit, on its own thread.
+                            let stand_in = s.body.top_block(s.body.root);
+                            s.mark_live(stand_in);
+                            s.enqueue_all(s.top);
+                        }
                         s.drain();
                         *slot = Some(s);
                     }) as crate::Task<'_>
@@ -969,6 +1062,7 @@ impl<'b, 'a> Solver<'b, 'a> {
                 .collect();
             moremath::Executor::execute(exec, tasks);
             units = slots.into_iter().map(|s| s.expect("every task ran")).collect();
+            first = false;
             main.drain();
             // What they all tell: the callers and returns of every callable.
             let mut new_callers = base.clone();
