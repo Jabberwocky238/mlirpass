@@ -6,7 +6,7 @@ use alloc::vec;
 use mlirformat::{Attribute, Shaped, ShapedKind, Signedness, Type};
 use mlirformat::emitc_types::EmitcType;
 
-use crate::{ConversionRewriter, MemrefLayout, OpData, OpId, Rewriter, TypeConverter, ValueId};
+use crate::{ConversionRewriter, MemrefLayout, OpData, Rewriter, TypeConverter, ValueId};
 
 /// The EmitC conversions and the type helpers they need.
 pub struct Emitc;
@@ -125,17 +125,6 @@ impl Emitc {
 }
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
-    /// The type of `v`.
-    pub fn ty(&self, v: ValueId) -> Type<'a> {
-        self.rw.body[v].ty.clone()
-    }
-
-    /// The converted type of `op`'s only result.
-    pub fn converted_result(&self, op: OpId) -> Option<Type<'a>> {
-        let r = self.rw.body[op].results[0];
-        self.type_converter()?.convert(&self.rw.body[r].ty)
-    }
-
     /// `emitc.<name>` of `operands`, one result of `ty`.
     pub fn emitc(&mut self, name: &str, operands: &[ValueId], ty: Type<'a>) -> ValueId {
         self.build(OpData::build(name).operands(operands), ty)

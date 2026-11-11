@@ -9,7 +9,7 @@ what `mlir-opt` 23.1.5 prints for the same input and pipeline.
 
 ## Status
 
-`0.10.0`: every fixture case of a ported pass matches `mlir-opt` 23.1.5 byte for byte (7616; the
+`0.10.1`: every fixture case of a ported pass matches `mlir-opt` 23.1.5 byte for byte (7616; the
 other 671 of the 8287 run passes not ported yet; `cargo test --test passes -- --nocapture` counts
 them per group), MLIR's own `Dialect/SPIRV`,
 `Dialect/GPU` and `*ToSPIRV` tests included, and the three GPU vendors' lowerings: Intel

@@ -1560,6 +1560,17 @@ impl<O: Copy> ConversionPattern for OptLowering<O> {
 }
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
+    /// The type of `v`.
+    pub fn ty(&self, v: ValueId) -> Type<'a> {
+        self.rw.body[v].ty.clone()
+    }
+
+    /// The converted type of `op`'s only result.
+    pub fn converted_result(&self, op: OpId) -> Option<Type<'a>> {
+        let r = self.rw.body[op].results[0];
+        self.type_converter()?.convert(&self.rw.body[r].ty)
+    }
+
     /// The converted type of `t`.
     pub fn converted(&self, t: &Type<'a>) -> Option<Type<'a>> {
         self.type_converter()?.convert(t)

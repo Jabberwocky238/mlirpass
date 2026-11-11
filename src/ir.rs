@@ -52,6 +52,7 @@ macro_rules! ids {
 
             /// The id as one number, increasing with it (what the printer passes regions by).
             #[inline]
+            #[allow(dead_code)]
             pub(crate) const fn raw(self) -> u64 {
                 self.0.get()
             }
