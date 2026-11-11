@@ -18,7 +18,7 @@ exclude = ["fuzz"]
 
 [dependencies]
 mlirpass-macros = { path = "macros", version = "0.5.0" }
-mlirformat = { git = "https://github.com/Jabberwocky238/mlirformat.git", rev = "93d5b88", version = "0.7.0", default-features = false }
+mlirformat = { git = "https://github.com/Jabberwocky238/mlirformat.git", rev = "f443f24", version = "0.8.0", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }
 # f64 trunc / ldexp / rint without std (all exact).
