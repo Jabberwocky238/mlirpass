@@ -71,6 +71,9 @@ fn runs() {
         let calls: extern "C" fn(i64, f64) -> f64 = core::mem::transmute(f("calls"));
         let memory: extern "C" fn(*mut i64, i64) -> i64 = core::mem::transmute(f("memory"));
         let bytes: extern "C" fn(*mut u8) -> i64 = core::mem::transmute(f("bytes"));
+        let pressure: extern "C" fn(i64) -> i64 = core::mem::transmute(f("pressure"));
+        let across: extern "C" fn(i64, f64) -> f64 = core::mem::transmute(f("across"));
+        let fsum: extern "C" fn(i64, f64) -> f64 = core::mem::transmute(f("fsum"));
         for (a, b) in [(3, 4), (-7, 5), (1 << 40, -3), (0, 0)] {
             assert_eq!(poly(a, b), a.wrapping_mul(a).wrapping_add(b.wrapping_mul(3)) ^ (a - b), "poly({a}, {b})");
         }
@@ -95,5 +98,21 @@ fn runs() {
         let mut raw = [200u8, 100, 7];
         assert_eq!(bytes(raw.as_mut_ptr()), 300);
         assert_eq!(raw, [200, 100, 44]);
+        for x in [1i64, -3, 1 << 33] {
+            let v: Vec<i64> = (1..=20).map(|k| x.wrapping_mul(k)).collect();
+            let mut acc = v[0];
+            for i in 1..20 {
+                acc = (acc ^ v[i]).wrapping_add(v[20 - i]);
+            }
+            assert_eq!(pressure(x), acc, "pressure({x})");
+        }
+        for (n, y) in [(3i64, 1.5f64), (-2, 0.25)] {
+            let want = ((n * 7 + twice(twice(n))) as f64 + y * y) + hypot(y, y);
+            assert_eq!(across(n, y), want, "across({n}, {y})");
+        }
+        for (n, step) in [(0i64, 1.0f64), (10, 0.5), (1000, 0.001)] {
+            let want = (0..n).fold(0.0f64, |a, i| a + i as f64 * step);
+            assert_eq!(fsum(n, step), want, "fsum({n}, {step})");
+        }
     }
 }

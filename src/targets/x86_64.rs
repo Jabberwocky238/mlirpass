@@ -87,12 +87,19 @@ enum Gpr {
     Rax = 0,
     Rcx = 1,
     Rdx = 2,
+    Rbx = 3,
     Rsp = 4,
     Rbp = 5,
     Rsi = 6,
     Rdi = 7,
     R8 = 8,
     R9 = 9,
+    R10 = 10,
+    R11 = 11,
+    R12 = 12,
+    R13 = 13,
+    R14 = 14,
+    R15 = 15,
 }
 
 impl Gpr {
@@ -293,12 +300,46 @@ impl Cc {
     const G: u8 = 0xf;
 }
 
+/// Where a value lives: its stack slot `[rbp + disp]`, or a register.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Loc {
+    Slot(i32),
+    Gpr(Gpr),
+    Xmm(u8),
+}
+
+/// The registers values are allocated to. `rax` / `rcx` / `rdx` and `xmm0` / `xmm1` stay scratch for the ops, the
+/// argument registers (`rdi` … `r9`, `xmm0` … `xmm7`) stay free for calls.
+struct Pool;
+
+impl Pool {
+    /// Callee-saved: a value in one lives across calls (the prologue saves the ones used).
+    const SAVED: [Gpr; 5] = [Gpr::Rbx, Gpr::R12, Gpr::R13, Gpr::R14, Gpr::R15];
+    /// Caller-saved, not an argument register: only for values not live across a call.
+    const SCRATCH: [Gpr; 2] = [Gpr::R10, Gpr::R11];
+    /// Caller-saved float registers past the argument ones: only for values not live across a call.
+    const XMM: [u8; 8] = [8, 9, 10, 11, 12, 13, 14, 15];
+}
+
+/// One value's live range over the function's ops in block order (inclusive positions).
+#[derive(Clone, Copy, Debug)]
+struct Interval {
+    value: ValueId,
+    lo: u32,
+    hi: u32,
+    float: bool,
+    /// A call lies strictly inside: caller-saved registers do not survive it
+    across_call: bool,
+}
+
 /// One function being lowered.
 struct Lower<'b, 'a> {
     body: &'b Body<'a>,
     asm: Asm,
-    /// Each value's slot: `[rbp + disp]`.
-    slots: BTreeMap<ValueId, i32>,
+    /// Each value's location.
+    slots: BTreeMap<ValueId, Loc>,
+    /// The callee-saved registers used, with the slot each is saved in.
+    saved: Vec<(Gpr, i32)>,
     /// The scratch area for parallel copies (block arguments).
     scratch: i32,
     frame: i32,
@@ -312,45 +353,207 @@ impl X86_64Code {
     /// Function `f` (an `llvm.func` with a body).
     pub fn of(body: &Body<'_>, f: OpId) -> Result<X86_64Code, Error> {
         let name = body[f].get_str("sym_name").ok_or_else(|| Error("x86-64: a function without a name".into()))?.to_string();
-        let mut lower = Lower::new(body, f)?;
+        let mut lower = Lower::new(body, f).map_err(|e| Error(format!("x86-64: @{name}: {}", e.0)))?;
         lower.function(f).map_err(|e| Error(format!("x86-64: @{name}: {}", e.0)))?;
         Ok(X86_64Code { name, bytes: lower.asm.bytes, relocs: lower.relocs })
     }
 }
 
 impl<'b, 'a> Lower<'b, 'a> {
-    /// Slots for every value of the function, the scratch area after them.
+    /// Every value's location (linear scan over live intervals), the saved registers' slots, the scratch area.
     fn new(body: &'b Body<'a>, f: OpId) -> Result<Self, Error> {
-        let mut slots = BTreeMap::new();
-        let mut next = 0i32;
-        let mut widest_copy = 0usize;
         let region = body[f].regions[0];
-        let mut give = |v: ValueId, slots: &mut BTreeMap<ValueId, i32>| {
-            next -= 8;
-            slots.insert(v, next);
-        };
-        for &block in body[region].blocks.iter() {
-            for &arg in body[block].args.iter() {
-                give(arg, &mut slots);
-            }
+        let blocks: Vec<BlockId> = body[region].blocks.iter().copied().collect();
+        let mut widest_copy = 0usize;
+        for &block in &blocks {
             for op in body.block_ops(block) {
                 if !body[op].regions.is_empty() {
-                    return Err(Error(format!("x86-64: {} has regions", body[op].name)));
-                }
-                for &r in body[op].results.iter() {
-                    give(r, &mut slots);
+                    return Err(Error(format!("{} has regions", body[op].name)));
                 }
                 widest_copy = widest_copy.max(body[op].operands.len());
+            }
+        }
+        let intervals = Self::intervals(body, &blocks)?;
+        let (mut slots, used) = Self::allocate(&intervals);
+        // stack: the saved registers, then the spilled values, then the scratch area
+        let mut next = 0i32;
+        let mut saved = Vec::new();
+        for r in used {
+            next -= 8;
+            saved.push((r, next));
+        }
+        for iv in &intervals {
+            if let alloc::collections::btree_map::Entry::Vacant(e) = slots.entry(iv.value) {
+                next -= 8;
+                e.insert(Loc::Slot(next));
             }
         }
         let scratch = next - 8 * i32::try_from(widest_copy).unwrap_or(0);
         // 16-byte aligned below the saved rbp (rsp is 16-aligned after `push rbp`)
         let frame = (-scratch + 15) & !15;
-        Ok(Lower { body, asm: Asm::default(), slots, scratch, frame, blocks: BTreeMap::new(), fixups: Vec::new(), relocs: Vec::new() })
+        Ok(Lower { body, asm: Asm::default(), slots, saved, scratch, frame, blocks: BTreeMap::new(), fixups: Vec::new(), relocs: Vec::new() })
     }
 
-    fn slot(&self, v: ValueId) -> Result<i32, Error> {
+    /// Each value's live interval: positions are the ops in block order (a block's arguments at its first position);
+    /// a value live into or out of a block covers the whole block (block-level liveness, solved to a fixed point).
+    fn intervals(body: &Body<'_>, blocks: &[BlockId]) -> Result<Vec<Interval>, Error> {
+        use alloc::collections::BTreeSet;
+        let mut pos = 0u32;
+        let (mut start, mut end) = (BTreeMap::new(), BTreeMap::new());
+        let mut def: BTreeMap<ValueId, u32> = BTreeMap::new();
+        let mut last_use: BTreeMap<ValueId, u32> = BTreeMap::new();
+        let mut calls = Vec::new();
+        // per block: values used before any definition in it, values defined in it, its successors
+        let mut gen_kill: Vec<(BTreeSet<ValueId>, BTreeSet<ValueId>, Vec<BlockId>)> = Vec::new();
+        for &b in blocks {
+            start.insert(b, pos);
+            let (mut gen_, mut kill) = (BTreeSet::new(), BTreeSet::new());
+            for &a in body[b].args.iter() {
+                def.insert(a, pos);
+                kill.insert(a);
+            }
+            let mut succ = Vec::new();
+            for op in body.block_ops(b) {
+                pos += 1;
+                for &v in body[op].operands.iter() {
+                    last_use.insert(v, pos);
+                    if !kill.contains(&v) {
+                        gen_.insert(v);
+                    }
+                }
+                for &r in body[op].results.iter() {
+                    def.insert(r, pos);
+                    kill.insert(r);
+                }
+                if body[op].name == "llvm.call" {
+                    calls.push(pos);
+                }
+                succ = body[op].successors.iter().copied().collect();
+            }
+            end.insert(b, pos);
+            pos += 1;
+            gen_kill.push((gen_, kill, succ));
+        }
+        let index: BTreeMap<BlockId, usize> = blocks.iter().enumerate().map(|(i, &b)| (b, i)).collect();
+        let mut live_in: Vec<BTreeSet<ValueId>> = alloc::vec![BTreeSet::new(); blocks.len()];
+        let mut live_out: Vec<BTreeSet<ValueId>> = alloc::vec![BTreeSet::new(); blocks.len()];
+        loop {
+            let mut changed = false;
+            for i in (0..blocks.len()).rev() {
+                let out: BTreeSet<ValueId> = gen_kill[i].2.iter().filter_map(|s| index.get(s)).flat_map(|&j| live_in[j].iter().copied()).collect();
+                let inn: BTreeSet<ValueId> = gen_kill[i].0.iter().copied().chain(out.iter().filter(|v| !gen_kill[i].1.contains(v)).copied()).collect();
+                if out != live_out[i] || inn != live_in[i] {
+                    changed = true;
+                    live_out[i] = out;
+                    live_in[i] = inn;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        let mut out = Vec::new();
+        for (&value, &d) in &def {
+            let (mut lo, mut hi) = (d, last_use.get(&value).copied().unwrap_or(d).max(d));
+            for (i, &b) in blocks.iter().enumerate() {
+                if live_in[i].contains(&value) {
+                    lo = lo.min(start[&b]);
+                    hi = hi.max(start[&b]);
+                }
+                if live_out[i].contains(&value) {
+                    hi = hi.max(end[&b]);
+                }
+            }
+            let float = matches!(Kind::of(&body[value].ty)?, Kind::F64);
+            let across_call = calls.iter().any(|&c| lo < c && c < hi);
+            out.push(Interval { value, lo, hi, float, across_call });
+        }
+        out.sort_by_key(|iv| (iv.lo, iv.hi));
+        Ok(out)
+    }
+
+    /// Linear scan: each interval gets a free register of its class (none free: it stays in a stack slot). Gives
+    /// the registers given and the callee-saved ones used.
+    fn allocate(intervals: &[Interval]) -> (BTreeMap<ValueId, Loc>, Vec<Gpr>) {
+        let mut locs = BTreeMap::new();
+        let mut active: Vec<(u32, Loc)> = Vec::new();
+        let mut used: Vec<Gpr> = Vec::new();
+        for iv in intervals {
+            active.retain(|&(hi, _)| hi >= iv.lo);
+            let busy = |l: Loc| active.iter().any(|&(_, a)| a == l);
+            let pick = if iv.float {
+                if iv.across_call { None } else { Pool::XMM.iter().map(|&x| Loc::Xmm(x)).find(|&l| !busy(l)) }
+            } else {
+                let scratch = (!iv.across_call).then_some(Pool::SCRATCH.iter()).into_iter().flatten();
+                scratch.chain(Pool::SAVED.iter()).map(|&r| Loc::Gpr(r)).find(|&l| !busy(l))
+            };
+            if let Some(l) = pick {
+                if let Loc::Gpr(r) = l
+                    && Pool::SAVED.contains(&r)
+                    && !used.contains(&r)
+                {
+                    used.push(r);
+                }
+                locs.insert(iv.value, l);
+                active.push((iv.hi, l));
+            }
+        }
+        (locs, used)
+    }
+
+    fn slot(&self, v: ValueId) -> Result<Loc, Error> {
         self.slots.get(&v).copied().ok_or_else(|| Error("a value defined outside the function".into()))
+    }
+
+    /// A value's 64 bits into general register `dst`.
+    fn get64(&mut self, dst: Gpr, at: Loc) {
+        match at {
+            Loc::Slot(d) => self.asm.load64(dst, Gpr::Rbp, d),
+            Loc::Gpr(r) if r == dst => {}
+            Loc::Gpr(r) => self.asm.mov_rr(dst, r),
+            // movq r64, xmm
+            Loc::Xmm(x) => self.asm.rr(Some(0x66), true, &[0x0f, 0x7e], x, dst as u8),
+        }
+    }
+
+    /// General register `src`'s 64 bits into a value's location.
+    fn put64(&mut self, at: Loc, src: Gpr) {
+        match at {
+            Loc::Slot(d) => self.asm.store64(Gpr::Rbp, d, src),
+            Loc::Gpr(r) if r == src => {}
+            Loc::Gpr(r) => self.asm.mov_rr(r, src),
+            // movq xmm, r64
+            Loc::Xmm(x) => self.asm.rr(Some(0x66), true, &[0x0f, 0x6e], x, src as u8),
+        }
+    }
+
+    /// A value's f64 into `xmm`.
+    fn getsd(&mut self, xmm: u8, at: Loc) {
+        match at {
+            Loc::Slot(d) => self.asm.movsd_load(xmm, Gpr::Rbp, d),
+            Loc::Xmm(x) if x == xmm => {}
+            // movapd xmm, x
+            Loc::Xmm(x) => self.asm.rr(Some(0x66), false, &[0x0f, 0x28], xmm, x),
+            Loc::Gpr(r) => self.asm.rr(Some(0x66), true, &[0x0f, 0x6e], xmm, r as u8),
+        }
+    }
+
+    /// `xmm`'s f64 into a value's location.
+    fn putsd(&mut self, at: Loc, xmm: u8) {
+        match at {
+            Loc::Slot(d) => self.asm.movsd_store(Gpr::Rbp, d, xmm),
+            Loc::Xmm(x) if x == xmm => {}
+            Loc::Xmm(x) => self.asm.rr(Some(0x66), false, &[0x0f, 0x28], x, xmm),
+            Loc::Gpr(r) => self.asm.rr(Some(0x66), true, &[0x0f, 0x7e], xmm, r as u8),
+        }
+    }
+
+    /// `leave; ret`, the callee-saved registers restored first.
+    fn epilogue(&mut self) {
+        for &(r, at) in &self.saved.clone() {
+            self.asm.load64(r, Gpr::Rbp, at);
+        }
+        self.asm.bytes(&[0xc9, 0xc3]);
     }
 
     fn kind(&self, v: ValueId) -> Result<Kind, Error> {
@@ -368,6 +571,9 @@ impl<'b, 'a> Lower<'b, 'a> {
             self.asm.bytes(&[0x48, 0x81, 0xec]);
             self.asm.bytes(&self.frame.to_le_bytes());
         }
+        for &(r, at) in &self.saved.clone() {
+            self.asm.store64(Gpr::Rbp, at, r);
+        }
         // parameters into their slots
         let (mut ints, mut floats) = (0usize, 0u8);
         for &arg in body[blocks[0]].args.iter() {
@@ -375,11 +581,11 @@ impl<'b, 'a> Lower<'b, 'a> {
             match self.kind(arg)? {
                 Kind::Int(_) => {
                     let r = *Gpr::ARGS.get(ints).ok_or_else(|| Error("more than six integer parameters".into()))?;
-                    self.asm.store64(Gpr::Rbp, at, r);
+                    self.put64(at, r);
                     ints += 1;
                 }
                 Kind::F64 if floats < XMM_ARGS => {
-                    self.asm.movsd_store(Gpr::Rbp, at, floats);
+                    self.putsd(at, floats);
                     floats += 1;
                 }
                 Kind::F64 => return Err(Error("more than eight float parameters".into())),
@@ -403,7 +609,7 @@ impl<'b, 'a> Lower<'b, 'a> {
         self.body[op].operands.get(i).copied().ok_or_else(|| Error(format!("{} needs operand {i}", self.body[op].name)))
     }
 
-    fn result(&self, op: OpId) -> Result<(ValueId, i32), Error> {
+    fn result(&self, op: OpId) -> Result<(ValueId, Loc), Error> {
         let r = *self.body[op].results.first().ok_or_else(|| Error(format!("{} has no result", self.body[op].name)))?;
         Ok((r, self.slot(r)?))
     }
@@ -412,12 +618,20 @@ impl<'b, 'a> Lower<'b, 'a> {
     fn int(&mut self, dst: Gpr, v: ValueId, signed: bool) -> Result<u32, Error> {
         let Kind::Int(bits) = self.kind(v)? else { return Err(Error("an integer operand is a float".into())) };
         let at = self.slot(v)?;
-        self.asm.load_int(dst, Gpr::Rbp, at, bits, signed && bits < 64);
+        self.get64(dst, at);
+        // narrow integers are kept zero-extended; a signed use sign-extends: shl then sar back
+        if signed && bits < 64 {
+            let k = u8::try_from(64 - bits).unwrap_or(0);
+            self.asm.rr(None, true, &[0xc1], 4, dst as u8);
+            self.asm.byte(k);
+            self.asm.rr(None, true, &[0xc1], 7, dst as u8);
+            self.asm.byte(k);
+        }
         Ok(bits)
     }
 
     /// rax (a `bits`-wide result) into slot `at`, zero-extended.
-    fn put_int(&mut self, at: i32, bits: u32) {
+    fn put_int(&mut self, at: Loc, bits: u32) {
         match bits {
             1 => self.asm.bytes(&[0x83, 0xe0, 0x01]),
             8 => self.asm.bytes(&[0x0f, 0xb6, 0xc0]),
@@ -425,7 +639,7 @@ impl<'b, 'a> Lower<'b, 'a> {
             32 => self.asm.bytes(&[0x89, 0xc0]),
             _ => {}
         }
-        self.asm.store64(Gpr::Rbp, at, Gpr::Rax);
+        self.put64(at, Gpr::Rax);
     }
 
     fn op(&mut self, op: OpId) -> Result<(), Error> {
@@ -436,7 +650,7 @@ impl<'b, 'a> Lower<'b, 'a> {
             "llvm.mlir.zero" | "llvm.mlir.undef" | "llvm.mlir.poison" => {
                 let (_, at) = self.result(op)?;
                 self.asm.bytes(&[0x31, 0xc0]);
-                self.asm.store64(Gpr::Rbp, at, Gpr::Rax);
+                self.put64(at, Gpr::Rax);
                 Ok(())
             }
             "llvm.add" | "llvm.sub" | "llvm.mul" | "llvm.and" | "llvm.or" | "llvm.xor" => self.int_binary(op, name),
@@ -484,7 +698,7 @@ impl<'b, 'a> Lower<'b, 'a> {
             _ => bits,
         };
         self.asm.mov_imm64(Gpr::Rax, bits);
-        self.asm.store64(Gpr::Rbp, at, Gpr::Rax);
+        self.put64(at, Gpr::Rax);
         Ok(())
     }
 
@@ -571,8 +785,8 @@ impl<'b, 'a> Lower<'b, 'a> {
     /// Two f64 operands into xmm0 / xmm1.
     fn floats(&mut self, a: ValueId, b: ValueId) -> Result<(), Error> {
         let (sa, sb) = (self.slot(a)?, self.slot(b)?);
-        self.asm.movsd_load(0, Gpr::Rbp, sa);
-        self.asm.movsd_load(1, Gpr::Rbp, sb);
+        self.getsd(0, sa);
+        self.getsd(1, sb);
         Ok(())
     }
 
@@ -587,17 +801,17 @@ impl<'b, 'a> Lower<'b, 'a> {
         };
         // addsd / mulsd / subsd / divsd xmm0, xmm1
         self.asm.rr(Some(0xf2), false, &[0x0f, code], 0, 1);
-        self.asm.movsd_store(Gpr::Rbp, at, 0);
+        self.putsd(at, 0);
         Ok(())
     }
 
     fn fneg(&mut self, op: OpId) -> Result<(), Error> {
         let (_, at) = self.result(op)?;
         let src = self.slot(self.operand(op, 0)?)?;
-        self.asm.load64(Gpr::Rax, Gpr::Rbp, src);
+        self.get64(Gpr::Rax, src);
         self.asm.mov_imm64(Gpr::Rcx, 1 << 63);
         self.asm.rr(None, true, &[0x31], Gpr::Rcx as u8, Gpr::Rax as u8);
-        self.asm.store64(Gpr::Rbp, at, Gpr::Rax);
+        self.put64(at, Gpr::Rax);
         Ok(())
     }
 
@@ -625,7 +839,7 @@ impl<'b, 'a> Lower<'b, 'a> {
         };
         if let Some(c) = extra {
             self.asm.mov_imm64(Gpr::Rax, u64::from(c));
-            self.asm.store64(Gpr::Rbp, at, Gpr::Rax);
+            self.put64(at, Gpr::Rax);
             return Ok(());
         }
         let (x, y) = if swap { (b, a) } else { (a, b) };
@@ -652,13 +866,13 @@ impl<'b, 'a> Lower<'b, 'a> {
         let (_, at) = self.result(op)?;
         let (c, t, f) = (self.slot(self.operand(op, 0)?)?, self.slot(self.operand(op, 1)?)?, self.slot(self.operand(op, 2)?)?);
         // rax = false value; if cond != 0: rax = true value (bit patterns, so floats too)
-        self.asm.load64(Gpr::Rax, Gpr::Rbp, f);
-        self.asm.load64(Gpr::Rcx, Gpr::Rbp, t);
-        self.asm.load64(Gpr::Rdx, Gpr::Rbp, c);
+        self.get64(Gpr::Rax, f);
+        self.get64(Gpr::Rcx, t);
+        self.get64(Gpr::Rdx, c);
         // test edx, edx; cmovne rax, rcx
         self.asm.bytes(&[0x85, 0xd2]);
         self.asm.rr(None, true, &[0x0f, 0x45], Gpr::Rax as u8, Gpr::Rcx as u8);
-        self.asm.store64(Gpr::Rbp, at, Gpr::Rax);
+        self.put64(at, Gpr::Rax);
         Ok(())
     }
 
@@ -673,8 +887,8 @@ impl<'b, 'a> Lower<'b, 'a> {
     fn copy(&mut self, op: OpId) -> Result<(), Error> {
         let (_, at) = self.result(op)?;
         let src = self.slot(self.operand(op, 0)?)?;
-        self.asm.load64(Gpr::Rax, Gpr::Rbp, src);
-        self.asm.store64(Gpr::Rbp, at, Gpr::Rax);
+        self.get64(Gpr::Rax, src);
+        self.put64(at, Gpr::Rax);
         Ok(())
     }
 
@@ -684,14 +898,14 @@ impl<'b, 'a> Lower<'b, 'a> {
         self.int(Gpr::Rax, self.operand(op, 0)?, signed)?;
         // cvtsi2sd xmm0, rax (an unsigned 64-bit above 2^63 is not handled)
         self.asm.rr(Some(0xf2), true, &[0x0f, 0x2a], 0, Gpr::Rax as u8);
-        self.asm.movsd_store(Gpr::Rbp, at, 0);
+        self.putsd(at, 0);
         Ok(())
     }
 
     fn float_to_int(&mut self, op: OpId) -> Result<(), Error> {
         let (r, at) = self.result(op)?;
         let src = self.slot(self.operand(op, 0)?)?;
-        self.asm.movsd_load(0, Gpr::Rbp, src);
+        self.getsd(0, src);
         // cvttsd2si rax, xmm0
         self.asm.rr(Some(0xf2), true, &[0x0f, 0x2c], Gpr::Rax as u8, 0);
         let Kind::Int(bits) = self.kind(r)? else { return Err(Error("a float cast to a float".into())) };
@@ -702,12 +916,12 @@ impl<'b, 'a> Lower<'b, 'a> {
     fn load(&mut self, op: OpId) -> Result<(), Error> {
         let (r, at) = self.result(op)?;
         let ptr = self.slot(self.operand(op, 0)?)?;
-        self.asm.load64(Gpr::Rcx, Gpr::Rbp, ptr);
+        self.get64(Gpr::Rcx, ptr);
         match self.kind(r)? {
             Kind::Int(bits) => self.asm.load_int(Gpr::Rax, Gpr::Rcx, 0, bits.max(8).next_power_of_two(), false),
             Kind::F64 => self.asm.load64(Gpr::Rax, Gpr::Rcx, 0),
         }
-        self.asm.store64(Gpr::Rbp, at, Gpr::Rax);
+        self.put64(at, Gpr::Rax);
         Ok(())
     }
 
@@ -715,8 +929,8 @@ impl<'b, 'a> Lower<'b, 'a> {
         let (v, p) = (self.operand(op, 0)?, self.operand(op, 1)?);
         let bytes = Kind::size(&self.body[v].ty)?;
         let (sv, sp) = (self.slot(v)?, self.slot(p)?);
-        self.asm.load64(Gpr::Rax, Gpr::Rbp, sv);
-        self.asm.load64(Gpr::Rcx, Gpr::Rbp, sp);
+        self.get64(Gpr::Rax, sv);
+        self.get64(Gpr::Rcx, sp);
         self.asm.store_int(Gpr::Rcx, 0, Gpr::Rax, bytes);
         Ok(())
     }
@@ -735,7 +949,7 @@ impl<'b, 'a> Lower<'b, 'a> {
         };
         let [index] = raw[..] else { return Err(Error("getelementptr with more than one index is not supported".into())) };
         let base = self.slot(self.operand(op, 0)?)?;
-        self.asm.load64(Gpr::Rax, Gpr::Rbp, base);
+        self.get64(Gpr::Rax, base);
         /// `rawConstantIndices`' marker of a dynamic index
         const DYNAMIC: i64 = i32::MIN as i64;
         if index == DYNAMIC {
@@ -747,7 +961,7 @@ impl<'b, 'a> Lower<'b, 'a> {
             self.asm.mov_imm64(Gpr::Rcx, (index * size).cast_unsigned());
         }
         self.asm.rr(None, true, &[0x01], Gpr::Rcx as u8, Gpr::Rax as u8);
-        self.asm.store64(Gpr::Rbp, at, Gpr::Rax);
+        self.put64(at, Gpr::Rax);
         Ok(())
     }
 
@@ -763,11 +977,11 @@ impl<'b, 'a> Lower<'b, 'a> {
             match self.kind(v)? {
                 Kind::Int(_) => {
                     let r = *Gpr::ARGS.get(ints).ok_or_else(|| Error("a call with more than six integer arguments".into()))?;
-                    self.asm.load64(r, Gpr::Rbp, at);
+                    self.get64(r, at);
                     ints += 1;
                 }
                 Kind::F64 if floats < XMM_ARGS => {
-                    self.asm.movsd_load(floats, Gpr::Rbp, at);
+                    self.getsd(floats, at);
                     floats += 1;
                 }
                 Kind::F64 => return Err(Error("a call with more than eight float arguments".into())),
@@ -781,7 +995,7 @@ impl<'b, 'a> Lower<'b, 'a> {
             let at = self.slot(r)?;
             match self.kind(r)? {
                 Kind::Int(bits) => self.put_int(at, bits),
-                Kind::F64 => self.asm.movsd_store(Gpr::Rbp, at, 0),
+                Kind::F64 => self.putsd(at, 0),
             }
         }
         Ok(())
@@ -795,13 +1009,13 @@ impl<'b, 'a> Lower<'b, 'a> {
         }
         for (i, &v) in (0i32..).zip(values) {
             let s = self.slot(v)?;
-            self.asm.load64(Gpr::Rax, Gpr::Rbp, s);
+            self.get64(Gpr::Rax, s);
             self.asm.store64(Gpr::Rbp, self.scratch + 8 * i, Gpr::Rax);
         }
         for (i, &a) in (0i32..).zip(&args) {
             let d = self.slot(a)?;
             self.asm.load64(Gpr::Rax, Gpr::Rbp, self.scratch + 8 * i);
-            self.asm.store64(Gpr::Rbp, d, Gpr::Rax);
+            self.put64(d, Gpr::Rax);
         }
         Ok(())
     }
@@ -829,7 +1043,7 @@ impl<'b, 'a> Lower<'b, 'a> {
         let ops: Vec<ValueId> = self.body[op].operands.iter().copied().collect();
         let (nt, nf) = (sizes.get(1).copied().unwrap_or(0), sizes.get(2).copied().unwrap_or(0));
         let cond = self.slot(ops[0])?;
-        self.asm.load64(Gpr::Rax, Gpr::Rbp, cond);
+        self.get64(Gpr::Rax, cond);
         // test eax, eax; je false-side
         self.asm.bytes(&[0x85, 0xc0]);
         let to_false = self.asm.jump(Some(Cc::E));
@@ -846,12 +1060,11 @@ impl<'b, 'a> Lower<'b, 'a> {
         if let Some(&v) = self.body[op].operands.first() {
             let at = self.slot(v)?;
             match self.kind(v)? {
-                Kind::Int(_) => self.asm.load64(Gpr::Rax, Gpr::Rbp, at),
-                Kind::F64 => self.asm.movsd_load(0, Gpr::Rbp, at),
+                Kind::Int(_) => self.get64(Gpr::Rax, at),
+                Kind::F64 => self.getsd(0, at),
             }
         }
-        // leave; ret
-        self.asm.bytes(&[0xc9, 0xc3]);
+        self.epilogue();
         Ok(())
     }
 }
