@@ -1,5 +1,3 @@
-//! `blocks!`: a region's blocks, in their final order.
-
 use proc_macro2::TokenStream as Tokens;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
@@ -7,14 +5,12 @@ use syn::{Expr, Ident, Token};
 
 use crate::ops::OpsRewrite;
 
-/// One block of `blocks!`: its name, its arguments, its statements.
 struct BlockDecl {
     name: Ident,
     args: Vec<(Ident, Expr)>,
     body: syn::Block,
 }
 
-/// `blocks!(b; entry(..) {..} next(x: ty, ..) {..} ..)`.
 pub struct Blocks {
     b: Expr,
     blocks: Vec<BlockDecl>,
@@ -47,7 +43,6 @@ impl Parse for Blocks {
 }
 
 impl Blocks {
-    /// `blocks!(b; ..)`: see the crate docs.
     pub fn expand(input: Tokens) -> syn::Result<Tokens> {
         let Blocks { b, blocks } = syn::parse2(input)?;
         let mut make = Vec::new();

@@ -1,38 +1,26 @@
-//! The `acc` (OpenACC) dialect's op interfaces: the effects its data clause ops compute in C++
-//! (`OpenACC.cpp`).
-
 use alloc::vec::Vec;
 
 use crate::{Body, EffectInstance, EffectKind, OpId, OpInterfaces, Resource};
 
-/// The `acc` dialect.
 pub struct AccDialect;
 
-/// One effect of a data clause op.
 #[derive(Clone, Copy)]
 enum Fx {
-    /// On `acc::RuntimeCounters`.
     ReadCounters,
     WriteCounters,
-    /// On `acc::CurrentDeviceIdResource`.
     ReadDevice,
-    /// On it only outside a compute construct (the private copies).
     ReadDeviceOutside,
-    /// On each operand of group `n`.
     ReadOperand(usize),
     WriteOperand(usize),
-    /// On the `accVar` result.
     WriteResult,
 }
 
-/// `getVar` of an entry op, `getAccVar` / `getVar` of an exit op.
 const ENTRY_VAR: usize = 0;
 const EXIT_ACC_VAR: usize = 0;
 const EXIT_VAR: usize = 1;
 
 use Fx::{ReadCounters as RC, ReadDevice as RD, ReadDeviceOutside as RDO, ReadOperand as RO, WriteCounters as WC, WriteOperand as WO, WriteResult as WR};
 
-/// The ops and their effects, in `getEffects` order.
 const EFFECTS: &[(&str, &[Fx])] = &[
     ("acc.attach", &[RC, WC, RD, RO(ENTRY_VAR)]),
     ("acc.cache", &[]),
@@ -55,11 +43,9 @@ const EFFECTS: &[(&str, &[Fx])] = &[
     ("acc.use_device", &[RC, RD]),
 ];
 
-/// `ACC_COMPUTE_CONSTRUCT_OPS`.
 const COMPUTE_CONSTRUCTS: [&str; 3] = ["acc.parallel", "acc.kernels", "acc.serial"];
 
 impl AccDialect {
-    /// `isEnclosedIntoComputeOp`.
     fn in_compute(b: &Body<'_>, op: OpId) -> bool {
         let mut at = b.parent_op(op);
         while let Some(p) = at {

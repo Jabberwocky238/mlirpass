@@ -1,13 +1,9 @@
-//! `convert-gpu-to-llvm-spv`.
-
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, NamedAttr, Shaped, ShapedKind, Type};
 
 use crate::{Body, CConv, ConversionConfig, ConversionPatterns, Converter, GpuLlvmOptions, GpuSpaces, GpuToLlvm, GpuToLlvmSpv, LlvmConverter, LlvmOptions, Mode, OpId, Printf, PrintfCall};
 
-/// `MemorySpaceToOpenCLMemorySpaceConverter` with the `AttrTypeReplacer` around it: memrefs
-/// without a memory space get OpenCL's global one (CrossWorkgroup, 1), everywhere under an op.
 struct OpenClGlobal;
 
 impl OpenClGlobal {
@@ -15,7 +11,6 @@ impl OpenClGlobal {
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::MemRef && s.memory_space().is_none() => {
                 let mut extras = s.extras.clone();
-                // An `i64` memory space prints (and parses back) bare.
                 extras.push(Attribute::of_int(GpuSpaces::OPENCL.global.into(), Type::int(64)).untyped());
                 Type::Shaped(alloc::boxed::Box::new(Shaped { extras, ..*s.clone() }))
             }
@@ -38,7 +33,6 @@ impl OpenClGlobal {
         NamedAttr { name: n.name.clone(), value: n.value.as_ref().map(Self::map_attr) }
     }
 
-    /// Every value, block argument and attribute under `op`.
     fn apply(body: &mut Body<'_>, op: OpId) {
         for o in body.ops_in(op) {
             for v in body[o].results.clone() {
@@ -59,10 +53,8 @@ impl OpenClGlobal {
     }
 }
 
-/// The ops `GPUToLLVMSPVConversionPass` makes illegal.
 const ILLEGAL: [&str; 14] = ["gpu.barrier", "gpu.block_dim", "gpu.block_id", "gpu.func", "gpu.global_id", "gpu.grid_dim", "gpu.lane_id", "gpu.num_subgroups", "gpu.return", "gpu.shuffle", "gpu.subgroup_id", "gpu.subgroup_size", "gpu.thread_id", "gpu.printf"];
 
-/// `convert-gpu-to-llvm-spv`.
 #[crate::pass("convert-gpu-to-llvm-spv", on = "gpu.module")]
 pub struct ConvertGpuToLlvmSpv {
     #[opt("use-64bit-index")]

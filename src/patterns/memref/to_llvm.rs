@@ -1,6 +1,3 @@
-//! `memref` ⇒ `llvm`, as `MemRefToLLVM.cpp` (and the `ConvertToLLVMPattern` helpers of
-//! `LLVMCommon/Pattern.cpp` it leans on).
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -12,23 +9,17 @@ use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
 use crate::{BlockId, ConversionRewriter, LlvmConverter, LlvmOptions, MemrefLayout, OpData, OpId, ValueId, Visibility};
 use mlirformat::llvm_types::LlvmType;
 
-/// The memref ⇒ llvm patterns.
 pub struct MemrefToLlvm;
 
-/// `LowerToLLVMOptions` as far as memrefs care.
 #[derive(Debug, Clone, Copy)]
 pub struct MemrefOptions {
     pub llvm: LlvmOptions,
-    /// `use-aligned-alloc`: `aligned_alloc` instead of `malloc`.
     pub aligned_alloc: bool,
-    /// `use-generic-functions`: `_mlir_memref_to_llvm_*` instead of the libc names.
     pub generic: bool,
 }
 
-/// `GEPOp::kDynamicIndex`.
 const GEP_DYNAMIC: i64 = i32::MIN as i64;
 
-/// One `llvm.getelementptr` index.
 #[derive(Clone, Copy)]
 pub enum Gep {
     C(i64),
@@ -60,7 +51,6 @@ impl MemrefToLlvm {
         s.shape.as_ref().map_or(0, Vec::len)
     }
 
-    /// `isConvertibleAndHasIdentityMaps`.
     fn convertible_identity<'a>(cr: &Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>) -> bool {
         s.identity_layout() && cr.type_converter().is_some_and(|tc| tc.convert(&Type::Shaped(alloc::boxed::Box::new(s.clone()))).is_some()) && opts.address_space(s).is_some()
     }
@@ -128,15 +118,12 @@ impl MemrefToLlvm {
         cr.rw.create(OpData::build("llvm.intr.memcpy").operands(&[dst, src, len]).with("isVolatile", Attribute::Bool(false)), &[]);
     }
 
-    /// `getSizeInBytes`: `ptrtoint (gep null[1])`.
     fn size_in_bytes<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, llvm: Type<'a>) -> ValueId {
         let null = cr.build(OpData::build("llvm.mlir.zero"), LlvmType::ptr());
         let g = Self::gep(cr, LlvmType::ptr(), llvm, null, &[Gep::C(1)], 0);
         Self::cast(cr, "llvm.ptrtoint", g, opts.index())
     }
 
-    /// `getMemRefDescriptorSizes`: sizes, row-major strides, and the element count (or byte
-    /// size).
     pub(crate) fn desc_sizes<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, dynamic: &[ValueId], bytes: bool) -> Option<(Vec<ValueId>, Vec<ValueId>, ValueId)> {
         let shape = s.dims().unwrap_or_default();
         let mut dynamic = dynamic.iter();
@@ -145,7 +132,6 @@ impl MemrefToLlvm {
             sizes.push(if d == Dim::DYNAMIC { *dynamic.next()? } else { Self::const_index(cr, opts, d) });
         }
         let mut stride = 1i64;
-        // A static stride past `i64` is poison, and so is every stride outside it.
         let mut overflowed = false;
         let mut running = Self::const_index(cr, opts, 1);
         let mut strides = vec![running; shape.len()];
@@ -182,7 +168,6 @@ impl MemrefToLlvm {
         Some((sizes, strides, size))
     }
 
-    /// `createMemRefDescriptor`.
     pub(crate) fn create_desc<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, allocated: ValueId, aligned: ValueId, sizes: &[ValueId], strides: &[ValueId]) -> Option<ValueId> {
         let ty = LlvmConverter::convert_memref(opts, &s.clone())?;
         let mut d = cr.poison(ty);
@@ -199,7 +184,6 @@ impl MemrefToLlvm {
         Some(d)
     }
 
-    /// `MemRefDescriptor::bufferPtr`: the aligned pointer moved by the offset.
     pub fn buffer_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId) -> Option<ValueId> {
         let (_, offset) = s.strides_and_offset()?;
         let ptr = cr.extract(desc, &[1]);
@@ -212,15 +196,10 @@ impl MemrefToLlvm {
         Some(Self::gep(cr, ty, elem, ptr, &[Gep::V(off)], 0))
     }
 
-    /// `GEPNoWrapFlags::inbounds` (`inbounds_flag | nusw`).
     pub const INBOUNDS: i64 = 3;
-    /// `GEPNoWrapFlags::nuw`.
     pub const NUW: i64 = 4;
-    /// `inbounds | nuw`.
     pub const NO_WRAP: i64 = Self::INBOUNDS | Self::NUW;
 
-    /// `getLoadStoreNoWrapFlags`: `inbounds`, and `nuw` when every stride is static and
-    /// non-negative.
     fn load_store_flags(s: &Shaped<'_>) -> i64 {
         match s.strides_and_offset() {
             Some((strides, _)) if strides.iter().all(|st| *st != Dim::DYNAMIC && *st >= 0) => Self::NO_WRAP,
@@ -228,7 +207,6 @@ impl MemrefToLlvm {
         }
     }
 
-    /// `getStridedElementPtr`.
     pub fn strided_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId, indices: &[ValueId], flags: i64) -> Option<ValueId> {
         let (strides, _) = s.strides_and_offset()?;
         let base = Self::buffer_ptr(cr, opts, s, desc)?;
@@ -251,7 +229,6 @@ impl MemrefToLlvm {
         Some(Self::gep(cr, ptr_ty, elem, base, &[Gep::V(index)], flags))
     }
 
-    /// `computeSize` of an unranked descriptor `desc`.
     fn unranked_size<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, desc: ValueId) -> ValueId {
         let one = Self::const_index(cr, opts, 1);
         let two = Self::const_index(cr, opts, 2);
@@ -265,19 +242,15 @@ impl MemrefToLlvm {
         Self::arith(cr, "llvm.add", double_ptr, rank_size)
     }
 
-    /// `UnrankedMemRefDescriptor::alignedPtr` / `offsetBasePtr` / `offset`: fields of the
-    /// ranked descriptor behind `ptr`.
     fn unranked_field<'a>(cr: &mut Cr<'_, 'a, '_>, elem_ptr: Type<'a>, ptr: ValueId, field: i64) -> ValueId {
         Self::gep(cr, LlvmType::ptr(), elem_ptr, ptr, &[Gep::C(field)], 0)
     }
 
-    /// `UnrankedMemRefDescriptor::sizeBasePtr`.
     fn size_base<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, elem_ptr: Type<'a>, ptr: ValueId) -> ValueId {
         let st = LlvmType::literal(vec![elem_ptr.clone(), elem_ptr, opts.index(), opts.index()]);
         Self::gep(cr, LlvmType::ptr(), st, ptr, &[Gep::C(0), Gep::C(3)], 0)
     }
 
-    /// `promoteOneMemRefDescriptor`.
     fn promote<'a>(cr: &mut Cr<'_, 'a, '_>, desc: ValueId) -> ValueId {
         let one = cr.index_const(&Type::int(64), 1);
         let ty = cr.rw.body[desc].ty.clone();
@@ -294,7 +267,6 @@ impl MemrefToLlvm {
         cr.rw.create(OpData::build("llvm.intr.stackrestore").operands(&[p]), &[]);
     }
 
-    /// The `llvm.func` of a runtime function, declared in the enclosing module when missing.
     fn runtime<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, name: &str, params: Vec<Type<'a>>, ret: Type<'a>) -> Option<()> {
         let m = cr.module_of(op)?;
         cr.llvm_func(m, name, params, ret, false).map(|_| ())
@@ -305,7 +277,6 @@ impl MemrefToLlvm {
         cr.rw.body[c].results[0]
     }
 
-    /// The integer an operand is known to be: an `arith.constant` or `llvm.mlir.constant`.
     fn known_int<'a>(cr: &Cr<'_, 'a, '_>, v: ValueId) -> Option<i64> {
         let d = cr.rw.body.def_op(v)?;
         if !matches!(&*cr.rw.body[d].name, "arith.constant" | "llvm.mlir.constant") {
@@ -322,9 +293,6 @@ impl MemrefToLlvm {
         }
     }
 
-    // ---- patterns ----------------------------------------------------------------------
-
-    /// `createAligned`: `bumped - bumped % alignment` with `bumped = input + alignment - 1`.
     fn aligned<'a>(cr: &mut Cr<'_, 'a, '_>, input: ValueId, alignment: ValueId) -> ValueId {
         let ty = cr.rw.body[alignment].ty.clone();
         let one = cr.llvm_constant(Attribute::Int { lit: "1".into(), ty: Some(Type::Index) }, ty);
@@ -334,7 +302,6 @@ impl MemrefToLlvm {
         Self::arith(cr, "llvm.sub", bumped, m)
     }
 
-    /// `castAllocFuncResult`.
     fn cast_alloc<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, p: ValueId) -> ValueId {
         match opts.address_space(s) {
             Some(0) | None => p,
@@ -342,7 +309,6 @@ impl MemrefToLlvm {
         }
     }
 
-    /// `getMemRefEltSizeInBytes` under the default data layout.
     fn type_size(opts: LlvmOptions, t: &Type<'_>) -> Option<u64> {
         Some(match t {
             Type::Index => u64::from(opts.index_bitwidth.div_ceil(8)),
@@ -440,7 +406,6 @@ impl MemrefToLlvm {
         true
     }
 
-    /// A block with arguments of `types` placed right before `before`.
     fn block_before<'a>(cr: &mut Cr<'_, 'a, '_>, before: BlockId, types: &[Type<'a>], loc: Option<mlirformat::Str<'a>>) -> BlockId {
         let region = cr.rw.body[before].parent.expect("in region");
         let args: Vec<_> = types.iter().map(|t| (t.clone(), loc.clone())).collect();
@@ -596,7 +561,6 @@ impl MemrefToLlvm {
         let Some(s) = Self::operand_memref(cr, op, 0) else { return false };
         let res_ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
         let Some(value_ty) = Self::elem(cr, &res_ty) else { return false };
-        // The yielded value must come from the region.
         let body = cr.rw.body[op].regions[0];
         let entry = cr.rw.body[body].blocks[0];
         let Some(term) = cr.rw.body.last_op(entry) else { return false };
@@ -608,8 +572,6 @@ impl MemrefToLlvm {
         if !inside {
             return false;
         }
-        // `llvm.cmpxchg` takes integers or pointers: a float is swapped as the integer of its
-        // width, bitcast at the boundaries.
         let swap_ty = match &value_ty {
             Type::Float(_) => match value_ty.bit_width() {
                 Some(w) => Some(Type::int(w)),
@@ -660,7 +622,6 @@ impl MemrefToLlvm {
         true
     }
 
-    /// `convertGlobalMemrefTypeToLLVM`: nested arrays, outermost dimension first.
     fn global_type<'a>(cr: &Cr<'_, 'a, '_>, s: &Shaped<'a>) -> Option<Type<'a>> {
         let mut t = Self::elem(cr, &s.elem)?;
         for d in s.dims().unwrap_or_default().iter().rev() {
@@ -756,7 +717,6 @@ impl MemrefToLlvm {
         true
     }
 
-    /// The `alignment`, `nontemporal` and `invariant` (loads) of a memref access, for its llvm counterpart.
     fn access<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, mut d: OpData<'a>) -> OpData<'a> {
         if let Some(a) = cr.rw.body[op].get("alignment").and_then(Self::int).filter(|a| *a != 0) {
             d.set("alignment", Attribute::i64(a));
@@ -928,7 +888,6 @@ impl MemrefToLlvm {
         true
     }
 
-    /// `extractPointersAndOffset`.
     fn pointers<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId, offset: bool) -> (ValueId, ValueId, Option<ValueId>) {
         if s.shape.is_some() {
             let a = cr.extract(desc, &[0]);
@@ -1014,7 +973,6 @@ impl MemrefToLlvm {
                 let size = if dims[i] != Dim::DYNAMIC {
                     Self::const_index(cr, opts, dims[i])
                 } else {
-                    // A `memref.load %shape[i]`, legalized in turn, cast to the index type.
                     let index = Self::const_index(cr, opts, i as i64);
                     let original = cr.rw.body[op].operands[1];
                     let elem = (*shape.elem).clone();
@@ -1029,7 +987,6 @@ impl MemrefToLlvm {
             cr.replace(op, vec![vec![d]]);
             return true;
         }
-        // A shape of unknown length: the strides are computed in a loop.
         let loc = cr.rw.body[op].loc.clone();
         let rank = cr.extract(shd, &[3, 0]);
         let Some(ty) = LlvmConverter::convert_memref(opts, &dst) else { return false };
@@ -1094,8 +1051,6 @@ impl MemrefToLlvm {
         true
     }
 
-
-    /// An empty block right after `block`.
     fn block_after<'a>(cr: &mut Cr<'_, 'a, '_>, block: BlockId) -> BlockId {
         let region = cr.rw.body[block].parent.expect("in region");
         let b = cr.rw.body.add_block(region, &[]);
@@ -1180,23 +1135,22 @@ impl MemrefToLlvm {
         true
     }
 
-    /// `matchSimpleAtomicOp`: `arith::AtomicRMWKind` ⇒ `LLVM::AtomicBinOp`.
     fn atomic_bin_op(kind: i64) -> Option<i64> {
         Some(match kind {
-            0 => 11,  // addf ⇒ fadd
-            1 => 1,   // addi ⇒ add
-            2 => 3,   // andi ⇒ _and
-            3 => 0,   // assign ⇒ xchg
-            4 => 19,  // maximumf ⇒ fmaximum
-            5 => 13,  // maxnumf ⇒ fmax
-            6 => 7,   // maxs ⇒ max
-            7 => 9,   // maxu ⇒ umax
-            8 => 20,  // minimumf ⇒ fminimum
-            9 => 14,  // minnumf ⇒ fmin
-            10 => 8,  // mins ⇒ min
-            11 => 10, // minu ⇒ umin
-            14 => 5,  // ori ⇒ _or
-            15 => 6,  // xori ⇒ _xor
+            0 => 11,
+            1 => 1,
+            2 => 3,
+            3 => 0,
+            4 => 19,
+            5 => 13,
+            6 => 7,
+            7 => 9,
+            8 => 20,
+            9 => 14,
+            10 => 8,
+            11 => 10,
+            14 => 5,
+            15 => 6,
             _ => return None,
         })
     }
@@ -1263,5 +1217,4 @@ impl MemrefToLlvm {
     fn fail<'a>(_: &mut Cr<'_, 'a, '_>, _: OpId, _: &[Vec<ValueId>], _: MemrefOptions) -> bool {
         false
     }
-
 }

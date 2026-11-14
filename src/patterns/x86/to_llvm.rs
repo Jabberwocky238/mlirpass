@@ -1,8 +1,3 @@
-//! The x86 CPU dialect ⇒ `llvm` intrinsic calls, as `X86` `LegalizeForLLVMExport.cpp`: each op
-//! is `llvm.call_intrinsic` of the intrinsic its ODS names (`X86IntrinsicOpInterface`), with
-//! the operands its
-//! `getIntrinsicOperands` builds. `!x86.amx.tile<..>` is `!llvm.x86_amx`.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -17,11 +12,9 @@ use crate::{ConversionRewriter, LlvmOptions, MemrefLayout, MemrefToLlvm, OpData,
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The x86 ⇒ llvm patterns (`populateX86LegalizeForLLVMExportPatterns`).
 pub struct X86ToLlvm;
 
 impl X86ToLlvm {
-    /// `!x86.amx.tile<..>` as `!llvm.x86_amx`.
     pub fn convert_tiles(tc: &mut TypeConverter<'_>) {
         tc.conversion(|t| match t {
             Type::Extended(e) if e.name == "x86.amx.tile" => Some(Some(vec![LlvmType::X86Amx.into()])),
@@ -29,7 +22,6 @@ impl X86ToLlvm {
         });
     }
 
-    /// The bits of a vector type (`count * element width`).
     fn bits(t: &Type<'_>) -> Option<u64> {
         Some(t.element_count()? as u64 * u64::from(t.element_type().bit_width()?))
     }
@@ -38,7 +30,6 @@ impl X86ToLlvm {
         cr.rw.body[v].ty.clone()
     }
 
-    /// `getIntrinsicName`.
     fn intrinsic(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<String> {
         let b = &cr.rw.body;
         let operand = |i: usize| b[b[op].operands[i]].ty.clone();
@@ -92,9 +83,6 @@ impl X86ToLlvm {
         cr.llvm_constant(Attribute::integer(v, Type::int(width)), Type::int(width))
     }
 
-    /// The `[rows, columns in bytes]` of an `!x86.amx.tile<RxCxT>`, as `i16` constants
-    /// (`getTileSizes`).
-    /// `!x86.amx.tile<RxCxT>` read as `vector<RxCxT>`, handed to `f`.
     fn with_tile<R>(tile: &Type<'_>, f: impl FnOnce(&Type<'_>) -> Option<R>) -> Option<R> {
         let Type::Extended(e) = tile else { return None };
         let vector = format!("vector<{}>", e.body.as_deref()?.trim_matches(['<', '>']));
@@ -106,13 +94,11 @@ impl X86ToLlvm {
         Some([Self::int(cr, 16, i128::from(rows)), Self::int(cr, 16, i128::from(cols))])
     }
 
-    /// `computeStrideInBytes`.
     fn stride_bytes(cr: &mut Cr<'_, '_, '_>, s: &Shaped<'_>, stride: ValueId) -> Option<ValueId> {
         let scale = Self::int(cr, 64, i128::from(s.elem.bit_width()? / 8));
         Some(cr.build(OpData::build("llvm.mul").operands(&[scale, stride]), Type::int(64)))
     }
 
-    /// `inferStride`: the second innermost stride, in bytes.
     fn infer_stride(cr: &mut Cr<'_, '_, '_>, s: &Shaped<'_>, desc: ValueId) -> Option<ValueId> {
         let rank = s.shape.as_ref()?.len();
         let (strides, _) = s.strides_and_offset()?;
@@ -125,7 +111,6 @@ impl X86ToLlvm {
         Some(Self::int(cr, 64, i128::from(strides[pre]) * bytes))
     }
 
-    /// An AMX transfer's pointer and stride (`tile_load` / `tile_store`).
     fn transfer(cr: &mut Cr<'_, '_, '_>, op: OpId, ops: &[ValueId], opts: LlvmOptions) -> Option<Vec<ValueId>> {
         let b = &cr.rw.body;
         let segs = b.segments(op, "operandSegmentSizes")?;
@@ -147,7 +132,6 @@ impl X86ToLlvm {
         Some(out)
     }
 
-    /// `getIntrinsicOperands`.
     fn operands(cr: &mut Cr<'_, '_, '_>, op: OpId, ops: Vec<ValueId>, opts: LlvmOptions) -> Option<Vec<ValueId>> {
         let name = cr.rw.body[op].name.clone();
         Some(match &*name {
@@ -194,7 +178,6 @@ impl X86ToLlvm {
 
 #[patterns(converter, options = LlvmOptions)]
 impl X86ToLlvm {
-    /// `X86IntrinsicOpConversion`.
     #[convert(
         "x86.avx512.mask.compress", "x86.avx512.mask.rndscale", "x86.avx512.mask.scalef", "x86.avx512.vp2intersect",
         "x86.avx512.dot", "x86.avx512.cvt.packed.f32_to_bf16", "x86.avx10.dot.i8", "x86.avx.rsqrt", "x86.avx.intr.dot", "x86.avx.dot.i8",
@@ -207,8 +190,6 @@ impl X86ToLlvm {
 }
 
 impl X86ToLlvm {
-    /// `LLVM::detail::intrinsicRewrite`: the call, the op's attributes carried over, several
-    /// results packed in a struct and extracted.
     fn intrinsic_call(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], opts: LlvmOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(name) = Self::intrinsic(cr, op) else { return false };

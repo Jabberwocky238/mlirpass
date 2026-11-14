@@ -1,5 +1,3 @@
-//! `#[map("from" => "to", ..)]`: a lowering generated whole.
-
 use proc_macro2::TokenStream as Tokens;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
@@ -7,7 +5,6 @@ use syn::{Expr, Ident, LitInt, LitStr, Token};
 
 use super::{Populate, PatternsArgs};
 
-/// An impl's `#[map("from" => "to", flags.., benefit = n, when = expr, via = template)]`.
 pub struct MapArgs {
     from: LitStr,
     to: LitStr,
@@ -48,8 +45,6 @@ impl MapArgs {
         self.flags.iter().any(|x| x == f)
     }
 
-    /// The body of the lowering this row is: a call of its template, or the one-to-one
-    /// rewrite itself.
     fn body(&self, opts: bool) -> Tokens {
         let to = &self.to;
         let o = opts.then(|| quote!(opts,));
@@ -87,7 +82,6 @@ impl MapArgs {
         }
     }
 
-    /// Adds row `i`'s lowering to `out`.
     pub fn declare(&self, args: &PatternsArgs, i: usize, out: &mut Populate) {
         let f = format_ident!("__map{}", i);
         let opts = args.options.is_some();

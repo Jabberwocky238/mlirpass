@@ -1,8 +1,3 @@
-//! `convert-gpu-to-apple9`: the kernels' calls inlined ([`Kernels::inline_calls`]), their `scf.for`s made `scf.while`s
-//! ([`GpuToApple9::for_to_while`]); the compute kernels of each
-//! `gpu.module` ⇒ `apple9.kernel`s of virtual Apple9 instructions ([`GpuToApple9`]); then each kernel's parameters
-//! read at its start: word k of the parameter buffer (binding 1, byte 4k); `gpu.grid_dim` the words after them.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -10,7 +5,6 @@ use mlirformat::{Error, Op};
 
 use crate::{A, APPLE9_PARAMETERS, Apple9Kernel, Apple9Op, Apple9Type, Apple9Types, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, GpuToApple9, Kernels, Mode, OpData, OpId, Quiet, Rewriter, SinkConstants, WithAttrs, pass};
 
-/// `convert-gpu-to-apple9`.
 #[pass("convert-gpu-to-apple9", on = "builtin.module")]
 pub fn convert_gpu_to_apple9<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     Kernels::inline_calls(body, op)?;
@@ -32,7 +26,6 @@ pub fn convert_gpu_to_apple9<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Er
     for o in ["gpu.func", "gpu.return", "gpu.block_id", "gpu.thread_id", "gpu.block_dim", "gpu.barrier", "scf.for"] {
         target.illegal_op(o);
     }
-    // structured control flow stays, of registers (`apple9-control` makes it masks)
     for o in ["scf.if", "scf.while", "scf.condition", "scf.yield"] {
         target.dynamic_op(o, |b, op| Some(GpuToApple9::structured_legal(b, op)));
     }
@@ -53,7 +46,6 @@ pub fn convert_gpu_to_apple9<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Er
             rw.replace_all_uses(*arg, v);
         }
         rw.body[block].args.clear();
-        // the grid's size: the words after the parameters
         let mut grid = Vec::new();
         rw.body.walk(k, &mut |o| {
             if rw.body[o].get("grid").is_some() {

@@ -1,5 +1,3 @@
-//! The `scf` dialect's op interfaces.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -7,7 +5,6 @@ use mlirformat::Attribute;
 
 use crate::{Body, DialectInliner, MemrefOfr as Ofr, OpId, OpInterfaces, Operand, Point, Succ, ValueId};
 
-/// The `scf` dialect.
 pub struct ScfDialect;
 
 impl OpInterfaces for ScfDialect {
@@ -102,7 +99,6 @@ impl OpInterfaces for ScfDialect {
         usize::from(b[t].name == "scf.condition")
     }
 
-    /// `scf.condition`: `[after, parent]`, by the condition.
     fn terminator_successors<'a>(&self, b: &Body<'a>, t: OpId, c: &[Option<Attribute<'a>>], all: Vec<(Succ, Vec<ValueId>)>) -> Vec<(Succ, Vec<ValueId>)> {
         if b[t].name != "scf.condition" {
             return all;
@@ -116,7 +112,6 @@ impl OpInterfaces for ScfDialect {
 }
 
 impl ScfDialect {
-    /// `ForOp::getStaticTripCount`.
     fn static_trip_count(b: &Body<'_>, op: OpId) -> Option<mlirformat::ApInt> {
         let [lb, ub, step] = [0, 1, 2].map(|i| Ofr::V(b[op].operands[i]));
         b.const_trip_count(lb, ub, step, b[op].get("unsignedCmp").is_none())
@@ -124,14 +119,10 @@ impl ScfDialect {
 }
 
 impl Body<'_> {
-    /// `constantTripCount(lb, ub, step, signed, computeUbMinusLb)`: a zero step, or a negative
-    /// one when signed, is unknown.
     pub fn const_trip_count(&self, lb: Ofr, ub: Ofr, step: Ofr, signed: bool) -> Option<mlirformat::ApInt> {
         use core::cmp::Ordering;
         use mlirformat::{ApInt, Const, Type};
-        /// The width of an index (`IndexType::kInternalStorageBitWidth`).
         const INDEX_BITS: u32 = 64;
-        // A static bound is an index; so is any value not of an integer type.
         let shape = |o: Ofr| match o {
             Ofr::V(v) if !matches!(self[v].ty, Type::Index) => self[v].ty.int_width().map_or((INDEX_BITS, true), |w| (w.0, false)),
             _ => (INDEX_BITS, true),
@@ -160,12 +151,10 @@ impl Body<'_> {
                 if le {
                     return Some(ApInt::zero(width));
                 }
-                // ub > lb: the difference read unsigned.
                 u.sub(l)
             }
             (Some(_), None) | (None, Some(_)) => return None,
             (None, None) => {
-                // `computeUbMinusLb`: ub = lb + c, without wrapping.
                 let (Ofr::V(lb), Ofr::V(ub)) = (lb, ub) else { return None };
                 let add = self.def_named(ub, "arith.addi")?;
                 let flags = match self[add].get("overflowFlags") {
@@ -191,7 +180,6 @@ impl Body<'_> {
     }
 }
 
-/// `SCFInlinerInterface`.
 impl DialectInliner for ScfDialect {
     fn legal_region(&self, _: &Body<'_>, _: crate::RegionId) -> bool {
         true
@@ -222,7 +210,6 @@ mod bufferizable {
     use super::ScfDialect;
     use crate::{buffer_of, buffer_type, is_tensor, replace_with_buffers, AliasingOperand, AliasingValue, AnalysisState, Body, BufferRelation, Bufferizable, BufferizationOptions, Def, OpData, OpId, Operand, RegionId, Rewriter, ValueId};
 
-    /// `scf.for`, `scf.if`, `scf.yield`, `scf.execute_region`, `scf.while`, `scf.condition`.
     struct For;
     struct If;
     struct Yield;
@@ -250,17 +237,14 @@ mod bufferizable {
         }
     }
 
-    /// The body block of region `r` of `op`.
     fn body_of(b: &Body<'_>, op: OpId, r: usize) -> crate::BlockId {
         b[b[op].regions[r]].blocks[0]
     }
 
-    /// The terminator (`scf.yield`) of region `r` of `op`.
     fn yield_of(b: &Body<'_>, op: OpId, r: usize) -> OpId {
         b.last_op(body_of(b, op, r)).expect("a terminator")
     }
 
-    /// `castBuffer`: `buffer` as `ty`, through a `memref.cast` when it differs.
     fn cast_buffer<'a>(rw: &mut Rewriter<'_, 'a>, buffer: ValueId, ty: &Type<'a>) -> ValueId {
         if rw.body[buffer].ty == *ty {
             return buffer;
@@ -269,7 +253,6 @@ mod bufferizable {
         rw.body[c].results[0]
     }
 
-    /// `Region::isAncestor` of `r` over region `of`.
     fn region_contains(b: &Body<'_>, r: RegionId, mut of: Option<RegionId>) -> bool {
         while let Some(x) = of {
             if x == r {
@@ -281,7 +264,6 @@ mod bufferizable {
         false
     }
 
-    /// `doesNotAliasExternalValue`: no alias of `v` (but `except`) is defined outside `region`.
     fn no_external_alias(s: &AnalysisState<'_>, b: &Body<'_>, v: ValueId, region: RegionId, except: ValueId) -> bool {
         s.alias_set(v).into_iter().filter(|a| *a != except).all(|a| match b[a].def {
             Def::Arg(blk, _) => {
@@ -292,8 +274,6 @@ mod bufferizable {
         })
     }
 
-    /// `computeLoopRegionIterArgBufferType`: the init's buffer type when the yielded one is the
-    /// same (or `arg` is twice on the stack), else fully dynamic in their memory space.
     fn loop_iter_arg_type<'a>(o: &BufferizationOptions, b: &Body<'a>, op: OpId, arg: ValueId, init: ValueId, yv: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
         let init = crate::buffer_type_in(o, b, init, stack)?;
         if stack.iter().filter(|v| **v == arg).count() >= 2 {
@@ -310,7 +290,6 @@ mod bufferizable {
         Ok(BufferizationOptions::fully_dynamic(t, memory_space(&yielded)))
     }
 
-    /// A buffer type's memory space.
     fn memory_space<'a>(t: &Type<'a>) -> Option<mlirformat::Attribute<'a>> {
         match t {
             Type::Shaped(m) => m.extras.iter().find(|a| !a.is_layout()).cloned(),
@@ -318,8 +297,6 @@ mod bufferizable {
         }
     }
 
-    /// `getBbArgReplacements`: the new block's arguments, tensor ones through a `to_tensor` of
-    /// the old argument's type, at the start of `block`.
     fn bb_arg_replacements(rw: &mut Rewriter<'_, '_>, block: crate::BlockId, old: &[ValueId]) -> Vec<ValueId> {
         rw.set_start(block);
         let new = rw.body[block].args.to_vec();
@@ -336,7 +313,6 @@ mod bufferizable {
             .collect()
     }
 
-    /// `mayHaveZeroIterations`.
     fn may_have_zero_iterations(b: &Body<'_>, op: OpId) -> bool {
         match (b.const_index(b[op].operands[0]), b.const_index(b[op].operands[1])) {
             (Some(lb), Some(ub)) => ub <= lb,
@@ -345,19 +321,16 @@ mod bufferizable {
     }
 
     impl For {
-        /// The iteration argument (block argument) of init operand `i`.
         fn iter_arg(b: &Body<'_>, op: OpId, i: usize) -> ValueId {
             b[body_of(b, op, 0)].args[i - 2]
         }
 
-        /// `bufferRelation`: equivalent when the body yields its iteration argument's buffer.
         fn relation(s: &AnalysisState<'_>, b: &Body<'_>, op: OpId, k: usize) -> BufferRelation {
             let arg = b[body_of(b, op, 0)].args[k + 1];
             let yielded = b[yield_of(b, op, 0)].operands[k];
             if s.equivalent(arg, yielded) { BufferRelation::Equivalent } else { BufferRelation::Unknown }
         }
 
-        /// `computeLoopRegionIterArgBufferType` of iteration argument `k`.
         fn iter_arg_type<'a>(o: &BufferizationOptions, b: &Body<'a>, op: OpId, k: usize, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
             let arg = b[body_of(b, op, 0)].args[k + 1];
             loop_iter_arg_type(o, b, op, arg, b[op].operands[3 + k], b[yield_of(b, op, 0)].operands[k], stack)
@@ -381,8 +354,6 @@ mod bufferizable {
             true
         }
 
-        /// The operands' conflicts, then the yielded values that may alias a value outside the
-        /// loop replaced by new tensors.
         fn resolve_conflicts(&self, rw: &mut Rewriter<'_, '_>, s: &AnalysisState<'_>, op: OpId) -> Result<(), Error> {
             s.resolve_tensor_conflicts(rw, op)?;
             if s.options.copy_before_write {
@@ -463,7 +434,6 @@ mod bufferizable {
             Ok(())
         }
 
-        /// `verifyAnalysis`: without `allow-return-allocs-from-loops`, every yield equivalent.
         fn verify(&self, s: &AnalysisState<'_>, b: &Body<'_>, op: OpId) -> Result<(), Error> {
             if s.options.allow_return_allocs_from_loops {
                 return Ok(());
@@ -531,7 +501,6 @@ mod bufferizable {
     }
 
     impl ExecuteRegion {
-        /// `getUniqueYieldOp`: the only `scf.yield` terminating a block of the region.
         fn unique_yield(b: &Body<'_>, op: OpId) -> Option<OpId> {
             let mut yields = b[b[op].regions[0]].blocks.iter().filter_map(|blk| b.last_op(*blk).filter(|t| &*b[*t].name == "scf.yield"));
             let y = yields.next()?;
@@ -559,7 +528,6 @@ mod bufferizable {
             }
         }
 
-        /// A result aliases (is equivalent to) the operand the unique yield gives it.
         fn aliasing_operands(&self, _: &AnalysisState<'_>, b: &Body<'_>, v: ValueId) -> Vec<AliasingOperand> {
             match b[v].def {
                 Def::Result(op, k) => Self::unique_yield(b, op).map_or_else(Vec::new, |y| vec![AliasingOperand { operand: (y, k as usize), relation: BufferRelation::Equivalent, definite: true }]),
@@ -567,7 +535,6 @@ mod bufferizable {
             }
         }
 
-        /// The region moved into a new op whose results take the yielded buffers' types.
         fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
             let y = Self::unique_yield(rw.body, op).ok_or_else(|| Error("op without unique scf.yield is not supported".into()))?;
             let mut types = Vec::new();
@@ -593,12 +560,10 @@ mod bufferizable {
     }
 
     impl While {
-        /// The `before` (0) or `after` (1) block's arguments.
         fn args(b: &Body<'_>, op: OpId, r: usize) -> Vec<ValueId> {
             b[body_of(b, op, r)].args.to_vec()
         }
 
-        /// `bufferRelation`: equivalent when both regions pass their argument `k` on.
         fn relation(s: &AnalysisState<'_>, b: &Body<'_>, op: OpId, k: usize) -> BufferRelation {
             let (before, after) = (Self::args(b, op, 0), Self::args(b, op, 1));
             let Some(cond_arg) = before.get(k).filter(|a| b[**a].ty == b[b[op].results[k]].ty) else { return BufferRelation::Unknown };
@@ -607,7 +572,6 @@ mod bufferizable {
             if s.equivalent(*cond_arg, cond) && s.equivalent(after[k], y) { BufferRelation::Equivalent } else { BufferRelation::Unknown }
         }
 
-        /// `getEquivalentBuffers`: the indices whose argument and passed-on value are equivalent.
         fn equivalent(s: &AnalysisState<'_>, b: &Body<'_>, args: &[ValueId], values: &[ValueId]) -> Vec<usize> {
             args.iter().zip(values).enumerate().filter(|(_, (a, v))| is_tensor(&b[**a].ty) && is_tensor(&b[**v].ty) && s.equivalent(**a, **v)).map(|(k, _)| k).collect()
         }
@@ -628,8 +592,6 @@ mod bufferizable {
             true
         }
 
-        /// The operands' conflicts, then the condition's values not equivalent in both
-        /// regions replaced by new tensors.
         fn resolve_conflicts(&self, rw: &mut Rewriter<'_, '_>, s: &AnalysisState<'_>, op: OpId) -> Result<(), Error> {
             s.resolve_tensor_conflicts(rw, op)?;
             if s.options.copy_before_write {
@@ -706,8 +668,6 @@ mod bufferizable {
             Ok(())
         }
 
-        /// `verifyAnalysis`: without `allow-return-allocs-from-loops`, the condition's and the
-        /// yield's values equivalent to their block's arguments.
         fn verify(&self, s: &AnalysisState<'_>, b: &Body<'_>, op: OpId) -> Result<(), Error> {
             if s.options.allow_return_allocs_from_loops {
                 return Ok(());
@@ -754,18 +714,15 @@ mod bufferizable {
     }
 
     impl Forall {
-        /// Where the `shared_outs` start among the operands.
         fn outputs_at(b: &Body<'_>, op: OpId) -> usize {
             let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
             segs.iter().take(3).sum()
         }
 
-        /// The number of induction variables.
         fn rank(b: &Body<'_>, op: OpId) -> usize {
             b[body_of(b, op, 0)].args.len() - (b[op].operands.len() - Self::outputs_at(b, op))
         }
 
-        /// `isRepetitiveRegion`: a dynamic bound or step, or a dimension of two iterations.
         fn repetitive(b: &Body<'_>, op: OpId) -> bool {
             let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
             let mut at = 0;
@@ -813,8 +770,6 @@ mod bufferizable {
             Self::repetitive(b, op)
         }
 
-        /// The shared outputs' buffers stand for the block's arguments; a new loop without
-        /// outputs takes the body.
         fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
             let at = Self::outputs_at(rw.body, op);
             let rank = Self::rank(rw.body, op);
@@ -860,19 +815,15 @@ mod bufferizable {
         }
     }
 
-    /// `scf.forall.in_parallel`: no tensor operands or results; its ops bufferize themselves.
     impl Bufferizable for InParallel {}
 
-    /// `scf.index_switch`: region 0 is the default, the others the cases.
     impl Bufferizable for IndexSwitch {
-        /// Every case's yield, then the default's.
         fn aliasing_operands(&self, _: &AnalysisState<'_>, b: &Body<'_>, v: ValueId) -> Vec<AliasingOperand> {
             let Def::Result(op, k) = b[v].def else { return Vec::new() };
             let n = b[op].regions.len();
             (1..n).chain([0]).map(|r| AliasingOperand { operand: (yield_of(b, op, r), k as usize), relation: BufferRelation::Equivalent, definite: false }).collect()
         }
 
-        /// The yielded buffer types (the default's first), fully dynamic when they differ.
         fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
             let Def::Result(op, k) = b[v].def else { return Err(Error("expected a result".into())) };
             let mut ty: Option<Type<'a>> = None;

@@ -1,7 +1,3 @@
-//! `xevm` ⇒ `llvm`, as `XeVMToLLVM.cpp`: each op a call of the OpenCL builtin it is (Itanium-mangled), declared in the
-//! module with the SPIR calling convention and the attributes the builtin has; cache controls as the
-//! `xevm.DecorationCacheControl` the SPIR-V backend reads.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -18,7 +14,6 @@ use crate::{ConversionRewriter, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `getL1CacheControl` / `getL3CacheControl` of a load (`xevm.load_cache_control`).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LoadCacheControl {
     UseDefault,
@@ -38,7 +33,6 @@ pub enum LoadCacheControl {
 }
 
 impl LoadCacheControl {
-    /// The cases by their assembly names (`XeVMOps.td`).
     const NAMES: [(&'static str, Self); 14] = [
         ("Use_Default", Self::UseDefault),
         ("L1uc_L2uc_L3uc", Self::L1ucL2ucL3uc),
@@ -56,7 +50,6 @@ impl LoadCacheControl {
         ("ir", Self::InvalidateRead),
     ];
 
-    /// L1: 0 uncached, 1 cached, 2 streaming, 3 invalidate after read; -1 the default.
     fn l1(self) -> i32 {
         use LoadCacheControl::*;
         match self {
@@ -68,7 +61,6 @@ impl LoadCacheControl {
         }
     }
 
-    /// L3: 0 uncached, 1 cached, 3 invalidate after read; -1 the default.
     fn l3(self) -> i32 {
         use LoadCacheControl::*;
         match self {
@@ -80,7 +72,6 @@ impl LoadCacheControl {
     }
 }
 
-/// `getL1CacheControl` / `getL3CacheControl` of a store (`xevm.store_cache_control`).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum StoreCacheControl {
     UseDefault,
@@ -121,7 +112,6 @@ impl StoreCacheControl {
         ("L1wb_L2uc_L3wb", Self::L1wbL2ucL3wb),
     ];
 
-    /// L1: 0 uncached, 1 write-through, 2 write-back, 3 streaming; -1 the default.
     fn l1(self) -> i32 {
         use StoreCacheControl::*;
         match self {
@@ -133,7 +123,6 @@ impl StoreCacheControl {
         }
     }
 
-    /// L3: 0 uncached, 2 write-back; -1 the default.
     fn l3(self) -> i32 {
         use StoreCacheControl::*;
         match self {
@@ -158,7 +147,6 @@ impl From<StoreCacheControl> for Attribute<'static> {
     }
 }
 
-/// A case of an enum attribute `#dialect.name<case>` among `names`.
 fn case_of<T: Copy>(a: &Attribute<'_>, names: &[(&'static str, T)]) -> Option<T> {
     let Attribute::Extended { ext, .. } = a else { return None };
     let body = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?.trim();
@@ -179,7 +167,6 @@ impl TryFrom<&Attribute<'_>> for StoreCacheControl {
     }
 }
 
-/// A cache control: a load's or a store's, the decorations' key and levels.
 #[derive(Clone, Copy)]
 enum CacheControl {
     Load(LoadCacheControl),
@@ -187,10 +174,7 @@ enum CacheControl {
 }
 
 impl CacheControl {
-    /// `getCacheControlMetadata` + `buildCacheControlPayloads`: `{key:"0,L1"}` and `{key:"1,L3"}` (key 6442 a
-    /// load's, 6443 a store's); none for the default.
     fn payloads(self) -> Vec<String> {
-        /// The SPIR-V `CacheControlLoadINTEL` / `CacheControlStoreINTEL` decorations.
         const LOAD_KEY: i32 = 6442;
         const STORE_KEY: i32 = 6443;
         let (key, l1, l3) = match self {
@@ -204,14 +188,12 @@ impl CacheControl {
         if a == b { vec![a] } else { vec![a, b] }
     }
 
-    /// An op's cache control (a load's for loads and prefetches, else a store's).
     fn of(cr: &Cr<'_, '_, '_>, op: OpId, store: bool) -> Option<Self> {
         let a = cr.rw.body[op].get("cache_control")?;
         if store { StoreCacheControl::try_from(a).ok().map(CacheControl::Store) } else { LoadCacheControl::try_from(a).ok().map(CacheControl::Load) }
     }
 }
 
-/// `xevm::ElemType` (an mma's precisions, `#xevm.mma_types<d = .., a = .., b = .., c = ..>`).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ElemType {
     Bf16,
@@ -244,7 +226,6 @@ impl ElemType {
         ("f8", Self::F8),
     ];
 
-    /// `builtinElemType`: the IGC builtins' spelling.
     fn builtin(self) -> &'static str {
         match self {
             ElemType::Bf8 => "bf8",
@@ -256,7 +237,6 @@ impl ElemType {
         }
     }
 
-    /// The case of a `#xevm<kind kind = case>` element type attribute.
     fn of_etype(a: &Attribute<'_>) -> Option<Self> {
         let Attribute::Extended { ext, .. } = a else { return None };
         let case = ext.body.as_deref()?.strip_suffix('>')?.rsplit('=').next()?.trim();
@@ -267,7 +247,6 @@ impl ElemType {
         Self::NAMES.iter().find(|(_, v)| *v == self).map_or("", |(n, _)| n)
     }
 
-    /// `getNumOperandsPerDword`
     fn per_dword(self) -> Option<i32> {
         match self {
             ElemType::Tf32 | ElemType::F32 => Some(1),
@@ -278,7 +257,6 @@ impl ElemType {
         }
     }
 
-    /// The precisions d, a, b, c of `#xevm.mma_types<..>`.
     fn mma(a: &Attribute<'_>) -> Option<[Self; 4]> {
         let Attribute::Extended { ext, .. } = a else { return None };
         let body = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?;
@@ -292,7 +270,6 @@ impl ElemType {
     }
 }
 
-/// `xevm::MemScope` (`#xevm.mem_scope<..>`): an OpenCL fence's scope, where it has one.
 #[derive(Clone, Copy)]
 enum MemScope {
     Lane,
@@ -306,7 +283,6 @@ enum MemScope {
 impl MemScope {
     const NAMES: [(&'static str, Self); 6] = [("lane", Self::Lane), ("subgroup", Self::Subgroup), ("workgroup", Self::Workgroup), ("cluster", Self::Cluster), ("device", Self::Device), ("system", Self::System)];
 
-    /// OpenCL's `memory_scope`: 1 work group, 2 device; none for the others.
     fn opencl(self) -> Option<i32> {
         match self {
             MemScope::Workgroup => Some(1),
@@ -316,7 +292,6 @@ impl MemScope {
     }
 }
 
-/// `xevm::AddrSpace` (`#xevm.addr_space<..>`).
 #[derive(Clone, Copy)]
 enum AddrSpace {
     Private,
@@ -329,7 +304,6 @@ enum AddrSpace {
 impl AddrSpace {
     const NAMES: [(&'static str, Self); 5] = [("private", Self::Private), ("global", Self::Global), ("constant", Self::Constant), ("shared", Self::Shared), ("generic", Self::Generic)];
 
-    /// OpenCL's fence flags: `CLK_LOCAL_MEM_FENCE` 1, `CLK_GLOBAL_MEM_FENCE` 2; none for the others.
     fn fence_flags(self) -> Option<i32> {
         match self {
             AddrSpace::Shared => Some(1),
@@ -339,7 +313,6 @@ impl AddrSpace {
     }
 }
 
-/// `LLVM::MemoryEffectsAttr` of the builtins: nothing touched, or only their arguments' memory read.
 #[derive(Clone, Copy)]
 enum Memory {
     None,
@@ -356,7 +329,6 @@ impl From<Memory> for Attribute<'static> {
     }
 }
 
-/// `LLVMFuncAttributeOptions`: what a builtin is (it never unwinds; maybe returns, maybe convergent, its memory).
 #[derive(Clone, Copy)]
 struct FnAttrs {
     convergent: bool,
@@ -365,11 +337,8 @@ struct FnAttrs {
 }
 
 impl FnAttrs {
-    /// `noUnwindAttrs`
     const NO_UNWIND: FnAttrs = FnAttrs { convergent: false, will_return: false, memory: None };
-    /// `noUnwindWillReturnAttrs`
     const WILL_RETURN: FnAttrs = FnAttrs { convergent: false, will_return: true, memory: None };
-    /// `convergentNoUnwindWillReturnAttrs`
     const CONVERGENT: FnAttrs = FnAttrs { convergent: true, will_return: true, memory: None };
 
     fn with(self, memory: Memory) -> Self {
@@ -377,7 +346,6 @@ impl FnAttrs {
     }
 }
 
-/// The Itanium mangling of a builtin's parameter type (`getTypeMangling`): `isUnsigned` integers as unsigned.
 fn mangled(t: &Type<'_>, unsigned: bool) -> String {
     match t {
         Type::Shaped(s) if let Shaped { kind: ShapedKind::Vector, shape: Some(dims), elem, .. } = &**s => {
@@ -401,8 +369,6 @@ fn mangled(t: &Type<'_>, unsigned: bool) -> String {
     }
 }
 
-/// `mangle`: `_Z<len><name>` and the parameters' manglings, a repeated non-scalar one as a substitution (`S_`,
-/// `S0_`, ..).
 fn mangle(name: &str, types: &[Type<'_>], unsigned: &[bool]) -> String {
     let mut s = format!("_Z{}{name}", name.len());
     let mut seen: Vec<&Type<'_>> = Vec::new();
@@ -423,7 +389,6 @@ fn mangle(name: &str, types: &[Type<'_>], unsigned: &[bool]) -> String {
     s
 }
 
-/// An integer attribute's value (an `i1` one as 0 / 1).
 fn int(a: &Attribute<'_>) -> Option<i64> {
     match a {
         Attribute::Int { lit, .. } => lit.parse().ok(),
@@ -432,7 +397,6 @@ fn int(a: &Attribute<'_>) -> Option<i64> {
     }
 }
 
-/// A vector type's elements and their count.
 fn vector<'a>(t: &Type<'a>) -> Option<(Type<'a>, i64)> {
     let Some(Shaped { kind: ShapedKind::Vector, shape: Some(dims), elem, .. }) = t.shaped() else { return None };
     let n = dims.iter().map(|d| if let Dim::Static(n) = d { *n } else { 0 }).product();
@@ -443,7 +407,6 @@ fn vector_of<'a>(n: i64, elem: Type<'a>) -> Type<'a> {
     Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Vector, shape: Some(vec![Dim::Static(n)]), elem: elem.into(), extras: Vec::new() }))
 }
 
-/// A builtin called: its name, result, parameters, their attributes (`(index, name)`), what it is.
 struct DeviceFn<'s, 'a> {
     name: &'s str,
     ret: Type<'a>,
@@ -453,8 +416,6 @@ struct DeviceFn<'s, 'a> {
 }
 
 impl<'a> DeviceFn<'_, 'a> {
-    /// `createDeviceFunctionCall`: the builtin declared in the module around `op` (`spir_funccc`, its attributes;
-    /// again on an existing declaration) and called with `args`, the call carrying the declaration's attributes.
     fn call(&self, cr: &mut Cr<'_, 'a, '_>, op: OpId, args: &[ValueId]) -> Option<OpId> {
         let module = cr.module_of(op)?;
         let f = cr.llvm_func(module, self.name, self.params.clone(), self.ret.clone(), false)?;
@@ -487,7 +448,6 @@ impl<'a> DeviceFn<'_, 'a> {
         });
         let results: Vec<Type<'a>> = if matches!(LlvmType::try_from(&self.ret), Ok(LlvmType::Void)) { Vec::new() } else { vec![self.ret.clone()] };
         let call = cr.llvm_call(self.name, args, &results);
-        // `callOp->setAttrs(funcOp->getAttrs())`: the declaration's properties the call has, the rest discardable
         let fty: Type<'a> = LlvmType::Func { ret: self.ret.clone().into(), params: self.params.clone(), vararg: false }.into();
         let mut call_attrs = fn_attrs;
         call_attrs.push(("function_type", Attribute::Type(fty)));
@@ -503,36 +463,27 @@ impl<'a> DeviceFn<'_, 'a> {
     }
 }
 
-/// The element count the IGC conversion builtins take.
 const SIXTEEN: i64 = 16;
-/// `LLVM::UnnamedAddr::Global`.
+
 const UNNAMED_ADDR_GLOBAL: i64 = 2;
-/// The local (shared) address space.
+
 const SHARED_SPACE: u32 = 3;
-/// The global address space the metadata strings live in.
+
 const GLOBAL_SPACE: u32 = 1;
 
-/// The xevm ⇒ llvm patterns.
 pub struct XevmToLlvm;
 
-/// What the patterns share: the counters naming the globals they make (process-wide in mlir-opt, so kept by the
-/// pass across its runs).
 #[derive(Clone, Copy)]
 pub struct XevmOptions<'c> {
-    /// `globalNameCounter`: the metadata strings' `.<n>`.
     pub names: &'c AtomicU32,
-    /// `getNextGlobalIdx`: `__global_alloca_<n>`.
     pub allocas: &'c AtomicU32,
 }
 
 impl XevmToLlvm {
-    /// `populateXeVMToLLVMConversionPatterns`' target: the xevm ops illegal, llvm's legal but a load or store with a
-    /// `cache_control` (it becomes the decorations).
     pub fn target(target: &mut crate::ConversionTarget<'_>) {
         target.dialect(
             "llvm",
             crate::Action::Dynamic(alloc::boxed::Box::new(|b: &crate::Body<'_>, o: OpId| {
-                // (an alloca in the local address space becomes a global)
                 if b[o].name == "llvm.alloca" {
                     return Some(!matches!(LlvmType::try_from(&b[b[o].results[0]].ty), Ok(LlvmType::Ptr(SHARED_SPACE))));
                 }
@@ -545,13 +496,10 @@ impl XevmToLlvm {
 
 #[patterns(options = XevmOptions<'p>)]
 impl XevmToLlvm {
-    /// A `llvm.mlir.constant` of type `ty`.
     fn constant(cr: &mut Cr<'_, '_, '_>, v: i64, ty: Type<'static>) -> ValueId {
         cr.llvm_constant(Attribute::of_int(i128::from(v).into(), ty.clone()), ty)
     }
 
-    /// `createMetadataStringPtr`: the address of a private `llvm.metadata` global holding `text` and a NUL (an
-    /// existing one reused), made at the start of `module` as `<hint>.<n>`.
     fn metadata_string<'a>(cr: &mut Cr<'_, 'a, '_>, module: OpId, text: &str, hint: &str, o: XevmOptions<'_>) -> Option<ValueId> {
         let mut bytes = text.as_bytes().to_vec();
         bytes.push(0);
@@ -590,14 +538,12 @@ impl XevmToLlvm {
         Some(cr.build(crate::OpData::build("llvm.mlir.addressof").with("global_name", Self::symbol(&name)), as1))
     }
 
-    /// A pure convergent builtin called: its result.
     fn builtin<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, name: &str, ret: Type<'a>, args: &[ValueId]) -> Option<ValueId> {
         let params = args.iter().map(|a| cr.rw.body[*a].ty.clone()).collect();
         let c = DeviceFn { name, ret, params, param_attrs: &[], attrs: FnAttrs::CONVERGENT.with(Memory::None) }.call(cr, op, args)?;
         Some(cr.rw.body[c].results[0])
     }
 
-    /// `castIfNeeded`: `v` bitcast to a vector of `packed` of the same bits.
     fn pack<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, packed: Type<'a>) -> ValueId {
         let ty = cr.rw.body[v].ty.clone();
         let Some((elem, n)) = vector(&ty) else { return v };
@@ -606,14 +552,12 @@ impl XevmToLlvm {
         if new == ty { v } else { cr.emit(&BitcastOp::new(v.into(), ty, new)) }
     }
 
-    /// `@name`, quoted unless a bare identifier (`.str.file.0` is not).
     fn symbol<'a>(name: &str) -> Attribute<'a> {
         let bare = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '.'));
         let text = if bare { String::from(name) } else { format!("\"{name}\"") };
         Attribute::SymbolRef(vec![text.into()])
     }
 
-    /// `annotatePtrWithCacheControl`: `ptr` through one `llvm.intr.ptr.annotation` per cache control payload.
     fn annotate(cr: &mut Cr<'_, '_, '_>, op: OpId, ptr: ValueId, cc: Option<CacheControl>, o: XevmOptions<'_>) -> Option<ValueId> {
         let payloads = cc.map(CacheControl::payloads).unwrap_or_default();
         if payloads.is_empty() {
@@ -632,8 +576,6 @@ impl XevmToLlvm {
         Some(cur)
     }
 
-    /// `LoadStorePrefetchToOCLPattern`: a 2D block load, store or prefetch as `intel_sub_group_2d_block_*`, the
-    /// coordinates a `vector<2xi32>`; a load's and a store's data through an alloca.
     #[convert("xevm.blockload2d", "xevm.blockstore2d", "xevm.blockprefetch2d")]
     fn block2d(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: XevmOptions<'_>) -> bool {
         let operands = cr.rw.body[op].operands.to_vec();
@@ -665,7 +607,6 @@ impl XevmToLlvm {
                 fattrs = FnAttrs::NO_UNWIND.with(Memory::ArgRead);
             }
             Some((elem, n)) => {
-                // (8-bit elements 32 wide go as i16 pairs)
                 let (elem, n) = if bits == 8 && tw == 32 { (Type::int(16), n / 2) } else { (elem, n) };
                 let count = Self::constant(cr, n, i32t.clone());
                 let ptr = cr.emit(&AllocaOp::new(count.into(), None, Attribute::Type(elem.clone()), false, i32t.clone(), LlvmType::ptr()));
@@ -717,7 +658,6 @@ impl XevmToLlvm {
         true
     }
 
-    /// `BlockLoadStore1DToOCLPattern`: `intel_sub_group_block_{read,write}_u<elem><n>` on the pointer's address space.
     #[convert("xevm.blockload", "xevm.blockstore")]
     fn block1d(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: XevmOptions<'_>) -> bool {
         let store = cr.rw.body[op].name == "xevm.blockstore";
@@ -747,8 +687,6 @@ impl XevmToLlvm {
         true
     }
 
-    /// `MMAToOCLPattern`: `intel_sub_group_<a>_<b>_matrix_mad_k<8 · per dword>`, A packed into i16 (f32 for tf32),
-    /// B into i32 (f32 for tf32), a bf16 accumulator as i16.
     #[convert("xevm.mma")]
     fn mma(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: XevmOptions<'_>) -> bool {
         let operands = cr.rw.body[op].operands.to_vec();
@@ -790,7 +728,6 @@ impl XevmToLlvm {
         true
     }
 
-    /// `PrefetchToOCLPattern`: `prefetch(ptr, 1)`.
     #[convert("xevm.prefetch")]
     fn prefetch(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: XevmOptions<'_>) -> bool {
         let ptr = cr.rw.body[op].operands[0];
@@ -805,8 +742,6 @@ impl XevmToLlvm {
         true
     }
 
-    /// `MemfenceToOCLPattern`: `atomic_work_item_fence(flags, acq_rel, scope)`, shared or global, work group or
-    /// device.
     #[convert("xevm.memfence")]
     fn memfence(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: XevmOptions<'_>) -> bool {
         let space = cr.rw.body[op].get("addrspace").map_or(Some(AddrSpace::Generic), |a| case_of(a, &AddrSpace::NAMES));
@@ -826,8 +761,6 @@ impl XevmToLlvm {
         true
     }
 
-    /// `LaunchConfigOpToOCLPattern`: `get_local_id` / `get_local_size` / `get_group_id` / `get_num_groups` of the
-    /// dimension, an unsigned i32.
     #[convert("xevm.local_id.x", "xevm.local_id.y", "xevm.local_id.z", "xevm.local_size.x", "xevm.local_size.y", "xevm.local_size.z", "xevm.group_id.x", "xevm.group_id.y", "xevm.group_id.z", "xevm.group_count.x", "xevm.group_count.y", "xevm.group_count.z")]
     fn launch(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: XevmOptions<'_>) -> bool {
         let name = cr.rw.body[op].name.clone();
@@ -855,7 +788,6 @@ impl XevmToLlvm {
         true
     }
 
-    /// `SubgroupOpWorkitemOpToOCLPattern`: `get_sub_group_local_id` / `get_sub_group_id` / `get_sub_group_size`.
     #[convert("xevm.lane_id", "xevm.subgroup_id", "xevm.subgroup_size")]
     fn subgroup(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: XevmOptions<'_>) -> bool {
         let base = match &*cr.rw.body[op].name {
@@ -873,8 +805,6 @@ impl XevmToLlvm {
         true
     }
 
-    /// `LLVMLoadStoreToOCLPattern`: an `llvm.load` / `llvm.store` with a `cache_control` addresses through its
-    /// annotations instead.
     #[convert("llvm.load", "llvm.store")]
     fn llvm_mem(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: XevmOptions<'_>) -> bool {
         if cr.rw.body[op].get("cache_control").is_none() {
@@ -891,8 +821,6 @@ impl XevmToLlvm {
         true
     }
 
-    /// `TruncfToOCLPattern`: f16 / bf16 (16 of them) to bf8 / f8 by the IGC builtins (bf16 through f32 and
-    /// `convert_half16`), to e2m1 by `__builtin_IB_dnscl_*` on 32-bit pairs.
     #[convert("xevm.truncf")]
     fn truncf(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: XevmOptions<'_>) -> bool {
         let b = &cr.rw.body;
@@ -947,11 +875,8 @@ impl XevmToLlvm {
         true
     }
 
-    /// `ExtfToOCLPattern`: e2m1 (8 bytes) to f16 / bf16 through a lookup table; bf8 / f8 (16 of them) to f16,
-    /// to bf16 through f32.
     #[convert("xevm.extf")]
     fn extf(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: XevmOptions<'_>) -> bool {
-        /// The `shfl_idx4` lookup tables: e2m1 to f16, to bf16.
         const LUT_E2M1_TO_F16: i64 = 7;
         const LUT_E2M1_TO_BF16: i64 = 5;
         let b = &cr.rw.body;
@@ -989,8 +914,6 @@ impl XevmToLlvm {
         true
     }
 
-    /// `MMAMxToOCLPattern`: `__builtin_IB_sub_group16_bdpas_<d>_<c>_<a>_<b>_8_8(c, a, b, scale_a, scale_b)`, A packed
-    /// into i16 (f32 for tf32), B into i32, a bf16 accumulator as i16.
     #[convert("xevm.mma_mx")]
     fn mma_mx(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: XevmOptions<'_>) -> bool {
         let operands = cr.rw.body[op].operands.to_vec();
@@ -1018,8 +941,6 @@ impl XevmToLlvm {
         true
     }
 
-    /// `AllocaToGlobalPattern`: a constant-sized alloca in the local address space is an internal global of the
-    /// enclosing module (or gpu module), `__global_alloca_<n>`.
     #[convert("llvm.alloca")]
     fn alloca_to_global(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: XevmOptions<'_>) -> bool {
         let b = &cr.rw.body;
@@ -1052,13 +973,9 @@ impl XevmToLlvm {
     }
 }
 
-/// `HandleVectorExtractPattern` (after the conversion, greedily, no folding): a shuffle taking a contiguous slice of
-/// one vector narrows what makes that vector — an fpext / fptrunc, a bitcast, another such shuffle, or a load from
-/// the default address space.
 pub struct XevmVectorExtract;
 
 impl XevmVectorExtract {
-    /// `isExtractingContiguousSlice`: both operands the same, the mask consecutive indices inside it.
     fn contiguous(b: &crate::Body<'_>, op: OpId) -> bool {
         let (v1, v2) = (b[op].operands[0], b[op].operands[1]);
         let mask = b.dense_i64(op, "mask");

@@ -1,6 +1,3 @@
-//! `scf`: folds and canonicalization patterns, as `SCF.cpp` and the region-branch patterns
-//! of `ControlFlowInterfaces.cpp`.
-
 use alloc::collections::BTreeSet;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -10,7 +7,6 @@ use mlirformat::{arith, Attribute, Type};
 use crate::{ApInt, Body, BlockId, Const, Fold, Mapping, MemrefOfr as Ofr, OpData, OpId, Point, RegionId, Rewriter, Succ, ValueId};
 
 impl<'a> Body<'a> {
-    /// The terminator of `op`'s region `r` (its last block).
     pub fn region_terminator(&self, op: OpId, r: usize) -> Option<OpId> {
         let region = *self[op].regions.get(r)?;
         self[region].blocks.last().and_then(|b| self.last_op(*b))
@@ -20,13 +16,10 @@ impl<'a> Body<'a> {
         self[self[op].regions[r]].blocks.first().copied()
     }
 
-    /// An `index` or integer constant behind `v` (`getConstantAPIntValue`).
     fn const_int(&self, v: ValueId) -> Option<ApInt> {
         Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int()
     }
 
-
-    /// Whether `region` is `inner` or encloses it.
     fn region_encloses(&self, region: RegionId, mut inner: RegionId) -> bool {
         loop {
             if inner == region {
@@ -41,19 +34,16 @@ impl<'a> Body<'a> {
 }
 
 impl<'a> Rewriter<'_, 'a> {
-    /// An `scf.yield` of `values` at the end of `block`.
     fn yield_at_end(&mut self, block: BlockId, values: &[ValueId]) -> OpId {
         self.set_end(block);
         self.create(OpData::build("scf.yield").operands(values), &[])
     }
 
-    /// `takeBody`: `from`'s blocks move into the empty region `into`.
     fn take_body(&mut self, into: RegionId, from: RegionId) {
         self.inline_region_before(from, into, None);
     }
 }
 
-/// `scf` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct ScfCanon;
 
 #[crate::patterns]
@@ -93,12 +83,8 @@ impl ScfCanon {
         true
     }
 
-    /// `ForOpTensorCastFolder`: an iter arg fed by a `tensor.cast` that only loses static
-    /// information runs on the cast's source, cast back inside the body and after the loop
-    /// (`replaceAndCastForOpIterArg`, the op kept in place).
     #[rewrite("scf.for")]
     fn for_op_tensor_cast_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        /// `scf.for`'s lower bound, upper bound and step come before the inits.
         const CONTROL: usize = 3;
         let b = &*rw.body;
         let inits = b[op].operands.get(CONTROL..).unwrap_or_default();
@@ -390,7 +376,6 @@ fn int_of(a: Option<&Attribute<'_>>) -> Option<i64> {
     }
 }
 
-/// `arith::invertPredicate`.
 fn invert(p: i64) -> i64 {
     match p {
         0 => 1,
@@ -437,7 +422,6 @@ fn combine_ifs(rw: &mut Rewriter<'_, '_>, next: OpId) -> bool {
     let then_region = next_then.and_then(|blk| b[blk].parent);
     let else_region = next_else.and_then(|blk| b[blk].parent);
     for (i, r) in b[prev].results.clone().into_iter().enumerate() {
-        // Only results with an else value take part (`zip` stops at the shortest).
         let Some(&ev) = prev_else_vals.get(i) else { continue };
         for u in rw.body[r].uses.clone().into_iter().rev() {
             let Some(ur) = rw.body.op_region(u.op) else { continue };
@@ -582,7 +566,6 @@ fn align_before_args(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     if unique.len() != term_args.len() || before_args.len() != term_args.len() {
         return false;
     }
-    // mapping[j] = i: term arg j is before arg i.
     let mut mapping = vec![0usize; before_args.len()];
     for (i, a) in before_args.iter().enumerate() {
         let Some(j) = term_args.iter().position(|x| x == a) else { return false };
@@ -649,7 +632,6 @@ fn while_move_if_down(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
             rw.replace_all_uses(aarg, then_v);
         }
     }
-    // Values of the before region the then region uses, in first-use order.
     let b = &*rw.body;
     let then_r = b[if_op].regions[0];
     let before_r = b[op].regions[0];
@@ -826,7 +808,6 @@ fn merge_nested_parallel(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     true
 }
 
-/// The three `populateRegionBranchOpInterfaceCanonicalizationPatterns` patterns.
 pub struct RegionBranchPatterns(pub &'static str);
 
 impl RegionBranchPatterns {
@@ -842,7 +823,6 @@ impl RegionBranchPatterns {
         }
     }
 
-    /// `MakeRegionBranchOpSuccessorInputsDead`.
     fn inputs_dead(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let map = rw.body.input_operands(op);
         let mut changed = false;
@@ -850,7 +830,6 @@ impl RegionBranchPatterns {
             if rw.body[*value].uses.is_empty() {
                 continue;
             }
-            // The values reaching `value` through successor edges, inputs looked through.
             let mut reach = Vec::new();
             let mut seen = BTreeSet::new();
             let mut work = vec![*value];
@@ -881,7 +860,6 @@ impl RegionBranchPatterns {
         changed
     }
 
-    /// `RemoveDuplicateSuccessorInputUses`.
     fn duplicate_inputs(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let map = rw.body.input_operands(op);
         let number = |b: &Body<'_>, v: ValueId| match b[v].def {
@@ -914,10 +892,8 @@ impl RegionBranchPatterns {
         changed
     }
 
-    /// `RemoveDeadRegionBranchOpSuccessorInputs`.
     fn dead_inputs(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let pairs = rw.body.operand_inputs(op);
-        // Inputs tied by sharing an operand, as union-find over their first appearance.
         let mut classes: Vec<Vec<ValueId>> = Vec::new();
         for (_, inputs) in &pairs {
             let mut merged: Vec<ValueId> = Vec::new();
@@ -992,18 +968,13 @@ impl crate::Pattern for RegionBranchPatterns {
     }
 }
 
-/// `InlineRegionBranchOp`: a region-branch op with exactly one acyclic path from the parent
-/// back to it, through single-block regions, is replaced by those regions inlined in order.
 pub struct InlineRegionBranch(pub &'static str);
 
 impl InlineRegionBranch {
-    /// The operand constants (`extractConstants`).
     fn constants<'a>(b: &Body<'a>, op: OpId) -> Vec<Option<Attribute<'a>>> {
         b[op].operands.iter().map(|v| b.constant_of(*v)).collect()
     }
 
-    /// `computeSingleAcyclicRegionBranchPath`: each step's successor with its inputs, and the
-    /// terminator leaving it when it is a region.
     fn path(b: &Body<'_>, op: OpId) -> Option<Vec<(Succ, Vec<ValueId>, Option<OpId>)>> {
         let mut out = Vec::new();
         let mut visited = BTreeSet::new();
@@ -1028,8 +999,6 @@ impl InlineRegionBranch {
         }
     }
 
-    /// The value for a block argument that is no successor input: only `scf.for`'s induction
-    /// variable, replaced by the lower bound.
     fn non_input(b: &Body<'_>, op: OpId) -> Option<ValueId> {
         (b[op].name == "scf.for").then(|| b[op].operands[0])
     }
@@ -1053,7 +1022,6 @@ impl crate::Pattern for InlineRegionBranch {
             return false;
         }
         let Some(path) = Self::path(b, op) else { return false };
-        // A region's arguments before its first input need a value only `scf.for` has.
         let first_input = |b: &Body<'_>, inputs: &[ValueId]| inputs.first().map_or(0, |v| match b[*v].def {
             crate::Def::Arg(_, i) | crate::Def::Result(_, i) => i as usize,
         });
@@ -1082,7 +1050,6 @@ impl crate::Pattern for InlineRegionBranch {
             let t = t.expect("a region's terminator");
             let parent = b[op].parent.expect("placed");
             rw.inline_block_before(block, parent, Some(op), &repl);
-            // Read after inlining: a forwarded block argument is by now what replaced it.
             let b = &*rw.body;
             operands = b.forwarded(op, Point::Terminator(t)).into_iter().map(|(o, i)| b[o].operands[i]).collect();
             rw.erase_op(t);
@@ -1092,7 +1059,6 @@ impl crate::Pattern for InlineRegionBranch {
 }
 
 impl ScfCanon {
-    /// `scf.if`'s fold: `if (!c)` with an else region swaps the regions.
     pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         if b[op].name != "scf.if" {
             return Fold::Failed;

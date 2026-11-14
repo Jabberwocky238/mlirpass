@@ -1,7 +1,3 @@
-//! The `llvm` dialect's memory-slot interfaces, as `LLVMMemorySlot.cpp`: `llvm.alloca` allocates,
-//! loads, stores and the memory intrinsics read and write, casts, no-op GEPs and the lifetime /
-//! invariant / debug intrinsics only need their uses gone.
-
 use alloc::format;
 use alloc::vec::Vec;
 
@@ -12,22 +8,16 @@ use mlirformat::{llvm, Attribute, ShapedKind, Type, Value};
 use crate::{Deletion, Destructurable, DestructurableMemorySlot, MemorySlot, Promotable, Slots};
 use crate::{Body, Const, DataLayout, OpData, OpId, Rewriter, TypedOp, Use, ValueId};
 
-/// `llvm`'s memory slot interfaces (`LLVMMemorySlot.cpp`): [`Promotable`] for `mem2reg`,
-/// [`Destructurable`] for `sroa`.
 pub struct LlvmSlots;
 
-/// How an op takes part in promotion.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Role {
     Alloca,
     Load,
     Store,
     Memset,
-    /// `memcpy`-like: memcpy, memcpy.inline, memmove.
     Memcpy,
-    /// Deleted once its results' uses are (`forwardToUsers`).
     Forward,
-    /// Deleted outright.
     Drop,
     DbgValue,
 }
@@ -53,7 +43,6 @@ impl Role {
     }
 }
 
-/// Type facts the conversions need.
 struct Ty;
 
 impl Ty {
@@ -61,7 +50,6 @@ impl Ty {
         matches!(LlvmType::try_from(t), Ok(LlvmType::Ptr(_)))
     }
 
-    /// `isSupportedTypeForConversion`.
     fn convertible(t: &Type<'_>) -> bool {
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::Vector => !Self::is_ptr(&s.elem) && !s.shape.iter().flatten().any(|d| matches!(d, mlirformat::Dim::Scalable(_))),
@@ -69,7 +57,6 @@ impl Ty {
         }
     }
 
-    /// `areConversionCompatible`.
     fn compatible(dl: &DataLayout, target: &Type<'_>, src: &Type<'_>, narrowing: bool) -> bool {
         if target == src {
             return true;
@@ -88,7 +75,6 @@ impl Ty {
         Type::int(bits as u32)
     }
 
-    /// An integer attribute of integer type `ty` holding the low bits of `v`, as MLIR prints it.
     fn int_attr<'a>(v: u128, ty: &Type<'a>) -> Attribute<'a> {
         let Type::Integer { width: bits, .. } = ty else { unreachable!("an integer type") };
         let shift = 128 - bits;
@@ -105,13 +91,11 @@ impl Ty {
 }
 
 impl<'a> Rewriter<'_, 'a> {
-    /// `createOrFold` of a typed op; its result.
     fn slot_fold(&mut self, op: &impl TypedOp) -> ValueId {
         let (data, types) = op.split();
         self.create_or_fold(data, &types)[0]
     }
 
-    /// `create` of a typed op; its first result.
     fn slot_emit(&mut self, op: &impl TypedOp) -> ValueId {
         let o = self.emit(op);
         self.body[o].results[0]
@@ -121,7 +105,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.body[v].ty.clone()
     }
 
-    /// `castToSameSizedInt`.
     fn to_same_sized_int(&mut self, dl: &DataLayout, v: ValueId) -> ValueId {
         let t = self.ty(v);
         if matches!(t, Type::Integer { .. }) {
@@ -131,7 +114,6 @@ impl<'a> Rewriter<'_, 'a> {
         if Ty::is_ptr(&t) { self.slot_fold(&llvm::PtrToIntOp::new(v.into(), t, int)) } else { self.slot_fold(&llvm::BitcastOp::new(v.into(), t, int)) }
     }
 
-    /// `castIntValueToSameSizedType`.
     fn int_to(&mut self, v: ValueId, target: &Type<'a>) -> ValueId {
         let t = self.ty(v);
         if &t == target {
@@ -140,7 +122,6 @@ impl<'a> Rewriter<'_, 'a> {
         if Ty::is_ptr(target) { self.slot_fold(&llvm::IntToPtrOp::new(v.into(), None, t, target.clone())) } else { self.slot_fold(&llvm::BitcastOp::new(v.into(), t, target.clone())) }
     }
 
-    /// `castSameSizedTypes`.
     fn same_sized(&mut self, dl: &DataLayout, v: ValueId, target: &Type<'a>) -> ValueId {
         let t = self.ty(v);
         if &t == target {
@@ -153,7 +134,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.int_to(int, target)
     }
 
-    /// `createExtractAndCast`: the low (little endian) or high (big endian) bits of `v`.
     fn extract_and_cast(&mut self, dl: &DataLayout, v: ValueId, target: &Type<'a>) -> ValueId {
         let vt = self.ty(v);
         let (src, dst) = (dl.size_in_bits(&vt), dl.size_in_bits(target));
@@ -162,7 +142,6 @@ impl<'a> Rewriter<'_, 'a> {
         }
         let mut int = self.to_same_sized_int(dl, v);
         if dl.big_endian() {
-            // As upstream: the shift applies to `v` itself, typed as `v`.
             let by = self.slot_emit(&llvm::ConstantOp::new(Ty::int_attr(u128::from(src - dst), &vt), vt.clone()));
             int = self.slot_fold(&llvm::LShrOp::new(v.into(), by.into(), false, vt));
         }
@@ -171,7 +150,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.int_to(trunc, target)
     }
 
-    /// `createInsertAndCast`: `v` into the bits of `reaching` a store to its address writes.
     fn insert_and_cast(&mut self, dl: &DataLayout, v: ValueId, reaching: ValueId) -> ValueId {
         let rt = self.ty(reaching);
         let (value_bits, slot_bits) = (dl.size_in_bits(&self.ty(v)), dl.size_in_bits(&rt));
@@ -196,7 +174,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.int_to(combined, &rt)
     }
 
-    /// `llvm.intr.dbg.value` of `v` for the variable `declare` describes.
     fn dbg_value(&mut self, declare: OpId, v: ValueId) {
         let var = self.body[declare].get("varInfo").cloned().expect("a declared variable");
         let expr = self.body[declare].get("locationExpr").cloned();
@@ -204,7 +181,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.emit(&llvm::DbgValueOp::new(v.into(), var, expr, t));
     }
 
-    /// `memsetGetStored`: the slot's value after a memset of its whole size.
     fn memset_value(&mut self, op: OpId, slot: &MemorySlot<'a>) -> ValueId {
         let val = self.body[op].operands[1];
         let width = Ty::width(&slot.elem).expect("checked by canUsesBeRemoved");
@@ -231,7 +207,6 @@ impl<'a> Rewriter<'_, 'a> {
 }
 
 impl Body<'_> {
-    /// The single blocking use is of the slot pointer.
     fn only_slot_use(&self, slot: &MemorySlot<'_>, blocking: &[Use]) -> bool {
         matches!(blocking, [u] if self[u.op].operands[u.index as usize] == slot.ptr)
     }
@@ -359,7 +334,6 @@ impl Promotable for LlvmSlots {
                 Deletion::Delete
             }
             Some(Role::DbgValue) => {
-                // An undef keeps the variable's debug info: "optimized out".
                 let v = rw.body[op].operands[0];
                 rw.set_before(op);
                 let t = rw.ty(v);
@@ -383,16 +357,12 @@ impl Promotable for LlvmSlots {
     }
 }
 
-// ---- the `llvm` dialect's destructuring interfaces (`LLVMMemorySlot.cpp`) -----------------
-
-/// A memory intrinsic `Ty` from its operands, none of the optional attributes.
 macro_rules! intr {
     ($ty:ident($a:expr, $b:expr, $len:expr, $vol:expr; $($t:expr),*)) => {
         $ty::new(Value::from($a), Value::from($b), $len, $vol, None, None, None, None, None, None, $($t),*)
     };
 }
 
-/// How an op takes part in destructuring (`Role`: in promotion).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Access {
     Alloca,
@@ -426,23 +396,19 @@ impl Access {
         matches!(self, Self::Memset | Self::MemsetInline)
     }
 
-    /// The length is the `len` attribute, not an operand.
     fn inline(self) -> bool {
         matches!(self, Self::MemsetInline | Self::MemcpyInline)
     }
 }
 
-/// `LLVM::kGEPConstantBitWidth`.
 const GEP_CONSTANT_BITS: u32 = 29;
 
-/// `SubslotAccessInfo`: the parent slot's index an access falls into, and its offset in there.
 struct SubslotAccess {
     index: u64,
     offset: u64,
 }
 
 impl<'a> Body<'a> {
-    /// An integer constant (`m_ConstantInt`) of at most 64 bits.
     fn int_of(a: &Attribute<'_>) -> Option<u64> {
         let i = Const::try_from(a).ok().filter(|c| !c.elements)?.as_int()?;
         (i.width <= 64).then(|| i.unsigned() as u64)
@@ -459,7 +425,6 @@ impl<'a> Body<'a> {
         matches!(LlvmType::try_from(&self[v].ty), Ok(LlvmType::Ptr(_)))
     }
 
-    /// A memory intrinsic's length, as an attribute (`createMemsetLenAttr`).
     fn intr_len(&self, op: OpId) -> Option<Attribute<'a>> {
         match Access::of(self, op)?.inline() {
             true => self[op].get("len").cloned(),
@@ -467,15 +432,12 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `definitelyWritesOnlyWithinSlot`.
     fn writes_within(&self, dl: &DataLayout, op: OpId, slot: &MemorySlot<'_>) -> bool {
         self.is_llvm_ptr(slot.ptr) && self[op].operands[0] == slot.ptr && self.mem_intr_len(op).is_some_and(|l| l <= dl.size(&slot.elem))
     }
 
-    /// `gepToByteOffset`.
     fn gep_offset(&self, dl: &DataLayout, op: OpId) -> Option<u64> {
         let raw = self[op].get("rawConstantIndices").and_then(Attribute::dense_values).unwrap_or_default();
-        // A dynamic index (`kDynamicIndex`) is negative too.
         let indices: Vec<u64> = raw.into_iter().map(|i: i64| u64::try_from(i).ok()).collect::<Option<_>>()?;
         let mut ty = self.type_attr(op, "elem_type")?;
         let mut offset = indices[0] * dl.size(&ty);
@@ -502,7 +464,6 @@ impl<'a> Body<'a> {
         Some(offset)
     }
 
-    /// `getSubslotAccessInfo`: `None` when out of bounds or into padding.
     fn subslot_access(&self, dl: &DataLayout, slot: &MemorySlot<'_>, op: OpId) -> Option<SubslotAccess> {
         let offset = self.gep_offset(dl, op)?;
         let in_bounds = |index: u64, offset| (index < 1 << GEP_CONSTANT_BITS).then_some(SubslotAccess { index, offset });
@@ -535,14 +496,12 @@ impl<'a> Body<'a> {
     }
 }
 
-/// The `i32` index of a struct field or array element.
 impl<'a> From<u64> for Subslot<'a> {
     fn from(i: u64) -> Self {
         Subslot(Attribute::integer(i128::from(i), Type::int(32)))
     }
 }
 
-/// An index into an `llvm` aggregate: an `i32` integer attribute.
 struct Subslot<'a>(Attribute<'a>);
 
 impl<'a> Subslot<'a> {
@@ -550,7 +509,6 @@ impl<'a> Subslot<'a> {
         in_.iter().find(|(k, _)| *k == self.0).map(|(_, t)| t)
     }
 
-    /// Inserts into `usedIndices`.
     fn use_in(self, used: &mut Vec<Attribute<'a>>) {
         if !used.contains(&self.0) {
             used.push(self.0);
@@ -559,7 +517,6 @@ impl<'a> Subslot<'a> {
 }
 
 impl<'r, 'a> Rewriter<'r, 'a> {
-    /// `memsetRewire`.
     fn memset_rewire(&mut self, dl: &DataLayout, op: OpId, slot: &DestructurableMemorySlot<'a>, subslots: &[(Attribute<'a>, MemorySlot<'a>)]) {
         let b = &*self.body;
         let inline = Access::of(b, op).is_some_and(Access::inline);
@@ -594,7 +551,6 @@ impl<'r, 'a> Rewriter<'r, 'a> {
         }
     }
 
-    /// `memcpyRewire`: one copy per subslot, through a gep into the other side.
     fn memcpy_rewire(&mut self, dl: &DataLayout, op: OpId, slot: &DestructurableMemorySlot<'a>, subslots: &[(Attribute<'a>, MemorySlot<'a>)]) {
         let b = &*self.body;
         let role = Access::of(b, op).expect("a memcpy-like op");
@@ -636,9 +592,7 @@ impl Destructurable for LlvmSlots {
     fn subelements<'a>(&self, ty: &Type<'a>) -> Option<Vec<(Attribute<'a>, Type<'a>)>> {
         let index = |(i, t)| (Subslot::from(i as u64).0, t);
         match LlvmType::try_from(ty).ok()? {
-            // (an empty struct has no subelements: not destructurable)
             LlvmType::Struct { body, .. } => Some(body.filter(|b| !b.is_empty())?.into_iter().enumerate().map(index).collect()),
-            // `maxArraySizeForDestructuring`.
             LlvmType::Array(n, _) if n > 16 => None,
             LlvmType::Array(n, et) => Some((0..n as usize).map(|i| index((i, (*et).clone()))).collect()),
             _ => None,
@@ -677,7 +631,6 @@ impl Destructurable for LlvmSlots {
             allocators.push(op);
             (at.clone(), MemorySlot { ptr: rw.body[op].results[0], elem })
         };
-        // (in the order of the subelements in the type)
         slot.subelements.iter().map(|(at, _)| at).filter(|at| used.contains(at)).map(&mut sub).collect()
     }
 
@@ -713,11 +666,9 @@ impl Destructurable for LlvmSlots {
         match role {
             Access::Alloca => false,
             Access::Load | Access::Store => {
-                // Storing the pointer itself cannot be dealt with.
                 if b.is_volatile(op) || (role == Access::Store && ops[0] == ptr) {
                     return false;
                 }
-                // A load or store always accesses the first element of the destructured slot.
                 let first = Subslot::from(0);
                 let accessed = if role == Access::Load { &b[b[op].results[0]].ty } else { &b[ops[0]].ty };
                 let fits = cx.subelements(&slot.slot.elem).and_then(|s| first.find(&s).map(|t| dl.size(accessed) <= dl.size(t)));
@@ -731,7 +682,6 @@ impl Destructurable for LlvmSlots {
                 let at = Subslot::from(access.index);
                 let size = dl.size(at.find(&slot.subelements).expect("index in the slot"));
                 at.use_in(used);
-                // The rest of the subslot is accessed in bounds: a dummy slot of that size.
                 must_be_safe.push(MemorySlot { ptr: b[op].results[0], elem: LlvmType::array(size - access.offset, Type::int(8)) });
                 true
             }
@@ -743,7 +693,6 @@ impl Destructurable for LlvmSlots {
                 if role.memset() {
                     return b.writes_within(dl, op, &slot.slot);
                 }
-                // Only full copies are supported.
                 if b.mem_intr_len(op) != Some(dl.size(&slot.slot.elem)) {
                     return false;
                 }

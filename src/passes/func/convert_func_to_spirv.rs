@@ -1,8 +1,5 @@
-//! `convert-func-to-spirv`.
-
 use crate::{FuncToSpirv, SpirvOptions, SpirvTypes, TargetEnv};
 
-/// `convert-func-to-spirv`.
 #[crate::pass("convert-func-to-spirv")]
 pub struct ConvertFuncToSpirv {
     #[opt("emulate-lt-32-bit-scalar-types", default = true)]

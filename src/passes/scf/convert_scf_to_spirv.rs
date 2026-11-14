@@ -1,8 +1,5 @@
-//! `convert-scf-to-spirv`.
-
 use crate::{ArithSpirvOptions, ArithToSpirv, FuncToSpirv, IndexToSpirv, MemrefSpirvOptions, MemrefToSpirv, ScfToSpirv, SpirvOptions, SpirvTypes, TargetEnv};
 
-/// `convert-scf-to-spirv`.
 #[crate::pass("convert-scf-to-spirv")]
 pub fn convert_scf_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> Result<(), mlirformat::Error> {
     let env = TargetEnv::lookup(body, op);

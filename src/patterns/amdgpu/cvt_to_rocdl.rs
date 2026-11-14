@@ -1,7 +1,3 @@
-//! `amdgpu` small-float conversions ⇒ `rocdl.cvt.*`, as `AMDGPUToROCDL.cpp`'s
-//! `ExtPackedFp8OpLowering` … `PackedScaledTruncOpLowering`: the sources packed into a dword,
-//! one intrinsic, the packed result bitcast back.
-
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -14,12 +10,10 @@ use crate::{AmdChipset, AmdgpuRocdlOptions, ConversionRewriter, OpData, OpId, Va
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `kGfx942`.
 const GFX942: AmdChipset = AmdChipset::new(9, 4, 2);
-/// `kGfx950`.
+
 const GFX950: AmdChipset = AmdChipset::new(9, 5, 0);
 
-/// The small float formats of the conversion intrinsics, by their intrinsic spelling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Small {
     Fp8,
@@ -36,7 +30,6 @@ impl Small {
         }
     }
 
-    /// `typeIsExpected{Fp8,Bf8}ForChipset`: FNUZ on gfx942, OCP from gfx950 / gfx12.
     pub(super) fn of_chipset(chipset: AmdChipset, t: &Type<'_>) -> Option<Self> {
         let ocp = (chipset.major == 9 && chipset.minor >= 5) || chipset.major >= 12;
         match t {
@@ -48,7 +41,6 @@ impl Small {
         }
     }
 
-    /// The OCP formats of the gfx950 scaled conversions.
     fn ocp(t: &Type<'_>) -> Option<Self> {
         match t {
             Type::Float(FloatKind::F8E5M2) => Some(Small::Bf8),
@@ -58,8 +50,6 @@ impl Small {
         }
     }
 
-    /// The selector attribute of a gfx950 scaled conversion: a byte index for fp4, a half for
-    /// the 8-bit formats.
     fn selector(self, half: &'static str, index: &'static str, i: i64) -> (&'static str, Attribute<'static>) {
         match self {
             Small::Fp4 => (index, Attribute::of_int(i.into(), Type::int(32))),
@@ -68,7 +58,6 @@ impl Small {
     }
 }
 
-/// The wide float formats, by their intrinsic spelling.
 fn wide(t: &Type<'_>) -> Option<&'static str> {
     match t {
         Type::Float(FloatKind::F32) => Some("f32"),
@@ -78,7 +67,6 @@ fn wide(t: &Type<'_>) -> Option<&'static str> {
     }
 }
 
-/// The packed small-float conversions.
 pub struct AmdgpuCvtToRocdl;
 
 #[patterns(converter, options = AmdgpuRocdlOptions)]
@@ -91,8 +79,6 @@ impl AmdgpuCvtToRocdl {
         cr.build(OpData::build("llvm.bitcast").operands(&[v]), t)
     }
 
-    /// `src` (a scalar or a short vector of `n`) placed in the low lanes of a fresh `wide`,
-    /// `llvm.mlir.undef` or `llvm.mlir.zero`.
     fn widen<'a>(cr: &mut Cr<'_, 'a, '_>, src: ValueId, n: Option<i64>, wide: Type<'a>, fill: &str) -> ValueId {
         let mut long = cr.build(OpData::build(fill), wide.clone());
         let elem = wide.element_type().clone();
@@ -119,7 +105,6 @@ impl AmdgpuCvtToRocdl {
         }
     }
 
-    /// `ExtPackedFp8OpLowering`.
     #[convert("amdgpu.ext_packed_fp8")]
     fn ext_packed_fp8(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let chipset = o.chipset;
@@ -145,7 +130,6 @@ impl AmdgpuCvtToRocdl {
         true
     }
 
-    /// `ScaledExtPackedOpLowering` (gfx950).
     #[convert("amdgpu.scaled_ext_packed")]
     fn scaled_ext_packed(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let chipset = o.chipset;
@@ -174,7 +158,6 @@ impl AmdgpuCvtToRocdl {
         true
     }
 
-    /// `PackedScaledTruncOpLowering` (gfx950).
     #[convert("amdgpu.packed_scaled_trunc")]
     fn packed_scaled_trunc(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let chipset = o.chipset;
@@ -219,7 +202,6 @@ impl AmdgpuCvtToRocdl {
         true
     }
 
-    /// `existing` as an i32, or `llvm.mlir.undef`.
     fn existing_i32(cr: &mut Cr<'_, '_, '_>, existing: Option<ValueId>) -> ValueId {
         match existing {
             Some(e) => Self::bitcast(cr, e, Type::int(32)),
@@ -227,7 +209,6 @@ impl AmdgpuCvtToRocdl {
         }
     }
 
-    /// `PackedTrunc2xFp8OpLowering`.
     #[convert("amdgpu.packed_trunc_2xfp8")]
     fn packed_trunc_2xfp8(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let chipset = o.chipset;
@@ -253,7 +234,6 @@ impl AmdgpuCvtToRocdl {
         true
     }
 
-    /// `PackedStochRoundFp8OpLowering`.
     #[convert("amdgpu.packed_stoch_round_fp8")]
     fn packed_stoch_round_fp8(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let chipset = o.chipset;

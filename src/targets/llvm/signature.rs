@@ -1,7 +1,3 @@
-//! What `LLVMTypeConverter` and `ConvertToLLVMPattern` do for function-like ops: signatures
-//! (`convertFunctionSignature`, `packFunctionResults`), unranked descriptors copied across a
-//! call boundary, and the return of converted values.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -10,13 +6,11 @@ use mlirformat::{Attribute, Dim, Shaped, ShapedKind, Type};
 
 use crate::{ConversionRewriter, LlvmConverter, LlvmOptions, MemrefLayout, OpData, OpId, SignatureConversion, ValueId};
 
-/// What a function's arguments and results turn into.
 pub struct LlvmSignature<'a> {
     pub llvm: Type<'a>,
     pub conversion: SignatureConversion<'a>,
 }
 
-/// A memref type's shape facts, ranked or not.
 fn memref<'t, 'a>(t: &'t Type<'a>) -> Option<&'t Shaped<'a>> {
     match t {
         Type::Shaped(s) if s.kind == ShapedKind::MemRef => Some(s),
@@ -25,7 +19,6 @@ fn memref<'t, 'a>(t: &'t Type<'a>) -> Option<&'t Shaped<'a>> {
 }
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
-    /// `structFuncArgTypeConverter` / `barePtrFuncArgTypeConverter`.
     pub fn llvm_arg_types(&self, opts: LlvmOptions, t: &Type<'a>, bare: bool) -> Option<Vec<Type<'a>>> {
         let tc = self.type_converter()?;
         if let Some(s) = memref(t) {
@@ -42,7 +35,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         tc.convert_types(t)
     }
 
-    /// `convertMemRefToBarePtr`: static shape, static strides and offset.
     pub fn llvm_bare_ptr(&self, opts: LlvmOptions, s: &Shaped<'a>) -> Option<Type<'a>> {
         self.type_converter()?.convert(&s.elem)?;
         let shape = s.shape.as_ref()?;
@@ -56,8 +48,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         Some(LlvmType::Ptr(opts.address_space(s)?).into())
     }
 
-    /// `packFunctionResults` with the calling convention's memref rule; also each result's
-    /// converted types.
     pub fn llvm_pack_results(&self, opts: LlvmOptions, types: &[Type<'a>], bare: bool) -> Option<(Type<'a>, Vec<Vec<Type<'a>>>)> {
         let tc = self.type_converter()?;
         let mut groups = Vec::new();
@@ -77,13 +67,10 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         Some((packed, groups))
     }
 
-    /// `convertFunctionSignature`.
     pub fn llvm_signature(&self, opts: LlvmOptions, inputs: &[Type<'a>], results: &[Type<'a>], vararg: bool, bare: bool) -> Option<LlvmSignature<'a>> {
         self.llvm_signature_of(opts, inputs, inputs.len(), results, vararg, bare)
     }
 
-    /// `convertFunctionSignature` into a conversion of `block_args` arguments (the entry block
-    /// may have more than the function type's inputs: attributions).
     pub fn llvm_signature_of(&self, opts: LlvmOptions, inputs: &[Type<'a>], block_args: usize, results: &[Type<'a>], vararg: bool, bare: bool) -> Option<LlvmSignature<'a>> {
         let mut conversion = SignatureConversion::new(block_args);
         for (i, t) in inputs.iter().enumerate() {
@@ -95,8 +82,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         Some(LlvmSignature { llvm, conversion })
     }
 
-    /// `copyUnrankedDescriptor`: the ranked descriptor behind `desc` copied to `malloc`'d
-    /// (`to_dynamic`) or `alloca`'d memory, the source then freed.
     pub fn copy_unranked(&mut self, opts: LlvmOptions, s: &Shaped<'a>, desc: ValueId, to_dynamic: bool, at: OpId) -> Option<ValueId> {
         opts.address_space(s)?;
         let idx = opts.index();
@@ -105,7 +90,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
             true => self.llvm_func(module, "malloc", vec![idx.clone()], LlvmType::ptr(), false)?,
             false => self.llvm_func(module, "free", vec![LlvmType::ptr()], LlvmType::void(), false)?,
         };
-        // `UnrankedMemRefDescriptor::computeSize`: 2 * sizeof(ptr) + (1 + 2 * rank) * sizeof(index).
         let one = self.index_const(&idx, 1);
         let two = self.index_const(&idx, 2);
         let index_size = self.index_const(&idx, i64::from(opts.index_bitwidth.div_ceil(8)));
@@ -135,9 +119,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         Some(self.insert_value(p, memory, &[1]))
     }
 
-    /// `ReturnOpLowering` / `GPUReturnOpLowering`: `llvm.return` of the converted operands
-    /// (unranked descriptors copied to the heap, bare memrefs as their pointer), several packed
-    /// into a struct.
     pub fn llvm_return(&mut self, op: OpId, operands: &[Vec<ValueId>], opts: LlvmOptions, bare: bool) -> bool {
         let originals = self.rw.body[op].operands.clone();
         let mut updated = Vec::new();

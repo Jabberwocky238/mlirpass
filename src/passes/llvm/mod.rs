@@ -1,5 +1,3 @@
-//! `llvm` passes.
-
 mod llvm_request_c_wrappers;
 pub use llvm_request_c_wrappers::*;
 

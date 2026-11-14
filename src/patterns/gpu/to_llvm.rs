@@ -1,6 +1,3 @@
-//! `gpu` ⇒ `llvm` shared by the vendor lowerings, as `GPUOpsLowering.cpp`: `gpu.func` (with its
-//! attributions), `gpu.return` and `gpu.printf` as a call.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -14,8 +11,6 @@ use crate::{CConv, ConversionRewriter, LlvmConverter, LlvmOptions, MemrefToLlvm,
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `GPUPrintfOpToLLVMCallLowering`'s parameters: the format string's address space, the
-/// callee's calling convention and name.
 #[derive(Debug, Clone, Copy)]
 pub struct PrintfCall {
     pub space: u32,
@@ -23,49 +18,33 @@ pub struct PrintfCall {
     pub name: &'static str,
 }
 
-/// Which `gpu.printf` lowering a vendor uses.
 #[derive(Debug, Clone, Copy)]
 pub enum Printf {
-    /// `GPUPrintfOpToLLVMCallLowering`.
     Call(PrintfCall),
-    /// `GPUPrintfOpToVPrintfLowering`: `vprintf(format, args)`, the arguments packed on the stack.
     VPrintf,
-    /// `GPUPrintfOpToHIPLowering`: the `__ockl_printf_*` hostcalls.
     Hip,
 }
 
-/// `GPUFuncOpLoweringOptions` with the converter's options and the printf lowering in use.
 #[derive(Debug, Clone, Copy)]
 pub struct GpuLlvmOptions {
     pub llvm: LlvmOptions,
-    /// `allocaAddrSpace`: where private attributions are `alloca`'d.
     pub alloca_space: u32,
-    /// `workgroupAddrSpace`.
     pub workgroup_space: u32,
-    /// `kernelAttributeName`: a unit attribute marking kernels.
     pub kernel_attr: Option<&'static str>,
-    /// `kernelBlockSizeAttributeName`: the known block size again, under this name.
     pub block_size_attr: Option<&'static str>,
-    /// `kernelClusterSizeAttributeName`.
     pub cluster_size_attr: Option<&'static str>,
     pub kernel_cconv: CConv,
     pub func_cconv: CConv,
-    /// `encodeWorkgroupAttributionsAsArguments`: `llvm.ptr` arguments instead of globals.
     pub workgroup_args: bool,
     pub printf: Option<Printf>,
-    /// `GPUDynamicSharedMemoryOpLowering`'s alignment in bits, where it is used.
     pub dynamic_shmem_align: Option<u32>,
 }
 
-/// The gpu ⇒ llvm patterns every vendor shares.
 pub struct GpuToLlvm;
 
-/// The argument attributes copied onto every argument an input becomes, and those copied onto
-/// its pointers only.
 const COPIED: [&str; 3] = ["llvm.returned", "llvm.noundef", "llvm.inreg"];
 const POINTER_COPIED: [&str; 11] = ["llvm.noalias", "llvm.nocapture", "llvm.nofree", "llvm.align", "llvm.readonly", "llvm.writeonly", "llvm.readnone", "llvm.nonnull", "llvm.dereferenceable", "llvm.dereferenceable_or_null", "llvm.workgroup_attribution"];
 
-/// A static memref attribution: its type and element count.
 struct Attribution<'a> {
     ty: Shaped<'a>,
     elems: i64,
@@ -83,7 +62,6 @@ impl<'a> Attribution<'a> {
         Some(Self { ty: *s.clone(), elems, elem })
     }
 
-    /// `MemRefDescriptor::fromStaticShape` over `ptr`.
     fn descriptor(&self, cr: &mut Cr<'_, 'a, '_>, o: LlvmOptions, ptr: ValueId) -> Option<ValueId> {
         let desc = LlvmConverter::convert_memref(o, &self.ty)?;
         cr.desc_from_static(o, &self.ty, desc, ptr, ptr)
@@ -92,9 +70,6 @@ impl<'a> Attribution<'a> {
 
 #[patterns(converter, options = GpuLlvmOptions)]
 impl GpuToLlvm {
-    /// `GPUDynamicSharedMemoryOpLowering`: the `memref<0xT>` of a zero-sized global of the
-    /// module (one already there with the space and alignment, else a new
-    /// `__dynamic_shmem__<n>` at the module's start).
     #[convert("gpu.dynamic_shared_memory")]
     fn dynamic_shared_memory(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuLlvmOptions) -> bool {
         let Some(bits) = o.dynamic_shmem_align else { return false };
@@ -156,7 +131,6 @@ impl GpuToLlvm {
         }
     }
 
-    /// The `i`th dictionary of an `arg_attrs`-like array (empty past its end).
     fn dict<'a>(a: Option<&Attribute<'a>>, i: usize) -> Vec<NamedAttr<'a>> {
         match a {
             Some(Attribute::Array(ds)) => match ds.get(i) {
@@ -167,7 +141,6 @@ impl GpuToLlvm {
         }
     }
 
-    /// `GPUFuncOpLowering`.
     #[convert("gpu.func")]
     fn func<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuLlvmOptions) -> bool {
         let b = &*cr.rw.body;
@@ -179,7 +152,6 @@ impl GpuToLlvm {
         let wg: Option<Vec<Attribution<'a>>> = block_types[n_in..n_in + n_wg].iter().map(|t| Attribution::of(cr, t)).collect();
         let private: Option<Vec<Attribution<'a>>> = block_types[n_in + n_wg..].iter().map(|t| Attribution::of(cr, t)).collect();
         let (Some(wg), Some(private)) = (wg, private) else { return false };
-        // The workgroup pointers go after the proper arguments, as `insertArguments` puts them.
         let wg_ptr: Type<'a> = LlvmType::Ptr(o.workgroup_space).into();
         let n_ptr = if o.workgroup_args { n_wg } else { 0 };
         let inputs: Vec<Type<'a>> = fty.inputs.iter().cloned().chain(core::iter::repeat_n(wg_ptr.clone(), n_ptr)).collect();
@@ -199,9 +171,6 @@ impl GpuToLlvm {
         let mut data = OpData::build("llvm.func").with("sym_name", Attribute::str(&name)).with("function_type", Attribute::Type(sig.llvm.clone())).with("linkage", Attribute::dialect("llvm.linkage", "<external>")).with("CConv", (if kernel { o.kernel_cconv } else { o.func_cconv }).into());
         let known = |n: &str| b[op].get(n).cloned();
         let (block, grid, cluster) = (known("known_block_size"), known("known_grid_size"), known("known_cluster_size"));
-        // `lowerDiscardableAttrsForLLVMFunc`: of the discardable attributes, an `llvm.X` with X
-        // an `llvm.func` attribute becomes that attribute, a bare X is dropped, the rest carry
-        // over.
         let llvm_func = cr.rw.body.ctx.opt.op_info("llvm.func").map_or(&[][..], |i| i.inherent);
         for a in cr.rw.body.discardable(op) {
             if llvm_func.contains(&&*a.name) {
@@ -228,7 +197,6 @@ impl GpuToLlvm {
         }
         data.loc = loc.clone();
         cr.rw.set_before(op);
-        // Without pointer arguments, workgroup attributions are internal globals.
         let mut globals = Vec::new();
         if !o.workgroup_args {
             for (i, a) in wg.iter().enumerate() {
@@ -248,7 +216,6 @@ impl GpuToLlvm {
             b.add_region(f);
         });
 
-        // The attributions' descriptors at the start of the old entry block.
         let mut ptrs = Vec::new();
         for i in 0..n_ptr {
             let v = cr.rw.body.insert_arg(entry, n_in + i, wg_ptr.clone(), loc.clone());
@@ -291,8 +258,6 @@ impl GpuToLlvm {
         true
     }
 
-    /// The input argument attributes the lowered arguments keep (`copyAttribute` /
-    /// `copyPointerAttribute`).
     fn copy_arg_attrs<'a>(cr: &mut Cr<'_, 'a, '_>, f: OpId, sig: &crate::LlvmSignature<'a>, arg_attrs: &[Vec<NamedAttr<'a>>]) {
         let types = sig.conversion.converted_types();
         let mut out: Vec<Vec<NamedAttr<'a>>> = vec![Vec::new(); types.len()];
@@ -322,13 +287,11 @@ impl GpuToLlvm {
         cr.modify(f, |b| b[f].set("arg_attrs", array));
     }
 
-    /// `GPUReturnOpLowering`.
     #[convert("gpu.return")]
     fn ret(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: GpuLlvmOptions) -> bool {
         cr.llvm_return(op, operands, o.llvm, o.llvm.bare_ptr)
     }
 
-    /// MLIR's string escaping (`llvm::printEscapedString`) of raw bytes.
     fn escaped(bytes: &[u8]) -> String {
         let mut lit = String::with_capacity(bytes.len());
         for &b in bytes {
@@ -341,8 +304,6 @@ impl GpuToLlvm {
         lit
     }
 
-    /// `getOrCreateStringConstant`: a constant internal global of `bytes` and a NUL in
-    /// address space `space`, reused when one holds them already.
     pub(crate) fn string_constant<'a>(cr: &mut Cr<'_, 'a, '_>, module: OpId, prefix: &str, bytes: &[u8], space: u32, loc: Option<mlirformat::Str<'a>>) -> (String, Type<'a>) {
         let mut data = bytes.to_vec();
         data.push(0);
@@ -369,8 +330,6 @@ impl GpuToLlvm {
         (name, ty)
     }
 
-    /// `GPUPrintfOpToLLVMCallLowering`: a call of the printf `o.printf` names on the format
-    /// string's global and the arguments.
     #[convert("gpu.printf")]
     fn printf<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: GpuLlvmOptions) -> bool {
         let p = match o.printf {
@@ -384,7 +343,6 @@ impl GpuToLlvm {
         let bytes = crate::unescape(lit);
         let ptr: Type<'a> = LlvmType::Ptr(p.space).into();
         let fty: Type<'a> = LlvmType::Func { ret: Type::int(32).into(), params: vec![ptr.clone()], vararg: true }.into();
-        // `getOrDefineFunction`: an existing declaration whatever its type.
         let f = match cr.rw.body.lookup(module, p.name).filter(|f| cr.rw.body[*f].name == "llvm.func") {
             Some(f) => f,
             None => match cr.llvm_func(module, p.name, vec![ptr.clone()], Type::int(32), true) {
@@ -417,8 +375,6 @@ impl GpuToLlvm {
         true
     }
 
-    /// `GPUPrintfOpToHIPLowering`: `__ockl_printf_begin`, the format string, then the arguments
-    /// seven at a time, as `i64`s.
     fn hip_printf<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(module) = cr.module_of(op) else { return false };
         let Some(Attribute::Str { lit, .. }) = cr.rw.body[op].get("format") else { return false };
@@ -495,13 +451,11 @@ impl GpuToLlvm {
         true
     }
 
-    /// `GPUPrintfOpToVPrintfLowering`.
     fn vprintf<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(module) = cr.module_of(op) else { return false };
         let Some(Attribute::Str { lit, .. }) = cr.rw.body[op].get("format") else { return false };
         let bytes = crate::unescape(lit);
         let ptr: Type<'a> = LlvmType::ptr();
-        // `findInstanceOfOrUnknown<FileLineColLoc>`: debug info inside a function cannot be used outside it.
         let gloc: Option<mlirformat::Str<'a>> = Some(cr.rw.body[op].loc.as_deref().and_then(crate::file_line_col).unwrap_or_else(|| String::from("unknown")).into());
         if cr.rw.body.lookup(module, "vprintf").is_none() {
             let Some(f) = cr.llvm_func(module, "vprintf", vec![ptr.clone(), ptr.clone()], Type::int(32), false) else { return false };

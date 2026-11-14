@@ -1,12 +1,9 @@
-//! `convert-arith-to-llvm`.
-
 use crate::{llvm_target};
 use crate::{ArithToLlvm, LlvmConverter, LlvmOptions};
 use crate::pass;
 use mlirformat::Error;
 use crate::{Body, ConversionConfig, ConversionPatterns, Converter, Mode, OpId, Run};
 
-/// `convert-arith-to-llvm`.
 #[pass("convert-arith-to-llvm")]
 pub struct ConvertArithToLlvm {
     #[opt("index-bitwidth")]

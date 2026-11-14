@@ -1,11 +1,8 @@
-//! `convert-complex-to-llvm`.
-
 use crate::{ComplexToLlvm, LlvmConverter, LlvmOptions};
 use crate::pass;
 use mlirformat::Error;
 use crate::{Body, ComplexRange, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, Run};
 
-/// `convert-complex-to-llvm`.
 #[pass("convert-complex-to-llvm")]
 pub struct ConvertComplexToLlvm {
     #[opt("complex-range", default = ComplexRange::Basic, from_str)]

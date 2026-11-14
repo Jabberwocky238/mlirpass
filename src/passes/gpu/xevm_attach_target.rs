@@ -1,5 +1,3 @@
-//! `xevm-attach-target`.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -8,8 +6,6 @@ use mlirformat::{Attribute, Error};
 
 use crate::{Body, OpId, Regex};
 
-/// `xevm-attach-target`: an `#xevm.target` appended to the `targets` of each `gpu.module`
-/// directly in the op's regions whose name `module` matches.
 #[crate::pass("xevm-attach-target")]
 pub struct XevmAttachTarget {
     #[opt("module")]
@@ -27,7 +23,6 @@ pub struct XevmAttachTarget {
 }
 
 impl XevmAttachTarget {
-    /// `XeVMTargetAttr`'s `struct(...)` form: the parameters that are not their defaults.
     fn target(&self) -> Attribute<'static> {
         let quoted = |s: &str| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""));
         let mut params = Vec::new();
@@ -40,7 +35,6 @@ impl XevmAttachTarget {
         if self.chip != "bmg" {
             params.push(format!("chip = {}", quoted(&self.chip)));
         }
-        // `gpu::TargetOptions::tokenizeCmdOptions`: whitespace-separated words.
         let words: Vec<String> = self.cmd_options.split_whitespace().map(quoted).collect();
         if !words.is_empty() {
             params.push(format!("flags = {{\"cmd-options\" = [{}]}}", words.join(", ")));

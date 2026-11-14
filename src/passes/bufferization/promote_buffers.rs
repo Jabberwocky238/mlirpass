@@ -1,6 +1,3 @@
-//! `promote-buffers-to-stack`, as `BufferOptimizations.cpp` (with `BufferViewFlowAnalysis` and
-//! `BufferPlacementAllocs`): small heap buffers that do not escape become `memref.alloca`.
-
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
 
@@ -17,7 +14,6 @@ pub struct PromoteBuffersToStack {
     max_rank: usize,
 }
 
-/// `BufferViewFlowAnalysis`: which values may alias which.
 struct ViewFlow {
     deps: BTreeMap<ValueId, BTreeSet<ValueId>>,
 }
@@ -63,7 +59,6 @@ impl ViewFlow {
         self.deps.entry(from).or_default().insert(to);
     }
 
-    /// `resolve`: everything reachable from `v`.
     fn resolve(&self, v: ValueId) -> BTreeSet<ValueId> {
         let mut out = BTreeSet::new();
         let mut queue = alloc::vec![v];
@@ -79,12 +74,10 @@ impl ViewFlow {
 }
 
 impl Body<'_> {
-    /// `isLoop`.
     fn is_loop(&self, op: OpId) -> bool {
         self.has(op, Trait::LoopLikeOpInterface) || self[op].name == "scf.while"
     }
 
-    /// `hasAllocationScope`.
     fn has_allocation_scope(&self, alloc: ValueId, aliases: &BTreeSet<ValueId>) -> bool {
         let Some(def) = self.def_op(alloc) else { return false };
         let mut region: Option<RegionId> = self[def].parent.and_then(|blk| self[blk].parent);
@@ -101,14 +94,12 @@ impl Body<'_> {
         false
     }
 
-    /// `leavesAllocationScope`: an alias is returned from `region`.
     fn leaves_scope(&self, region: RegionId, aliases: &BTreeSet<ValueId>) -> bool {
         aliases.iter().any(|a| {
             self[*a].uses.iter().any(|u| self.has(u.op, Trait::RegionBranchTerminatorOpInterface) && self[u.op].parent.and_then(|blk| self[blk].parent) == Some(region))
         })
     }
 
-    /// The default `DataLayout` size of a memref element type, in bits.
     fn element_bits(t: &Type<'_>, index: u64) -> Option<u64> {
         match t {
             Type::Index => Some(index),
@@ -130,7 +121,6 @@ impl Body<'_> {
         }
     }
 
-    /// `defaultIsSmallAlloc`.
     fn is_small_alloc(&self, v: ValueId, max_bytes: u64, max_rank: usize) -> bool {
         let Some(def) = self.def_named(v, "memref.alloc") else { return false };
         let Type::Shaped(s) = &self[v].ty else { return false };

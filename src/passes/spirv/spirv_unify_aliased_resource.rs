@@ -1,7 +1,3 @@
-//! `spirv-unify-aliased-resource` (`UnifyAliasedResourcePass.cpp`): the `aliased` buffers
-//! bound to one descriptor become one, the others' loads, stores and access chains rewritten
-//! to its element type.
-
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -14,10 +10,8 @@ use crate::{Body, ConversionConfig, ConversionPattern, ConversionRewriter, Conve
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `(set, binding)`.
 type Descriptor = (i64, i64);
 
-/// `ResourceAliasAnalysis`: per descriptor, its aliased globals and the canonical one.
 #[derive(Default)]
 struct AliasAnalysis {
     canonical: BTreeMap<Descriptor, String>,
@@ -30,7 +24,6 @@ impl AliasAnalysis {
         body[op].get(name).and_then(|a| Const::try_from(a).ok()?.as_int()).map(|i| i.signed() as i64)
     }
 
-    /// `collectAliasedResources`: the `aliased` globals with a descriptor, in walk order.
     fn collect(body: &Body<'_>, module: OpId) -> BTreeMap<Descriptor, Vec<OpId>> {
         let mut out: BTreeMap<Descriptor, Vec<OpId>> = BTreeMap::new();
         body.walk(module, &mut |o| {
@@ -44,7 +37,6 @@ impl AliasAnalysis {
         out
     }
 
-    /// `getRuntimeArrayElementType`: `T` of a `!spirv.ptr<!spirv.struct<(!spirv.rtarray<T>)>>`.
     fn runtime_array_elem<'a>(t: &Type<'a>) -> Option<Type<'a>> {
         let Ok(SpirvType::Ptr { pointee, .. }) = SpirvType::try_from(t) else { return None };
         let Ok(SpirvType::Struct { members: Some(ms), .. }) = SpirvType::try_from(&*pointee) else { return None };
@@ -63,15 +55,11 @@ impl AliasAnalysis {
         matches!(t, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Vector)
     }
 
-    /// `getSizeInBytes` of a scalar or vector.
     fn bytes(t: &Type<'_>) -> Option<i64> {
-        // (a bool has no defined byte size)
         let bits = t.element_type().bit_width().filter(|b| *b != 1)?;
         Some(i64::from(bits / 8) * t.element_count()? as i64)
     }
 
-    /// `deduceCanonicalResource`: the smallest vector (its scalars dividing everything), else
-    /// the smallest scalar dividing the others.
     fn deduce(types: &[Type<'_>]) -> Option<usize> {
         let (mut scalar_bits, mut vector_bits, mut vector_at) = (Vec::new(), Vec::new(), Vec::new());
         for (i, t) in types.iter().enumerate() {
@@ -121,12 +109,10 @@ impl AliasAnalysis {
         self.canonical.get(self.descriptor.get(var)?).map(String::as_str)
     }
 
-    /// The global an `spirv.mlir.addressof` names.
     fn var_of(body: &Body<'_>, addr: OpId) -> Option<String> {
         body[addr].get("variable").and_then(symbol_text)
     }
 
-    /// `shouldUnify`.
     fn should_unify(&self, body: &Body<'_>, op: Option<OpId>) -> bool {
         let Some(op) = op else { return false };
         match &*body[op].name {
@@ -141,7 +127,6 @@ impl AliasAnalysis {
     }
 }
 
-/// The type an access chain from a `base` pointer through `indices` points to.
 fn chain_type<'a>(body: &Body<'a>, base: &Type<'a>, indices: &[ValueId]) -> Option<Type<'a>> {
     let Ok(SpirvType::Ptr { pointee, storage }) = SpirvType::try_from(base) else { return None };
     let mut t = (*pointee).clone();
@@ -159,8 +144,6 @@ fn chain_type<'a>(body: &Body<'a>, base: &Type<'a>, indices: &[ValueId]) -> Opti
     Some(SpirvType::ptr(t, &storage))
 }
 
-/// The rewrites of `ConvertVariable`, `ConvertAddressOf`, `ConvertAccessChain`, `ConvertLoad`
-/// and `ConvertStore`, one per root.
 struct Unify<'x> {
     root: &'static str,
     an: &'x AliasAnalysis,
@@ -170,7 +153,6 @@ impl Unify<'_> {
     fn addressof(&self, cr: &mut Cr<'_, '_, '_>, op: OpId) -> bool {
         let Some(var) = AliasAnalysis::var_of(&cr.rw.body, op) else { return false };
         let Some(dst) = self.an.canonical_of(&var) else { return false };
-        // The canonical global's type, as `AddressOfOp::build` takes it.
         let b = &cr.rw.body;
         let mut module = b.parent_op(op);
         while let Some(o) = module.filter(|o| b[*o].name != "spirv.module") {
@@ -325,7 +307,6 @@ impl ConversionPattern for Unify<'_> {
     }
 }
 
-/// `spirv-unify-aliased-resource`.
 #[crate::pass("spirv-unify-aliased-resource", on = "spirv.module")]
 pub fn spirv_unify_aliased_resource<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
     const ROOTS: [&str; 5] = ["spirv.GlobalVariable", "spirv.mlir.addressof", "spirv.AccessChain", "spirv.Load", "spirv.Store"];

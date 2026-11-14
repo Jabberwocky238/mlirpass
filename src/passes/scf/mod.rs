@@ -1,5 +1,3 @@
-//! `scf` passes.
-
 #[cfg(all(feature = "dialect.gpu", feature = "dialect.affine"))]
 mod convert_parallel_loops_to_gpu;
 mod convert_scf_to_cf;

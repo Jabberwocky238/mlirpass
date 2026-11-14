@@ -1,13 +1,9 @@
-//! `complex` canonicalization (`ComplexOps.cpp`): its folds, the bitcast and negated-component
-//! patterns, and constant materialization.
-
 use alloc::vec;
 
 use mlirformat::{ApFloat, Attribute, Type};
 
 use crate::{Body, Fmf, Fold, Folded, OpData, OpId, ValueId};
 
-/// The `complex` ops that fold.
 #[derive(Clone, Copy)]
 enum Op {
     Constant,
@@ -47,11 +43,8 @@ impl Op {
     }
 }
 
-/// `complex`'s folds, patterns and constant materialization.
 pub struct ComplexCanon;
 
-/// One part of a complex float constant: the value, or, in a format [`ApFloat`] does not
-/// hold (`f80`, `f128`), the decimal literal.
 #[derive(Clone, Copy)]
 enum Part<'s> {
     Value(ApFloat),
@@ -59,7 +52,6 @@ enum Part<'s> {
 }
 
 impl Part<'_> {
-    /// The literal's significant digits and the power of ten of the last one (`None`: hex).
     fn decimal(lit: &str) -> Option<(alloc::string::String, i64)> {
         let lit = lit.trim_start_matches(['-', '+']);
         if lit.starts_with("0x") {
@@ -80,7 +72,6 @@ impl Part<'_> {
         }
     }
 
-    /// Exactly `1`.
     fn is_one(self) -> bool {
         match self {
             Part::Value(f) => f.to_f64() == 1.0,
@@ -105,12 +96,10 @@ impl Part<'_> {
 }
 
 impl ComplexCanon {
-    /// A complex float constant `[re, im]`'s parts (untyped literals are `f64`).
     fn parts<'s>(a: Option<&'s Attribute<'_>>) -> Option<[Part<'s>; 2]> {
         let Some(Attribute::Array(xs)) = a else { return None };
         let [re, im] = &xs[..] else { return None };
         let part = |x: &'s Attribute<'_>| -> Option<Part<'s>> {
-            // A float printed as its bits reads back as an integer literal of the float type.
             let (Attribute::Float { lit, ty } | Attribute::Int { lit, ty: ty @ Some(Type::Float(_)) }) = x else { return None };
             let kind = match ty {
                 None => mlirformat::FloatKind::F64,
@@ -122,7 +111,6 @@ impl ComplexCanon {
         Some([part(re)?, part(im)?])
     }
 
-    /// The parts of the `complex.constant` defining `v`.
     fn constant_parts<'s>(b: &'s Body<'_>, v: ValueId) -> Option<[Part<'s>; 2]> {
         Self::parts(b.def_named(v, "complex.constant").and_then(|c| b[c].get("value")))
     }
@@ -177,7 +165,6 @@ impl ComplexCanon {
                 }
                 Fold::Failed
             }
-            // An op undoing the one before it.
             Op::Neg | Op::Log | Op::Exp | Op::Conj => {
                 let undoes = match k {
                     Op::Log => "complex.exp",
@@ -211,7 +198,6 @@ impl ComplexCanon {
         }
     }
 
-    /// `ComplexDialect::materializeConstant`.
     pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
         Body::complex_constant(value, ty).or_else(|| crate::ArithCanon::materialize(value, ty))
     }
@@ -219,8 +205,6 @@ impl ComplexCanon {
 
 #[crate::patterns]
 impl ComplexCanon {
-    /// `MergeComplexBitcast`: a bitcast of a bitcast is one, `arith`'s when neither end is
-    /// complex.
     #[rewrite("complex.bitcast")]
     fn merge_complex_bitcast(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -239,7 +223,6 @@ impl ComplexCanon {
         true
     }
 
-    /// `MergeArithBitcast`: an `arith.bitcast` of a `complex.bitcast` is one.
     #[rewrite("arith.bitcast")]
     fn merge_arith_bitcast(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -249,8 +232,6 @@ impl ComplexCanon {
         true
     }
 
-    /// `FoldComponentNeg<ReOp, 0>` / `<ImOp, 1>`: a part of the negation of a `complex.create`
-    /// is that part negated.
     #[rewrite("complex.re", name = "FoldComponentNegRe")]
     fn fold_component_neg_re(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
         Self::component_neg(rw, op, 0)

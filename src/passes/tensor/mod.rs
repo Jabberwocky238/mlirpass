@@ -1,5 +1,3 @@
-//! `tensor` passes.
-
 #[cfg(feature = "dialect.linalg")]
 mod convert_tensor_to_linalg;
 

@@ -1,8 +1,3 @@
-//! `ControlFlowToSCFTransformation` (`Conversion/ControlFlowToSCF/ControlFlowToSCF.cpp`): the
-//! [`CfgToScfInterface`] lifting `cf` to `scf` — `cf.cond_br` ⇒ `scf.if`, `cf.switch` ⇒
-//! `scf.index_switch`, cycles ⇒ `scf.while`, switch flags as `i32` constants, undefined values as
-//! `ub.poison`, an infinite loop's unreachable exit as a `func.return` of poison.
-
 use alloc::format;
 use alloc::vec::Vec;
 
@@ -11,7 +6,6 @@ use mlirformat::{Attribute, Error, Str, Type};
 use crate::cfg_to_scf::{At, CfgToScfInterface};
 use crate::{BlockId, Body, OpData, OpId, RegionId, ValueId};
 
-/// ⭐ The `cf` ⇒ `scf` side of [`crate::transform_cfg_to_scf`].
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ControlFlowToScf;
 
@@ -22,7 +16,6 @@ impl ControlFlowToScf {
         at.place(body, op)
     }
 
-    /// A new region of `op` taking `blocks` as they are.
     fn take_blocks(body: &mut Body<'_>, op: OpId, blocks: Vec<BlockId>) -> RegionId {
         let r = body.add_region(op);
         for b in blocks {

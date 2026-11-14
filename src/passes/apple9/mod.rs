@@ -1,5 +1,3 @@
-//! The `apple9` passes: a kernel's registers, its control flow, then its waits.
-
 mod apple9_control;
 mod apple9_regalloc;
 mod apple9_wait;

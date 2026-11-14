@@ -1,5 +1,3 @@
-//! `convert-linalg-to-parallel-loops`.
-
 use crate::{LinalgLoops};
 use crate::pass;
 use crate::{Body, OpId};

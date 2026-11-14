@@ -1,5 +1,3 @@
-//! The `llvm` dialect's op interfaces.
-
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -8,7 +6,6 @@ use mlirformat::{Attribute, Extended, Type};
 
 use crate::{Body, BlockId, BranchLayout, EffectInstance, EffectKind, OpId, OpInterfaces};
 
-/// The `llvm` dialect.
 pub struct LlvmDialect;
 
 impl LlvmDialect {
@@ -29,7 +26,6 @@ impl OpInterfaces for LlvmDialect {
     fn constant_value<'a>(&self, b: &Body<'a>, op: OpId) -> Option<Attribute<'a>> {
         let d = &b[op];
         match &*d.name {
-            // `ZeroOp::fold`: a builtin zero where the type has one.
             "llvm.mlir.zero" => Some(match &b[d.results[0]].ty {
                 t @ (Type::Integer { .. } | Type::Index) => Attribute::Int { lit: "0".into(), ty: Some(t.clone()) },
                 t @ Type::Float(_) => Attribute::Float { lit: "0.000000e+00".into(), ty: Some(t.clone()) },
@@ -37,9 +33,7 @@ impl OpInterfaces for LlvmDialect {
             }),
             "llvm.mlir.undef" => Some(Self::ext("llvm.undef")),
             "llvm.mlir.poison" => Some(Self::ext("llvm.poison")),
-            // `AddressOfOp::fold`: the global's symbol.
             "llvm.mlir.addressof" => d.get("global_name").cloned(),
-            // `MetadataAsValueOp::fold`: its metadata.
             "llvm.mlir.metadata_as_value" => d.get("metadata").cloned(),
             _ => d.get("value").cloned(),
         }
@@ -48,7 +42,6 @@ impl OpInterfaces for LlvmDialect {
     fn effects(&self, b: &Body<'_>, op: OpId) -> Option<Vec<EffectInstance>> {
         use EffectKind::{Read, Write};
         let d = &b[op];
-        // Volatile or (stronger than unordered) atomic: arbitrary reads and writes besides.
         let synchronizing = || d.get("volatile_").is_some() || matches!(d.get("ordering"), Some(Attribute::Int { lit, .. }) if !matches!(&**lit, "0" | "1"));
         Some(match &*d.name {
             "llvm.load" | "llvm.store" => {
@@ -94,12 +87,8 @@ impl OpInterfaces for LlvmDialect {
     }
 }
 
-/// `LLVMInlinerInterface`, for the callees it needs nothing more for: the
-/// `processInlinedCallBlocks` work (allocas, alias scopes, access groups, argument and result
-/// attributes) is not ported, so a callee that would need it is not inlined.
 impl crate::DialectInliner for LlvmDialect {
     fn legal_call(&self, b: &Body<'_>, call: OpId, callable: OpId) -> bool {
-        /// Function attributes that forbid inlining.
         const DISALLOWED: [&str; 4] = ["noduplicate", "presplitcoroutine", "returns_twice", "strictfp"];
         let f = &b[callable];
         if b[call].name != "llvm.call" || b[call].get("no_inline").is_some() || f.name != "llvm.func" || f.get("no_inline").is_some() {
@@ -115,7 +104,6 @@ impl crate::DialectInliner for LlvmDialect {
             return false;
         }
         let Some(&region) = f.regions.first() else { return false };
-        // (every block ends with a terminator)
         if !b[region].blocks.iter().all(|k| b.last_op(*k).is_some_and(|t| b.has(t, crate::Trait::IsTerminator))) {
             return false;
         }
@@ -128,12 +116,10 @@ impl crate::DialectInliner for LlvmDialect {
         true
     }
 
-    /// Not `va_start` or a block tag.
     fn legal_op(&self, b: &Body<'_>, op: OpId) -> bool {
         !matches!(&*b[op].name, "llvm.intr.vastart" | "llvm.blocktag")
     }
 
-    /// `llvm.return` as an `llvm.br` to `dest`.
     fn branch_terminator(&self, b: &mut Body<'_>, op: OpId, dest: BlockId) {
         if b[op].name != "llvm.return" {
             return;

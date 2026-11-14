@@ -1,6 +1,3 @@
-//! `gpu` ⇒ `rocdl`, as `LowerGpuOpsToROCDLOps.cpp`: launch configuration as the ROCDL id ops,
-//! the lane id through `mbcnt`, shuffles through `ds_bpermute`, broadcasts as `readlane`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -14,37 +11,32 @@ use crate::{AmdChipset, ConversionRewriter, LlvmOptions, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// What the patterns need: the converter's options and the chipset.
 #[derive(Debug, Clone, Copy)]
 pub struct GpuRocdlOptions {
     pub llvm: LlvmOptions,
     pub chipset: AmdChipset,
 }
 
-/// The first chipset generation with split barriers and `wave.id`.
 const GFX12: u32 = 12;
-/// The first chipset with cluster barriers (gfx1250).
+
 const CLUSTER_BARRIERS: AmdChipset = AmdChipset { major: 12, minor: 5, stepping: 0 };
-/// The barrier id of the whole workgroup / the whole cluster.
+
 const WHOLE_WORKGROUP_BARRIER: i64 = -1;
 const WHOLE_CLUSTER_BARRIER: i64 = -3;
-/// `LLVM::AtomicOrdering::release` / `acquire`.
-/// The wait class of the last named barrier the wave joined.
+
 const NAMED_BARRIER_WAIT: i64 = 1;
-/// The global a named barrier lives in, and its type.
+
 const NAMED_BARRIER_GLOBAL: &str = "__named_barrier";
 const NAMED_BARRIER_TYPE: &str = "amdgcn.named.barrier";
-/// `ROCDLDialect::kSharedMemoryAddressSpace`.
+
 const LDS_ADDRESS_SPACE: u32 = 3;
 const ORDERING_RELEASE: i64 = 5;
 const ORDERING_ACQUIRE: i64 = 4;
-/// `IntegerOverflowFlags::nsw | nuw` of the llvm ops.
+
 const LLVM_NSW_NUW: i64 = 3;
-/// The most threads per block dimension on AMD GPUs.
+
 const MAX_THREADS_PER_BLOCK_DIM: i64 = 1024;
 
-/// The gpu ⇒ rocdl patterns (`populateGpuToROCDLConversionPatterns`, but `gpu.func` /
-/// `gpu.return` / `gpu.printf`: [`GpuToLlvm`](crate::GpuToLlvm), math: [`MathToRocdl`](crate::MathToRocdl)).
 pub struct GpuToRocdl;
 
 #[patterns(converter, options = GpuRocdlOptions)]
@@ -59,21 +51,16 @@ impl GpuToRocdl {
         cr.gpu_index(op, o.llvm, "rocdl.workgroup.id", IndexKind::Grid, false)
     }
 
-    /// `GPUDimOpToOcklCall<gpu::BlockDimOp>`.
     #[convert("gpu.block_dim")]
     fn block_dim(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
         Self::dim_call(cr, op, o, IndexKind::Block)
     }
 
-    /// `GPUDimOpToOcklCall<gpu::GridDimOp>`.
     #[convert("gpu.grid_dim")]
     fn grid_dim(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
         Self::dim_call(cr, op, o, IndexKind::Grid)
     }
 
-    /// `GPUBarrierOpLowering`: fences around the barrier for the address spaces it orders
-    /// (all of them when none are named), `wave.barrier` for a subgroup, `s.barrier` (gfx12+:
-    /// signal / wait -1) for a workgroup, signal / wait -3 for a cluster (gfx1250+).
     #[convert("gpu.barrier")]
     fn barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
         let b = &*cr.rw.body;
@@ -84,8 +71,6 @@ impl GpuToRocdl {
         };
         let gfx12 = o.chipset.major >= GFX12;
         if let Some(named) = operands.iter().find_map(|v| v.first().copied()) {
-            // A named barrier (workgroup scope, gfx12+): joined, signalled keeping its count,
-            // then the named-barrier wait class waited on.
             if scope != BarrierScope::Workgroup || !gfx12 {
                 return false;
             }
@@ -119,8 +104,6 @@ impl GpuToRocdl {
         true
     }
 
-    /// `GPUInitializeNamedBarrierOpLowering` (gfx12+): an LDS `amdgcn.named.barrier` global in
-    /// the function's symbol table, initialized with the constant member count.
     #[convert("gpu.initialize_named_barrier")]
     fn initialize_named_barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
         if o.chipset.major < GFX12 {
@@ -137,7 +120,6 @@ impl GpuToRocdl {
         let target = Type::Extended(alloc::boxed::Box::new(mlirformat::Extended { name: "llvm.target".into(), body: Some(alloc::format!("<\"{NAMED_BARRIER_TYPE}\", 0>").into()), params: Vec::new() }));
         let lds = Type::from(LlvmType::Ptr(LDS_ADDRESS_SPACE));
         let loc = b[op].loc.clone();
-        // (appended to the symbol table's body, as `SymbolTable::insert` does)
         let saved = cr.rw.ip;
         let block = cr.rw.body.top_block(table);
         cr.rw.set_end(block);
@@ -163,8 +145,6 @@ impl GpuToRocdl {
         true
     }
 
-    /// `GPUSubgroupIdOpToROCDL`: gfx12+ reads `wave.id`; before, the linearized thread id over
-    /// the wavefront size.
     #[convert("gpu.subgroup_id")]
     fn subgroup_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
         let i32t = Type::int(32);
@@ -203,7 +183,6 @@ impl GpuToRocdl {
         true
     }
 
-    /// `GPUBallotOpToROCDL`: `rocdl.ballot` of an `i32` or `i64`.
     #[convert("gpu.ballot")]
     fn ballot(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuRocdlOptions) -> bool {
         let t = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
@@ -214,7 +193,6 @@ impl GpuToRocdl {
         true
     }
 
-    /// `getLaneId`: `mbcnt.hi(-1, mbcnt.lo(-1, 0))`.
     fn lane(cr: &mut Cr<'_, '_, '_>) -> ValueId {
         let i32t = Type::int(32);
         let zero = cr.build(OpData::build("arith.constant").with("value", Attribute::of_int(0, i32t.clone())), i32t.clone());
@@ -227,7 +205,6 @@ impl GpuToRocdl {
         cr.build(OpData::build("rocdl.mbcnt.hi").operands(&[minus1, lo]).with("res_attrs", res_attrs(64)), i32t)
     }
 
-    /// `GPULaneIdOpToROCDL`.
     #[convert("gpu.lane_id")]
     fn lane_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
         cr.rw.set_before(op);
@@ -237,7 +214,6 @@ impl GpuToRocdl {
         true
     }
 
-    /// `GPUSubgroupSizeOpToROCDL`: `rocdl.wavefrontsize`, ranged by an upper bound.
     #[convert("gpu.subgroup_size")]
     fn subgroup_size(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuRocdlOptions) -> bool {
         let mut data = OpData::build("rocdl.wavefrontsize");
@@ -252,7 +228,6 @@ impl GpuToRocdl {
         true
     }
 
-    /// `isSupportedReadLaneType`.
     fn readlane_type(t: &Type<'_>) -> bool {
         match t {
             Type::Float(FloatKind::F16 | FloatKind::BF16 | FloatKind::F32 | FloatKind::F64) => true,
@@ -265,7 +240,6 @@ impl GpuToRocdl {
         }
     }
 
-    /// `GPUSubgroupBroadcastOpToROCDL`.
     #[convert("gpu.subgroup_broadcast")]
     fn subgroup_broadcast(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuRocdlOptions) -> bool {
         let src = operands[0][0];
@@ -291,7 +265,6 @@ impl GpuToRocdl {
         true
     }
 
-    /// `GPUShuffleOpLowering`: `ds_bpermute` of each dword from the lane the mode picks.
     #[convert("gpu.shuffle")]
     fn shuffle(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuRocdlOptions) -> bool {
         let Some(mode) = cr.rw.body[op].get("mode").and_then(|a| ShuffleMode::try_from(a).ok()) else { return false };
@@ -311,7 +284,6 @@ impl GpuToRocdl {
             ShuffleMode::Xor => bin(cr, "llvm.xor", src_lane, offset),
             ShuffleMode::Idx => offset,
         };
-        // `slt` 2.
         let active = cr.build(OpData::build("llvm.icmp").operands(&[dst, bound]).with("predicate", Attribute::i64(2)), Type::int(1));
         let sel = cr.build(OpData::build("llvm.select").operands(&[active, dst, src_lane]), i32t.clone());
         let two = c(cr, 2);
@@ -326,7 +298,6 @@ impl GpuToRocdl {
 }
 
 impl GpuToRocdl {
-    /// `rocdl.s.barrier.signal` and `rocdl.s.barrier.wait` of barrier `id`.
     fn signal_wait<'a>(id: i64) -> Vec<OpData<'a>> {
         vec![
             OpData::build("rocdl.s.barrier.signal").with("id", Attribute::of_int(id.into(), Type::int(32))),
@@ -334,8 +305,6 @@ impl GpuToRocdl {
         ]
     }
 
-    /// `emitFences`: an `llvm.fence` at `scope` for `spaces` (global and LDS when none), tagged
-    /// with the one it is limited to.
     fn fence(cr: &mut Cr<'_, '_, '_>, spaces: Option<&[AddressSpace]>, scope: &str, ordering: i64) {
         let (global, lds) = match spaces {
             Some(s) => (s.contains(&AddressSpace::Global), s.contains(&AddressSpace::Workgroup)),
@@ -353,9 +322,6 @@ impl GpuToRocdl {
         cr.rw.create(d, &[]);
     }
 
-    /// `getKnownOrOcklDim`: a known size as an `i64` constant, else a call of
-    /// `__ockl_get_local_size` / `__ockl_get_num_groups` ranged by the op's bound (a block's
-    /// by the hardware limit).
     fn known_or_ockl(cr: &mut Cr<'_, '_, '_>, op: OpId, kind: IndexKind, d: Dimension, bound: Option<i64>) -> ValueId {
         let i64t = Type::int(64);
         if let Some(k) = cr.known_bound(op, kind, d) {
@@ -384,7 +350,6 @@ impl GpuToRocdl {
         cr.rw.body[call].results[0]
     }
 
-    /// `GPUDimOpToOcklCall`: the size, fitted to the index width.
     fn dim_call(cr: &mut Cr<'_, '_, '_>, op: OpId, o: GpuRocdlOptions, kind: IndexKind) -> bool {
         let Some(d) = cr.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok()) else { return false };
         let bound = match cr.rw.body[op].get("upper_bound") {

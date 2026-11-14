@@ -1,5 +1,3 @@
-//! `spirv` rule sets.
-
 mod canonicalize;
 
 pub use canonicalize::SpirvCanon;

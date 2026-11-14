@@ -1,6 +1,3 @@
-//! ⭐ Passes: pipeline units, one directory per source dialect, a file per pass
-//! (`scf/convert_scf_to_cf.rs`).
-
 #[cfg(feature = "dialect.affine")]
 mod affine;
 #[cfg(feature = "target.agx")]

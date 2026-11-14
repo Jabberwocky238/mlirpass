@@ -1,6 +1,3 @@
-//! Every affine map and integer set `mlir-opt` 22.1.8 printed in the fixtures parses back
-//! (through the simplifying constructors) and prints the same.
-
 mod common;
 
 use std::collections::BTreeSet;
@@ -8,7 +5,6 @@ use std::collections::BTreeSet;
 use common::Fixtures;
 use mlirpass::{AffineMap, IntegerSet};
 
-/// The `<...>` bodies after each `keyword`, brackets balanced.
 fn bodies<'t>(text: &'t str, keyword: &str) -> Vec<&'t str> {
     let mut out = Vec::new();
     for (at, _) in text.match_indices(keyword) {

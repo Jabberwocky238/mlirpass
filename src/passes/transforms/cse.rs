@@ -1,9 +1,3 @@
-//! `cse`: common subexpression elimination, as `CSE.cpp`.
-//!
-//! Regions are walked in dominator-tree order with a scoped table of known ops; an op equivalent
-//! to a known one (memory-effect free, or only reading with no write in between in the same
-//! block) is replaced by it. Trivially dead ops go too. Everything is erased at the end.
-
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use mlirformat::Error;
@@ -15,7 +9,6 @@ pub fn cse<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     Ok(())
 }
 
-/// The scoped table of known ops: a lookup finds the latest equivalent one in scope.
 #[derive(Default)]
 struct Known {
     ops: Vec<OpId>,
@@ -37,15 +30,12 @@ impl Known {
     }
 }
 
-/// One run's state.
 #[derive(Default)]
 struct Driver {
     erase: Vec<OpId>,
 }
 
 impl Driver {
-    /// Some op between `from` and `to` (same block) might write what `from` reads: a write on
-    /// a resource disjoint from all of them, or pointer-based against non-addressable, cannot.
     fn write_between(&self, body: &Body<'_>, from: OpId, to: OpId) -> bool {
         let reads: Vec<_> = body.effects_of(from).unwrap_or_default().into_iter().filter(|e| e.kind == EffectKind::Read).collect();
         let mut at = body.next_op(from);
@@ -64,7 +54,6 @@ impl Driver {
             pairs.into_iter().for_each(|(from, to)| body.replace_all_uses(from, to));
             self.erase.push(op);
         } else {
-            // Only uses not yet visited: a graph region may use a value before its definition.
             for (from, to) in pairs {
                 for u in body[from].uses.clone() {
                     if known.lookup(body, u.op).is_none() {
@@ -81,7 +70,6 @@ impl Driver {
         }
     }
 
-    /// Whether `op` was simplified away.
     fn operation(&mut self, body: &mut Body<'_>, known: &mut Known, op: OpId, ssa: bool) -> bool {
         if body.has(op, Trait::IsTerminator) {
             return false;
@@ -157,7 +145,6 @@ impl Driver {
 }
 
 impl Body<'_> {
-    /// ⭐ `eliminateCommonSubExpressions` on everything inside `op`; whether anything changed.
     pub fn cse(&mut self, op: OpId) -> bool {
         let mut d = Driver::default();
         let mut known = Known::default();
@@ -170,10 +157,6 @@ impl Body<'_> {
     }
 }
 
-// ============================================================================================
-// `OperationEquivalence::isEquivalentTo`, ignoring locations.
-
-/// Values known equivalent while comparing nested regions.
 #[derive(Default)]
 struct Equivalence {
     values: BTreeMap<ValueId, ValueId>,
@@ -184,7 +167,6 @@ impl Equivalence {
         l == r || self.values.get(&l) == Some(&r)
     }
 
-    /// In order, or else as a permutation of the same values (both sides sorted).
     fn check_commutative(&self, l: &[ValueId], r: &[ValueId]) -> bool {
         if l.len() != r.len() {
             return false;
@@ -200,8 +182,6 @@ impl Equivalence {
 }
 
 impl Body<'_> {
-    /// ⭐ Whether `l` and `r` compute the same thing: name, attributes, properties, operands
-    /// (as a permutation for commutative ops), result types and regions.
     pub fn equivalent(&self, l: OpId, r: OpId) -> bool {
         self.equivalent_in(l, r, &mut Equivalence::default())
     }

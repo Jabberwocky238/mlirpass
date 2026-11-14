@@ -1,9 +1,3 @@
-//! ⭐ Out of MLIR, as `mlir-translate`'s translations: a target turns an op (a module) into what
-//! it emits — SPIR-V words, GLSL text, or a format of one's own ([`Emit`]).
-//!
-//! The backends, one cargo feature each: `llvm` (the LLVM dialect lowerings and its folds),
-//! `emitc` (the EmitC lowerings) and `spirv` (the SPIR-V lowerings, binary and GLSL emit).
-
 #[cfg(feature = "target.emitc")]
 mod emitc;
 #[cfg(feature = "target.llvm")]
@@ -60,15 +54,12 @@ pub use shader::*;
 #[cfg(feature = "target.spirv")]
 pub use spirv::*;
 
-/// ⭐ A target `op` translates into.
 pub trait Emit {
     type Output;
 
     fn emit(&self, body: &Body<'_>, op: OpId) -> Result<Self::Output, Error>;
 }
 
-/// MLIR's string escaping (`llvm::printEscapedString`) of raw bytes: printable ASCII as it is (but `"`), `\\` doubled,
-/// the rest `\XX`.
 pub fn escape(bytes: &[u8]) -> alloc::string::String {
     let mut lit = alloc::string::String::with_capacity(bytes.len());
     for &b in bytes {
@@ -81,7 +72,6 @@ pub fn escape(bytes: &[u8]) -> alloc::string::String {
     lit
 }
 
-/// MLIR's string escapes undone: `\\`, `\"`, `\n`, `\t` and `\XX`.
 pub fn unescape(s: &str) -> Vec<u8> {
     let b = s.as_bytes();
     let mut out = Vec::new();

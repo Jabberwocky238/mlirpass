@@ -1,6 +1,3 @@
-//! `ptr` to LLVM (`PtrToLLVM.cpp`): pointers are `!llvm.ptr`, a memref's metadata the
-//! descriptor fields that are not static, and the ops pointer arithmetic on them.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -12,34 +9,27 @@ use crate::{ConversionRewriter, LlvmOptions, MemrefLayout, OpData, OpId, TypeCon
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `!ptr.ptr`'s only memory space this lowering knows, and the LLVM address space it is.
 const GENERIC_SPACE: &str = "<#ptr.generic_space>";
 const GENERIC_ADDRESS_SPACE: u32 = 0;
 
-/// `ptr::PtrAddFlags` ⇒ `LLVM::GEPNoWrapFlags`.
 const PTR_ADD_FLAGS: [(i64, i64); 4] = [
-    // none ⇒ none, nusw ⇒ nusw, nuw ⇒ nuw, inbounds ⇒ inbounds (`inbounds_flag | nusw`).
     (0, 0),
     (1, 2),
     (2, 4),
     (3, 3),
 ];
 
-/// `LLVM::GEPOp::kDynamicIndex`.
 const GEP_DYNAMIC: i64 = i32::MIN as i64;
 
-/// The memref descriptor's field positions.
 const ALLOCATED: i64 = 0;
 const ALIGNED: i64 = 1;
 const OFFSET: i64 = 2;
 const SIZES: i64 = 3;
 const STRIDES: i64 = 4;
 
-/// `ptr` to LLVM.
 pub struct PtrToLlvm;
 
 impl PtrToLlvm {
-    /// The memref a `ptr.ptr_metadata<...>` type is of.
     fn metadata_memref(t: &Type<'_>, opt: &MlirOpt) -> Option<Shaped<'static>> {
         let Type::Extended(e) = t else { return None };
         if e.name != "ptr.ptr_metadata" {
@@ -52,8 +42,6 @@ impl PtrToLlvm {
         }
     }
 
-    /// `createMemRefMetadataType`: the allocated pointer, then the dynamic offset, sizes and
-    /// strides.
     pub fn metadata_type<'a>(o: LlvmOptions, s: &Shaped<'a>) -> Option<Type<'a>> {
         let space = o.address_space(s)?;
         let (strides, offset) = s.strides_and_offset()?;
@@ -67,8 +55,6 @@ impl PtrToLlvm {
         Some(LlvmType::literal(fields))
     }
 
-    /// The type conversions: `!ptr.ptr<#ptr.generic_space>` ⇒ `!llvm.ptr`, a memref's metadata
-    /// ⇒ its struct.
     pub fn convert<'a>(tc: &mut TypeConverter<'a>, o: LlvmOptions, opt: &'a MlirOpt) {
         tc.conversion(move |t| {
             let Type::Extended(e) = t else { return None };
@@ -100,8 +86,6 @@ impl PtrToLlvm {
 
 #[patterns(converter, options = LlvmOptions)]
 impl PtrToLlvm {
-    /// `FromPtrOpConversion`: a descriptor of the pointer and the metadata's fields, the static
-    /// ones constants.
     #[convert("ptr.from_ptr")]
     fn from_ptr(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let rt = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
@@ -140,8 +124,6 @@ impl PtrToLlvm {
         true
     }
 
-    /// `GetMetadataOpConversion`: the allocated pointer and the dynamic fields of the
-    /// descriptor.
     #[convert("ptr.get_metadata")]
     fn get_metadata(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let src = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
@@ -175,7 +157,6 @@ impl PtrToLlvm {
         true
     }
 
-    /// `PtrAddOpConversion`: a byte-wise `llvm.getelementptr`.
     #[convert("ptr.ptr_add")]
     fn ptr_add(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let (base, offset) = (operands[0][0], operands[1][0]);
@@ -193,7 +174,6 @@ impl PtrToLlvm {
         true
     }
 
-    /// `ToPtrOpConversion`: the aligned pointer.
     #[convert("ptr.to_ptr")]
     fn to_ptr(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let src = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
@@ -206,7 +186,6 @@ impl PtrToLlvm {
         true
     }
 
-    /// `TypeOffsetOpConversion`: the address of element 1 from null.
     #[convert("ptr.type_offset")]
     fn type_offset(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let Some(Attribute::Type(t)) = cr.rw.body[op].get("elementType").cloned() else { return false };
@@ -221,7 +200,6 @@ impl PtrToLlvm {
         true
     }
 
-    /// `ConstantOpConversion`: null, or an address as `llvm.inttoptr`.
     #[convert("ptr.constant")]
     fn constant(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let rt = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
@@ -231,8 +209,6 @@ impl PtrToLlvm {
         let r = match &*ext.name {
             "ptr.null" => cr.build(OpData::build("llvm.mlir.zero"), rt),
             "ptr.address" => {
-                // `#ptr.address<N>`: an `APInt` of 64 bits (the default).
-                /// The width `#ptr.address` parses its value with.
                 const ADDRESS_BITS: u32 = 64;
                 let Some(n) = ext.body.as_deref().and_then(|b| b.strip_prefix('<')?.strip_suffix('>')?.trim().parse::<i64>().ok()) else { return false };
                 let ty = Type::int(ADDRESS_BITS);

@@ -1,10 +1,3 @@
-//! GLSL out of every `spirv.module` in the SPIR-V fixtures: what mlirpass emits must compile
-//! with glslang (`glslangValidator -V`) and the SPIR-V glslang makes must pass `spirv-val`.
-//! What GLSL cannot express is counted apart, by reason. Skipped without glslang.
-//!
-//! `FILTER=<substring>` narrows the chunks; `SHOW=1` lists every failure. The GLSL goes to
-//! `target/spirv-glsl/`.
-
 mod common;
 
 use std::collections::BTreeMap;
@@ -54,8 +47,6 @@ fn spirv_to_glsl_compiles() {
             }
         };
         let stage = SpirvGlsl::stage(&body, module).unwrap_or_else(|| {
-            // A library of functions: glslang wants an entry point, of a stage the code is
-            // valid in (`barrier()` is compute only; interface variables and `discard` are not).
             glsl.push_str("void main() {}\n");
             if glsl.contains("barrier()") { "comp" } else { "frag" }
         });

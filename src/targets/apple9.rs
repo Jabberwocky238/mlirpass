@@ -1,12 +1,3 @@
-//! ⭐ Apple9 out: each `apple9.kernel` (registers allocated, waits placed) ⇒ its instructions' bytes and what running
-//! it needs ([`Apple9Code`]).
-//!
-//! How it runs (the Metal compute ABI this target assumes; scripts/apple9_metal.swift puts it there): a workgroup of
-//! 32 threads (APPLE9_WORKGROUP); binding 0 the memory (a load's / store's address is a byte offset into it), binding 1 the parameter
-//! buffer (the kernel reads parameter k at byte 4k at its start; after the parameters the grid's size in workgroups,
-//! x, y, z, which the dispatcher writes); up to APPLE9_SHARED bytes of threadgroup memory (one
-//! array, the donor's).
-
 use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -17,24 +8,18 @@ use mlirformat::{Error, Op};
 
 use crate::{Apple9Isa, Apple9Kernel, Apple9Op, Attrs, Body, Emit, Heads, Kernels, OpId, ShaderStage, Symbol};
 
-/// ⭐ One kernel's machine code and how to run it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Apple9Code {
     pub name: String,
     pub stage: Option<ShaderStage>,
-    /// Parameter words.
     pub params: u32,
-    /// GPRs it uses: r0 .. r(gprs - 1).
     pub gprs: u32,
-    /// Bytes of threadgroup memory.
     pub shared: u32,
-    /// Invocations of a workgroup: 32, or 16 (two a hardware workgroup; the dispatch is of 16 a workgroup).
     pub workgroup: u32,
     pub bytes: Vec<u8>,
 }
 
 impl Apple9Code {
-    /// Kernel `k`'s.
     pub fn of(body: &Body<'_>, k: OpId) -> Result<Apple9Code, Error> {
         let head = body.head::<Apple9Kernel>(k)?;
         let ops: Vec<OpId> = body.ops(body.top_block(k)).collect();
@@ -44,7 +29,6 @@ impl Apple9Code {
             Some(Apple9Op::JmpNone) => Some(false),
             _ => None,
         };
-        // every instruction but the jumps encoded; the labels where they are
         let mut code = Vec::new();
         let mut labels = BTreeMap::new();
         let mut at = 0;
@@ -70,7 +54,6 @@ impl Apple9Code {
     }
 }
 
-/// ⭐ Apple9 as an [`Emit`] target: every kernel under an op.
 pub struct Apple9Emit;
 
 impl Emit for Apple9Emit {

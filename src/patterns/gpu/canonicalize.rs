@@ -1,23 +1,18 @@
-//! `gpu` folds and canonicalization patterns, as `GPUDialect.cpp`.
-
 use mlirformat::{Attribute, Dim, EffectKind, Type};
 
 use crate::{Body, Fold, Folded, OpData, OpId};
 
 impl Body<'_> {
-    /// `canMakeGroupOpUniform`: `op` sits in the entry block of a `gpu.launch`.
     fn in_launch_entry(&self, op: OpId) -> bool {
         let Some(launch) = self.parent_op(op).filter(|p| self[*p].name == "gpu.launch") else { return false };
         self[op].parent == self[self[launch].regions[0]].blocks.first().copied()
     }
 }
 
-/// `gpu` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct GpuCanon;
 
 #[crate::patterns]
 impl GpuCanon {
-    /// `FoldLaunchArguments`: a block or thread id over a range of one is zero.
     #[rewrite("gpu.launch")]
     fn fold_launch_arguments(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -25,7 +20,6 @@ impl GpuCanon {
         let start: usize = sizes[0];
         let entry = b[b[op].regions[0]].blocks[0];
         let args = b[entry].args.clone();
-        // Grid sizes give the block ids (args 0..3), block sizes the thread ids (3..6).
         let pairs: alloc::vec::Vec<_> = (0..6).filter_map(|i| Some((args[i], *b[op].operands.get(start + i)?))).collect();
         let mut zero = None;
         for (id, size) in pairs {
@@ -43,12 +37,10 @@ impl GpuCanon {
         zero.is_some()
     }
 
-    /// `eraseRedundantGpuBarrierOps`: a barrier right before another goes.
     #[rewrite("gpu.barrier")]
     fn erase_redundant_barrier(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
         let Some(next) = b.next_op(op).filter(|n| b[*n].name == "gpu.barrier") else { return false };
-        // (only barriers of one scope, on the same named barrier if any)
         if b[op].get("scope") != b[next].get("scope") || b[op].operands != b[next].operands {
             return false;
         }
@@ -56,7 +48,6 @@ impl GpuCanon {
             Some(Attribute::Array(a)) => Some(a.clone()),
             _ => None,
         };
-        // The first fences what both do: everything if either does.
         if let Some(mut mine) = spaces(op) {
             match spaces(next) {
                 None => rw.modify(op, |b| {
@@ -77,7 +68,6 @@ impl GpuCanon {
         true
     }
 
-    /// `EraseTrivialCopyOp`: a copy into a fresh allocation only ever freed.
     #[rewrite("gpu.memcpy")]
     fn erase_trivial_copy_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -97,7 +87,6 @@ impl GpuCanon {
         true
     }
 
-    /// `EraseRedundantGpuWaitOpPairs`: dependencies on a wait without dependencies drop.
     #[rewrite("gpu.wait")]
     fn erase_redundant_gpu_wait_op_pairs(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -110,7 +99,6 @@ impl GpuCanon {
         true
     }
 
-    /// `SimplifyGpuWaitOp`.
     #[rewrite("gpu.wait")]
     fn simplify_gpu_wait_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -124,7 +112,6 @@ impl GpuCanon {
         true
     }
 
-    /// `SimplifyDimOfAllocOp`: a dynamic dim of a `gpu.alloc` is its size operand.
     #[rewrite("memref.dim")]
     fn simplify_dim_of_alloc_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -144,7 +131,6 @@ impl GpuCanon {
 }
 
 impl GpuCanon {
-    /// The `gpu` fold hooks.
     pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         let uniform = |b: &mut Body<'a>| {
             if b[op].get("uniform").is_none() && b.in_launch_entry(op) {
@@ -169,7 +155,6 @@ impl GpuCanon {
         }
     }
 
-    /// The gpu canonicalization patterns, in op registration order.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(FoldLaunchArguments);
         set.add(EraseRedundantBarrier);

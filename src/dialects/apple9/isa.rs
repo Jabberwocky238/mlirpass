@@ -1,30 +1,3 @@
-//! ⭐ Apple9 instructions (the GPU of Apple M3 / M4; on an M4, Metal's `applegpu_g16g`): `apple9.<form> {...}` ⇒
-//! their bytes ([`Apple9Isa`]).
-//!
-//! There is no Mesa model of this generation. Each form is packed as GravityLinux Mesa's Apple9 backend packs it
-//! (src/asahi/compiler/agx_apple9_ir.c, MIT: the function named on each form), and every form here ran on an M4
-//! through Metal (scripts/apple9_metal.swift: the code put into a binary archive's pipeline, run, read back): the
-//! instruction set is not Apple's documentation, it is what the hardware did.
-//!
-//! An instruction's attributes are its fields; absent is zero / false:
-//!
-//! ```text
-//!   dst, a, b, c         32-bit GPRs (r0 ..): the destination, the sources in order
-//!   t, f                 a select's values (cond true, false)
-//!   data, index          a store's first data register, a load's / store's index register
-//!   wait                 the completion slots (1 ..= 6, a bit mask: slot k is bit k - 1) waited for first
-//!   slot                 the slot a load completes on (1 ..= 6; 6 when absent)
-//!   ...                  a form's own: `selector`, `value`, `cond`, `signed`, `binding`, `components`, `shift`, `offset`
-//!   invert, loop, id, to the control flow's: a mask taking the lanes not in the predicate, the loop form of a
-//!                        predicate, a label's number, the label a jump goes to (its displacement: [`Apple9Isa::jump`])
-//! ```
-//!
-//! `release` (a bit per source, in the order of [`Apple9Op::sources`]) releases a source read for the last time; any
-//! other is retained: a source released while still used reads back as zero (measured), so it is the allocator's
-//! business (`apple9-regalloc`). The forms that take it: [`Apple9Op::releases`]. Completions: a special register read
-//! (`get_sr`, `get_sr16`), a load, a threadgroup load and an atomic complete on their `slot`, one slot to one pending
-//! result (`apple9-wait` picks them; an atomic's is always 6); a reader waits first.
-
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -33,12 +6,9 @@ use mlirformat::{Attribute, Error, NamedAttr};
 
 use crate::Attrs;
 
-/// An Apple9 form.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Apple9Op {
-    /// A 32-bit special register (`selector`: 0xa0 + k thread_position_in_grid.k, 0x9c threadgroup_position_in_grid.x).
     GetSr,
-    /// A 16-bit special register zero-extended (`selector`: 0xa4 thread_position_in_threadgroup.x).
     GetSr16,
     Mov,
     MovImm,
@@ -61,12 +31,9 @@ pub enum Apple9Op {
     Fadd,
     Fsub,
     Fmul,
-    /// dst = a * b + c, one rounding (`neg_product`: -(a * b) + c, `neg_c`: a * b - c).
     Fma,
-    /// minNum / maxNum: a NaN operand gives the other.
     Fmin,
     Fmax,
-    /// The reciprocal and the reciprocal square root (within 1 ulp, measured), the roundings to an integer.
     Rcp,
     Rsq,
     Floor,
@@ -75,39 +42,21 @@ pub enum Apple9Op {
     Roundeven,
     Load,
     Store,
-    /// A device atomic on the word `index` of `binding` (a word index): `op` (add, sub, and, or, xor, smin, smax, umin,
-    /// umax, xchg) with `a`, the old value to `dst` (completing on slot 6: Metal's; on slots 1 and 2 by GravityLinux
-    /// Mesa's publication codes the old value never landed, measured).
     Atomic,
-    /// A device compare-exchange on the word `index` of `binding`: `data` a run of two registers, the value to put and
-    /// the one to compare with (Metal's order); the old value to `dst` (completing on slot 6).
     Cmpxchg,
-    /// A threadgroup memory atomic on word `index` (`op` as [`Apple9Op::Atomic`]'s; `cmpxchg` with `data` a run of
-    /// the value and the one compared with), the old value to `dst` on its `slot`.
     SharedAtomic,
-    /// A word of the threadgroup memory: at word `index` + `offset` (the index register's low 16 bits).
     SharedLoad,
     SharedStore,
-    /// The workgroup's threads meet (and their threadgroup memory writes are seen).
     Barrier,
-    /// Predicate bank 0 := a <cond> b (`cond`: `ieq`), a lane each; `loop`: the form a loop's latch takes.
     Pred,
-    /// The execution mask pushed, then the lanes of predicate bank 0 kept (`invert`: those not in it).
     Push,
-    /// The lanes of the innermost push that it left out, instead.
     Else,
-    /// The execution mask as before the innermost push.
     Pop,
-    /// A loop's mask pushed (its lanes the ones running).
     LoopPush,
-    /// The loop's lanes cut down to those of predicate bank 0 (`invert`: those not in it): the rest leave the loop.
     LoopUpdate,
-    /// The execution mask as before the loop.
     LoopPop,
-    /// To label `to` when any lane is running, when none is.
     JmpAny,
     JmpNone,
-    /// Where a jump goes (`id`): no bytes.
     Label,
     Halt,
 }
@@ -167,17 +116,14 @@ impl Apple9Op {
         ("apple9.halt", Apple9Op::Halt),
     ];
 
-    /// The form an op name is.
     pub fn of(name: &str) -> Option<Apple9Op> {
         Apple9Op::ALL.iter().find(|(n, _)| *n == name).map(|(_, o)| *o)
     }
 
-    /// Its op name.
     pub fn name(self) -> &'static str {
         Apple9Op::ALL.iter().find(|(_, o)| *o == self).map(|(n, _)| *n).expect("every form is named")
     }
 
-    /// The attributes its SSA operands become, in order (a store's `data` a run of `components` registers).
     pub fn sources(self) -> &'static [&'static str] {
         use Apple9Op::*;
         match self {
@@ -193,55 +139,42 @@ impl Apple9Op {
         }
     }
 
-    /// Whether it writes `dst` (a load: `components` registers from it).
     pub fn has_dst(self) -> bool {
         !matches!(self, Apple9Op::Store | Apple9Op::SharedStore | Apple9Op::Barrier | Apple9Op::Halt) && !self.controls()
     }
 
-    /// Whether it changes which lanes run or where (the predicate, the masks, the jumps and their labels).
     pub fn controls(self) -> bool {
         use Apple9Op::*;
         matches!(self, Pred | Push | Else | Pop | LoopPush | LoopUpdate | LoopPop | JmpAny | JmpNone | Label)
     }
 
-    /// Whether its result completes later than the instruction, on its `slot`.
     pub fn completes(self) -> bool {
         matches!(self, Apple9Op::GetSr | Apple9Op::GetSr16 | Apple9Op::Load | Apple9Op::SharedLoad | Apple9Op::Atomic | Apple9Op::Cmpxchg | Apple9Op::SharedAtomic)
     }
 
-    /// Whether its sources may be released (`release`): the forms whose release bits GravityLinux Mesa's packers name
-    /// (a store's: its index only, not its data).
     pub fn releases(self) -> bool {
         use Apple9Op::*;
         matches!(self, Iadd | Isub | Imad | Shl | Shr | Asr | And | Or | Xor | Smin | Smax | Umin | Umax | Fmin | Fmax | Fadd | Fsub | Fmul | Fma | Select | I2f | F2i | Floor | Ceil | Trunc | Roundeven | Load | SharedLoad | Store | SharedStore)
     }
 
-    /// The one slot it completes on, if it has one only.
     pub fn slot(self) -> Option<u32> {
         matches!(self, Apple9Op::Atomic | Apple9Op::Cmpxchg).then_some(6)
     }
 
-    /// Whether it carries a wait itself (the six-bit mask at bits 12 ..= 17); else a wait goes before it.
     pub fn waits(self) -> bool {
         use Apple9Op::*;
         matches!(self, Iadd | Isub | Load | Store | SharedLoad | SharedStore | Atomic | Cmpxchg | SharedAtomic)
     }
 }
 
-/// The 32-bit GPRs.
 pub const APPLE9_GPRS: u32 = 96;
 
-/// A load's completion token per slot (agx_apple9_ir.c `apple9_scalar_load_token_for_slot`).
 const LOAD_TOKEN: [u16; 6] = [0x1100, 0x5100, 0x9100, 0xd100, 0x1101, 0x5101];
 
-/// An atomic's result publication code per slot (agx_apple9_ir.c, AGX_APPLE9_VIR_DEVICE_ATOMIC_RESULT; only slot 6's,
-/// Metal's, is used: [`Apple9Op::slot`]).
 const PUBLICATION: [u8; 6] = [2, 4, 3, 5, 6, 1];
 
-/// The atomic operations (agx_apple9_ir.h `agx_apple9_atomic_op`).
 const ATOMICS: [(&str, u8); 11] = [("add", 0x10), ("and", 0x11), ("cmpxchg", 0x12), ("smax", 0x14), ("smin", 0x15), ("or", 0x16), ("sub", 0x1b), ("umax", 0x1c), ("umin", 0x1d), ("xchg", 0x1e), ("xor", 0x1f)];
 
-/// The fields of one instruction, read off its attributes.
 struct Fields<'r, 'a>(&'r [NamedAttr<'a>]);
 
 impl Fields<'_, '_> {
@@ -272,11 +205,9 @@ impl Fields<'_, '_> {
     }
 }
 
-/// ⭐ The Apple9 encoder.
 pub struct Apple9Isa;
 
 impl Apple9Isa {
-    /// `width` bits from bit `start` (little-endian bit order across the bytes) set to `value`.
     fn set(b: &mut [u8], start: u32, width: u32, value: u32) {
         for i in 0..width {
             let (byte, shift) = (((start + i) / 8) as usize, (start + i) % 8);
@@ -284,7 +215,6 @@ impl Apple9Isa {
         }
     }
 
-    /// MASK_12_17: wait for the slots of `mask`.
     fn wait(b: &mut [u8], mask: u32) -> Result<(), Error> {
         if mask >= 1 << 6 {
             return Err(Error(format!("wait {mask:#x}: slots 1 ..= 6")));
@@ -293,7 +223,6 @@ impl Apple9Isa {
         Ok(())
     }
 
-    /// pack_integer_source, a GPR: retained (its live bit set) or released (its discard bit).
     fn int_source(b: &mut [u8], src: u32, value_bit: u32, discard_bit: u32, file_bit: u32, released: bool) {
         Self::set(b, value_bit, 7, src);
         Self::set(b, value_bit + 7, 1, u32::from(!released));
@@ -301,8 +230,6 @@ impl Apple9Isa {
         Self::set(b, file_bit, 1, 1);
     }
 
-    /// The retain pairs (live bit, hold bit) of the sources not released: live set, hold clear (a released source
-    /// keeps the form's baseline: live clear, hold set).
     fn retain(b: &mut [u8], pairs: &[(u32, u32)], release: u32) {
         for (s, (live, hold)) in pairs.iter().enumerate() {
             if release & (1 << s) == 0 {
@@ -312,7 +239,6 @@ impl Apple9Isa {
         }
     }
 
-    /// pack_compact_binary_gprs.
     fn compact(b: &mut [u8], dst: u32, a: u32, bb: u32) {
         Self::set(b, 4, 4, dst & 0xf);
         Self::set(b, 22, 2, (dst >> 4) & 3);
@@ -323,12 +249,10 @@ impl Apple9Isa {
         Self::set(b, 42, 1, bb >> 6);
     }
 
-    /// The retain bits of a compact binary form's two sources.
     fn retain2(b: &mut [u8], release: u32) {
         Self::retain(b, &[(15, 19), (31, 20)], release);
     }
 
-    /// pack_memory_address: a byte `offset`, the index scaled by 1 << `shift` (at most 4).
     fn address(b: &mut [u8], load: bool, offset: u32, shift: u32) -> Result<(), Error> {
         if shift > 4 || offset > 0xffff {
             return Err(Error(format!("shift {shift} (at most 4), offset {offset} (16 bits)")));
@@ -339,7 +263,6 @@ impl Apple9Isa {
         Ok(())
     }
 
-    /// ⭐ Instruction `name` (`apple9.<form>`) with fields `attrs` ⇒ its bytes.
     pub fn encode(name: &str, attrs: &[NamedAttr<'_>]) -> Result<Vec<u8>, Error> {
         let op = Apple9Op::of(name).ok_or_else(|| Error(format!("{name}: not an Apple9 instruction")))?;
         let f = Fields(attrs);
@@ -351,14 +274,11 @@ impl Apple9Isa {
         let released = |s: u32| release & (1 << s) != 0;
         use Apple9Op::*;
         Ok(match op {
-            // agx_apple9_pack_get_sr / _zext16
             GetSr | GetSr16 => {
                 let (dst, sel) = (f.reg("dst")?, f.int("selector")?);
                 if dst >= 64 || sel > 0xff {
                     return Err(err("dst past r63 or selector past 0xff"));
                 }
-                // byte 3 bits 5 ..= 7: the completion slot - 1 (Metal gives reads in flight together slots of their own:
-                // 0x06, 0x26, 0x46; two on one slot, a wait for it waits for one of them only: measured)
                 let slot = f.int("slot")?;
                 let slot = if slot == 0 { 1 } else { slot };
                 if !(1..=6).contains(&slot) {
@@ -371,7 +291,6 @@ impl Apple9Isa {
                 }
                 b
             }
-            // agx_apple9_pack_mov
             Mov => {
                 let (dst, a) = (f.reg("dst")?, f.reg("a")?);
                 if dst >= 16 || a >= 64 {
@@ -379,7 +298,6 @@ impl Apple9Isa {
                 }
                 vec![(dst << 4) as u8 | 0x0b, (a << 1) as u8 | 1, 0x1f, 0x01, 0x02, 0, 0, 0x80, 0, 0]
             }
-            // agx_apple9_pack_mov_imm (7 bits, r0 ..= r15) or agx_apple9_encode_literal32
             MovImm => {
                 let (dst, v) = (f.reg("dst")?, f.int("value")?);
                 if dst < 16 && v <= 0x7f {
@@ -400,7 +318,6 @@ impl Apple9Isa {
                     ]
                 }
             }
-            // pack_iadd
             Iadd | Isub => {
                 let mut b = vec![if op == Iadd { 0x9f } else { 0x1f }, 0x01, 0x54, 0x00, 0x02, 0x00, 0x00, 0xa8, 0x17, 0x05];
                 Self::set(&mut b, 25, 7, f.reg("dst")?);
@@ -411,7 +328,6 @@ impl Apple9Isa {
                 Self::wait(&mut b, f.int("wait")?)?;
                 b
             }
-            // pack_imad: dst = a * b + c
             Imad => {
                 let mut b = vec![0x9f, 0x00, 0x54, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd0, 0x2f, 0x2a, 0x00];
                 Self::set(&mut b, 25, 7, f.reg("dst")?);
@@ -421,7 +337,6 @@ impl Apple9Isa {
                 }
                 b
             }
-            // pack_shift, the register amount forms: dst = a << b, a >> b (logical / arithmetic)
             Shl | Shr | Asr => {
                 let mut b = vec![0xa7, 0, 0x54, 0, 0x02, 0, 0, 0, 0xf0, 0x11, 0x01, 0];
                 let arithmetic = op == Asr;
@@ -440,7 +355,6 @@ impl Apple9Isa {
                 Self::set(&mut b, 25, 7, f.reg("dst")?);
                 Self::set(&mut b, 42, 7, f.reg("a")?);
                 Self::set(&mut b, 51, 7, f.reg("b")?);
-                // the release flags (set in the baseline): a retained source's cleared
                 let flag = if arithmetic { 62 } else { 72 };
                 for s in 0..2 {
                     if !released(s) {
@@ -450,7 +364,6 @@ impl Apple9Isa {
                 b.truncate(if arithmetic { 10 } else { 12 });
                 b
             }
-            // pack_logic (LOGIC_EXTENDED)
             And | Or | Xor => {
                 let mut b = vec![0x0b, 0x05, 0x1f, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
                 if op != And {
@@ -465,7 +378,6 @@ impl Apple9Isa {
                 Self::compact(&mut b, f.reg("dst")?, f.reg("a")?, f.reg("b")?);
                 b
             }
-            // pack_minmax (MINMAX_COMPACT)
             Smin | Smax | Umin | Umax => {
                 let select = match op {
                     Umax => 4,
@@ -479,10 +391,7 @@ impl Apple9Isa {
                 Self::compact(&mut b, f.reg("dst")?, f.reg("a")?, f.reg("b")?);
                 b
             }
-            // pack_select (SELECT_GPR_WIDE): dst = a <cond> b ? t : f
             Select => {
-                // AGX_APPLE9_SELECT_*; feq with the equality family's bit (byte 4 bit 2); an ordered compare is false
-                // on a NaN (measured)
                 let (cond, equality) = match f.str("cond")? {
                     "feq" => (0x00, true),
                     "fgt" => (0x02, false),
@@ -494,7 +403,6 @@ impl Apple9Isa {
                     c => return Err(err(&format!("condition {c} (feq / fgt / flt / ugt / ult / igt / ilt)"))),
                 };
                 let mut b = vec![0x02, 0x01, 0x1f, 0x01, 0x82 | if equality { 0x04 } else { 0 }, 0x00, cond, 0x00, 0x80, 0x00];
-                // each source retained (its live bit set, its hold bit clear) but the released
                 Self::retain(&mut b, &[(15, 19), (31, 20), (47, 39), (79, 71)], release);
                 let (dst, a, bb, t, fl) = (f.reg("dst")?, f.reg("a")?, f.reg("b")?, f.reg("t")?, f.reg("f")?);
                 Self::set(&mut b, 4, 4, dst & 15);
@@ -510,7 +418,6 @@ impl Apple9Isa {
                 Self::set(&mut b, 70, 1, fl >> 6);
                 b
             }
-            // pack_i2f32 / pack_f2i32 (toward zero), the source retained
             I2f | F2i => {
                 let (dst, a) = (f.reg("dst")?, f.reg("a")?);
                 let signed = f.flag("signed");
@@ -531,7 +438,6 @@ impl Apple9Isa {
                     ]
                 }
             }
-            // pack_minmax (MINMAX_COMPACT): fmax 0, fmin 1
             Fmin | Fmax => {
                 let mut b = vec![0x02, 0x01, 0x1e, 0x05, if op == Fmax { 0 } else { 1 }, 0x00];
                 Self::set(&mut b, 21, 1, 1);
@@ -539,7 +445,6 @@ impl Apple9Isa {
                 Self::compact(&mut b, f.reg("dst")?, f.reg("a")?, f.reg("b")?);
                 b
             }
-            // pack_fma (FLOAT3_EXTENDED, 8 bytes)
             Fma => {
                 let mut b = vec![0x09, 0x01, 0x1e, 0x05, 0x81, 0x08, 0x02, 0x00];
                 Self::set(&mut b, 21, 1, 1);
@@ -559,8 +464,6 @@ impl Apple9Isa {
                 Self::set(&mut b, 59, 1, u32::from(f.flag("neg_product")));
                 b
             }
-            // pack_fspecial (FLOAT_SPECIAL, FP32: the source's type bits 0x90 / the reciprocal's datapath), the source
-            // retained
             Rcp | Rsq | Floor | Ceil | Trunc | Roundeven => {
                 let (family, function, precision, rounding) = match op {
                     Rcp => (1, 0, 0x48, 0x20),
@@ -571,7 +474,6 @@ impl Apple9Isa {
                     _ => (0, 0, 0x40, 0),
                 };
                 let (dst, a) = (f.reg("dst")?, f.reg("a")?);
-                // the source retained (rcp 0x00, the rest 0x90) or released (0x10, 0xb0)
                 let lifetime = match (op == Rcp, released(0)) {
                     (true, false) => 0x00,
                     (true, true) => 0x10,
@@ -580,8 +482,6 @@ impl Apple9Isa {
                 };
                 vec![0x2f | (family << 7), function, 0x54, (dst << 1) as u8, 0x02, ((a & 63) << 2) as u8, (a >> 6) as u8 | lifetime, precision, rounding, 0]
             }
-            // pack_float2: FLOAT2_COMPACT (fsub: bit 43 negates b), or FLOAT2_MUL_ABS_EXTENDED with `abs` (a mask of
-            // the sources taken absolute)
             Fadd | Fsub | Fmul => {
                 let mut b = vec![0x09, 0x05, 0x1c, 0x01, 0x00, 0x00, 0, 0, 0, 0, 0, 0];
                 Self::set(&mut b, 16, 3, if op == Fmul { 5 } else { 4 });
@@ -603,7 +503,6 @@ impl Apple9Isa {
                 }
                 b
             }
-            // agx_apple9_pack_device_load_vector_u32_raw + pack_memory_address
             Load => {
                 let n = f.int("components")?.max(1);
                 let (dst, slot) = (f.reg("dst")?, f.int("slot")?);
@@ -620,7 +519,6 @@ impl Apple9Isa {
                 Self::address(&mut b, true, f.int("offset")?, f.int("shift")?)?;
                 b
             }
-            // agx_apple9_pack_device_store_vector_u32 / _scalar (32-bit) + pack_memory_address
             Store => {
                 let n = f.int("components")?.max(1);
                 let data = f.reg("data")?;
@@ -640,7 +538,6 @@ impl Apple9Isa {
                 Self::address(&mut b, false, f.int("offset")?, f.int("shift")?)?;
                 b
             }
-            // pack_predicate_compare, PREDICATE_COMPARE_EXTENDED / _LOOP (bank 0, both sources retained)
             Pred => {
                 if f.str("cond")? != "ieq" {
                     return Err(err("condition ieq"));
@@ -651,7 +548,6 @@ impl Apple9Isa {
                 Self::set(&mut b, 58, 1, bb >> 6);
                 b
             }
-            // the execution-mask stack (agx_apple9_ir.c, AGX_APPLE9_VIR_EXEC_MASK_* / LOOP_MASK_*): bank 0's selector
             Push => vec![0x0f, 0x05, 0x54, 0x01 | if f.flag("invert") { 0x20 } else { 0 }],
             Else => vec![0x0f, 0x04, 0x04, 0x19],
             Pop => vec![0x0f, 0x06, 0x04, 0x01, 0x00, 0x00],
@@ -660,7 +556,6 @@ impl Apple9Isa {
             LoopPop => vec![0x0f, 0x06, 0x04, 0x02, 0x00, 0x00],
             JmpAny | JmpNone => return Err(err("a jump is encoded where its label is known (Apple9Isa::jump)")),
             Label => Vec::new(),
-            // agx_apple9_pack_device_atomic, returning (its result landed by the publication record after it)
             Atomic | Cmpxchg => {
                 let code = if op == Cmpxchg {
                     if f.int("components")? != 2 {
@@ -683,8 +578,6 @@ impl Apple9Isa {
                 b.extend([((dst & 0xf) << 4) as u8 | 0x0c, 0x80, 0x09 | (((dst >> 4) & 3) << 6) as u8, 0xa7, 0, PUBLICATION[slot as usize - 1] << 5, 0, ((dst >> 6) << 4) as u8]);
                 b
             }
-            // Metal's threadgroup atomic (no GravityLinux Mesa form: read off Metal's code for each operation): dst, data,
-            // index as they are, the operation at bits 86 ..= 90, the slot at byte 8
             SharedAtomic => {
                 let name = f.str("op")?;
                 let code = ATOMICS.iter().find(|(n, _)| *n == name).map(|(_, c)| *c).ok_or_else(|| err(&format!("atomic {name}")))?;
@@ -702,8 +595,6 @@ impl Apple9Isa {
                 Self::wait(&mut b, f.int("wait")?)?;
                 b
             }
-            // Metal's threadgroup word load / store (agx_apple9_ir.c AGX_APPLE9_VIR_SHARED_*): root 1 (the one array), the
-            // index register's low half, a word offset (a load's at bit 79, a store's at 77), a load's slot at bits 72 ..= 74
             SharedLoad | SharedStore => {
                 let load = op == SharedLoad;
                 let (data, index, offset) = (f.reg(if load { "dst" } else { "data" })?, f.reg("index")?, f.int("offset")?);
@@ -727,14 +618,11 @@ impl Apple9Isa {
                 Self::wait(&mut b, f.int("wait")?)?;
                 b
             }
-            // agx_apple9_ir.c AGX_APPLE9_VIR_WORKGROUP_BARRIER
             Barrier => vec![0x07, 0x04, 0x54, 0x61, 0x09, 0x00],
             Halt => vec![0x0e, 0, 0, 0],
         })
     }
 
-    /// The bytes of a jump (agx_apple9_encode_branch): `displacement` bytes from its own start, when any lane is
-    /// running (`any`) or when none is.
     pub fn jump(any: bool, displacement: i64) -> Result<Vec<u8>, Error> {
         if displacement & 1 != 0 || !(-(1 << 47)..1 << 47).contains(&displacement) {
             return Err(Error(format!("jump by {displacement}: even, 48 bits")));
@@ -745,6 +633,5 @@ impl Apple9Isa {
         Ok(b)
     }
 
-    /// The bytes of a jump.
     pub const JUMP_BYTES: usize = 10;
 }

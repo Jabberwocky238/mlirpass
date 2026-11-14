@@ -1,5 +1,3 @@
-//! `xegpu` rule sets.
-
 mod types;
 
 pub use types::{CachePolicy, Chip, FenceScope, MemDesc, MemorySpace as XegpuMemorySpace, TensorDesc};

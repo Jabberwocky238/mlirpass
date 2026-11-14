@@ -1,8 +1,5 @@
-//! `convert-math-to-spirv`.
-
 use crate::{MathSpirvOptions, MathToSpirv, SpirvOptions, SpirvTypes, TargetEnv};
 
-/// `convert-math-to-spirv`.
 #[crate::pass("convert-math-to-spirv")]
 pub fn convert_math_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> Result<(), mlirformat::Error> {
     let env = TargetEnv::lookup(body, op);

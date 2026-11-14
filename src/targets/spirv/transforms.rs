@@ -1,8 +1,3 @@
-//! The `spirv` dialect's own transforms: `spirv-canonicalize-gl`,
-//! `decorate-spirv-composite-type-layout`, `spirv-rewrite-inserts`,
-//! `spirv-promote-to-replicated-constants` and `spirv-webgpu-prepare`; and the gpu side's
-//! `spirv-attach-target`: what their passes (`passes/spirv/`) share.
-
 use alloc::vec::Vec;
 
 use mlirformat::spirv_types::SpirvType;
@@ -11,10 +6,7 @@ use mlirformat::{Attribute, Const, Scalar, Type};
 use super::VulkanLayout;
 use crate::{Body, OpId};
 
-
 impl VulkanLayout {
-    /// `VulkanLayoutUtils::isLegalType`: a pointer to a struct in an explicitly laid out
-    /// storage class has offsets (or no members).
     pub(crate) fn is_legal(t: &Type<'_>) -> bool {
         let Ok(SpirvType::Ptr { pointee, storage }) = SpirvType::try_from(t) else { return true };
         let Ok(SpirvType::Struct { members, .. }) = SpirvType::try_from(&*pointee) else { return true };
@@ -26,8 +18,6 @@ impl VulkanLayout {
     }
 }
 
-
-/// `spirv::CompositeType::getNumElements` (`None`: not a composite with a count).
 fn composite_len(t: &Type<'_>) -> Option<usize> {
     match SpirvType::try_from(t) {
         Ok(SpirvType::Array { len, .. }) => Some(len as usize),
@@ -39,14 +29,12 @@ fn composite_len(t: &Type<'_>) -> Option<usize> {
     }
 }
 
-/// The single index of a `spirv.CompositeInsert`.
 fn insert_index(body: &Body<'_>, op: OpId) -> Option<i64> {
     let Some(Attribute::Array(idx)) = body[op].get("indices") else { return None };
     let [i] = &idx[..] else { return None };
     Const::try_from(i).ok()?.as_int().map(|v| v.signed() as i64)
 }
 
-/// `collectInsertionChain`: the inserts filling a composite element by element, ending at `op`.
 pub(crate) fn insertion_chain(body: &Body<'_>, mut op: OpId) -> Option<Vec<OpId>> {
     let ty = &body[body[op].operands[1]].ty;
     if matches!(SpirvType::try_from(ty), Ok(SpirvType::CoopMatrix { .. })) {
@@ -71,8 +59,6 @@ pub(crate) fn insertion_chain(body: &Body<'_>, mut op: OpId) -> Option<Vec<OpId>
     }
 }
 
-
-/// `isa<spirv::CompositeType>`.
 pub(crate) fn is_composite(t: &Type<'_>) -> bool {
     match SpirvType::try_from(t) {
         Ok(SpirvType::Array { .. } | SpirvType::RuntimeArray { .. } | SpirvType::Struct { .. } | SpirvType::Matrix { .. } | SpirvType::CoopMatrix { .. } | SpirvType::TensorArm { .. }) => true,
@@ -81,7 +67,6 @@ pub(crate) fn is_composite(t: &Type<'_>) -> bool {
     }
 }
 
-/// `getSplatAttrAndNumElements`: the value a composite constant repeats, and how often.
 pub(crate) fn splat<'a>(value: &Attribute<'a>, ty: Option<&Type<'a>>) -> Option<(Attribute<'a>, usize)> {
     if !is_composite(ty?) {
         return None;
@@ -91,14 +76,12 @@ pub(crate) fn splat<'a>(value: &Attribute<'a>, ty: Option<&Type<'a>>) -> Option<
         if !es.iter().all(|e| e == first) {
             return None;
         }
-        // The innermost repeated value of an array of composites.
         let inner_ty = element_type(first);
         return Some(match splat(first, inner_ty.as_ref()) {
             Some((a, n)) => (a, n * es.len()),
             None => (first.clone(), es.len()),
         });
     }
-    // A `dense<..> : !spirv.arm.tensor<..>` reads as the tensor of its shape.
     let c = Const::try_from(value).ok().or_else(|| {
         let Attribute::Builtin { name, body, ty: Some(t) } = value else { return None };
         let Ok(SpirvType::TensorArm { shape: Some(dims), elem }) = SpirvType::try_from(t) else { return None };
@@ -124,15 +107,9 @@ pub(crate) fn splat<'a>(value: &Attribute<'a>, ty: Option<&Type<'a>>) -> Option<
     Some((one, n))
 }
 
-/// `getArrayElemType`: a typed attribute's type, an array attribute's as a `spirv.array`.
 fn element_type<'a>(a: &Attribute<'a>) -> Option<Type<'a>> {
     match a {
         Attribute::Array(es) => Some(SpirvType::Array { len: es.len() as u32, elem: element_type(es.first()?)?.into(), stride: 0 }.into()),
         a => Const::try_from(a).ok().map(|c| c.ty),
     }
 }
-
-
-
-
-

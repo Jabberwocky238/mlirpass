@@ -1,7 +1,3 @@
-//! `populateGpuRewritePatterns`, as `AllReduceLowering.cpp`, `GlobalIdRewriter.cpp` and
-//! `ShuffleRewriter.cpp`: uniform `gpu.all_reduce` as subgroup shuffles through a workgroup
-//! buffer, `gpu.global_id` from block and thread ids, 64-bit shuffles as two 32-bit ones.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -12,17 +8,14 @@ use crate::{BlockId, Mapping, OpData, OpId, RegionId, Rewriter, ValueId};
 
 type Rw<'r, 'a> = Rewriter<'r, 'a>;
 
-/// `kSubgroupSize`.
 const SUBGROUP: i64 = 32;
 
-/// How two values combine: a `gpu.all_reduce` op kind, or its body.
 #[derive(Clone, Copy)]
 enum Accum<'k> {
     Kind(&'k str),
     Body(RegionId),
 }
 
-/// `GpuAllReduceRewriter` for one reduction.
 struct AllReduce<'k> {
     func: OpId,
     op: OpId,
@@ -48,7 +41,6 @@ fn cmp<'a>(rw: &mut Rw<'_, 'a>, pred: i64, a: ValueId, b: ValueId) -> ValueId {
     mk(rw, OpData::build("arith.cmpi").operands(&[a, b]).with("predicate", Attribute::i64(pred)), Type::int(1))
 }
 
-/// `splitBlock` at the insertion point; the new block.
 fn split_here(rw: &mut Rw<'_, '_>) -> BlockId {
     let ip = rw.ip.expect("an insertion point");
     match ip.before {
@@ -75,7 +67,6 @@ impl<'k> AllReduce<'k> {
         mk(rw, OpData::build("arith.index_cast").operands(&[v]), Type::int(32))
     }
 
-    /// `createIf`: then / else blocks branching to a continuation taking what they yield.
     fn create_if<'a>(rw: &mut Rw<'_, 'a>, cond: ValueId, then: &mut dyn FnMut(&mut Rw<'_, 'a>) -> Vec<ValueId>, other: &mut dyn FnMut(&mut Rw<'_, 'a>) -> Vec<ValueId>) {
         let current = rw.ip.expect("an insertion point").block;
         let then_b = split_here(rw);
@@ -100,8 +91,6 @@ impl<'k> AllReduce<'k> {
         }
     }
 
-    /// `gpu::BarrierOp(memrefToFence)`: a workgroup barrier fencing the buffer's GPU address
-    /// space.
     fn barrier(rw: &mut Rewriter<'_, '_>, buffer: ValueId) {
         let space = match &rw.body[buffer].ty {
             Type::Shaped(s) => s.extras.iter().find(|a| matches!(a, Attribute::Extended { ext, .. } if ext.name == "gpu.address_space")).map(Attribute::owned),
@@ -126,7 +115,6 @@ impl<'k> AllReduce<'k> {
         );
     }
 
-    /// The accumulator factory applied to `lhs` and `rhs`.
     fn accumulate<'a>(&self, rw: &mut Rw<'_, 'a>, lhs: ValueId, rhs: ValueId) -> ValueId {
         match self.accum {
             Accum::Kind(k) => Self::combine(rw, k, lhs, rhs),
@@ -166,7 +154,6 @@ impl<'k> AllReduce<'k> {
         }
     }
 
-    /// `vector::makeArithReduction` of `convertReductionKind(op)`.
     fn combine<'a>(rw: &mut Rw<'_, 'a>, kind: &str, a: ValueId, b: ValueId) -> ValueId {
         let ty = rw.body[a].ty.clone();
         let float = matches!(ty, Type::Float(_));
@@ -196,7 +183,6 @@ impl<'k> AllReduce<'k> {
         (rw.body[o].results[0], rw.body[o].results[1])
     }
 
-    /// `createSubgroupReduce`.
     fn subgroup_reduce<'a>(&self, rw: &mut Rw<'_, 'a>, active: ValueId, operand: ValueId) -> ValueId {
         let size = int(rw, SUBGROUP);
         let partial = cmp(rw, 2, active, size);
@@ -238,8 +224,6 @@ impl<'k> AllReduce<'k> {
         bin(rw, "arith.divsi", v, s)
     }
 
-    /// `addWorkgroupAttribution`: a `memref<32 x value, workgroup>` block argument after the
-    /// existing workgroup attributions.
     fn workgroup_buffer<'a>(&self, rw: &mut Rw<'_, 'a>) -> ValueId {
         let ty = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(vec![Dim::Static(SUBGROUP)]), elem: self.value_ty.clone().into(), extras: vec![Attribute::dialect("gpu.address_space", "<workgroup>")] }));
         let b = &*rw.body;
@@ -298,12 +282,10 @@ impl<'k> AllReduce<'k> {
     }
 }
 
-/// `populateGpuRewritePatterns`.
 pub struct GpuRewrite;
 
 #[crate::patterns]
 impl GpuRewrite {
-    /// `GpuAllReduceRewrite`: every uniform reduction of a `gpu.func`.
     #[rewrite("gpu.func")]
     fn gpu_all_reduce_rewrite(rw: &mut Rw<'_, '_>, func: OpId) -> bool {
         let mut reduces = Vec::new();
@@ -336,7 +318,6 @@ impl GpuRewrite {
         true
     }
 
-    /// `GpuGlobalIdRewriter`.
     #[rewrite("gpu.global_id")]
     fn gpu_global_id_rewriter(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let Some(d) = rw.body[op].get("dimension").cloned() else { return false };
@@ -352,7 +333,6 @@ impl GpuRewrite {
         true
     }
 
-    /// `GpuShuffleRewriter`: a 64-bit shuffle as its two halves.
     #[rewrite("gpu.shuffle")]
     fn gpu_shuffle_rewriter<'a>(rw: &mut Rw<'_, 'a>, op: OpId) -> bool {
         let ops = rw.body[op].operands.clone();
@@ -395,14 +375,10 @@ impl GpuRewrite {
     }
 }
 
-/// `populateGpuPromoteShuffleToAMDGPUPatterns`: a 64-wide constant xor shuffle as an
-/// `amdgpu.swizzle_bitmode` (offset below 32) ...
 pub struct GpuPromoteShuffleToSwizzle;
 
-/// ... or, on gfx950 and later, an `amdgpu.permlane_swap` (offset 16 or 32).
 pub struct GpuPromoteShuffleToPermlane;
 
-/// The constant offset of a 64-wide xor shuffle.
 fn xor64_offset(rw: &Rw<'_, '_>, op: OpId) -> Option<i64> {
     let b = &*rw.body;
     let mode = b[op].get("mode").and_then(|a| super::attrs::ShuffleMode::try_from(a).ok())?;
@@ -422,7 +398,6 @@ fn promoted<'a>(rw: &mut Rw<'_, 'a>, op: OpId, data: OpData<'a>) {
 
 #[crate::patterns]
 impl GpuPromoteShuffleToSwizzle {
-    /// `PromoteShuffleToSwizzlePattern`.
     #[rewrite("gpu.shuffle")]
     fn promote_shuffle_to_swizzle_pattern(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let Some(offset) = xor64_offset(rw, op).filter(|o| (0..32).contains(o)) else { return false };
@@ -435,7 +410,6 @@ impl GpuPromoteShuffleToSwizzle {
 
 #[crate::patterns]
 impl GpuPromoteShuffleToPermlane {
-    /// `PromoteShuffleToPermlanePattern`.
     #[rewrite("gpu.shuffle", benefit = 2)]
     fn promote_shuffle_to_permlane_pattern(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let Some(offset) = xor64_offset(rw, op).filter(|o| matches!(o, 16 | 32)) else { return false };

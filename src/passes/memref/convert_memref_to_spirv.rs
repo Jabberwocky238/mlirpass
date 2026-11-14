@@ -1,8 +1,5 @@
-//! `convert-memref-to-spirv`.
-
 use crate::{MemrefSpirvOptions, MemrefToSpirv, SpirvOptions, SpirvTypes, TargetEnv};
 
-/// `convert-memref-to-spirv`.
 #[crate::pass("convert-memref-to-spirv")]
 pub struct ConvertMemrefToSpirv {
     #[opt("bool-num-bits", default = 8)]

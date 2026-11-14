@@ -1,7 +1,3 @@
-//! The SPIR-V target environment (`TargetAndABI.cpp`): what a `#spirv.target_env` allows, and
-//! what ops and types need of it (`SPIRVConversionTarget::isLegalOp`, the type capability and
-//! extension visitors of `SPIRVTypes.cpp`).
-
 use alloc::collections::BTreeSet;
 use alloc::format;
 use alloc::string::String;
@@ -13,24 +9,18 @@ use mlirformat::{Attribute, Dim, FloatKind, ShapedKind, Type};
 use super::{Arg, Avail, EnumSpec, OpSpec};
 use crate::{Body, OpId};
 
-/// A conjunction of disjunctions: each inner list needs one of its names.
 pub type Needs = Vec<Vec<String>>;
 
-/// ⭐ `spirv::TargetEnv`.
 #[derive(Debug, Clone)]
 pub struct TargetEnv {
-    /// The minor of SPIR-V `1.x`.
     pub version: u8,
-    /// The capabilities given, as written.
     pub given_caps: Vec<String>,
     pub given_exts: Vec<String>,
     caps: BTreeSet<String>,
     exts: BTreeSet<String>,
-    /// The `#spirv.target_env<...>` text (the default's when none is found).
     pub text: String,
 }
 
-/// `getImpliedExtensions`: what each version brings without asking.
 const IMPLIED_EXTS: &[(u8, &[&str])] = &[
     (3, &["SPV_KHR_shader_draw_parameters", "SPV_KHR_16bit_storage", "SPV_KHR_device_group", "SPV_KHR_multiview", "SPV_KHR_storage_buffer_storage_class", "SPV_KHR_variable_pointers"]),
     (4, &["SPV_KHR_no_integer_wrap_decoration", "SPV_GOOGLE_decorate_string", "SPV_GOOGLE_hlsl_functionality1", "SPV_KHR_float_controls"]),
@@ -38,11 +28,9 @@ const IMPLIED_EXTS: &[(u8, &[&str])] = &[
     (6, &["SPV_KHR_non_semantic_info", "SPV_KHR_integer_dot_product", "SPV_KHR_terminate_invocation", "SPV_EXT_demote_to_helper_invocation"]),
 ];
 
-/// `getDefaultTargetEnv`: SPIR-V 1.0, `Shader`, default resource limits.
 const DEFAULT_TARGET_ENV: &str = "#spirv.target_env<#spirv.vce<v1.0, [Shader], []>, #spirv.resource_limits<>>";
 
 impl TargetEnv {
-    /// The `vce` triple of a `#spirv.target_env` / `#spirv.vce` attribute's text.
     fn vce(text: &str) -> Option<(u8, Vec<String>, Vec<String>)> {
         let at = text.find("#spirv.vce<")? + "#spirv.vce<".len();
         let body = &text[at..];
@@ -52,7 +40,6 @@ impl TargetEnv {
         Some((minor, lists.next()?, lists.next()?))
     }
 
-    /// The target `text` (`#spirv.target_env<...>`) describes.
     pub fn parse(text: &str) -> Option<Self> {
         let (version, given_caps, given_exts) = Self::vce(text)?;
         let mut exts: BTreeSet<String> = given_exts.iter().cloned().collect();
@@ -76,8 +63,6 @@ impl TargetEnv {
         Self::parse(DEFAULT_TARGET_ENV).expect("the default target env parses")
     }
 
-    /// `lookupTargetEnvOrDefault`: the `spirv.target_env` of the nearest symbol table at or
-    /// above `op` that has one.
     pub fn lookup(body: &Body<'_>, op: OpId) -> Self {
         let mut at = Some(op);
         while let Some(o) = at {
@@ -92,7 +77,6 @@ impl TargetEnv {
         Self::default_env()
     }
 
-    /// `TargetEnv::allows(ArrayRef<Capability>)`: the first of `ors` the target has.
     pub fn first_cap<'s>(&self, ors: &'s [String]) -> Option<&'s String> {
         ors.iter().find(|c| self.allows_cap(c))
     }
@@ -101,7 +85,6 @@ impl TargetEnv {
         ors.iter().find(|e| self.allows_ext(e))
     }
 
-    /// `getRecursiveImpliedCapabilities`: breadth first.
     pub fn implied(cap: &str) -> Vec<String> {
         let e = EnumSpec::of("Capability");
         let direct = |c: &str| e.and_then(|e| e.case(c)).map(|c| c.implies.iter().map(|i| String::from(*i)).collect::<Vec<_>>()).unwrap_or_default();
@@ -118,7 +101,6 @@ impl TargetEnv {
         all
     }
 
-    /// `lookupTargetEnv`: the nearest `spirv.target_env`, if any.
     pub fn find(body: &Body<'_>, op: OpId) -> Option<Self> {
         let mut at = Some(op);
         while let Some(o) = at {
@@ -132,7 +114,6 @@ impl TargetEnv {
         None
     }
 
-    /// The resource limits' `subgroup_size` (32 by default).
     pub fn subgroup_size(&self) -> u32 {
         self.text.split("subgroup_size").nth(1).and_then(|r| r.trim_start_matches([' ', '=']).split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()).unwrap_or(32)
     }
@@ -145,20 +126,14 @@ impl TargetEnv {
         self.exts.contains(e)
     }
 
-    /// `checkCapabilityRequirements` and `checkExtensionRequirements` together.
     pub fn satisfies(&self, caps: &Needs, exts: &Needs) -> bool {
         caps.iter().all(|ors| ors.iter().any(|c| self.allows_cap(c))) && exts.iter().all(|ors| ors.iter().any(|e| self.allows_ext(e)))
     }
 
-    /// `needsInterfaceVarABIAttrs`: the first of `Kernel` / `Shader` the target lists.
     pub fn shader(&self) -> bool {
         self.given_caps.iter().find(|c| *c == "Kernel" || *c == "Shader").is_some_and(|c| c == "Shader")
     }
 
-    // ---- types -------------------------------------------------------------------------
-
-    /// `getAddressingModel`: by the first of `Kernel` (`Physical32` / `Physical64`) and
-    /// `PhysicalStorageBufferAddresses` among the given capabilities, else `Logical`.
     pub fn addressing_model(&self, index64: bool) -> &'static str {
         for c in &self.given_caps {
             match &**c {
@@ -170,7 +145,6 @@ impl TargetEnv {
         "Logical"
     }
 
-    /// `spirv::ScalarType::classof`.
     pub fn is_scalar(t: &Type<'_>) -> bool {
         match t {
             Type::Integer { width, .. } => matches!(width, 1 | 8 | 16 | 32 | 64),
@@ -179,17 +153,14 @@ impl TargetEnv {
         }
     }
 
-    /// `CompositeType::isValid(VectorType)`.
     pub fn is_valid_vector(t: &Type<'_>) -> bool {
         matches!(t, Type::Shaped(s) if s.kind == ShapedKind::Vector && matches!(s.shape.as_deref(), Some([Dim::Static(2 | 3 | 4 | 8 | 16)])) && Self::is_scalar(&s.elem))
     }
 
-    /// `isa<spirv::SPIRVType>`.
     pub fn is_spirv_type(t: &Type<'_>) -> bool {
         Self::is_scalar(t) || Self::is_valid_vector(t) || matches!(t, Type::Extended(e) if e.name.starts_with("spirv."))
     }
 
-    /// The case `name` of enum `class`'s needs.
     fn case_needs(class: &str, name: &str, caps: &mut Needs, exts: &mut Needs) {
         if let Some(c) = EnumSpec::of(class).and_then(|e| e.case(name)) {
             Self::avail_needs(&c.avail, caps, exts);
@@ -201,7 +172,6 @@ impl TargetEnv {
         exts.extend(a.exts.iter().map(|g| g.iter().map(|e| String::from(*e)).collect()));
     }
 
-    /// What type `t` needs in storage class `storage` (`getCapabilities` / `getExtensions`).
     pub fn type_needs(t: &Type<'_>, storage: Option<&str>, caps: &mut Needs, exts: &mut Needs) {
         let one = |v: &[&str]| v.iter().map(|s| String::from(*s)).collect::<Vec<_>>();
         match t {
@@ -267,8 +237,6 @@ impl TargetEnv {
                 }
                 Ok(SpirvType::SampledImage(i)) => Self::type_needs(&i, storage, caps, exts),
                 Ok(SpirvType::Image { elem, params }) => {
-                    // By Dim, sampling, arrayedness and sampler use jointly (OpTypeImage's
-                    // capabilities), then the format's, then a 64-bit integer element's.
                     let p = |i: usize| params.get(i).map(|x| x.trim()).unwrap_or("");
                     let (multisampled, arrayed) = (p(3) == "MultiSampled", p(2) == "Arrayed");
                     let (no_sampler, need_sampler) = (p(4) == "NoSampler", p(4) == "NeedSampler");
@@ -327,19 +295,14 @@ impl TargetEnv {
         }
     }
 
-    /// Whether type `t` (in `storage`) is available.
     pub fn allows_type(&self, t: &Type<'_>, storage: Option<&str>) -> bool {
         let (mut caps, mut exts) = (Needs::new(), Needs::new());
         Self::type_needs(t, storage, &mut caps, &mut exts);
         self.satisfies(&caps, &exts)
     }
 
-    // ---- ops ---------------------------------------------------------------------------
-
-    /// What op `op` needs: its own availability and that of the enum values it holds.
     pub(crate) fn op_needs(body: &Body<'_>, op: OpId, spec: &OpSpec<'_>) -> (Option<u8>, Option<u8>, Needs, Needs) {
         let (mut lo, mut hi) = (spec.avail.min, spec.avail.max);
-        // `SelectOp::getMinVersion` (C++): a scalar condition picking whole composites is 1.4.
         if spec.name == "spirv.Select" {
             let cond = &body[body[op].operands[0]].ty;
             let res = &body[body[op].results[0]].ty;
@@ -367,7 +330,6 @@ impl TargetEnv {
         (lo, hi, caps, exts)
     }
 
-    /// `SPIRVConversionTarget::isLegalOp`.
     pub fn op_legal(&self, body: &Body<'_>, op: OpId) -> bool {
         let Some(spec) = OpSpec::of(&body[op].name) else { return false };
         let (lo, hi, caps, exts) = Self::op_needs(body, op, spec);

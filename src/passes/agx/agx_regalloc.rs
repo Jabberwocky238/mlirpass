@@ -1,13 +1,3 @@
-//! ⭐ `agx-regalloc`: a kernel's virtual USC instructions ⇒ GPRs ([`LinearScan`] over 16-bit halves),
-//! then `agx-wait`: the waits for the loads.
-//!
-//! A 32-bit value takes two halves aligned to two, a 64-bit one four aligned to four; GPRs start at r1 (r0l is the
-//! control flow's nesting counter in Mesa's compiler). Uniforms (`agx.usc.input {uniform}`: the base, the
-//! parameters) are where the USC Uniform word loads them. A store's data is copied into a run first; a load's
-//! destination is kept apart from its sources. Then each operand becomes its encoding's dictionary, as Mesa writes
-//! a register of that kind (tests/usc.mlir has them: `reg` the half, `size32`, `hint` 1, `sx` for the integer adders,
-//! `zx` for an index, a memory operand's `mask`), and the kernel gets `gprs` (halves: USC Registers' count).
-
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::vec;
@@ -18,11 +8,8 @@ use mlirformat::{Attribute, Error, Op};
 use crate::{AddOperand, AgxKernel, AgxSlot as Slot, AgxType, AluOperand, CmpselOperand, Dalu64Operand, DaluOperand, Enc, FloatOperand, MembaseOperand, MemindexOperand, MemoryOperand, MulOperand, Usc, UscBuild, UscInput, UscKind as Kind, UscOp};
 use crate::{Body, Groups, Heads, Kernels, LinearScan, OpId, Quiet, RegTarget, Rewriter, Updates, ValueId, pass};
 
-
-/// The GPR halves a kernel may use: from r1 (r0l is the nesting counter) up.
 const GPRS: core::ops::Range<u32> = 2..256;
 
-/// The register files as the linear scan sees them: 0 the GPR halves, 1 the uniform halves.
 struct Files;
 
 impl RegTarget for Files {
@@ -53,7 +40,6 @@ impl RegTarget for Files {
     }
 }
 
-/// One kernel being allocated: every change to it through a [`Rewriter`].
 pub(super) struct Alloc<'r, 'a> {
     pub(super) rw: Rewriter<'r, 'a>,
     pub(super) kernel: OpId,
@@ -64,7 +50,6 @@ impl<'a> Alloc<'_, 'a> {
         self.rw.body.block_ops(self.rw.body.top_block(self.kernel))
     }
 
-    /// A store's data copied into a run.
     fn prepare(&mut self) -> Result<Groups, Error> {
         let mut groups = Groups::new();
         let stores: Vec<OpId> = self.ops().into_iter().filter(|o| Usc::op(&self.rw.body[*o].name) == Some(UscOp::Store)).collect();
@@ -90,8 +75,6 @@ impl<'a> Alloc<'_, 'a> {
         Ok(groups)
     }
 
-    /// An operand of `kind` in the run of `n` values from `v` (its first half `half`), as Mesa encodes it; a float
-    /// source negated / absolute (`neg`, `abs`).
     fn operand(&self, kind: Enc, v: ValueId, half: u32, n: u32, (neg, abs): (bool, bool)) -> Result<Attribute<'a>, Error> {
         let uniform = matches!(AgxType::try_from(&self.rw.body[v].ty), Ok(AgxType::U(_)));
         let (neg, abs) = (u32::from(neg), u32::from(abs));
@@ -115,7 +98,6 @@ impl<'a> Alloc<'_, 'a> {
         })
     }
 
-    /// Every instruction with its operands encoded; the inputs gone; `gprs` on the kernel.
     fn rewrite(&mut self, reg: &BTreeMap<ValueId, u32>) -> Result<(), Error> {
         let mut top = GPRS.start;
         for (v, r) in reg {
@@ -130,7 +112,6 @@ impl<'a> Alloc<'_, 'a> {
                 continue;
             };
             let ins = inst.ins();
-            // a slot's encoding
             let kind = |slot: Slot| -> Result<Enc, Error> {
                 let f = match slot.index() {
                     None => ins.dests.first(),
@@ -153,7 +134,6 @@ impl<'a> Alloc<'_, 'a> {
                 if (0..n).any(|i| reg[&operands[k + i]] != first + 2 * i as u32) {
                     return Err(Error(format!("{inst:?}: {slot:?} not in consecutive registers")));
                 }
-                // a float source's modifiers
                 let has = |keys: [&str; 3]| slot.index().and_then(|i| keys.get(i)).is_some_and(|k| self.rw.body[op].get(k).is_some());
                 attrs.push((slot.key(), self.operand(kind(slot)?, operands[k], first, n as u32, (has(Slot::NEG), has(Slot::ABS)))?));
                 k += n;
@@ -182,8 +162,6 @@ impl<'a> Alloc<'_, 'a> {
         self.rw.update::<AgxKernel>(k, |k| k.gprs = Some(top))
     }
 
-    /// The GPR halves instruction `op` names: each operand's `reg` on, two halves a register (this backend's are all
-    /// 32-bit), as many registers as a memory operand's mask has bits; none for a uniform or an immediate.
     fn halves(&self, op: OpId) -> Result<BTreeSet<u32>, Error> {
         let Some(inst) = Usc::op(&self.rw.body[op].name) else { return Ok(BTreeSet::new()) };
         let ins = inst.ins();
@@ -198,7 +176,6 @@ impl<'a> Alloc<'_, 'a> {
         Ok(out)
     }
 
-    /// `agx-wait` on this kernel.
     pub(super) fn wait(&mut self) -> Result<(), Error> {
         let mut pending: BTreeSet<u32> = BTreeSet::new();
         for i in self.ops() {
@@ -210,7 +187,6 @@ impl<'a> Alloc<'_, 'a> {
                 pending.clear();
             }
             if Usc::op(&self.rw.body[i].name) == Some(UscOp::Load) {
-                // a load's destination is d0
                 let d0 = self.rw.body[i].get(Slot::D0.key()).cloned();
                 let enc = UscOp::Load.ins().dests.first().and_then(|f| match f.kind {
                     Kind::Operand(e) => Some(e),
@@ -227,7 +203,6 @@ impl<'a> Alloc<'_, 'a> {
     }
 }
 
-/// `agx-regalloc`.
 #[pass("agx-regalloc", on = "builtin.module")]
 pub fn agx_regalloc<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     for k in Kernels::all(body, op, AgxKernel::NAME) {

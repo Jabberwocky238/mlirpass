@@ -1,11 +1,3 @@
-//! `MemRefDescriptor` and `UnrankedMemRefDescriptor`, as `MemRefBuilder.cpp`: the struct a
-//! memref lowers to, built and taken apart with `llvm.insertvalue` / `llvm.extractvalue`.
-//!
-//! ```text
-//! ranked    { allocated ptr, aligned ptr, offset, sizes[rank], strides[rank] }
-//! unranked  { rank, ptr to a ranked descriptor }
-//! ```
-
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, Shaped, Type};
@@ -13,17 +5,14 @@ use mlirformat::{Attribute, Dim, Shaped, Type};
 use crate::{ConversionRewriter, Listener, LlvmOptions, MemrefLayout, OpData, Rewriter, ValueId};
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
-    /// `createIndexAttrConstant`: an `llvm.mlir.constant` of `v : index` typed `ty`.
     pub fn index_const(&mut self, ty: &Type<'a>, v: i64) -> ValueId {
         self.rw.index_const(ty, v)
     }
 
-    /// `MemRefDescriptor::pack` from the unpacked fields.
     pub fn pack_desc(&mut self, desc_ty: Type<'a>, rank: usize, fields: &[ValueId]) -> ValueId {
         self.rw.pack_desc(desc_ty, rank, fields)
     }
 
-    /// `MemRefDescriptor::unpack`.
     pub fn unpack_desc(&mut self, desc: ValueId, rank: usize) -> Vec<ValueId> {
         let mut out = Vec::new();
         for p in [0, 1, 2] {
@@ -38,7 +27,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         out
     }
 
-    /// `MemRefDescriptor::fromStaticShape`.
     pub fn desc_from_static(&mut self, opts: LlvmOptions, s: &Shaped<'a>, desc_ty: Type<'a>, ptr: ValueId, aligned: ValueId) -> Option<ValueId> {
         self.rw.desc_from_static(opts, s, desc_ty, ptr, aligned)
     }
@@ -61,7 +49,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.value(OpData::build("llvm.mlir.constant").with("value", value), ty.clone())
     }
 
-    /// `MemRefDescriptor::pack`: allocated, aligned, offset, then each (size, stride) pair.
     pub fn pack_desc(&mut self, desc_ty: Type<'a>, rank: usize, fields: &[ValueId]) -> ValueId {
         let mut d = self.value(OpData::build("llvm.mlir.poison"), desc_ty);
         for p in [0, 1, 2] {
@@ -74,14 +61,12 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         d
     }
 
-    /// `UnrankedMemRefDescriptor::pack`.
     pub fn pack_unranked(&mut self, desc_ty: Type<'a>, fields: &[ValueId]) -> ValueId {
         let mut d = self.value(OpData::build("llvm.mlir.poison"), desc_ty);
         d = self.insert_at(d, fields[0], &[0]);
         self.insert_at(d, fields[1], &[1])
     }
 
-    /// `MemRefDescriptor::fromStaticShape`: the pointers, then offset, sizes and strides constant.
     pub fn desc_from_static(&mut self, opts: LlvmOptions, s: &Shaped<'a>, desc_ty: Type<'a>, ptr: ValueId, aligned: ValueId) -> Option<ValueId> {
         let (strides, offset) = s.strides_and_offset()?;
         let idx = opts.index();

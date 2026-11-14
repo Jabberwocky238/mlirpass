@@ -1,5 +1,3 @@
-//! The `rdna2` passes: a kernel's registers, then its waits; a stream's packets and padding; the image's layout.
-
 mod rdna2_layout;
 mod rdna2_pad;
 mod rdna2_pm4;

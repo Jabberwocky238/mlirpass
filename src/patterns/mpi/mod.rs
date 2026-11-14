@@ -1,20 +1,13 @@
-//! `mpi` canonicalization (`MPIOps.cpp`): `comm_rank` / `comm_size` of the world
-//! communicator from the DLTI entries, and the static source of a `memref.cast` buffer.
-
 use mlirformat::{arith, Attribute, Dim, Type};
 
 use crate::{Body, OpId, Rewriter, ValueId};
 
-/// The DLTI keys `FoldToDLTIConst` reads.
 const WORLD_RANK: &str = "MPI:comm_world_rank";
 const WORLD_SIZE: &str = "MPI:comm_world_size";
 
-/// `mpi`'s rewrite patterns.
 pub struct MpiCanon;
 
 impl MpiCanon {
-    /// `dlti::query(op, {key})`: the integer `key` maps to in the closest `#dlti.map` of an
-    /// enclosing op.
     fn dlti(b: &Body<'_>, op: OpId, key: &str) -> Option<i64> {
         let quoted = alloc::format!("\"{key}\"");
         let mut at = b.parent_op(op);
@@ -37,7 +30,6 @@ impl MpiCanon {
         None
     }
 
-    /// `FoldToDLTIConst`: of the world communicator, an `i32` constant.
     fn fold_to_dlti(rw: &mut Rewriter<'_, '_>, op: OpId, key: &str) -> bool {
         let b = &*rw.body;
         if b.def_named(b[op].operands[0], "mpi.comm_world").is_none() || b[op].results.len() != 1 {
@@ -52,7 +44,6 @@ impl MpiCanon {
         true
     }
 
-    /// `FoldCast`: a dynamically shaped buffer that is a `memref.cast` of a static one.
     fn fold_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
         let static_shape = |v: ValueId| b[v].ty.dims().is_some_and(|d| !d.contains(&Dim::DYNAMIC));

@@ -1,6 +1,3 @@
-//! Every float literal `mlir-opt` 22.1.8 printed in the fixtures reads back and prints the same:
-//! `ApFloat::print` is `printFloatValue`.
-
 mod common;
 
 use std::collections::BTreeSet;

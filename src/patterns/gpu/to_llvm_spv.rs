@@ -1,6 +1,3 @@
-//! `gpu` ⇒ `llvm` for SPIR-V (OpenCL builtins), as `GPUToLLVMSPV.cpp`: barriers, launch
-//! configuration, shuffles and subgroup queries as calls of the mangled builtins.
-
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -14,7 +11,6 @@ use crate::{CConv, ConversionRewriter, LlvmOptions, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// An OpenCL builtin: name, parameters, result, and whether it is memory-free / convergent.
 struct SpirvFn<'s, 'a> {
     name: &'s str,
     params: Vec<Type<'a>>,
@@ -24,9 +20,6 @@ struct SpirvFn<'s, 'a> {
 }
 
 impl<'a> SpirvFn<'_, 'a> {
-    /// `lookupOrCreateSPIRVFn` then `createSPIRVBuiltinCall`: declared (when missing) at the
-    /// start of the symbol table around `op`, called with the declaration's calling convention
-    /// and attributes.
     fn call(&self, cr: &mut Cr<'_, 'a, '_>, op: OpId, args: &[ValueId]) -> Option<OpId> {
         let module = cr.module_of(op)?;
         let f = match cr.rw.body.lookup(module, self.name).filter(|f| cr.rw.body[*f].name == "llvm.func") {
@@ -70,7 +63,6 @@ impl<'a> SpirvFn<'_, 'a> {
 }
 
 impl ShuffleMode {
-    /// `getBaseName`.
     const fn spirv_builtin(self) -> &'static str {
         match self {
             ShuffleMode::Idx => "sub_group_shuffle",
@@ -81,19 +73,13 @@ impl ShuffleMode {
     }
 }
 
-/// The gpu ⇒ llvm patterns for SPIR-V (`populateGpuToLLVMSPVConversionPatterns`, but
-/// `gpu.func` / `gpu.return` / `gpu.printf`: [`GpuToLlvm`](crate::GpuToLlvm)).
 pub struct GpuToLlvmSpv;
 
-/// The SPIR-V backend's `CLK_LOCAL_MEM_FENCE` / `CLK_GLOBAL_MEM_FENCE`.
 const LOCAL_MEM_FENCE: i64 = 1;
 const GLOBAL_MEM_FENCE: i64 = 2;
 
 #[patterns(converter, options = LlvmOptions)]
 impl GpuToLlvmSpv {
-    /// `GPUBarrierConversion`: `barrier(flags)`, `CLK_LOCAL_MEM_FENCE` for workgroup memory and
-    /// `CLK_GLOBAL_MEM_FENCE` for global memory among the address spaces it orders (both when
-    /// none are named).
     #[convert("gpu.barrier")]
     fn barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let i32t = Type::int(32);
@@ -115,7 +101,6 @@ impl GpuToLlvmSpv {
         true
     }
 
-    /// `LaunchConfigConversion`: `name(dimension)`, index-typed.
     fn launch(cr: &mut Cr<'_, '_, '_>, op: OpId, o: LlvmOptions, name: &str) -> bool {
         let Some(dim) = cr.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok()) else { return false };
         let i32t = Type::int(32);
@@ -153,7 +138,6 @@ impl GpuToLlvmSpv {
         Self::launch(cr, op, o, "_Z13get_global_idj")
     }
 
-    /// `getTypeMangling`.
     fn mangling(t: &Type<'_>) -> Option<&'static str> {
         Some(match t {
             Type::Float(FloatKind::F16) => "Dhj",
@@ -167,7 +151,6 @@ impl GpuToLlvmSpv {
         })
     }
 
-    /// `getSubgroupSize`: the enclosing `llvm.func`'s `intel_reqd_sub_group_size`.
     fn subgroup_size(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<i128> {
         let b = &*cr.rw.body;
         let mut at = b.parent_op(op);
@@ -180,12 +163,9 @@ impl GpuToLlvmSpv {
         }
     }
 
-    /// `GPUShuffleConversion`: a constant width equal to the subgroup size; bf16 through i16,
-    /// i1 through i8; always valid.
     #[convert("gpu.shuffle")]
     fn shuffle<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let width = cr.rw.body[op].operands[2];
-        // (without a required subgroup size, any width)
         if Self::subgroup_size(cr, op).is_some_and(|n| cr.rw.body.int_constant(width) != Some(n)) {
             return false;
         }
@@ -218,7 +198,6 @@ impl GpuToLlvmSpv {
         true
     }
 
-    /// `GPUSubgroupOpConversion`: an `i32` builtin, zero-extended to a wider index.
     fn subgroup(cr: &mut Cr<'_, '_, '_>, op: OpId, o: LlvmOptions, name: &str) -> bool {
         if o.index_bitwidth < 32 {
             return false;

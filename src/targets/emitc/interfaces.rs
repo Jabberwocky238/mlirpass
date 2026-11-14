@@ -1,5 +1,3 @@
-//! `ConvertToEmitCPatternInterface`: what each dialect adds to `convert-to-emitc`.
-
 use alloc::vec::Vec;
 
 use crate::{ConversionPatterns, DialectInterfaces, TypeConverter};
@@ -15,17 +13,13 @@ use crate::MemrefToEmitc;
 #[cfg(feature = "dialect.scf")]
 use crate::ScfToEmitc;
 
-/// One dialect's `ConvertToEmitCPatternInterface`: the types it adds to the converter (told
-/// whether `size_t` is in use), and its patterns.
 struct ToEmitc {
     ns: &'static str,
-    /// Its conversions need `size_t`.
     size_t: bool,
     types: Option<fn(&mut TypeConverter<'_>, bool)>,
     populate: for<'p> fn(&mut ConversionPatterns<'p>, usize, Option<bool>),
 }
 
-/// The `ConvertToEmitCPatternInterface`s; [`Default`]: the upstream dialects this crate lowers.
 pub struct ToEmitcInterfaces {
     by_dialect: Vec<ToEmitc>,
 }
@@ -40,12 +34,10 @@ impl ToEmitcInterfaces {
         self
     }
 
-    /// Whether dialect `ns`'s conversions need `size_t`.
     pub fn uses_size_t(&self, ns: &str) -> bool {
         self.by_dialect.iter().any(|d| d.ns == ns && d.size_t)
     }
 
-    /// Adds dialect `ns`'s type conversions to `tc`.
     pub fn types(&self, ns: &str, tc: &mut TypeConverter<'_>, size_t: bool) {
         if let Some(f) = self.by_dialect.iter().find(|d| d.ns == ns).and_then(|d| d.types) {
             f(tc, size_t);
@@ -55,7 +47,6 @@ impl ToEmitcInterfaces {
 
 impl Default for ToEmitcInterfaces {
     fn default() -> Self {
-        // (none without a dialect feature)
         #[allow(unused_mut)]
         let mut s = Self::new();
         #[cfg(feature = "dialect.arith")]
@@ -66,14 +57,12 @@ impl Default for ToEmitcInterfaces {
         s.register("memref", false, None, |p, i, _| MemrefToEmitc::populate(p, i));
         #[cfg(feature = "dialect.scf")]
         s.register("scf", true, Some(|tc, _| Emitc::size_t_conversions(tc)), |p, i, _| ScfToEmitc::populate(p, i));
-        // The test dialect's (`TestToEmitCDialectInterface`): only its memref element type.
         s.register("test", false, Some(|tc, _| Emitc::test_conversions(tc)), |_, _, _| {});
         s
     }
 }
 
 impl DialectInterfaces for ToEmitcInterfaces {
-    /// `lowerToCpp`, if the pass sets it.
     type Env<'e> = Option<bool>;
 
     fn dialects(&self) -> Vec<&'static str> {

@@ -1,6 +1,3 @@
-//! `nvvm` ⇒ `llvm.inline_asm`, as `NVVMToLLVM.cpp` with `BasicPtxBuilderInterface.cpp`: the ops
-//! that build their own PTX, when no intrinsic covers them.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -14,10 +11,8 @@ use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `kSharedMemorySpace`.
 const SHARED: u32 = 3;
 
-/// `PTXRegisterMod`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mod {
     Read,
@@ -35,7 +30,6 @@ impl Mod {
     }
 }
 
-/// The ops with a `BasicPtxBuilderInterface`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PtxOp {
     InlinePtx,
@@ -70,7 +64,6 @@ impl TryFrom<&str> for PtxOp {
     }
 }
 
-/// `NVVM::WGMMATypes`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WgmmaType {
     F16,
@@ -93,7 +86,6 @@ impl WgmmaType {
     }
 }
 
-/// The case of `#nvvm.<attr><case>` among `names`.
 fn nv_case<T: Copy>(a: Option<&Attribute<'_>>, attr: &str, names: &[(&'static str, T)]) -> Option<T> {
     let Some(Attribute::Extended { ext, .. }) = a else { return None };
     if ext.name != attr {
@@ -103,7 +95,6 @@ fn nv_case<T: Copy>(a: Option<&Attribute<'_>>, attr: &str, names: &[(&'static st
     names.iter().find(|(n, _)| *n == b).map(|(_, v)| *v)
 }
 
-/// `#nvvm.shape<m = .., n = .., k = ..>`.
 fn shape(a: Option<&Attribute<'_>>) -> Option<[i64; 3]> {
     let Some(Attribute::Extended { ext, .. }) = a else { return None };
     let b = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?;
@@ -116,7 +107,6 @@ fn shape(a: Option<&Attribute<'_>>) -> Option<[i64; 3]> {
     Some(out)
 }
 
-/// `PtxBuilder`.
 #[derive(Default)]
 struct Ptx {
     operands: Vec<ValueId>,
@@ -126,7 +116,6 @@ struct Ptx {
 }
 
 impl Ptx {
-    /// `getRegisterType` of a type.
     fn register(t: &Type<'_>) -> Option<char> {
         let scalar = |t: &Type<'_>| -> Option<char> {
             Some(match t {
@@ -166,7 +155,6 @@ impl Ptx {
         scalar(t)
     }
 
-    /// `PtxBuilder::insertValue`.
     fn insert(&mut self, cr: &mut Cr<'_, '_, '_>, v: ValueId, m: Mod) -> Option<()> {
         self.mods.push(m);
         let ty = cr.rw.body[v].ty.clone();
@@ -201,7 +189,6 @@ impl Ptx {
         Some(())
     }
 
-    /// `canonicalizeRegisterConstraints`: `+X` as `=X` and the tied indices appended.
     fn canonical(csv: &str) -> String {
         let mut out = Vec::new();
         let mut plus = Vec::new();
@@ -219,7 +206,6 @@ impl Ptx {
         out.join(",")
     }
 
-    /// The `{$rwN}` / `{$wN}` / `{$rN}` placeholders: kind, number, where.
     fn placeholders(ptx: &str) -> Vec<(Mod, u32, usize, usize)> {
         let b = ptx.as_bytes();
         let mut out = Vec::new();
@@ -250,7 +236,6 @@ impl Ptx {
         out
     }
 
-    /// `rewriteAsmPlaceholders`: read-writes first, then writes, then reads, each sorted.
     fn rewrite_placeholders(ptx: &str) -> String {
         let found = Self::placeholders(ptx);
         let mut ids: Vec<(Mod, u32)> = Vec::new();
@@ -271,12 +256,10 @@ impl Ptx {
         out + &ptx[prev..]
     }
 
-    /// `needsPackUnpack`.
     fn pack(&self, manual: bool, n_results: usize) -> bool {
         !manual && n_results + self.mods.iter().filter(|m| **m == Mod::ReadWrite).count() > 1
     }
 
-    /// `PtxBuilder::build` then `buildAndReplaceOp`.
     fn finish<'a>(mut self, cr: &mut Cr<'_, 'a, '_>, op: OpId, ptx: String, predicate: bool, manual: bool) {
         let results = cr.rw.body[op].results.clone();
         let result_types: Vec<Type<'a>> = cr.rw.body.types(&results);
@@ -297,12 +280,10 @@ impl Ptx {
         let constraints = Self::canonical(&self.constraints);
         let mut ptx = if manual { ptx } else { Self::rewrite_placeholders(&ptx) };
         if predicate {
-            // `getPredicateConstraintIndex`: the last constraint but the tied ones after it.
             let tokens: Vec<&str> = constraints.split(',').collect();
             let tied = tokens.iter().rev().take_while(|t| t.trim().parse::<u32>().is_ok()).count();
             ptx = format!("@%{} {ptx}", tokens.len() - tied - 1);
         }
-        // `%N` placeholders become `$N`; a `%` before anything else (`%tid.x`) stays.
         let mut mapped = String::with_capacity(ptx.len());
         let mut chars = ptx.chars().peekable();
         while let Some(c) = chars.next() {
@@ -323,8 +304,6 @@ impl Ptx {
                 cr.replace(op, asm_results.into_iter().map(|r| vec![r]).collect());
                 return;
             }
-            // Read-write only, no declared result: the asm's result is the operand's value after
-            // it, for the operand's other uses.
             if let (Some(&post), Some(&(_, v))) = (asm_results.first(), zipped.iter().find(|(m, _)| *m == Mod::ReadWrite)) {
                 cr.rw.replace_uses_if(v, post, |_, u| u.op != op && u.op != asm);
             }
@@ -353,7 +332,6 @@ impl Ptx {
     }
 }
 
-/// The nvvm ⇒ llvm patterns (`populateNVVMToLLVMConversionPatterns`).
 pub struct NvvmToLlvm;
 
 #[patterns]
@@ -362,7 +340,6 @@ impl NvvmToLlvm {
         cr.rw.body.dense_i64(op, "operandSegmentSizes").iter().map(|&n| n as usize).collect()
     }
 
-    /// `getPredicate`.
     fn predicate(cr: &Cr<'_, '_, '_>, op: OpId, kind: PtxOp) -> Option<ValueId> {
         let ops = &cr.rw.body[op].operands;
         let last = || ops.last().copied();
@@ -378,7 +355,6 @@ impl NvvmToLlvm {
         matches!(LlvmType::try_from(&cr.rw.body[v].ty), Ok(LlvmType::Ptr(SHARED)))
     }
 
-    /// `getPtx`.
     fn ptx(cr: &Cr<'_, '_, '_>, op: OpId, kind: PtxOp) -> Option<String> {
         let b = &*cr.rw.body;
         let ops = &b[op].operands;
@@ -434,12 +410,10 @@ impl NvvmToLlvm {
         })
     }
 
-    /// The `#nvvm.wgmma_type` of attribute `name`.
     fn wgmma_type(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> Option<WgmmaType> {
         nv_case(cr.rw.body[op].get(name), "nvvm.wgmma_type", &WgmmaType::NAMES)
     }
 
-    /// `WgmmaMmaAsyncOp::getPtx`.
     fn wgmma_ptx(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<String> {
         let [m, n, k] = shape(cr.rw.body[op].get("shape"))?;
         let (a, bt, d) = (Self::wgmma_type(cr, op, "typeA")?, Self::wgmma_type(cr, op, "typeB")?, Self::wgmma_type(cr, op, "typeD")?);
@@ -469,7 +443,6 @@ impl NvvmToLlvm {
         cr.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(32))
     }
 
-    /// `getAsmValues`: the values and their modifiers; whether the op maps registers itself.
     fn asm_values(cr: &mut Cr<'_, '_, '_>, op: OpId, kind: PtxOp) -> Option<(Vec<(ValueId, Mod)>, bool)> {
         let b = &*cr.rw.body;
         let ops = b[op].operands.clone();
@@ -518,7 +491,6 @@ impl NvvmToLlvm {
             _ => {
                 out.extend(results.iter().map(|v| (*v, Mod::Write)));
                 out.extend(ops.iter().map(|v| (*v, Mod::Read)));
-                // Integer attributes as `i32` constants, in name order.
                 let ints: Vec<i64> = cr.all_attrs(op).iter().filter_map(|a| match &a.value {
                     Some(Attribute::Int { lit, .. }) => lit.parse().ok(),
                     Some(Attribute::Bool(v)) => Some(i64::from(*v)),
@@ -533,7 +505,6 @@ impl NvvmToLlvm {
         Some((out, false))
     }
 
-    /// `PtxLowering`.
     #[convert("nvvm.inline_ptx", "nvvm.mbarrier.init", "nvvm.mbarrier.arrive.expect_tx", "nvvm.mbarrier.try_wait.parity", "nvvm.barrier.arrive", "nvvm.cp.async.bulk.tensor.shared.cluster.global", "nvvm.cp.async.bulk.tensor.global.shared.cta", "nvvm.prefetch", "nvvm.wgmma.mma_async", benefit = 2)]
     fn ptx_lowering(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Ok(kind) = PtxOp::try_from(&*cr.rw.body[op].name) else { return false };

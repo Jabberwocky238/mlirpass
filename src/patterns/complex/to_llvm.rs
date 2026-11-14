@@ -1,6 +1,3 @@
-//! `complex` ⇒ `llvm`, as `ComplexToLLVM.cpp`, on the builder and division algorithms
-//! `complex-to-standard` shares (`ComplexCommon`).
-
 use alloc::vec::Vec;
 
 use crate::patterns;
@@ -10,12 +7,10 @@ use crate::{ComplexCx as Cx, Fmf, ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `complex` ⇒ `llvm`, as `ComplexToLLVM.cpp`.
 pub struct ComplexToLlvm;
 
 #[patterns(converter, improved: bool)]
 impl ComplexToLlvm {
-    /// The element type, the struct type, and a builder.
     fn begin<'c, 'r, 'a, 'p>(cr: &'c mut Cr<'r, 'a, 'p>, op: OpId) -> Option<(Cx<'c, 'r, 'a, 'p>, Type<'a>)> {
         let ct = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
         let st = cr.type_converter()?.convert(&ct)?;
@@ -24,7 +19,6 @@ impl ComplexToLlvm {
         Some((b, st))
     }
 
-    /// Both operands unpacked: (lhs re, lhs im, rhs re, rhs im).
     fn unpack(b: &mut Cx<'_, '_, '_, '_>, o: &[Vec<ValueId>]) -> (ValueId, ValueId, ValueId, ValueId) {
         let lr = b.field(o[0][0], 0);
         let li = b.field(o[0][0], 1);
@@ -89,7 +83,6 @@ impl ComplexToLlvm {
         let (re, im) = match &*name {
             "complex.add" => (b.add(lr, rr, fmf), b.add(li, ri, fmf)),
             "complex.sub" => (b.sub(lr, rr, fmf), b.sub(li, ri, fmf)),
-            // `contract`: fused, `re = fma(lr, rr, -(li * ri))`, `im = fma(lr, ri, li * rr)`.
             "complex.mul" if fmf.contract() => {
                 let ii = b.mul(li, ri, fmf);
                 let neg = b.neg(ii, fmf);

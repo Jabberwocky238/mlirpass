@@ -1,11 +1,7 @@
-//! `linalg-fold-unit-extent-dims`, as `Linalg/Transforms/DropUnitDims.cpp`: the
-//! [`DropUnitDimsStrategy`] rules through `walkAndApplyPatterns`, then its canonicalizations greedily.
-
 use mlirformat::Error;
 
 use crate::{pass, Body, DropUnitDimsStrategy as Strategy, GreedyConfig, OpId, Run};
 
-/// `linalg-fold-unit-extent-dims`.
 #[pass("linalg-fold-unit-extent-dims")]
 pub struct LinalgFoldUnitExtentDims {
     #[opt("use-rank-reducing-slices")]
@@ -23,4 +19,3 @@ impl Run for LinalgFoldUnitExtentDims {
         Ok(())
     }
 }
-

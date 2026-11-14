@@ -1,6 +1,3 @@
-//! `tosa` ⇒ `scf`, as `TosaToSCF.cpp`: `tosa.cond_if` ⇒ `scf.if`, `tosa.while_loop` ⇒
-//! `scf.while`, `tosa.scatter` ⇒ a loop nest of slices.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -9,12 +6,10 @@ use crate::patterns;
 
 use crate::{ConversionRewriter as Cr, Listener, OpData, OpId, RegionId, Rewriter, TypedOp, ValueId};
 
-/// The tosa ⇒ scf patterns.
 pub struct TosaToScf;
 
 #[patterns]
 impl TosaToScf {
-    /// `IfOpConverter`: the condition extracted, both graphs moved into an `scf.if`.
     #[convert("tosa.cond_if")]
     fn cond_if(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (cond, inputs) = cr.rw.body[op].operands.split_first().map(|(c, i)| (*c, i.to_vec())).expect("tosa.cond_if has a condition");
@@ -38,8 +33,6 @@ impl TosaToScf {
         true
     }
 
-    /// `WhileOpConverter`: the graphs moved into an `scf.while`; the condition graph ends in
-    /// `scf.condition` of its extracted boolean, the body in `scf.yield`.
     #[convert("tosa.while_loop")]
     fn while_loop(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let inits = cr.rw.body[op].operands.clone();
@@ -57,8 +50,6 @@ impl TosaToScf {
         true
     }
 
-    /// `ScatterOpConverter`: over N and W, the input's `1 x 1 x C` slice inserted at the row
-    /// `indices[n, w]` names.
     #[convert("tosa.scatter")]
     fn scatter(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let &[values_in, indices, input] = &cr.rw.body[op].operands[..] else { return false };
@@ -103,13 +94,11 @@ impl TosaToScf {
         Self::result(rw, &arith::Constant::new(Attribute::index(v), Type::Index))
     }
 
-    /// `createOrFold<tensor::DimOp>`: the index constant stays, the dim may fold away.
     fn tensor_dim<'a, L: Listener<'a> + ?Sized>(rw: &mut Rewriter<'_, 'a, L>, t: ValueId, d: i64) -> ValueId {
         let k = Self::cidx(rw, d);
         rw.create_or_fold(OpData::build("tensor.dim").operands(&[t, k]), &[Type::Index])[0]
     }
 
-    /// `tensor.extract %t[indices]`.
     fn extract<'a, L: Listener<'a> + ?Sized>(rw: &mut Rewriter<'_, 'a, L>, t: ValueId, indices: &[ValueId]) -> ValueId {
         let ty = rw.body[t].ty.clone();
         let Type::Shaped(s) = &ty else { unreachable!("tensor.extract of a tensor") };
@@ -117,8 +106,6 @@ impl TosaToScf {
         Self::result(rw, &tensor::ExtractOp::new(t.into(), Self::values(indices), ty, Type::Index, elem))
     }
 
-    /// The `tosa.yield` ending `region` ⇒ `scf.yield` of its operands, or (`cond`) `scf.condition`
-    /// of its extracted first operand and the block's arguments.
     fn retire_yield(cr: &mut Cr<'_, '_, '_>, region: RegionId, cond: Option<()>) {
         let head = cr.rw.body[region].blocks[0];
         let Some(y) = cr.rw.body.last_op(head) else { return };
@@ -141,4 +128,3 @@ impl TosaToScf {
         cr.rw.ip = saved;
     }
 }
-

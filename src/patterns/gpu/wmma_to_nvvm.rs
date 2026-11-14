@@ -1,7 +1,3 @@
-//! `gpu` subgroup MMA ⇒ `nvvm.wmma.*`, as `WmmaOpsToNvvm.cpp`: matrices as structs of
-//! registers (`convertMMAToLLVMType`), loads / stores / mma as the NVVM WMMA ops where an
-//! intrinsic exists for the shape and types (the tables of [`wmma_nvvm.gen.rs`]).
-
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -15,14 +11,12 @@ use crate::{ConversionRewriter, LlvmOptions, MemrefToLlvm, OpData, OpId, TypeCon
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `NVVM::MMALayout`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MmaLayout {
     Row,
     Col,
 }
 
-/// `NVVM::MMATypes` (the ones WMMA has).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MmaType {
     F16,
@@ -34,7 +28,6 @@ pub enum MmaType {
     S32,
 }
 
-/// `NVVM::MMAFrag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MmaFrag {
     A,
@@ -79,7 +72,6 @@ impl MmaFrag {
     }
 }
 
-/// `gpu::MMAElementwiseOp` (`#gpu<mma_element_wise ..>`), the cases NVVM lowers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Elementwise {
     AddF,
@@ -102,7 +94,6 @@ impl TryFrom<&Attribute<'_>> for Elementwise {
     }
 }
 
-/// `!gpu.mma_matrix<RxCxT, "AOp" | "BOp" | "COp">`.
 #[derive(Debug, Clone)]
 pub struct MmaMatrix {
     pub rows: i64,
@@ -135,7 +126,6 @@ impl TryFrom<&Type<'_>> for MmaMatrix {
 }
 
 impl MmaMatrix {
-    /// `getElementType`.
     fn mma_type(&self) -> Option<MmaType> {
         Some(match &self.elem {
             Type::Float(FloatKind::F16) => MmaType::F16,
@@ -149,7 +139,6 @@ impl MmaMatrix {
         })
     }
 
-    /// `NVVM::inferMMAType`: the register type and count.
     fn registers(&self) -> Option<(Type<'static>, usize)> {
         let ab = matches!(self.frag, MmaFrag::A | MmaFrag::B);
         let f16x2 = Type::vector(&[2], &[false], Type::Float(FloatKind::F16));
@@ -176,7 +165,6 @@ impl MmaMatrix {
         })
     }
 
-    /// `convertMMAToLLVMType`: a struct of the registers (one `f64` alone).
     pub fn llvm(&self) -> Option<Type<'static>> {
         let (t, n) = self.registers()?;
         if t == Type::Float(FloatKind::F64) && n == 1 {
@@ -186,7 +174,6 @@ impl MmaMatrix {
     }
 }
 
-/// `configureGpuToNVVMTypeConverter`'s MMA matrix conversion.
 pub fn convert_mma_types(tc: &mut TypeConverter<'_>) {
     tc.conversion(|t| {
         let m = MmaMatrix::try_from(t).ok()?;
@@ -198,12 +185,10 @@ fn infer(table: &[(i64, i64, MmaType, i64)], a: i64, b: i64, t: MmaType) -> i64 
     table.iter().find(|(x, y, e, _)| *x == a && *y == b && *e == t).map_or(0, |r| r.3)
 }
 
-/// The NVVM WMMA patterns (`populateGpuWMMAToNVVMConversionPatterns`).
 pub struct WmmaToNvvm;
 
 #[patterns(converter, options = LlvmOptions)]
 impl WmmaToNvvm {
-    /// `areAllLLVMTypes`.
     fn llvm_operands(cr: &Cr<'_, '_, '_>, operands: &[Vec<ValueId>]) -> bool {
         operands.iter().flatten().all(|v| LlvmType::compatible(&cr.rw.body[*v].ty))
     }
@@ -227,7 +212,6 @@ impl WmmaToNvvm {
         Attribute::dialect("nvvm.mma_type", &format!("<{}>", t.name()))
     }
 
-    /// The element pointer of a load / store (`getStridedElementPtr`) and its stride constant.
     fn ptr_and_stride(cr: &mut Cr<'_, '_, '_>, op: OpId, memref: usize, desc: ValueId, indices: &[ValueId], o: LlvmOptions) -> Option<(ValueId, ValueId)> {
         let mt = cr.rw.body[cr.rw.body[op].operands[memref]].ty.clone();
         let mlirformat::Type::Shaped(s) = &mt else { return None };
@@ -239,7 +223,6 @@ impl WmmaToNvvm {
         Some((ptr, stride))
     }
 
-    /// `WmmaLoadOpToNVVMLowering`.
     #[convert("gpu.subgroup_mma_load_matrix")]
     fn load(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         if !Self::llvm_operands(cr, operands) {
@@ -264,7 +247,6 @@ impl WmmaToNvvm {
         true
     }
 
-    /// `WmmaStoreOpToNVVMLowering`.
     #[convert("gpu.subgroup_mma_store_matrix")]
     fn store(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         if !Self::llvm_operands(cr, operands) {
@@ -291,7 +273,6 @@ impl WmmaToNvvm {
         true
     }
 
-    /// `WmmaMmaOpToNVVMLowering`.
     #[convert("gpu.subgroup_mma_compute")]
     fn compute(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         if !Self::llvm_operands(cr, operands) {
@@ -320,7 +301,6 @@ impl WmmaToNvvm {
         true
     }
 
-    /// `WmmaConstantOpToNVVMLowering`: the value in every register (and vector lane).
     #[convert("gpu.subgroup_mma_constant_matrix")]
     fn constant(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         if !Self::llvm_operands(cr, operands) {
@@ -351,7 +331,6 @@ impl WmmaToNvvm {
         true
     }
 
-    /// `createMinMaxF`: NaN-propagating min / max.
     fn min_max(cr: &mut Cr<'_, '_, '_>, a: ValueId, b: ValueId, min: bool) -> ValueId {
         let ty = cr.rw.body[a].ty.clone();
         let i1 = match &ty {
@@ -359,14 +338,12 @@ impl WmmaToNvvm {
             _ => Type::int(1),
         };
         let fcmp = |cr: &mut Cr<'_, '_, '_>, pred: i64, i1: &Type<'_>| cr.build(OpData::build("llvm.fcmp").operands(&[a, b]).with("predicate", Attribute::i64(pred)).with("fastmathFlags", Attribute::dialect("llvm.fastmath", "<none>")), i1.clone().owned());
-        // `olt` 4, `ogt` 2, `uno` 14.
         let cmp = fcmp(cr, if min { 4 } else { 2 }, &i1);
         let sel = cr.build(OpData::build("llvm.select").operands(&[cmp, a, b]), ty.clone());
         let nan_c = fcmp(cr, 14, &i1);
         let elem = ty.element_type().clone();
         let Type::Float(k) = elem else { return sel };
         let nan = mlirformat::ApFloat::nan(k);
-        // `getFloatAttr(floatType, NaN)`: a scalar attribute, also for a vector constant.
         let value: Attribute<'_> = mlirformat::Const::scalar(mlirformat::Scalar::Float(nan), Type::Float(k)).into();
         let n = cr.llvm_constant(value, ty.clone());
         cr.build(OpData::build("llvm.select").operands(&[nan_c, n, sel]), ty)
@@ -384,7 +361,6 @@ impl WmmaToNvvm {
         }
     }
 
-    /// `WmmaElementwiseOpToNVVMLowering`: register by register.
     #[convert("gpu.subgroup_mma_elementwise")]
     fn elementwise(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         if !Self::llvm_operands(cr, operands) {

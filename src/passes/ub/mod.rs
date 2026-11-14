@@ -1,5 +1,3 @@
-//! `ub` passes.
-
 #[cfg(feature = "target.llvm")]
 mod convert_ub_to_llvm;
 #[cfg(feature = "target.llvm")]

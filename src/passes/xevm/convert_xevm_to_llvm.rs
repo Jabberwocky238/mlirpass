@@ -1,5 +1,3 @@
-//! `convert-xevm-to-llvm`.
-
 use core::sync::atomic::AtomicU32;
 
 use mlirformat::Error;
@@ -8,12 +6,8 @@ use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, GreedyConfig, Mode, OpId, PatternSet, Run};
 use crate::{XevmOptions, XevmToLlvm, XevmVectorExtract};
 
-/// `convert-xevm-to-llvm`, as `ConvertXeVMToLLVMPass`: the xevm ops illegal, llvm's legal but a load or store with a
-/// `cache_control` and a local alloca; then the vector extracts narrowed (`HandleVectorExtractPattern`, greedily,
-/// no folding).
 #[pass("convert-xevm-to-llvm")]
 pub struct ConvertXevmToLlvm {
-    /// The counters naming the globals the patterns make, kept across runs as mlir-opt's process-wide ones.
     names: AtomicU32,
     allocas: AtomicU32,
 }

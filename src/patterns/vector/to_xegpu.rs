@@ -1,7 +1,3 @@
-//! `vector` ⇒ `xegpu`, as `VectorToXeGPU.cpp`: loads and stores (transfers too, on chips with
-//! 2-D block I/O) as nd descriptors, the rest as gathers and scatters on the flat address,
-//! row-major contractions as `xegpu.dpas`.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -31,8 +27,6 @@ fn shaped<'a>(kind: ShapedKind, shape: &[i64], elem: Type<'a>) -> Type<'a> {
     Type::Shaped(alloc::boxed::Box::new(Shaped { kind, shape: Some(shape.iter().map(|&n| if n == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(n) }).collect()), elem: elem.into(), extras: Vec::new() }))
 }
 
-/// `TensorDescType::get(shape, elem, array_length 1, boundary_check, global)`: the encoding
-/// only when the boundary check is off.
 fn tensor_desc<'a>(shape: &[i64], elem: &Type<'_>, boundary_check: bool) -> Option<Type<'a>> {
     let dims: String = shape.iter().map(|d| format!("{d}x")).collect();
     let enc = if boundary_check { String::new() } else { String::from(", #xegpu.block_tdesc_attr<boundary_check = false>") };
@@ -40,7 +34,6 @@ fn tensor_desc<'a>(shape: &[i64], elem: &Type<'_>, boundary_check: bool) -> Opti
     mlirformat::Parser::read(&text, |p| p.ty()).ok().map(|t| t.owned())
 }
 
-/// The builders the lowerings share.
 trait Xg<'a> {
     fn mk(&mut self, data: OpData<'a>, ty: Type<'a>) -> ValueId;
     fn bin(&mut self, name: &str, a: ValueId, b: ValueId) -> ValueId;
@@ -64,12 +57,10 @@ impl<'a> Xg<'a> for Rw<'_, 'a> {
         self.mk(OpData::build("vector.broadcast").operands(&[v]), ty)
     }
 
-    /// `getAsOpFoldResult`.
     fn ofr_of(&self, v: ValueId) -> Ofr {
         self.body.int_constant(v).map_or(Ofr::V(v), |c| Ofr::C(c as i64))
     }
 
-    /// `memref.extract_strided_metadata` of `m`: base, offset, sizes, strides.
     fn strided_metadata(&mut self, m: ValueId) -> Option<(ValueId, ValueId, Vec<ValueId>, Vec<ValueId>)> {
         let s = memref_of(&self.body[m].ty)?.clone();
         let rank = s.shape.as_ref().map_or(0, Vec::len);
@@ -81,11 +72,9 @@ impl<'a> Xg<'a> for Rw<'_, 'a> {
     }
 }
 
-/// The vector ⇒ xegpu patterns (`populateVectorToXeGPUConversionPatterns`).
 pub struct VectorToXegpu;
 
 impl VectorToXegpu {
-    /// `xegpu::getChipStr` is pvc, bmg or cri (2-D block I/O).
     fn block_io(rw: &Rw<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
         let mut at = b.parent_op(op);
@@ -96,7 +85,6 @@ impl VectorToXegpu {
         matches!(ts.iter().find_map(Chip::of_target), Some(Chip::Pvc | Chip::Bmg | Chip::Cri))
     }
 
-    /// `transferPreconditions`.
     fn transfer_ok(rw: &Rw<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
         let (base, _, _, mask) = b.xfer_parts(op);
@@ -104,7 +92,6 @@ impl VectorToXegpu {
             return false;
         }
         let Some(s) = memref_of(&b[base].ty) else { return false };
-        // Strides known, not a 0-D memref, contiguous innermost.
         if !s.strides_and_offset().is_some_and(|(st, _)| st.last() == Some(&1)) {
             return false;
         }
@@ -120,8 +107,6 @@ impl VectorToXegpu {
         Self::projected_permutation(&map) && map.results.iter().rev().take(rank as usize).all(|e| matches!(e, AffineExpr::Dim(d) if *d >= map.dims - rank))
     }
 
-    /// `XeGPUDialect::isSharedMemory`: memory space 3, `#xegpu.memory_space<slm>`,
-    /// `#xevm.addr_space<shared>` or `#gpu.address_space<workgroup>`.
     pub(crate) fn shared_memory(t: &Type<'_>) -> bool {
         let Some(s) = memref_of(t) else { return false };
         match s.memory_space() {
@@ -134,15 +119,12 @@ impl VectorToXegpu {
         }
     }
 
-    /// `storeLoadPreconditions`: a 1-D or 2-D vector of integers or floats, the memref's
-    /// elements integers or floats.
     fn store_load_ok(vt: &Type<'_>, mt: &Type<'_>) -> bool {
         let scalar = |t: &Type<'_>| matches!(t, Type::Integer { .. } | Type::Float(_));
         let (Type::Shaped(v), Some(m)) = (vt, memref_of(mt)) else { return false };
         matches!(v.dims().map(|d| d.len()), Some(1 | 2)) && scalar(&v.elem) && scalar(&m.elem)
     }
 
-    /// `xegpu.create_mem_desc` of SLM memref `base`: `!xegpu.mem_desc<shape x elem>`.
     fn mem_desc(rw: &mut Rw<'_, '_>, base: ValueId) -> Option<ValueId> {
         let s = memref_of(&rw.body[base].ty)?.clone();
         let dims: String = s.dims()?.iter().map(|d| format!("{d}x")).collect();
@@ -150,7 +132,6 @@ impl VectorToXegpu {
         Some(rw.mk(OpData::build("xegpu.create_mem_desc").operands(&[base]), ty))
     }
 
-    /// `isProjectedPermutation(false)`: distinct dims.
     fn projected_permutation(m: &AffineMap) -> bool {
         let mut seen = Vec::new();
         m.syms == 0
@@ -168,11 +149,8 @@ impl VectorToXegpu {
         m.dims >= n && m.results.iter().enumerate().all(|(i, e)| matches!(e, AffineExpr::Dim(d) if *d == m.dims - n + i as u32))
     }
 
-    /// `adjustStridesForPermutation`: through `inverseAndBroadcastProjectedPermutation` and
-    /// `isPermutationOfMinorIdentityWithBroadcasting`.
     fn permute_strides(m: &AffineMap, strides: Vec<ValueId>) -> Vec<ValueId> {
         let n_res = m.results.len() as u32;
-        // The inverse: `dims` results over `n_res` inputs, a 0 where an input is unused.
         let mut inv: Vec<Option<u32>> = vec![None; m.dims as usize];
         for (i, e) in m.results.iter().enumerate() {
             if let AffineExpr::Dim(d) = e {
@@ -206,7 +184,6 @@ impl VectorToXegpu {
         perm.iter().map(|&p| strides[p as usize]).collect()
     }
 
-    /// `computeMemrefMeta`: the strides (permuted for a transfer) and the offset of `base`.
     fn memref_meta(rw: &mut Rw<'_, '_>, op: OpId, base: ValueId) -> Option<(Vec<ValueId>, ValueId)> {
         let s = memref_of(&rw.body[base].ty)?.clone();
         let mut strides = Vec::new();
@@ -221,7 +198,6 @@ impl VectorToXegpu {
             }
         }
         if strides.is_empty() || offset.is_none() {
-            // The base as `memref<elem>`, without a memory space.
             let rank = s.shape.as_ref().map_or(0, Vec::len);
             let types: Vec<Type<'_>> = [shaped(ShapedKind::MemRef, &[], (*s.elem).clone()), Type::Index].into_iter().chain(core::iter::repeat_n(Type::Index, 2 * rank)).collect();
             let o = rw.create(OpData::build("memref.extract_strided_metadata").operands(&[base]), &types);
@@ -235,9 +211,6 @@ impl VectorToXegpu {
         Some((strides, offset?))
     }
 
-    /// `computeOffsets` of a transfer: the strided steps of each vector dimension (the strides
-    /// permuted to the vector's order), broadcast and summed, plus the linearized indices (the
-    /// memref's order).
     fn transfer_offsets(rw: &mut Rw<'_, '_>, op: OpId, strides: &[ValueId], mut base: ValueId) -> Option<ValueId> {
         let shape = vector_shape(&rw.body.xfer_vector_type(op))?;
         let (_, indices, _, _) = rw.body.xfer_parts(op);
@@ -271,7 +244,6 @@ impl VectorToXegpu {
         Some(rw.bin("arith.addi", b, local))
     }
 
-    /// `computeOffsets` of a gather / scatter.
     fn gather_offsets(rw: &mut Rw<'_, '_>, offsets: &[ValueId], indices: ValueId, strides: &[ValueId], mut base: ValueId) -> ValueId {
         for (o, s) in offsets.iter().zip(strides) {
             let c = rw.bin("arith.muli", *o, *s);
@@ -285,14 +257,11 @@ impl VectorToXegpu {
         rw.bin("arith.addi", bv, si)
     }
 
-    /// `memrefToIndexPtr`.
     fn index_ptr(rw: &mut Rw<'_, '_>, base: ValueId) -> ValueId {
         let p = rw.mk(OpData::build("memref.extract_aligned_pointer_as_index").operands(&[base]), Type::Index);
         rw.mk(OpData::build("arith.index_cast").operands(&[p]), Type::int(64))
     }
 
-    /// `convertMemrefAndOffsetsToTargetRank`: the leading dimensions taken by a rank-reducing
-    /// subview.
     fn to_rank(rw: &mut Rw<'_, '_>, m: ValueId, offsets: Vec<Ofr>, rank: usize) -> Option<(ValueId, Vec<Ofr>)> {
         let s = memref_of(&rw.body[m].ty)?.clone();
         let shape = s.dims()?;
@@ -322,8 +291,6 @@ impl VectorToXegpu {
         Some((rw.body[o].results[0], offsets[combined..].to_vec()))
     }
 
-    /// `createNdDescriptor`: the memref itself when static, else its adjusted base address with
-    /// the sizes and strides.
     fn nd_desc<'a>(rw: &mut Rw<'_, 'a>, desc: Type<'a>, src: ValueId) -> Option<ValueId> {
         let s = memref_of(&rw.body[src].ty)?.clone();
         let (strides, offset) = s.strides_and_offset()?;
@@ -337,7 +304,6 @@ impl VectorToXegpu {
         let bytes = rw.bin("arith.muli", off, size);
         let addr = rw.bin("arith.addi", ptr, bytes);
         let addr = rw.mk(OpData::build("arith.index_cast").operands(&[addr]), Type::int(64));
-        // `getConstifiedMixedSizes` / `getConstifiedMixedStrides`: the result type's statics first.
         let constify = |rw: &Rw<'_, '_>, vals: &[ValueId], statics: &[i64]| -> Vec<Ofr> { vals.iter().zip(statics).map(|(v, s)| if *s != Dim::DYNAMIC { Ofr::C(*s) } else { rw.ofr_of(*v) }).collect() };
         let shape = s.dims()?;
         let sizes = constify(rw, &sizes_v, &shape);
@@ -346,7 +312,6 @@ impl VectorToXegpu {
         Some(rw.mk(data, desc))
     }
 
-    /// An nd op on `desc` at `offsets` (`const_offsets` and the dynamic ones).
     fn nd_op<'a>(name: &str, lead: &[ValueId], offsets: &[Ofr]) -> OpData<'a> {
         let (statics, dynamics) = Ofr::split(offsets);
         let mut ops = lead.to_vec();
@@ -354,7 +319,6 @@ impl VectorToXegpu {
         OpData::build(name).operands(&ops).with("const_offsets", Attribute::dense_i64(&statics))
     }
 
-    /// `lowerToScatteredLoadOp` / `lowerToScatteredStoreOp`.
     fn scattered(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let read = rw.body[op].name == "vector.transfer_read";
         let (base, _, value, _) = rw.body.xfer_parts(op);
@@ -375,8 +339,6 @@ impl VectorToXegpu {
         true
     }
 
-    /// The loaded or stored vector's nd descriptor at the op's indices (`LoadLowering` /
-    /// `StoreLowering` / the transfers): source, its offsets and the descriptor.
     fn nd_source<'a>(rw: &mut Rw<'_, 'a>, base: ValueId, indices: &[ValueId], desc: Type<'a>, rank: usize) -> Option<(ValueId, Vec<Ofr>)> {
         let offs: Vec<Ofr> = indices.iter().map(|v| rw.ofr_of(*v)).collect();
         let (src, offs) = Self::to_rank(rw, base, offs, rank)?;
@@ -387,7 +349,6 @@ impl VectorToXegpu {
 
 #[crate::patterns]
 impl VectorToXegpu {
-    /// `TransferReadLowering`.
     #[rewrite("vector.transfer_read")]
     fn transfer_read_lowering(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         if !Self::transfer_ok(rw, op) {
@@ -399,8 +360,6 @@ impl VectorToXegpu {
         let (base, indices, padding, _) = rw.body.xfer_parts(op);
         let Some(map) = rw.body.affine_map(op, "permutation_map") else { return false };
         let mt = rw.body[base].ty.clone();
-        // Shared local memory: `xegpu.load_matrix` of a mem_desc (1-D / 2-D, no transpose, in
-        // bounds).
         if Self::shared_memory(&mt) {
             if !matches!(shape.len(), 1 | 2) || !Self::minor_identity(&map) || oob {
                 return false;
@@ -424,7 +383,6 @@ impl VectorToXegpu {
         if oob && !Self::zero_constant(rw, padding) {
             return false;
         }
-        // A transpose: two results, the last two inputs swapped.
         let n = map.dims;
         let transpose = map.results.len() == 2 && n >= 2 && map.results[0] == AffineExpr::Dim(n - 1) && map.results[1] == AffineExpr::Dim(n - 2);
         let Type::Shaped(s) = &vt else { return false };
@@ -449,7 +407,6 @@ impl VectorToXegpu {
         true
     }
 
-    /// `TransferWriteLowering`.
     #[rewrite("vector.transfer_write")]
     fn transfer_write_lowering(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         if !Self::transfer_ok(rw, op) {
@@ -460,7 +417,6 @@ impl VectorToXegpu {
         let Some(shape) = vector_shape(&vt) else { return false };
         let (base, indices, value, _) = rw.body.xfer_parts(op);
         let mt = rw.body[base].ty.clone();
-        // Shared local memory: `xegpu.store_matrix` into a mem_desc (1-D / 2-D).
         if Self::shared_memory(&mt) {
             if !matches!(shape.len(), 1 | 2) {
                 return false;
@@ -491,7 +447,6 @@ impl VectorToXegpu {
         true
     }
 
-    /// `LoadLowering`.
     #[rewrite("vector.load")]
     fn load_lowering(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let vt = rw.body[rw.body[op].results[0]].ty.clone();
@@ -509,7 +464,6 @@ impl VectorToXegpu {
         true
     }
 
-    /// `StoreLowering`.
     #[rewrite("vector.store")]
     fn store_lowering(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let ops = rw.body[op].operands.clone();
@@ -527,10 +481,8 @@ impl VectorToXegpu {
         true
     }
 
-    /// `GatherLowering`: a gather of the flat address, the pass-through selected in.
     #[rewrite("vector.gather")]
     fn gather_lowering(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
-        // base, offsets.., indices, mask, pass_thru
         let ops = rw.body[op].operands.clone();
         let n = ops.len();
         if n < 4 || memref_of(&rw.body[ops[0]].ty).is_none() {
@@ -548,10 +500,8 @@ impl VectorToXegpu {
         true
     }
 
-    /// `ScatterLowering`.
     #[rewrite("vector.scatter")]
     fn scatter_lowering(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
-        // base, offsets.., indices, mask, value
         let ops = rw.body[op].operands.clone();
         let n = ops.len();
         if n < 4 || memref_of(&rw.body[ops[0]].ty).is_none() {
@@ -567,7 +517,6 @@ impl VectorToXegpu {
         true
     }
 
-    /// `ContractionLowering`: a row-major 2-D matmul adding into its accumulator.
     #[rewrite("vector.contract")]
     fn contraction_lowering(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -593,7 +542,6 @@ impl VectorToXegpu {
 }
 
 impl VectorToXegpu {
-    /// `isZeroConstant`: an `arith.constant` integer or float zero.
     fn zero_constant(rw: &Rw<'_, '_>, v: ValueId) -> bool {
         let Some(d) = rw.body.def_named(v, "arith.constant") else { return false };
         let Some(c) = rw.body[d].get("value").and_then(|a| crate::Const::try_from(a).ok()) else { return false };
@@ -605,7 +553,6 @@ impl VectorToXegpu {
             }
     }
 
-    /// `isRowMajorMatmul`: `(m, k) x (k, n) -> (m, n)`.
     fn row_major_matmul(maps: &[AffineMap]) -> bool {
         let [a, b, c] = maps else { return false };
         if [a, b, c].iter().any(|m| m.results.len() != 2 || m.syms != 0) {
@@ -617,14 +564,10 @@ impl VectorToXegpu {
     }
 }
 
-/// `populatePrepareVectorToMMAPatterns` (without nvgpu): contractions into `(m, k) × (k, n) ⇒
-/// (m, n)` form, transposes folded into the transfer reads they read.
 pub struct PrepareVectorToMma;
 
 #[crate::patterns]
 impl PrepareVectorToMma {
-    /// `PrepareContractToGPUMMA`: a gemm contraction's operands transposed / swapped so its maps
-    /// are the row-major matmul's.
     #[rewrite("vector.contract")]
     fn prepare_contract_to_gpu_mma(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -635,7 +578,6 @@ impl PrepareVectorToMma {
         }
         let Some(Attribute::Array(maps)) = b[op].get("indexing_maps") else { return false };
         let Some(maps) = maps.iter().map(|m| AffineMap::try_from(m).ok()).collect::<Option<Vec<AffineMap>>>() else { return false };
-        // The maps' results as (m, n, k) = (d0, d1, d2) positions.
         let pairs: Option<Vec<[u32; 2]>> = maps
             .iter()
             .map(|m| match (m.dims, m.syms, m.results.as_slice()) {
@@ -646,7 +588,6 @@ impl PrepareVectorToMma {
         let Some(pairs) = pairs else { return false };
         let (m, n, k) = (0, 1, 2);
         let is = |want: [[u32; 2]; 3]| pairs.as_slice() == want.as_slice();
-        // (transpose lhs, transpose rhs, swap first)
         let (swap, t_lhs, t_rhs) = if is([[m, k], [k, n], [m, n]]) {
             return false;
         } else if is([[m, k], [n, k], [m, n]]) {
@@ -679,7 +620,6 @@ impl PrepareVectorToMma {
             let t = shaped(ShapedKind::Vector, &[d[1], d[0]], (*s.elem).clone());
             rw.mk(OpData::build("vector.transpose").operands(&[v]).with("permutation", Attribute::dense_i64(&[1, 0])), t)
         };
-        // As upstream creates them: the rhs transpose first.
         if t_rhs {
             rhs = transpose(rw, rhs);
         }
@@ -696,8 +636,6 @@ impl PrepareVectorToMma {
         true
     }
 
-    /// `CombineTransferReadOpTranspose`: `transpose(transfer_read)` (through an `ext`) as one
-    /// transfer read with the permutation composed.
     #[rewrite("vector.transpose")]
     fn combine_transfer_read_op_transpose(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -737,9 +675,6 @@ impl PrepareVectorToMma {
 }
 
 impl PrepareVectorToMma {
-    /// `promoteAllocasToSLM`: every `memref.alloca` outside shared local memory moved into it
-    /// (memory space 3), the new type carried through the side-effect-free ops that make memrefs
-    /// of it.
     pub fn promote_allocas(body: &mut crate::Body<'_>, root: OpId) {
         let mut allocas = Vec::new();
         body.walk(root, &mut |o| allocas.push(o));
@@ -750,14 +685,12 @@ impl PrepareVectorToMma {
         }
     }
 
-    /// `v`'s type in memory space 3, and so on through the memref-making users.
     fn to_slm(body: &mut crate::Body<'_>, v: ValueId) {
         let ty = body[v].ty.clone();
         let Type::Shaped(mut s) = ty else { return };
         if s.kind != ShapedKind::MemRef || VectorToXegpu::shared_memory(&body[v].ty) {
             return;
         }
-        // `IntegerAttr 3 : i64`, which a memref type prints (and reads) bare.
         let space = Attribute::Int { lit: "3".into(), ty: None };
         match s.memory_space().is_some() {
             true => {

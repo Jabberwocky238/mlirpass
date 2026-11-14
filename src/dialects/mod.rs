@@ -1,6 +1,3 @@
-//! ⭐ The upstream dialects' [`OpInterfaces`](crate::OpInterfaces): one unit struct per
-//! dialect, answering for its ops what their C++ interface methods compute.
-
 #[cfg(feature = "dialect.affine")]
 mod affine;
 #[cfg(feature = "dialect.agx")]
@@ -121,7 +118,6 @@ use crate::{Body, OpId};
 
 #[cfg(any(feature = "dialect.tensor", feature = "dialect.memref"))]
 impl Body<'_> {
-    /// `tensor.dim` / `memref.dim`: speculatable when the index is a constant in range.
     fn dim_speculatability(&self, op: OpId) -> Option<bool> {
         let i = self.int_constant(self[op].operands[1])?;
         let rank = self[self[op].operands[0]].ty.shape()?.len() as i128;

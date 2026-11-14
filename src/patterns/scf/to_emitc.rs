@@ -1,5 +1,3 @@
-//! `scf` ⇒ `emitc`, as `SCFToEmitC.cpp`: results and loop-carried values live in variables.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -11,21 +9,17 @@ use crate::{ConversionRewriter, OpData, OpId, RegionId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// Variables and the types they hold.
 type Vars<'a> = Vec<(ValueId, Type<'a>)>;
 
-/// The scf ⇒ emitc patterns.
 pub struct ScfToEmitc;
 
 #[patterns(converter)]
 impl ScfToEmitc {
-    /// An uninitialized `emitc.variable` of `ty`.
     fn variable<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>) -> ValueId {
         let data = OpData::build("emitc.variable").with("value", Attribute::dialect("emitc.opaque", "<\"\">"));
         cr.build(data, EmitcType::lvalue(ty))
     }
 
-    /// `createVariablesForResults`: one variable per result, before `op`.
     fn result_vars<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId) -> Option<Vars<'a>> {
         let results = cr.rw.body[op].results.clone();
         if results.is_empty() {
@@ -42,24 +36,20 @@ impl ScfToEmitc {
         Some(vars)
     }
 
-    /// `assignValues`.
     fn assign(cr: &mut Cr<'_, '_, '_>, values: &[ValueId], vars: &Vars<'_>) {
         for (v, (var, _)) in values.iter().zip(vars) {
             cr.rw.create(OpData::build("emitc.assign").operands(&[*var, *v]), &[]);
         }
     }
 
-    /// `loadValues`.
     fn load<'a>(cr: &mut Cr<'_, 'a, '_>, vars: &Vars<'a>) -> Vec<ValueId> {
         vars.iter().map(|(var, ty)| cr.emitc("emitc.load", &[*var], ty.clone())).collect()
     }
 
-    /// The remapped `values`, one each.
     fn remapped(cr: &mut Cr<'_, '_, '_>, values: &[ValueId]) -> Option<Vec<ValueId>> {
         cr.remap(values, None)?.into_iter().map(|v| v.first().copied()).collect()
     }
 
-    /// `lowerYield`: the yielded values assigned to `vars`, then an `emitc.yield`.
     fn lower_yield(cr: &mut Cr<'_, '_, '_>, vars: &Vars<'_>, yield_op: OpId) -> bool {
         let saved = cr.rw.ip;
         cr.rw.set_before(yield_op);
@@ -72,20 +62,17 @@ impl ScfToEmitc {
         true
     }
 
-    /// The terminator of `region`'s last block.
     fn terminator(cr: &Cr<'_, '_, '_>, region: RegionId) -> Option<OpId> {
         let b = &*cr.rw.body;
         b[region].blocks.last().and_then(|blk| b.last_op(*blk))
     }
 
-    /// `lowerRegion`: `region` moved into `into`, its yield lowered.
     fn lower_region(cr: &mut Cr<'_, '_, '_>, vars: &Vars<'_>, region: RegionId, into: RegionId) -> bool {
         cr.inline_region(region, into, None);
         let Some(t) = Self::terminator(cr, into) else { return false };
         Self::lower_yield(cr, vars, t)
     }
 
-    /// `ForLowering`.
     #[convert("scf.for")]
     fn for_op(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         if cr.rw.body[op].get("unsignedCmp").is_some() {
@@ -121,7 +108,6 @@ impl ScfToEmitc {
         true
     }
 
-    /// `IfLowering`.
     #[convert("scf.if")]
     fn if_op(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -143,7 +129,6 @@ impl ScfToEmitc {
         true
     }
 
-    /// `IndexSwitchOpLowering`: the cases, then the default.
     #[convert("scf.index_switch")]
     fn switch(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -167,11 +152,9 @@ impl ScfToEmitc {
         true
     }
 
-    /// `WhileLowering`: an `emitc.do` whose condition reads a variable.
     #[convert("scf.while")]
     fn while_op(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(results) = Self::result_vars(cr, op) else { return false };
-        // `createVariablesForLoopCarriedValues`.
         let saved = cr.rw.ip;
         cr.rw.set_before(op);
         let mut loop_vars = Vec::new();
@@ -191,7 +174,6 @@ impl ScfToEmitc {
         true
     }
 
-    /// `lowerDoWhile`.
     fn do_while<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, loop_vars: &Vars<'a>, results: &Vars<'a>) -> bool {
         let i1 = Type::int(1);
         let cond_var = Self::variable(cr, &i1);
@@ -251,5 +233,4 @@ impl ScfToEmitc {
         cr.rw.create(OpData::build("emitc.yield").operands(&[e]), &[]);
         true
     }
-
 }

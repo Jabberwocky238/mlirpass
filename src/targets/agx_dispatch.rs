@@ -1,15 +1,3 @@
-//! ⭐ One compute dispatch as agx ops, as Mesa does it (gallium agx_state.c `agx_build_pipeline` / `agx_launch`,
-//! libagx_dgc.h `agx_cdm_launch` / `agx_cdm_barrier`, lib/agx_usc.h):
-//!
-//! - the pipeline (USC words, 64-byte aligned, one after another): USC Uniform (the parameter buffer into uniforms
-//!   u0 ...: the 64-bit base, then the parameters), USC Shared (none: `agx_usc_shared_none`), USC Shader (the code's
-//!   USC address, unk_2 3), USC Registers (the kernel's GPR halves), USC No Preshader;
-//! - the parameter buffer (`image.words`): the base (the USC window, `Agx::BASE`), then each parameter, a place as its
-//!   offset from the window (what the shader adds the base to);
-//! - the CDM stream: Launch Word 0 (the uniform halves), Launch Word 1 (the pipeline's USC address), Global size (in
-//!   threads: workgroups × 16), Local size (16), the barrier Mesa puts after every launch (G13G's bits); agx-end
-//!   adds Stream Terminate.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -20,18 +8,14 @@ use mlirformat::{Attribute, Error};
 use crate::{A, AGX_PARAM_UNIFORM as PARAM_UNIFORM, AGX_PARAMS as PARAMS, AGX_SHARED_LAYOUT_VERTEX_COMPUTE as SHARED_LAYOUT_VERTEX_COMPUTE, AGX_WORKGROUP as WORKGROUP, AgxImage as Agx, Fill, ImageTarget, ImageWords as Words, OpData};
 use crate::{CdmBarrier, CdmGlobalSize, CdmLaunchWord0, CdmLaunchWord1, CdmLocalSize, UscNoPreshader, UscRegisters, UscShader, UscShared, UscUniform};
 
-/// ⭐ A dispatch of `kernel` (its symbol) over `groups` workgroups (x) with `params`.
 pub struct AgxDispatch {
     pub kernel: String,
-    /// The kernel's `gprs` (agx-regalloc).
     pub gprs: u32,
     pub groups: u32,
-    /// Numbers, or places (`A::Sym`: passed as their offset from the USC window).
     pub params: Vec<A>,
 }
 
 impl AgxDispatch {
-    /// `@x - BASE`: a place as the shader's 32-bit address.
     fn offset<'a>(name: &str) -> Attribute<'a> {
         Attribute::Array(vec![A::sym(name).into(), Attribute::Int { lit: format!("-{}", Agx::BASE).into(), ty: None }])
     }
@@ -43,7 +27,6 @@ impl AgxDispatch {
         }
     }
 
-    /// Struct op `s`, detached.
     fn op<'a, O>(s: &O) -> OpData<'a>
     where
         for<'o> mlirformat::Operation<'static>: TryFrom<&'o O, Error = Error>,
@@ -51,17 +34,14 @@ impl AgxDispatch {
         OpData::of(s).expect("a struct op serializes").0
     }
 
-    /// `@x - BASE` as a field.
     fn place(name: &str) -> Fill {
         Fill::at(name, -(Agx::BASE as i64))
     }
 
-    /// The uniform halves the kernel reads: the base and the parameters.
     fn uniforms(&self) -> u32 {
         PARAM_UNIFORM + 2 * self.params.len() as u32
     }
 
-    /// ⭐ The pipeline's ops (to place in the USC window, each `sym_name` / `align` set), named `pipeline`.
     pub fn pipeline<'a>(&self, params: &str) -> Vec<OpData<'a>> {
         let words = vec![
             AgxDispatch::op(&UscUniform { start_halfs: Some(0.into()), size_halfs: Some(self.uniforms().into()), buffer: Some(Fill::at(params, 0)), ..Default::default() })
@@ -75,7 +55,6 @@ impl AgxDispatch {
         words.into_iter().enumerate().map(|(i, w)| if i == 0 { w } else { w.with("align", A::from(1u32).into()) }).collect()
     }
 
-    /// ⭐ The parameter buffer: `image.words` named `params`.
     pub fn params<'a>(&self) -> Result<OpData<'a>, Error> {
         if self.params.len() > PARAMS {
             return Err(Error(format!("{} parameters, a kernel takes {PARAMS}", self.params.len())));
@@ -85,7 +64,6 @@ impl AgxDispatch {
         Ok(OpData::of(&Words::new(A::str("params").into(), values, None, None))?.0)
     }
 
-    /// ⭐ The CDM stream's ops.
     pub fn stream<'a>(&self) -> Vec<OpData<'a>> {
         let on = Some(true);
         let barrier = CdmBarrier {

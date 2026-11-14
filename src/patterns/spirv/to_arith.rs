@@ -1,7 +1,3 @@
-//! ⭐ SPIR-V's arithmetic as the upstream dialects spell it (the reverse of `convert-arith-to-spirv` and friends,
-//! for what a shader computes): a GPU target selects its instructions from arith / math / vector. What has no
-//! upstream counterpart (resources, images, builtins) stays SPIR-V.
-
 use alloc::vec::Vec;
 
 use mlirformat::arith::{CmpFPredicate, CmpIPredicate};
@@ -11,7 +7,6 @@ use crate::{Attrs, ConversionRewriter, OpData, OpId, ValueId, patterns};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// ⭐ The spirv arithmetic ⇒ arith / math / vector.
 pub struct SpirvToArith;
 
 #[patterns]
@@ -64,7 +59,6 @@ pub struct SpirvToArith;
 #[map("spirv.ULessThan" => "arith.cmpi", via = Self::cmp(CmpIPredicate::ult as i64))]
 #[map("spirv.UGreaterThan" => "arith.cmpi", via = Self::cmp(CmpIPredicate::ugt as i64))]
 impl SpirvToArith {
-    /// Operands and result type as they are.
     fn plain(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
@@ -72,7 +66,6 @@ impl SpirvToArith {
         true
     }
 
-    /// A comparison: `to` (`arith.cmpf` / `arith.cmpi`) with predicate `pred` (its integer, as the generic form has it).
     fn cmp(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str, pred: i64) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
@@ -81,7 +74,6 @@ impl SpirvToArith {
         true
     }
 
-    /// The integers of an `[i : i32, ...]` attribute, as a `array<i64: ...>`.
     fn indices<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, name: &str) -> Option<Attribute<'a>> {
         let Attribute::Array(v) = cr.rw.body[op].get(name)? else { return None };
         let v: Vec<i64> = v.iter().map(Attrs::as_int).collect::<Result<_, _>>().ok()?;

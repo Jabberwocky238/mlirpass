@@ -1,11 +1,7 @@
-//! `spirv-webgpu-prepare`'s rules (`SPIRVWebGPUTransforms.cpp`): what WGSL lacks (extended
-//! multiplication, add with carry, `IsInf` / `IsNan`) expanded.
-
 use mlirformat::{Attribute, Const, Scalar, Type};
 
 use crate::{OpData, OpId, Rewriter, ValueId};
 
-/// `getScalarOrSplatAttr`: `v` as an integer of `ty`, splat over a vector.
 fn scalar_or_splat<'a>(ty: &Type<'a>, v: i128) -> Attribute<'a> {
     let w = ty.element_type().bit_width().unwrap_or(32);
     match ty {
@@ -14,7 +10,6 @@ fn scalar_or_splat<'a>(ty: &Type<'a>, v: i128) -> Attribute<'a> {
     }
 }
 
-/// The 32-bit integer operands of an op WGSL lacks.
 fn i32_operands(rw: &Rewriter<'_, '_>, op: OpId) -> Option<(ValueId, ValueId, Type<'static>)> {
     let [l, r] = rw.body[op].operands[..] else { return None };
     let ty = rw.body[l].ty.owned();
@@ -32,7 +27,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.body[o].results[0]
     }
 
-    /// `lowerExtendedMultiplication`: long multiplication in 16-bit digits.
     fn extended_mul(&mut self, op: OpId, lhs: ValueId, rhs: ValueId, ty: &Type<'a>, signed: bool) {
         let mask = self.spirv_constant(ty, (1 << 16) - 1);
         let c16 = self.spirv_constant(ty, 16);
@@ -74,12 +68,10 @@ impl<'a> Rewriter<'_, 'a> {
     }
 }
 
-/// The `spirv-webgpu-prepare` rule set.
 pub struct WebgpuPrepare;
 
 #[crate::patterns]
 impl WebgpuPrepare {
-    /// `ExpandMulExtendedPattern<SMulExtendedOp>`.
     #[rewrite("spirv.SMulExtended")]
     fn expand_s_mul_extended_pattern(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let Some((l, r, ty)) = i32_operands(rw, op) else { return false };
@@ -88,7 +80,6 @@ impl WebgpuPrepare {
         true
     }
 
-    /// `ExpandMulExtendedPattern<UMulExtendedOp>`.
     #[rewrite("spirv.UMulExtended")]
     fn expand_u_mul_extended_pattern(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let Some((l, r, ty)) = i32_operands(rw, op) else { return false };
@@ -97,19 +88,16 @@ impl WebgpuPrepare {
         true
     }
 
-    /// `ExpandAddCarryPattern`: the carry is whether the sum wrapped below the lhs.
     #[rewrite("spirv.IAddCarry")]
     fn expand_add_carry_pattern(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         expand_carry_borrow(rw, op, false)
     }
 
-    /// `ExpandSubBorrowPattern`: the borrow is whether the lhs is below the rhs.
     #[rewrite("spirv.ISubBorrow")]
     fn expand_sub_borrow_pattern(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         expand_carry_borrow(rw, op, true)
     }
 
-    /// `ExpandIsInfPattern` / `ExpandIsNanPattern`: values are assumed finite.
     #[rewrite("spirv.IsInf")]
     fn expand_is_inf_pattern(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let ty = rw.body[rw.body[op].results[0]].ty.clone();
@@ -125,7 +113,6 @@ impl WebgpuPrepare {
     }
 }
 
-/// `ExpandAddCarryOrSubBorrowPattern`: the result and its wrap flag as a struct.
 fn expand_carry_borrow(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId, sub: bool) -> bool {
     let Some((l, r, ty)) = i32_operands(rw, op) else { return false };
     rw.set_before(op);

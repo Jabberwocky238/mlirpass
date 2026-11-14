@@ -1,10 +1,7 @@
-//! The `func` dialect's op interfaces.
-
 use core::ops::Range;
 
 use crate::{BlockId, Body, DialectInliner, OpData, OpId, OpInterfaces, ValueId};
 
-/// The `func` dialect.
 pub struct FuncDialect;
 
 impl OpInterfaces for FuncDialect {
@@ -12,7 +9,6 @@ impl OpInterfaces for FuncDialect {
         "func"
     }
 
-    /// `OpAsmOpInterface::getAsmResultNames`.
     fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
         if b[op].name == "func.constant" { b.result_named(op, "f") } else { alloc::vec::Vec::new() }
     }
@@ -35,9 +31,7 @@ impl OpInterfaces for FuncDialect {
     }
 }
 
-/// `FuncInlinerInterface`.
 impl DialectInliner for FuncDialect {
-    /// Neither a `no_inline` call nor a `no_inline` function.
     fn legal_call(&self, b: &Body<'_>, call: OpId, callable: OpId) -> bool {
         !(b[call].name == "func.call" && b[call].get("no_inline").is_some()) && !(b[callable].name == "func.func" && b[callable].get("no_inline").is_some())
     }
@@ -50,7 +44,6 @@ impl DialectInliner for FuncDialect {
         true
     }
 
-    /// `func.return` as a `cf.br` to `dest`.
     fn branch_terminator(&self, b: &mut Body<'_>, op: OpId, dest: BlockId) {
         if b[op].name != "func.return" {
             return;
@@ -79,7 +72,6 @@ mod bufferizable {
     use super::FuncDialect;
     use crate::{buffer_of, buffer_type, bufferize_block_signature, callee, cast_or_realloc, func_arg_attr, func_signature, is_tensor, replace_with_buffers, return_ops, AliasingValue, AnalysisState, Body, BufferRelation, Bufferizable, BufferizationOptions, Def, LayoutMapOption, OpData, OpId, Operand, Rewriter, ValueId};
 
-    /// `func.func`, `func.return`, `func.call`.
     struct Func;
     struct Return;
     struct Call;
@@ -96,8 +88,6 @@ mod bufferizable {
     }
 
     impl BufferizationOptions {
-        /// `functionArgTypeConverterFn`: identity or fully dynamic, per
-        /// `function-boundary-type-conversion` (inference starts fully dynamic).
         pub(crate) fn function_arg_type<'a>(&self, t: &Type<'a>) -> Type<'a> {
             let Type::Shaped(s) = t else { return Self::tensor_like(t).unwrap_or_else(|| t.clone()) };
             let space = self.default_memory_space(s).flatten();
@@ -107,7 +97,6 @@ mod bufferizable {
             }
         }
 
-        /// `getBufferizedFunctionArgType`: with the argument's `bufferization.buffer_layout`.
         fn bufferized_arg_type<'a>(&self, b: &Body<'a>, f: OpId, i: usize) -> Type<'a> {
             let t = func_signature(b, f).0[i].clone();
             if !is_tensor(&t) {
@@ -146,7 +135,6 @@ mod bufferizable {
             }
         }
 
-        /// An entry argument is writable unless its `bufferization.writable` says not.
         fn writable(&self, _: &AnalysisState<'_>, b: &Body<'_>, v: ValueId) -> bool {
             let f = b.owner_of(v);
             match b[v].def {
@@ -214,7 +202,6 @@ mod bufferizable {
 
         fn aliasing_values(&self, s: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> Vec<AliasingValue> {
             let Some(f) = callee(b, op).filter(|f| s.func_analyzed(*f)) else {
-                // `unknownGetAliasingValues`.
                 return b[op].results.iter().filter(|v| is_tensor(&b[**v].ty)).map(|v| AliasingValue::unknown(*v, false)).collect();
             };
             let returns = s.func_aliasing(f, i);
@@ -225,7 +212,6 @@ mod bufferizable {
                 .collect()
         }
 
-        /// The callee's result type, bufferized at the boundary.
         fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, _: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
             let Def::Result(op, k) = b[v].def else { return Err(Error("expected a result".into())) };
             let f = callee(b, op).ok_or_else(|| Error("no callee".into()))?;

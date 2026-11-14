@@ -1,5 +1,3 @@
-//! `convert-to-emitc`.
-
 use crate::{DialectInterfaces, Emitc, ToEmitcInterfaces};
 use alloc::format;
 use alloc::string::String;
@@ -8,17 +6,12 @@ use mlirformat::Error;
 use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, Run};
 
-/// The dialects that implement `ConvertToEmitCPatternInterface`, by namespace.
-/// `convert-to-emitc`: every dialect's `ConvertToEmitCPatternInterface` patterns (or those of
-/// `filter-dialects`) with the types EmitC supports.
 #[pass("convert-to-emitc")]
 pub struct ConvertToEmitc {
     #[opt("filter-dialects")]
     filter: Vec<String>,
-    /// Unset unless given: each dialect's own default.
     #[opt("lower-to-cpp")]
     lower_to_cpp: Option<bool>,
-    /// The dialects' `ConvertToEmitCPatternInterface`s.
     interfaces: ToEmitcInterfaces,
 }
 

@@ -1,6 +1,3 @@
-//! `scf` ⇒ `spirv`, as `SCFToSPIRV.cpp`: structured control flow as `spirv.mlir.loop` /
-//! `spirv.mlir.selection`, results through `Function` variables.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -12,14 +9,11 @@ use crate::{BlockId, ConversionRewriter, OpData, OpId, RegionId, SignatureConver
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The scf ⇒ spirv patterns (`populateSCFToSPIRVPatterns`).
 pub struct ScfToSpirv;
 
 impl ScfToSpirv {
-    /// A `spirv.mlir.loop` / `spirv.mlir.selection` before `op`, its region empty.
     fn construct<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, name: &str, control: (&str, &str)) -> (OpId, RegionId) {
         cr.rw.set_before(op);
-        // The op's `spirv.loop_control` / `spirv.selection_control` hint, else None.
         let hint = cr.rw.body[op].get(&alloc::format!("spirv.{}", control.0)).cloned();
         let value = hint.unwrap_or_else(|| Cr::spirv_enum(control.1, "None"));
         let new = cr.rw.create_with(OpData::build(name).with(control.0, value), &[], |b, o| {
@@ -29,7 +23,6 @@ impl ScfToSpirv {
         (new, region)
     }
 
-    /// A block with arguments `types` placed at `index` of `region`.
     fn block_at<'a>(cr: &mut Cr<'_, 'a, '_>, region: RegionId, index: usize, types: &[Type<'a>]) -> BlockId {
         let b = cr.rw.create_block(region, types);
         let blocks = &mut cr.rw.body[region].blocks;
@@ -38,8 +31,6 @@ impl ScfToSpirv {
         b
     }
 
-    /// `LoopOp::addEntryAndMergeBlock`: an empty entry, a merge block holding
-    /// `spirv.mlir.merge`.
     fn entry_and_merge<'a>(cr: &mut Cr<'_, 'a, '_>, region: RegionId) -> (BlockId, BlockId) {
         let entry = cr.rw.create_block(region, &[]);
         let merge = cr.rw.create_block(region, &[]);
@@ -61,8 +52,6 @@ impl ScfToSpirv {
         cr.rw.create(data, &[]);
     }
 
-    /// `replaceSCFOutputValue`: each result a `Function` variable before the construct,
-    /// loaded after it (each load right after the construct, so in reverse).
     fn outputs<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, new: OpId, types: &[Type<'a>]) {
         let mut results = Vec::new();
         for t in types {
@@ -75,7 +64,6 @@ impl ScfToSpirv {
         cr.replace_values(op, &results);
     }
 
-    /// The `Function` variables `outputs` made for construct `parent` (the `n` ops before it).
     fn output_vars(cr: &Cr<'_, '_, '_>, parent: OpId, n: usize) -> Option<Vec<ValueId>> {
         let b = &cr.rw.body;
         let ops = &b.block_ops(b[parent].parent?);
@@ -87,7 +75,6 @@ impl ScfToSpirv {
 
 #[patterns(converter)]
 impl ScfToSpirv {
-    /// `ForOpConversion`.
     #[convert("scf.for")]
     fn for_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -123,7 +110,6 @@ impl ScfToSpirv {
         true
     }
 
-    /// `IfOpConversion`.
     #[convert("scf.if")]
     fn if_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -153,8 +139,6 @@ impl ScfToSpirv {
         true
     }
 
-    /// `IndexSwitchOpConversion`: a selection headed by `spirv.Switch` on the selector, each
-    /// case (then the default) inlined branching to the merge.
     #[convert("scf.index_switch")]
     fn index_switch<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -196,8 +180,6 @@ impl ScfToSpirv {
         true
     }
 
-    /// `TerminatorOpConversion`: yielded values stored to the construct's variables (and, in
-    /// a loop, passed along the back edge).
     #[convert("scf.yield")]
     fn yield_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -232,7 +214,6 @@ impl ScfToSpirv {
         true
     }
 
-    /// `WhileOpConversion`.
     #[convert("scf.while")]
     fn while_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(inits) = Cr::one_to_one(operands) else { return false };

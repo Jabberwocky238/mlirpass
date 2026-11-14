@@ -1,10 +1,7 @@
-//! `convert-vector-to-scf`.
-
 use crate::pass;
 use mlirformat::Error;
 use crate::{Body, GreedyConfig, OpId, PatternSet, Run, VectorToScfOptions};
 
-/// `convert-vector-to-scf`.
 #[pass("convert-vector-to-scf")]
 pub struct ConvertVectorToScf {
     #[opt("full-unroll")]

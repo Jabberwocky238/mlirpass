@@ -1,8 +1,5 @@
-//! The `ml_program` dialect's op interfaces.
-
 use crate::OpInterfaces;
 
-/// The `ml_program` dialect.
 pub struct MlProgramDialect;
 
 impl OpInterfaces for MlProgramDialect {
@@ -10,10 +7,8 @@ impl OpInterfaces for MlProgramDialect {
         "ml_program"
     }
 
-    /// `OpAsmOpInterface::getAsmResultNames`.
     fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
         match &*b[op].name {
-            // The global's leaf name.
             "ml_program.global_load" | "ml_program.global_load_const" => match b[op].get("global") {
                 Some(mlirformat::Attribute::SymbolRef(path)) => match path.last() {
                     Some(leaf) => b.result_named(op, alloc::string::String::from(leaf.trim_matches('"'))),
@@ -41,8 +36,6 @@ mod bufferizable {
     use super::MlProgramDialect;
     use crate::{buffer_of, replace_with_buffers, AliasingValue, AnalysisState, Body, Bufferizable, BufferizationOptions, OpData, OpId, Operand, Rewriter, ValueId};
 
-    /// `ml_program.global` ⇒ `memref.global`; `global_load` ⇒ `memref.get_global`;
-    /// `global_store` ⇒ a copy into the `memref.get_global`.
     struct Global;
     struct GlobalLoad;
     struct GlobalStore;
@@ -58,7 +51,6 @@ mod bufferizable {
         }
     }
 
-    /// `getMemRefTypeWithStaticIdentityLayout` of a tensor type.
     fn identity<'a>(t: &Type<'a>) -> Result<Type<'a>, Error> {
         match t {
             Type::Shaped(s) => Ok(BufferizationOptions::identity(s, None)),
@@ -66,7 +58,6 @@ mod bufferizable {
         }
     }
 
-    /// `memref.get_global` of the global `op` refers to (its leaf reference).
     fn get_global<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, ty: Type<'a>) -> ValueId {
         let leaf = match rw.body[op].get("global") {
             Some(Attribute::SymbolRef(path)) => path.last().cloned().unwrap_or_default(),

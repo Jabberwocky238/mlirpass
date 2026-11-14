@@ -1,5 +1,3 @@
-//! `tensor`: folds and canonicalization patterns, as `TensorOps.cpp`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -9,11 +7,9 @@ use crate::{ComposeCollapseOfExpand, ComposeExpandOfCollapse, ComposeReassociati
 use crate::MemrefOfr as Ofr;
 use crate::{AffineExpr, AffineMap, Body, Const, Fold, Folded, Mapping, OpData, OpId, Rewriter, Trait, ValueId};
 
-/// The tensor types' helpers.
 struct Tn;
 
 impl Tn {
-    /// A ranked tensor type.
     fn ranked<'x, 'a>(t: &'x Type<'a>) -> Option<&'x Shaped<'a>> {
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::Tensor && s.shape.is_some() => Some(s),
@@ -21,13 +17,11 @@ impl Tn {
         }
     }
 
-    /// `RankedTensorType::get(dims, elem, encoding)`.
     fn tensor<'a>(dims: &[i64], elem: Type<'a>, extras: Vec<Attribute<'a>>) -> Type<'a> {
         let shape = dims.iter().map(|d| if *d == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
         Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Tensor, shape: Some(shape), elem: elem.into(), extras }))
     }
 
-    /// `t` with other dims (element type and encoding kept).
     fn with_dims<'a>(t: &Shaped<'a>, dims: &[i64]) -> Type<'a> {
         Self::tensor(dims, (*t.elem).clone(), t.extras.clone())
     }
@@ -36,7 +30,6 @@ impl Tn {
         t.dims().is_some_and(|d| !d.contains(&Dim::DYNAMIC))
     }
 
-    /// `joinShapes`.
     fn join<'a>(one: &Type<'a>, two: &Type<'a>) -> Option<Type<'a>> {
         let (Some(a), Some(b)) = (one.dims(), two.dims()) else {
             return Some(if one.dims().is_none() { two.clone() } else { one.clone() });
@@ -56,7 +49,6 @@ impl Tn {
         Some(Self::tensor(&join, one.element_type().clone(), Vec::new()))
     }
 
-    /// `computeRankReductionMask`: the dims of `orig` dropped to get `reduced`.
     fn rank_reduction_mask(orig: &[i64], reduced: &[i64], match_dynamic: bool) -> Option<Vec<usize>> {
         let mut unused = Vec::new();
         let mut j = 0;
@@ -77,25 +69,19 @@ impl Tn {
         (j == reduced.len()).then_some(unused)
     }
 
-    /// `isRankReducedType(original, candidate) == Success`.
     fn rank_reduced(orig: &Type<'_>, cand: &Type<'_>) -> bool {
         let (Some(o), Some(c)) = (orig.dims(), cand.dims()) else { return false };
         o.len() >= c.len() && Self::rank_reduction_mask(&o, &c, false).is_some() && orig.element_type() == cand.element_type()
     }
 
-    /// `ExtractSliceOp::inferResultType`.
     fn slice_type<'a>(src: &Shaped<'a>, sizes: &[Ofr]) -> Type<'a> {
         let dims: Vec<i64> = sizes.iter().map(|s| if let Ofr::C(c) = s { *c } else { Dim::DYNAMIC }).collect();
         Self::with_dims(src, &dims)
     }
 
-    /// `inferCanonicalRankReducedResultType`.
-    /// `SliceReturnTypeCanonicalizer`: the slice type of `sizes`, without the dims the slice
-    /// typed `result` drops (`getDroppedDims`: a unit size where the result's next dim is not 1).
     fn slice_type_dropping<'a>(src: &Shaped<'a>, original: &[Ofr], sizes: &[Ofr], result: &Type<'a>) -> Type<'a> {
         let inferred = Self::slice_type(src, sizes);
         let (shape, rshape) = (inferred.dims().unwrap_or_default(), result.dims().unwrap_or_default());
-        // (from the back: a static unit size of the op is dropped unless the result's dim is 1)
         let mut at = rshape.len();
         let mut keep = vec![true; original.len()];
         for (i, o) in original.iter().enumerate().rev() {
@@ -135,8 +121,6 @@ impl Tn {
         Self::tensor(&kept, (*src.elem).clone(), Vec::new())
     }
 
-
-    /// `PadOp::inferResultType`.
     fn pad_type<'a>(src: &Shaped<'a>, low: &[i64], high: &[i64], result: &[i64]) -> Option<Type<'a>> {
         let dims = (Type::Shaped(alloc::boxed::Box::new(src.clone()))).dims()?;
         if low.len() != dims.len() || high.len() != dims.len() || (!result.is_empty() && result.len() != dims.len()) {
@@ -148,7 +132,6 @@ impl Tn {
         Some(Self::tensor(&shape, (*src.elem).clone(), Vec::new()))
     }
 
-    /// `CollapseShapeOp::inferCollapsedType`.
     fn collapsed_type<'a>(src: &Shaped<'a>, r: &Reassoc) -> Type<'a> {
         let dims = (Type::Shaped(alloc::boxed::Box::new(src.clone()))).dims().unwrap_or_default();
         let mut at = 0;
@@ -164,20 +147,13 @@ impl Tn {
     fn index<'a>(v: i64) -> Attribute<'a> {
         Attribute::index(v)
     }
-
-
-
-
 }
 
 impl<'a> Body<'a> {
-    /// Whether `v` is an `index` constant (`matchConstantIndex`).
     fn is_const_index(&self, v: ValueId) -> bool {
         matches!(self.constant_of(v), Some(Attribute::Int { ty: Some(Type::Index), .. }))
     }
 
-
-    /// The `low` and `high` pads of a `tensor.pad`.
     pub fn pad_lists(&self, op: OpId) -> [Vec<Ofr>; 2] {
         let segs = self.segments(op, "operandSegmentSizes").unwrap_or_default();
         let mut at = 1;
@@ -185,7 +161,6 @@ impl<'a> Body<'a> {
         for (k, name) in ["static_low", "static_high"].iter().enumerate() {
             let n = segs.get(k + 1).copied().unwrap_or(0);
             let mut d = self[op].operands[at..at + n].iter();
-            // `getMixedPadImpl`: a dynamic pad that is a constant is static (`getAsOpFoldResult`).
             out[k] = self
                 .dense_i64(op, name)
                 .into_iter()
@@ -196,28 +171,23 @@ impl<'a> Body<'a> {
         out
     }
 
-    /// `foldIdentityOffsetSizeAndStrideOpInterface`.
     fn identity_slice(&self, op: OpId, shape: &[i64]) -> bool {
         let [o, s, t] = self.slice_lists(op);
         o.iter().all(|x| self.ofr_int(*x) == Some(0)) && s.iter().zip(shape).all(|(x, d)| self.ofr_int(*x) == Some(*d)) && t.iter().all(|x| self.ofr_int(*x) == Some(1))
     }
 
-    /// `canFoldIntoConsumerOp`: a cast from a more static type.
     fn cast_into_consumer(&self, cast: OpId) -> bool {
         Body::preserves_static(&self[self[cast].results[0]].ty, &self[self[cast].operands[0]].ty)
     }
 
-    /// `canFoldIntoProducerOp`.
     pub fn cast_into_producer(&self, cast: OpId) -> bool {
         Body::preserves_static(&self[self[cast].operands[0]].ty, &self[self[cast].results[0]].ty)
     }
 
-    /// The `tensor.cast` defining `v`, if it can fold into its consumer.
     pub fn foldable_cast(&self, v: ValueId) -> Option<OpId> {
         self.def_named(v, "tensor.cast").filter(|c| self.cast_into_consumer(*c))
     }
 
-    /// `foldDynamicToStaticDimSizes`.
     fn static_dims(&self, ty: &Type<'a>, dynamic: &[ValueId]) -> (Type<'a>, Vec<ValueId>) {
         let Some(s) = Tn::ranked(ty) else { return (ty.clone(), dynamic.to_vec()) };
         let mut dims = ty.dims().unwrap_or_default();
@@ -236,11 +206,9 @@ impl<'a> Body<'a> {
         (Tn::with_dims(s, &dims), kept)
     }
 
-    /// `getDpsInitOperand` operands of a destination-style op.
     pub fn dps_inits(&self, op: OpId) -> Option<core::ops::Range<usize>> {
         let n = self[op].operands.len();
         match &*self[op].name {
-            // The destination is the second operand (pack / unpack: before the padding and tiles).
             "tensor.insert_slice" | "tensor.insert" | "bufferization.materialize_in_destination" | "linalg.pack" | "linalg.unpack" => Some(1..2),
             _ if !self.has(op, Trait::DestinationStyleOpInterface) => None,
             "test.destination_style_op" => {
@@ -257,7 +225,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `PadOp::getConstantPaddingValue`.
     pub fn constant_padding(&self, pad: OpId) -> Option<ValueId> {
         let region = self[pad].regions[0];
         let block = *self[region].blocks.first()?;
@@ -277,7 +244,6 @@ impl<'a> Body<'a> {
     }
 }
 
-/// `reshapeConstantSource`: a splat resized to a static `ty`.
 fn reshape_constant<'a>(c: Option<&Attribute<'a>>, ty: &Type<'a>) -> Option<Attribute<'a>> {
     let c = Const::try_from(c?).ok().filter(|c| c.elements && c.is_splat())?;
     Tn::static_shape(ty).then(|| Const { ty: ty.clone(), ..c }.into())
@@ -293,12 +259,10 @@ impl<'a> Rewriter<'_, 'a> {
         self.single(OpData::build("tensor.cast").operands(&[v]), ty)
     }
 
-    /// `tensor.cast` replacing `op` by `v` as `ty`.
     fn replace_with_cast(&mut self, op: OpId, v: ValueId, ty: Type<'a>) {
         self.replace_with(op, OpData::build("tensor.cast").operands(&[v]), &[ty]);
     }
 
-    /// A `tensor.pad` like `pad` (its discardable attributes kept), without its region.
     fn pad_data(&self, pad: OpId, src: ValueId, low: &[Ofr], high: &[Ofr]) -> OpData<'a> {
         let b = &*self.body;
         let mut d = OpData::mixed("tensor.pad", &[src], &[low, high], &["static_low", "static_high"]);
@@ -308,7 +272,6 @@ impl<'a> Rewriter<'_, 'a> {
         d.attrs(b[pad].attributes.clone())
     }
 
-    /// The pad op `data` of `ty`; its region cloned from `from` (or moved when `take`).
     fn new_pad(&mut self, data: OpData<'a>, ty: Type<'a>, from: OpId, take: bool) -> OpId {
         let new = self.create_with(data, &[ty], |b, p| {
             b.add_region(p);
@@ -322,7 +285,6 @@ impl<'a> Rewriter<'_, 'a> {
         new
     }
 
-    /// The parent of `op` when it combines parallel results (`InParallelOpInterface`).
     fn before_parallel_parent(&mut self, op: OpId) {
         if let Some(p) = self.body.parent_op(op).filter(|p| self.body[*p].name == "scf.forall.in_parallel") {
             self.set_before(p);
@@ -332,7 +294,6 @@ impl<'a> Rewriter<'_, 'a> {
     }
 }
 
-/// `OpWithOffsetSizesAndStridesConstantArgumentFolder` (extract) / `InsertSliceOpConstantArgumentFolder`.
 fn constant_slice_arguments(rw: &mut Rewriter<'_, '_>, op: OpId, insert: bool) -> bool {
     let b = &*rw.body;
     let [mut o, mut s, mut t] = b.slice_lists(op);
@@ -385,7 +346,6 @@ fn constant_slice_arguments(rw: &mut Rewriter<'_, '_>, op: OpId, insert: bool) -
     true
 }
 
-/// `InsertSliceOpCastFolder`.
 fn insert_slice_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     if b[op].operands.iter().any(|v| b.is_const_index(*v)) {
@@ -437,7 +397,6 @@ fn insert_slice_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     true
 }
 
-/// `InsertSliceOpSourceCastInserter`.
 fn insert_slice_source_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let (src, dst) = (b[op].operands[0], b[op].operands[1]);
@@ -470,12 +429,10 @@ fn insert_slice_source_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     true
 }
 
-/// `tensor` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct TensorCanon;
 
 #[crate::patterns]
 impl TensorCanon {
-    /// `ChainedTensorBitcast`.
     #[rewrite("tensor.bitcast")]
     fn chained_tensor_bitcast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -485,7 +442,6 @@ impl TensorCanon {
         true
     }
 
-    /// `ChainedTensorCast`.
     #[rewrite("tensor.cast")]
     fn chained_tensor_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -500,7 +456,6 @@ impl TensorCanon {
         true
     }
 
-    /// `TensorCastExtractSlice`.
     #[rewrite("tensor.cast")]
     fn tensor_cast_extract_slice(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -528,25 +483,21 @@ impl TensorCanon {
         true
     }
 
-    /// `FoldReshapeWithConstant<CollapseShapeOp>`.
     #[rewrite("tensor.collapse_shape")]
     fn collapse_with_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         reshape_with_constant(rw, op)
     }
 
-    /// `FoldReshapeWithSplat<CollapseShapeOp>`.
     #[rewrite("tensor.collapse_shape")]
     fn collapse_with_splat(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         reshape_with_splat(rw, op)
     }
 
-    /// `FoldReshapeWithFromElements<CollapseShapeOp>`.
     #[rewrite("tensor.collapse_shape")]
     fn collapse_with_from_elements(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         reshape_with_from_elements(rw, op)
     }
 
-    /// `FoldCollapseOfCastOp`.
     #[rewrite("tensor.collapse_shape")]
     fn fold_collapse_of_cast_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -566,7 +517,6 @@ impl TensorCanon {
         true
     }
 
-    /// `SingleInputConcatOp`.
     #[rewrite("tensor.concat")]
     fn single_input_concat_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -576,7 +526,6 @@ impl TensorCanon {
         true
     }
 
-    /// `InferConcatOperandTypes`.
     #[rewrite("tensor.concat")]
     fn infer_concat_operand_types(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -603,7 +552,6 @@ impl TensorCanon {
         true
     }
 
-    /// `InferConcatResultType`.
     #[rewrite("tensor.concat")]
     fn infer_concat_result_type(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -620,7 +568,6 @@ impl TensorCanon {
         true
     }
 
-    /// `DimOfCastOp`.
     #[rewrite("tensor.dim")]
     fn dim_of_cast_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -630,7 +577,6 @@ impl TensorCanon {
         true
     }
 
-    /// `DimOfDestStyleOp`.
     #[rewrite("tensor.dim")]
     fn dim_of_dest_style_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -642,7 +588,6 @@ impl TensorCanon {
         true
     }
 
-    /// `DimOfReshapeOp`.
     #[rewrite("tensor.dim")]
     fn dim_of_reshape_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -658,7 +603,6 @@ impl TensorCanon {
         true
     }
 
-    /// `FoldEmptyTensorWithCastOp`.
     #[rewrite("tensor.cast")]
     fn fold_empty_tensor_with_cast_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -687,14 +631,12 @@ impl TensorCanon {
                 kept.push(v);
             }
         }
-        // (the cast's encoding kept)
         let encoding = Tn::ranked(&rt).map(|s| s.extras.clone()).unwrap_or_default();
         let ty = Tn::tensor(&dims, rt.element_type().clone(), encoding);
         rw.replace_with(op, OpData::build("tensor.empty").operands(&kept), &[ty]);
         true
     }
 
-    /// `FoldEmptyTensorWithDimOp`.
     #[rewrite("tensor.dim")]
     fn fold_empty_tensor_with_dim_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -710,7 +652,6 @@ impl TensorCanon {
         true
     }
 
-    /// `ReplaceEmptyTensorStaticShapeDims`.
     #[rewrite("tensor.empty")]
     fn replace_empty_tensor_static_shape_dims(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -725,7 +666,6 @@ impl TensorCanon {
         true
     }
 
-    /// `ConvertToStaticExpandShape`.
     #[rewrite("tensor.expand_shape")]
     fn convert_to_static_expand_shape(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -778,25 +718,21 @@ impl TensorCanon {
         true
     }
 
-    /// `FoldReshapeWithConstant<ExpandShapeOp>`.
     #[rewrite("tensor.expand_shape")]
     fn expand_with_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         reshape_with_constant(rw, op)
     }
 
-    /// `FoldReshapeWithSplat<ExpandShapeOp>`.
     #[rewrite("tensor.expand_shape")]
     fn expand_with_splat(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         reshape_with_splat(rw, op)
     }
 
-    /// `FoldReshapeWithFromElements<ExpandShapeOp>`.
     #[rewrite("tensor.expand_shape")]
     fn expand_with_from_elements(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         reshape_with_from_elements(rw, op)
     }
 
-    /// `ExtractFromTensorCast`.
     #[rewrite("tensor.extract")]
     fn extract_from_tensor_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -812,13 +748,11 @@ impl TensorCanon {
         true
     }
 
-    /// `OpWithOffsetSizesAndStridesConstantArgumentFolder<ExtractSliceOp>`.
     #[rewrite("tensor.extract_slice")]
     fn extract_slice_constant_arguments(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         constant_slice_arguments(rw, op, false)
     }
 
-    /// `ExtractSliceOpCastFolder`.
     #[rewrite("tensor.extract_slice")]
     fn extract_slice_op_cast_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -836,7 +770,6 @@ impl TensorCanon {
         true
     }
 
-    /// `ExtractElementFromIndexCast`.
     #[rewrite("tensor.extract")]
     fn extract_element_from_index_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -852,7 +785,6 @@ impl TensorCanon {
         true
     }
 
-    /// `ExtractFromTensorGenerate`.
     #[rewrite("tensor.extract")]
     fn extract_from_tensor_generate(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -877,7 +809,6 @@ impl TensorCanon {
         true
     }
 
-    /// `StaticTensorGenerate`.
     #[rewrite("tensor.generate")]
     fn static_tensor_generate(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -912,7 +843,6 @@ impl TensorCanon {
         insert_slice_source_cast(rw, op)
     }
 
-    /// `FoldStaticZeroPadding`.
     #[rewrite("tensor.pad")]
     fn fold_static_zero_padding(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -925,7 +855,6 @@ impl TensorCanon {
         true
     }
 
-    /// `FoldSourceTensorCast`.
     #[rewrite("tensor.pad")]
     fn fold_source_tensor_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -948,7 +877,6 @@ impl TensorCanon {
         true
     }
 
-    /// `FoldTargetTensorCast`.
     #[rewrite("tensor.pad")]
     fn fold_target_tensor_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -972,7 +900,6 @@ impl TensorCanon {
         true
     }
 
-    /// `FoldOrthogonalPaddings`.
     #[rewrite("tensor.pad")]
     fn fold_orthogonal_paddings(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1039,7 +966,6 @@ impl TensorCanon {
         true
     }
 
-    /// `FoldStaticPadding`.
     #[rewrite("tensor.pad")]
     fn fold_static_padding(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1097,7 +1023,6 @@ impl TensorCanon {
         true
     }
 
-    /// `FoldConsecutiveConstantPadding`.
     #[rewrite("tensor.pad")]
     fn fold_consecutive_constant_padding(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1139,7 +1064,6 @@ impl TensorCanon {
     }
 }
 
-/// `FoldTensorCastProducerOp`: foldable casts into a destination-style op.
 pub struct FoldTensorCastProducerOp;
 
 impl crate::Pattern for FoldTensorCastProducerOp {
@@ -1196,7 +1120,6 @@ impl crate::Pattern for FoldTensorCastProducerOp {
     }
 }
 
-/// The `dim` of a `tensor.concat`.
 fn concat_dim(b: &Body<'_>, op: OpId) -> usize {
     match b[op].get("dim") {
         Some(Attribute::Int { lit, .. }) => lit.parse().unwrap_or(0),
@@ -1205,7 +1128,6 @@ fn concat_dim(b: &Body<'_>, op: OpId) -> usize {
 }
 
 impl<'a> Body<'a> {
-    /// `ConcatOp::inferResultType` of `inputs` along `dim`.
     pub fn concat_type(&self, inputs: &[ValueId], dim: usize) -> Option<Type<'a>> {
         let types: Vec<Vec<i64>> = inputs.iter().map(|v| self[*v].ty.dims()).collect::<Option<_>>()?;
         let rank = types.first()?.len();
@@ -1225,7 +1147,6 @@ impl<'a> Body<'a> {
     }
 }
 
-/// A `tensor.expand_shape` to `shape`.
 fn expand_data<'a>(src: ValueId, r: &Reassoc, shape: &[Ofr]) -> OpData<'a> {
     let (st, dy) = Ofr::split(shape);
     let mut ops = vec![src];
@@ -1233,12 +1154,10 @@ fn expand_data<'a>(src: ValueId, r: &Reassoc, shape: &[Ofr]) -> OpData<'a> {
     OpData::build("tensor.expand_shape").operands(&ops).with("reassociation", Reshape::attr(r)).with("static_output_shape", Attribute::dense_i64(&st))
 }
 
-/// `FoldReshapeWithConstant`.
 fn reshape_with_constant(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let Some(c) = b.constant_of(b[op].operands[0]).and_then(|a| Const::try_from(&a).ok()).filter(|c| c.elements && c.is_splat()) else { return false };
     let ty = b[b[op].results[0]].ty.clone();
-    // (a dense constant needs a static shape)
     if !Tn::static_shape(&ty) {
         return false;
     }
@@ -1246,7 +1165,6 @@ fn reshape_with_constant(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     true
 }
 
-/// `FoldReshapeWithSplat`.
 fn reshape_with_splat(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let Some(s) = b.def_named(b[op].operands[0], "tensor.splat") else { return false };
@@ -1258,7 +1176,6 @@ fn reshape_with_splat(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     true
 }
 
-/// `FoldReshapeWithFromElements`.
 fn reshape_with_from_elements(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let Some(fe) = b.def_named(b[op].operands[0], "tensor.from_elements") else { return false };
@@ -1272,7 +1189,6 @@ fn reshape_with_from_elements(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
 }
 
 impl TensorCanon {
-    /// The fold of a `tensor` op.
     pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold<'a> {
         let name = b[op].name.clone();
         let ops = b[op].operands.clone();
@@ -1311,7 +1227,6 @@ impl TensorCanon {
                 }
             }
             "tensor.extract" => {
-                // `ElementsAttr`: dense or sparse.
                 let elements = c[0].as_ref().and_then(Const::elements_attr);
                 if let Some(k) = elements.as_ref().filter(|k| k.is_splat()) {
                     return Folded::Attr(Const::scalar(k.values[0], k.ty.element_type().clone()).into()).into();
@@ -1340,7 +1255,6 @@ impl TensorCanon {
                         return Folded::Attr(Const::scalar(k.at(flat as usize), k.ty.element_type().clone()).into()).into();
                     }
                 }
-                // `foldExtractAfterInsert`.
                 if let Some(ins) = b.def_named(ops[0], "tensor.insert") {
                     let same = |x: ValueId, y: ValueId| x == y || b.constant_of(x).is_some_and(|a| Some(a) == b.constant_of(y));
                     let ii = &b[ins].operands[2..];
@@ -1466,7 +1380,6 @@ impl TensorCanon {
         }
     }
 
-    /// The tensor dialect's and ops' canonicalization patterns, in registration order.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(FoldTensorCastProducerOp);
         set.add(ChainedTensorBitcast);

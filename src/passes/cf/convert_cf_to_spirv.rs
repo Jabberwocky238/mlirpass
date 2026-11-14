@@ -1,8 +1,5 @@
-//! `convert-cf-to-spirv`.
-
 use crate::{CfToSpirv, SpirvOptions, SpirvTypes, TargetEnv};
 
-/// `convert-cf-to-spirv`.
 #[crate::pass("convert-cf-to-spirv")]
 pub struct ConvertCfToSpirv {
     #[opt("emulate-lt-32-bit-scalar-types", default = true)]

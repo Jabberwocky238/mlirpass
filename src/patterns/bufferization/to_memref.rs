@@ -1,6 +1,3 @@
-//! `bufferization` ⇒ `memref`, as `BufferizationToMemRef.cpp` and the one-memref case of
-//! `LowerDeallocations.cpp`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -9,13 +6,10 @@ use crate::patterns;
 
 use crate::{Body, ConversionRewriter as Cr, Listener, OpData, OpId, Rewriter, ValueId};
 
-/// The bufferization ⇒ memref patterns.
 pub struct BufferizationToMemref;
 
 #[patterns]
 impl BufferizationToMemref {
-    /// `CloneOpConversion`: a new buffer (`alloc`, or `alloca` + loop + `reshape` when
-    /// unranked) and a `memref.copy` into it.
     #[convert("bufferization.clone")]
     fn clone(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
@@ -44,7 +38,6 @@ impl BufferizationToMemref {
         true
     }
 
-    /// `DeallocOpConversion`, one memref and nothing retained: `scf.if %cond { memref.dealloc }`.
     #[convert("bufferization.dealloc")]
     fn dealloc(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -72,7 +65,6 @@ impl BufferizationToMemref {
         Self::result(rw, &arith::Constant::new(Attribute::index(v), Type::Index))
     }
 
-    /// Operand group `k` of `op` (`operandSegmentSizes`).
     fn segment<'b>(b: &'b Body<'_>, op: OpId, k: usize) -> &'b [ValueId] {
         let sizes: Vec<usize> = match b[op].get("operandSegmentSizes") {
             Some(mlirformat::Attribute::DenseArray { values, .. }) => values.iter().filter_map(|v| v.parse().ok()).collect(),
@@ -82,8 +74,6 @@ impl BufferizationToMemref {
         sizes.get(k).map_or(&[], |n| &b[op].operands[start..start + n])
     }
 
-    /// The unranked clone: rank, shape buffer and total size from a loop over the dims, a 1-D
-    /// buffer of that size reshaped to the input's shape.
     fn unranked<'a, L: Listener<'a> + ?Sized>(rw: &mut Rewriter<'_, 'a, L>, input: ValueId, s: &Shaped<'a>) -> ValueId {
         let in_ty = rw.body[input].ty.clone();
         let (zero, one) = (Self::cidx(rw, 0), Self::cidx(rw, 1));
@@ -101,4 +91,3 @@ impl BufferizationToMemref {
         Self::result(rw, &memref::ReshapeOp::new(alloc.into(), shape.into(), flat, shape_ty, Type::Shaped(alloc::boxed::Box::new(s.clone()))))
     }
 }
-

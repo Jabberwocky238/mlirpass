@@ -1,5 +1,3 @@
-//! `func` passes.
-
 #[cfg(feature = "target.llvm")]
 mod convert_func_to_llvm;
 #[cfg(feature = "target.llvm")]

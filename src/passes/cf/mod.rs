@@ -1,5 +1,3 @@
-//! `cf` passes.
-
 #[cfg(feature = "target.llvm")]
 mod convert_cf_to_llvm;
 #[cfg(feature = "target.llvm")]

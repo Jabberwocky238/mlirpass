@@ -1,5 +1,3 @@
-//! The `test` dialect's op interfaces (`mlir/test/lib/Dialect/Test`).
-
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Range;
@@ -8,10 +6,8 @@ use mlirformat::Attribute;
 
 use crate::{BlockId, Body, EffectInstance, EffectKind, Resource, BranchLayout, DialectInliner, InsertPoint, OpData, OpId, OpInterfaces, Operand, Point, Succ, ValueId};
 
-/// The `test` dialect.
 pub struct TestDialect;
 
-/// The keys of one `test.side_effect_op` effect dictionary.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EffectKey {
     Effect,
@@ -38,7 +34,6 @@ impl EffectKey {
     ];
 }
 
-/// One entry of `test.side_effect_op`'s `effects`, read once.
 #[derive(Default)]
 struct SideEffectEntry {
     kind: Option<EffectKind>,
@@ -58,7 +53,6 @@ impl From<&Attribute<'_>> for SideEffectEntry {
                         out.kind = EffectKey::KINDS.iter().find(|(n, _)| *n == &**lit).map(|(_, k)| *k);
                     }
                 }
-                // The first resource key in `getEffects`' order wins.
                 EffectKey::Resource(r) => {
                     let rank = |r: Resource| EffectKey::TABLE.iter().position(|(_, k)| *k == EffectKey::Resource(r));
                     if out.resource.is_none_or(|o| rank(*r) < rank(o)) {
@@ -89,8 +83,6 @@ impl OpInterfaces for TestDialect {
         Some(self)
     }
 
-    /// `TestOpWithRegionFold::fold` (its operand), `TestOpWithVariadicResultsAndFolder::fold`
-    /// (its operands).
     fn fold<'a>(&self, b: &mut Body<'a>, op: OpId, _: &[Option<Attribute<'a>>]) -> crate::Fold<'a> {
         match &*b[op].name {
             "test.op_with_region_fold" | "test.op_with_variadic_results_and_folder" => crate::Fold::Results(b[op].operands.iter().map(|v| crate::Folded::Value(*v)).collect()),
@@ -98,7 +90,6 @@ impl OpInterfaces for TestDialect {
         }
     }
 
-    /// `SideEffectOp::getEffects`: one effect per entry of the `effects` array.
     fn effects(&self, b: &Body<'_>, op: OpId) -> Option<Vec<EffectInstance>> {
         if !matches!(&*b[op].name, "test.side_effect_op" | "test.side_effect_with_region_op") {
             return None;
@@ -120,20 +111,16 @@ impl OpInterfaces for TestDialect {
     }
 
     fn branch_layout(&self, b: &Body<'_>, op: OpId) -> Option<BranchLayout> {
-        /// `test.producing_br`: successor 0 takes the second operand group, successor 1 the first.
         const PRODUCING_GROUPS: [usize; 2] = [1, 0];
-        /// `test.internal_br`: successor `i` takes operand group `i`.
         const INTERNAL_GROUPS: [usize; 2] = [0, 1];
         match &*b[op].name {
             "test.br" => Some(BranchLayout::All),
             "test.producing_br" => Some(BranchLayout::Groups { groups: &PRODUCING_GROUPS }),
-            // Its successors also take produced arguments (`produced_successor_operands`).
             "test.internal_br" => Some(BranchLayout::Groups { groups: &INTERNAL_GROUPS }),
             _ => None,
         }
     }
 
-    /// `test.internal_br`: successor `i` gets `i` produced arguments, then operand group `i`.
     fn produced_successor_operands(&self, b: &Body<'_>, op: OpId, i: usize) -> Option<(usize, Range<usize>)> {
         if b[op].name != "test.internal_br" {
             return None;
@@ -147,8 +134,6 @@ impl OpInterfaces for TestDialect {
         b[op].name == "test.region_if"
     }
 
-    /// `test.region_if`: the then and else regions take the operands, both go to the join
-    /// region.
     fn region_successors(&self, b: &Body<'_>, op: OpId, point: Point) -> Vec<(Succ, Vec<ValueId>)> {
         if b[op].name != "test.region_if" {
             return Vec::new();
@@ -180,7 +165,6 @@ impl OpInterfaces for TestDialect {
     }
 }
 
-/// `TestInlinerInterface`.
 impl DialectInliner for TestDialect {
     fn legal_call(&self, b: &Body<'_>, call: OpId, _: OpId) -> bool {
         b[call].get("noinline").is_none()
@@ -194,12 +178,10 @@ impl DialectInliner for TestDialect {
         true
     }
 
-    /// A functional region op is a scope of its own.
     fn analyze_recursively(&self, b: &Body<'_>, op: OpId) -> bool {
         b[op].name != "test.functional_region_op"
     }
 
-    /// `test.return` as a `cf.br` to `dest`.
     fn branch_terminator(&self, b: &mut Body<'_>, op: OpId, dest: crate::BlockId) {
         if b[op].name != "test.return" {
             return;
@@ -212,7 +194,6 @@ impl DialectInliner for TestDialect {
         b.erase(op);
     }
 
-    /// `test.return`'s operands for the results (none when their counts differ).
     fn replace_with_terminator(&self, b: &mut Body<'_>, op: OpId, results: &[ValueId]) {
         if b[op].name != "test.return" || b[op].operands.len() != results.len() {
             return;
@@ -222,7 +203,6 @@ impl DialectInliner for TestDialect {
         }
     }
 
-    /// `test.cast` between `i16` and `i32`.
     fn call_conversion<'a>(&self, b: &mut Body<'a>, input: ValueId, ty: &mlirformat::Type<'a>, at: InsertPoint, loc: Option<mlirformat::Str<'a>>) -> Option<OpId> {
         let ok = |t: &mlirformat::Type<'_>| *t == mlirformat::Type::int(16) || *t == mlirformat::Type::int(32);
         if !ok(ty) || !ok(&b[input].ty) {
@@ -235,8 +215,6 @@ impl DialectInliner for TestDialect {
         Some(c)
     }
 
-    /// A `test.type_changer` for an argument or result marked `test.handle_argument` /
-    /// `test.handle_result`.
     fn handle_value<'a>(&self, b: &mut Body<'a>, call: OpId, value: ValueId, attrs: Option<&mlirformat::Attribute<'a>>, result: bool, at: InsertPoint) -> ValueId {
         let key = if result { "test.handle_result" } else { "test.handle_argument" };
         if !matches!(attrs, Some(mlirformat::Attribute::Dict(d)) if d.iter().any(|e| e.name == key)) {
@@ -250,7 +228,6 @@ impl DialectInliner for TestDialect {
         b[c].results[0]
     }
 
-    /// Ops inlined through a `test.conversion_call_op` are marked `inlined_conversion`.
     fn process_inlined(&self, b: &mut Body<'_>, call: OpId, blocks: &[BlockId]) {
         if b[call].name != "test.conversion_call_op" {
             return;
@@ -276,8 +253,6 @@ mod bufferizable {
     use super::TestDialect;
     use crate::{buffer_of, buffer_type, replace_with_buffers, Body, Bufferizable, BufferizationOptions, OpData, OpId, Rewriter, ValueId};
 
-    /// `test.dummy_tensor_op` (reads and writes its input, aliases nothing) and
-    /// `test.create_tensor_op`: their memref analogies on buffers.
     struct DummyTensor;
     struct CreateTensor;
 

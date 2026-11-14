@@ -1,14 +1,10 @@
-//! `convert-arith-to-emitc`.
-
 use crate::{ArithToEmitc, Emitc};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId};
 
-/// `convert-arith-to-emitc`.
 #[pass("convert-arith-to-emitc")]
 pub fn convert_arith_to_emitc<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-    // `EmitCTypeConverter`.
     let mut tc = Emitc::type_converter(false);
     Emitc::size_t_conversions(&mut tc);
     let mut patterns = ConversionPatterns::default();

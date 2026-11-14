@@ -1,5 +1,3 @@
-//! `convert-affine-for-to-gpu`.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -8,7 +6,6 @@ use mlirformat::{Attribute, Error, Type};
 use crate::AffineExpand;
 use crate::{Body, BlockId, InsertPoint, OpData, OpId, Rewriter, ValueId};
 
-/// `convert-affine-for-to-gpu`.
 #[crate::pass("convert-affine-for-to-gpu")]
 pub struct ConvertAffineForToGpu {
     #[opt("gpu-block-dims", default = 1)]
@@ -18,7 +15,6 @@ pub struct ConvertAffineForToGpu {
 }
 
 impl ConvertAffineForToGpu {
-    /// `checkAffineLoopNestMappable`.
     fn mappable(&self, body: &Body<'_>, root: OpId) -> Result<(), Error> {
         if self.blocks < 1 || self.threads < 1 {
             return Ok(());
@@ -67,8 +63,6 @@ impl ConvertAffineForToGpu {
         }
     }
 
-    /// `AffineLoopToGpuConverter`: the bounds of the nest, a launch over them, the innermost
-    /// body in it.
     fn convert(&self, rw: &mut Rewriter<'_, '_>, root: OpId) -> Option<()> {
         let n = (self.blocks + self.threads) as usize;
         let (blocks, threads) = (self.blocks as usize, self.threads as usize);
@@ -78,7 +72,6 @@ impl ConvertAffineForToGpu {
         for i in 0..n {
             let segs = rw.body.segments(cur, "operandSegmentSizes").unwrap_or_default();
             let ops = rw.body[cur].operands.clone();
-            // ("affine loop with iter_args cannot be converted to GPU kernel")
             if ops.len() > segs[0] + segs[1] {
                 return None;
             }

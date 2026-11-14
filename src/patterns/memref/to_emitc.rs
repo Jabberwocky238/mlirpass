@@ -1,5 +1,3 @@
-//! `memref` ⇒ `emitc`, as `MemRefToEmitC.cpp` (and the pass's standard headers).
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -12,12 +10,10 @@ use crate::{Body, Const, ConversionRewriter, OpData, OpId, ValueId, Visibility};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The memref ⇒ emitc patterns.
 pub struct MemrefToEmitc;
 
 #[patterns(converter)]
 impl MemrefToEmitc {
-    /// The memref type of `v`, if legal for EmitC.
     fn legal<'a>(cr: &Cr<'_, 'a, '_>, v: ValueId) -> Option<mlirformat::Shaped<'a>> {
         match cr.ty(v) {
             Type::Shaped(s) if Emitc::memref_legal(&s) => Some(*s),
@@ -25,12 +21,10 @@ impl MemrefToEmitc {
         }
     }
 
-    /// Whether the type of `v` has a static shape.
     fn static_shape(cr: &Cr<'_, '_, '_>, v: ValueId) -> bool {
         matches!(cr.ty(v), Type::Shaped(s) if s.shape.is_some() && !s.dims().unwrap_or_default().contains(&Dim::DYNAMIC))
     }
 
-    /// The `alignment` attribute.
     fn alignment(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<i64> {
         match cr.rw.body[op].get("alignment") {
             Some(Attribute::Int { lit, .. }) => lit.parse().ok(),
@@ -38,12 +32,10 @@ impl MemrefToEmitc {
         }
     }
 
-    /// The element type converted (`sizeof` and the casts name it).
     fn elem<'a>(cr: &Cr<'_, 'a, '_>, s: &mlirformat::Shaped<'a>) -> Option<Type<'a>> {
         cr.type_converter()?.convert(&s.elem)
     }
 
-    /// The pointee of a converted rank-0 memref (`!emitc.ptr<T>` ⇒ `T`).
     fn pointee<'a>(t: &Type<'a>) -> Option<Type<'a>> {
         let Type::Extended(e) = t else { return None };
         (e.name == "emitc.ptr").then_some(())?;
@@ -51,8 +43,6 @@ impl MemrefToEmitc {
         mlirformat::Parser::read(inner, |p| p.ty()).ok().map(|t| t.owned())
     }
 
-    /// `getMemRefPointer`: `v` itself when a pointer, or the pointer an unrealized cast made it
-    /// from.
     fn pointer(cr: &Cr<'_, '_, '_>, v: ValueId) -> Option<ValueId> {
         let is_ptr = |v: ValueId| matches!(&cr.rw.body[v].ty, Type::Extended(e) if e.name == "emitc.ptr");
         if is_ptr(v) {
@@ -65,7 +55,6 @@ impl MemrefToEmitc {
         }
     }
 
-    /// `sizeof(elem) * count`, as `calculateMemrefTotalSizeBytes`.
     fn total_size<'a>(cr: &mut Cr<'_, 'a, '_>, elem: &Type<'a>, count: i64) -> ValueId {
         let data = OpData::build("emitc.call_opaque").with("callee", Attribute::str("sizeof")).with("args", Attribute::Array(vec![Attribute::Type(elem.clone())]));
         let size = cr.build(data, EmitcType::size_t());
@@ -73,7 +62,6 @@ impl MemrefToEmitc {
         cr.emitc("emitc.mul", &[size, n], EmitcType::size_t())
     }
 
-    /// `createPointerFromEmitcArray`: the address of the first element.
     fn first_element(cr: &mut Cr<'_, '_, '_>, array: ValueId) -> Option<ValueId> {
         let ty = cr.ty(array);
         let (rank, elem) = EmitcType::array_parts(&ty)?;
@@ -84,7 +72,6 @@ impl MemrefToEmitc {
         Some(cr.emitc("emitc.address_of", &[sub], EmitcType::ptr(elem)))
     }
 
-    /// `computeRowMajorLinearIndex`: `((i0 * d1 + i1) * d2 + i2) ..`, typed as the first index.
     fn linear_index(cr: &mut Cr<'_, '_, '_>, dims: &[i64], indices: &[ValueId]) -> ValueId {
         let Some((&first, rest)) = indices.split_first() else { return cr.emitc_constant(Emitc::int(0, Type::Index), Type::Index) };
         let ty = cr.ty(first);
@@ -97,8 +84,6 @@ impl MemrefToEmitc {
         linear
     }
 
-    /// The lvalue a load or store goes through: `memref`'s array subscripted, or its pointer at
-    /// the row-major linear index.
     fn element(cr: &mut Cr<'_, '_, '_>, memref: ValueId, converted: ValueId, indices: &[ValueId]) -> Option<ValueId> {
         let ptr = Self::pointer(cr, converted);
         if ptr.is_none() && let Some((_, elem)) = EmitcType::array_parts(&cr.ty(converted)) {
@@ -122,7 +107,6 @@ impl MemrefToEmitc {
         }
         let Some(ty) = cr.converted_result(op) else { return false };
         let init = Attribute::dialect("emitc.opaque", "<\"\">");
-        // Rank 0: a variable and its address.
         if cr.ty(r).dims().is_some_and(|d| d.is_empty()) {
             let Some(elem) = Self::pointee(&ty) else { return false };
             let var = cr.build(OpData::build("emitc.variable").with("value", init), EmitcType::lvalue(&elem));
@@ -151,7 +135,6 @@ impl MemrefToEmitc {
         true
     }
 
-    /// `ConvertDealloc`: `free` of the memref's pointer as `void *`.
     #[convert("memref.dealloc")]
     fn dealloc(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -167,7 +150,6 @@ impl MemrefToEmitc {
         let (src, dst) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
         let (Some(s), Some(_)) = (Self::legal(cr, src), Self::legal(cr, dst)) else { return false };
         let Some(elem) = Self::elem(cr, &s) else { return false };
-        // Rank 0: one element through the pointers.
         if s.dims().is_some_and(|d| d.is_empty()) {
             let (Some(sp), Some(dp)) = (Self::pointer(cr, ops[0]), Self::pointer(cr, ops[1])) else { return false };
             let zero = cr.emitc_constant(Emitc::int(0, Type::Index), Type::Index);
@@ -201,7 +183,6 @@ impl MemrefToEmitc {
         if s.shape.as_ref().is_some_and(Vec::is_empty) {
             let Some(p) = Self::pointee(&res) else { return false };
             res = p;
-            // `variable : memref<i32> = dense<-1>`: the splat.
             if let Some(c) = init.as_ref().and_then(|a| Const::try_from(a).ok()) {
                 init = c.splat_value().map(|v| Const::scalar(v, (*s.elem).clone()).into());
             }
@@ -254,7 +235,6 @@ impl MemrefToEmitc {
         true
     }
 
-    /// The pass's epilogue: the standard headers the calls need, at the start of `module`.
     pub fn add_headers(body: &mut Body<'_>, module: OpId, cpp: bool) {
         let ops = body.ops_in(module);
         let mut have: Vec<alloc::string::String> = ops

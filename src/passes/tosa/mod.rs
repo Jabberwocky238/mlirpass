@@ -1,5 +1,3 @@
-//! `tosa` passes.
-
 mod tosa_to_arith;
 mod tosa_to_linalg;
 mod tosa_to_linalg_named;

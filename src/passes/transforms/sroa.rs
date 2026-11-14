@@ -1,11 +1,3 @@
-//! `sroa`, as `SROA.cpp`: memory slots of aggregates split into one slot per used subelement.
-//!
-//! The dialects answer through [`Destructurable`] (`memslot.rs`): `llvm`'s in `llvm/memslot.rs`
-//! (`LLVMMemorySlot.cpp`), `memref`'s in `memref_slots.rs` (`MemRefMemorySlot.cpp`).
-//!
-//! Orders follow MLIR's: a value's uses are visited most recent first (its use list), and
-//! `usedIndices` keeps the order indices were first inserted in (a small `SmallPtrSet`).
-
 use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
 
@@ -15,14 +7,10 @@ use mlirformat::{Attribute, Error};
 use super::memslot::{Deletion, Destructurable, DestructurableMemorySlot, Promotable, Slots};
 use crate::{Body, DataLayout, OpId, Quiet, Rewriter, Use};
 
-/// `MemorySlotDestructuringInfo`.
 #[derive(Default)]
 struct Info<'a> {
-    /// `usedIndices`.
     used: Vec<Attribute<'a>>,
-    /// `userToBlockingUses`, each user's uses ordered by operand.
     blocking: Vec<(OpId, Vec<Use>)>,
-    /// Accessors that will rewire their uses.
     accessors: Vec<OpId>,
 }
 
@@ -39,14 +27,12 @@ impl Info<'_> {
     }
 }
 
-/// `tryToDestructureMemorySlots` and what it asks with.
 struct Destructurer<'s> {
     cx: Slots<'s>,
     promotable: &'s [&'s dyn Promotable],
 }
 
 impl<'s> Destructurer<'s> {
-    /// `computeDestructuringInfo`; `None` when `slot` cannot be destructured or nothing uses it.
     fn info<'a>(&self, b: &Body<'a>, slot: &DestructurableMemorySlot<'a>) -> Option<Info<'a>> {
         let ptr = slot.slot.ptr;
         if b[ptr].uses.is_empty() {
@@ -89,7 +75,6 @@ impl<'s> Destructurer<'s> {
         Some(info)
     }
 
-    /// `destructureSlot`.
     fn destructure<'a>(&self, b: &mut Body<'a>, alloc: OpId, d: &dyn Destructurable, slot: &DestructurableMemorySlot<'a>, info: &Info<'a>, allocators: &mut Vec<OpId>) {
         let mut q = Quiet;
         let mut rw = Rewriter::new(b, &mut q);
@@ -122,7 +107,6 @@ impl<'s> Destructurer<'s> {
         allocators.extend(d.handle_destructuring_complete(&mut rw, alloc, slot));
     }
 
-    /// `tryToDestructureMemorySlots`: whether anything was destructured.
     fn run(&self, b: &mut Body<'_>, allocators: Vec<OpId>) -> bool {
         let mut any = false;
         let mut work = allocators;
@@ -132,7 +116,6 @@ impl<'s> Destructurer<'s> {
             for alloc in work {
                 let d = b.destructurable(self.cx.dialects, alloc).expect("allocator has interfaces");
                 let slots = d.destructurable_slots(self.cx, b, alloc).unwrap_or_default();
-                // Destructuring a slot may invalidate the allocator's other slots.
                 match slots.iter().find_map(|slot| Some((slot, self.info(b, slot)?))) {
                     Some((slot, info)) => {
                         self.destructure(b, alloc, d, slot, &info, &mut next);
@@ -160,7 +143,6 @@ pub fn sroa<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         if body[region].blocks.is_empty() {
             continue;
         }
-        // `region.walk`: post-order.
         let mut allocators = Vec::new();
         for blk in body[region].blocks.clone() {
             for o in body.block_ops(blk) {

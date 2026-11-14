@@ -1,36 +1,14 @@
-//! Mesa's AMD register database ⇒ the rdna2 dialect's register and packet ops: reads data/amd/gfx103.json (every
-//! register of GFX10.3, its MMIO byte offset and fields; a few GFX10 code uses from gfx9.json, `FROM_GFX9`), data/amd/pkt3.json (the PM4 packets' dwords, those of
-//! gfx103), data/amd/sid.h (the PM4 type-3 opcodes, `PKT3_*`), and writes
-//! `src/dialects/rdna2/regs.gen.rs`:
-//!
-//! - `RDNA2_ITEMS`: every register's layout (one dword: fields' first bit and width; `num` its byte offset), sorted by op
-//!   name, for `Layouts::pack`; a register without fields has one, `value`, all 32 bits;
-//! - a typed op per register: `rdna2.reg.*` for MMIO registers, `rdna2.pkt.*` for packet dwords, each field an
-//!   `Fill` (a number or a place); `Rdna2Regs::verify` reads an op as its typed op;
-//! - `RDNA2_PM4_OPCODES`: every PM4 packet's opcode, sorted by op name, and a typed op `rdna2.pm4.*` per packet (`body`,
-//!   `predicate`, `compute`; the four `SET_{CONFIG,SH,CONTEXT,UCONFIG}_REG` hold their registers in a region and are
-//!   declared by hand, `SETS`); `Rdna2Packets::verify`;
-//! - the enum values as constants `RDNA2_*`, like Mesa's `V_*` defines (a name two enums give different values is prefixed with
-//!   its enum; the packets' are always prefixed, their names are generic; one starting with a digit gets `_`).
-//!
-//! `cargo run -p rdna2gen -- data/amd/gfx103.json data/amd/gfx9.json data/amd/pkt3.json data/amd/sid.h
-//! src/dialects/rdna2/regs.gen.rs`
-
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 
 use serde::Deserialize;
 
-/// The chip the tables are for.
 const CHIP: &str = "gfx103";
-/// Registers GFX10 code uses that Mesa's gfx103 database leaves to the older chips' (its combined amdgfxregs.h has
-/// them from there, same address and fields): taken from gfx9.json.
+
 const FROM_GFX9: &[&str] = &["COMPUTE_STATIC_THREAD_MGMT_SE0", "COMPUTE_STATIC_THREAD_MGMT_SE1", "COMPUTE_STATIC_THREAD_MGMT_SE2", "COMPUTE_STATIC_THREAD_MGMT_SE3"];
-/// Registers that hold an address shifted right (the database gives them as a plain value): their one field
-/// `address`, the byte address, stored `>> n` (radv: `radeon_set_sh_reg(pgm_lo, va >> 8)`).
+
 const ADDRESSES: &[(&str, u32)] = &[("COMPUTE_PGM_LO", 8)];
 
-/// Packets whose ops the dialect declares itself (with a region of registers).
 const SETS: &[&str] = &["rdna2.pm4.set_config_reg", "rdna2.pm4.set_sh_reg", "rdna2.pm4.set_context_reg", "rdna2.pm4.set_uconfig_reg"];
 
 #[derive(Deserialize)]
@@ -70,7 +48,6 @@ struct RegType {
     fields: Vec<RegField>,
 }
 
-
 #[derive(Deserialize)]
 struct RegField {
     name: String,
@@ -78,19 +55,15 @@ struct RegField {
     enum_ref: Option<String>,
 }
 
-/// One register as the table spells it.
 struct Item {
     name: String,
-    /// `reg` (MMIO) or `pkt` (a packet dword).
     space: &'static str,
     op: String,
     num: u32,
-    /// (name, first bit, width, type)
     fields: Vec<(String, u32, u32, String)>,
 }
 
 impl Item {
-    /// `mapping` of `db`, in op space `space` (`reg`, `pkt`).
     fn new(db: &Db, m: &Mapping, space: &'static str) -> Item {
         let fields = match (&m.type_ref, ADDRESSES.iter().find(|(n, _)| *n == m.name)) {
             (_, Some((_, shift))) => vec![("address".to_owned(), 0, 32, format!("Ty::Shr({shift})"))],
@@ -100,18 +73,15 @@ impl Item {
         Item { name: m.name.clone(), space, op: format!("rdna2.{space}.{}", m.name.to_lowercase()), num: m.map.at, fields }
     }
 
-    /// The op's Rust type: `Reg` / `Pkt` and the name in camel case.
     fn ty(&self) -> String {
         format!("{}{}", if self.space == "reg" { "Reg" } else { "Pkt" }, camel(&self.name))
     }
 }
 
-/// `SNAKE_case` ⇒ `SnakeCase`.
 fn camel(name: &str) -> String {
     name.split('_').map(|w| w[..1].to_uppercase() + &w[1..].to_lowercase()).collect()
 }
 
-/// The enum constants: (name, value), deduplicated as the module doc says.
 struct Consts(BTreeMap<String, u64>);
 
 impl Consts {
@@ -161,7 +131,6 @@ fn main() {
         .flat_map(|t| pkt.register_types[t].fields.iter().filter_map(|f| f.enum_ref.as_deref()))
         .collect();
 
-    // `#define PKT3_<NAME> 0x<opcode>` (an opcode is a byte; masks such as PKT3_IT_OPCODE_C are not)
     let opcodes: BTreeMap<String, u32> = std::fs::read_to_string(sid)
         .unwrap()
         .lines()
@@ -191,7 +160,6 @@ fn main() {
         writeln!(out, "    (\"{op}\", {opcode:#04x}),").unwrap();
     }
     out.push_str("];\n\n");
-    // a typed op a register / packet dword: its fields, each a number or a place
     for i in &items {
         writeln!(out, "/// `{}`: {}.\n#[mlirformat::mlir::op(\"{}\", format = \"attr-dict\")]\n#[derive(Default)]\npub struct {} {{", i.op, i.name, i.op, i.ty()).unwrap();
         for (n, ..) in &i.fields {
@@ -207,7 +175,6 @@ fn main() {
     out.push_str("            _ => return None,\n        })\n    }\n}\n\n#[mlirformat::mlir::dialect(\"rdna2\", ops = [");
     out.push_str(&items.iter().map(Item::ty).collect::<Vec<_>>().join(", "));
     out.push_str("])]\npub(crate) struct TypedRegOps;\n\n");
-    // a typed op a packet (the four SET_*_REG hold their registers in a region: declared by hand)
     let packets: Vec<&String> = opcodes.keys().filter(|o| !SETS.contains(&o.as_str())).collect();
     for op in &packets {
         writeln!(out, "/// `{op}`: its body, and the header's predicate / compute bits.\n#[mlirformat::mlir::op(\"{op}\", format = \"attr-dict\")]\n#[derive(Default)]\npub struct Pm4{} {{\n    pub body: Vec<Word>,\n    pub predicate: bool,\n    pub compute: bool,\n}}\n", camel(&op["rdna2.pm4.".len()..])).unwrap();
@@ -219,7 +186,6 @@ fn main() {
     out.push_str("            _ => return None,\n        })\n    }\n}\n\n#[mlirformat::mlir::dialect(\"rdna2\", ops = [");
     out.push_str(&packets.iter().map(|op| format!("Pm4{}", camel(&op["rdna2.pm4.".len()..]))).collect::<Vec<_>>().join(", "));
     out.push_str("])]\npub(crate) struct PacketOps;\n");
-    // what the typed ops declare (they live in `<{...}>`): a register's fields, a packet's body and bits
     out.push_str("\n/// The registers' and packets' declared attributes, for the dialect's `op_infos`.\npub const RDNA2_INHERENT: &[(&str, &[&str])] = &[\n");
     for i in &items {
         let names: Vec<String> = i.fields.iter().map(|(n, ..)| format!("\"{n}\"")).collect();

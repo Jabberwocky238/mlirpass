@@ -1,5 +1,3 @@
-//! The `agx` passes: a kernel's registers, then its waits; the streams' and kernels' ends; the image's layout.
-
 mod agx_end;
 mod agx_layout;
 mod agx_regalloc;

@@ -1,10 +1,3 @@
-//! The data-flow analyses `sccp` and `remove-dead-values` run: `DeadCodeAnalysis`,
-//! `SparseConstantPropagation` and `LivenessAnalysis`.
-//!
-//! Each is monotone, so its fixed point does not depend on visiting order. The forward analyses
-//! reach it off a worklist (`DataFlowSolver`'s): every op and block once, in preorder, then only
-//! what reads a state that changed. Liveness sweeps the IR until nothing changes.
-
 use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
 use alloc::string::String;
 use alloc::vec;
@@ -15,17 +8,13 @@ use mlirformat::Attribute;
 use crate::{Point, Succ};
 use crate::{Body, BlockId, Const, Def, Fold, Folded, OpId, RegionId, Trait, ValueId, Visibility};
 
-/// `ConstantValue` in its `Lattice`.
 #[derive(Debug, Clone)]
 pub enum Cv<'a> {
     Uninit,
-    /// A constant, with the dialect that produced it.
     Known(Attribute<'a>, mlirformat::Str<'a>),
     Unknown,
 }
 
-/// `ConstantValue::operator==`: the constants alone. The dialect only says who materializes it:
-/// `math.cos` of a NaN and an `arith.constant` NaN are the same value, and the join keeps the first.
 impl PartialEq for Cv<'_> {
     fn eq(&self, o: &Self) -> bool {
         match (self, o) {
@@ -37,7 +26,6 @@ impl PartialEq for Cv<'_> {
 }
 
 impl<'a> Cv<'a> {
-    /// The dialect of op `name`: borrowed from it when it is.
     pub fn dialect(name: &mlirformat::Str<'a>) -> mlirformat::Str<'a> {
         let of = |n: &str| -> usize { n.split_once('.').map_or(0, |(d, _)| d.len()) };
         match name.borrowed() {
@@ -55,7 +43,6 @@ impl<'a> Cv<'a> {
     }
 }
 
-/// `PredecessorState`.
 #[derive(Debug, Default, Clone, PartialEq)]
 struct Preds {
     unknown: bool,
@@ -63,23 +50,18 @@ struct Preds {
     inputs: BTreeMap<OpId, Vec<ValueId>>,
 }
 
-/// What the worklist visits: an op (`DeadCodeAnalysis` and `SparseConstantPropagation` of it),
-/// or a block (its arguments).
 #[derive(Debug, Clone, Copy)]
 enum Item {
     Op(OpId),
     Block(BlockId),
 }
 
-/// A program point: after an op, or the start of a block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Pt {
     After(OpId),
     Block(BlockId),
 }
 
-/// The body a solver works on: borrowed, or owned (a function lent out, solved apart round
-/// after round: [`Solver::run_in`]).
 pub enum BodyRef<'b, 'a> {
     Borrowed(&'b mut Body<'a>),
     Owned(Body<'a>),
@@ -104,21 +86,14 @@ impl<'a> core::ops::DerefMut for BodyRef<'_, 'a> {
     }
 }
 
-/// A call as the whole body resolved it, for a solver that sees part of it ([`Boundary`]).
 #[derive(Debug, Clone, Copy)]
 struct CallInfo {
     callee: Option<OpId>,
-    /// The callee is a symbol of the body with a body of its own: the call is one of its known
-    /// callers (else its results are what an unknown callee gives).
     internal: bool,
-    /// The callee is a callable without a body.
     bodiless: bool,
-    /// The callee is a callable.
     callable: bool,
 }
 
-/// A callable's callers: an unknown one, the known calls, and what they pass, joined per
-/// argument.
 #[derive(Debug, Clone, Default, PartialEq)]
 struct Callers<'a> {
     unknown: bool,
@@ -143,8 +118,6 @@ impl<'a> Callers<'a> {
     }
 }
 
-/// What a callable's live terminators give its calls: unknown (one is not a return), and the
-/// returns' operands, joined per result.
 #[derive(Debug, Clone, Default, PartialEq)]
 struct Returns<'a> {
     unknown: bool,
@@ -167,9 +140,6 @@ impl<'a> Returns<'a> {
     }
 }
 
-/// What a solver that sees part of the body (a function, or the rest) knows of the other parts —
-/// the calls resolved, each callable's callers and returns as of the last round — and what it
-/// tells them: the callers and returns its own ops make.
 #[derive(Debug, Clone, Default)]
 struct Boundary<'a> {
     calls: alloc::sync::Arc<BTreeMap<OpId, CallInfo>>,
@@ -177,11 +147,8 @@ struct Boundary<'a> {
     returns: alloc::sync::Arc<BTreeMap<OpId, Returns<'a>>>,
     out_callers: BTreeMap<OpId, Callers<'a>>,
     out_returns: BTreeMap<OpId, Returns<'a>>,
-    /// Liveness: per callable, whether each entry argument is live; per callable, whether its
-    /// results are live at some call (all, with an unknown caller).
     args_live: alloc::sync::Arc<BTreeMap<OpId, Vec<bool>>>,
     results_live: alloc::sync::Arc<BTreeMap<OpId, (bool, Vec<bool>)>>,
-    /// Ops of the body that are solved elsewhere (lent out): not visited here.
     skip: BTreeSet<OpId>,
 }
 
@@ -191,33 +158,19 @@ pub struct Solver<'b, 'a> {
     live: BTreeSet<BlockId>,
     edges: BTreeSet<(BlockId, BlockId)>,
     preds: BTreeMap<Pt, Preds>,
-    /// Per value (by id); past the end: `Uninit`.
     lat: crate::IdVec<ValueId, Cv<'a>>,
     changed: bool,
-    /// `Liveness`: the values found live.
     pub alive: crate::IdVec<ValueId, bool>,
-    /// The sweep under way, from 1.
     round: u32,
-    /// Per value, the sweep its lattice last changed in.
     changed_in: crate::IdVec<ValueId, u32>,
-    /// Per op, the sweep `sparse_op` last folded it in (0: never, or it must fold every time):
-    /// it need not fold again until one of its operands changes.
     folded_in: crate::IdVec<OpId, u32>,
-    /// Each call's [`resolve`](Self::resolve): the IR does not change while solving.
     callees: BTreeMap<OpId, Option<OpId>>,
-    /// `SymbolTableCollection`: each symbol table's symbols by name, built the first time it is
-    /// looked into (a scan per lookup is quadratic in the module).
     symbols: BTreeMap<OpId, BTreeMap<String, OpId>>,
-    /// The top's symbol uses, found ahead on many threads ([`Body::region_symbol_uses_in`]).
     uses: Option<Option<Vec<crate::SymbolUse<'a>>>>,
-    /// What to visit again, and whether each op and block is in it already.
     work: VecDeque<Item>,
     queued_ops: crate::IdVec<OpId, bool>,
     queued_blocks: crate::IdVec<BlockId, bool>,
-    /// The ops whose fold gave another value of their own ([`Folded::Value`]): they read it
-    /// although it is not their operand.
     reads: BTreeMap<ValueId, Vec<OpId>>,
-    /// Solving part of the body ([`Solver::run_in`]).
     unit: Option<Boundary<'a>>,
 }
 
@@ -245,8 +198,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    // ---- the worklist ----------------------------------------------------------------------
-
     fn push_op(&mut self, o: OpId) {
         if self.unit.as_ref().is_some_and(|u| u.skip.contains(&o)) {
             return;
@@ -262,7 +213,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// The entry blocks of `op`'s regions.
     fn push_entries(&mut self, op: OpId) {
         for r in self.body[op].regions.clone() {
             if let Some(b) = self.entry_of(r) {
@@ -271,10 +221,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// `v`'s lattice changed: what reads it, through each user (the user itself, the blocks its
-    /// operands flow into — successors, its regions', a callee's —, and for a terminator its
-    /// parent, the parent's regions and the calls a return answers), and the ops that folded
-    /// to it.
     fn value_changed(&mut self, v: ValueId) {
         let users: Vec<OpId> = self.body[v].uses.iter().map(|u| u.op).collect();
         for u in users {
@@ -283,7 +229,6 @@ impl<'b, 'a> Solver<'b, 'a> {
                 self.push_block(s);
             }
             self.push_entries(u);
-            // A terminator's operands flow to its parent: its results, its regions, its callers.
             let last = self.body[u].parent.is_some_and(|b| self.body.last_op(b) == Some(u));
             if let Some(p) = self.body.parent_op(u).filter(|_| last) {
                 self.push_op(p);
@@ -312,7 +257,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// Block `b` became live: it, and every op in it.
     fn block_changed(&mut self, b: BlockId) {
         self.push_block(b);
         for o in self.body.block_ops(b) {
@@ -320,8 +264,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// The predecessors of `p` changed: what reads them — the op (its results, a callable's
-    /// liveness), a callable's returns and entry; or the block.
     fn preds_changed(&mut self, p: Pt) {
         match p {
             Pt::After(o) => {
@@ -404,12 +346,10 @@ impl<'b, 'a> Solver<'b, 'a> {
         self.body.has(op, Trait::CallableOpInterface)
     }
 
-    /// `getCallableRegion`: the body of a callable, when it has one.
     fn callable_region(&self, op: OpId) -> Option<RegionId> {
         self.body[op].regions.first().copied().filter(|r| !self.body[*r].blocks.is_empty())
     }
 
-    /// `CallOpInterface::resolveCallable`.
     fn resolve(&mut self, call: OpId) -> Option<OpId> {
         let b = &*self.body;
         if let Some(callee) = b.interfaces(call).and_then(|i| i.indirect_callee(b, call)) {
@@ -427,13 +367,10 @@ impl<'b, 'a> Solver<'b, 'a> {
         None
     }
 
-    /// `SymbolTableCollection::lookupSymbolIn` of a nested reference: its last symbol.
     fn lookup_path(&mut self, table: OpId, path: &[mlirformat::Str<'_>]) -> Option<OpId> {
         path.iter().try_fold(table, |at, seg| self.lookup(at, Body::unquote(seg)))
     }
 
-    /// One symbol of `table`, through its table; what is not there, the way [`Body::lookup`]
-    /// finds it (outside a lent body).
     fn lookup(&mut self, table: OpId, name: &str) -> Option<OpId> {
         let b = &*self.body;
         let map = self.symbols.entry(table).or_insert_with(|| {
@@ -450,7 +387,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         map.get(name).copied().or_else(|| b.lookup(table, name))
     }
 
-    /// [`resolve`](Self::resolve), once per call.
     fn callee(&mut self, call: OpId) -> Option<OpId> {
         if let Some(c) = self.callees.get(&call) {
             return *c;
@@ -476,7 +412,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// The constants of `op`'s operands; `None` while one is uninitialized.
     fn operand_values(&self, op: OpId) -> Option<Vec<Option<Attribute<'a>>>> {
         self.body[op]
             .operands
@@ -493,12 +428,10 @@ impl<'b, 'a> Solver<'b, 'a> {
         self.body.is_region_branch(op)
     }
 
-    /// `getEntrySuccessorRegions(operands)`.
     fn entry_successors(&self, op: OpId, c: &[Option<Attribute<'a>>]) -> Vec<(Succ, Vec<ValueId>)> {
         self.body.entry_successors(op, c)
     }
 
-    /// A region terminator's `getSuccessorRegions(operands)`.
     fn terminator_successors(&self, op: OpId, t: OpId, c: &[Option<Attribute<'a>>]) -> Vec<(Succ, Vec<ValueId>)> {
         self.body.terminator_successors(op, t, c)
     }
@@ -517,7 +450,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// `BranchOpInterface::getSuccessorForOperands`.
     fn successor_for(&self, op: OpId, c: &[Option<Attribute<'a>>]) -> Option<BlockId> {
         let b = &*self.body;
         b.interfaces(op)?.successor_for(b, op, c)
@@ -530,7 +462,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         b[op].successors.is_empty() && (self.is_region_branch(p) || self.is_callable(p)) && b.last_op(blk) == Some(op)
     }
 
-    /// `DeadCodeAnalysis::visit` of the point after `op`.
     fn dca(&mut self, op: OpId) {
         if !self.block_live(op) {
             return;
@@ -609,8 +540,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// `visitRegionSuccessors`: `lattices` (results after the op, or a region's arguments)
-    /// from what flows in.
     fn region_successors(&mut self, point: Pt, branch: OpId, lattices: &[ValueId]) {
         let ps = self.preds.get(&point).cloned().unwrap_or_default();
         for pred in &ps.known {
@@ -639,7 +568,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// `SparseConstantPropagation::visitOperation` and its callers.
     fn sparse_op(&mut self, op: OpId) {
         let results = self.body[op].results.clone();
         if results.is_empty() || !self.block_live(op) {
@@ -682,7 +610,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         if !self.body[op].regions.is_empty() {
             return self.unknown(&results);
         }
-        // Folded before, and no operand has changed since: folding again gives the same.
         let last = *self.folded_in.get(op);
         if last != 0 && self.body[op].operands.iter().all(|v| *self.changed_in.get(*v) < last) {
             return;
@@ -696,7 +623,6 @@ impl<'b, 'a> Solver<'b, 'a> {
             let d = dialect(self);
             return self.join(results[0], &Cv::Known(v, d));
         }
-        // A fold in place is undone: from the journal, which saves only what the fold writes.
         let cp = self.body.checkpoint();
         match self.body.fold_with(op, &consts) {
             Fold::Results(rs) => {
@@ -705,7 +631,6 @@ impl<'b, 'a> Solver<'b, 'a> {
                     let c = match f {
                         Folded::Attr(a) => Cv::Known(a, dialect(self)),
                         Folded::Value(v) => {
-                            // A value of its own: the op depends on more than its operands.
                             self.folded_in.set(op, 0);
                             let readers = self.reads.entry(v).or_default();
                             if !readers.contains(&op) {
@@ -728,7 +653,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// `AbstractSparseForwardDataFlowAnalysis::visitBlock`.
     fn sparse_block(&mut self, block: BlockId) {
         let args = self.body[block].args.clone();
         if args.is_empty() || !self.live.contains(&block) {
@@ -784,7 +708,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// Every op and block under `op` onto the worklist, in the order a sweep visits them.
     fn enqueue_all(&mut self, op: OpId) {
         if self.unit.as_ref().is_some_and(|u| u.skip.contains(&op)) {
             return;
@@ -800,7 +723,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// `initializeSymbolCallables` over `SymbolTable::walkSymbolTables`.
     fn symbol_callables(&mut self, op: OpId, visible: bool) {
         let mut tables = Vec::new();
         Self::tables(&self.body, op, visible, &mut tables);
@@ -809,7 +731,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// The symbol tables in `op` and itself (postorder), each with whether its parent sees it.
     fn tables(b: &Body<'a>, op: OpId, mut visible: bool, out: &mut Vec<(OpId, bool)>) {
         let table = b.is_symbol_table(op);
         if table {
@@ -829,8 +750,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// [`symbol_callables`](Self::symbol_callables) of `top` with what is under it found on
-    /// `exec`'s threads: the tables, the symbol uses and the calls ([`call_infos`](Self::call_infos)).
     fn symbol_callables_in<X: moremath::Executor + Sync>(&mut self, visible: bool, exec: &X) -> Vec<OpId> {
         let top = self.top;
         let b = &*self.body;
@@ -867,8 +786,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         calls
     }
 
-    /// One symbol table's part of [`symbol_callables`](Self::symbol_callables): `visible`,
-    /// whether its parent sees it.
     fn table_callables(&mut self, op: OpId, visible: bool) {
         let Some(&blk) = self.body[op].regions.first().and_then(|r| self.body[*r].blocks.first()) else { return };
         let mut found = false;
@@ -905,7 +822,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// `DeadCodeAnalysis` and `SparseConstantPropagation` to their fixed point.
     pub fn run(&mut self) {
         let top = self.top;
         for r in self.body[top].regions.clone() {
@@ -917,13 +833,10 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
         let visible = self.body[top].parent.is_none();
         self.symbol_callables(top, visible);
-        // What the steps above queued goes first; then everything, as the first sweep did.
         self.enqueue_all(top);
         self.drain();
     }
 
-    /// A call where only part of the body is seen ([`Boundary`]): one of its callee's callers,
-    /// with what it passes; an unknown callee leaves its results' predecessors unknown.
     fn unit_call(&mut self, op: OpId) {
         let info = self.unit.as_ref().and_then(|u| u.calls.get(&op).copied());
         match info.filter(|i| i.internal).and_then(|i| i.callee) {
@@ -937,8 +850,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// A live terminator `op` of callable `p`, where only part of the body is seen: what it gives
-    /// `p`'s calls (a return's operands; anything else: unknown).
     fn unit_return(&mut self, p: OpId, op: OpId) {
         let values: Option<Vec<Cv<'a>>> = self.body.has(op, Trait::ReturnLike).then(|| self.body[op].operands.iter().map(|v| self.get(*v)).collect());
         let out = self.unit.as_mut().expect("a unit").out_returns.entry(p).or_default();
@@ -948,7 +859,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// Every call under `top`, resolved on the whole body.
     fn call_infos(&mut self, top: OpId, calls: Vec<OpId>) -> BTreeMap<OpId, CallInfo> {
         let mut out = BTreeMap::new();
         for op in calls {
@@ -961,20 +871,10 @@ impl<'b, 'a> Solver<'b, 'a> {
         out
     }
 
-    /// ⭐ [`run`](Self::run) of `top` (a module) and the [`lattice`](Self::lattice) it reaches,
-    /// its functions solved in parallel on `exec`. Who calls what, and which callables anyone
-    /// may call, are settled on the whole body first; then each function with a seg of its own
-    /// is lent out and solved by a solver of its own, the rest here, all seeing each other only
-    /// through each callable's callers and returns ([`Boundary`]) as the last round left them.
-    /// Round after round, what changed in those is fed back to what reads it, until nothing
-    /// does: the analyses are monotone, so this is the fixed point a serial run reaches.
     pub fn solve_in<X: moremath::Executor + Sync>(body: &'b mut Body<'a>, top: OpId, exec: &X) -> crate::IdVec<ValueId, Cv<'a>> {
         Self::solve(body, top, exec, false).0
     }
 
-    /// [`solve_in`](Self::solve_in), then liveness ([`run_liveness`](Self::run_liveness)) the
-    /// same way — through each callable's live entry arguments and the results its calls use —
-    /// and the values found live.
     pub fn liveness_in<X: moremath::Executor + Sync>(body: &'b mut Body<'a>, top: OpId, exec: &X) -> crate::IdVec<ValueId, bool> {
         Self::solve(body, top, exec, true).1
     }
@@ -1007,7 +907,6 @@ impl<'b, 'a> Solver<'b, 'a> {
                 by_callee.entry(c).or_default().push(*call);
             }
         }
-        // The functions lent out, each with a solver of its own; the rest stays here.
         let mut lent: Vec<(OpId, crate::Lent)> = Vec::new();
         let mut units: Vec<Solver<'_, 'a>> = Vec::new();
         for c in children {
@@ -1020,8 +919,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
         let owner: BTreeMap<u32, usize> = lent.iter().enumerate().map(|(k, (c, _))| (crate::Id::seg(*c), k)).collect();
         main.unit = Some(Boundary { calls: calls.clone(), skip: lent.iter().map(|(c, _)| *c).collect(), ..Boundary::default() });
-        // What settling the callables queued here belongs to the lent functions' solvers, which
-        // visit everything of theirs anyway.
         main.work.clear();
         main.queued_ops = crate::IdVec::new(false);
         main.queued_blocks = crate::IdVec::new(false);
@@ -1042,7 +939,6 @@ impl<'b, 'a> Solver<'b, 'a> {
                 u.callers = ca.clone();
                 u.returns = re.clone();
             }
-            // Each function to its own fixed point under what the others gave last round.
             let mut slots: Vec<Option<Solver<'_, 'a>>> = units.drain(..).map(Some).collect();
             let tasks = slots
                 .iter_mut()
@@ -1050,7 +946,6 @@ impl<'b, 'a> Solver<'b, 'a> {
                     alloc::boxed::Box::new(move || {
                         let mut s = slot.take().expect("a solver");
                         if first {
-                            // Its body all to visit, on its own thread.
                             let stand_in = s.body.top_block(s.body.root);
                             s.mark_live(stand_in);
                             s.enqueue_all(s.top);
@@ -1064,7 +959,6 @@ impl<'b, 'a> Solver<'b, 'a> {
             units = slots.into_iter().map(|s| s.expect("every task ran")).collect();
             first = false;
             main.drain();
-            // What they all tell: the callers and returns of every callable.
             let mut new_callers = base.clone();
             let mut new_returns: BTreeMap<OpId, Returns<'a>> = BTreeMap::new();
             for s in units.iter().chain(core::iter::once(&main)) {
@@ -1079,8 +973,6 @@ impl<'b, 'a> Solver<'b, 'a> {
             if new_callers == callers && new_returns == returns {
                 break;
             }
-            // What read a changed one goes again: a callable's liveness and entry, the calls of a
-            // callable whose returns changed.
             let owner_of = |x: OpId| -> usize { owner.get(&crate::Id::seg(x)).copied().unwrap_or(usize::MAX) };
             for (c, cs) in &new_callers {
                 if callers.get(c) != Some(cs) {
@@ -1109,7 +1001,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         if liveness {
             Self::liveness_rounds(&mut main, &mut units, top, &lent, &owner, &calls, &callers, exec);
         }
-        // Every function back, its lattice and liveness into the whole ones.
         let mut parts = Vec::with_capacity(units.len());
         for (u, (c, parent)) in units.into_iter().zip(lent) {
             let (sub, lat, alive) = u.into_parts();
@@ -1125,10 +1016,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         (lat, alive)
     }
 
-    /// Liveness of the parts [`solve`](Self::solve) solved apart, round after round: each to its
-    /// own fixed point in parallel under each callable's live entry arguments and the results its
-    /// calls use as the last round left them; what changed goes back to the calls (arguments)
-    /// and the returns (results) that read it, until nothing does.
     #[allow(clippy::too_many_arguments)]
     fn liveness_rounds<X: moremath::Executor + Sync>(main: &mut Self, units: &mut Vec<Self>, top: OpId, lent: &[(OpId, crate::Lent)], owner: &BTreeMap<u32, usize>, calls: &BTreeMap<OpId, CallInfo>, callers: &BTreeMap<OpId, Callers<'a>>, exec: &X) {
         let owner_of = |x: OpId| owner.get(&crate::Id::seg(x)).copied();
@@ -1164,8 +1051,6 @@ impl<'b, 'a> Solver<'b, 'a> {
             moremath::Executor::execute(exec, tasks);
             *units = slots.into_iter().map(|s| s.expect("every task ran")).collect();
             main.drain_backward();
-            // What the parts say: each callee's live entry arguments, each callable's live
-            // results at its calls.
             let mut new_args: BTreeMap<OpId, Vec<bool>> = BTreeMap::new();
             for c in by_callee.keys() {
                 let s: &Self = match owner_of(*c) {
@@ -1218,7 +1103,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// The backward worklist, to its end.
     fn drain_backward(&mut self) {
         while let Some(item) = self.work.pop_front() {
             if let Item::Op(o) = item {
@@ -1228,7 +1112,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// An owned body, its lattice and its liveness.
     fn into_parts(self) -> (Body<'a>, crate::IdVec<ValueId, Cv<'a>>, crate::IdVec<ValueId, bool>) {
         match self.body {
             BodyRef::Owned(b) => (b, self.lat, self.alive),
@@ -1236,7 +1119,6 @@ impl<'b, 'a> Solver<'b, 'a> {
         }
     }
 
-    /// The worklist, to its end.
     fn drain(&mut self) {
         while let Some(item) = self.work.pop_front() {
             self.round += 1;
@@ -1255,9 +1137,7 @@ impl<'b, 'a> Solver<'b, 'a> {
     }
 }
 
-
 impl Body<'_> {
-    /// The integer (or bool) a constant operand holds, as successor selection reads it.
     pub fn selector_of(a: &Option<Attribute<'_>>) -> Option<i128> {
         match a.as_ref()? {
             Attribute::Bool(b) => Some(i128::from(*b)),
@@ -1265,13 +1145,11 @@ impl Body<'_> {
         }
     }
 
-    /// `CallOpInterface::getArgOperands` as a range of the operands.
     pub fn call_arg_range(&self, call: OpId) -> core::ops::Range<usize> {
         self.interfaces(call).and_then(|i| i.call_args(self, call)).unwrap_or(0..self[call].operands.len())
     }
 }
 
-/// `LivenessAnalysis`, the backward sparse analysis over the live code.
 impl Solver<'_, '_> {
     fn mark_alive(&mut self, v: ValueId) {
         if !core::mem::replace(self.alive.get_mut(v), true) {
@@ -1280,7 +1158,6 @@ impl Solver<'_, '_> {
         }
     }
 
-    /// The terminators of the blocks in `op`'s regions.
     fn push_terminators(&mut self, op: OpId) {
         for r in self.body[op].regions.clone() {
             for b in self.body[r].blocks.clone() {
@@ -1291,10 +1168,6 @@ impl Solver<'_, '_> {
         }
     }
 
-    /// `v` became live: the ops whose operands may be live through it. Its defining op (and,
-    /// a region branch, its regions' terminators that yield to it; a call, the callee's
-    /// returns); for a block argument, the branches into its block, the op holding its region
-    /// and that op's terminators, and a callable's calls.
     fn alive_changed(&mut self, v: ValueId) {
         match self.body[v].def {
             Def::Result(d, _) => {
@@ -1326,14 +1199,12 @@ impl Solver<'_, '_> {
         }
     }
 
-    /// `meet(operand, value)`: `operand` is live once `value` is.
     fn meet_alive(&mut self, operand: ValueId, value: ValueId) {
         if *self.alive.get(value) {
             self.mark_alive(operand);
         }
     }
 
-    /// `LivenessAnalysis::visitOperation`, for `operands` of `op`.
     fn liveness_visit(&mut self, op: OpId, operands: &[ValueId]) {
         let any_result = self.body[op].results.iter().any(|r| *self.alive.get(*r));
         if !self.body.would_be_trivially_dead(op) || any_result {
@@ -1341,8 +1212,6 @@ impl Solver<'_, '_> {
         }
     }
 
-    /// `getSuccessorOperandInputMapping` from one point: each forwarded operand with the
-    /// inputs it reaches.
     fn operand_inputs_at(&self, op: OpId, p: Point) -> Vec<(usize, Vec<ValueId>)> {
         let ops = self.body.forwarded(op, p);
         let mut out: Vec<(usize, Vec<ValueId>)> = ops.iter().map(|(_, i)| (*i, Vec::new())).collect();
@@ -1356,7 +1225,6 @@ impl Solver<'_, '_> {
         out
     }
 
-    /// `AbstractSparseBackwardDataFlowAnalysis::visitOperation`.
     fn backward(&mut self, op: OpId) {
         if !self.block_live(op) {
             return;
@@ -1411,8 +1279,6 @@ impl Solver<'_, '_> {
             if info.bodiless {
                 return operands.iter().for_each(|v| self.mark_alive(*v));
             }
-            // Not told yet (the first round): no argument is live yet; the calls go again once
-            // the callee's entry is known.
             let live = u.args_live.get(&info.callee.expect("a callee")).cloned();
             let first = operands.len() - self.call_args(op).len();
             for (k, v) in operands.iter().enumerate() {
@@ -1492,7 +1358,6 @@ impl Solver<'_, '_> {
         self.liveness_visit(op, &operands);
     }
 
-    /// Every op under `op` onto the worklist, in the order a backward sweep visits them.
     fn enqueue_backward(&mut self, op: OpId) {
         if self.unit.as_ref().is_some_and(|u| u.skip.contains(&op)) {
             return;
@@ -1507,8 +1372,6 @@ impl Solver<'_, '_> {
         }
     }
 
-    /// `RunLivenessAnalysis`'s liveness, the baseline analyses done ([`run`](Self::run)): to its
-    /// fixed point off the worklist (every op once, then those a newly live value reaches).
     fn run_liveness_only(&mut self) {
         let top = self.top;
         self.enqueue_backward(top);

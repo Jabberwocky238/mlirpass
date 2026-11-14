@@ -1,6 +1,3 @@
-//! `drop-equivalent-buffer-results`, as `DropEquivalentBufferResults.cpp`: a memref result that
-//! is (through casts) the same argument at every return goes; callers use that argument.
-
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
@@ -16,12 +13,10 @@ pub struct DropEquivalentBufferResults {
 }
 
 impl DropEquivalentBufferResults {
-    /// Public functions are left alone unless asked; declarations always.
     fn skip(&self, b: &Body<'_>, f: OpId) -> bool {
         (b.visibility(f) == Visibility::Public && !self.modify_public) || b[b[f].regions[0]].blocks.is_empty()
     }
 
-    /// `v` through `memref.cast`s is argument `arg`.
     fn is_argument(b: &Body<'_>, mut v: ValueId, arg: ValueId) -> bool {
         while let Some(c) = b.def_named(v, "memref.cast") {
             v = b[c].operands[0];
@@ -29,12 +24,10 @@ impl DropEquivalentBufferResults {
         v == arg
     }
 
-    /// `xs` without the dropped positions.
     fn kept<T>(xs: Vec<T>, dropped: &BTreeMap<usize, usize>) -> Vec<T> {
         xs.into_iter().enumerate().filter(|(i, _)| !dropped.contains_key(i)).map(|(_, x)| x).collect()
     }
 
-    /// The function's results and their argument, for those dropped.
     fn drop_results(b: &mut Body<'_>, f: OpId) -> BTreeMap<usize, usize> {
         let region = b[f].regions[0];
         let returns: Vec<OpId> = b[region].blocks.iter().filter_map(|k| b.last_op(*k)).filter(|t| b[*t].name == "func.return").collect();
@@ -50,7 +43,6 @@ impl DropEquivalentBufferResults {
                 to_arg.insert(i, a);
             }
         }
-        // `eraseResults`: the type, the result attributes, the return operands.
         b[f].set("function_type", Attribute::Type(Type::Function(alloc::boxed::Box::new(FunctionType { inputs: ft.inputs.clone(), results: Self::kept(ft.results.clone(), &to_arg) }))));
         if let Some(Attribute::Array(xs)) = b[f].get("res_attrs").cloned() {
             b[f].set("res_attrs", Attribute::Array(Self::kept(xs, &to_arg)));
@@ -65,7 +57,6 @@ impl DropEquivalentBufferResults {
 
 impl Run for DropEquivalentBufferResults {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        // The calls of each function that may change.
         let mut calls: BTreeMap<OpId, Vec<OpId>> = BTreeMap::new();
         let mut all = Vec::new();
         body.walk_post(op, &mut |o| {

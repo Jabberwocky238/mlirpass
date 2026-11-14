@@ -1,5 +1,3 @@
-//! What every GPU target shares about a shader: its stage, and the kernels (one per shader) a lowering made.
-
 use alloc::borrow::ToOwned;
 use alloc::vec::Vec;
 
@@ -8,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Body, Mapping, OpId};
 
-/// ⭐ A shader's stage (SPIR-V's execution models `Vertex`, `Fragment`, `GLCompute`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ShaderStage {
@@ -17,11 +14,9 @@ pub enum ShaderStage {
     Compute,
 }
 
-/// ⭐ The kernels of a target under an op.
 pub struct Kernels;
 
 impl Kernels {
-    /// The ops named `name` (a target's kernel op) under `op`, in order.
     pub fn all(body: &Body<'_>, op: OpId, name: &str) -> Vec<OpId> {
         let mut out = Vec::new();
         body.walk(op, &mut |o| {
@@ -34,12 +29,7 @@ impl Kernels {
 }
 
 impl Kernels {
-    /// ⭐ Every `func.call` in the `gpu.func` kernels under `op` of a `func.func` of the same `gpu.module` (one block,
-    /// ending in `func.return`) inlined, as a GPU backend inlines every call (upstream's `inline` does not inline
-    /// into a `gpu.func`: the gpu dialect says only its ops inline); a callee nothing calls any more and that is private
-    /// is erased.
     pub fn inline_calls(body: &mut Body<'_>, op: OpId) -> Result<(), Error> {
-        // a callee's own calls come in with it: until there are none (a recursion would never end: refused)
         for _ in 0..64 {
             let mut calls = Vec::new();
             body.walk(op, &mut |o| {
@@ -57,7 +47,6 @@ impl Kernels {
         Err(Error("inlining the kernels' calls does not end (a recursive call?)".into()))
     }
 
-    /// Whether `o` is in a `gpu.func`.
     fn in_kernel(body: &Body<'_>, o: OpId) -> bool {
         let mut at = body.parent_op(o);
         while let Some(p) = at {
@@ -69,7 +58,6 @@ impl Kernels {
         false
     }
 
-    /// One call inlined: its callee's block cloned before it, the results its `func.return`'s operands.
     fn inline(body: &mut Body<'_>, call: OpId) -> Result<(), Error> {
         let name = match body[call].get("callee") {
             Some(Attribute::SymbolRef(p)) if p.len() == 1 => p[0].trim_matches('"').to_owned(),
@@ -102,7 +90,6 @@ impl Kernels {
         Ok(())
     }
 
-    /// The `gpu.module` `o` is in.
     fn module_of(body: &Body<'_>, o: OpId) -> Option<OpId> {
         let mut at = body.parent_op(o);
         while let Some(p) = at {
@@ -114,8 +101,6 @@ impl Kernels {
         None
     }
 
-    /// The private `func.func`s of the `gpu.module`s under `op` nothing calls; again until none is left (a helper
-    /// only another unused helper called goes too, as upstream's symbol DCE).
     fn erase_unused(body: &mut Body<'_>, op: OpId) -> Result<(), Error> {
         loop {
             let mut called = alloc::collections::BTreeSet::new();

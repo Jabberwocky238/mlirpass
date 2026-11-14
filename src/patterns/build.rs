@@ -1,7 +1,3 @@
-//! Builders the lowerings create ops with, whichever dialects they lower (scf, tensor, tosa, linalg): arith and index
-//! ops, the `linalg` structured ops with their regions (`RegionBuilderHelper` and the OpDSL bodies of the named ops),
-//! `linalg.generic`, and the tensor ops around them. By name only: no dialect's feature.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -12,13 +8,9 @@ use crate::{AffineMap, ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// Where a structured op's region takes its locations from.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RegionLocs {
-    /// `buildGenericRegion` (`generic`, `map`, `reduce`, `transpose`, `broadcast`): each block argument at its operand,
-    /// the body at the op.
     Operands,
-    /// `fillStructuredOpRegion` (the named ops): block arguments and body all `loc(unknown)`.
     Unknown,
 }
 
@@ -31,26 +23,17 @@ impl From<&str> for RegionLocs {
     }
 }
 
-/// The bodies of the named structured ops (OpDSL assignments).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Named {
-    /// `linalg.fill`: `O = cast(value)`.
     Fill,
-    /// `O = I` (`linalg.transpose`, `linalg.copy`).
     Copy,
-    /// `O += cast(I) * cast(K)`.
     MulAdd,
-    /// `O += (cast(I) - cast(IZp)) * (cast(K) - cast(KZp))`.
     MulAddZp,
-    /// `O = max_signed(O, cast(I))`.
     MaxS,
-    /// `O = max_unsigned(O, cast_unsigned(I))`.
     MaxU,
-    /// `O = O + cast(I)`.
     Sum,
 }
 
-/// `BinaryFn`.
 #[derive(Clone, Copy)]
 pub enum Bin {
     Add,
@@ -60,12 +43,10 @@ pub enum Bin {
     MaxU,
 }
 
-/// `#linalg.iterator_type<...>` values.
 pub fn iterators<'a>(kinds: &[bool]) -> Attribute<'a> {
     Attribute::Array(kinds.iter().map(|par| Attribute::dialect("linalg.iterator_type", if *par { "<parallel>" } else { "<reduction>" })).collect())
 }
 
-/// `dense<v> : tensor<Nxi64>` (`getI64TensorAttr`) or `vector<Nxi64>` (`getI64VectorAttr`).
 #[cfg(feature = "dialect.tosa")]
 pub fn i64_elements<'a>(v: &[i64], vector: bool) -> Attribute<'a> {
     use mlirformat::{Shaped, ShapedKind};
@@ -88,36 +69,30 @@ impl<'a> Cr<'_, 'a, '_> {
         self.build(OpData::build(name).operands(ops), ty)
     }
 
-    /// A binary op typed as its first operand.
     pub fn bin(&mut self, name: &str, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.rw.body[a].ty.clone();
         self.op1(name, &[a, b], ty)
     }
 
-    /// `tensor.dim %v, i` (built, not folded).
     pub fn tdim(&mut self, v: ValueId, i: i64) -> ValueId {
         let k = self.cidx(i);
         self.op1("tensor.dim", &[v, k], Type::Index)
     }
 
-    /// `tensor.empty` of static `dims` (dynamic ones from `dynamic`).
     pub fn empty(&mut self, dims: &[i64], elem: Type<'a>, dynamic: &[ValueId]) -> ValueId {
         self.op1("tensor.empty", dynamic, Type::tensor(dims, elem))
     }
 
-    /// `tensor.empty` of mixed sizes.
     pub fn empty_mixed(&mut self, sizes: &[Ofr], elem: Type<'a>) -> ValueId {
         let dims: Vec<i64> = sizes.iter().map(|s| if let Ofr::C(c) = s { *c } else { Dim::DYNAMIC }).collect();
         let dynamic: Vec<ValueId> = sizes.iter().filter_map(|s| if let Ofr::V(v) = s { Some(*v) } else { None }).collect();
         self.empty(&dims, elem, &dynamic)
     }
 
-    /// `tensor::getMixedSizes` (dynamic sizes by a folded `tensor.dim`).
     pub fn mixed_sizes(&mut self, v: ValueId) -> Vec<Ofr> {
         (0..self.rw.body[v].ty.dims().unwrap_or_default().len()).map(|i| self.mixed_size(v, i)).collect()
     }
 
-    /// `tensor::getMixedSize`.
     pub fn mixed_size(&mut self, v: ValueId, i: usize) -> Ofr {
         let d = self.rw.body[v].ty.dims().unwrap_or_default()[i];
         if d != Dim::DYNAMIC {
@@ -128,8 +103,6 @@ impl<'a> Cr<'_, 'a, '_> {
         self.rw.body.ofr_int(Ofr::V(r)).map_or(Ofr::V(r), Ofr::C)
     }
 
-    /// A structured op with a region whose block takes each operand's element type, filled by
-    /// `body` (which returns what `linalg.yield` yields).
     pub fn structured(&mut self, name: &str, inputs: &[ValueId], outputs: &[ValueId], results: &[Type<'a>], props: Vec<(&str, Attribute<'a>)>, body: &mut dyn FnMut(&mut Self, &[ValueId]) -> Vec<ValueId>) -> OpId {
         let mut ops = inputs.to_vec();
         ops.extend(outputs);
@@ -170,13 +143,11 @@ impl<'a> Cr<'_, 'a, '_> {
         op
     }
 
-    /// `linalg.generic` with all-parallel or given iterators.
     pub fn generic(&mut self, results: &[Type<'a>], inputs: &[ValueId], outputs: &[ValueId], maps: &[AffineMap], iters: &[bool], body: &mut dyn FnMut(&mut Self, &[ValueId]) -> Vec<ValueId>) -> OpId {
         let props = vec![("indexing_maps", Attribute::Array(maps.iter().map(Attribute::from).collect())), ("iterator_types", iterators(iters))];
         self.structured("linalg.generic", inputs, outputs, results, props, body)
     }
 
-    /// A named op with its OpDSL body.
     pub fn named(&mut self, name: &str, kind: Named, inputs: &[ValueId], outputs: &[ValueId], results: &[Type<'a>], props: Vec<(&str, Attribute<'a>)>) -> OpId {
         self.structured(name, inputs, outputs, results, props, &mut |cr, a| cr.named_body(kind, a))
     }
@@ -218,7 +189,6 @@ impl<'a> Cr<'_, 'a, '_> {
         }
     }
 
-    /// `RegionBuilderHelper::buildBinaryFn`.
     pub fn binary(&mut self, f: Bin, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.rw.body[a].ty.clone();
         let float = matches!(ty, Type::Float(_));
@@ -239,7 +209,6 @@ impl<'a> Cr<'_, 'a, '_> {
         self.op1(name, &[a, b], ty)
     }
 
-    /// `convertScalarToDtype`.
     pub fn cast_scalar(&mut self, v: ValueId, to: &Type<'a>, unsigned: bool) -> ValueId {
         let from = self.rw.body[v].ty.clone();
         if &from == to {
@@ -273,7 +242,6 @@ impl<'a> Cr<'_, 'a, '_> {
         self.op1(name, &[v], to.clone())
     }
 
-    /// `tensor.pad` of `input` by static `low`/`high`, padded with the constant `value`.
     pub fn pad_static(&mut self, input: ValueId, low: &[i64], high: &[i64], value: ValueId, ty: Type<'a>) -> ValueId {
         let rank = low.len();
         let data = OpData::build("tensor.pad").operands(&[input]).segments(&[1, 0, 0]).with("static_low", Attribute::dense_i64(low)).with("static_high", Attribute::dense_i64(high));
@@ -287,14 +255,11 @@ impl<'a> Cr<'_, 'a, '_> {
         self.rw.body[op].results[0]
     }
 
-    /// `tensor.collapse_shape`.
     pub fn collapse(&mut self, v: ValueId, r: &[Vec<i64>], ty: Type<'a>) -> ValueId {
         self.build(OpData::build("tensor.collapse_shape").operands(&[v]).with("reassociation", crate::Reshape::attr(&r.to_vec())), ty)
     }
 
-    /// `linalg.index`.
     pub fn index(&mut self, d: i64) -> ValueId {
         self.build(OpData::build("linalg.index").with("dim", Attribute::i64(d)), Type::Index)
     }
 }
-

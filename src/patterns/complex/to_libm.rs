@@ -1,6 +1,3 @@
-//! `complex` ⇒ libm calls, as `ComplexToLibm.cpp`: each op a `func.call` of its `float` / `double` function
-//! (crate::Libm).
-
 use alloc::vec::Vec;
 
 use mlirformat::Type;
@@ -8,7 +5,6 @@ use crate::patterns;
 
 use crate::{ConversionRewriter as Cr, Libm, OpId, ValueId};
 
-/// The complex ⇒ libm patterns; `to` is `float,double`.
 pub struct ComplexToLibm;
 
 #[patterns]
@@ -23,7 +19,6 @@ pub struct ComplexToLibm;
 #[map("complex.angle" => "cargf,carg", via = Self::complex)]
 #[map("complex.tan" => "ctanf,ctan", via = Self::complex)]
 impl ComplexToLibm {
-    /// `ScalarOpToLibmCall` (`ComplexTypeResolver` / `FloatTypeResolver`).
     fn complex(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], to: &str) -> bool {
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
         let double = match &ty {
@@ -33,4 +28,3 @@ impl ComplexToLibm {
         Libm::call(cr, op, to, double, false)
     }
 }
-

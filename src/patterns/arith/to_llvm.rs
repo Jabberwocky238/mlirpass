@@ -1,6 +1,3 @@
-//! `arith` ⇒ `llvm`, as `ArithToLLVM.cpp` (with the ceil / floor division expansions
-//! `populateCeilFloorDivExpandOpsPatterns` adds first).
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -12,14 +9,12 @@ use crate::llvm_fastmath;
 use crate::{ApInt, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 use mlirformat::llvm_types::LlvmType;
 
-/// Builds the arith expansions of `ceildiv` / `floordiv` over values of type `ty`.
 struct Ar<'c, 'r, 'a, 'p> {
     cr: &'c mut ConversionRewriter<'r, 'a, 'p>,
     ty: Type<'a>,
 }
 
 impl Ar<'_, '_, '_, '_> {
-    /// An `arith.constant` of `v` (an `int`, or a splat) of the type.
     fn int(&mut self, v: i128) -> ValueId {
         let ty = self.ty.clone();
         let e = ty.element_type().clone();
@@ -71,7 +66,6 @@ impl Ar<'_, '_, '_, '_> {
     }
 }
 
-/// The arith ⇒ llvm patterns, in `populateArithToLLVMConversionPatterns` order.
 pub struct ArithToLlvm;
 
 #[patterns(converter, builder = Self::ar)]
@@ -112,7 +106,6 @@ pub struct ArithToLlvm;
 #[map("arith.trunci" => "llvm.trunc", overflow)]
 #[map("arith.xori" => "llvm.xor")]
 impl ArithToLlvm {
-    /// `IdentityBitcastLowering`: a bitcast between types that convert alike.
     #[convert("arith.bitcast", benefit = 10)]
     fn identity_bitcast(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some([src]) = ConversionRewriter::one_to_one(operands).as_deref().map(|s| <[ValueId; 1]>::try_from(s).ok()).flatten() else { return false };
@@ -131,8 +124,6 @@ impl ArithToLlvm {
         cr.one_to_one_rewrite(op, "llvm.mlir.constant", &operands, &attrs)
     }
 
-    /// `ExtUIOpLowering` / `UIToFPOpLowering` (`AttrConvertNonNegToLLVM`): `nneg` is LLVM's
-    /// `nonNeg`.
     fn nneg_cast(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         if to == "llvm.uitofp" && cr.unsupported_fp_op(op) {
             return false;
@@ -152,8 +143,6 @@ impl ArithToLlvm {
         Self::nneg_cast(cr, op, operands, "llvm.uitofp")
     }
 
-    /// `IndexCastOpLowering`: an extension, a truncation, or nothing (a memref's: nothing, its
-    /// descriptor the same).
     fn index_cast(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], ext: &str) -> bool {
         let Some([src]) = ConversionRewriter::one_to_one(operands).and_then(|s| <[ValueId; 1]>::try_from(s).ok()) else { return false };
         let Some(tc) = cr.type_converter() else { return false };
@@ -197,13 +186,11 @@ impl ArithToLlvm {
         Self::index_cast(cr, op, operands, "llvm.zext")
     }
 
-    /// `SubUIExtendedOpLowering`: `llvm.intr.usub.with.overflow` (scalars and 1-D vectors).
     #[convert("arith.subui_extended")]
     fn subui_extended(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::with_overflow(cr, op, operands, "llvm.intr.usub.with.overflow")
     }
 
-    /// `ConvertFOpLowering`: bf16 ⇄ f16 through f32 (`fpext` then `fptrunc`).
     #[convert("arith.convertf")]
     fn convertf(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         if cr.unsupported_fp_op(op) {
@@ -223,7 +210,6 @@ impl ArithToLlvm {
         cr.unroll_vectors(op, &[src], |cr, ty, p| Self::via_f32(cr, ty, p[0]))
     }
 
-    /// `ConvertFOpLowering::emitConversion`: `v` extended to f32 (of its shape), truncated to `ty`.
     fn via_f32<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, ty: Type<'a>, v: ValueId) -> ValueId {
         let f32_ty = ty.with_element(Type::Float(mlirformat::FloatKind::F32));
         let ext = cr.build(OpData::build("llvm.fpext").operands(&[v]), f32_ty);
@@ -235,7 +221,6 @@ impl ArithToLlvm {
         Self::with_overflow(cr, op, operands, "llvm.intr.uadd.with.overflow")
     }
 
-    /// `{Add,Sub}UIExtendedOpLowering`: `intr` gives the value and the carry / borrow.
     fn with_overflow(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], intr: &str) -> bool {
         let Some(ops) = ConversionRewriter::one_to_one(operands) else { return false };
         let ty = cr.rw.body[ops[0]].ty.clone();
@@ -289,7 +274,6 @@ impl ArithToLlvm {
         Self::mul_extended(cr, op, operands, false)
     }
 
-    /// `CmpIOpLowering` / `CmpFOpLowering`: the predicates share their case values.
     fn cmp(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], float: bool) -> bool {
         let Some(ops) = ConversionRewriter::one_to_one(operands) else { return false };
         if float && cr.unsupported_float(&cr.rw.body[cr.rw.body[op].operands[0]].ty.clone()) {
@@ -329,13 +313,11 @@ impl ArithToLlvm {
         Self::cmp(cr, op, operands, true)
     }
 
-    /// The expansion builder: arith ops of the op's operand type.
     fn ar<'c, 'r, 'a, 'p>(cr: &'c mut ConversionRewriter<'r, 'a, 'p>, op: OpId) -> Ar<'c, 'r, 'a, 'p> {
         let ty = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
         Ar { cr, ty }
     }
 
-    /// `CeilDivUIOpConverter`.
     #[convert("arith.ceildivui", untyped)]
     #[ops(b)]
     fn ceildivui(b: &mut Ar<'_, '_, '_, '_>, x: ValueId, y: ValueId) -> ValueId {
@@ -346,7 +328,6 @@ impl ArithToLlvm {
         b.select(is_zero, zero, q + one)
     }
 
-    /// `CeilDivSIOpConverter`.
     #[convert("arith.ceildivsi", untyped)]
     #[ops(b)]
     fn ceildivsi(b: &mut Ar<'_, '_, '_, '_>, x: ValueId, y: ValueId) -> ValueId {
@@ -359,7 +340,6 @@ impl ArithToLlvm {
         b.select(cond, q + one, q)
     }
 
-    /// `FloorDivSIOpConverter`.
     #[convert("arith.floordivsi", untyped)]
     #[ops(b)]
     fn floordivsi(b: &mut Ar<'_, '_, '_, '_>, x: ValueId, y: ValueId) -> ValueId {
@@ -372,7 +352,6 @@ impl ArithToLlvm {
         b.select(cond, q + minus_one, q)
     }
 
-    /// `ConstrainedTruncFOpLowering` (the `#[map]` row is `TruncFOpLowering`, without one).
     #[convert("arith.truncf")]
     fn truncf(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::constrained(cr, op, operands, "llvm.intr.experimental.constrained.fptrunc")
@@ -398,15 +377,12 @@ impl ArithToLlvm {
         Self::constrained(cr, op, operands, "llvm.intr.experimental.constrained.fdiv")
     }
 
-    /// The `Constrained*Lowering`s (`AttrConverterConstrainedFPToLLVM`): with a rounding mode,
-    /// the constrained intrinsic, the mode in LLVM's numbering, exceptions ignored, no fastmath.
     pub(crate) fn constrained(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], intr: &str) -> bool {
         let Some(mode) = cr.rw.body[op].get("roundingmode").cloned() else { return false };
         if cr.unsupported_fp_op(op) {
             return false;
         }
         let Some(ops) = ConversionRewriter::one_to_one(operands) else { return false };
-        // `AttrConverterConstrainedFPToLLVM`: arith's rounding mode as LLVM's, exceptions ignored.
         let llvm_mode = match mode {
             Attribute::Int { lit, .. } => match &*lit {
                 "1" => 3,
@@ -423,4 +399,3 @@ impl ArithToLlvm {
         cr.vector_one_to_one(op, intr, &ops, &attrs)
     }
 }
-

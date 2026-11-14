@@ -1,6 +1,3 @@
-//! `math` ⇒ ROCm device library calls, as `MathToROCDL.cpp`: `__ocml_*` per element type, and
-//! `math.clampf` as `rocdl.fmed3` on gfx9 and later.
-
 use alloc::vec::Vec;
 
 use mlirformat::llvm_types::LlvmType;
@@ -11,7 +8,6 @@ use crate::{AmdChipset, ConversionRewriter, LibFns, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The OCML functions of each op (`populateMathToROCDLConversionPatterns`).
 const OCML: [(&str, LibFns); 29] = [
     ("math.acos", LibFns::half("__ocml_acos_f32", "__ocml_acos_f64", "__ocml_acos_f16")),
     ("math.acosh", LibFns::half("__ocml_acosh_f32", "__ocml_acosh_f64", "__ocml_acosh_f16")),
@@ -44,25 +40,21 @@ const OCML: [(&str, LibFns); 29] = [
     ("arith.remf", LibFns::half("__ocml_fmod_f32", "__ocml_fmod_f64", "__ocml_fmod_f16")),
 ];
 
-/// Which chipset the patterns target (`chipset`, if given).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MathRocdlOptions {
     pub chipset: Option<AmdChipset>,
 }
 
-/// The math ⇒ ROCDL patterns.
 pub struct MathToRocdl;
 
 #[patterns(converter, options = MathRocdlOptions)]
 impl MathToRocdl {
-    /// `ScalarizeVectorOpLowering` of the OCML ops.
     #[convert("math.acos", "math.acosh", "math.asin", "math.asinh", "math.atan", "math.atanh", "math.atan2", "math.cbrt", "math.ceil", "math.cos", "math.cosh", "math.sinh", "math.exp", "math.exp2", "math.expm1", "math.floor", "math.log", "math.log10", "math.log1p", "math.log2", "math.powf", "math.rsqrt", "math.sin", "math.tanh", "math.tan", "math.erf", "math.erfc", "math.fpowi", "arith.remf")]
     fn scalarize_ocml(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MathRocdlOptions) -> bool {
         let ops: Vec<ValueId> = operands.iter().flatten().copied().collect();
         cr.scalarize(op, &ops)
     }
 
-    /// `OpToFuncCallLowering` as OCML calls.
     #[convert("math.acos", "math.acosh", "math.asin", "math.asinh", "math.atan", "math.atanh", "math.atan2", "math.cbrt", "math.ceil", "math.cos", "math.cosh", "math.sinh", "math.exp", "math.exp2", "math.expm1", "math.floor", "math.log", "math.log10", "math.log1p", "math.log2", "math.powf", "math.rsqrt", "math.sin", "math.tanh", "math.tan", "math.erf", "math.erfc", "math.fpowi", "arith.remf")]
     fn ocml(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MathRocdlOptions) -> bool {
         let name = cr.rw.body[op].name.clone();
@@ -71,7 +63,6 @@ impl MathToRocdl {
         cr.lib_call(op, &ops, fns)
     }
 
-    /// `ClampFOpConversion`: `rocdl.fmed3` (gfx9 and later; f16 / f32).
     #[convert("math.clampf")]
     fn clampf(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: MathRocdlOptions) -> bool {
         if o.chipset.is_none_or(|c| c.major < 9) {

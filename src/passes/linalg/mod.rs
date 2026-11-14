@@ -1,5 +1,3 @@
-//! `linalg` passes.
-
 mod convert_elementwise_to_linalg;
 mod convert_linalg_to_affine_loops;
 mod convert_linalg_to_loops;

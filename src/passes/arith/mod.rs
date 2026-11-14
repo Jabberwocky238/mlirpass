@@ -1,5 +1,3 @@
-//! `arith` passes.
-
 #[cfg(feature = "target.llvm")]
 mod convert_arith_to_llvm;
 #[cfg(feature = "target.llvm")]

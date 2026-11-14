@@ -1,43 +1,3 @@
-//! ⭐ Shaders ⇒ `xe3.kernel`s of virtual EU instructions (dialect conversion).
-//!
-//! ```text
-//!   gpu.func {gpu.kernel}         ⇒ xe3.kernel {stage = "compute", payload}: SIMD16, its arguments the walker's inline
-//!                                   data; `known_block_size` x / 16 threads a workgroup, its workgroup attribution's
-//!                                   bytes of shared memory
-//!   func.func {spirv.execution_model} ⇒ xe3.kernel {stage, payload}: a vertex / fragment shader as `convert-spirv-entry-points`
-//!                                   come in (their interface the arguments and results)
-//!   f32, vector<Nxf32>            ⇒ 1, N × !xe3.grf<f32>: one register a component, a lane per vertex / pixel
-//!   i8, i16, i32, index, !llvm.ptr<1 | 3> ⇒ !xe3.grf<i32> (a narrow integer zero-extended, a pointer its byte address)
-//!   arith.constant                ⇒ xe3.eu.mov of an immediate, per component
-//!   arith.addf / subf / mulf / negf ⇒ xe3.eu.add / mul, per component (sub, neg: a negated source)
-//!   math.fma / absf / floor / trunc / roundeven ⇒ xe3.eu.mad / mov (abs) / rndd / rndz / rnde; ceil ⇒ -rndd(-x)
-//!   arith.minnumf / maxnumf       ⇒ xe3.eu.sel.l / sel.ge (the other operand when one is NaN, as Rust's f32::min)
-//!   arith.cmpf (o*, une)          ⇒ xe3.eu.cmp: an i1 is an f32 register, true all ones (a NaN), false +0
-//!   arith.select                  ⇒ xe3.eu.csel.z of the condition: false (+0) the second value, else the first
-//!   arith.divf / math.sqrt        ⇒ the EU's approximate inv / rsq refined with fused mads (`Exact`)
-//!   i32: arith.addi / subi / muli / shli / shrui / shrsi / andi / ori / xori / min* / max* / cmpi, casts
-//!                                 ⇒ add / mul / shl / shr / asr / and / or / xor / sel / cmp / mov (`unsigned`: :ud)
-//!   arith.index_cast(ui), llvm.inttoptr, arith.extui of i8 / i16, arith.trunci for a narrow store ⇒ the value itself
-//!   llvm.load / llvm.store        ⇒ LSC untyped memory, flat 32-bit addresses (a lane each): !llvm.ptr<1> global,
-//!                                   !llvm.ptr<3> the workgroup's shared memory
-//!   llvm.atomicrmw                ⇒ LSC atomics on a dword (add .. exchange), the old value back
-//!   gpu.barrier                   ⇒ the shared memory's writes done, the gateway's barrier, sync.bar
-//!   gpu.block_id x / y / z, gpu.thread_id x ⇒ the compute payload: r0.1 / r0.6 / r0.7, r1 (local ids, uw)
-//!   gpu.return                    ⇒ the message gateway's EOT
-//!   vector.extract / insert / from_elements / broadcast / shuffle ⇒ the components themselves
-//!   func.return (vertex)          ⇒ the VUE (header, position) to the URB: send.urb, EOT
-//!   func.return (fragment)        ⇒ render target 0 write: sendc.render, EOT
-//! ```
-//!
-//! A virtual instruction's SSA operands fill the source slots its attributes leave open, in order; its result is its
-//! destination. `neg0` / `neg1` negate a source. A send's operands are its payload, `src0_len` of them in src0, the
-//! rest in src1. `xe3.eu.payload {grf}` is what the thread starts with in a register. `xe3-regalloc` turns all of it
-//! into registers.
-//!
-//! 🚨 Exact IEEE f32 only: add / mul / mad / neg / abs / sel / rndd / cmp on the EU are; the EU has no f32 divide or
-//! exact square root, only approximate inv / rsq, so divf and sqrt refine them to the correctly rounded result
-//! (`Exact`, checked bit for bit on the GPU: the `math` example). Everything else is refused.
-
 #[allow(unused_imports, reason = "the alloc prelude")]
 use alloc::{borrow::ToOwned, format, string::{String, ToString}, vec, vec::Vec};
 
@@ -49,80 +9,61 @@ use mlirformat::spirv_types::SpirvType;
 
 use crate::{A, AddrSize, AddrSurface, Attrs, Body, Xe3Sampler as Sampler, CacheStore, ConversionRewriter, DataSize, EuPayload, Grf, Heads, Lsc, LscOp, OpData, OpHead, OpId, Quiet, Render, Rewriter, SendInfo, ShaderStage as Stage, SignatureConversion, Sfid, TypeConverter, Updates, ValueId, VectSize, WithAttrs, Xe3Kernel as Kernel, patterns};
 
-/// The gateway's barrier message (Mesa `BRW_MESSAGE_GATEWAY_SFID_BARRIER_MSG`).
 const GATEWAY_BARRIER: u32 = 4;
 
-/// An LSC fence of the thread group, flushing nothing (Mesa `lsc_fence_msg_desc`: LSC_OP_FENCE, A32, scope
-/// LSC_FENCE_THREADGROUP, LSC_FLUSH_TYPE_NONE, flat).
 const LSC_SLM_FENCE: u32 = 31 | 2 << 7;
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// Parameters of a compute shader: dwords of the walker's inline data.
 pub const XE3_COMPUTE_PARAMS: usize = 8;
-/// Where a compute thread finds the inline data: after r0 (header) and r1 (local ids x, Mesa `brw_cs_thread_payload`).
+
 pub const XE3_COMPUTE_INLINE_GRF: u8 = 2;
 
-/// The binding table entry of buffer binding 0: after the target (0) and room for 31 textures, so vertex and fragment
-/// shaders agree on it without knowing each other's textures.
 pub const XE3_BUFFER_BTI: u8 = 32;
-/// The binding table entry of the push constants (a buffer surface over them, the entry before the buffers').
+
 pub const XE3_PUSH_BTI: u8 = XE3_BUFFER_BTI - 1;
 
-/// Lanes of every shader thread.
 pub const XE3_SIMD: u8 = 16;
-/// First register of the vertex attributes in a vertex shader's payload (r0 header, r1 URB handles).
+
 pub const XE3_VS_ATTR_GRF: u8 = 2;
-/// Varyings a vertex shader writes (the VUE is 64 bytes: header, position, two varyings).
+
 pub const XE3_MAX_VARYINGS: usize = 2;
-/// A fragment shader's color targets at most (WebGPU's `maxColorAttachments`).
+
 pub const XE3_MAX_TARGETS: usize = 8;
 
-/// ⭐ A fragment shader's inputs, interpolated at its start (Mesa brw, Xe2+; see docs/xe3.md): the SIMD16 payload is
-/// r0 (header, pixel coordinates), r1 / r2 the perspective barycentrics b.x / b.y, then from r3 the plane of each
-/// varying component, 12 bytes (a0, a1 - a0, a2 - a0) and five a register. Without PLN, two MADs:
-/// `b.x * (a1 - a0) + a0`, then `b.y * (a2 - a0) + that` (checked on the GPU: b.x goes with vertex 1).
 pub struct Interpolate;
 
 impl Interpolate {
     pub const BX: u8 = 1;
     pub const BY: u8 = 2;
-    /// Where the planes start (`3DSTATE_PS` dispatch GRF start for constant setup data): after the barycentrics, and
-    /// the input coverage mask (one register) when the shader reads it.
     pub const fn setup(imask: bool) -> u8 {
         3 + imask as u8
     }
 
-    /// The register of the input coverage mask (Mesa setup_fs_payload_gfx20: after the barycentrics, when enabled).
     pub const fn coverage(varyings: bool) -> u8 {
         if varyings { 3 } else { 1 }
     }
 
-    /// The plane parameter `p` (0: a0, 1: a1 - a0, 2: a2 - a0) of varying component `k`, as a scalar operand.
     pub fn plane(setup: u8, k: usize, p: usize) -> String {
         let reg = setup as usize + k / 5;
         let byte = (k % 5) * 12 + 4 * p;
         format!("r{reg}.{byte}<0;1,0>:f")
     }
 
-    /// The first register after the planes of `components` varying components.
     pub fn end(setup: u8, components: usize) -> u8 {
         setup + components.div_ceil(5) as u8
     }
 }
 
-/// The shader types ⇒ registers.
 pub struct Xe3Types;
 
 impl Xe3Types {
-    /// The register element of a scalar: `f32` (and `i1`, a mask: see `arith.cmpf`), `i32`.
     fn elem(t: &Type<'_>) -> Option<&'static str> {
         match t {
             Type::Float(FloatKind::F32) | Type::Integer { width: 1, .. } => Some("f32"),
             Type::Integer { width: 8 | 16 | 32, .. } | Type::Index => Some("i32"),
             Type::Float(FloatKind::F64) => Some("f64"),
             Type::Integer { width: 64, .. } => Some("i64"),
-            // a global or shared pointer: its 32-bit byte address
             _ => match LlvmType::try_from(t) {
                 Ok(LlvmType::Ptr(1 | 3)) => Some("i32"),
                 _ => None,
@@ -130,7 +71,6 @@ impl Xe3Types {
         }
     }
 
-    /// Components of a shader value and their register element: 1 for a scalar, N for `vector<N x scalar>`.
     pub fn of(t: &Type<'_>) -> Option<(usize, &'static str)> {
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::Vector => match t.dims()?[..] {
@@ -144,23 +84,17 @@ impl Xe3Types {
     pub fn converter<'c>() -> TypeConverter<'c> {
         let mut tc = TypeConverter::default();
         tc.conversion(|t| Self::of(t).map(|(n, e)| Some(vec![Type::from(Grf(e)); n])));
-        // a resource's pointer, an image, a sampled image: nothing in registers (its uses say which binding)
         tc.conversion(|t| matches!(SpirvType::try_from(t), Ok(SpirvType::Ptr { .. } | SpirvType::Image { .. } | SpirvType::SampledImage(_))).then(|| Some(Vec::new())));
         tc.conversion(|t| Grf::try_from(t).is_ok().then(|| Some(vec![t.clone()])));
         tc
     }
 }
 
-/// The shader ⇒ virtual EU patterns.
 pub struct GpuToXe3;
 
 impl GpuToXe3 {
-    /// A shader's discardable attributes as its SPIR-V entry point comes in: its stage; a fragment shader writing the
-    /// sample mask (its last result), or two colors to one target (dual-source blending).
     pub const STAGE: &str = "spirv.execution_model";
     const SAMPLE_MASK: &str = "xe3.sample_mask";
-    /// What [`GpuToXe3::resources`] counts on a shader: its textures, buffers, push constant bytes; and puts on a
-    /// resource access: its binding, its byte offset, a push constant's offset.
     const BINDINGS: &str = "xe3.bindings";
     const BUFFERS: &str = "xe3.buffers";
     const PUSH: &str = "xe3.push";
@@ -169,25 +103,17 @@ impl GpuToXe3 {
     const PUSH_AT: &str = "xe3.push_offset";
     const DUAL_SOURCE: &str = "xe3.dual_source";
 
-    /// ⭐ The prologue of every kernel: f32 and f64 denormals kept (cr0 bits 7 and 6, Mesa `BRW_CR0_FP32_DENORM_PRESERVE`
-    /// / `FP64`; a thread starts flushing them), so float arithmetic is IEEE all the way down. As Mesa (`generate_float_controls_mode`, jay `set_cr0`): one channel, no
-    /// mask, then a sync.nop waiting for it (the EU does not track cr0). The sampler flushes them all the same.
     fn ieee_prologue<'a>() -> [OpData<'a>; 2] {
         let or = vec![("exec", A::from(1u8)), ("dst", A::str("arf128<1>:ud")), ("src0", A::str("arf128<0;1,0>:ud")), ("src1", A::str("0xc0:ud")), ("w", A::Bool(true))];
         let sync = vec![("exec", A::from(1u8)), ("fn", A::str("nop")), ("swsb", A::str("A@1"))];
         [OpData::build("xe3.eu.or").with_attrs(or), OpData::build("xe3.eu.sync").with_attrs(sync)]
     }
 
-    /// ⭐ Each shader's resources (its `spirv.interface_var_abi` arguments) followed to their uses, before the
-    /// lowering: an image op gets its texture's binding, a load through an access chain its buffer's binding and
-    /// byte offset (or its push constant offset); the shader the highest texture and buffer binding + 1 and the end
-    /// of the furthest push constant it reads (the binding table, the sampler states, the push constants' bytes).
     pub fn resources(body: &mut Body<'_>, shaders: &[OpId]) -> Result<(), Error> {
         for &f in shaders {
             let Some(Attribute::Array(attrs)) = body[f].get("arg_attrs").cloned() else { continue };
             let block = body.top_block(f);
             let args = body[block].args.clone();
-            // each resource argument: (storage class, binding)
             let mut res: alloc::collections::BTreeMap<ValueId, (String, i64)> = alloc::collections::BTreeMap::new();
             for (a, d) in args.iter().zip(&attrs) {
                 let Attribute::Dict(d) = d else { continue };
@@ -201,7 +127,6 @@ impl GpuToXe3 {
             let mut ops = Vec::new();
             body.walk(f, &mut |o| ops.push(o));
             let (mut textures, mut buffers, mut push) = (0i64, 0i64, 0i64);
-            // a value's resource argument: through loads of it and sampled images made of it
             let root = |body: &Body<'_>, mut v: ValueId| -> Option<ValueId> {
                 for _ in 0..4 {
                     if res.contains_key(&v) {
@@ -238,8 +163,6 @@ impl GpuToXe3 {
                         body[o].set(Self::BINDING, A::from(b).into());
                         body[o].set(Self::OFFSET, A::from(offset).into());
                     }
-                    // the load knows where it reads: it takes the resource itself, the access chain and its constant
-                    // indices go (nothing of them would be in registers but the indices' movs)
                     body.set_operand(o, 0, base);
                     if body[p].uses.is_empty() {
                         let indices: Vec<ValueId> = body[chain].operands[1..].to_vec();
@@ -261,7 +184,6 @@ impl GpuToXe3 {
         Ok(())
     }
 
-    /// The byte offset of the struct member an access chain from pointer `base` reaches through constant `indices`.
     fn member_offset(body: &Body<'_>, base: ValueId, indices: &[ValueId]) -> Option<i64> {
         let Ok(SpirvType::Ptr { pointee, .. }) = SpirvType::try_from(&body[base].ty) else { return None };
         let mut ty = (*pointee).clone();
@@ -280,9 +202,6 @@ impl GpuToXe3 {
         Some(at)
     }
 
-    /// Each kernel's arguments where the thread finds them: a vertex shader's in payload registers, a compute
-    /// shader's in the inline data, a fragment shader's interpolated from the planes in its payload (`Interpolate`);
-    /// then the IEEE prologue, and the kernel's `reserve`: the first register the allocator may use, after the payload.
     pub fn place_arguments<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
         let mut quiet = Quiet;
         let mut rw = Rewriter::new(body, &mut quiet);
@@ -315,7 +234,6 @@ impl GpuToXe3 {
                         let v = put(&mut rw, a, f32.clone());
                         put(&mut rw, OpData::build("xe3.eu.mad").operands(&[v, by]).with_attrs(vec![("src2", A::str(Interpolate::plane(setup, k, 2)))]), f32.clone())
                     }
-                    // inline data dword g, in every lane
                     None if compute => put(&mut rw, OpData::build("xe3.eu.mov").with_attrs(vec![("src0", A::str(format!("r{XE3_COMPUTE_INLINE_GRF}.{}<0;1,0>:ud", 4 * g)))]), ty),
                     None => put(&mut rw, OpData::of(&EuPayload::new(g, ty.clone()))?.0, ty),
                 };
@@ -336,7 +254,6 @@ impl GpuToXe3 {
         Ok(())
     }
 
-    /// A URB store (the VUE), Mesa `lower_urb_write_logical_send_xe2`.
     const URB: Lsc = Lsc {
         op: LscOp::Store,
         surface: AddrSurface::Flat,
@@ -348,8 +265,6 @@ impl GpuToXe3 {
         cmask: 0,
     };
 
-    /// A SIMD16 virtual instruction `name` (`xe3.eu.*`) with `attrs` of `operands` and results of `types`, before
-    /// `op`; its results.
     fn create<'a>(cr: &mut Cr<'_, 'a, '_>, before: OpId, name: &str, operands: &[ValueId], attrs: Vec<(&str, A)>, types: &[Type<'a>]) -> Vec<ValueId> {
         let mut data = OpData::build(name).operands(operands);
         data.set("exec", A::from(XE3_SIMD).into());
@@ -359,18 +274,14 @@ impl GpuToXe3 {
         cr.rw.body[op].results.to_vec()
     }
 
-    /// A virtual instruction `name` (`xe3.eu.*`) with `attrs` of `operands`, its one `!xe3.grf<elem>` result, before
-    /// `op`.
     pub fn eu(cr: &mut Cr<'_, '_, '_>, before: OpId, name: &str, operands: &[ValueId], attrs: Vec<(&str, A)>, elem: &str) -> ValueId {
         Self::create(cr, before, name, operands, attrs, &[Type::from(Grf(elem))])[0]
     }
 
-    /// A message without a response (`xe3.eu.send` / `sendc`) of `payload` with `attrs`, before `op`.
     fn send(cr: &mut Cr<'_, '_, '_>, before: OpId, name: &str, payload: &[ValueId], attrs: Vec<(&str, A)>) {
         Self::create(cr, before, name, payload, attrs, &[]);
     }
 
-    /// `xe3.eu.payload {grf}`: register `grf` as the thread starts with it.
     fn payload(cr: &mut Cr<'_, '_, '_>, before: OpId, grf: i64, elem: &str) -> ValueId {
         let (mut data, types) = OpData::of(&EuPayload::new(grf, Grf(elem).into())).expect("a typed op");
         data.set("exec", A::from(XE3_SIMD).into());
@@ -379,12 +290,10 @@ impl GpuToXe3 {
         cr.rw.body[op].results[0]
     }
 
-    /// `mov` of an immediate.
     fn imm(cr: &mut Cr<'_, '_, '_>, before: OpId, bits: u32, elem: &str) -> ValueId {
         Self::imm64(cr, before, bits.into(), elem)
     }
 
-    /// `mov` of an immediate of up to 64 bits (an f64's or i64's whole).
     fn imm64(cr: &mut Cr<'_, '_, '_>, before: OpId, bits: u64, elem: &str) -> ValueId {
         let ty = match elem {
             "f32" => "f",
@@ -396,8 +305,6 @@ impl GpuToXe3 {
         Self::eu(cr, before, "xe3.eu.mov", &[], vec![("src0", A::str(format!("{bits:#x}:{ty}")))], elem)
     }
 
-    /// A load's / store's bytes a component and registers a component: an f64's or i64's 8 (D64, two registers a
-    /// SIMD16 component), else `size` (4 when absent) in one.
     fn wide(elem: &str, size: Option<u32>) -> (Option<u32>, u32) {
         match elem {
             "f64" | "i64" => (Some(8), 2),
@@ -405,32 +312,25 @@ impl GpuToXe3 {
         }
     }
 
-    /// The LSC vector length of `n` components (1 ..= 4).
     fn vect_size(n: usize) -> Option<VectSize> {
         [VectSize::V1, VectSize::V2, VectSize::V3, VectSize::V4].get(n.wrapping_sub(1)).copied()
     }
 
-    /// The bits of each component of a constant `value` of `n` components (f32, i32, f64 or i64).
     fn constant_bits(value: &Attribute<'_>, n: usize) -> Option<Vec<u64>> {
         let c = Const::try_from(value).ok()?;
         let bits = |s: Scalar| match s {
             Scalar::Float(f) => matches!(f.kind, FloatKind::F32 | FloatKind::F64).then_some(f.bits),
-            // an i1 is a mask: true all ones (as cmp writes it), so xori with it is a not
             Scalar::Int(i) if i.width == 1 => Some(if i.bits() != 0 { 0xffff_ffff } else { 0 }),
             Scalar::Int(i) => (i.width <= 64).then_some(i.bits() as u64),
-            // complex and the wide floats (f80 / f128) are not one register
             Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => None,
         };
         (0..n).map(|i| bits(c.at(i))).collect()
     }
 
-    /// The integers of a dense array attribute (`array<i64: 0>`).
     fn positions(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> Option<Vec<usize>> {
         cr.rw.body[op].get(name)?.dense_values().map(|v| v.into_iter().map(|i| i as usize).collect())
     }
 
-    /// The color targets of the fragment shader `op` is in (its results; the kernel says so once converted): the
-    /// binding table entries before its textures.
     fn targets(body: &Body<'_>, op: OpId) -> Option<u8> {
         let mut at = body.parent_op(op);
         while let Some(p) = at {
@@ -445,7 +345,6 @@ impl GpuToXe3 {
         None
     }
 
-    /// The stage of shader `f`: a `gpu.func` kernel's compute, a `func.func`'s its `spirv.execution_model`.
     pub fn stage_of(body: &Body<'_>, f: OpId) -> Option<Stage> {
         match &*body[f].name {
             "gpu.func" => body[f].gpu_kernel().then_some(Stage::Compute),
@@ -462,14 +361,11 @@ impl GpuToXe3 {
         }
     }
 
-    /// How many of shader `f`'s arguments are its inputs: those before its resources (an argument with
-    /// `spirv.interface_var_abi`).
     fn interface_inputs(body: &Body<'_>, f: OpId, inputs: &[Type<'_>]) -> usize {
         let Some(Attribute::Array(attrs)) = body[f].get("arg_attrs") else { return inputs.len() };
         attrs.iter().position(|a| matches!(a, Attribute::Dict(d) if d.iter().any(|n| n.name == "spirv.interface_var_abi"))).unwrap_or(inputs.len())
     }
 
-    /// The stage of the kernel `op` is in.
     fn stage(body: &Body<'_>, op: OpId) -> Option<Stage> {
         let mut at = body.parent_op(op);
         while let Some(p) = at {
@@ -484,9 +380,6 @@ impl GpuToXe3 {
         None
     }
 
-    /// The LSC message of a load / store of `n` components, `size` bytes (default 4) a
-    /// component: flat 32-bit addresses, or with `binding = k` byte offsets into buffer binding k (binding table entry
-    /// `BUFFER_BTI + k`, a buffer surface; Mesa brw: LSC_ADDR_SURFTYPE_BTI). Its extended descriptor too.
     fn lsc(lsc_op: LscOp, n: usize, binding: Option<u32>, size: Option<u32>) -> Option<(Lsc, u32)> {
         let size = size.unwrap_or(4);
         let data_size = match (size, n) {
@@ -497,7 +390,6 @@ impl GpuToXe3 {
             _ => return None,
         };
         let vect_size = Self::vect_size(n)?;
-        // gen_lsc_ex_desc_encode: a BTI message's extended descriptor has the index in bits 31:24
         let (surface, ex_desc) = match binding {
             None => (AddrSurface::Flat, 0),
             Some(k) => (AddrSurface::Bti, (k + u32::from(XE3_BUFFER_BTI)) << 24),
@@ -505,15 +397,11 @@ impl GpuToXe3 {
         Some((Lsc { op: lsc_op, surface, addr_size: AddrSize::A32, data_size, cache: 0, vect_size, transpose: false, cmask: 0 }, ex_desc))
     }
 
-    /// The `#[map]` rows' template: instruction `to` with `attrs` of the operands' components, per component.
     fn lanes(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], to: &str, attrs: &[(&str, A)]) -> bool {
         let Some(elem) = Self::result_elem(cr, op) else { return false };
         Self::each(cr, op, o, |cr, x| Self::eu(cr, op, to, x, attrs.to_vec(), elem))
     }
 
-    /// A conversion: `lanes` between registers of one size; between 32- and 64-bit ones two moves through a 64-bit
-    /// temporary, its 32-bit side a qword apart (the region rules; Mesa `brw_lower_regioning`): 32 ⇒ 64 the bits
-    /// spread then converted, 64 ⇒ 32 converted spread then packed.
     fn convert(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], to: &str, attrs: &[(&str, A)]) -> bool {
         let Some(re) = Self::result_elem(cr, op) else { return false };
         let Some(oe) = o.first().and_then(|v| v.first()).and_then(|v| Grf::try_from(&cr.rw.body[*v].ty).ok()).map(|g| g.0) else { return false };
@@ -547,8 +435,6 @@ impl GpuToXe3 {
         }
     }
 
-    /// f32: `lanes` (rndd / rndz / rnde are exact); f64: `Exact64::round` (those of DF are wrong on Xe3: measured,
-    /// floor(0) NaN).
     fn rounding(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], to: &str, attrs: &[(&str, A)]) -> bool {
         if Self::result_elem(cr, op) != Some("f64") {
             return Self::lanes(cr, op, o, to, attrs);
@@ -561,13 +447,11 @@ impl GpuToXe3 {
         Self::each(cr, op, o, |cr, x| Exact64::round(cr, op, x[0], kind))
     }
 
-    /// The register element of `op`'s (first) result.
     fn result_elem(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<&'static str> {
         let r = *cr.rw.body[op].results.first()?;
         Xe3Types::of(&cr.rw.body[r].ty).map(|(_, e)| e)
     }
 
-    /// Per component, what `f` makes of the operands' components.
     fn each(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], mut f: impl FnMut(&mut Cr<'_, '_, '_>, &[ValueId]) -> ValueId) -> bool {
         let n = o[0].len();
         if o.iter().any(|v| v.len() != n) {
@@ -583,13 +467,13 @@ impl GpuToXe3 {
 #[map("arith.addf" => "xe3.eu.add", via = Self::lanes(&[]))]
 #[map("arith.subf" => "xe3.eu.add", via = Self::lanes(&[("neg1", A::Bool(true))]))]
 #[map("arith.mulf" => "xe3.eu.mul", via = Self::lanes(&[]))]
-// `-x` is `mov -x` (exact: only the sign bit changes).
+
 #[map("arith.negf" => "xe3.eu.mov", via = Self::lanes(&[("neg0", A::Bool(true))]))]
-// `|x|` is `mov (abs)x` (exact).
+
 #[map("math.absf" => "xe3.eu.mov", via = Self::lanes(&[("abs0", A::Bool(true))]))]
 #[map("math.floor" => "xe3.eu.rndd", via = Self::rounding(&[]))]
 #[map("math.trunc" => "xe3.eu.rndz", via = Self::rounding(&[]))]
-// Round half to even (`roundeven`, Rust's round_ties_even).
+
 #[map("math.roundeven" => "xe3.eu.rnde", via = Self::rounding(&[]))]
 #[map("arith.minnumf" => "xe3.eu.sel", via = Self::lanes(&[("cond", A::str("lt"))]))]
 #[map("arith.maxnumf" => "xe3.eu.sel", via = Self::lanes(&[("cond", A::str("ge"))]))]
@@ -605,34 +489,28 @@ impl GpuToXe3 {
 #[map("arith.maxsi" => "xe3.eu.sel", via = Self::lanes(&[("cond", A::str("ge"))]))]
 #[map("arith.minui" => "xe3.eu.sel", via = Self::lanes(&[("cond", A::str("lt")), ("unsigned", A::Bool(true))]))]
 #[map("arith.maxui" => "xe3.eu.sel", via = Self::lanes(&[("cond", A::str("ge")), ("unsigned", A::Bool(true))]))]
-// i1 ⇒ i32: the mask itself (all ones is -1).
+
 #[map("arith.extsi" => "xe3.eu.mov", via = Self::lanes(&[("as", A::str("ud"))]))]
 #[map("arith.sitofp" => "xe3.eu.mov", via = Self::convert(&[]))]
 #[map("arith.uitofp" => "xe3.eu.mov", via = Self::convert(&[("unsigned", A::Bool(true))]))]
 #[map("arith.fptosi" => "xe3.eu.mov", via = Self::convert(&[]))]
 #[map("arith.fptoui" => "xe3.eu.mov", via = Self::convert(&[("unsigned", A::Bool(true))]))]
-// f32 ⇄ f64: the conversion move (to f32 rounded to nearest even).
+
 #[map("arith.extf" => "xe3.eu.mov", via = Self::convert(&[]))]
 #[map("arith.truncf" => "xe3.eu.mov", via = Self::convert(&[]))]
-// The same bits.
+
 #[map("arith.bitcast" => "xe3.eu.mov", via = Self::lanes(&[("as", A::str("ud"))]))]
 impl GpuToXe3 {
-    /// A shader (`gpu.func` kernel, `func.func {spirv.execution_model}`) ⇒ `xe3.kernel`. `payload`, per argument component in order: a vertex shader's the
-    /// register its attribute component arrives in; a fragment shader's the index of its varying component among the
-    /// interpolated inputs (four a varying), interpolated at the kernel's start (`Interpolate`). A vertex shader's
-    /// `varyings`: its results after the position.
     #[convert("func.func", "gpu.func")]
     fn func(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(stage) = Self::stage_of(cr.rw.body, op) else { return false };
         let Some(Attribute::Type(Type::Function(fty))) = cr.rw.body[op].get("function_type").cloned() else { return false };
         let Some(name) = cr.rw.body[op].get("sym_name").cloned() else { return false };
-        // a gpu.func's workgroup attributions come after its arguments: shared memory, its bytes
         let region = cr.rw.body[op].regions[0];
         let entry = cr.rw.body[region].blocks[0];
         let attributions: Vec<ValueId> = cr.rw.body[entry].args[fty.inputs.len()..].to_vec();
         let mut sig = SignatureConversion::new(fty.inputs.len() + attributions.len());
         let mut payload = Vec::new();
-        // the resources (`spirv.interface_var_abi`: textures, buffers, push constants) after the inputs: no registers
         let inputs = Self::interface_inputs(cr.rw.body, op, &fty.inputs);
         for (i, t) in fty.inputs.iter().enumerate() {
             if i >= inputs {
@@ -641,13 +519,11 @@ impl GpuToXe3 {
             }
             let Some((n, elem)) = Xe3Types::of(t) else { return false };
             if stage == Stage::Compute {
-                // a dword of the inline data, the same in every lane
                 if n != 1 || i >= XE3_COMPUTE_PARAMS {
                     return false;
                 }
                 payload.push(i as i64);
             } else {
-                // an attribute / varying is four components whatever its type (the fetch / setup fills the rest)
                 let base = if stage == Stage::Vertex { XE3_VS_ATTR_GRF as usize } else { 0 };
                 payload.extend((0..n).map(|c| (base + 4 * i + c) as i64));
             }
@@ -658,14 +534,11 @@ impl GpuToXe3 {
             return false;
         }
         let flag = |attr: &str| matches!(cr.rw.body[op].get(attr), Some(Attribute::Bool(true) | Attribute::Unit));
-        // the last result is the sample mask (an i32), not a color
         let omask = stage == Stage::Fragment && flag(Self::SAMPLE_MASK) && !fty.results.is_empty();
-        // two colors to the one target (dual-source blending), not two targets
         let dual = stage == Stage::Fragment && flag(Self::DUAL_SOURCE) && fty.results.len() == 2;
         let count = |attr: &str| cr.rw.body[op].get(attr).map(Attrs::as_int).transpose().map(|n| n.unwrap_or(0) as u32);
         let (Ok(bindings), Ok(buffers), Ok(push)) = (count(Self::BINDINGS), count(Self::BUFFERS), count(Self::PUSH)) else { return false };
         let imask = 0u32;
-        // a compute kernel's workgroup: `known_block_size` x / 16 threads (1 .. 64), its attributions' bytes shared
         let threads = match cr.rw.body[op].get("known_block_size").and_then(|a| a.dense_values()).as_deref() {
             Some([x, ..]) => (*x as u32).div_ceil(u32::from(XE3_SIMD)),
             _ => 1,
@@ -709,14 +582,10 @@ impl GpuToXe3 {
         true
     }
 
-    /// The registers of a value of type `t` (`ShaderTypes`: one a component).
     fn grfs<'a>(t: &Type<'a>) -> Option<Vec<Type<'a>>> {
         Xe3Types::of(t).map(|(n, e)| vec![Type::from(Grf(e)); n])
     }
 
-    /// A structured control flow op (`scf.for` / `scf.if` / `scf.while`) again, of registers: its operands the
-    /// converted ones, its results and its regions' arguments a register a component, its regions moved over
-    /// (`xe3-regalloc` gives what is carried around a register each, `xe3-control` makes it branches).
     fn structured(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let name = cr.rw.body[op].name.to_string();
         let types: Vec<Type<'_>> = cr.rw.body[op].results.iter().map(|r| cr.rw.body[*r].ty.clone()).collect();
@@ -756,32 +625,27 @@ impl GpuToXe3 {
                 return false;
             }
         }
-        // each result its registers
         let mut values = cr.rw.body[new].results.iter().copied();
         let grouped = results.iter().map(|g| values.by_ref().take(g.len()).collect()).collect();
         cr.replace(op, grouped);
         true
     }
 
-    /// `scf.for` of registers (an i32 induction variable: `index` has no register).
     #[convert("scf.for")]
     fn scf_for(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         Self::structured(cr, op, o)
     }
 
-    /// `scf.if` of registers: its condition a mask (all ones or zero a lane).
     #[convert("scf.if")]
     fn scf_if(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         Self::structured(cr, op, o)
     }
 
-    /// `scf.while` of registers.
     #[convert("scf.while")]
     fn scf_while(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         Self::structured(cr, op, o)
     }
 
-    /// `scf.condition` of registers: the condition a mask, then what goes on to the body (or out).
     #[convert("scf.condition")]
     fn scf_condition(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         cr.rw.set_before(op);
@@ -790,7 +654,6 @@ impl GpuToXe3 {
         true
     }
 
-    /// `scf.yield` of registers.
     #[convert("scf.yield")]
     fn scf_yield(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         cr.rw.set_before(op);
@@ -799,18 +662,15 @@ impl GpuToXe3 {
         true
     }
 
-    /// Whether a structured control flow op is of registers already (its operands, results and arguments).
     pub fn structured_legal(body: &Body<'_>, op: OpId) -> bool {
         let grf = |v: &ValueId| Grf::try_from(&body[*v].ty).is_ok();
         let args = body[op].regions.iter().flat_map(|r| body[*r].blocks.iter().flat_map(|b| body[*b].args.iter()));
         body[op].operands.iter().all(grf) && body[op].results.iter().all(grf) && args.into_iter().all(grf)
     }
 
-    /// The epilogue: the thread's results to the fixed function, ending the thread.
     #[convert("func.return", "gpu.return")]
     fn ret(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         if Self::stage(cr.rw.body, op) == Some(Stage::Compute) {
-            // r0 to the message gateway, ending the thread (Mesa `emit_cs_terminate`, Xe-HPG+)
             let r0 = Self::payload(cr, op, 0, "ui32");
             let attrs = vec![("sfid", A::str(<&str>::from(Sfid::Gateway))), ("desc", A::from(SendInfo::lengths(0, 1, 0))), ("src0_len", A::from(1u8)), ("eot", A::Bool(true))];
             Self::send(cr, op, "xe3.eu.send", &[r0], attrs);
@@ -820,15 +680,9 @@ impl GpuToXe3 {
         let Some(values) = o.first() else { return false };
         let Ok(values): Result<[ValueId; 4], _> = values.clone().try_into() else { return false };
         match Self::stage(cr.rw.body, op) {
-            // one render target write a result (target k at binding table entry k), the last one ending the thread
             Some(Stage::Fragment) => {
-                // with a sample mask (the last result, past the targets): each write's payload starts with it, its low
-                // 16 bits a packed word each (Mesa lower_fb_write_logical_send's oMask), Xe2 ex_desc bit 12
                 let targets = Self::targets(cr.rw.body, op).map_or(o.len(), usize::from);
                 if targets == 1 && o.len() == 2 && o[1].len() == 4 && o[0].len() == 4 {
-                    // dual-source: one SIMD16 write of both colors (Xe2+ keeps it SIMD16, Mesa brw_lower_simd_width);
-                    // message control 2 (brw_fb_write_msg_control's SIMD8_DUAL_SOURCE_SUBSPAN01 for group 0; 1 is the
-                    // replicated single source); color 0's r g b a then color 1's
                     let write = Render { bti: 0, msg_ctrl: 2 | 0x10, msg_type: 12, coarse_write: false };
                     let attrs = vec![
                         ("sfid", A::str(<&str>::from(Sfid::Render))),
@@ -855,10 +709,7 @@ impl GpuToXe3 {
                 let n = 4 + u32::from(mask.is_some());
                 for (k, values) in o.iter().enumerate() {
                     let last = k + 1 == o.len();
-                    // SIMD16 single source, no header; msg_ctrl bit 4: the last render target
                     let write = Render { bti: k as u8, msg_ctrl: if last { 0x10 } else { 0 }, msg_type: 12, coarse_write: false };
-                    // the Render Target Index (which BLEND_STATE entry) in the extended descriptor, bits 24:21 on Xe2+
-                    // (Mesa lower_fb_write_logical_send): not the binding table index
                     let mut attrs = vec![
                         ("sfid", A::str(<&str>::from(Sfid::Render))),
                         ("desc", A::from(SendInfo::lengths(write.desc(), n, 0))),
@@ -874,8 +725,6 @@ impl GpuToXe3 {
             }
             Some(Stage::Vertex) => {
                 let handle = Self::payload(cr, op, 1, "ui32");
-                // each varying to its VUE slot (2 + k: after the header and the position), 16 bytes a slot; out of
-                // order, so each takes an SBID (xe3-swsb)
                 for (k, varying) in o[1..].iter().enumerate() {
                     let Some(vect_size) = Self::vect_size(varying.len()) else { return false };
                     let store = Lsc { vect_size, ..Self::URB };
@@ -884,14 +733,12 @@ impl GpuToXe3 {
                     let attrs = vec![
                         ("sfid", A::str(<&str>::from(Sfid::Urb))),
                         ("desc", A::from(SendInfo::lengths(store.desc(), 1, 0))),
-                        // the flat address' immediate byte offset: extended descriptor bits 31:12 (Mesa gen_lsc_ex_desc_encode)
                         ("ex_desc", A::from(((32 + 16 * k) as u32) << 12)),
                         ("src0_len", A::from(1u8)),
                         ("src1_len", A::from(varying.len() as u8)),
                     ];
                     Self::send(cr, op, "xe3.eu.send", &payload, attrs);
                 }
-                // the URB handles (r1), then the VUE: its header (4 dwords) and the position, ending the thread
                 let mut payload = vec![handle, Self::imm(cr, op, 0x3c00_3c00, "ui32")];
                 payload.extend((0..3).map(|_| Self::imm(cr, op, 0, "ui32")));
                 payload.extend(values);
@@ -911,16 +758,12 @@ impl GpuToXe3 {
         true
     }
 
-    /// A resource load: through an access chain into the push constants (an LSC load at that byte offset of their
-    /// buffer surface, binding table entry `XE3_PUSH_BTI`, the same address in every lane) or a buffer (binding b,
-    /// entry `XE3_BUFFER_BTI + b`); a texture's or sampler's handle is nothing in registers.
     #[convert("spirv.Load")]
     fn resource_load(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let r = cr.rw.body[op].results[0];
         let int = |cr: &Cr<'_, '_, '_>, n: &str| cr.rw.body[op].get(n).and_then(|a| Attrs::as_int(a).ok());
         let (push, binding, offset) = (int(cr, Self::PUSH_AT), int(cr, Self::BINDING), int(cr, Self::OFFSET));
         let Some((n, elem)) = Xe3Types::of(&cr.rw.body[r].ty) else {
-            // a handle
             cr.replace(op, vec![Vec::new()]);
             return true;
         };
@@ -943,28 +786,19 @@ impl GpuToXe3 {
         true
     }
 
-    /// A pointer into a resource, a sampled image: nothing in registers (the loads and image ops know their binding).
     #[convert("spirv.AccessChain", "spirv.SampledImage")]
     fn handle(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         cr.replace(op, vec![Vec::new()]);
         true
     }
 
-    /// The binding `resources` put on an image op.
     fn binding(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<u8> {
         cr.rw.body[op].get(Self::BINDING).and_then(|a| Attrs::as_int(a).ok()).and_then(|b| u8::try_from(b).ok())
     }
 
-    /// `spirv.ImageSampleImplicitLod` ⇒ a SIMD16 SAMPLE (the level from the 2x2 quad's derivatives: WGSL
-    /// `textureSample`) without a header: u, v in, r, g, b, a out (Mesa `lower_sampler_logical_send`, Xe2 SIMD16 mode
-    /// 1; message type 0 as GEN_SAMPLER_MESSAGE_SAMPLE). A texture of one level samples level 0 whatever the
-    /// derivatives. Binding b is binding table entry n + b (entries 0 .. n are the n render targets) and sampler state
-    /// b. Out of order: an SBID, its users wait for it (xe3-swsb).
     #[convert("spirv.ImageSampleImplicitLod")]
     fn sample(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let Some(uv) = o.get(1) else { return false };
-        // (u, v), or (u, v, layer) of a 2D array: SAMPLE's r is the array index (the hardware rounds and clamps it);
-        // a cube's direction (u, v, r), a cube array's (u, v, r, ai: the cube)
         if !matches!(uv.len(), 2..=4) {
             return false;
         }
@@ -977,11 +811,6 @@ impl GpuToXe3 {
         true
     }
 
-    /// `spirv.ImageFetch` of a multisampled texture with its `Sample` operand (WGSL `textureLoad` of a
-    /// `texture_multisampled_2d`): texel (x, y), sample s, unfiltered ⇒ a SIMD16H LD2DMS_W (message type 28) without a
-    /// header. Its parameters as Mesa's `ld2dms_w` (brw_lower_logical_sends.cpp): the sample index, MCS 0 ..= 3 (zero:
-    /// the surface is not compressed), u, v; 16-bit ("ld2dms_w: SIMD8H and SIMD16H only", gfx12.5+), each the low half
-    /// of a register of its own.
     #[convert("spirv.ImageFetch")]
     fn load_sample(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (Some(xy), Some(s)) = (o.get(1), o.get(2)) else { return false };
@@ -991,7 +820,6 @@ impl GpuToXe3 {
         let mut words = |v: ValueId| Self::eu(cr, op, "xe3.eu.mov", &[v], vec![("dst_as", A::str("uw")), ("low0", A::Bool(true))], "i32");
         let (s, zero, x, y) = (words(*s), words(zero), words(*x), words(*y));
         let params = [s, zero, zero, zero, zero, x, y];
-        // SIMD16H: 16-bit parameters (Mesa's GEN_XE2_SAMPLER_SIMD_MODE_SIMD16H)
         let msg = Sampler { msg_type: 28, simd_mode: 5, bti: targets + b, sampler: b, return_hp: false };
         let attrs = vec![("sfid", A::str(<&str>::from(Sfid::Sampler))), ("desc", A::from(SendInfo::lengths(msg.desc(), params.len() as u32, 4))), ("src0_len", A::from(params.len() as u8))];
         let values = Self::create(cr, op, "xe3.eu.send", &params, attrs, &vec![Type::from(Grf("f32")); 4]);
@@ -1009,18 +837,15 @@ impl GpuToXe3 {
         true
     }
 
-    /// `a * b + c`: mad computes src0 + src1 * src2, rounded once.
     #[convert("math.fma")]
     fn fma(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let Some(elem) = Self::result_elem(cr, op) else { return false };
         Self::each(cr, op, o, |cr, x| Self::eu(cr, op, "xe3.eu.mad", &[x[2], x[0], x[1]], vec![], elem))
     }
 
-    /// The ordered predicates and `une` (cmp's conditions are false on a NaN but `nz`).
     #[convert("arith.cmpf")]
     fn cmp(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let Some(p) = cr.rw.body[op].get("predicate").map(Attrs::as_int).and_then(Result::ok) else { return false };
-        // CmpFPredicate: false, oeq, ogt, oge, olt, ole, one, ord, ueq, ugt, uge, ult, ule, une, uno, true
         let cond = match p {
             1 => "z",
             2 => "gt",
@@ -1034,28 +859,22 @@ impl GpuToXe3 {
         if !f64s {
             return Self::lanes(cr, op, o, "xe3.eu.cmp", &[("cond", A::str(cond))]);
         }
-        // f64: the 64-bit mask, then its low dwords (the region rules keep a compare's sizes alike)
         Self::each(cr, op, o, |cr, x| {
             let wide = Self::eu(cr, op, "xe3.eu.cmp", x, vec![("cond", A::str(cond))], "f64");
             Self::eu(cr, op, "xe3.eu.mov", &[wide], vec![("wide0", A::str("ud")), ("as", A::str("ud"))], "f32")
         })
     }
 
-    /// f32: csel picks src0 where src2 compares (`z`) with 0, else src1: a false condition (+0) the second value.
-    /// i32: the bits, `(x & c) | (y & !c)` (a true condition is all ones).
     #[convert("arith.select")]
     fn select(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let [c, x, y] = o else { return false };
         let Some(elem) = Self::result_elem(cr, op) else { return false };
-        // a scalar condition for every component
         let c = if c.len() == 1 { vec![c[0]; x.len()] } else { c.clone() };
         Self::each(cr, op, &[c, x.clone(), y.clone()], |cr, v| {
             if elem == "f32" {
                 return Self::eu(cr, op, "xe3.eu.csel", &[v[2], v[1], v[0]], vec![("cond", A::str("z"))], "f32");
             }
             if matches!(elem, "f64" | "i64") {
-                // the mask into f0.0, waited for (the scoreboard does not follow flags), then a predicated sel (the
-                // EU's 64-bit logic operations take the low dwords only: and / or / not of :uq are wrong on Xe3)
                 Self::create(cr, op, "xe3.eu.cmp", &[v[0]], vec![("cond", A::str("nz")), ("dst", A::str("null<1;1,0>:d")), ("src1", A::str("0x0:d")), ("flag", A::str("f0.0")), ("as", A::str("ud"))], &[]);
                 Self::create(cr, op, "xe3.eu.sync", &[], vec![("exec", A::from(1u8)), ("fn", A::str("nop")), ("swsb", A::str("A@1"))], &[]);
                 return Self::eu(cr, op, "xe3.eu.sel", &[v[1], v[2]], vec![("pred", A::str("normal")), ("flag", A::str("f0.0"))], elem);
@@ -1068,8 +887,6 @@ impl GpuToXe3 {
         })
     }
 
-    /// The low 32 bits. The EU has no 32 x 32 multiply since Xe-HP (Mesa `has_integer_dword_mul`): two 32 x 16
-    /// ones, `a * b.lo + (a * b.hi << 16)` (`brw_lower_integer_multiplication`).
     #[convert("arith.muli")]
     fn muli(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         Self::each(cr, op, o, |cr, x| {
@@ -1081,18 +898,14 @@ impl GpuToXe3 {
         })
     }
 
-    /// The mask in an f32 register as for `arith.cmpf`.
     #[convert("arith.cmpi")]
     fn cmpi(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let Some(p) = cr.rw.body[op].get("predicate").map(Attrs::as_int).and_then(Result::ok) else { return false };
-        // CmpIPredicate: eq, ne, slt, sle, sgt, sge, ult, ule, ugt, uge
         let Some(cond) = ["z", "nz", "lt", "le", "gt", "ge", "lt", "le", "gt", "ge"].get(p as usize) else { return false };
-        // the mask written as the sources' type: cmp does not mix integer sources with a float destination
         let mut attrs = vec![("cond", A::str(*cond)), ("dst_as", A::str(if p >= 6 { "ud" } else { "d" }))];
         if p >= 6 {
             attrs.push(("unsigned", A::Bool(true)));
         }
-        // i1s (masks in f32 registers) compared as their bits: as floats a true (all ones) is a NaN, unequal to itself
         let masks = o.first().and_then(|v| v.first()).and_then(|v| Grf::try_from(&cr.rw.body[*v].ty).ok()).is_some_and(|g| g.0 == "f32");
         if masks {
             attrs.push(("as", A::str("ud")));
@@ -1100,7 +913,6 @@ impl GpuToXe3 {
         Self::lanes(cr, op, o, "xe3.eu.cmp", &attrs)
     }
 
-    /// i1 ⇒ i32: the mask's bits (all ones or zero) and 1.
     #[convert("arith.extui")]
     fn extui(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         Self::each(cr, op, o, |cr, x| {
@@ -1109,7 +921,6 @@ impl GpuToXe3 {
         })
     }
 
-    /// The workgroup's number along x / y / z: r0.1, r0.6, r0.7 (Mesa `emit_work_group_id_setup`).
     #[convert("gpu.block_id")]
     fn block_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(d) = cr.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok()) else { return false };
@@ -1119,7 +930,6 @@ impl GpuToXe3 {
         true
     }
 
-    /// The invocation in its (one-dimensional) workgroup (local id x): r1, a word each.
     #[convert("gpu.thread_id")]
     fn thread_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         if cr.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok()) != Some(Dimension::X) {
@@ -1130,15 +940,12 @@ impl GpuToXe3 {
         true
     }
 
-    /// Already 32 bits in a register: an index, a pointer (its byte address), a narrow integer zero-extended.
     #[convert("arith.index_cast", "arith.index_castui", "llvm.inttoptr")]
     fn same(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         cr.replace(op, vec![o[0].clone()]);
         true
     }
 
-    /// To i8 / i16 for a narrow store only (a byte / word store keeps the low bits; a register's narrow integer is
-    /// zero-extended otherwise): the value itself.
     #[convert("arith.trunci")]
     fn trunci(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let r = cr.rw.body[op].results[0];
@@ -1149,14 +956,12 @@ impl GpuToXe3 {
         true
     }
 
-    /// The bytes of a workgroup attribution (`memref<N x T>`), its shared memory.
     fn bytes(t: &Type<'_>) -> Option<u32> {
         let Type::Shaped(s) = t else { return None };
         let n: i64 = t.dims()?.iter().product();
         Some(n as u32 * (s.elem.bit_width()? as u32 / 8))
     }
 
-    /// The memory a pointer of type `t` reaches: shared (`!llvm.ptr<3>`), else global.
     fn shared(t: &Type<'_>) -> Option<bool> {
         match LlvmType::try_from(t) {
             Ok(LlvmType::Ptr(3)) => Some(true),
@@ -1165,7 +970,6 @@ impl GpuToXe3 {
         }
     }
 
-    /// The bytes a load / store moves a component: 1, 2 for a narrow integer, the register's otherwise.
     fn size(t: &Type<'_>) -> Option<u32> {
         let e = match t {
             Type::Shaped(s) if s.kind == ShapedKind::Vector => &*s.elem,
@@ -1178,8 +982,6 @@ impl GpuToXe3 {
         }
     }
 
-    /// `llvm.load`: `size` bytes (1, 2: zero-extended; 4: up to four consecutive dwords, a vector) at each lane's
-    /// address. Out of order: an SBID, its users wait (xe3-swsb).
     #[convert("llvm.load")]
     fn load(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let [addr] = o else { return false };
@@ -1198,7 +1000,6 @@ impl GpuToXe3 {
         true
     }
 
-    /// `llvm.store`: as `llvm.load`.
     #[convert("llvm.store")]
     fn store(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let [value, addr] = o else { return false };
@@ -1218,8 +1019,6 @@ impl GpuToXe3 {
         true
     }
 
-    /// `llvm.atomicrmw`: an LSC atomic on each lane's dword (xchg: the atomic store), its old value back. Out of
-    /// order, as `llvm.load`.
     #[convert("llvm.atomicrmw")]
     fn atomic(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         use mlirformat::llvm::AtomicBinOp as B;
@@ -1248,12 +1047,6 @@ impl GpuToXe3 {
         true
     }
 
-    /// `gpu.barrier`: the shared memory's writes before it done (`sync.allwr`, Wa_14014063774; an SLM fence of the
-    /// thread group, its response waited for: Mesa's workgroup barrier, `emit_fence` with commit), then the gateway's
-    /// barrier message and `sync.bar` (Mesa `emit_barrier`, `generate_barrier`). Its payload: dword 2 the workgroup's
-    /// barrier id (r0.2's top byte) in bits 31:24 and 23:16, bit 8 an active threads barrier (Xe2+), the other dwords
-    /// 0; made by every channel whatever the execution mask (`w`), as the message; the fence's response and-ed in as 0
-    /// (so the message waits for it). Without the fence a write just before could be missed after (measured).
     #[convert("gpu.barrier")]
     fn barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let all = || vec![("w", A::Bool(true)), ("as", A::str("ud"))];
@@ -1274,7 +1067,6 @@ impl GpuToXe3 {
         let both = Self::eu(cr, op, "xe3.eu.or", &[id, below], all(), "i32");
         let active = Self::imm(cr, op, 0x100, "i32");
         let dword2 = Self::eu(cr, op, "xe3.eu.or", &[both, active], all(), "i32");
-        // the channel: the local id's low 4 bits (a thread's 16 channels, whichever thread of the workgroup)
         let local = Self::eu(cr, op, "xe3.eu.mov", &[], vec![("w", A::Bool(true)), ("src0", A::str("r1<1;1,0>:uw"))], "i32");
         let fifteen = Self::imm(cr, op, 15, "i32");
         let channel = Self::eu(cr, op, "xe3.eu.and", &[local, fifteen], all(), "i32");
@@ -1291,7 +1083,6 @@ impl GpuToXe3 {
         true
     }
 
-    /// `ceil(x)` is `-floor(-x)` (both negations exact, -0 kept).
     #[convert("math.ceil")]
     fn ceil(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let Some(elem) = Self::result_elem(cr, op) else { return false };
@@ -1366,14 +1157,6 @@ impl GpuToXe3 {
     }
 }
 
-/// ⭐ Correctly rounded f32 division and square root from the EU's approximate `inv` / `rsq` (a few ulps) and fused
-/// mads, the IA-64 sequences (Markstein; Cornea, Harrison, Tang, "Scientific Computing on Itanium-based Systems"):
-/// one Newton step on the approximation, then the residual corrects the rounded result. Where the sequence
-/// overflows to NaN (a zero or infinite divisor or radicand, a NaN) the EU's own result is taken, exact there; so
-/// for a zero dividend, whose sign the correction loses (-0 + +0). Neither the residual nor the inverse may leave
-/// the normal range: a radicand under 2^-100 is first scaled by 2^64 and its root back by 2^-32 (exact), a quotient's
-/// operands both by 2^64 when either is under 2^-100 (the quotient is the same; where that overflows one, the true
-/// quotient is beyond the range anyway: 0 or ∞). Needs f32 denormals kept (the kernel prologue).
 struct Exact;
 
 impl Exact {
@@ -1381,7 +1164,6 @@ impl Exact {
         GpuToXe3::eu(cr, at, name, x, attrs, "f32")
     }
 
-    /// `a + b * c`, `-b` with `neg`.
     fn mad(cr: &mut Cr<'_, '_, '_>, at: OpId, a: ValueId, b: ValueId, c: ValueId, neg: bool) -> ValueId {
         Self::op(cr, at, "xe3.eu.mad", &[a, b, c], if neg { vec![("neg1", A::Bool(true))] } else { vec![] })
     }
@@ -1390,7 +1172,6 @@ impl Exact {
         Self::op(cr, at, "xe3.eu.math", &[x], vec![("fn", A::str(f))])
     }
 
-    /// `refined` where it is finite (refined - refined is +0), else `fallback`.
     fn finite_or(cr: &mut Cr<'_, '_, '_>, at: OpId, refined: ValueId, fallback: ValueId) -> ValueId {
         let d = Self::op(cr, at, "xe3.eu.add", &[refined, refined], vec![("neg1", A::Bool(true))]);
         Self::op(cr, at, "xe3.eu.csel", &[refined, fallback, d], vec![("cond", A::str("z"))])
@@ -1400,7 +1181,6 @@ impl Exact {
         GpuToXe3::imm(cr, at, v.to_bits(), "f32")
     }
 
-    /// `then` where |x| < `bound`, else `other`.
     fn below(cr: &mut Cr<'_, '_, '_>, at: OpId, x: ValueId, bound: f32, then: ValueId, other: ValueId) -> ValueId {
         let minus = Self::imm(cr, at, -bound);
         let d = Self::op(cr, at, "xe3.eu.add", &[x, minus], vec![("abs0", A::Bool(true))]);
@@ -1446,7 +1226,6 @@ impl Exact {
     }
 }
 
-/// Which integer an f64 rounds to.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Rounding {
     Down,
@@ -1455,10 +1234,6 @@ enum Rounding {
     Even,
 }
 
-/// ⭐ f64 division, correctly rounded, with no f64 in the math unit (Xe3's has none): from an f32 seed, of the
-/// operands scaled to [1, 2) by their exponents (read and written through 32-bit dwords: the EU's 64-bit logic
-/// operations take low dwords only), Newton's iterations and Markstein's last step, then scaled back: exactly, or
-/// for a subnormal result rounded once more, a tie of that rounding settled by the remainder's sign.
 struct Exact64;
 
 impl Exact64 {
@@ -1478,7 +1253,6 @@ impl Exact64 {
         GpuToXe3::imm(cr, at, v, "i32")
     }
 
-    /// `a + b c`, `a - b c` with `neg`, rounded once.
     fn mad(cr: &mut Cr<'_, '_, '_>, at: OpId, a: ValueId, b: ValueId, c: ValueId, neg: bool) -> ValueId {
         Self::f(cr, at, "xe3.eu.mad", &[a, b, c], if neg { vec![("neg1", A::Bool(true))] } else { vec![] })
     }
@@ -1487,7 +1261,6 @@ impl Exact64 {
         Self::f(cr, at, "xe3.eu.mul", &[a, b], vec![])
     }
 
-    /// The high (sign, exponent, top of the mantissa) and low dwords of each lane's f64.
     fn hi(cr: &mut Cr<'_, '_, '_>, at: OpId, x: ValueId) -> ValueId {
         Self::i(cr, at, "xe3.eu.mov", &[x], vec![("hi0", A::Bool(true)), ("as", A::str("ud"))])
     }
@@ -1496,12 +1269,10 @@ impl Exact64 {
         Self::i(cr, at, "xe3.eu.mov", &[x], vec![("wide0", A::str("ud")), ("as", A::str("ud"))])
     }
 
-    /// The f64 of dwords `lo`, `hi`.
     fn pack(cr: &mut Cr<'_, '_, '_>, at: OpId, lo: ValueId, hi: ValueId) -> ValueId {
         GpuToXe3::create(cr, at, crate::PACK64, &[lo, hi], vec![], &[Type::from(Grf("f64"))])[0]
     }
 
-    /// 2^`e` for `e` an f64's biased exponent field (1 ..= 2046): its high dword `e << 20`, its low 0.
     fn pow2(cr: &mut Cr<'_, '_, '_>, at: OpId, e: ValueId) -> ValueId {
         let twenty = Self::iimm(cr, at, 20);
         let hi = Self::i(cr, at, "xe3.eu.shl", &[e, twenty], vec![("unsigned", A::Bool(true))]);
@@ -1526,7 +1297,6 @@ impl Exact64 {
         Self::i(cr, at, "xe3.eu.add", &[a, b], if neg { vec![("neg1", A::Bool(true))] } else { vec![] })
     }
 
-    /// The exponent field (bits 30:20) of a high dword.
     fn exponent(cr: &mut Cr<'_, '_, '_>, at: OpId, hi: ValueId) -> ValueId {
         let twenty = Self::iimm(cr, at, 20);
         let e = Self::i(cr, at, "xe3.eu.shr", &[hi, twenty], vec![("unsigned", A::Bool(true))]);
@@ -1534,25 +1304,21 @@ impl Exact64 {
         Self::and(cr, at, e, m)
     }
 
-    /// An i32 compare's mask (all ones or zero).
     fn cmpi(cr: &mut Cr<'_, '_, '_>, at: OpId, cond: &str, a: ValueId, b: ValueId) -> ValueId {
         GpuToXe3::eu(cr, at, "xe3.eu.cmp", &[a, b], vec![("cond", A::str(cond)), ("dst_as", A::str("d"))], "f32")
     }
 
-    /// An f64 compare's mask, as `arith.cmpf`'s.
     fn cmpf(cr: &mut Cr<'_, '_, '_>, at: OpId, cond: &str, a: ValueId, b: ValueId) -> ValueId {
         let wide = Self::f(cr, at, "xe3.eu.cmp", &[a, b], vec![("cond", A::str(cond))]);
         GpuToXe3::eu(cr, at, "xe3.eu.mov", &[wide], vec![("wide0", A::str("ud")), ("as", A::str("ud"))], "f32")
     }
 
-    /// `x` where the mask `m` is set, else `y` (64 bits; see `arith.select`).
     fn sel(cr: &mut Cr<'_, '_, '_>, at: OpId, m: ValueId, x: ValueId, y: ValueId) -> ValueId {
         GpuToXe3::create(cr, at, "xe3.eu.cmp", &[m], vec![("cond", A::str("nz")), ("dst", A::str("null<1;1,0>:d")), ("src1", A::str("0x0:d")), ("flag", A::str("f0.0")), ("as", A::str("ud"))], &[]);
         GpuToXe3::create(cr, at, "xe3.eu.sync", &[], vec![("exec", A::from(1u8)), ("fn", A::str("nop")), ("swsb", A::str("A@1"))], &[]);
         Self::f(cr, at, "xe3.eu.sel", &[x, y], vec![("pred", A::str("normal")), ("flag", A::str("f0.0"))])
     }
 
-    /// The f32 of an f64 and back (32-bit sides a qword apart, see `GpuToXe3::convert`).
     fn to_f32(cr: &mut Cr<'_, '_, '_>, at: OpId, x: ValueId) -> ValueId {
         let spread = GpuToXe3::eu(cr, at, "xe3.eu.mov", &[x], vec![("dst_wide", A::str("f"))], "i64");
         GpuToXe3::eu(cr, at, "xe3.eu.mov", &[spread], vec![("wide0", A::str("ud")), ("as", A::str("ud"))], "f32")
@@ -1563,7 +1329,6 @@ impl Exact64 {
         Self::f(cr, at, "xe3.eu.mov", &[spread], vec![("wide0", A::str("f"))])
     }
 
-    /// `x` scaled into [1, 2) (its sign kept), and its unbiased exponent (a subnormal one's too: scaled by 2^54 first).
     fn split(cr: &mut Cr<'_, '_, '_>, at: OpId, x: ValueId) -> (ValueId, ValueId) {
         let e0 = {
             let h = Self::hi(cr, at, x);
@@ -1589,7 +1354,6 @@ impl Exact64 {
         (Self::pack(cr, at, l, m), e)
     }
 
-    /// 2^`k` for an unbiased `k` within the normal exponents (-1022 ..= 1023).
     fn pow2k(cr: &mut Cr<'_, '_, '_>, at: OpId, k: ValueId) -> ValueId {
         let bias = Self::iimm(cr, at, 1023);
         let e = Self::add(cr, at, k, bias, false);
@@ -1597,7 +1361,6 @@ impl Exact64 {
     }
 
     fn div(cr: &mut Cr<'_, '_, '_>, at: OpId, a: ValueId, b: ValueId) -> ValueId {
-        // a, b finite and not zero: |x| < inf and x != 0 (false for NaN)
         let inf = Self::fimm(cr, at, f64::INFINITY);
         let zero = Self::fimm(cr, at, 0.0);
         let general = {
@@ -1611,7 +1374,6 @@ impl Exact64 {
             let m = Self::and(cr, at, m, na);
             Self::and(cr, at, m, nb)
         };
-        // the special cases as IEEE has them: a times 1 / b of b's f32 (±0, ±inf, NaN as they are), ±1 for a finite b
         let special = {
             let hb = Self::hi(cr, at, b);
             let sign = Self::iimm(cr, at, 0x8000_0000);
@@ -1630,7 +1392,6 @@ impl Exact64 {
             let r = Self::to_f64(cr, at, r32);
             Self::mul(cr, at, a, r)
         };
-        // the general case: a' / b' of the mantissas, correctly rounded (q1), its remainder r1
         let (am, ea) = Self::split(cr, at, a);
         let (bm, eb) = Self::split(cr, at, b);
         let one = Self::fimm(cr, at, 1.0);
@@ -1645,12 +1406,10 @@ impl Exact64 {
         let r = Self::mad(cr, at, am, bm, q0, true);
         let q1 = Self::mad(cr, at, q0, r, y, false);
         let r1 = Self::mad(cr, at, am, bm, q1, true);
-        // its exponent with k = ea - eb: the result's biased exponent E
         let k = Self::add(cr, at, ea, eb, true);
         let hq = Self::hi(cr, at, q1);
         let eq = Self::exponent(cr, at, hq);
         let big = Self::add(cr, at, eq, k, false);
-        // E within the normal range: q1's exponent plus k, exact
         let normal = {
             let twenty = Self::iimm(cr, at, 20);
             let ks = Self::i(cr, at, "xe3.eu.shl", &[k, twenty], vec![]);
@@ -1658,7 +1417,6 @@ impl Exact64 {
             let l = Self::lo(cr, at, q1);
             Self::pack(cr, at, l, h)
         };
-        // E past the largest: ±inf
         let over = {
             let sign = Self::iimm(cr, at, 0x8000_0000);
             let s = Self::and(cr, at, hq, sign);
@@ -1667,9 +1425,6 @@ impl Exact64 {
             let z = Self::iimm(cr, at, 0);
             Self::pack(cr, at, z, h)
         };
-        // E below the smallest: q1 2^k rounded once more (two steps through the normal range: 2^(k + 600), 2^-600),
-        // k at least -1300 (below, the result is ±0 all the same); a tie of that rounding with a remainder is no tie:
-        // the neighbour on the remainder's side
         let under = {
             let lowest = Self::iimm(cr, at, (-1300i32) as u32);
             let kc = Self::i(cr, at, "xe3.eu.sel", &[k, lowest], vec![("cond", A::str("ge"))]);
@@ -1691,7 +1446,6 @@ impl Exact64 {
             };
             let d = Self::f(cr, at, "xe3.eu.add", &[q1, back], vec![("neg1", A::Bool(true))]);
             let ad = Self::f(cr, at, "xe3.eu.mov", &[d], vec![("abs0", A::Bool(true))]);
-            // half the result's ulp in q1's scale: 2^(-1075 - kc)
             let h = {
                 let c = Self::iimm(cr, at, (-1075i32) as u32);
                 let e = Self::add(cr, at, c, kc, true);
@@ -1700,7 +1454,6 @@ impl Exact64 {
             let tie = Self::cmpf(cr, at, "z", ad, h);
             let exact = Self::cmpf(cr, at, "z", r1, zero);
             let fix = Self::andn(cr, at, tie, exact);
-            // the side: r1 / b' (r1 y has its sign)
             let dir = Self::mul(cr, at, r1, y);
             let pos = Self::cmpf(cr, at, "gt", dir, zero);
             let hn = Self::f(cr, at, "xe3.eu.mov", &[h], vec![("neg0", A::Bool(true))]);
@@ -1719,9 +1472,6 @@ impl Exact64 {
         Self::sel(cr, at, general, q, special)
     }
 
-    /// √x, correctly rounded: x scaled to [1, 4) by an even exponent 2e (a subnormal x too), √ of that from an f32
-    /// seed of its reciprocal root by Goldschmidt's iterations (g → √m, h → 1 / 2√m) and Markstein's last step, times
-    /// 2^e (exact: a root is never subnormal). -x NaN; ±0, +inf, NaN themselves.
     fn sqrt(cr: &mut Cr<'_, '_, '_>, at: OpId, x: ValueId) -> ValueId {
         let inf = Self::fimm(cr, at, f64::INFINITY);
         let zero = Self::fimm(cr, at, 0.0);
@@ -1763,9 +1513,6 @@ impl Exact64 {
         Self::sel(cr, at, general, root, special)
     }
 
-    /// `x` rounded to an integer (`kind`): to nearest even by adding and taking off 2^52 of x's sign (|x| < 2^52;
-    /// above, x is one already, or inf / NaN), then a step back where that went past for floor, ceil, trunc; the sign
-    /// of x at the end (-0 kept, ceil(-0.5) is -0).
     fn round(cr: &mut Cr<'_, '_, '_>, at: OpId, x: ValueId, kind: Rounding) -> ValueId {
         let sign = Self::iimm(cr, at, 0x8000_0000);
         let hx = Self::hi(cr, at, x);
@@ -1810,12 +1557,10 @@ impl Exact64 {
     }
 }
 
-/// 2^`e` as an f32, for `e` within its normal exponents (exact; `powi` needs std).
 const fn pow2f(e: i32) -> f32 {
     f32::from_bits(((127 + e) as u32) << 23)
 }
 
-/// 2^`e` as an f64, for `e` within its normal exponents (exact; `powi` needs std).
 const fn pow2d(e: i32) -> f64 {
     f64::from_bits(((1023 + e) as u64) << 52)
 }

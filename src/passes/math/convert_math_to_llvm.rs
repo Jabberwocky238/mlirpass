@@ -1,12 +1,9 @@
-//! `convert-math-to-llvm`.
-
 use crate::{llvm_target};
 use crate::{LlvmConverter, LlvmOptions, MathToLlvm};
 use crate::pass;
 use mlirformat::Error;
 use crate::{Body, ConversionConfig, ConversionPatterns, Converter, Mode, OpId, Run};
 
-/// `convert-math-to-llvm`.
 #[pass("convert-math-to-llvm")]
 pub struct ConvertMathToLlvm {
     #[opt("approximate-log1p", default = true)]

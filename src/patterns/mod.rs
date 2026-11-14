@@ -1,6 +1,3 @@
-//! ⭐ Rule sets (`#[patterns]`): reusable rewrite / conversion patterns, one directory per
-//! source dialect, a file per target (`scf/to_cf.rs`: scf ⇒ cf).
-
 #[cfg(feature = "dialect.affine")]
 mod affine;
 #[cfg(feature = "dialect.amdgpu")]

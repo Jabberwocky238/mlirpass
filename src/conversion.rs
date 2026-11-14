@@ -1,23 +1,3 @@
-//! ⭐ Dialect conversion, as `DialectConversion.cpp` in its default (rollback) mode.
-//!
-//! ```text
-//! ConversionTarget    which ops are legal: per op, per dialect, dynamically, or unknown
-//! TypeConverter       type ⇒ types, plus source / target materializations
-//! ConversionPattern   matchAndRewrite with the operands already remapped ("adaptor")
-//! Converter           walks the ops (preorder, blocks in DFS order), legalizes each:
-//!                     legal, else fold, else the patterns by cost; a pattern's new and
-//!                     modified ops are legalized in turn, and a failure rolls back
-//! ```
-//!
-//! Replacements are recorded in a value mapping and only applied at the end (commit), where
-//! users left on the old types get `builtin.unrealized_conversion_cast` source
-//! materializations; unresolved ones are reconciled, the rest handed to the type converter.
-//! Rollback undoes every change since the attempt began: the body's and the conversion state's
-//! undo logs ([`crate::Checkpoint`], [`StateMark`]) restore what was there, at the cost of what
-//! changed — not a copy of the whole body per attempt, nor per conversion: a conversion that
-//! fails is rolled back the same way, from one checkpoint around the whole run.
-
-
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
@@ -29,23 +9,16 @@ use mlirformat::{Error, NamedAttr, Str, Type};
 
 use crate::{BlockId, Body, InsertPoint, Listener, OpData, OpId, RegionId, Rewriter, TypedOp, ValueId};
 
-
-/// The marker a pure type conversion's cast carries until the end.
 const PURE: &str = "__pure_type_conversion__";
 
-// ---- target ------------------------------------------------------------------------------
-
-/// A dynamic legality callback: `None` means "no opinion".
 pub type LegalityFn<'c> = Box<dyn Fn(&Body<'_>, OpId) -> Option<bool> + 'c>;
 
-/// `ConversionTarget::LegalizationAction`.
 pub enum Action<'c> {
     Legal,
     Dynamic(LegalityFn<'c>),
     Illegal,
 }
 
-/// ⭐ `ConversionTarget`.
 #[derive(Default)]
 pub struct ConversionTarget<'c> {
     ops: BTreeMap<String, (Action<'c>, bool)>,
@@ -71,7 +44,6 @@ impl<'c> ConversionTarget<'c> {
         self.op(name, Action::Dynamic(Box::new(f)))
     }
 
-    /// `markOpRecursivelyLegal`: once legal, its regions are left alone.
     pub fn recursively_legal(&mut self, name: &str) -> &mut Self {
         if let Some(e) = self.ops.get_mut(name) {
             e.1 = true;
@@ -97,7 +69,6 @@ impl<'c> ConversionTarget<'c> {
         self
     }
 
-    /// `getOpInfo`: op, then dialect, then the unknown-op action.
     fn info(&self, name: &str) -> Option<(&Action<'c>, bool)> {
         if let Some((a, r)) = self.ops.get(name) {
             return Some((a, *r));
@@ -106,12 +77,10 @@ impl<'c> ConversionTarget<'c> {
         self.dialects.get(ns).or(self.unknown.as_ref()).map(|a| (a, false))
     }
 
-    /// `getOpAction`.
     pub fn action(&self, name: &str) -> Option<&Action<'c>> {
         self.info(name).map(|i| i.0)
     }
 
-    /// `isLegal`: `Some(recursively legal)` when legal.
     pub fn is_legal(&self, b: &Body<'_>, op: OpId) -> Option<bool> {
         let (action, recursive) = self.info(&b[op].name)?;
         let legal = match action {
@@ -131,24 +100,19 @@ impl<'c> ConversionTarget<'c> {
     }
 }
 
-// ---- type converter ----------------------------------------------------------------------
-
-/// A type conversion: `None` when it does not apply, `Some(None)` when the type cannot convert.
 pub type ConvertFn<'c> = Box<dyn for<'a> Fn(&Type<'a>) -> Option<Option<Vec<Type<'a>>>> + 'c>;
-/// A conversion that converts parts of the type through the converter itself (a memref's
-/// element).
+
 pub type RecConvertFn<'c> = Box<dyn for<'a> Fn(&dyn Fn(&Type<'a>) -> Option<Type<'a>>, &Type<'a>) -> Option<Option<Vec<Type<'a>>>> + 'c>;
-/// One conversion of a [`TypeConverter`], in the order added.
+
 enum Conversion<'c> {
     Plain(ConvertFn<'c>),
     Recursive(RecConvertFn<'c>),
 }
-/// A source materialization: one value of the type given, from the inputs.
+
 pub type SourceMatFn<'c> = Box<dyn for<'r, 'a> Fn(&mut Rewriter<'r, 'a>, &Type<'a>, &[ValueId]) -> Option<ValueId> + 'c>;
-/// A target materialization: values of the types given, from the inputs (and the original type).
+
 pub type TargetMatFn<'c> = Box<dyn for<'r, 'a> Fn(&mut Rewriter<'r, 'a>, &[Type<'a>], &[ValueId], Option<&Type<'a>>) -> Option<Vec<ValueId>> + 'c>;
 
-/// ⭐ `TypeConverter`: conversions and materializations, the last added tried first.
 #[derive(Default)]
 pub struct TypeConverter<'c> {
     conversions: Vec<Conversion<'c>>,
@@ -162,7 +126,6 @@ impl<'c> TypeConverter<'c> {
         self
     }
 
-    /// [`Self::conversion`] that may convert parts of the type with the converter itself.
     pub fn conversion_with(&mut self, f: impl for<'a> Fn(&dyn Fn(&Type<'a>) -> Option<Type<'a>>, &Type<'a>) -> Option<Option<Vec<Type<'a>>>> + 'c) -> &mut Self {
         self.conversions.push(Conversion::Recursive(Box::new(f)));
         self
@@ -178,7 +141,6 @@ impl<'c> TypeConverter<'c> {
         self
     }
 
-    /// `convertType` into a list; `None` on failure.
     pub fn convert_types<'a>(&self, t: &Type<'a>) -> Option<Vec<Type<'a>>> {
         self.conversions
             .iter()
@@ -189,7 +151,6 @@ impl<'c> TypeConverter<'c> {
             })?
     }
 
-    /// `convertType` to exactly one type.
     pub fn convert<'a>(&self, t: &Type<'a>) -> Option<Type<'a>> {
         match self.convert_types(t)?.as_slice() {
             [one] => Some(one.clone()),
@@ -197,7 +158,6 @@ impl<'c> TypeConverter<'c> {
         }
     }
 
-    /// Each type converted, flattened.
     pub fn convert_all<'a>(&self, ts: &[Type<'a>]) -> Option<Vec<Type<'a>>> {
         let mut out = Vec::new();
         for t in ts {
@@ -210,14 +170,10 @@ impl<'c> TypeConverter<'c> {
         self.convert(t).as_ref() == Some(t)
     }
 
-    /// `isLegal(Operation*)`: operand and result types.
     pub fn is_legal_op(&self, b: &Body<'_>, op: OpId) -> bool {
         b[op].operands.iter().chain(&b[op].results).all(|v| self.is_legal(&b[*v].ty))
     }
 
-    /// `populateSCFStructuralTypeConversionTarget`'s legality of scf op `op`: `for` / `if` /
-    /// `index_switch` by their results, a `yield` of those (or `while`) by its operands,
-    /// `while` / `condition` by everything; other scf ops legal.
     pub fn scf_structural_legal(&self, b: &Body<'_>, op: OpId) -> bool {
         let all = |vs: &[ValueId]| vs.iter().all(|v| self.is_legal(&b[*v].ty));
         match &*b[op].name {
@@ -228,12 +184,10 @@ impl<'c> TypeConverter<'c> {
         }
     }
 
-    /// `isSignatureLegal`.
     pub fn is_signature_legal(&self, inputs: &[Type<'_>], results: &[Type<'_>]) -> bool {
         inputs.iter().chain(results).all(|t| self.is_legal(t))
     }
 
-    /// `convertBlockSignature`.
     pub fn block_signature<'a>(&self, b: &Body<'a>, block: BlockId) -> Option<SignatureConversion<'a>> {
         let mut sig = SignatureConversion::new(b[block].args.len());
         for (i, a) in b[block].args.iter().enumerate() {
@@ -254,10 +208,8 @@ impl<'c> TypeConverter<'c> {
     }
 }
 
-/// `TypeConverter::SignatureConversion`: how a block's arguments map to new ones.
 #[derive(Debug, Clone)]
 pub struct SignatureConversion<'a> {
-    /// Per original argument: `(first new index, count)`, or replacement values, or dropped.
     remapped: Vec<Option<InputMap>>,
     types: Vec<Type<'a>>,
 }
@@ -273,18 +225,15 @@ impl<'a> SignatureConversion<'a> {
         Self { remapped: vec![None; n], types: Vec::new() }
     }
 
-    /// `addInputs(origInputNo, types)`.
     pub fn add_inputs(&mut self, orig: usize, types: Vec<Type<'a>>) {
         self.remapped[orig] = Some(InputMap::New { at: self.types.len(), count: types.len() });
         self.types.extend(types);
     }
 
-    /// `addInputs(types)`: new arguments mapped from nothing.
     pub fn add_new(&mut self, types: Vec<Type<'a>>) {
         self.types.extend(types);
     }
 
-    /// `remapInput(orig, values)`.
     pub fn remap_values(&mut self, orig: usize, values: Vec<ValueId>) {
         self.remapped[orig] = Some(InputMap::Values(values));
     }
@@ -293,13 +242,10 @@ impl<'a> SignatureConversion<'a> {
         &self.types
     }
 
-    /// How original argument `orig` is mapped.
     pub fn mapping(&self, orig: usize) -> Option<&InputMap> {
         self.remapped.get(orig)?.as_ref()
     }
 }
-
-// ---- conversion state --------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MatKind {
@@ -314,21 +260,16 @@ struct MatInfo<'a> {
     converter: Option<usize>,
 }
 
-/// A rewrite to commit at the end.
 #[derive(Debug, Clone)]
 enum Rewrite {
     ReplaceOp(OpId, Option<usize>),
     ReplaceValue(ValueId, Option<usize>),
 }
 
-/// `ConversionPatternRewriterImpl`'s state. Rolled back with an undo log ([`StateMark`]), as
-/// the body is ([`crate::Checkpoint`]): cloning it per pattern attempt was quadratic.
 #[derive(Debug, Clone, Default)]
 pub struct ConvState<'a> {
-    /// What one value maps to: by value id, 1 + its index in `targets` (0: nothing).
     one: crate::IdVec<ValueId, u32>,
     targets: Vec<Vec<ValueId>>,
-    /// What several values map to together (rare).
     many: BTreeMap<Vec<ValueId>, Vec<ValueId>>,
     mapped_to: Bits,
     replaced_ops: Bits,
@@ -337,17 +278,12 @@ pub struct ConvState<'a> {
     rewrites: Vec<Rewrite>,
     new_ops: Vec<OpId>,
     modified_ops: Vec<OpId>,
-    /// What to undo while a mark is open: what the sets and maps held before each change.
     undo: Vec<Undo<'a>>,
-    /// Open marks.
     depth: u32,
-    /// A rewrite pattern is running ([`Plain`]): its replacements are recorded, not done.
     recording: bool,
-    /// `allowPatternRollback = false`: materializations are not mapped (each use casts anew).
     no_rollback: bool,
 }
 
-/// One change to [`ConvState`] to undo on rollback.
 #[derive(Debug, Clone)]
 enum Undo<'a> {
     One(ValueId, u32),
@@ -358,8 +294,6 @@ enum Undo<'a> {
     Unresolved(OpId, Option<MatInfo<'a>>),
 }
 
-/// A point to roll a [`ConvState`] back to; closed by [`ConvState::rollback`] or
-/// [`ConvState::release`], innermost first.
 #[derive(Debug)]
 #[must_use = "a mark is closed by rollback or release"]
 struct StateMark {
@@ -385,8 +319,6 @@ impl<'a> Listener<'a> for ConvState<'a> {
         }
     }
 
-    /// While a rewrite pattern runs, `replaceOp` / `eraseOp` are the conversion's: the results
-    /// stand for `with` (nothing, when erased) from now on and `op` goes at the end.
     fn record_replacement(&mut self, body: &Body<'a>, op: OpId, with: &[ValueId]) -> bool {
         if !self.recording {
             return false;
@@ -400,8 +332,6 @@ impl<'a> Listener<'a> for ConvState<'a> {
     }
 }
 
-/// A rewrite pattern among conversion patterns (upstream, a `RewritePattern` in a conversion):
-/// it reads the op's own operands, and its replacements are recorded as a conversion's.
 pub struct Plain<P>(pub P);
 
 impl<P: crate::Pattern> ConversionPattern for Plain<P> {
@@ -431,7 +361,6 @@ impl<P: crate::Pattern> ConversionPattern for Plain<P> {
     }
 }
 
-/// A set of arena ids, one bit each: 64-bit words per seg.
 #[derive(Debug, Clone)]
 struct Bits(crate::IdVec<Word, u64>);
 
@@ -441,7 +370,6 @@ impl Default for Bits {
     }
 }
 
-/// Which word of [`Bits`] holds an id: its seg, and its index over 64.
 #[derive(Debug, Clone, Copy)]
 struct Word(u32, u32);
 
@@ -460,7 +388,6 @@ impl Bits {
         (Word(i.seg(), i.index() / 64), 1u64 << (i.index() % 64))
     }
 
-    /// Whether `i` was not in yet.
     fn insert(&mut self, i: impl crate::Id) -> bool {
         let (k, b) = Self::word(i);
         let w = self.0.get_mut(k);
@@ -503,7 +430,6 @@ impl<'a> ConvState<'a> {
         }
     }
 
-    /// What `vs` map to (empty: nothing).
     fn mapped(&self, vs: &[ValueId]) -> &[ValueId] {
         match vs {
             [v] => match *self.one.get(*v) {
@@ -540,14 +466,11 @@ impl<'a> ConvState<'a> {
         }
     }
 
-    /// Opens a mark (with the body's [`crate::Checkpoint`]).
     fn mark(&mut self) -> StateMark {
         self.depth += 1;
-        // The attempt starts with none of its own; a rollback hands these back
         StateMark { undo: self.undo.len(), rewrites: self.rewrites.len(), targets: self.targets.len(), new_ops: core::mem::take(&mut self.new_ops), modified_ops: core::mem::take(&mut self.modified_ops) }
     }
 
-    /// Brings the state back to `m` and closes it.
     fn rollback(&mut self, m: StateMark) {
         while self.undo.len() > m.undo {
             match self.undo.pop().expect("longer than the mark") {
@@ -582,7 +505,6 @@ impl<'a> ConvState<'a> {
         self.close();
     }
 
-    /// Keeps what changed since `m` and closes it (an outer mark can still undo it).
     fn release(&mut self, _m: StateMark) {
         self.close();
     }
@@ -594,12 +516,9 @@ impl<'a> ConvState<'a> {
         }
     }
 
-    /// `lookupOrDefault`. The chain is walked on the mapping's own vectors: a copy is made only
-    /// where several values compose into a new one, and for the answer.
     fn lookup_or_default(&self, b: &Body<'a>, from: ValueId, desired: &[Type<'a>], skip_pure: bool) -> Vec<ValueId> {
         let lookup = |vs: &[ValueId]| self.mapped(vs);
         let composed = |vs: &[ValueId]| -> Cow<'_, [ValueId]> {
-            // One value: its own mapping is the composition
             if let [v] = vs {
                 return Cow::Borrowed(lookup(core::slice::from_ref(v)));
             }
@@ -665,7 +584,6 @@ impl<'a> ConvState<'a> {
 }
 
 impl<'a> Body<'a> {
-    /// `computeInsertPoint(value)`: right after its definition (block start for an argument).
     fn insert_point_after(&self, v: ValueId) -> InsertPoint {
         match self[v].def {
             crate::Def::Result(op, _) => {
@@ -676,7 +594,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `computeInsertPoint(values)`: the latest of their insertion points.
     fn insert_point_after_all(&self, vs: &[ValueId]) -> InsertPoint {
         let mut pt = self.insert_point_after(vs[0]);
         for v in &vs[1..] {
@@ -688,7 +605,6 @@ impl<'a> Body<'a> {
                     (Some(a), Some(b)) => self.is_before(b, a),
                 }
             } else {
-                // A block nested deeper, or dominated, comes later.
                 true
             };
             if later {
@@ -699,21 +615,15 @@ impl<'a> Body<'a> {
     }
 }
 
-// ---- patterns ----------------------------------------------------------------------------
-
-/// ⭐ A conversion pattern: it sees the op and its operands already converted (`operands[i]`
-/// are the values standing for operand `i`, empty when it was dropped).
 pub trait ConversionPattern {
     fn name(&self) -> &str;
 
-    /// The op it matches; `None`: any.
     fn root(&self) -> Option<&str>;
 
     fn benefit(&self) -> u16 {
         1
     }
 
-    /// The ops it may create (for the legalization cost model).
     fn generated(&self) -> &[&str] {
         &[]
     }
@@ -721,7 +631,6 @@ pub trait ConversionPattern {
     fn rewrite(&self, rw: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool;
 }
 
-/// Patterns with the type converter each uses.
 #[derive(Default)]
 pub struct ConversionPatterns<'p> {
     patterns: Vec<(Box<dyn ConversionPattern + 'p>, Option<usize>)>,
@@ -729,7 +638,6 @@ pub struct ConversionPatterns<'p> {
 }
 
 impl<'p> ConversionPatterns<'p> {
-    /// Registers `tc`; patterns added with [`add_with`](Self::add_with) refer to it by index.
     pub fn converter(&mut self, tc: &'p TypeConverter<'p>) -> usize {
         self.converters.push(tc);
         self.converters.len() - 1
@@ -750,13 +658,9 @@ impl<'p> ConversionPatterns<'p> {
     }
 }
 
-// ---- the rewriter ------------------------------------------------------------------------
-
-/// ⭐ `ConversionPatternRewriter`: a [`Rewriter`] whose replacements are recorded, not done.
 pub struct ConversionRewriter<'r, 'a, 'p> {
     pub rw: Rewriter<'r, 'a, ConvState<'a>>,
     converters: &'r [&'p TypeConverter<'p>],
-    /// The current pattern's type converter.
     pub current: Option<usize>,
 }
 
@@ -782,12 +686,10 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         self.rw.listener
     }
 
-    /// The current pattern's type converter.
     pub fn type_converter(&self) -> Option<&'p TypeConverter<'p>> {
         self.current.map(|i| self.converters[i])
     }
 
-    /// `buildUnresolvedMaterialization`.
     fn materialization(&mut self, kind: MatKind, ip: InsertPoint, loc: Option<Str<'a>>, to_map: Vec<ValueId>, inputs: &[ValueId], types: &[Type<'a>], original: Option<Type<'a>>, converter: Option<usize>, pure: bool) -> Vec<ValueId> {
         let mut data = OpData::named("builtin.unrealized_conversion_cast").operands(inputs);
         data.loc = loc;
@@ -808,7 +710,6 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         results.to_vec()
     }
 
-    /// `remapValues`: each operand as the current converter wants it, casting where needed.
     pub fn remap(&mut self, values: &[ValueId], loc: Option<Str<'a>>) -> Option<Vec<Vec<ValueId>>> {
         let mut out = Vec::new();
         for v in values {
@@ -836,12 +737,10 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         Some(out)
     }
 
-    /// `getRemappedValue`.
     pub fn remapped(&mut self, v: ValueId) -> Option<ValueId> {
         self.remap(&[v], None)?.into_iter().next()?.first().copied()
     }
 
-    /// ⭐ `replaceOp`: `op`'s results stand for `values` from now on; `op` goes at the end.
     pub fn replace(&mut self, op: OpId, values: Vec<Vec<ValueId>>) {
         if self.rw.ip.is_some_and(|ip| ip.before == Some(op)) {
             self.rw.set_after(op);
@@ -857,18 +756,15 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         st.replace_ops(nested);
     }
 
-    /// `replaceOp` with single values.
     pub fn replace_values(&mut self, op: OpId, values: &[ValueId]) {
         self.replace(op, values.iter().map(|v| vec![*v]).collect());
     }
 
-    /// [`ConversionRewriter::replace_new`] mlirformat's typed op `with`.
     pub fn replace_by(&mut self, op: OpId, with: &impl TypedOp) -> OpId {
         let (data, types) = with.split();
         self.replace_new(op, data, &types)
     }
 
-    /// Builds `data` (with the given result types) before `op` and replaces `op` by it.
     pub fn replace_new(&mut self, op: OpId, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
         self.rw.set_before(op);
         let n = self.rw.create(data, types);
@@ -877,18 +773,15 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         n
     }
 
-    /// `Block::getTerminator`: the last op of `block` not already replaced.
     pub fn terminator(&self, block: BlockId) -> Option<OpId> {
         self.rw.body.block_ops(block).iter().rev().copied().find(|o| !self.state_ref().was_replaced(*o))
     }
 
-    /// `eraseOp`: replaced by nothing.
     pub fn erase(&mut self, op: OpId) {
         let n = self.rw.body[op].results.len();
         self.replace(op, vec![Vec::new(); n]);
     }
 
-    /// `replaceAllUsesWith(from, to)` (recorded).
     pub fn replace_value(&mut self, from: ValueId, to: Vec<ValueId>) {
         let current = self.current;
         let st = self.state();
@@ -896,14 +789,12 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         st.rewrites.push(Rewrite::ReplaceValue(from, current));
     }
 
-    /// `eraseBlock` in rollback mode: out of its region now, its ops count as replaced.
     pub fn erase_block_recorded(&mut self, block: BlockId) {
         let ops: Vec<OpId> = self.rw.body.block_ops(block).iter().flat_map(|o| self.rw.body.ops_in(*o)).collect();
         self.rw.body.remove_block(block);
         self.state().replace_ops(ops);
     }
 
-    /// `startOpModification` .. `finalizeOpModification` around `f`.
     pub fn modify(&mut self, op: OpId, f: impl FnOnce(&mut Body<'a>)) {
         f(self.rw.body);
         let st = self.state();
@@ -912,8 +803,6 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         }
     }
 
-    /// ⭐ `applySignatureConversion`: a new block with the converted argument types replaces
-    /// `block`; the old arguments are mapped to the new ones (or materialized).
     pub fn apply_signature_conversion(&mut self, block: BlockId, sig: &SignatureConversion<'a>, converter: Option<usize>) -> BlockId {
         let b = &*self.rw.body;
         let old_types = b.types(&b[block].args);
@@ -931,13 +820,11 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         let region = b[block].parent.expect("in region");
         let args: Vec<_> = sig.types.iter().cloned().zip(locs).collect();
         let new = self.rw.body.add_block(region, &args);
-        // `createBlock` right after `block`.
         let blocks = &mut self.rw.body[region].blocks;
         blocks.pop();
         let pos = blocks.iter().position(|x| *x == block).expect("in region");
         blocks.insert(pos + 1, new);
         self.rw.body.splice(block, None, new, None);
-        // Branches to the old block now go to the new one.
         for (t, s) in self.rw.body.predecessors(block) {
             self.rw.body[t].successors[s] = new;
         }
@@ -967,7 +854,6 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         st.rewrites.push(Rewrite::ReplaceValue(from, converter));
     }
 
-    /// `convertRegionTypes`: every block's signature, the entry's by `entry` if given.
     pub fn convert_region_types(&mut self, region: RegionId, converter: usize, entry: Option<&SignatureConversion<'a>>) -> Option<Option<BlockId>> {
         let tc = self.converters[converter];
         let blocks = self.rw.body[region].blocks.clone();
@@ -983,8 +869,6 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         Some(Some(self.apply_signature_conversion(first, &sig, Some(converter))))
     }
 
-    /// `inlineBlockBefore`: `source`'s arguments are replaced by `args` (recorded, so uses
-    /// see the mapping), its ops move before `before` in `dest`, and `source` goes.
     pub fn inline_block_before(&mut self, source: BlockId, dest: BlockId, before: Option<OpId>, args: &[ValueId]) {
         let current = self.current;
         for (a, v) in self.rw.body[source].args.clone().into_iter().zip(args) {
@@ -997,27 +881,21 @@ impl<'r, 'a, 'p> ConversionRewriter<'r, 'a, 'p> {
         self.rw.body.remove_block(source);
     }
 
-    /// `mergeBlocks`: `source` appended to `dest`.
     pub fn merge_blocks(&mut self, source: BlockId, dest: BlockId, args: &[ValueId]) {
         self.inline_block_before(source, dest, None, args);
     }
 
-    /// `inlineRegionBefore` (moves blocks; the body's undo log records it).
     pub fn inline_region(&mut self, region: RegionId, into: RegionId, before: Option<BlockId>) {
         self.rw.inline_region_before(region, into, before);
     }
 }
 
-// ---- the legalizer and converter ---------------------------------------------------------
-
-/// `OpConversionMode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Partial,
     Full,
 }
 
-/// `ConversionConfig`.
 #[derive(Debug, Clone, Copy)]
 pub struct ConversionConfig {
     pub rollback: bool,
@@ -1031,12 +909,10 @@ impl Default for ConversionConfig {
     }
 }
 
-/// ⭐ One conversion run.
 pub struct Converter<'x, 'c, 'p> {
     target: &'x ConversionTarget<'c>,
     patterns: &'x ConversionPatterns<'p>,
     config: ConversionConfig,
-    /// Pattern indices per root name, in cost-model order; any-op patterns under `""`.
     order: BTreeMap<&'x str, Vec<usize>>,
     applied: BTreeSet<usize>,
 }
@@ -1048,8 +924,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         c
     }
 
-    /// `buildLegalizationGraph` + `computeLegalizationGraphBenefit`, simplified to what it
-    /// decides: patterns ordered by legalization depth, then benefit, stably.
     fn cost_model(&mut self) {
         let pats = &self.patterns.patterns;
         let any_op = pats.iter().any(|(p, _)| p.root().is_none());
@@ -1097,7 +971,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         min
     }
 
-    /// The patterns to try on op `name`, merged with the any-op ones by benefit.
     fn patterns_for(&self, name: &str) -> Vec<usize> {
         let mut out: Vec<usize> = self.order.get(name).cloned().unwrap_or_default();
         if let Some(any) = self.order.get("") {
@@ -1112,7 +985,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         ConversionRewriter { rw: Rewriter::typed(body, state), converters: &self.patterns.converters, current: None }
     }
 
-    /// `OperationLegalizer::legalize`.
     fn legalize<'a>(&mut self, body: &mut Body<'a>, state: &mut ConvState<'a>, op: OpId) -> bool {
         if state.is_ignored(op) {
             return true;
@@ -1129,9 +1001,7 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         self.legalize_with_pattern(body, state, op)
     }
 
-    /// `legalizeWithFold`.
     fn legalize_with_fold<'a>(&mut self, body: &mut Body<'a>, state: &mut ConvState<'a>, op: OpId) -> bool {
-        // `OpBuilder::tryFold`: a constant is already as folded as it gets.
         if body.constant_value(op).is_some() {
             return false;
         }
@@ -1194,8 +1064,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         }
     }
 
-    /// `legalizeWithPattern`: the patterns in order; a match whose result cannot be legalized
-    /// is rolled back and the next one tried.
     fn legalize_with_pattern<'a>(&mut self, body: &mut Body<'a>, state: &mut ConvState<'a>, op: OpId) -> bool {
         let name = body[op].name.clone();
         for i in self.patterns_for(&name) {
@@ -1239,7 +1107,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         false
     }
 
-    /// `OperationConverter::convert`.
     fn convert_op<'a>(&mut self, body: &mut Body<'a>, state: &mut ConvState<'a>, op: OpId, mode: Mode) -> Result<(), Error> {
         if self.legalize(body, state, op) {
             return Ok(());
@@ -1251,7 +1118,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         }
     }
 
-    /// The ops to convert: preorder, blocks in depth-first order, not into recursively legal ops.
     fn collect(&self, body: &Body<'_>, op: OpId, out: &mut Vec<OpId>) {
         out.push(op);
         if self.target.is_legal(body, op) == Some(true) {
@@ -1267,18 +1133,13 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         }
     }
 
-    /// ⭐ `applyPartialConversion` / `applyFullConversion` on `roots`.
     pub fn apply<'a>(&mut self, body: &mut Body<'a>, roots: &[OpId], mode: Mode) -> Result<(), Error> {
         let mut state = ConvState { no_rollback: !self.config.rollback, ..ConvState::default() };
         let mut ops = Vec::new();
         for r in roots {
             self.collect(body, *r, &mut ops);
         }
-        // A failure leaves the IR as it was: rolled back from the undo log, which keeps one save
-        // per entry touched (`Journal`), not a copy of the whole body
         let cp = body.checkpoint();
-        // What replaces an op is made in the op's seg: a function's ops stay in its own (small,
-        // and lendable later), not all in one that grows by copying.
         let home = body.home;
         for op in ops {
             body.home = crate::Id::seg(op);
@@ -1294,7 +1155,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         self.finish(body, &mut state)
     }
 
-    /// `findOrBuildReplacementValue`.
     fn replacement<'a>(&self, body: &mut Body<'a>, state: &mut ConvState<'a>, v: ValueId, converter: Option<usize>) -> Option<ValueId> {
         let ty = body[v].ty.clone();
         let repl = state.lookup_or_null(body, v, core::slice::from_ref(&ty));
@@ -1312,7 +1172,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         Some(cr.materialization(MatKind::Source, ip, loc, repl.clone(), &repl, &[ty], None, converter, pure)[0])
     }
 
-    /// `performReplaceValue`.
     fn replace_uses<'a>(body: &mut Body<'a>, from: ValueId, repl: ValueId) {
         let after_def = body.def_op(repl);
         for u in body[from].uses.clone().into_iter().rev() {
@@ -1326,7 +1185,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         }
     }
 
-    /// `applyRewrites`: replacements in order, then the replaced ops go.
     fn commit<'a>(&self, body: &mut Body<'a>, state: &mut ConvState<'a>) {
         let rewrites = state.rewrites.clone();
         let mut erase = Vec::new();
@@ -1349,7 +1207,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
                 }
             }
         }
-        // Out of their blocks in one pass per block (one by one is a scan of the block each)
         body.detach_all(&erase);
         for op in erase {
             body.walk(op, &mut |o| state.set_unresolved(o, None));
@@ -1358,7 +1215,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
         }
     }
 
-    /// Unresolved materializations: reconciled, then legalized by the type converters.
     fn finish<'a>(&self, body: &mut Body<'a>, state: &mut ConvState<'a>) -> Result<(), Error> {
         let casts: Vec<OpId> = state.unresolved.keys().copied().filter(|o| body[*o].parent.is_some()).collect();
         let remaining = body.reconcile_casts(&casts);
@@ -1392,7 +1248,6 @@ impl<'x, 'c, 'p> Converter<'x, 'c, 'p> {
 }
 
 impl<'a> Body<'a> {
-    /// A value's location: its defining op's, or its own (a block argument).
     pub fn value_loc(&self, v: ValueId) -> Option<Str<'a>> {
         match self[v].def {
             crate::Def::Result(op, _) => self[op].loc.clone(),
@@ -1400,7 +1255,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// Blocks reachable from `entry` in depth-first preorder (`llvm::depth_first`).
     pub fn depth_first(&self, entry: BlockId) -> Vec<BlockId> {
         let mut out = Vec::new();
         let mut seen = BTreeSet::new();
@@ -1419,7 +1273,6 @@ impl<'a> Body<'a> {
         out
     }
 
-    /// `reconcileUnrealizedCasts` over `casts`; the ones still live.
     pub fn reconcile_casts(&mut self, casts: &[OpId]) -> Vec<OpId> {
         let set: BTreeSet<OpId> = casts.iter().copied().collect();
         let input_cast = |b: &Body<'_>, c: OpId| -> Option<OpId> {
@@ -1427,7 +1280,6 @@ impl<'a> Body<'a> {
             let ic = b.def_op(first).filter(|o| b[*o].name == "builtin.unrealized_conversion_cast")?;
             (b[ic].results == b[c].operands).then_some(ic)
         };
-        // Cast chains that come back to where they started fold away.
         let mut work: Vec<OpId> = casts.to_vec();
         while let Some(c) = work.pop() {
             let mut next = Some(c);
@@ -1445,7 +1297,6 @@ impl<'a> Body<'a> {
                 next = input_cast(self, n);
             }
         }
-        // Live: used by something that is not one of these casts, and what those use.
         let mut live = BTreeSet::new();
         for c in casts {
             if live.contains(c) {
@@ -1478,37 +1329,23 @@ impl<'a> Body<'a> {
     }
 }
 
-// The dialect conversion interfaces `convert-to-*` gather (`ConvertToLLVMPatternInterface`,
-// `ConvertToEmitCPatternInterface`, ...): which dialects have one, and what each adds. Nothing
-// is global: a pass holds the manager it asks.
-
-/// ⭐ Dialects' conversion interfaces: what each registered dialect adds to the patterns.
 pub trait DialectInterfaces {
-    /// What the patterns are built with.
     type Env<'e>;
 
-    /// The dialects that have one, in registration order.
     fn dialects(&self) -> Vec<&'static str>;
 
     fn knows(&self, ns: &str) -> bool {
         self.dialects().contains(&ns)
     }
 
-    /// Adds dialect `ns`'s patterns (nothing when it has no interface).
     fn populate<'p>(&self, ns: &str, patterns: &mut ConversionPatterns<'p>, tc: usize, env: &Self::Env<'p>);
 }
 
-// Lowerings given as functions: what `#[patterns]` / `#[convert]` generate, and the
-// [`ConversionRewriter`] builders they are written with.
-
-/// Something a typed `#[convert]` reads off the op it lowers (its fast-math flags, ..). (Unused without a
-/// dialect feature.)
 #[allow(dead_code)]
 pub(crate) trait FromOp {
     fn from_op(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Self;
 }
 
-/// What a typed `#[convert]` returns: the op's replacement, or failure.
 pub trait Replacement {
     fn replace(self, cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId) -> bool;
 }
@@ -1533,7 +1370,6 @@ impl Replacement for Vec<ValueId> {
     }
 }
 
-/// A lowering that needs the pass options `O`.
 pub struct OptLowering<O> {
     pub root: &'static str,
     pub benefit: u16,
@@ -1560,57 +1396,47 @@ impl<O: Copy> ConversionPattern for OptLowering<O> {
 }
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
-    /// The type of `v`.
     pub fn ty(&self, v: ValueId) -> Type<'a> {
         self.rw.body[v].ty.clone()
     }
 
-    /// The converted type of `op`'s only result.
     pub fn converted_result(&self, op: OpId) -> Option<Type<'a>> {
         let r = self.rw.body[op].results[0];
         self.type_converter()?.convert(&self.rw.body[r].ty)
     }
 
-    /// The converted type of `t`.
     pub fn converted(&self, t: &Type<'a>) -> Option<Type<'a>> {
         self.type_converter()?.convert(t)
     }
 
-    /// Builds `data` with one result of type `ty` at the insertion point; the result.
     pub fn build(&mut self, data: OpData<'a>, ty: Type<'a>) -> ValueId {
         let o = self.rw.create(data, &[ty]);
         self.rw.body[o].results[0]
     }
 
-    /// Builds mlirformat's typed op `op` at the insertion point; its first result.
     pub fn emit(&mut self, op: &impl TypedOp) -> ValueId {
         let o = self.rw.emit(op);
         self.rw.body[o].results[0]
     }
 
-    /// The single remapped value of each operand (`getOneToOneAdaptorOperands`).
     pub fn one_to_one(operands: &[Vec<ValueId>]) -> Option<Vec<ValueId>> {
         operands.iter().map(|o| (o.len() == 1).then(|| o[0])).collect()
     }
 
-    /// The op's attributes, inherent and discardable, sorted (`getAttrs()`).
     pub fn all_attrs(&self, op: OpId) -> Vec<NamedAttr<'a>> {
         self.rw.body[op].all_attrs()
     }
 }
 
-/// A conversion pattern given as a root (`_`: any op), a benefit and a function.
 pub struct Lowering {
     pub root: &'static str,
     pub benefit: u16,
     pub f: LowerFn,
 }
 
-/// What a [`Lowering`] runs.
 pub type LowerFn = for<'r, 'a, 'p> fn(&mut ConversionRewriter<'r, 'a, 'p>, OpId, &[Vec<ValueId>]) -> bool;
 
 impl Lowering {
-    /// The root of a pattern on any op (`#[convert(_)]`, `MatchAnyOpTypeTag`).
     pub const ANY: &'static str = "_";
 }
 

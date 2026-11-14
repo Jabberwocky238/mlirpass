@@ -1,21 +1,3 @@
-//! ⭐ What a GPU runs, for every vendor: the `image` dialect, its layout (GPU addresses) and its bytes.
-//!
-//! ```text
-//!   image.memory @m {mem = "streaming"} {...}   one buffer object: what is placed in it, in order
-//!   image.stream @s {...}                        a command stream of vendor ops (Intel a batch, AMD an IB, Apple a
-//!                                                control stream); the vendor ends it
-//!   <isa>.kernel @k {...}                         a shader: the target's instructions (`rdna2.kernel`, ...)
-//!   image.data @d {bytes = dense<...>}           raw bytes (vertices, uploads), or {size} zeros
-//!   image.words @w {values = [...]}              dwords that may name places (parameter buffers)
-//! ```
-//!
-//! A vendor op placed directly in a memory (a kernel, a state struct) may carry `sym_name` and `align`. An attribute may name a
-//! place: `@x` is x's GPU address, `@m::@x` its offset in memory `m`, `[@x, n]` x's address plus n (n may be negative:
-//! an address relative to a window). [`Layout`] gives
-//! every memory an address (`addr`) and a size (`size`), every item an offset (`offset`, aligned to its `align`, 64 by
-//! default), and turns the symbols into numbers; then [`ImageEmit`] has everything it packs. What bytes a vendor op
-//! is, is the vendor's [`ImageTarget`]; what ends a stream or pads a kernel is a vendor pass, before the layout.
-
 use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -32,7 +14,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{A, Attrs, Body, Emit, Heads, OpId, Quiet, Rewriter, Symbol, Updates};
 
-/// ⭐ The `image` dialect: load it with `MlirOpt::load(ImageDialect)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ImageDialect;
 
@@ -45,14 +26,12 @@ impl mlirformat::Dialect for ImageDialect {
         Containers.ops()
     }
 
-    /// Every op has effects (none may be dropped as dead).
     fn op_infos(&self) -> Vec<mlirformat::OpInfo> {
         ImageDialect::INHERENT.iter().map(|(name, inherent)| mlirformat::OpInfo { name, traits: &[], effects: mlirformat::Effects::Unknown, inherent }).collect()
     }
 }
 
 impl ImageDialect {
-    /// Each op's properties, by name (checked against the typed ops' fields by the `inherent` test).
     pub const INHERENT: &[(&str, &[&str])] = &[
         ("image.memory", &["sym_name", "mem", "align", "size", "addr"]),
         ("image.stream", &["sym_name", "align", "offset", "cdm", "vdm"]),
@@ -61,27 +40,19 @@ impl ImageDialect {
     ];
 }
 
-/// How the GPU caches a memory (`image.memory {mem}`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MemType {
-    /// Coherent with the CPU's caches (write-back).
     Coherent,
-    /// Not snooped (write-combined).
     Streaming,
-    /// Read by the display engine or another device.
     Scanout,
-    /// Compressed (render targets).
     Compressed,
 }
 
-/// `image.memory @m {mem = "coherent"} {...}`: one buffer object; [`Layout`] gives it `addr` and `size` (at least
-/// the `size` asked, a page multiple).
 #[mlirformat::mlir::op("image.memory", format = "$sym_name attr-dict-with-keyword $body")]
 pub struct Memory<'a> {
     #[attr(symbol)]
     pub sym_name: Attribute<'a>,
-    /// How the GPU caches it (`streaming` when not said).
     pub mem: Option<MemType>,
     pub align: Option<u64>,
     pub size: Option<u64>,
@@ -89,7 +60,6 @@ pub struct Memory<'a> {
     pub body: Region<'a>,
 }
 
-/// `image.stream @s {...}`: a command stream of vendor ops (Apple's says its engine: `{cdm}` compute, `{vdm}` vertex).
 #[mlirformat::mlir::op("image.stream", format = "$sym_name attr-dict-with-keyword $body")]
 pub struct Stream<'a> {
     #[attr(symbol)]
@@ -101,7 +71,6 @@ pub struct Stream<'a> {
     pub body: Region<'a>,
 }
 
-/// `image.data @d {bytes = dense<...>}`: raw bytes, or `{size}` zeros (both: the bytes, then zeros up to the size).
 #[mlirformat::mlir::op("image.data", format = "$sym_name attr-dict")]
 pub struct Data<'a> {
     #[attr(symbol)]
@@ -112,7 +81,6 @@ pub struct Data<'a> {
     pub offset: Option<u64>,
 }
 
-/// `image.words @w {values = [...]}`: dwords that may name places.
 #[mlirformat::mlir::op("image.words", format = "$sym_name attr-dict")]
 pub struct Words<'a> {
     #[attr(symbol)]
@@ -126,7 +94,6 @@ pub struct Words<'a> {
 struct Containers;
 
 impl<'a> Memory<'a> {
-    /// Memory `name`, cached as `mem`.
     pub fn named(name: impl Into<String>, mem: MemType) -> Self {
         Memory::new(A::str(name.into()).into(), Some(mem), None, None, None, Region { blocks: Vec::new() })
     }
@@ -139,17 +106,14 @@ impl<'a> Stream<'a> {
 }
 
 impl<'a> Data<'a> {
-    /// `size` zeros.
     pub fn zeros(name: impl Into<String>, size: u64) -> Self {
         Data::new(A::str(name.into()).into(), None, Some(size), None, None)
     }
 
-    /// `bytes` (a dense constant).
     pub fn bytes(name: impl Into<String>, bytes: Attribute<'a>) -> Self {
         Data::new(A::str(name.into()).into(), Some(bytes), None, None, None)
     }
 
-    /// Its bytes, then zeros up to its size.
     fn contents(&self) -> Result<Vec<u8>, Error> {
         let mut bytes = self.bytes.as_ref().map(Image::dense).transpose()?.unwrap_or_default();
         bytes.resize(bytes.len().max(self.size.unwrap_or(0) as usize), 0);
@@ -163,7 +127,6 @@ impl Words<'_> {
     }
 }
 
-/// A placed item's discardable `align` / `offset` (a vendor op placed in a memory carries them as the image ops do).
 pub struct Placed;
 
 impl Placed {
@@ -171,19 +134,13 @@ impl Placed {
     pub const OFFSET: &str = "offset";
 }
 
-/// ⭐ What a vendor says about its image: where memories go, and the bytes of its ops (symbols already numbers).
 pub trait ImageTarget {
-    /// Where the first memory starts in the GPU's address space.
     const BASE: u64;
-    /// Memories are this aligned at least (a buffer object's page).
     const PAGE: u64;
 
-    /// An `image.stream` ⇒ its bytes (its ops packed as they are: what ends it is a vendor pass's).
     fn stream(&self, body: &Body<'_>, stream: OpId) -> Result<Vec<u8>, Error>;
-    /// A vendor op placed in a memory itself (a kernel, a state struct) ⇒ bytes.
     fn item(&self, body: &Body<'_>, op: OpId) -> Result<Vec<u8>, Error>;
 
-    /// The bytes of anything placed in a memory.
     fn contents(&self, body: &Body<'_>, op: OpId) -> Result<Vec<u8>, Error> {
         let name = &*body[op].name;
         if name == Stream::NAME {
@@ -198,7 +155,6 @@ pub trait ImageTarget {
     }
 }
 
-/// Where a symbol is.
 #[derive(Clone, Copy)]
 struct Place<'s> {
     memory: &'s str,
@@ -206,7 +162,6 @@ struct Place<'s> {
     offset: u64,
 }
 
-/// Symbols ⇒ numbers.
 struct Resolver<'s>(BTreeMap<String, Place<'s>>);
 
 impl Resolver<'_> {
@@ -218,7 +173,6 @@ impl Resolver<'_> {
         self.0.get(s.trim_matches('"')).copied().ok_or_else(|| Error(format!("no symbol @{s}")))
     }
 
-    /// `a` with its symbols numbers (every symbol 0 with `zero`: to size things before there are addresses).
     fn attr<'a>(&self, a: &Attribute<'a>, zero: bool) -> Result<Attribute<'a>, Error> {
         Ok(match a {
             _ if zero && matches!(a, Attribute::SymbolRef(_)) => Self::int(0),
@@ -230,7 +184,6 @@ impl Resolver<'_> {
                 }
                 Self::int(x.offset)
             }
-            // sizing: the whole sum 0 (an offset may be negative)
             Attribute::Array(v) if zero && matches!(&v[..], [Attribute::SymbolRef(_), Attribute::Int { .. }]) => Self::int(0),
             Attribute::Array(v) if matches!(&v[..], [Attribute::SymbolRef(_), Attribute::Int { .. }]) => {
                 let base = Attrs::as_int(&self.attr(&v[0], zero)?)? as u64;
@@ -242,7 +195,6 @@ impl Resolver<'_> {
         })
     }
 
-    /// Every attribute of `op` and of the ops in it, resolved.
     fn op(&self, rw: &mut Rewriter<'_, '_>, op: OpId, zero: bool) -> Result<(), Error> {
         let mut ops = Vec::new();
         rw.body.walk(op, &mut |o| ops.push(o));
@@ -262,19 +214,17 @@ impl Resolver<'_> {
     }
 }
 
-/// ⭐ The layout of a module for target `T` (a vendor's `<vendor>-layout` pass runs it).
 pub struct Layout<'t, T: ImageTarget>(pub &'t T);
 
 impl<T: ImageTarget> Layout<'_, T> {
     pub fn run(&self, body: &mut Body<'_>, op: OpId) -> Result<(), Error> {
-        // sizes first, on a copy whose symbols are 0 (packing does not depend on them)
         let mut sized = body.clone();
         Resolver(BTreeMap::new()).op(&mut Rewriter::new(&mut sized, &mut Quiet), op, true)?;
         let mut quiet = Quiet;
         let mut rw = Rewriter::new(body, &mut quiet);
         let memories = Image::memories(rw.body, op);
         let heads = memories.iter().map(|m| rw.body.head::<Memory>(*m)).collect::<Result<Vec<_>, _>>()?;
-        let mut places: Vec<(String, String, u64, u64)> = Vec::new(); // (symbol, memory, address, offset)
+        let mut places: Vec<(String, String, u64, u64)> = Vec::new();
         let mut at = T::BASE;
         for (&m, mut head) in memories.iter().zip(heads) {
             let name = Symbol::defined(&head.sym_name)?.to_owned();
@@ -305,7 +255,6 @@ impl<T: ImageTarget> Layout<'_, T> {
     }
 }
 
-/// One buffer object's worth: where it goes and what is in it.
 #[derive(Debug, Clone)]
 pub struct Segment {
     pub name: String,
@@ -314,17 +263,14 @@ pub struct Segment {
     pub bytes: Vec<u8>,
 }
 
-/// ⭐ What the GPU runs: the memories, and where the (first) command stream starts and ends.
 #[derive(Debug, Clone)]
 pub struct Image {
     pub segments: Vec<Segment>,
     pub stream: u64,
-    /// The address after the stream's last byte (asahi's `cdm_ctrl_stream_end`).
     pub stream_end: u64,
 }
 
 impl Image {
-    /// A region with nothing in it (a typed region op's, before its body has its blocks).
     pub fn region<'a>() -> Region<'a> {
         Region { blocks: Vec::new() }
     }
@@ -333,17 +279,14 @@ impl Image {
         self.segments.iter().find(|s| s.name == name)
     }
 
-    /// The memories of the module.
     fn memories(body: &Body<'_>, op: OpId) -> Vec<OpId> {
         body.ops(body.top_block(op)).filter(|m| body[*m].name == Memory::NAME).collect()
     }
 
-    /// A placed item's [`Placed`] attribute `name`.
     fn int(body: &Body<'_>, op: OpId, name: &str) -> Result<Option<u64>, Error> {
         Ok(body[op].get(name).map(Attrs::as_int).transpose()?.map(|v| v as u64))
     }
 
-    /// A dense constant's elements, little endian.
     fn dense(a: &Attribute<'_>) -> Result<Vec<u8>, Error> {
         let c = Const::try_from(a).map_err(|()| Error("bytes: not a dense constant".into()))?;
         let n = c.ty.element_count().unwrap_or(1);
@@ -363,7 +306,6 @@ impl Image {
     }
 }
 
-/// ⭐ The module (after its layout) as an [`Image`], packed by target `T`.
 pub struct ImageEmit<'t, T: ImageTarget>(pub &'t T);
 
 impl<T: ImageTarget> Emit for ImageEmit<'_, T> {

@@ -1,14 +1,9 @@
-//! `omp` (OpenMP) canonicalization (`OpenMPDialect.cpp`).
-
 use crate::{OpData, OpId, Rewriter};
 
-/// `omp`'s rewrite patterns.
 pub struct OmpCanon;
 
 #[crate::patterns]
 impl OmpCanon {
-    /// `AtomicUpdateOp::canonicalize`: a body yielding its argument does nothing; one yielding
-    /// another value first thing is an `omp.atomic.write` of it.
     #[rewrite("omp.atomic.update", name = "OmpAtomicUpdate")]
     fn atomic_update(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;

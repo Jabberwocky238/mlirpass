@@ -1,5 +1,3 @@
-//! `convert-vector-to-llvm`.
-
 use crate::{llvm_target};
 use crate::{LlvmConverter, LlvmOptions, VectorOptions, VectorToLlvm};
 #[cfg(feature = "dialect.x86")]
@@ -10,7 +8,6 @@ use crate::pass;
 use mlirformat::Error;
 use crate::{Body, ConversionConfig, ConversionPatterns, Converter, Lowering, Mode, OpId, Run, transfer_read_to_load, transfer_write_to_store};
 
-/// `convert-vector-to-llvm`: the vector-to-vector lowerings greedily, then the conversion.
 #[pass("convert-vector-to-llvm", check = Self::check)]
 pub struct ConvertVectorToLlvm {
     #[opt("reassociate-fp-reductions")]
@@ -39,7 +36,6 @@ pub struct ConvertVectorToLlvm {
 }
 
 impl ConvertVectorToLlvm {
-    /// What is not ported makes the pass unsupported, not wrong.
     fn check(&self) -> Result<(), Error> {
         let flags = [("enable-arm-neon", self.arm_neon), ("enable-arm-sve", self.arm_sve), ("enable-arm-i8mm", self.arm_i8mm), ("enable-arm-bf16", self.arm_bf16)];
         if let Some((f, _)) = flags.iter().find(|f| f.1) {
@@ -61,7 +57,6 @@ impl Run for ConvertVectorToLlvm {
             body.apply_greedily(r, &pre, &crate::GreedyConfig::default());
         }
         let opts = LlvmOptions::default();
-        // (without the x86 lowerings, asking for them is an error)
         #[cfg(not(feature = "dialect.x86"))]
         if self.x86 {
             return Err(Error(alloc::string::String::from("convert-vector-to-llvm: enable-x86 needs the dialect.x86 feature")));
@@ -77,7 +72,6 @@ impl Run for ConvertVectorToLlvm {
         patterns.add(Lowering { root: "vector.transfer_read", benefit: 1, f: |cr, op, _| transfer_read_to_load(cr, op, None) });
         patterns.add(Lowering { root: "vector.transfer_write", benefit: 1, f: |cr, op, _| transfer_write_to_store(cr, op, None) });
         VectorToLlvm::populate(&mut patterns, i, VectorOptions { llvm: opts, reassociate_fp_reductions: self.reassociate, force_32bit_indices: self.force32, use_vector_alignment: self.vector_alignment, gep_inbounds_nuw: self.gep_inbounds_nuw, counter: &self.counter });
-        // The CPU dialect (`enable-x86`) lowers to intrinsic calls.
         #[cfg(feature = "dialect.x86")]
         if self.x86 {
             X86ToLlvm::populate(&mut patterns, i, opts);

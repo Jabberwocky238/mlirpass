@@ -1,5 +1,3 @@
-//! `tosa` ⇒ `tensor`, as `TosaToTensor.cpp` (with `populateTosaTypeConversion`).
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -11,12 +9,10 @@ use crate::{Const, ConversionRewriter, OpData, OpId, Rewriter, TypeConverter, Va
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The tosa ⇒ tensor patterns and their helpers.
 pub struct TosaToTensor;
 
 #[patterns(converter)]
 impl TosaToTensor {
-    /// `populateTosaTypeConversion`: unsigned integers become signless, in tensors too.
     pub fn converter<'c>() -> TypeConverter<'c> {
         fn scalar<'a>(t: &Type<'a>) -> Type<'a> {
             match t {
@@ -43,14 +39,12 @@ impl TosaToTensor {
         tc
     }
 
-    /// `TensorType::clone(shape)`.
     fn with_shape<'a>(t: &Type<'a>, dims: &[i64]) -> Type<'a> {
         let Type::Shaped(s) = t else { return t.clone() };
         let shape = dims.iter().map(|d| if *d == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
         Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Tensor, shape: Some(shape), elem: s.elem.clone(), extras: if s.shape.is_some() { s.extras.clone() } else { Vec::new() } }))
     }
 
-    /// The values of the `tosa.const_shape` defining `v`.
     pub fn const_shape(cr: &Cr<'_, '_, '_>, v: ValueId) -> Option<Vec<i64>> {
         let b = &*cr.rw.body;
         let d = b.def_named(v, "tosa.const_shape")?;
@@ -59,7 +53,6 @@ impl TosaToTensor {
         (0..n).map(|i| c.at(i).int().map(|x| x.signed() as i64)).collect()
     }
 
-    /// `inferReshapeExpandedType`.
     fn expanded_type<'a>(input: &Type<'a>, shape: &[i64]) -> Type<'a> {
         if shape.is_empty() {
             return Self::with_shape(input, &[]);
@@ -86,7 +79,6 @@ impl TosaToTensor {
         Self::with_shape(input, &res)
     }
 
-    /// `inferReshapeCollapsedType`.
     fn collapsed_type<'a>(lhs: &Type<'a>, rhs: &Type<'a>) -> Type<'a> {
         let (l, r) = (lhs.dims().unwrap_or_default(), rhs.dims().unwrap_or_default());
         if l.is_empty() || r.is_empty() {
@@ -121,7 +113,6 @@ impl TosaToTensor {
         Self::with_shape(lhs, &out)
     }
 
-    /// `createReassociationMapForCollapse`.
     fn reassociation(src: &Type<'_>, dst: &Type<'_>) -> Vec<Vec<i64>> {
         let (s, d) = (src.dims().unwrap_or_default(), dst.dims().unwrap_or_default());
         if s.is_empty() || d.is_empty() {
@@ -163,7 +154,6 @@ impl TosaToTensor {
         cr.emit(&arith::Constant::new(Attribute::index(v), Type::Index))
     }
 
-    /// `tensor::getMixedSize`: static sizes as constants, dynamic ones by `tensor.dim`.
     fn mixed_sizes(cr: &mut Cr<'_, '_, '_>, v: ValueId) -> Vec<Ofr> {
         let dims = cr.rw.body[v].ty.dims().unwrap_or_default();
         dims.iter()
@@ -179,7 +169,6 @@ impl TosaToTensor {
             .collect()
     }
 
-    /// `getValueOrCreateConstantIndexOp`.
     fn value_of(cr: &mut Cr<'_, '_, '_>, o: Ofr) -> ValueId {
         match o {
             Ofr::V(v) => v,
@@ -187,8 +176,6 @@ impl TosaToTensor {
         }
     }
 
-    /// `tensor.expand_shape` built from the source and reassociation alone (output shape
-    /// inferred by `inferExpandShapeOutputShape`), then folded.
     pub fn expand<'a>(cr: &mut Cr<'_, 'a, '_>, ty: Type<'a>, src: ValueId, r: &[Vec<i64>], fold: bool) -> ValueId {
         let input = Self::mixed_sizes(cr, src);
         let out = ty.dims().unwrap_or_default();
@@ -403,5 +390,4 @@ impl TosaToTensor {
         }
         data.operands(&ops).segments(&segs)
     }
-
 }

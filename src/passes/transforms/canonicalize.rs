@@ -1,5 +1,3 @@
-//! `canonicalize`: folds and canonicalization patterns, greedily, as `Canonicalizer.cpp`.
-
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -31,7 +29,6 @@ pub struct Canonicalize {
 }
 
 impl Canonicalize {
-    /// The `GreedyRewriteConfig` the options make (a negative limit is no limit).
     fn config(&self) -> GreedyConfig {
         let limit = |v: i64| (v >= 0).then_some(v as u64);
         GreedyConfig { top_down: self.top_down, region_simplify: self.region_simplify, max_iterations: limit(self.max_iterations), max_rewrites: limit(self.max_rewrites), fold: self.fold, cse_constants: self.cse_constants }

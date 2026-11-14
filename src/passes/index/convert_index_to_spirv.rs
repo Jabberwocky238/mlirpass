@@ -1,8 +1,5 @@
-//! `convert-index-to-spirv`.
-
 use crate::{IndexToSpirv, SpirvOptions, SpirvTypes, TargetEnv};
 
-/// `convert-index-to-spirv`.
 #[crate::pass("convert-index-to-spirv")]
 pub struct ConvertIndexToSpirv {
     #[opt("use-64bit-index")]

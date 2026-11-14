@@ -1,5 +1,3 @@
-//! `ConvertToLLVMPatternInterface`: what each dialect adds to `convert-to-llvm`.
-
 use alloc::vec::Vec;
 use core::sync::atomic::AtomicU32;
 
@@ -27,20 +25,15 @@ use crate::NvvmToLlvm;
 #[cfg(feature = "dialect.ptr")]
 use crate::PtrToLlvm;
 
-/// What `convert-to-llvm` builds its patterns with.
 pub struct LlvmEnv<'p> {
     pub llvm: LlvmOptions,
-    /// Unique names for the globals the lowerings create.
     pub counter: &'p AtomicU32,
 }
 
 type ToLlvmFn = for<'p> fn(&mut ConversionPatterns<'p>, usize, &LlvmEnv<'p>);
 
-/// What a dialect's interface marks legal or illegal in the target (`populateConvertToLLVMConversionPatterns`'
-/// target argument), after the llvm dialect is made legal.
 type ToLlvmTargetFn = fn(&mut ConversionTarget<'_>);
 
-/// The `ConvertToLLVMPatternInterface`s; [`Default`]: the upstream dialects this crate lowers.
 pub struct ToLlvmInterfaces {
     by_dialect: Vec<(&'static str, ToLlvmFn)>,
     targets: Vec<(&'static str, ToLlvmTargetFn)>,
@@ -51,13 +44,11 @@ impl ToLlvmInterfaces {
         Self { by_dialect: Vec::new(), targets: Vec::new() }
     }
 
-    /// Dialect `ns`'s legality in the target too.
     pub fn register_target(&mut self, ns: &'static str, f: ToLlvmTargetFn) -> &mut Self {
         self.targets.push((ns, f));
         self
     }
 
-    /// What dialect `ns` makes of the target.
     pub fn target(&self, ns: &str, target: &mut ConversionTarget<'_>) {
         for (_, f) in self.targets.iter().filter(|(n, _)| *n == ns) {
             f(target);
@@ -117,7 +108,6 @@ impl Default for ToLlvmInterfaces {
         fn ptr<'p>(p: &mut ConversionPatterns<'p>, i: usize, e: &LlvmEnv<'p>) {
             PtrToLlvm::populate(p, i, e.llvm);
         }
-        // (none without a dialect feature)
         #[allow(unused_mut)]
         let mut s = Self::new();
         #[cfg(feature = "dialect.arith")]

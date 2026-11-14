@@ -1,5 +1,3 @@
-//! `expand-strided-metadata`, as `ExpandStridedMetadata.cpp`: [`StridedMetadata`] greedily.
-
 use crate::{pass, Body, GreedyConfig, OpId, StridedMetadata};
 
 #[pass("expand-strided-metadata")]
@@ -14,4 +12,3 @@ impl crate::Run for ExpandStridedMetadata {
         Ok(())
     }
 }
-

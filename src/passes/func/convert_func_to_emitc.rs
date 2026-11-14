@@ -1,12 +1,8 @@
-//! `convert-func-to-emitc`.
-
 use crate::{Emitc, FuncToEmitc};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, Run};
 
-/// `convert-func-to-emitc`: `lower-to-cpp` (the default) leaves functions of several results
-/// alone (the C++ translator returns a `std::tuple`); C packs them in a `struct`.
 #[pass("convert-func-to-emitc", on = "builtin.module")]
 pub struct ConvertFuncToEmitc {
     #[opt("lower-to-cpp", default = true)]

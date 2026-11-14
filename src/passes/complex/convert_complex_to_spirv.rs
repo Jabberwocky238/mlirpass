@@ -1,8 +1,5 @@
-//! `convert-complex-to-spirv`.
-
 use crate::{ComplexToSpirv, SpirvOptions, SpirvTypes, TargetEnv};
 
-/// `convert-complex-to-spirv`.
 #[crate::pass("convert-complex-to-spirv")]
 pub fn convert_complex_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> Result<(), mlirformat::Error> {
     let env = TargetEnv::lookup(body, op);

@@ -1,6 +1,3 @@
-//! `tensor` ⇒ `linalg`, as `TensorToLinalg.cpp`: `tensor.pad` decomposed
-//! (`DecomposePadOpPattern`) into an empty tensor, a fill and an insertion of the source.
-
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, Type};
@@ -10,12 +7,10 @@ use crate::patterns::Named;
 use crate::MemrefOfr as Ofr;
 use crate::{Body, ConversionRewriter as Cr, OpData, OpId, Trait, ValueId};
 
-/// The tensor ⇒ linalg patterns.
 pub struct TensorToLinalg;
 
 #[patterns]
 impl TensorToLinalg {
-    /// `DecomposePadOpPattern`, when the padding value is a constant (`linalg.fill`).
     #[convert("tensor.pad")]
     fn pad(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(pad_value) = Self::constant_padding(cr, op) else { return false };
@@ -33,7 +28,6 @@ impl TensorToLinalg {
         }
         let Type::Shaped(s) = &rt else { return false };
         let empty = cr.empty(&dims, (*s.elem).clone(), &dynamic);
-        // A constant inside the pad's block moves out, before the pad.
         if let Some(def) = cr.rw.body.def_op(pad_value).filter(|d| cr.rw.body[*d].parent == cr.rw.body[op].regions.first().and_then(|r| cr.rw.body[*r].blocks.first().copied())) {
             let block = cr.rw.body[op].parent.expect("tensor.pad is in a block");
             cr.rw.move_before(def, block, Some(op));
@@ -48,8 +42,6 @@ impl TensorToLinalg {
 }
 
 impl TensorToLinalg {
-    /// `PadOp::getConstantPaddingValue`: what the block yields, if defined outside it or by a
-    /// constant.
     fn constant_padding(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<ValueId> {
         let b = &*cr.rw.body;
         let block = *b[*b[op].regions.first()?].blocks.first()?;
@@ -62,7 +54,6 @@ impl TensorToLinalg {
         }
     }
 
-    /// `getMixedPadImpl`: the static entries, and the dynamic ones as constants when they are.
     fn mixed(b: &Body<'_>, op: OpId, name: &str, segment: usize) -> Vec<Ofr> {
         let Some(Attribute::DenseArray { values, .. }) = b[op].get(name) else { return Vec::new() };
         let sizes: Vec<usize> = match b[op].get("operandSegmentSizes") {
@@ -80,7 +71,6 @@ impl TensorToLinalg {
         }).collect()
     }
 
-    /// `getIdxValue`: a value as is, a constant as a new `arith.constant`.
     fn idx(cr: &mut Cr<'_, '_, '_>, o: Ofr) -> ValueId {
         match o {
             Ofr::V(v) => v,
@@ -88,4 +78,3 @@ impl TensorToLinalg {
         }
     }
 }
-

@@ -1,11 +1,8 @@
-//! `#[ops]`: arithmetic written as arithmetic builds ops.
-
 use proc_macro2::TokenStream as Tokens;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::{Expr, Ident, ItemFn, Token};
 
-/// `#[ops(b, fmf = expr)]`'s arguments.
 pub struct OpsArgs {
     b: Expr,
     fmf: Option<Expr>,
@@ -27,9 +24,6 @@ impl Parse for OpsArgs {
     }
 }
 
-/// The `#[ops]` rewrite: operators become op builders, each operand evaluated into a
-/// temporary first, left to right, so ops are created in the order C++ argument evaluation
-/// creates them.
 pub struct OpsRewrite {
     b: Expr,
     fmf: Option<Expr>,
@@ -48,7 +42,6 @@ impl OpsRewrite {
         syn::parse_quote!(#t)
     }
 
-    /// An operand: kept when it is a name, else evaluated into a temporary now.
     fn operand(&mut self, e: Expr, pre: &mut Vec<syn::Stmt>) -> Expr {
         let e = self.expr(e, pre);
         match &e {
@@ -122,8 +115,6 @@ impl OpsRewrite {
                 Expr::Call(c)
             }
             Expr::MethodCall(mut m) => {
-                // A call on the builder: its arguments are evaluated first, in order (they
-                // may build ops through it too).
                 let on_builder = { let r = &m.receiver; quote!(#r) }.to_string() == { let b = &self.b; quote!(#b) }.to_string();
                 *m.receiver = self.expr(*m.receiver, pre);
                 m.args = m.args.into_iter().map(|a| if on_builder { self.operand(a, pre) } else { self.expr(a, pre) }).collect();
@@ -179,7 +170,6 @@ impl OpsRewrite {
         }
     }
 
-    /// An expression evaluated in its own scope (a branch, an arm, a closure body).
     fn nested(&mut self, e: Expr) -> Expr {
         if let Expr::Block(mut b) = e {
             self.block(&mut b.block);
@@ -224,7 +214,6 @@ impl OpsRewrite {
 }
 
 impl OpsArgs {
-    /// See the crate docs.
     pub fn expand(attr: Tokens, item: Tokens) -> syn::Result<Tokens> {
         let args: OpsArgs = syn::parse2(attr)?;
         let mut f: ItemFn = syn::parse2(item)?;

@@ -1,27 +1,12 @@
-//! `scf.forall`'s canonicalization (`ForallOp::getCanonicalizationPatterns`).
-//!
-//! ```text
-//! pattern                                   rewrites
-//! DimOfForallOp                             tensor.dim of a result ⇒ of its shared out
-//! FoldTensorCastOfOutputIntoForallOp        a shared out cast less static ⇒ the cast's source
-//! ForallOpControlOperandsFolder             constant bounds / steps ⇒ static
-//! ForallOpIterArgsFolder                    unused or never written shared outs dropped
-//! ForallOpSingleOrZeroIterationDimsFolder   zero trips ⇒ outputs; one-trip dims dropped
-//! ForallOpReplaceConstantInductionVar       a one-trip induction variable ⇒ its lower bound
-//! ```
-
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Type};
 
 use crate::{Body, BlockId, Mapping, MemrefOfr as Ofr, OpData, OpId, Rewriter, ValueId};
 
-/// The static bound and step attributes, in the order of the dynamic operand groups.
 const BOUND_ATTRS: [&str; 3] = ["staticLowerBound", "staticUpperBound", "staticStep"];
 
-/// One `scf.forall` taken apart.
 struct Forall {
-    /// Lower bounds, upper bounds and steps (`getMixed…`).
     bounds: [Vec<Ofr>; 3],
     outputs: Vec<ValueId>,
     block: BlockId,
@@ -32,17 +17,14 @@ impl Forall {
         self.bounds[0].len()
     }
 
-    /// The induction variables and the shared-out block arguments.
     fn args<'b>(&self, b: &'b Body<'_>) -> (&'b [ValueId], &'b [ValueId]) {
         b[self.block].args.split_at(self.rank())
     }
 
-    /// `getCombiningOps(arg)`: the ops of the terminator writing into `arg`.
     fn combining(b: &Body<'_>, arg: ValueId) -> Vec<OpId> {
         b[arg].uses.iter().map(|u| u.op).filter(|o| b[*o].name == "tensor.parallel_insert_slice").collect()
     }
 
-    /// `ForallOp::build`'s operands and attributes for `bounds` and `outputs` (no region).
     fn data<'a>(bounds: &[Vec<Ofr>; 3], outputs: &[ValueId]) -> OpData<'a> {
         let mut operands = Vec::new();
         let mut segs = Vec::new();
@@ -74,12 +56,10 @@ impl Body<'_> {
     }
 }
 
-/// `scf.forall`'s rewrite patterns.
 pub struct ForallCanon;
 
 #[crate::patterns]
 impl ForallCanon {
-    /// `DimOfForallOp`.
     #[rewrite("tensor.dim")]
     fn dim_of_forall_op(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -91,13 +71,11 @@ impl ForallCanon {
         true
     }
 
-    /// `FoldTensorCastOfOutputIntoForallOp`.
     #[rewrite("scf.forall")]
     fn fold_tensor_cast_of_output_into_forall_op(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
         let f = b.forall(op);
         let mut outputs = f.outputs.clone();
-        // (index, the cast's result type)
         let mut casts: Vec<(usize, Type<'_>)> = Vec::new();
         for (i, o) in f.outputs.iter().enumerate() {
             let Some(cast) = b.def_named(*o, "tensor.cast") else { continue };
@@ -140,7 +118,6 @@ impl ForallCanon {
             repl[rank + i] = rw.body[c].results[0];
         }
         rw.inline_block_before(f.block, nf.block, None, &repl);
-        // The destinations written through a cast of a new shared out write the shared out.
         let iter_args = &new_args[rank..];
         let term = rw.body.last_op(nf.block).expect("a terminator");
         let inner = rw.body[rw.body[term].regions[0]].blocks[0];
@@ -166,7 +143,6 @@ impl ForallCanon {
         true
     }
 
-    /// `ForallOpControlOperandsFolder`.
     #[rewrite("scf.forall")]
     fn forall_op_control_operands_folder(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -187,7 +163,6 @@ impl ForallCanon {
         true
     }
 
-    /// `ForallOpIterArgsFolder`.
     #[rewrite("scf.forall")]
     fn forall_op_iter_args_folder(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -230,7 +205,6 @@ impl ForallCanon {
         true
     }
 
-    /// `ForallOpSingleOrZeroIterationDimsFolder`.
     #[rewrite("scf.forall")]
     fn forall_op_single_or_zero_iteration_dims_folder(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -288,7 +262,6 @@ impl ForallCanon {
         true
     }
 
-    /// `ForallOpReplaceConstantInductionVar`.
     #[rewrite("scf.forall")]
     fn forall_op_replace_constant_induction_var(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -317,8 +290,6 @@ impl ForallCanon {
         set.add(DimOfForallOp).add(FoldTensorCastOfOutputIntoForallOp).add(ForallOpControlOperandsFolder).add(ForallOpIterArgsFolder).add(ForallOpSingleOrZeroIterationDimsFolder).add(ForallOpReplaceConstantInductionVar);
     }
 
-    /// `scf::promote(ForallOp)`: the body inlined with the lower bounds and the outputs, each
-    /// `tensor.parallel_insert_slice` an `tensor.insert_slice` after the loop.
     fn promote(rw: &mut Rewriter<'_, '_>, op: OpId) {
         let f = rw.body.forall(op);
         rw.set_before(op);

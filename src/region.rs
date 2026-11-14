@@ -1,12 +1,8 @@
-//! Region simplification, as `RegionUtils.cpp`: unreachable blocks, dead code (`runRegionDCE`),
-//! and — aggressively — identical blocks merged.
-
 use alloc::vec;
 use alloc::collections::{BTreeSet, BTreeMap};
 use alloc::vec::Vec;
 use crate::{Body, BlockId, OpId, RegionId, Trait, ValueId};
 
-/// What is proven live.
 #[derive(Default)]
 struct LiveMap {
     ops: BTreeSet<OpId>,
@@ -28,7 +24,6 @@ impl LiveMap {
 }
 
 impl Body<'_> {
-    /// The successor argument a branch operand feeds, if it feeds one.
     fn fed_argument(&self, op: OpId, index: usize) -> Option<ValueId> {
         (0..self[op].successors.len()).find_map(|i| {
             let (produced, range) = self.successor_layout(op, i)?;
@@ -38,7 +33,6 @@ impl Body<'_> {
 
     fn process_value(&self, v: ValueId, live: &mut LiveMap) {
         let proved = self[v].uses.iter().any(|u| {
-            // A use by a branch is dead when the argument it feeds is.
             if self.has(u.op, Trait::IsTerminator)
                 && self.is_branch(u.op)
                 && let Some(arg) = self.fed_argument(u.op, u.index as usize)
@@ -54,7 +48,6 @@ impl Body<'_> {
 
     fn propagate_terminator(&self, op: OpId, live: &mut LiveMap) {
         live.set_op(op);
-        // Not a branch: every successor argument is live. A branch: those it produces.
         for (i, s) in self[op].successors.iter().enumerate() {
             let live_args = if self.is_branch(op) { self.successor_layout(op, i).map_or(0, |(p, _)| p) } else { self[*s].args.len() };
             for a in self[*s].args.iter().take(live_args) {
@@ -138,7 +131,6 @@ impl Body<'_> {
         erased
     }
 
-    /// `runRegionDCE`; whether anything was erased.
     pub fn region_dce(&mut self, regions: &[RegionId]) -> bool {
         let mut live = LiveMap::default();
         loop {
@@ -153,13 +145,10 @@ impl Body<'_> {
         self.delete_dead(regions, &live)
     }
 
-    /// Erases argument `i` of `block`; its uses must be gone.
     pub fn erase_arg(&mut self, block: BlockId, i: usize) {
         self.erase_args(block, &[i]);
     }
 
-    /// `Block::eraseArguments`: the arguments of `block` at `dead` (ascending) erased in one
-    /// pass, the rest renumbered once; their uses must be gone.
     pub fn erase_args(&mut self, block: BlockId, dead: &[usize]) {
         let Some(&from) = dead.first() else { return };
         let mut k = 0;
@@ -175,7 +164,6 @@ impl Body<'_> {
         }
     }
 
-    /// ⭐ `simplifyRegions`; whether anything changed.
     pub fn simplify_regions(&mut self, regions: &[RegionId], merge_blocks: bool) -> bool {
         let blocks = crate::Rewriter::new(self, &mut crate::Quiet).erase_unreachable_blocks(regions);
         let dce = self.region_dce(regions);
@@ -187,7 +175,6 @@ impl Body<'_> {
         blocks || dce || merged || dropped
     }
 
-    /// The branches into `block`: (terminator, successor index), one per edge.
     pub fn predecessors(&self, block: BlockId) -> Vec<(OpId, usize)> {
         let Some(region) = self[block].parent else { return Vec::new() };
         let mut out = Vec::new();
@@ -199,7 +186,6 @@ impl Body<'_> {
         out
     }
 
-    /// The block defining `v`.
     pub fn value_block(&self, v: ValueId) -> Option<BlockId> {
         match self[v].def {
             crate::Def::Result(op, _) => self[op].parent,
@@ -207,13 +193,10 @@ impl Body<'_> {
         }
     }
 
-    /// Whether some use of `v` is by an op outside `block`.
     fn used_outside(&self, v: ValueId, block: BlockId) -> bool {
         self[v].uses.iter().any(|u| self[u.op].parent != Some(block))
     }
 
-    /// `dropRedundantArguments` of one block: an argument every predecessor passes the same
-    /// value for is replaced by it.
     fn drop_redundant_block_args(&mut self, block: BlockId) -> bool {
         let preds = self.predecessors(block);
         let mut erase = Vec::new();
@@ -258,13 +241,11 @@ impl Body<'_> {
         changed
     }
 
-    /// Two ops alike but for their operands (whose types must still agree).
     fn alike(&self, l: OpId, r: OpId) -> bool {
         let (a, b) = (&self[l], &self[r]);
         a.name == b.name && a.attributes == b.attributes && a.properties == b.properties && a.regions.len() == b.regions.len() && a.successors.len() == b.successors.len() && a.operands.len() == b.operands.len() && self.types(&a.results) == self.types(&b.results) && a.operands.iter().zip(&b.operands).all(|(x, y)| x == y || self[*x].ty == self[*y].ty)
     }
 
-    /// A value's place in its block: arguments first, then results in op order.
     fn order_in_block(&self, v: ValueId) -> usize {
         match self[v].def {
             crate::Def::Arg(_, i) => i as usize,
@@ -276,8 +257,6 @@ impl Body<'_> {
         }
     }
 
-    /// `BlockMergeCluster::addToCluster`: the operands to turn into arguments, if `other`
-    /// can merge into `leader`.
     fn mergeable(&self, leader: BlockId, other: BlockId) -> Option<Vec<(usize, usize)>> {
         if self.types(&self[leader].args) != self.types(&self[other].args) || self.len_ops(leader) != self.len_ops(other) {
             return None;
@@ -318,7 +297,6 @@ impl Body<'_> {
         Some(mismatched)
     }
 
-    /// Merges `blocks` into `leader`, `operands` (op index, operand index) becoming arguments.
     fn merge_cluster(&mut self, leader: BlockId, blocks: &[BlockId], operands: &BTreeSet<(usize, usize)>) -> bool {
         if blocks.is_empty() {
             return false;
@@ -362,7 +340,6 @@ impl Body<'_> {
         true
     }
 
-    /// `pruneRedundantArguments`: new arguments every predecessor fills alike collapse to one.
     fn prune_redundant(&mut self, lists: Vec<Vec<ValueId>>, old: usize, block: BlockId) -> Vec<Vec<ValueId>> {
         let n = lists[0].len();
         let mut first = alloc::collections::BTreeMap::new();
@@ -392,7 +369,6 @@ impl Body<'_> {
         if blocks.len() <= 1 {
             return false;
         }
-        // Blocks grouped by their successor lists, in first-seen order.
         let mut groups: Vec<(Vec<BlockId>, Vec<BlockId>)> = Vec::new();
         for b in blocks.into_iter().skip(1) {
             let succ = self.successors(b).to_vec();
@@ -454,7 +430,6 @@ impl Body<'_> {
 }
 
 impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
-    /// `eraseUnreachableBlocks`; whether any block went.
     pub fn erase_unreachable_blocks(&mut self, regions: &[RegionId]) -> bool {
         let mut erased = false;
         let mut work: Vec<RegionId> = regions.to_vec();
@@ -468,7 +443,6 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
             let reachable: BTreeSet<BlockId> = b.post_order(entry).into_iter().collect();
             for blk in self.body[r].blocks.clone() {
                 if !reachable.contains(&blk) {
-                    // `dropAllDefinedValueUses`, then the block goes.
                     for o in self.body.block_ops(blk) {
                         self.body.drop_result_uses(o);
                     }
@@ -484,13 +458,6 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
     }
 }
 
-// ============================================================================================
-// Dominance within a region, as `mlir/IR/Dominance.cpp` over LLVM's `DominatorTree`.
-//
-// The order of a node's children is LLVM's: by depth-first preorder from the entry block,
-// successors visited in their order. Passes that walk the tree (CSE) depend on it.
-
-/// The dominator tree of one region's reachable blocks.
 #[derive(Debug, Clone)]
 pub struct DomTree {
     pub root: BlockId,
@@ -499,7 +466,6 @@ pub struct DomTree {
 }
 
 impl DomTree {
-    /// The immediate dominator (`None`: the root, or unreachable).
     pub fn idom(&self, b: BlockId) -> Option<BlockId> {
         self.idom.get(&b).copied().filter(|d| *d != b)
     }
@@ -512,7 +478,6 @@ impl DomTree {
         self.idom.contains_key(&b)
     }
 
-    /// Whether `a` dominates `b` (reflexive).
     pub fn dominates(&self, a: BlockId, mut b: BlockId) -> bool {
         loop {
             if a == b {
@@ -527,22 +492,17 @@ impl DomTree {
 }
 
 impl Body<'_> {
-    /// The blocks `b`'s terminator may branch to.
     pub fn successors(&self, b: BlockId) -> &[BlockId] {
         self.last_op(b).map_or(&[], |t| &self[t].successors)
     }
 
-    /// Whether values in `region` obey SSA dominance (not a graph region): `RegionKindInterface`,
-    /// whose C++ `getRegionKind` says graph for the ops named here.
     pub fn has_ssa_dominance(&self, region: RegionId) -> bool {
         let op = self[region].parent;
         !self.has(op, Trait::HasOnlyGraphRegion) && !matches!(&*self[op].name, "test.graph_region" | "test.isolated_graph_region")
     }
 
-    /// ⭐ The dominator tree of `region` (which must have a block).
     pub fn dom_tree(&self, region: RegionId) -> DomTree {
         let root = self[region].blocks[0];
-        // Depth-first preorder, as LLVM's `runDFS`.
         let mut order = Vec::new();
         let mut number = BTreeMap::new();
         let mut stack = vec![root];
@@ -554,14 +514,12 @@ impl Body<'_> {
             order.push(b);
             stack.extend(self.successors(b).iter().rev().filter(|s| !number.contains_key(*s)));
         }
-        // Predecessors among the reachable blocks.
         let mut preds: BTreeMap<BlockId, Vec<BlockId>> = BTreeMap::new();
         for b in &order {
             for s in self.successors(*b) {
                 preds.entry(*s).or_default().push(*b);
             }
         }
-        // Cooper, Harvey & Kennedy, over reverse postorder.
         let rpo = self.reverse_postorder(root, &number);
         let rpo_index: BTreeMap<BlockId, usize> = rpo.iter().enumerate().map(|(i, b)| (*b, i)).collect();
         let mut idom: BTreeMap<BlockId, BlockId> = BTreeMap::from([(root, root)]);
@@ -606,7 +564,6 @@ impl Body<'_> {
     fn reverse_postorder(&self, root: BlockId, reachable: &BTreeMap<BlockId, usize>) -> Vec<BlockId> {
         let mut post = Vec::new();
         let mut seen = BTreeMap::new();
-        // (block, next successor to visit)
         let mut stack = vec![(root, 0usize)];
         seen.insert(root, ());
         while let Some((b, i)) = stack.pop() {

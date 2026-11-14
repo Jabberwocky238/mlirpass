@@ -1,8 +1,3 @@
-//! `xegpu` ⇒ `xevm` (+ `llvm`, `vector`, `arith`, `scf`), as `XeGPUToXeVM.cpp`: tensor
-//! descriptors as an `8 x i32` payload (or an `i64` address in 1-D), memory descriptors and
-//! memrefs as integer addresses, block loads / stores / prefetches as the xevm block ops,
-//! gathers and scatters as guarded `llvm` loads and stores.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -15,15 +10,13 @@ use crate::{ConversionRewriter, GpuAddressSpace, LlvmConverter, LlvmOptions, Loa
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `systolicDepth`, `executionSize`.
 const SYSTOLIC_DEPTH: i64 = 8;
 const EXECUTION_SIZE: i64 = 16;
-/// Bits in a dword, which packs the operands of a systolic step.
+
 const DWORD_BITS: u32 = 32;
-/// Operand group of `xegpu.dpas_mx`'s accumulator.
+
 const DPAS_MX_ACC: usize = 2;
 
-/// `NdTdescOffset`: the payload's base pointer (as `i64` 0), width, height and pitch.
 const BASE_PTR: i64 = 0;
 const BASE_SHAPE_W: i64 = 2;
 const BASE_SHAPE_H: i64 = 3;
@@ -33,7 +26,6 @@ fn vector<'a>(n: i64, elem: Type<'a>) -> Type<'a> {
     Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Vector, shape: Some(vec![Dim::Static(n)]), elem: elem.into(), extras: Vec::new() }))
 }
 
-/// A vector type's static shape and element.
 fn vector_of<'t, 'a>(t: &'t Type<'a>) -> Option<(Vec<i64>, &'t Type<'a>)> {
     match t {
         Type::Shaped(s) if s.kind == ShapedKind::Vector => Some((s.dims()?, &s.elem)),
@@ -48,7 +40,6 @@ fn memref_of<'t, 'a>(t: &'t Type<'a>) -> Option<&'t Shaped<'a>> {
     }
 }
 
-/// `encodeVectorTypeTo`: the flat vector of `to` with the same bits.
 fn encode<'a>(t: &Type<'a>, to: Type<'a>) -> Type<'a> {
     let (shape, elem) = vector_of(t).map_or((vec![1], t), |(s, e)| (s, e));
     let n: i64 = shape.iter().product();
@@ -56,7 +47,6 @@ fn encode<'a>(t: &Type<'a>, to: Type<'a>) -> Type<'a> {
     vector(size, to)
 }
 
-/// `isSharedMemRef`.
 fn shared(s: &Shaped<'_>) -> bool {
     match s.memory_space() {
         None => false,
@@ -68,7 +58,6 @@ fn shared(s: &Shaped<'_>) -> bool {
     }
 }
 
-/// `memRefType.getMemorySpaceAsInt()`.
 fn space_int(s: &Shaped<'_>) -> u32 {
     match s.memory_space() {
         Some(Attribute::Int { lit, .. }) => lit.parse().unwrap_or(0),
@@ -76,7 +65,6 @@ fn space_int(s: &Shaped<'_>) -> u32 {
     }
 }
 
-/// `getExtfNarrowType` / `getTruncfNarrowType`: an MX narrow float's xevm name.
 fn mx_name(t: &Type<'_>) -> Option<&'static str> {
     Some(match t {
         Type::Float(FloatKind::F8E5M2) => "bf8",
@@ -86,10 +74,8 @@ fn mx_name(t: &Type<'_>) -> Option<&'static str> {
     })
 }
 
-/// How many f16 / bf16 values xevm.extf / xevm.truncf convert.
 const MX_CONVERT_ELEMS: i64 = 16;
 
-/// `translateLoadXeGPUCacheHint`: no hints, the default; a missing one cached.
 fn load_cache(l1: Option<CachePolicy>, l3: Option<CachePolicy>) -> Option<LoadCacheControl> {
     use CachePolicy::*;
     if l1.is_none() && l3.is_none() {
@@ -108,7 +94,6 @@ fn load_cache(l1: Option<CachePolicy>, l3: Option<CachePolicy>) -> Option<LoadCa
     })
 }
 
-/// `translateStoreXeGPUCacheHint`: no hints, the default; a missing L1 uncached, L3 write-back.
 fn store_cache(l1: Option<CachePolicy>, l3: Option<CachePolicy>) -> Option<StoreCacheControl> {
     use CachePolicy::*;
     if l1.is_none() && l3.is_none() {
@@ -128,7 +113,6 @@ fn store_cache(l1: Option<CachePolicy>, l3: Option<CachePolicy>) -> Option<Store
     })
 }
 
-/// An xevm op on `operands` with attributes `attrs`.
 fn xevm<'a>(name: &str, operands: &[ValueId], attrs: Vec<(&str, Attribute<'a>)>) -> OpData<'a> {
     let mut d = OpData::build(name).operands(operands);
     for (n, v) in attrs {
@@ -137,7 +121,6 @@ fn xevm<'a>(name: &str, operands: &[ValueId], attrs: Vec<(&str, Attribute<'a>)>)
     d
 }
 
-/// Builders the materializations share with the patterns.
 trait Build<'a> {
     fn mk(&mut self, data: OpData<'a>, ty: Type<'a>) -> ValueId;
 
@@ -169,31 +152,25 @@ impl<'a> Build<'a> for Cr<'_, 'a, '_> {
     }
 }
 
-/// The xegpu ⇒ xevm patterns (`populateXeGPUToXeVMConversionPatterns`).
 pub struct XegpuToXevm;
 
 impl XegpuToXevm {
-    /// `isXeVMExtf`: rank 1, 16 f16 / bf16 out of an MX narrow float.
     pub fn is_xevm_extf(b: &crate::Body<'_>, op: OpId) -> bool {
         let (src, dst) = (&b[b[op].operands[0]].ty, &b[b[op].results[0]].ty);
         let (Some((ss, se)), Some((ds, de))) = (vector_of(src), vector_of(dst)) else { return false };
         ss.len() == 1 && ds.len() == 1 && ds[0] == MX_CONVERT_ELEMS && matches!(de, Type::Float(FloatKind::F16 | FloatKind::BF16)) && mx_name(se).is_some()
     }
 
-    /// `isXeVMTruncf`: rank 1, 16 f16 / bf16 into an MX narrow float.
     pub fn is_xevm_truncf(b: &crate::Body<'_>, op: OpId) -> bool {
         let (src, dst) = (&b[b[op].operands[0]].ty, &b[b[op].results[0]].ty);
         let (Some((ss, se)), Some((ds, de))) = (vector_of(src), vector_of(dst)) else { return false };
         ss.len() == 1 && ds.len() == 1 && ss[0] == MX_CONVERT_ELEMS && matches!(se, Type::Float(FloatKind::F16 | FloatKind::BF16)) && mx_name(de).is_some()
     }
 
-    /// `ConvertXeGPUToXeVMPass`'s type converter: LLVM's, vectors flattened (a single element
-    /// as the scalar), descriptors and memrefs as integer addresses; and its materializations.
     pub fn converter<'c>() -> TypeConverter<'c> {
         let mut tc = LlvmConverter::build(LlvmOptions::default());
         tc.conversion(|t| {
             let (shape, elem) = vector_of(t)?;
-            // (the element converted: an index as i64, a float LLVM has no type for as the integer of its width)
             let elem = match elem {
                 Type::Index => Type::int(64),
                 Type::Float(k) if !matches!(k, FloatKind::F16 | FloatKind::BF16 | FloatKind::F32 | FloatKind::F64 | FloatKind::F80 | FloatKind::F128) => Type::int(elem.bit_width()?),
@@ -217,7 +194,6 @@ impl XegpuToXevm {
         tc
     }
 
-    /// `memrefMaterializationCast`: the aligned pointer plus the offset in bytes.
     fn memref_address<'a>(rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, inputs: &[ValueId]) -> Option<ValueId> {
         let [input] = inputs else { return None };
         let s = memref_of(&rw.body[*input].ty)?.clone();
@@ -242,7 +218,6 @@ impl XegpuToXevm {
         Some(rw.mk(OpData::build("arith.addi").operands(&[addr, bytes]), ty.clone()))
     }
 
-    /// `ui64MaterializationCast` / `ui32MaterializationCast`: through `index`.
     fn unsigned<'a>(rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, inputs: &[ValueId], width: u32) -> Option<ValueId> {
         let [input] = inputs else { return None };
         if rw.body[*input].ty != (Type::Integer { signedness: Signedness::Unsigned, width }) {
@@ -252,15 +227,12 @@ impl XegpuToXevm {
         Some(rw.unary("arith.index_castui", i, ty.clone()))
     }
 
-    /// `vectorMaterializationCast`: a single element extracted, else a bitcast (same rank) or
-    /// a shape cast (same element).
     fn vector_cast<'a>(rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, inputs: &[ValueId]) -> Option<ValueId> {
         let [input] = inputs else { return None };
         let in_ty = rw.body[*input].ty.clone();
         let (shape, elem) = vector_of(&in_ty)?;
         let elem = elem.clone();
         if shape.iter().product::<i64>() == 1 {
-            // (at zeros, one per dim)
             let at = alloc::vec![0; shape.len()];
             let mut v = rw.mk(OpData::build("vector.extract").operands(&[*input]).with("static_position", Attribute::dense_i64(&at)), elem.clone());
             if matches!(elem, Type::Index) {
@@ -277,7 +249,6 @@ impl XegpuToXevm {
         (*to_elem == elem).then(|| rw.unary("vector.shape_cast", *input, ty.clone()))
     }
 
-    /// `singleElementVectorMaterializationCast`: a scalar broadcast to one element.
     fn single_element_vector<'a>(rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, inputs: &[ValueId]) -> Option<ValueId> {
         let [input] = inputs else { return None };
         if !matches!(rw.body[*input].ty, Type::Integer { .. } | Type::Index | Type::Float(_)) {
@@ -299,13 +270,11 @@ impl XegpuToXevm {
 
 #[patterns(converter)]
 impl XegpuToXevm {
-    /// `getMixedValues` of `statics` (the dynamic sentinel taking the next of `dynamics`).
     fn mixed(statics: &[i64], dynamics: &[ValueId]) -> Vec<Ofr> {
         let mut d = dynamics.iter();
         statics.iter().map(|&s| if s == Dim::DYNAMIC { d.next().map_or(Ofr::C(s), |v| Ofr::V(*v)) } else { Ofr::C(s) }).collect()
     }
 
-    /// `getValueOrCreateConstantIntOp`: an `i64` constant for a static.
     fn int_value<'a>(cr: &mut Cr<'_, 'a, '_>, o: &Ofr) -> ValueId {
         match o {
             Ofr::V(v) => *v,
@@ -313,7 +282,6 @@ impl XegpuToXevm {
         }
     }
 
-    /// `getValueOrCreateConstantIndexOp`.
     fn index_value(cr: &mut Cr<'_, '_, '_>, o: &Ofr) -> ValueId {
         match o {
             Ofr::V(v) => *v,
@@ -321,7 +289,6 @@ impl XegpuToXevm {
         }
     }
 
-    /// `getValueOrCreateCastToIndexLike`.
     fn cast_index_like<'a>(cr: &mut Cr<'_, 'a, '_>, to: Type<'a>, v: ValueId) -> ValueId {
         let from = cr.rw.body[v].ty.clone();
         if from == to {
@@ -334,7 +301,6 @@ impl XegpuToXevm {
         cr.unary(name, v, to)
     }
 
-    /// The op's offsets (`getMixedOffsets`): `const_offsets` with the dynamic ones.
     fn offsets(cr: &Cr<'_, '_, '_>, op: OpId, dynamics: &[ValueId]) -> Vec<Ofr> {
         let statics = cr.rw.body.dense_i64(op, "const_offsets");
         if statics.is_empty() && dynamics.is_empty() {
@@ -351,13 +317,11 @@ impl XegpuToXevm {
         LlvmType::Ptr(space).into()
     }
 
-    /// `CreateNdDescToXeVMPattern`.
     #[convert("xegpu.create_nd_tdesc")]
     fn create_nd_tdesc<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
         let ops = b[op].operands.clone();
         let seg = b.dense_i64(op, "operandSegmentSizes");
-        // source, shape, strides (MLIR 23 dropped the offsets).
         let seg: Vec<usize> = if seg.len() == 3 { seg.iter().map(|&n| n as usize).collect() } else { vec![1, 0, 0] };
         let shape_ops = &ops[1..1 + seg[1]];
         let stride_ops = &ops[1 + seg[1]..];
@@ -407,7 +371,6 @@ impl XegpuToXevm {
         true
     }
 
-    /// `LoadStorePrefetchNdToXeVMPattern`.
     #[convert("xegpu.load_nd", "xegpu.store_nd", "xegpu.prefetch_nd")]
     fn nd<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let name = cr.rw.body[op].name.clone();
@@ -452,7 +415,6 @@ impl XegpuToXevm {
         let tdesc = operands[td_at][0];
         let (i32t, i64t) = (Type::int(32), Type::int(64));
         cr.rw.set_before(op);
-        // A store's value: the op's own when the adaptor's became a scalar.
         let store_src = |cr: &mut Cr<'_, 'a, '_>| -> Option<ValueId> {
             let mut src = operands[0][0];
             if matches!(cr.rw.body[src].ty, Type::Integer { .. } | Type::Float(_)) {
@@ -508,11 +470,9 @@ impl XegpuToXevm {
             let dst_elem = dst_elem.clone();
             let mut vnni = cr.rw.body[op].get("packed").is_some();
             let transpose = cr.rw.body.dense_i64(op, "transpose").first() == Some(&1);
-            // (8-bit 32×16 without vnni or transpose: the hardware has only the vnni form, the same data)
             if bits == 8 && tile_w == 16 && tile_h == 32 && !vnni && !transpose {
                 vnni = true;
             }
-            // (a transpose is of 32-bit elements: the offset and the width rescaled)
             let (mut args, mut bits, mut tile_w) = (args, bits, tile_w);
             if transpose && bits < 32 {
                 let log2 = cr.int(i64::from((32 / bits).trailing_zeros()), i32t.clone());
@@ -555,7 +515,6 @@ impl XegpuToXevm {
         true
     }
 
-    /// `addOffsetToBaseAddr`: `base + offset * size`.
     fn add_offset(cr: &mut Cr<'_, '_, '_>, base: ValueId, offset: ValueId, size: i64) -> ValueId {
         let ty = cr.rw.body[base].ty.clone();
         let s = cr.int(size, ty.clone());
@@ -563,7 +522,6 @@ impl XegpuToXevm {
         cr.mk(OpData::build("arith.addi").operands(&[base, bytes]), ty)
     }
 
-    /// The `scf.if` on `cond` with a then block (and an else block), its results `types`.
     fn scf_if<'a>(cr: &mut Cr<'_, 'a, '_>, cond: ValueId, types: &[Type<'a>], with_else: bool) -> (OpId, crate::BlockId, Option<crate::BlockId>) {
         let mut blocks = (None, None);
         let op = cr.rw.create_with(OpData::build("scf.if").operands(&[cond]), types, |b, o| {
@@ -577,12 +535,10 @@ impl XegpuToXevm {
         (op, blocks.0.expect("then block"), blocks.1)
     }
 
-    /// `LoadStoreToXeVMPattern`: a guarded `llvm.load` / `llvm.store`.
     #[convert("xegpu.load", "xegpu.store")]
     fn gather_scatter<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let store = cr.rw.body[op].name == "xegpu.store";
         let ops = cr.rw.body[op].operands.clone();
-        // load: source, offsets?, mask; store: value, dest, offsets?, mask.
         let (src_at, n) = (usize::from(store), ops.len());
         if n != src_at + 3 {
             return false;
@@ -651,14 +607,12 @@ impl XegpuToXevm {
         true
     }
 
-    /// `CreateMemDescOpPattern`: the source address itself.
     #[convert("xegpu.create_mem_desc")]
     fn create_mem_desc(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         cr.replace(op, vec![operands[0].clone()]);
         true
     }
 
-    /// `MemDescType::getLinearOffsets`.
     fn linear_offset(cr: &mut Cr<'_, '_, '_>, md: &MemDesc, offsets: &[Ofr]) -> ValueId {
         let shape = md.shape.clone();
         let block = md.block_shape();
@@ -689,7 +643,6 @@ impl XegpuToXevm {
         linear
     }
 
-    /// `xegpu::getChipStr`: the `#xevm.target` of the enclosing `gpu.module`.
     fn chip(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<Chip> {
         let b = &*cr.rw.body;
         let mut at = b.parent_op(op);
@@ -700,7 +653,6 @@ impl XegpuToXevm {
         ts.iter().find_map(Chip::of_target)
     }
 
-    /// `LoadStoreMatrixToXeVMPattern`.
     #[convert("xegpu.load_matrix", "xegpu.store_matrix")]
     fn matrix<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let load = cr.rw.body[op].name == "xegpu.load_matrix";
@@ -755,7 +707,6 @@ impl XegpuToXevm {
             return false;
         }
         if load {
-            // (a float LLVM has no type for loaded as the integer of its width)
             let res = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
             let Some(ty) = cr.converted(&res) else { return false };
             let r = cr.mk(OpData::build("llvm.load").operands(&[ptr]).with("ordering", Attribute::i64(0)), ty);
@@ -767,7 +718,6 @@ impl XegpuToXevm {
         true
     }
 
-    /// `PrefetchToXeVMPattern`.
     #[convert("xegpu.prefetch")]
     fn prefetch<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let ops = cr.rw.body[op].operands.clone();
@@ -810,7 +760,6 @@ impl XegpuToXevm {
         true
     }
 
-    /// `FenceToXeVMPattern`.
     #[convert("xegpu.fence")]
     fn fence(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -830,7 +779,6 @@ impl XegpuToXevm {
         true
     }
 
-    /// `encodePrecision` and the operands per dword of each.
     fn precision(t: &Type<'_>) -> Option<(&'static str, i64)> {
         Some(match t {
             Type::Float(FloatKind::BF16) => ("bf16", 2),
@@ -844,8 +792,6 @@ impl XegpuToXevm {
         })
     }
 
-    /// `ExtfToXeVMPattern`: a widening of 16 MX narrow floats to f16 / bf16 is `xevm.extf` (fp4 packed in
-    /// bytes).
     #[convert("arith.extf")]
     fn extf<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         if !Self::is_xevm_extf(cr.rw.body, op) {
@@ -870,7 +816,6 @@ impl XegpuToXevm {
         true
     }
 
-    /// `TruncfToXeVMPattern`: a truncation of 16 f16 / bf16 to an MX narrow float is `xevm.truncf` into bytes.
     #[convert("arith.truncf")]
     fn truncf<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         if !Self::is_xevm_truncf(cr.rw.body, op) {
@@ -892,8 +837,6 @@ impl XegpuToXevm {
         true
     }
 
-    /// `DpasMxToXeVMPattern`: `xevm.mma_mx` of `a`, `b` (4-bit ones packed in bytes), the scales and the
-    /// accumulator (zero when missing), on a known chip.
     #[convert("xegpu.dpas_mx")]
     fn dpas_mx<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         if Self::chip(cr, op).is_none() {
@@ -938,7 +881,6 @@ impl XegpuToXevm {
         true
     }
 
-    /// `DpasToXeVMPattern`.
     #[convert("xegpu.dpas")]
     fn dpas<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;

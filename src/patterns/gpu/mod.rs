@@ -1,5 +1,3 @@
-//! `gpu` rule sets.
-
 mod canonicalize;
 
 pub use canonicalize::GpuCanon;

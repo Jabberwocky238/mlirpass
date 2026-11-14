@@ -1,11 +1,8 @@
-//! `convert-index-to-llvm`.
-
 use crate::{IndexToLlvm, LlvmConverter, LlvmOptions};
 use crate::pass;
 use mlirformat::Error;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, Run};
 
-/// `convert-index-to-llvm`.
 #[pass("convert-index-to-llvm")]
 pub struct ConvertIndexToLlvm {
     #[opt("index-bitwidth")]

@@ -1,7 +1,3 @@
-//! `convert-gpu-to-agx`: the kernels' calls inlined ([`Kernels::inline_calls`]); the compute kernels of each
-//! `gpu.module` ⇒ `agx.kernel`s of virtual USC instructions ([`GpuToAgx`]); then each kernel's parameters, uniforms
-//! after the 64-bit base, copied to GPRs at its start.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -9,7 +5,6 @@ use mlirformat::{Error, Op};
 
 use crate::{AGX_KERNEL_ALIGN, AGX_PARAM_UNIFORM, AgxKernel, AgxSlot, AgxType, AgxTypes, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, GpuToAgx, Kernels, Mode, OpId, Quiet, Rewriter, SinkConstants, Updates, UscBuild, UscInput, UscOp, pass};
 
-/// `convert-gpu-to-agx`.
 #[pass("convert-gpu-to-agx", on = "builtin.module")]
 pub fn convert_gpu_to_agx<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     Kernels::inline_calls(body, op)?;

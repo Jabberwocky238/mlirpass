@@ -1,5 +1,3 @@
-//! `linalg` rule sets.
-
 mod canonicalize;
 mod elementwise_to_linalg;
 mod to_loops;

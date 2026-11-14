@@ -1,11 +1,8 @@
-//! `convert-tensor-to-linalg`.
-
 use crate::{TensorToLinalg};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId};
 
-/// `convert-tensor-to-linalg`.
 #[pass("convert-tensor-to-linalg", on = "builtin.module")]
 pub fn convert_tensor_to_linalg<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let mut patterns = ConversionPatterns::default();

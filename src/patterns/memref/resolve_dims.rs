@@ -1,28 +1,19 @@
-//! `resolve-ranked-shaped-type-result-dims`' rules, as `ResolveShapedTypeResultDims.cpp`: a
-//! `tensor.dim` / `memref.dim` of an op's result is the size the op reifies for it
-//! (`ReifyRankedShapedTypeOpInterface`); one of an `scf.forall`'s shared output is one of its init.
-
 use crate::{Def, OpId, Rewriter};
 
-/// `populateResolveRankedShapedTypeResultDimsPatterns`.
 pub struct ResolveDims;
 
 #[crate::patterns]
 impl ResolveDims {
-    /// `DimOfReifyRankedShapedTypeOpInterface<memref::DimOp>`.
     #[rewrite("memref.dim")]
     fn dim_of_reify_memref(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         Self::reified(rw, op)
     }
 
-    /// `DimOfReifyRankedShapedTypeOpInterface<tensor::DimOp>`.
     #[rewrite("tensor.dim")]
     fn dim_of_reify_tensor(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         Self::reified(rw, op)
     }
 
-    /// `IterArgsToInitArgs`: a `tensor.dim` of an `scf.forall`'s shared output (a block argument)
-    /// takes its init instead.
     #[rewrite("tensor.dim")]
     fn iter_args_to_init_args(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -42,7 +33,6 @@ impl ResolveDims {
 }
 
 impl ResolveDims {
-    /// The dim `op` takes of an op's result, replaced by what that op reifies.
     fn reified(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let (src, index) = (rw.body[op].operands[0], rw.body[op].operands[1]);
         let Def::Result(owner, k) = rw.body[src].def else { return false };

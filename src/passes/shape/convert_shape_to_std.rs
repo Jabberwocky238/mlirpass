@@ -1,11 +1,8 @@
-//! `convert-shape-to-std`.
-
 use crate::{ShapeToStd};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId};
 
-/// `convert-shape-to-std`.
 #[pass("convert-shape-to-std", on = "builtin.module")]
 pub fn convert_shape_to_std<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let mut patterns = ConversionPatterns::default();

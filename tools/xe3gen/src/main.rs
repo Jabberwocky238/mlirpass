@@ -1,27 +1,11 @@
-//! genxml ⇒ the xe3 dialect's command / state / register ops: reads a flattened Mesa genxml file (data/intel/xe3.xml)
-//! and writes `src/dialects/xe3/cmd.gen.rs`:
-//!
-//! - `XE3_ITEMS`: every item's layout (fields: first bit, width, type, default, fixed array dims; the variable group),
-//!   sorted by op name: what `Item::pack` packs an op's attributes by;
-//! - a typed op per item: instructions `xe3.cmd.*`, structs `xe3.state.*`, registers `xe3.reg.*`; each settable field
-//!   a `Fill` (a number, a bool or a place), an `f64`, or a struct's typed op (`Fields`); the
-//!   variable group `elements`, each an `<Item>Element`; `Xe3Genxml::verify`; `XE3_INHERENT`, what they declare;
-//! - the enum and field values as constants, like Mesa's `#define`s.
-//!
-//! Video-engine items are left out (and the video structs nothing kept refers to).
-//!
-//! `cargo run -p xe3gen -- data/intel/xe3.xml src/dialects/xe3/cmd.gen.rs`
-
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 
-/// Items of the video engines (codecs, scalers): no use here.
 const VIDEO: &[&str] = &[
     "AVP", "HCP", "HEVC", "HUC", "MFC", "MFD", "MFX", "SFC", "VD", "VD0", "VDENC", "VVCP", "AES", "CHROMA", "LUMA",
     "FRAMEDELTAQP", "FRAMEDELTAQPRANGE", "ROUNDINGPRECISIONTABLE", "VEBOX", "VDAQM", "VDL", "MFX_", "JPEG", "VP9",
 ];
 
-/// A field's type as `Ty` spells it in the generated table.
 #[derive(Clone, Debug)]
 enum Ty {
     Bool,
@@ -30,7 +14,6 @@ enum Ty {
     Float,
     Address,
     Fixed { signed: bool, frac: u32 },
-    /// a struct's op name
     Struct(String),
     Mbo,
     Mbz,
@@ -39,16 +22,13 @@ enum Ty {
 #[derive(Clone, Debug)]
 struct Field {
     name: String,
-    /// first bit, from the item's (or the variable group element's) dword 0, for element 0 of every fixed group
     bit: u32,
     width: u32,
     ty: Ty,
     default: u64,
-    /// (count, stride in bits) of the enclosing fixed groups, outermost first
     dims: Vec<(u32, u32)>,
 }
 
-/// A variable-length group: elements of `size` bits from bit `at`, the caller gives how many.
 struct Group {
     at: u32,
     size: u32,
@@ -65,7 +45,6 @@ struct Item {
     group: Option<Group>,
 }
 
-/// genxml's spellings ⇒ ours.
 struct Names;
 
 impl Names {
@@ -82,7 +61,6 @@ impl Names {
         s.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty())
     }
 
-    /// An attribute / op name: snake case, a leading digit kept (`3dstate_vs`) except for attributes (`_1x_...`).
     fn snake(s: &str) -> String {
         Self::words(s).collect::<Vec<_>>().join("_").to_ascii_lowercase()
     }
@@ -98,7 +76,6 @@ impl Names {
         }
     }
 
-    /// The Rust type of an item's op: `Cmd3dstateVs`.
     fn camel(space: &str, s: &str) -> String {
         let mut id: String = space[..1].to_ascii_uppercase() + &space[1..];
         for w in Self::words(s) {
@@ -127,7 +104,6 @@ impl Item {
         fields.iter().map(|f| f.bit + f.width + f.dims.iter().map(|(c, s)| (c - 1) * s).sum::<u32>()).max().unwrap_or(0)
     }
 
-    /// Dwords of the fixed part: up to the variable group, else the declared length, else the last field.
     fn fixed_length(&self) -> u32 {
         match (&self.group, self.length) {
             (Some(g), _) => g.at / 32,
@@ -135,12 +111,10 @@ impl Item {
             (None, None) => Self::end_bit(&self.fields).div_ceil(32),
         }
     }
-    /// The struct op names this item's fields are.
     fn refs(&self) -> impl Iterator<Item = &String> {
         self.fields.iter().chain(self.group.iter().flat_map(|g| &g.fields)).filter_map(|f| if let Ty::Struct(s) = &f.ty { Some(s) } else { None })
     }
 
-    /// Drops the video structs no kept item refers to.
     fn drop_unreferenced_video(items: &mut Vec<Item>) {
         let mut keep: HashSet<String> = items.iter().filter(|i| i.space != "state" || !Names::video(&i.orig)).map(Item::op).collect();
         loop {
@@ -154,7 +128,6 @@ impl Item {
     }
 }
 
-/// Reads the XML.
 struct Reader<'x> {
     structs: HashSet<&'x str>,
     enums: HashSet<&'x str>,
@@ -189,7 +162,6 @@ impl<'x> Reader<'x> {
         }
     }
 
-    /// The fields of `node` from bit `base`, inside the fixed groups `dims`; a variable group goes to `group`.
     fn fields(&mut self, node: roxmltree::Node, base: u32, dims: &[(u32, u32)], out: &mut Vec<Field>, group: &mut Option<Group>) {
         for c in node.children().filter(|c| c.is_element()) {
             match c.tag_name().name() {
@@ -228,7 +200,6 @@ impl<'x> Reader<'x> {
         }
     }
 
-    /// An instruction, struct or register element as an item (video-engine instructions and registers left out).
     fn item(&mut self, c: roxmltree::Node) -> Option<Item> {
         let space = match c.tag_name().name() {
             "instruction" => "cmd",
@@ -261,7 +232,6 @@ impl<'x> Reader<'x> {
         })
     }
 
-    /// The same name twice in one item (alternative layouts of the same bits): the later ones numbered.
     fn dedup(fields: &mut [Field]) {
         let mut seen: HashMap<String, u32> = HashMap::new();
         for f in fields {
@@ -274,7 +244,6 @@ impl<'x> Reader<'x> {
     }
 }
 
-/// Writes the Rust.
 struct Writer {
     out: String,
 }
@@ -331,7 +300,6 @@ impl Writer {
             None => self.out.push_str(",\n        group: None,\n    },\n"),
         }
     }
-    /// The enum and field values, like Mesa's `#define`s; a name given two different values is left out.
     fn values(&mut self, values: &[(String, u64)]) {
         let mut by_name: BTreeMap<&str, HashSet<u64>> = BTreeMap::new();
         for (n, v) in values {
@@ -346,7 +314,6 @@ impl Writer {
 }
 
 impl Writer {
-    /// A field's Rust type in a typed op (`None`: not settable).
     fn rust(ty: &Ty, structs: &HashMap<String, String>) -> Option<String> {
         Some(match ty {
             Ty::Bool | Ty::Uint | Ty::Int | Ty::Address => "crate::Fill".to_owned(),
@@ -356,14 +323,9 @@ impl Writer {
         })
     }
 
-    /// The typed half: an op an item (its settable fields; a struct field the struct's typed op; the variable group
-    /// `elements`, each an `<Item>Element`), `Genxml::verify`, the declared attributes for `op_infos`.
     fn typed(&mut self, items: &[Item]) {
         let structs: HashMap<String, String> = items.iter().map(|i| (i.op(), Names::camel(i.space, &i.orig))).collect();
-        // a field in fixed groups: an array a dimension (nested, outermost first)
         let settable = |fs: &[Field]| fs.iter().filter_map(|f| Some((f.name.clone(), f.dims.iter().fold(Writer::rust(&f.ty, &structs)?, |t, _| format!("Vec<{t}>"))))).collect::<Vec<_>>();
-        // an item another nests (a field of its type): its fields as a plain struct too (an op's own deserializer reads
-        // an integer as an i64, which a 64-bit address overflows)
         let nested: HashSet<&String> = items.iter().flat_map(|i| i.fields.iter().chain(i.group.iter().flat_map(|g| &g.fields))).filter_map(|f| if let Ty::Struct(op) = &f.ty { Some(op) } else { None }).collect();
         for i in items.iter().filter(|i| nested.contains(&i.op())) {
             let _ = writeln!(self.out, "/// `{}`'s fields, nested in another item.\n#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct {}Fields {{", i.op(), structs[&i.op()]);

@@ -1,17 +1,3 @@
-//! ⭐ Every fixture RUN line through mlirpass, chunk by chunk, against what `mlir-opt` 23.1.5
-//! printed for it. Both sides go through `Body` and print generic, so only the IR is compared:
-//!
-//! ```text
-//! exact        the same IR (or both failed, where -verify-diagnostics expected it)
-//! mismatch     different IR
-//! error        mlirpass failed where mlir-opt did not
-//! unsupported  the pipeline names a pass mlirpass does not have
-//! ```
-//!
-//! `--nocapture` prints the tally per test directory; `FILTER=<substring>` limits the runs and
-//! `SHOW=1` prints each failure's first differing line (`SHOW=full`: both sides whole), `SERIAL=1`
-//! runs nested pipelines without the thread pool. `FLOOR` only ever goes up.
-
 mod common;
 
 use std::collections::BTreeMap;
@@ -20,7 +6,6 @@ use common::Fixtures;
 use mlirpass::mlirformat::MlirOpt;
 use mlirpass::{Body, Ctx, Interfaces, Invocation, Passes};
 
-/// Chunks matching exactly; raise it whenever a change makes more match.
 const FLOOR: usize = 7616;
 
 #[derive(Default, Clone, Copy)]
@@ -40,7 +25,6 @@ impl Tally {
     }
 }
 
-/// `Conversion__ArithToLLVM__x` ⇒ `Conversion/ArithToLLVM`; `Transforms__cse` ⇒ `Transforms/cse`.
 fn group(stem: &str) -> String {
     let parts: Vec<_> = stem.split("__").collect();
     match parts.as_slice() {
@@ -50,14 +34,12 @@ fn group(stem: &str) -> String {
     }
 }
 
-/// The first line where two printings differ.
 fn first_diff(a: &str, b: &str) -> String {
     a.lines().zip(b.lines()).find(|(x, y)| x != y).map(|(x, y)| format!("\n      mlir-opt: {}\n      mlirpass: {}", x.trim(), y.trim())).unwrap_or_else(|| "\n      (one is a prefix of the other)".into())
 }
 
 #[test]
 fn passes() {
-    // Every upstream dialect: its ops' ODS facts and declared defaults.
     let (opt, interfaces) = (MlirOpt::upstream(), Interfaces::upstream());
     let ctx = Ctx::new(&opt, &interfaces);
     let passes = Passes::upstream();
@@ -83,16 +65,13 @@ fn passes() {
             }
         };
         inv.generic = true;
-        // `SERIAL=1`: nested pipelines one op after the other (else a thread pool, as mlir-opt).
         inv.threading = std::env::var_os("SERIAL").is_none();
-        // `-o /dev/null`: mlir-opt only had to succeed on each chunk.
         let discard = run.args.windows(2).any(|w| w[0] == "-o" && w[1] == "/dev/null");
         let ins = inv.chunks(&input);
         let outs = if discard { vec![""; ins.len()] } else { inv.chunks(&expected) };
         assert_eq!(ins.len(), outs.len(), "{}: chunk counts differ", run.stem);
         for (i, (chunk, want)) in ins.into_iter().zip(outs).enumerate() {
             let want = if want.trim().is_empty() { String::new() } else { inv.print(&mut Body::parse(ctx, want).unwrap()) };
-            // A panic is an error of this chunk, not the end of the run.
             let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| inv.run_chunk(ctx, chunk)));
             let Ok(ran) = ran else {
                 t.error += 1;

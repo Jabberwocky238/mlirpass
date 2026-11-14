@@ -1,5 +1,3 @@
-//! `math` ⇒ `llvm`, as `MathToLLVM.cpp`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -10,7 +8,6 @@ use crate::llvm_fastmath;
 use crate::{ApFloat, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 use mlirformat::llvm_types::LlvmType;
 
-/// The math ⇒ llvm patterns.
 pub struct MathToLlvm;
 
 #[patterns(converter, approximate_log1p: bool)]
@@ -42,7 +39,6 @@ pub struct MathToLlvm;
 #[map("math.atan" => "llvm.intr.atan", fastmath, fp)]
 #[map("math.atan2" => "llvm.intr.atan2", fastmath, fp)]
 impl MathToLlvm {
-    /// The op's attributes with `fastmath` as `fastmathFlags` (`AttrConvertFastMathToLLVM`).
     fn fmf_attrs(cr: &ConversionRewriter<'_, '_, '_>, op: OpId) -> Vec<NamedAttr<'static>> {
         let mut attrs: Vec<NamedAttr<'static>> = cr.all_attrs(op).iter().map(|a| NamedAttr { name: mlirformat::Str::Owned(alloc::string::String::from(&*a.name)), value: a.value.as_ref().map(Attribute::owned) }).collect();
         if let Some(i) = attrs.iter().position(|a| a.name == "fastmath") {
@@ -65,7 +61,6 @@ impl MathToLlvm {
         types.iter().any(|t| cr.unsupported_float(t))
     }
 
-    /// `IntOpWithFlagLowering`: the intrinsic with its poison flag `false`.
     fn int_with_flag(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], name: &str, flag: &str) -> bool {
         if Self::unsupported(cr, op) {
             return false;
@@ -80,7 +75,6 @@ impl MathToLlvm {
             cr.replace_new(op, data(&[x]), &[res]);
             return true;
         }
-        // (an n-D vector result, unrolled)
         if !matches!(cr.rw.body[cr.rw.body[op].results[0]].ty, Type::Shaped(_)) {
             return false;
         }
@@ -97,7 +91,6 @@ impl MathToLlvm {
         Self::int_with_flag(cr, op, operands, "llvm.intr.cttz", "is_zero_poison")
     }
 
-    /// `ConstrainedFmaOpLowering`: with a rounding mode, the constrained intrinsic.
     #[convert("math.fma")]
     fn constrained_fma(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         crate::ArithToLlvm::constrained(cr, op, operands, "llvm.intr.experimental.constrained.fma")
@@ -123,7 +116,6 @@ impl MathToLlvm {
         true
     }
 
-    /// A constant 1.0 of (1-d vector or scalar) type `ty`.
     fn one<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, ty: &Type<'a>) -> Option<ValueId> {
         let Type::Float(k) = *ty.element_type() else { return None };
         let one = Scalar::Float(ApFloat::from_f64(k, 1.0)?);
@@ -134,7 +126,6 @@ impl MathToLlvm {
         Some(cr.llvm_constant(value, ty.clone()))
     }
 
-    /// `ExpM1OpLowering`, `Log1pOpLowering` and `RsqrtOpLowering`: two intrinsics and a 1.0.
     fn two_step(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], kind: u8) -> bool {
         if Self::unsupported(cr, op) {
             return false;
@@ -148,17 +139,14 @@ impl MathToLlvm {
             let ty = Type::owned(&ty);
             let one = Self::one(cr, &ty)?;
             Some(match kind {
-                // expm1: exp(x) - 1
                 0 => {
                     let e = cr.build(Self::with_attrs(OpData::build("llvm.intr.exp").operands(&[x]), &attrs), ty.clone());
                     cr.build(Self::with_attrs(OpData::build("llvm.fsub").operands(&[e, one]), &attrs), ty)
                 }
-                // log1p: log(1 + x)
                 1 => {
                     let a = cr.build(Self::with_attrs(OpData::build("llvm.fadd").operands(&[one, x]), &attrs), ty.clone());
                     cr.build(Self::with_attrs(OpData::build("llvm.intr.log").operands(&[a]), &attrs), ty)
                 }
-                // rsqrt: 1 / sqrt(x)
                 _ => {
                     let s = cr.build(Self::with_attrs(OpData::build("llvm.intr.sqrt").operands(&[x]), &attrs), ty.clone());
                     cr.build(Self::with_attrs(OpData::build("llvm.fdiv").operands(&[one, s]), &attrs), ty)
@@ -191,7 +179,6 @@ impl MathToLlvm {
         Self::two_step(cr, op, operands, 2)
     }
 
-    /// `llvm.intr.is.fpclass` with `fcNan` (3) or `fcFinite` (504).
     fn fpclass(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], bit: i64) -> bool {
         if Self::unsupported(cr, op) {
             return false;
@@ -213,5 +200,4 @@ impl MathToLlvm {
     fn isfinite(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         Self::fpclass(cr, op, operands, 504)
     }
-
 }

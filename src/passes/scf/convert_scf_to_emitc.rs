@@ -1,11 +1,8 @@
-//! `convert-scf-to-emitc`.
-
 use crate::{Emitc, ScfToEmitc};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Action, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId};
 
-/// `convert-scf-to-emitc`.
 #[pass("convert-scf-to-emitc")]
 pub fn convert_scf_to_emitc<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let mut tc = Emitc::converter(true);

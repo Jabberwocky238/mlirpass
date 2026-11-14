@@ -1,11 +1,3 @@
-//! ⭐ Rewriting, as `mlir/IR/PatternMatch`: the [`Rewriter`] every change goes through, the
-//! [`Listener`] it tells, and [`Pattern`]s.
-//!
-//! Notifications follow `RewriterBase` exactly, because the greedy driver's worklist order (and
-//! so its output) depends on them: replacing a value tells each user it was modified, in MLIR's
-//! use-list order (most recent use first); erasing an op erases its regions first (last region
-//! first, blocks in post-order, ops in reverse), telling the listener about each op.
-
 use alloc::vec;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
@@ -14,12 +6,8 @@ use alloc::vec::Vec;
 use mlirformat::{Type, Attribute};
 use crate::{Mapping, Body, BlockId, OpData, OpId, RegionId, TypedOp, ValueId, Fold, Folded, Trait};
 
-/// Told about every change a [`Rewriter`] makes. `body` is the IR just before (erased) or just
-/// after (the rest) the change.
 pub trait Listener<'a> {
-    /// A new op was placed.
     fn inserted(&mut self, _body: &Body<'a>, _op: OpId) {}
-    /// A placed op moved; the greedy driver treats it as inserted.
     fn moved(&mut self, body: &Body<'a>, op: OpId) {
         self.inserted(body, op)
     }
@@ -27,32 +15,25 @@ pub trait Listener<'a> {
     fn replaced(&mut self, _body: &Body<'a>, _op: OpId, _with: &[ValueId]) {}
     fn erased(&mut self, _body: &Body<'a>, _op: OpId) {}
     fn block_erased(&mut self, _body: &Body<'a>, _block: BlockId) {}
-    /// Whether replacing `op` by `with` (erasing it: `with` empty) is recorded rather than
-    /// done; the conversion driver records them while a rewrite pattern runs.
     fn record_replacement(&mut self, _body: &Body<'a>, _op: OpId, _with: &[ValueId]) -> bool {
         false
     }
 }
 
-/// A listener that ignores everything.
 pub struct Quiet;
 
 impl Listener<'_> for Quiet {}
 
-/// Where new ops go: before `before` in `block`, or at its end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InsertPoint {
     pub block: BlockId,
     pub before: Option<OpId>,
 }
 
-/// ⭐ A body being rewritten, its listener, and an insertion point.
 pub struct Rewriter<'r, 'a, L: Listener<'a> + ?Sized = dyn Listener<'a> + 'r> {
     pub body: &'r mut Body<'a>,
     pub listener: &'r mut L,
     pub ip: Option<InsertPoint>,
-    /// The location new ops get when built without one (`op->getLoc()` of the op a pattern
-    /// rewrites): the drivers set it to the root op's before calling a pattern.
     pub loc: Option<mlirformat::Str<'a>>,
 }
 
@@ -63,22 +44,17 @@ impl<'r, 'a> Rewriter<'r, 'a> {
 }
 
 impl<'r, 'a, L: Listener<'a>> Rewriter<'r, 'a, L> {
-    /// A rewriter whose listener keeps its concrete type.
     pub fn typed(body: &'r mut Body<'a>, listener: &'r mut L) -> Self {
         Self { body, listener, ip: None, loc: None }
     }
 }
 
 impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
-    /// ⭐ A DRR pattern's location for what it builds: `rewriter.getFusedLoc` of the ops its source DAG matched
-    /// (`tblgen_ops`: the root first, then its operands' ops depth first), as `FusedLoc::get` makes it.
     pub fn fuse_locs(&mut self, ops: &[OpId]) {
         let locs: Vec<Option<&str>> = ops.iter().map(|o| self.body[*o].loc.as_deref()).collect();
         self.loc = Some(fused_loc(&locs).into());
     }
 
-    /// An op built with its regions' contents first, as builders with body callbacks do: the
-    /// nested ops are created (and reported) before the op is inserted.
     pub fn with_body(&mut self, data: OpData<'a>, types: &[Type<'a>], blocks: &[Vec<Type<'a>>], fill: &mut dyn FnMut(&mut Self, usize, &[ValueId])) -> OpId {
         let op = self.body.create(data, types);
         let mut made = Vec::new();
@@ -97,7 +73,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.insert(op)
     }
 
-    /// `scf::ForOp::create` with a body builder returning what it yields.
     pub fn build_for(&mut self, lb: ValueId, ub: ValueId, step: ValueId, inits: &[ValueId], body: &mut dyn FnMut(&mut Self, ValueId, &[ValueId]) -> Vec<ValueId>) -> OpId {
         let types = self.body.types(inits);
         let mut ops = vec![lb, ub, step];
@@ -110,7 +85,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         })
     }
 
-    /// `scf::IfOp::create` with only a then builder: the else region stays empty.
     pub fn build_if_then(&mut self, cond: ValueId, then: &mut dyn FnMut(&mut Self)) -> OpId {
         let op = self.body.create(OpData::build("scf.if").operands(&[cond]), &[]);
         let r = self.body.add_region(op);
@@ -124,15 +98,12 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.insert(op)
     }
 
-    /// `scf::IfOp::create` with then and else builders.
     pub fn build_if(&mut self, cond: ValueId, types: &[Type<'a>], then: &mut dyn FnMut(&mut Self) -> Option<ValueId>, other: &mut dyn FnMut(&mut Self) -> Option<ValueId>) -> OpId {
         self.with_body(OpData::build("scf.if").operands(&[cond]), types, &[Vec::new(), Vec::new()], &mut |rw, k, _| {
             let v = if k == 0 { then(rw) } else { other(rw) };
             rw.create(OpData::build("scf.yield").operands(&v.into_iter().collect::<Vec<_>>()), &[]);
         })
     }
-
-    // ---- insertion point -------------------------------------------------------------
 
     pub fn set_before(&mut self, op: OpId) {
         self.ip = Some(InsertPoint { block: self.body[op].parent.expect("op is not placed"), before: Some(op) });
@@ -152,12 +123,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.ip = Some(InsertPoint { block, before: None });
     }
 
-    // ---- creation --------------------------------------------------------------------
-
-    /// Places detached `op` at the insertion point and tells the listener. `op` and the ops its
-    /// regions already hold (built with it, [`Self::create_with`]) that have no location take the
-    /// rewriter's ([`Self::loc`]: the matched op's, or what the pattern set), as C++ builds them all
-    /// through one builder at that location; a location set explicitly stays.
     pub fn insert(&mut self, op: OpId) -> OpId {
         let ip = self.ip.expect("no insertion point");
         self.stamp(op);
@@ -169,13 +134,11 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         op
     }
 
-    /// ⭐ Builds an op at the insertion point.
     pub fn create(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
         let op = self.create_here(data, types);
         self.insert(op)
     }
 
-    /// The op made where the insertion point is ([`Body::create_for`]).
     fn create_here(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
         match self.ip {
             Some(ip) => self.body.create_for(ip.block, data, types),
@@ -183,14 +146,11 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         }
     }
 
-    /// ⭐ Builds mlirformat's typed op `op` at the insertion point.
     pub fn emit(&mut self, op: &impl TypedOp) -> OpId {
         let (data, types) = op.split();
         self.create(data, &types)
     }
 
-    /// `createOrFold`: builds an op at the insertion point and folds it; when the fold yields
-    /// values (constants materialized in its place) the op goes again, unannounced.
     pub fn create_or_fold(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> Vec<ValueId> {
         let op = self.create_here(data, types);
         let ip = self.ip.expect("no insertion point");
@@ -199,7 +159,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
             Some(b) => self.body.insert_before(op, b),
             None => self.body.insert(op, ip.block, None),
         }
-        // `tryFold`: a constant stays as built.
         let constant = self.body.has(op, crate::Trait::ConstantLike);
         if !constant && let crate::Fold::Results(folded) = self.body.fold(op) {
             let name = alloc::string::String::from(&*self.body[op].name);
@@ -236,7 +195,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.body[op].results.clone().to_vec()
     }
 
-    /// Gives `op` and the ops nested in it that have no location the rewriter's.
     fn stamp(&mut self, op: OpId) {
         if self.loc.is_none() {
             return;
@@ -250,31 +208,23 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         }
     }
 
-    /// Builds an op with regions: `regions` fills them (on the body) before it is inserted, so
-    /// the listener hears about the op once, whole.
     pub fn create_with(&mut self, data: OpData<'a>, types: &[Type<'a>], regions: impl FnOnce(&mut Body<'a>, OpId)) -> OpId {
         let op = self.create_here(data, types);
         regions(self.body, op);
         self.insert(op)
     }
 
-    // ---- modification ----------------------------------------------------------------
-
-    /// Changes `op` in place through `f`, then tells the listener.
     pub fn modify(&mut self, op: OpId, f: impl FnOnce(&mut Body<'a>)) {
         f(self.body);
         self.listener.modified(self.body, op);
     }
 
-    /// Every use of `from` becomes `to`, each user told it was modified.
     pub fn replace_all_uses(&mut self, from: ValueId, to: ValueId) {
-        // MLIR's use lists are most-recent-first.
         for u in self.body[from].uses.clone().into_iter().rev() {
             self.modify(u.op, |b| b.set_operand(u.op, u.index as usize, to));
         }
     }
 
-    /// Uses of `from` for which `keep` is false become `to`.
     pub fn replace_uses_if(&mut self, from: ValueId, to: ValueId, mut pick: impl FnMut(&Body<'a>, crate::Use) -> bool) {
         for u in self.body[from].uses.clone().into_iter().rev() {
             if pick(self.body, u) {
@@ -283,7 +233,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         }
     }
 
-    /// `replaceAllOpUsesWith`: the listener hears of the replacement, then of each user.
     pub fn replace_op_uses(&mut self, op: OpId, with: &[ValueId]) {
         self.listener.replaced(self.body, op, with);
         for (r, w) in self.body[op].results.clone().into_iter().zip(with) {
@@ -291,7 +240,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         }
     }
 
-    /// ⭐ Replaces `op`'s results by `with` and erases it.
     pub fn replace_op(&mut self, op: OpId, with: &[ValueId]) {
         if self.listener.record_replacement(self.body, op, with) {
             if self.ip.is_some_and(|ip| ip.before == Some(op)) {
@@ -303,7 +251,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.erase_op(op);
     }
 
-    /// Replaces `op` by a new op built from `data`; returns it.
     pub fn replace_with(&mut self, op: OpId, data: OpData<'a>, types: &[Type<'a>]) -> OpId {
         self.set_before(op);
         let new = self.create(data, types);
@@ -312,13 +259,11 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         new
     }
 
-    /// [`Rewriter::replace_with`] mlirformat's typed op `with`.
     pub fn replace_by(&mut self, op: OpId, with: &impl TypedOp) -> OpId {
         let (data, types) = with.split();
         self.replace_with(op, data, &types)
     }
 
-    /// ⭐ Erases `op` and everything in it, telling the listener about each op.
     pub fn erase_op(&mut self, op: OpId) {
         if self.ip.is_some_and(|ip| ip.before == Some(op)) {
             self.set_after(op);
@@ -348,7 +293,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.body.erase(op);
     }
 
-    /// Erases `block` (its ops last first) and takes it out of its region.
     pub fn erase_block(&mut self, block: BlockId) {
         for o in self.body.block_ops(block).into_iter().rev() {
             self.body.drop_result_uses(o);
@@ -361,7 +305,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.body.remove_block(block);
     }
 
-    /// Moves `op` before `before` (or to the end of `block`), telling the listener it was inserted.
     pub fn move_before(&mut self, op: OpId, block: BlockId, before: Option<OpId>) {
         self.body.detach(op);
         match before {
@@ -371,8 +314,6 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.listener.moved(self.body, op);
     }
 
-    /// `inlineBlockBefore`: `source`'s arguments become `args`, its ops move before `before` in
-    /// `dest`, and `source` is erased.
     pub fn inline_block_before(&mut self, source: BlockId, dest: BlockId, before: Option<OpId>, args: &[ValueId]) {
         for (a, v) in self.body[source].args.clone().into_iter().zip(args) {
             self.replace_all_uses(a, *v);
@@ -386,12 +327,10 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.erase_block(source);
     }
 
-    /// `mergeBlocks`: `source` appended to `dest`.
     pub fn merge_blocks(&mut self, source: BlockId, dest: BlockId, args: &[ValueId]) {
         self.inline_block_before(source, dest, None, args);
     }
 
-    /// `inlineRegionBefore`: `region`'s blocks move into `into` before `before` (`None`: the end).
     pub fn inline_region_before(&mut self, region: RegionId, into: RegionId, before: Option<BlockId>) {
         let blocks = core::mem::take(&mut self.body[region].blocks);
         let at = before.map_or(self.body[into].blocks.len(), |b| self.body[into].blocks.iter().position(|x| *x == b).expect("block not in region"));
@@ -401,27 +340,22 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         }
     }
 
-    /// Tells the listener `op` was inserted (it is already placed).
     pub fn notify_inserted(&mut self, op: OpId) {
         self.listener.inserted(self.body, op);
     }
 
-    /// Splits `block` before `at`: the ops from `at` on move to a new block right after it.
     pub fn split_block(&mut self, block: BlockId, at: OpId) -> BlockId {
         let region = self.body[block].parent.expect("block not in a region");
         let new = self.body.add_block(region, &[]);
         let pos = self.body[region].blocks.iter().position(|b| *b == block).expect("block not in region");
         self.body[region].blocks.pop();
         self.body[region].blocks.insert(pos + 1, new);
-        // Moved in one go; the listener still hears of each op, as `RewriterBase::splitBlock` tells it.
         for o in self.body.splice(block, Some(at), new, None) {
             self.listener.moved(self.body, o);
         }
         new
     }
 
-    /// `createBlock`: a new block with arguments of `types` at the end of `region`; the
-    /// insertion point moves to its end.
     pub fn create_block(&mut self, region: RegionId, types: &[Type<'a>]) -> BlockId {
         let args: Vec<_> = types.iter().map(|t| (t.clone(), None)).collect();
         let b = self.body.add_block(region, &args);
@@ -429,15 +363,12 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         b
     }
 
-    /// Tells the listener `op` was modified, without changing it.
     pub fn touched(&mut self, op: OpId) {
         self.listener.modified(self.body, op);
     }
 }
 
-/// ⭐ A rewrite pattern rooted at an op name (`None`: any op).
 pub trait Pattern: Send + Sync {
-    /// The debug name `enable-patterns` / `disable-patterns` match against.
     fn name(&self) -> &str;
 
     fn root(&self) -> Option<&str>;
@@ -446,22 +377,15 @@ pub trait Pattern: Send + Sync {
         1
     }
 
-    /// `matchAndRewrite`: whether it matched (and so rewrote).
     fn rewrite(&self, rw: &mut Rewriter<'_, '_>, op: OpId) -> bool;
 }
 
-/// Where a pattern is tried: benefit (highest first), then op-specific before any-op, then the
-/// order it was added in.
 type Place = ((core::cmp::Reverse<u16>, bool), u32);
 
-/// Patterns ordered as `PatternApplicator` tries them: by benefit, highest first, stable. Kept
-/// per root op name (and the any-op ones apart), each list in that order, so
-/// [`PatternSet::for_op`] merges two lists instead of filtering them all.
 #[derive(Default)]
 pub struct PatternSet {
     by_root: BTreeMap<String, Vec<(Place, Box<dyn Pattern>)>>,
     any: Vec<(Place, Box<dyn Pattern>)>,
-    /// How many were added: the next one's place among equals.
     added: u32,
 }
 
@@ -470,7 +394,6 @@ impl PatternSet {
         self.add_boxed(Box::new(p))
     }
 
-    /// Goes after every pattern tried before it or alongside it (stable).
     pub fn add_boxed(&mut self, p: Box<dyn Pattern>) -> &mut Self {
         let place = ((core::cmp::Reverse(p.benefit()), p.root().is_none()), self.added);
         self.added += 1;
@@ -483,7 +406,6 @@ impl PatternSet {
         self
     }
 
-    /// Keeps the patterns `keep` accepts.
     pub fn retain(&mut self, keep: impl Fn(&dyn Pattern) -> bool) {
         self.any.retain(|p| keep(p.1.as_ref()));
         self.by_root.retain(|_, list| {
@@ -492,7 +414,6 @@ impl PatternSet {
         });
     }
 
-    /// The patterns for op `name`, in the order they are tried.
     pub fn for_op<'s>(&'s self, name: &str) -> impl Iterator<Item = &'s dyn Pattern> {
         let (mut own, mut any) = (self.by_root.get(name).map_or(&[][..], |l| &l[..]), &self.any[..]);
         core::iter::from_fn(move || {
@@ -515,7 +436,6 @@ impl PatternSet {
 }
 
 impl Body<'_> {
-    /// Blocks reachable from `entry` in post-order (successors in order), as `llvm::post_order`.
     pub fn post_order(&self, entry: BlockId) -> Vec<BlockId> {
         let mut out = Vec::new();
         let mut seen = alloc::collections::BTreeSet::from([entry]);
@@ -534,22 +454,18 @@ impl Body<'_> {
         out
     }
 
-    /// Every use of `v` points nowhere any more (its users are about to go too).
     pub fn drop_value_uses(&mut self, v: ValueId) {
         for u in core::mem::take(&mut self[v].uses) {
-            // The operand stays, dangling; its owner is being erased.
             let _ = u;
         }
     }
 
-    /// `dropAllUses` on `op`'s results.
     pub fn drop_result_uses(&mut self, op: OpId) {
         for r in self[op].results.clone() {
             self.drop_value_uses(r);
         }
     }
 
-    /// Takes `block` out of its region (it must be empty of uses).
     pub fn remove_block(&mut self, block: BlockId) {
         if let Some(r) = self[block].parent.take() {
             self[r].blocks.retain(|b| *b != block);
@@ -561,10 +477,8 @@ impl Body<'_> {
     }
 }
 
-/// What a lowering needs of its rewriter: the greedy one and the conversion one both do.
 pub trait Build<'a> {
     fn body(&self) -> &Body<'a>;
-    /// A new op at the insertion point.
     fn make(&mut self, data: OpData<'a>, types: &[Type<'a>]) -> OpId;
     fn replace(&mut self, op: OpId, values: &[ValueId]);
     fn remove(&mut self, op: OpId);
@@ -612,15 +526,6 @@ impl<'a> Build<'a> for crate::ConversionRewriter<'_, 'a, '_> {
     }
 }
 
-// ============================================================================================
-// ⭐ `applyPatternsGreedily`, as `GreedyPatternRewriteDriver.cpp` (region driver).
-//
-// Each iteration: collect the ops (top-down: preorder, then reversed; else postorder),
-// uniquing and hoisting constants on the way (`OperationFolder::insertKnownConstant`); erase
-// unreachable blocks; pop ops — erase if trivially dead, else fold, else try the patterns;
-// then simplify regions. Repeat while anything changed, up to `max_iterations`.
-
-/// `GreedySimplifyRegionLevel`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegionSimplify {
     Disabled,
@@ -640,12 +545,10 @@ impl core::str::FromStr for RegionSimplify {
     }
 }
 
-/// `GreedyRewriteConfig`.
 #[derive(Debug, Clone, Copy)]
 pub struct GreedyConfig {
     pub top_down: bool,
     pub region_simplify: RegionSimplify,
-    /// `None`: no limit.
     pub max_iterations: Option<u64>,
     pub max_rewrites: Option<u64>,
     pub fold: bool,
@@ -654,12 +557,10 @@ pub struct GreedyConfig {
 
 impl Default for GreedyConfig {
     fn default() -> Self {
-        // `GreedyRewriteConfig` 的缺省是 Aggressive（合并相同的块）；canonicalize pass 的选项缺省才是 normal
         Self { top_down: false, region_simplify: RegionSimplify::Aggressive, max_iterations: Some(10), max_rewrites: None, fold: true, cse_constants: true }
     }
 }
 
-/// The worklist: pushing an op already there does nothing; pops come from the back.
 #[derive(Default)]
 struct Worklist {
     list: Vec<Option<OpId>>,
@@ -708,14 +609,12 @@ impl Worklist {
     }
 }
 
-/// The driver's listener: keeps the worklist in step with the IR.
 struct Tracker {
     worklist: Worklist,
     scope: RegionId,
 }
 
 impl Tracker {
-    /// `addToWorklist`: `op` and its ancestors, if it is inside the scope.
     fn add(&mut self, body: &Body<'_>, op: OpId) {
         let mut chain = Vec::new();
         let mut at = op;
@@ -730,7 +629,6 @@ impl Tracker {
         }
     }
 
-    /// The defining ops of `op`'s operands that have at most one other user.
     fn add_operands(&mut self, body: &Body<'_>, op: OpId) {
         for v in &body[op].operands {
             let Some(def) = body.def_op(*v) else { continue };
@@ -769,10 +667,8 @@ impl<'a> Listener<'a> for Tracker {
     }
 }
 
-/// `OperationFolder`'s constant table for one iteration.
 #[derive(Default)]
 struct Folder<'a> {
-    /// (insertion region, dialect, value, type) ⇒ the constant kept.
     known: Vec<(RegionId, String, Attribute<'a>, Type<'a>, OpId)>,
 }
 
@@ -781,7 +677,6 @@ impl<'a> Folder<'a> {
         self.known.iter().any(|k| k.4 == op)
     }
 
-    /// `insertKnownConstant`: false when `op` was a duplicate, now replaced and erased.
     fn insert(&mut self, rw: &mut Rewriter<'_, 'a>, op: OpId, value: Attribute<'a>) -> bool {
         let block = rw.body[op].parent.expect("placed");
         let prev_owned = |f: &Self, b: &Body<'a>| {
@@ -825,7 +720,6 @@ impl<'a> Folder<'a> {
 }
 
 impl<'a> Body<'a> {
-    /// `getInsertionRegion`: where constants for an op in `block` go.
     pub fn insertion_region(&self, mut block: crate::BlockId) -> RegionId {
         loop {
             let region = self[block].parent.expect("block not in a region");
@@ -837,8 +731,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `applyOpPatternsGreedily(ops, patterns)`: one pass over a worklist seeded with `ops`,
-    /// scoped to their closest common region.
     pub fn apply_op_patterns_greedily(&mut self, ops: &[OpId], patterns: &PatternSet) {
         let regions = |op: OpId| {
             let mut out = Vec::new();
@@ -857,10 +749,6 @@ impl<'a> Body<'a> {
         self.process(&mut tracker, patterns, &GreedyConfig::default());
     }
 
-    /// `walkAndApplyPatterns(op, patterns)`: one post-order walk of the ops nested in `op`,
-    /// each tried once against `patterns` (highest benefit first, the first that matches
-    /// wins); no folding, no dead-code erasure, and ops a rewrite creates are not visited.
-    /// Whether a pattern matched (a pass that walks again until nothing does).
     pub fn walk_and_apply(&mut self, op: OpId, patterns: &PatternSet) -> bool {
         let mut matched = false;
         let mut ops = Vec::new();
@@ -885,7 +773,6 @@ impl<'a> Body<'a> {
         matched
     }
 
-    /// ⭐ `applyPatternsGreedily(region, patterns, config)`; whether it converged.
     pub fn apply_greedily(&mut self, region: RegionId, patterns: &PatternSet, config: &GreedyConfig) -> bool {
         let mut tracker = Tracker { worklist: Worklist::default(), scope: region };
         let mut iteration = 0u64;
@@ -911,8 +798,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// The initial walk (preorder when top-down, else postorder): every op goes on the
-    /// worklist, but a constant that duplicates a known one is replaced by it and skipped.
     fn collect(&mut self, region: RegionId, config: &GreedyConfig, tracker: &mut Tracker, folder: &mut Folder<'a>) {
         for b in self[region].blocks.clone() {
             for op in self.block_ops(b) {
@@ -931,7 +816,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// Uniques constant `op` in the folder; true when it was a duplicate (and is gone).
     fn duplicate_constant(&mut self, op: OpId, config: &GreedyConfig, tracker: &mut Tracker, folder: &mut Folder<'a>) -> bool {
         let Some(value) = config.cse_constants.then(|| self.constant_value(op)).flatten() else { return false };
         !folder.insert(&mut Rewriter::new(self, tracker), op, value)
@@ -943,7 +827,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `processWorklist`; whether anything changed.
     fn process(&mut self, tracker: &mut Tracker, patterns: &PatternSet, config: &GreedyConfig) -> bool {
         let mut changed = false;
         let mut rewrites = 0u64;
@@ -985,8 +868,6 @@ impl<'a> Body<'a> {
         changed
     }
 
-    /// Materializes `results` before `op` and replaces it; false (nothing changed) when a
-    /// constant cannot be materialized.
     fn replace_folded(&mut self, op: OpId, results: Vec<Folded<'a>>, tracker: &mut Tracker) -> bool {
         let name = self[op].name.clone();
         let types = self.types(&self[op].results.clone());
@@ -1017,8 +898,6 @@ impl<'a> Body<'a> {
 }
 
 impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
-    /// `OpBuilder::clone`: a copy at the insertion point; the listener hears of it and of every
-    /// op inside it.
     pub fn clone(&mut self, op: OpId, map: &mut Mapping) -> OpId {
         let c = self.body.clone_op(op, map);
         self.insert(c);
@@ -1028,7 +907,6 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
         c
     }
 
-    /// `cloneRegionBefore`.
     pub fn clone_region_before(&mut self, from: crate::RegionId, into: crate::RegionId, before: Option<crate::BlockId>, map: &mut Mapping) {
         let made = self.body.clone_region_into(from, into, before, map);
         for b in made {
@@ -1040,8 +918,6 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
         }
     }
 
-    /// `memoryslot::replaceWithNewResults`: `op` rebuilt with results of `extra` types added at
-    /// the end, its regions moved over; the old results' uses go to the new ones.
     pub fn with_extra_results(&mut self, op: OpId, extra: &[Type<'a>]) -> OpId {
         let d = &self.body[op];
         let types: Vec<_> = d.results.iter().map(|r| self.body[*r].ty.clone()).chain(extra.iter().cloned()).collect();
@@ -1065,7 +941,6 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
         new
     }
 
-    /// `eraseOpResults`: `op` rebuilt without the results in `erase`, its regions moved over.
     pub fn erase_op_results(&mut self, op: OpId, erase: &[usize]) -> OpId {
         let d = &self.body[op];
         let types: Vec<_> = d.results.iter().enumerate().filter(|(i, _)| !erase.contains(i)).map(|(_, r)| self.body[*r].ty.clone()).collect();
@@ -1089,9 +964,6 @@ impl<'r, 'a, L: crate::Listener<'a> + ?Sized> crate::Rewriter<'r, 'a, L> {
     }
 }
 
-
-/// `FusedLoc::get(locs)` (no metadata) printed: a fused location without metadata is taken apart, unknown ones go,
-/// duplicates go (the first kept); none left is `unknown`, one left is itself, else `fused[a, b, …]`.
 pub fn fused_loc(locs: &[Option<&str>]) -> String {
     let mut out: Vec<&str> = Vec::new();
     let mut parts: Vec<&str> = Vec::new();
@@ -1114,7 +986,6 @@ pub fn fused_loc(locs: &[Option<&str>]) -> String {
     }
 }
 
-/// The top-level comma-separated items of a location list (strings, parens and brackets nest).
 fn split_top(s: &str) -> Vec<&str> {
     let (mut out, mut depth, mut start, mut quoted, mut escaped) = (Vec::new(), 0i32, 0usize, false, false);
     for (i, c) in s.char_indices() {

@@ -1,5 +1,3 @@
-//! `index` ⇒ `spirv`, as `IndexToSPIRV.cpp`.
-
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Type};
@@ -10,28 +8,23 @@ use crate::{ArithSpirvOptions, ArithToSpirv, Const, ConversionRewriter, OpData, 
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The index ⇒ spirv patterns (`populateIndexToSPIRVPatterns`).
 pub struct IndexToSpirv;
 
 impl IndexToSpirv {
-    /// `spirv.<name>` of `ops`, typed `ty`.
     fn op<'a>(cr: &mut Cr<'_, 'a, '_>, name: &str, ops: &[ValueId], ty: &Type<'a>) -> ValueId {
         cr.build(OpData::build(name).operands(ops), ty.clone())
     }
 
-    /// An integer `spirv.Constant` of `ty`.
     fn int<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>, v: i64) -> ValueId {
         let w = ty.bit_width().unwrap_or(32);
         cr.spirv_const(ty.clone(), Const::int(mlirformat::ApInt::new(w, i128::from(v)), ty.clone()).into())
     }
 
-    /// The lhs, the rhs and their type.
     fn binary<'a>(cr: &Cr<'_, 'a, '_>, operands: &[Vec<ValueId>]) -> Option<(ValueId, ValueId, Type<'a>)> {
         let [n, m] = Cr::one_to_one(operands)?[..] else { return None };
         Some((n, m, cr.rw.body[n].ty.clone()))
     }
 
-    /// The converted `index`.
     fn index<'a>(cr: &Cr<'_, 'a, '_>) -> Option<Type<'a>> {
         cr.converted(&Type::Index)
     }
@@ -39,7 +32,6 @@ impl IndexToSpirv {
 
 #[patterns(converter)]
 impl IndexToSpirv {
-    /// `spirv::ElementwiseOpPattern`s.
     #[convert("index.add", "index.sub", "index.mul", "index.divs", "index.divu", "index.rems", "index.remu", "index.maxs", "index.maxu", "index.mins", "index.minu", "index.shl", "index.shrs", "index.shru", "index.and", "index.or", "index.xor")]
     fn elementwise(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let spirv = match &*cr.rw.body[op].name {
@@ -64,7 +56,6 @@ impl IndexToSpirv {
         ArithToSpirv::elementwise(cr, op, operands, spirv, ArithSpirvOptions { no_wrap: false, emulate_floats: true })
     }
 
-    /// The OpenCL min / max, where the target has no GLSL ones.
     #[convert("index.maxs", "index.maxu", "index.mins", "index.minu")]
     fn min_max_cl(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let spirv = match &*cr.rw.body[op].name {
@@ -76,7 +67,6 @@ impl IndexToSpirv {
         ArithToSpirv::elementwise(cr, op, operands, spirv, ArithSpirvOptions { no_wrap: false, emulate_floats: true })
     }
 
-    /// `ConvertIndexConstantBoolOpPattern`.
     #[convert("index.bool.constant")]
     fn bool_constant(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(value) = cr.rw.body[op].get("value").cloned() else { return false };
@@ -84,7 +74,6 @@ impl IndexToSpirv {
         true
     }
 
-    /// `ConvertIndexConstantOpPattern`: the value truncated to the index bitwidth.
     #[convert("index.constant")]
     fn constant(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(ty) = Self::index(cr) else { return false };
@@ -95,7 +84,6 @@ impl IndexToSpirv {
         true
     }
 
-    /// `ConvertIndexCeilDivSPattern`.
     #[convert("index.ceildivs")]
     fn ceildivs(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some((n, m, t)) = Self::binary(cr, operands) else { return false };
@@ -116,7 +104,6 @@ impl IndexToSpirv {
         true
     }
 
-    /// `ConvertIndexCeilDivUPattern`.
     #[convert("index.ceildivu")]
     fn ceildivu(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some((n, m, t)) = Self::binary(cr, operands) else { return false };
@@ -129,7 +116,6 @@ impl IndexToSpirv {
         true
     }
 
-    /// `ConvertIndexFloorDivSPattern`.
     #[convert("index.floordivs")]
     fn floordivs(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some((n, m, t)) = Self::binary(cr, operands) else { return false };
@@ -148,7 +134,6 @@ impl IndexToSpirv {
         true
     }
 
-    /// `ConvertIndexCast<CastSOp / CastUOp>`: `index` on either side is the converted index.
     #[convert("index.casts", "index.castu")]
     fn cast(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(index) = Self::index(cr) else { return false };
@@ -167,11 +152,9 @@ impl IndexToSpirv {
         true
     }
 
-    /// `ConvertIndexCmpPattern`.
     #[convert("index.cmp")]
     fn cmp(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("pred") else { return false };
-        // `#index<cmp_predicate eq>`.
         let body = ext.body.as_deref().unwrap_or("").trim_matches(|c| c == '<' || c == '>');
         let name = match body.rsplit(' ').next().unwrap_or(body) {
             "eq" => "spirv.IEqual",
@@ -191,7 +174,6 @@ impl IndexToSpirv {
         true
     }
 
-    /// `ConvertIndexSizeOf`: the index bitwidth (as upstream has it, in bits).
     #[convert("index.sizeof")]
     fn sizeof(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(ty) = Self::index(cr) else { return false };

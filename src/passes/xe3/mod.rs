@@ -1,6 +1,3 @@
-//! The `xe3` passes: a kernel's registers, its control flow, its software scoreboard and branches, its padding; the
-//! batches' ends; the image's layout.
-
 mod xe3_control;
 mod xe3_end;
 mod xe3_layout;

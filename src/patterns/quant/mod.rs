@@ -1,16 +1,9 @@
-//! `quant` folds (`QuantOps.cpp`): a cast undoing the cast before it gives back that cast's
-//! input.
-
 use crate::{Body, Fold, Folded, OpId};
 
-/// The `quant` casts that fold, each with the cast it undoes.
 #[derive(Clone, Copy)]
 enum Cast {
-    /// `quant.dcast` of a `quant.qcast`: always the same type back.
     Dequantize,
-    /// `quant.qcast` of a `quant.dcast`, when the types agree.
     Quantize,
-    /// `quant.scast` of a `quant.scast`, when the types agree.
     Storage,
 }
 
@@ -21,7 +14,6 @@ impl Cast {
         Self::TABLE.iter().find(|(n, _)| *n == name).map(|(_, c)| *c)
     }
 
-    /// The op name of the cast this one undoes.
     fn undoes(self) -> &'static str {
         match self {
             Cast::Dequantize => "quant.qcast",
@@ -31,7 +23,6 @@ impl Cast {
     }
 }
 
-/// `quant`'s folds.
 pub struct QuantCanon;
 
 impl QuantCanon {

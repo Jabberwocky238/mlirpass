@@ -1,5 +1,3 @@
-//! `tosa` ⇒ `arith`, as `TosaToArith.cpp`: constants and `apply_scale`.
-
 use alloc::format;
 use alloc::vec::Vec;
 
@@ -12,15 +10,12 @@ use crate::{ApInt, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `apply_scale` builders over a result (container) type.
 struct Sc<'c, 'r, 'a, 'p> {
     cr: &'c mut Cr<'r, 'a, 'p>,
-    /// The result type.
     rt: Type<'a>,
 }
 
 impl<'a> Sc<'_, '_, 'a, '_> {
-    /// `matchContainerType`.
     fn container(elem: Type<'a>, like: &Type<'a>) -> Type<'a> {
         match like {
             Type::Shaped(s) => Type::Shaped(alloc::boxed::Box::new(Shaped { elem: elem.into(), ..*s.clone() })),
@@ -28,7 +23,6 @@ impl<'a> Sc<'_, '_, 'a, '_> {
         }
     }
 
-    /// `getConstantValue`.
     fn cst(&mut self, ty: &Type<'a>, v: i64) -> ValueId {
         let attr: Attribute<'a> = match ty {
             Type::Shaped(s) => {
@@ -79,7 +73,6 @@ impl<'a> Sc<'_, '_, 'a, '_> {
         self.same("arith.shli", a, b)
     }
 
-    /// `>>`: the arithmetic shift.
     fn shr(&mut self, a: ValueId, b: ValueId) -> ValueId {
         self.same("arith.shrsi", a, b)
     }
@@ -89,7 +82,6 @@ impl<'a> Sc<'_, '_, 'a, '_> {
     }
 }
 
-/// The `apply_scale` rounding: `Some(true)` double, `Some(false)` single, else unsupported.
 struct Rounding(Option<bool>);
 
 impl FromOp for Rounding {
@@ -103,11 +95,9 @@ impl FromOp for Rounding {
     }
 }
 
-/// `2^30`, for the double rounding.
 const HALF_ROUND: i64 = 0x4000_0000;
 const MINUS_HALF_ROUND: i64 = -0x4000_0000;
 
-/// The tosa ⇒ arith patterns.
 pub struct TosaToArith;
 
 #[patterns(rescale: bool, use_32: bool, builder = Self::sc)]
@@ -120,13 +110,11 @@ impl TosaToArith {
         true
     }
 
-    /// The builder over the op's result type.
     fn sc<'c, 'r, 'a, 'p>(cr: &'c mut Cr<'r, 'a, 'p>, op: OpId) -> Sc<'c, 'r, 'a, 'p> {
         let rt = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
         Sc { cr, rt }
     }
 
-    /// `ApplyScaleGenericOpConverter`.
     #[convert("tosa.apply_scale", benefit = 100, when = rescale)]
     #[ops(s)]
     fn generic(s: &mut Sc<'_, '_, '_, '_>, value: ValueId, mult: ValueId, shift: ValueId, round: Rounding) -> Option<ValueId> {
@@ -153,7 +141,6 @@ impl TosaToArith {
         Some(s.op("arith.trunci", &[mul >> shift64], &i32t))
     }
 
-    /// `ApplyScale32BitOpConverter`.
     #[convert("tosa.apply_scale", benefit = 200, when = rescale && use_32)]
     #[ops(s)]
     fn bits32(s: &mut Sc<'_, '_, '_, '_>, value: ValueId, mult: ValueId, shift: ValueId, round: Rounding) -> Option<ValueId> {
@@ -201,5 +188,4 @@ impl TosaToArith {
         let result = low + high;
         Some(if rt.element_type() != &Type::int(32) { s.op("arith.trunci", &[result], &rt) } else { result })
     }
-
 }

@@ -1,6 +1,3 @@
-//! Math as device library calls, as `OpToFuncCallLowering.h` with `ScalarizeVectorOpLowering`:
-//! shared by the NVVM (`__nv_*`) and ROCDL (`__ocml_*`) lowerings.
-
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -11,7 +8,6 @@ use crate::{ConversionRewriter, Fmf, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The functions an op calls per operand type (empty: none).
 #[derive(Debug, Clone, Copy)]
 pub struct LibFns {
     pub f32: &'static str,
@@ -30,7 +26,6 @@ impl LibFns {
         Self { f32, f64, f32_approx, f16: "", i32: "" }
     }
 
-    /// f32, f64 and f16 functions (`populateOpPatterns` of MathToROCDL).
     pub const fn half(f32: &'static str, f64: &'static str, f16: &'static str) -> Self {
         Self { f32, f64, f32_approx: "", f16, i32: "" }
     }
@@ -39,7 +34,6 @@ impl LibFns {
         Self { f32: "", f64: "", f32_approx: "", f16: "", i32 }
     }
 
-    /// `getFunctionName`.
     fn name(&self, t: &Type<'_>, approx: bool) -> &'static str {
         match t {
             Type::Float(FloatKind::F16) => self.f16,
@@ -53,7 +47,6 @@ impl LibFns {
 }
 
 impl<'a> Cr<'_, 'a, '_> {
-    /// The nearest function-like op around `op`.
     pub fn parent_function(&self, op: OpId) -> Option<OpId> {
         let b = &*self.rw.body;
         let mut at = b.parent_op(op);
@@ -66,7 +59,6 @@ impl<'a> Cr<'_, 'a, '_> {
         None
     }
 
-    /// `SymbolTable::lookupNearestSymbolFrom` of an `llvm.func`.
     fn nearest_llvm_func(&self, op: OpId, name: &str) -> Option<OpId> {
         let b = &*self.rw.body;
         let mut at = b.parent_op(op);
@@ -79,7 +71,6 @@ impl<'a> Cr<'_, 'a, '_> {
         None
     }
 
-    /// `appendOrGetFuncOp`: a declaration right before the enclosing function.
     pub fn declare_before_function(&mut self, op: OpId, name: &str, ty: Type<'a>) -> Option<()> {
         if self.nearest_llvm_func(op, name).is_some() {
             return Some(());
@@ -97,7 +88,6 @@ impl<'a> Cr<'_, 'a, '_> {
         Some(())
     }
 
-    /// `scalarizeVectorOpHelper`: `op` once per element of 1-d `vty`.
     fn scalarize_1d(&mut self, op: OpId, operands: &[ValueId], vty: Type<'a>) -> ValueId {
         let Type::Shaped(s) = &vty else { return operands[0] };
         let n: i64 = s.dims().unwrap_or_default().iter().product();
@@ -122,8 +112,6 @@ impl<'a> Cr<'_, 'a, '_> {
         r
     }
 
-    /// `impl::scalarizeVectorOp`: a vector op unrolled into scalar ones (through the outer
-    /// dimensions of an n-d one).
     pub fn scalarize(&mut self, op: OpId, operands: &[ValueId]) -> bool {
         let types = self.rw.body.types(operands);
         if types.iter().any(|t| matches!(t, Type::Shaped(s) if s.kind == ShapedKind::Vector)) {
@@ -141,8 +129,6 @@ impl<'a> Cr<'_, 'a, '_> {
         false
     }
 
-    /// `OpToFuncCallLowering` (after [`scalarize`](Self::scalarize), a pattern of its own): `op` as a call of the function `fns` names for its operand
-    /// type, f16 / bf16 through f32, an `i1` result through an `i32` one.
     pub fn lib_call(&mut self, op: OpId, operands: &[ValueId], fns: &LibFns) -> bool {
         let res = self.rw.body[self.rw.body[op].results[0]].ty.clone();
         let boolean = matches!(res, Type::Integer { width: 1, .. });
@@ -184,7 +170,6 @@ impl<'a> Cr<'_, 'a, '_> {
     }
 }
 
-/// The first `"file":line:col` in raw location text (`findInstanceOfOrUnknown<FileLineColLoc>`).
 pub fn file_line_col(loc: &str) -> Option<String> {
     let b = loc.as_bytes();
     let mut i = 0;

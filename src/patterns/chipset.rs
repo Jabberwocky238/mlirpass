@@ -1,6 +1,3 @@
-//! `amdgpu::Chipset`: the AMD GPU a lowering targets (`gfx<major><minor><stepping>`).
-
-/// `amdgpu::Chipset`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Chipset {
     pub major: u32,
@@ -11,7 +8,6 @@ pub struct Chipset {
 impl TryFrom<&str> for Chipset {
     type Error = ();
 
-    /// `Chipset::parse`: `gfx`, a decimal major, then one hex digit each of minor and stepping.
     fn try_from(name: &str) -> Result<Self, ()> {
         let n = name.strip_prefix("gfx").ok_or(())?;
         if n.len() < 3 || !n.is_ascii() {
@@ -28,7 +24,6 @@ impl Chipset {
         Self { major, minor, stepping }
     }
 
-    /// `HasDot1Insts` (and `HasDot2Insts`, the same chips).
     pub fn has_dot1(self) -> bool {
         match self.major {
             9 => self >= Chipset::new(9, 0, 6),
@@ -38,32 +33,26 @@ impl Chipset {
         }
     }
 
-    /// `HasDot7Insts`.
     pub fn has_dot7(self) -> bool {
         self.major >= 11 || self.has_dot1()
     }
 
-    /// `HasDot8Insts`.
     pub fn has_dot8(self) -> bool {
         self.major >= 11
     }
 
-    /// `HasDot9Insts`.
     pub fn has_dot9(self) -> bool {
         self.major == 11 || (self.major == 12 && self.minor == 0)
     }
 
-    /// `HasDot10Insts`.
     pub fn has_dot10(self) -> bool {
         self.has_dot9() || self.has_dot1()
     }
 
-    /// `HasDot11Insts`.
     pub fn has_dot11(self) -> bool {
         (self.major == 11 && self.minor == 7) || (self.major == 12 && self.minor == 0)
     }
 
-    /// `HasDot12Insts`.
     pub fn has_dot12(self) -> bool {
         self == Chipset::new(9, 5, 0) || self.has_dot9()
     }

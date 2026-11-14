@@ -1,9 +1,3 @@
-//! ⭐ The aliases `mlir-opt` prints (`AliasInitializer`): `#map` for an affine map, `#set` for an
-//! integer set (the builtin dialect's), and the dialect attributes that name themselves
-//! (`OpAsmAttrInterface::getAlias`: `#loop_unroll`, `#di_file`, `#sparse`, ...). Aliases are
-//! inlined on import ([`Body::import`]); printing makes them again, named and ordered as the C++
-//! printer does.
-
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::string::String;
@@ -14,11 +8,8 @@ use mlirformat::Attribute;
 
 use crate::{Body, OpId};
 
-/// The builtin attributes with an alias: how their text starts, and the alias.
 const BUILTIN: [(&str, &str); 2] = [("affine_map<", "map"), ("affine_set<", "set")];
 
-/// The dialect attributes whose alias is their mnemonic (`genMnemonicAlias`), or another name
-/// (`sparse_tensor.encoding`): the attribute's name, and the alias.
 const DIALECT: &[(&str, &str)] = &[
     ("llvm.access_group", "access_group"),
     ("llvm.alias_scope", "alias_scope"),
@@ -60,16 +51,12 @@ const DIALECT: &[(&str, &str)] = &[
     ("sparse_tensor.encoding", "sparse"),
 ];
 
-/// One aliased attribute: its text, its alias, and how deep aliases nest in it (1: none).
 struct Seen {
     text: String,
     alias: &'static str,
     depth: u32,
 }
 
-/// The aliased attributes of one printing, in the order the printer first visits them
-/// (`AliasInitializer::visit`: an attribute before those inside it); `taken`: alias names already
-/// defined.
 pub(crate) struct Aliases {
     seen: Vec<Seen>,
     index: BTreeMap<String, usize>,
@@ -81,7 +68,6 @@ impl Aliases {
         Self { seen: Vec::new(), index: BTreeMap::new(), taken: taken.into_iter().collect() }
     }
 
-    /// Past the string literal opening at `i`.
     fn skip_string(bytes: &[u8], mut i: usize) -> usize {
         i += 1;
         while i < bytes.len() && bytes[i] != b'"' {
@@ -90,8 +76,6 @@ impl Aliases {
         i + 1
     }
 
-    /// The end of the `<...>` opening at `i`: nested, string literals skipped; an `->` or a
-    /// `>=` closes nothing.
     fn close(bytes: &[u8], mut i: usize) -> Option<usize> {
         let mut depth = 0;
         while i < bytes.len() {
@@ -114,7 +98,6 @@ impl Aliases {
         None
     }
 
-    /// The outermost aliased attributes in `text`, outside string literals, with their aliases.
     fn spans(text: &str) -> Vec<(Range<usize>, &'static str)> {
         let bytes = text.as_bytes();
         let ident = |c: u8| c.is_ascii_alphanumeric() || b"_$.".contains(&c);
@@ -160,7 +143,6 @@ impl Aliases {
         out
     }
 
-    /// Visits an aliased attribute, then those inside it; its alias depth.
     fn visit_one(&mut self, text: &str, alias: &'static str) -> u32 {
         if let Some(&k) = self.index.get(text) {
             return self.seen[k].depth;
@@ -168,7 +150,6 @@ impl Aliases {
         let k = self.seen.len();
         self.index.insert(String::from(text), k);
         self.seen.push(Seen { text: String::from(text), alias, depth: 1 });
-        // What is inside the attribute: past its own name.
         let inner = text.find('<').map_or("", |s| &text[s + 1..]);
         let mut depth = 0;
         for (r, a) in Self::spans(inner) {
@@ -178,16 +159,12 @@ impl Aliases {
         depth + 1
     }
 
-    /// Visits the aliased attributes in `text`, in order.
     pub(crate) fn visit(&mut self, text: &str) {
         for (r, alias) in Self::spans(text) {
             self.visit_one(&text[r], alias);
         }
     }
 
-    /// The generic printer's order (`DummyAliasOperationPrinter::printGenericOp`): an op's
-    /// regions (each block's argument types, then its ops), its operand types, result types,
-    /// then its attributes, properties among them, sorted by name.
     pub(crate) fn visit_generic(&mut self, b: &Body<'_>, op: OpId) {
         for r in &b[op].regions {
             for blk in &b[*r].blocks {
@@ -202,12 +179,6 @@ impl Aliases {
         self.visit_own(b, op);
     }
 
-    /// [`visit_generic`](Self::visit_generic) of the root `op`, the ops of its blocks (the
-    /// functions) visited in parallel on `x`: each run of them by an `Aliases` of its own, which
-    /// gives its attributes in the order it first met them; those are then visited here in the
-    /// runs' order, which is the order a serial visit meets them in. The formatting of every
-    /// type and attribute, the cost, is the runs'; what is visited again is one text per
-    /// aliased attribute.
     pub(crate) fn visit_generic_in<X: moremath::Executor + Sync>(&mut self, b: &Body<'_>, op: OpId, x: &X) {
         for r in &b[op].regions {
             for blk in &b[*r].blocks {
@@ -232,15 +203,12 @@ impl Aliases {
         self.visit_own(b, op);
     }
 
-    /// The aliased attributes other `Aliases` saw, in their order and then each one's.
     fn replay(&mut self, runs: Vec<Vec<Seen>>) {
         for seen in runs.into_iter().flatten() {
             self.visit_one(&seen.text, seen.alias);
         }
     }
 
-    /// [`visit`](Self::visit) of `text`, its lines cut into runs scanned in parallel on `x`
-    /// (no aliased attribute spans a line).
     pub(crate) fn visit_in<X: moremath::Executor + Sync>(&mut self, text: &str, x: &X) {
         let runs: Vec<_> = Self::lines(text, x.threads() * 4)
             .map(|run| {
@@ -254,7 +222,6 @@ impl Aliases {
         self.replay(x.execute(runs));
     }
 
-    /// `text` cut at line ends into about `n` runs.
     fn lines(text: &str, n: usize) -> impl Iterator<Item = &str> {
         let step = text.len().div_ceil(n.max(1)).max(1);
         let mut rest = text;
@@ -269,7 +236,6 @@ impl Aliases {
         })
     }
 
-    /// What [`visit_generic`](Self::visit_generic) visits of `op` itself, after its regions.
     fn visit_own(&mut self, b: &Body<'_>, op: OpId) {
         for v in b[op].operands.iter().chain(&b[op].results) {
             self.visit(&format!("{}", b[*v].ty));
@@ -288,8 +254,6 @@ impl Aliases {
         }
     }
 
-    /// `uniqueAliasNameIndex`: `base`, else `base1`, `base2`, ... (`base_1` after a digit), the
-    /// first not taken.
     fn unique(&mut self, base: &str, counts: &mut BTreeMap<String, u32>) -> String {
         if self.taken.insert(String::from(base)) {
             return String::from(base);
@@ -305,7 +269,6 @@ impl Aliases {
         }
     }
 
-    /// `text` with each outermost aliased attribute by its alias.
     fn replace(text: &str, names: &BTreeMap<String, String>) -> String {
         let mut out = String::new();
         let mut at = 0;
@@ -323,10 +286,6 @@ impl Aliases {
         out + &text[at..]
     }
 
-    /// `initializeAliases` and the printing: the aliases sorted by depth, then name (stably: in
-    /// visiting order), numbered; their definitions first, each with the aliases inside it, then
-    /// `text` with each aliased attribute by its alias, its lines cut into runs replaced in
-    /// parallel on `x`.
     pub(crate) fn apply<X: moremath::Executor + Sync>(mut self, text: String, x: &X) -> String {
         if self.seen.is_empty() {
             return text;
@@ -346,7 +305,6 @@ impl Aliases {
         }
         let mut out = String::new();
         for (name, k) in defs {
-            // The definition prints what is inside it by alias, not itself.
             let full = &self.seen[k].text;
             let body = match full.find('<') {
                 Some(s) => format!("{}{}", &full[..=s], Self::replace(&full[s + 1..], &names)),

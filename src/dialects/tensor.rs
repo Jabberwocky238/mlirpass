@@ -1,5 +1,3 @@
-//! The `tensor` dialect's op interfaces.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -7,7 +5,6 @@ use mlirformat::{Dim, Type};
 
 use crate::{AffineExpr, AffineMap, Body, DialectInliner, InlineAll, MemrefOfr as Ofr, OpData, OpId, OpInterfaces, Rewriter};
 
-/// The `tensor` dialect.
 pub struct TensorDialect;
 
 impl OpInterfaces for TensorDialect {
@@ -15,7 +12,6 @@ impl OpInterfaces for TensorDialect {
         "tensor"
     }
 
-    /// `getAsmResultNames`: each op's fixed name (`%extracted_slice`, `%padded`, ...).
     fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
         let name = match &*b[op].name {
             "tensor.cast" => "cast",
@@ -40,7 +36,6 @@ impl OpInterfaces for TensorDialect {
         b.result_named(op, name)
     }
 
-    /// Ops inline, and into regions (`TensorInlinerInterface`).
     fn inliner(&self) -> Option<&dyn DialectInliner> {
         Some(&InlineAll { calls: false, regions: true })
     }
@@ -58,13 +53,10 @@ impl OpInterfaces for TensorDialect {
         let b = &*rw.body;
         let dims = b[*b[op].results.first()?].ty.dims()?;
         let sizes = match &*b[op].name {
-            // `EmptyOp`, `GenerateOp`, `SplatOp::reifyResultShapes`: the dynamic sizes are operands.
             "tensor.empty" | "tensor.generate" => Ofr::mixed(&dims, &b[op].operands),
             "tensor.splat" => Ofr::mixed(&dims, &b[op].operands[1..]),
-            // `ReifyExpandShapeOp`: `getMixedOutputShape`.
             "tensor.expand_shape" => Ofr::mixed(&b.dense_i64(op, "static_output_shape"), &b[op].operands[1..]),
             "tensor.extract_slice" => Self::slice_sizes(b, op, &dims),
-            // `InsertSliceOp::reifyResultShapes`: the destination's sizes.
             "tensor.insert_slice" => {
                 let dest = b[op].operands[1];
                 rw.mixed_sizes(dest)
@@ -79,8 +71,6 @@ impl OpInterfaces for TensorDialect {
 }
 
 impl TensorDialect {
-    /// `ExtractSliceOp::reifyResultShapes`: its sizes but those `getDroppedDims` drops (a 1 the
-    /// result does not keep).
     fn slice_sizes(b: &Body<'_>, op: OpId, result: &[i64]) -> Vec<Ofr> {
         let mut at = 0;
         b.slice_lists(op)[1]
@@ -94,8 +84,6 @@ impl TensorDialect {
             .collect()
     }
 
-    /// `PadOp::reifyResultShapes` (its own, not the `ReifyPadOp` external model): a dynamic size is
-    /// the source's plus both pads (`d0 + d1 + d2`, composed and folded).
     fn pad(rw: &mut Rewriter<'_, '_>, op: OpId, result: &[i64]) -> Vec<Ofr> {
         let src = rw.body[op].operands[0];
         let [low, high] = rw.body.pad_lists(op);
@@ -111,8 +99,6 @@ impl TensorDialect {
             .collect()
     }
 
-    /// `ConcatOp::reifyResultShapes`: the concatenated size is the sum of the inputs' (composed
-    /// and folded); another dynamic size is an input's static one, else the first input's dim.
     fn concat(rw: &mut Rewriter<'_, '_>, op: OpId, result: &[i64]) -> Vec<Ofr> {
         let dim = match rw.body[op].get("dim") {
             Some(mlirformat::Attribute::Int { lit, .. }) => lit.trim().parse::<usize>().unwrap_or(0),
@@ -142,8 +128,6 @@ impl TensorDialect {
             .collect()
     }
 
-    /// `ReifyCollapseShapeOp` (`getCollapsedOutputDimFromInputShape`): a dynamic size is the
-    /// product of the source's sizes in its group (`s0 * s1 * ..`, composed, not folded).
     fn collapse(rw: &mut Rewriter<'_, '_>, op: OpId, result: &[i64]) -> Vec<Ofr> {
         let src = rw.body[op].operands[0];
         let groups = rw.body.reassociation(op);
@@ -181,25 +165,15 @@ mod bufferizable {
     use super::TensorDialect;
     use crate::{buffer_of, buffer_type, replace_with_buffers, AffineExpr, AffineMap, AliasingValue, AnalysisState, Body, Bufferizable, BufferizationOptions, MemrefLayout, MemrefOfr as Ofr, MemrefReshape, OpData, OpId, Operand, RegionId, Rewriter, ValueId};
 
-    /// `tensor.cast`.
     struct Cast;
-    /// `tensor.collapse_shape`.
     struct Collapse;
-    /// `tensor.expand_shape`.
     struct Expand;
-    /// `tensor.dim`, `tensor.rank`: neither read nor write, alias nothing.
     struct Query;
-    /// `tensor.empty`.
     struct Empty;
-    /// `tensor.extract_slice`.
     struct ExtractSlice;
-    /// `tensor.extract`.
     struct Extract;
-    /// `tensor.from_elements`.
     struct FromElements;
-    /// `tensor.insert`.
     struct Insert;
-    /// `tensor.insert_slice`.
     struct InsertSlice;
 
     impl TensorDialect {
@@ -226,15 +200,12 @@ mod bufferizable {
         }
     }
 
-    /// `op`'s single result, replaced by a new op `data` of buffer type `ty`
-    /// (`replaceOpWithNewBufferizedOp`).
     fn replace_new<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, data: OpData<'a>, ty: Type<'a>) {
         let n = rw.create(data, &[ty]);
         let v = rw.body[n].results[0];
         replace_with_buffers(rw, op, &[v]);
     }
 
-    /// The memref type of `ty` with the memory space of buffer `of`.
     fn space_of<'a>(of: &Type<'a>) -> Option<mlirformat::Attribute<'a>> {
         match of {
             Type::Shaped(m) => m.extras.iter().find(|a| !a.is_layout()).cloned(),
@@ -255,7 +226,6 @@ mod bufferizable {
             vec![AliasingValue::equivalent(b[op].results[0])]
         }
 
-        /// The source buffer's layout (fully dynamic from or to an unranked tensor).
         fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
             let op = b.owner_of(v);
             let src = b[op].operands[0];
@@ -444,8 +414,6 @@ mod bufferizable {
         }
     }
 
-    /// `SubViewOp::inferRankReducedResultType` of `src` to `shape` (statics only, as
-    /// `dispatchIndexOpFoldResults`).
     fn rank_reduced_subview<'a>(_: &Body<'a>, src: &Type<'a>, shape: &[i64], lists: &[Vec<Ofr>; 3]) -> Type<'a> {
         let Type::Shaped(s) = src else { return src.clone() };
         let rank = lists[1].len();
@@ -500,14 +468,12 @@ mod bufferizable {
         }
     }
 
-    /// `memref.store value, buffer[indices]`.
     fn store(rw: &mut Rewriter<'_, '_>, value: ValueId, buffer: ValueId, indices: &[ValueId]) {
         let mut operands = vec![value, buffer];
         operands.extend(indices);
         rw.create(OpData::build("memref.store").operands(&operands).with("nontemporal", mlirformat::Attribute::Bool(false)), &[]);
     }
 
-    /// `createStores`: the elements in row-major order.
     fn stores(rw: &mut Rewriter<'_, '_>, dim: usize, buffer: ValueId, shape: &[i64], constants: &[ValueId], it: &mut impl Iterator<Item = ValueId>, indices: &mut Vec<ValueId>) {
         if dim == shape.len() - 1 {
             for i in 0..shape[dim] as usize {
@@ -543,8 +509,6 @@ mod bufferizable {
         }
     }
 
-    /// `tensor.parallel_insert_slice`: a copy into a subview of its destination, before the
-    /// `scf.forall.in_parallel` it sits in; always in place.
     struct ParallelInsertSlice;
 
     impl Bufferizable for ParallelInsertSlice {
@@ -577,8 +541,6 @@ mod bufferizable {
         }
     }
 
-    /// `tensor.generate`, `tensor.splat`, `tensor.concat`, `tensor.pad`: new allocations;
-    /// `tensor.reshape`: a `memref.reshape`.
     struct Generate;
     struct Splat;
     struct Concat;
@@ -586,7 +548,6 @@ mod bufferizable {
     struct Reshape;
 
     impl Rewriter<'_, '_> {
-        /// A `linalg.map` into `dest` with no inputs and an element-typed block argument.
         fn map_into(&mut self, dest: ValueId) -> (OpId, crate::BlockId) {
             let ty = self.body[dest].ty.clone();
             let elem = match &ty {
@@ -602,8 +563,6 @@ mod bufferizable {
             (m, blk)
         }
 
-        /// `lowerGenerateLikeOpBody`: `body` (one index argument per dimension, ending in
-        /// `tensor.yield`) moved into a `linalg.map` into `dest`, on `linalg.index`es.
         fn lower_generate_like(&mut self, dest: ValueId, body: RegionId) -> ValueId {
             let (m, blk) = self.map_into(dest);
             let rank = self.body[dest].ty.dims().unwrap_or_default().len();
@@ -623,7 +582,6 @@ mod bufferizable {
         }
     }
 
-    /// `memory space not implemented yet`, when the options give one.
     fn no_memory_space(o: &BufferizationOptions, b: &Body<'_>, op: OpId) -> Result<(), Error> {
         match &b[b[op].results[0]].ty {
             Type::Shaped(t) if o.default_memory_space(t).flatten().is_some() => Err(Error(alloc::format!("'{}' op memory space not implemented yet", b[op].name))),
@@ -674,7 +632,6 @@ mod bufferizable {
             false
         }
 
-        /// Each input copied into its subview of a new buffer, along the concatenated dim.
         fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
             let t = AnalysisState::new(o).allocate_tensor_for(rw, rw.body[op].results[0], false)?;
             no_memory_space(o, rw.body, op)?;
@@ -719,7 +676,6 @@ mod bufferizable {
             false
         }
 
-        /// The source's memory space, an identity layout.
         fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
             let op = b.owner_of(v);
             let src = crate::buffer_type_in(o, b, b[op].operands[0], stack)?;
@@ -731,8 +687,6 @@ mod bufferizable {
             Ok(BufferizationOptions::memref(t, None, space))
         }
 
-        /// A `linalg.map` of the padding body into a new tensor, the source inserted at the low
-        /// pads.
         fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
             let src = rw.body[op].operands[0];
             let r = rw.body[op].results[0];
@@ -751,7 +705,6 @@ mod bufferizable {
             }
             let t = AnalysisState::new(o).allocate_tensor_for(rw, r, false)?;
             let filled = rw.lower_generate_like(t, rw.body[op].regions[0]);
-            // Back before the pad: the body's lowering left the insertion point in the map.
             rw.set_before(op);
             let sizes = rw.mixed_sizes(src);
             let strides = vec![Ofr::C(1); sizes.len()];
@@ -775,7 +728,6 @@ mod bufferizable {
             if i == 0 { vec![AliasingValue::equivalent(b[op].results[0])] } else { Vec::new() }
         }
 
-        /// A static identity layout in the source's memory space.
         fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
             let op = b.owner_of(v);
             let src = crate::buffer_type_in(o, b, b[op].operands[0], stack)?;
@@ -787,7 +739,6 @@ mod bufferizable {
             Ok(BufferizationOptions::identity(t, space))
         }
 
-        /// A `memref.reshape`, of a copy when the source's layout is not the identity.
         fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
             let (source, shape) = (rw.body[op].operands[0], rw.body[op].operands[1]);
             let mut src = buffer_of(rw, o, source)?;
@@ -811,7 +762,6 @@ mod bufferizable {
     }
 
     impl Bufferizable for InsertSlice {
-        /// The source; the destination unless the slice covers it (`insertSliceOpRequiresRead`).
         fn reads(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> bool {
             if i == 0 {
                 return true;

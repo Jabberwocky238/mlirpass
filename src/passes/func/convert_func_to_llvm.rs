@@ -1,12 +1,9 @@
-//! `convert-func-to-llvm`.
-
 use crate::{llvm_target};
 use crate::{FuncToLlvm, LlvmConverter, LlvmOptions};
 use crate::pass;
 use mlirformat::Error;
 use crate::{Body, ConversionConfig, ConversionPatterns, Converter, Mode, OpId, Run};
 
-/// `convert-func-to-llvm`.
 #[pass("convert-func-to-llvm", on = "builtin.module")]
 pub struct ConvertFuncToLlvm {
     #[opt("use-bare-ptr-memref-call-conv")]

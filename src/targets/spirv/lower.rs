@@ -1,6 +1,3 @@
-//! What the lowerings to `spirv` share (`SPIRVConversion.cpp`, `MapMemRefStorageClassPass.cpp`):
-//! constants, builtin variables, and memref memory spaces as storage classes.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -10,7 +7,6 @@ use mlirformat::{Attribute, NamedAttr, Shaped, ShapedKind, Type};
 
 use crate::{Body, ConversionRewriter, OpData, OpId, ValueId};
 
-/// Which client API's memory spaces (`mapMemorySpaceToVulkanStorageClass` / `..OpenCL..`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientApi {
     Vulkan,
@@ -18,7 +14,6 @@ pub enum ClientApi {
 }
 
 impl ClientApi {
-    /// The storage class of memory space `space` (`None`: the default one).
     pub fn storage_class(self, space: Option<&Attribute<'_>>) -> Option<&'static str> {
         let Some(space) = space else {
             return Some(match self {
@@ -34,7 +29,6 @@ impl ClientApi {
         table.iter().find(|(k, _)| *k == n).map(|(_, s)| *s)
     }
 
-    /// `t` with every memref's memory space a storage class; `None` when one has no mapping.
     pub fn map_type<'a>(self, t: &Type<'a>) -> Option<Type<'a>> {
         Some(match t {
             Type::Shaped(s) if s.kind == ShapedKind::MemRef => {
@@ -65,9 +59,6 @@ impl ClientApi {
         })
     }
 
-    /// `convertMemRefTypesAndAttrs`: every type in and under `op` (values, block arguments,
-    /// attributes) with memory spaces as storage classes. The ops it cannot map stay, and
-    /// are returned (`failed to legalize memory space`).
     pub fn map_memory_spaces(self, body: &mut Body<'_>, op: OpId) -> Vec<OpId> {
         let mut failed = Vec::new();
         for o in body.ops_in(op) {
@@ -111,12 +102,10 @@ impl ClientApi {
 }
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
-    /// A `spirv.Constant` of `value` typed `ty`.
     pub fn spirv_const(&mut self, ty: Type<'a>, value: Attribute<'a>) -> ValueId {
         self.build(OpData::build("spirv.Constant").with("value", value), ty)
     }
 
-    /// The nearest symbol table above `op` and its first block.
     fn symbol_table_block(&self, op: OpId) -> Option<crate::BlockId> {
         let b = &self.rw.body;
         let mut at = b.parent_op(op);
@@ -129,8 +118,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         None
     }
 
-    /// `getBuiltinVariableValue`: the builtin variable (created at the start of the nearest
-    /// symbol table when missing, named `__builtin__<B>__`) loaded.
     pub fn builtin_value(&mut self, op: OpId, builtin: &str, int: Type<'a>) -> Option<ValueId> {
         let block = self.symbol_table_block(op)?;
         let existing = self.rw.body.ops(block).find(|o| {
@@ -164,13 +151,11 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         Some(self.build(OpData::build("spirv.Load").operands(&[addr]), loaded))
     }
 
-    /// A `#spirv.<mnemonic><case>` enum attribute.
     pub fn spirv_enum(mnemonic: &str, case: &str) -> Attribute<'a> {
         Attribute::dialect(&format!("spirv.{mnemonic}"), &format!("<{case}>"))
     }
 }
 
-/// `String` for symbol names.
 pub fn symbol_text(a: &Attribute<'_>) -> Option<String> {
     match a {
         Attribute::Str { lit, .. } => Some(String::from(&**lit)),

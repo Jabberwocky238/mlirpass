@@ -1,21 +1,3 @@
-//! ⭐ `mlirpass-fuzz`: random valid MLIR through mlirpass and `mlir-opt` 22.1.8 side by side.
-//!
-//! ```text
-//! gen    --seed N [shape]                       print one generated module
-//! diff   [--seeds A..B] [-p PIPELINE]... [shape] [--out DIR] [--jobs N] [--raw yes]
-//!                                               each seed's module through every pipeline on both
-//!                                               tools; a tally per pipeline, every non-exact case
-//!                                               saved under DIR/<verdict>/; both read the module
-//!                                               as mlir-opt prints it back, as the fixtures do
-//!                                               (`--raw yes`: as generated, to test reading too)
-//! bench  [--seed N] [-p PIPELINE]... [shape] [--reps N] [--raw yes]
-//!                                               one big module: mlirpass (parse / run / print,
-//!                                               serial and threaded) against mlir-opt (both ways)
-//! shape: --funcs N --ops N --depth N
-//! ```
-//!
-//! `mlir-opt` is `$MLIR_OPT`, else the one on `PATH`.
-
 mod bench;
 mod irgen;
 mod oracle;
@@ -29,7 +11,6 @@ use irgen::{Gen, Shape};
 use oracle::{Mlirpass, MlirOptTool, Verdict};
 use rng::Rng;
 
-/// What `diff` and `bench` run when no `-p` is given.
 const PIPELINES: &[&str] = &[
     "builtin.module(func.func(canonicalize))",
     "builtin.module(func.func(cse))",
@@ -42,7 +23,6 @@ const PIPELINES: &[&str] = &[
     "builtin.module(convert-scf-to-cf,convert-to-llvm,reconcile-unrealized-casts)",
 ];
 
-/// The command line: `--key value` pairs (a key may repeat), in order.
 struct Args(Vec<(String, String)>);
 
 impl Args {
@@ -78,7 +58,6 @@ impl Args {
         if given.is_empty() { PIPELINES.to_vec() } else { given }
     }
 
-    /// `A..B`.
     fn seeds(&self) -> Result<core::ops::Range<u64>, String> {
         let s = self.get("seeds", String::from("0..200"))?;
         let (a, b) = s.split_once("..").ok_or_else(|| format!("`--seeds {s}`: want A..B"))?;
@@ -86,7 +65,6 @@ impl Args {
     }
 }
 
-/// One saved case: a module, the pipeline, what went wrong.
 struct Case {
     seed: u64,
     pipeline: String,
@@ -95,7 +73,6 @@ struct Case {
 }
 
 impl Case {
-    /// `DIR/<verdict>/<seed>-<pipeline>.mlir`, the source with the case in a comment on top.
     fn save(&self, dir: &str, src: &str) -> std::io::Result<String> {
         let sub = format!("{dir}/{}", self.verdict.name());
         std::fs::create_dir_all(&sub)?;
@@ -107,14 +84,12 @@ impl Case {
     }
 }
 
-/// ⭐ `diff`: every seed through every pipeline, on as many threads as asked.
 fn diff(args: &Args) -> Result<(), String> {
     let (shape, pipelines, seeds) = (args.shape()?, args.pipelines(), args.seeds()?);
     let out = args.get("out", String::from(concat!(env!("CARGO_MANIFEST_DIR"), "/out")))?;
     let raw_text = args.get("raw", String::from("no"))? == "yes";
     let jobs = args.get("jobs", std::thread::available_parallelism().map_or(1, |n| n.get()))?;
     let (pass, tool) = (Mlirpass::default(), MlirOptTool::default());
-    // Panics are verdicts here, reported with their message: not printed as they happen.
     std::panic::set_hook(Box::new(|_| {}));
     let next = AtomicUsize::new(0);
     let found: Mutex<Vec<Case>> = Mutex::new(Vec::new());
@@ -124,8 +99,6 @@ fn diff(args: &Args) -> Result<(), String> {
             s.spawn(|| {
                 while let Some(seed) = Some(seeds.start + next.fetch_add(1, Ordering::Relaxed) as u64).filter(|s| seeds.contains(s)) {
                     let raw = Gen::new(&mut Rng::from(seed), shape).module();
-                    // As the fixtures are: what mlir-opt reads it as (literals spelled its way),
-                    // unless `--raw yes` asks for the text as generated.
                     let src = match raw_text {
                         true => Ok(raw.clone()),
                         false => tool.run(&raw, "builtin.module()", &[]).0,

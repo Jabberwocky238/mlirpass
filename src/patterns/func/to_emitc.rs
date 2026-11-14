@@ -1,5 +1,3 @@
-//! `func` ⇒ `emitc`, as `FuncToEmitC.cpp`.
-
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -11,13 +9,10 @@ use crate::{ConversionRewriter, OpData, OpId, SignatureConversion, ValueId, Visi
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The func ⇒ emitc patterns; their option is `lowerToCpp`: C++ leaves functions of several
-/// results alone (the translator returns a `std::tuple`), C packs the results in a `struct`.
 pub struct FuncToEmitc;
 
 #[patterns(converter, options = bool)]
 impl FuncToEmitc {
-    /// `CallOpConversion`.
     #[convert("func.call")]
     fn call(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], cpp: bool) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -52,7 +47,6 @@ impl FuncToEmitc {
         true
     }
 
-    /// `FuncOpConversion`.
     #[convert("func.func")]
     fn func(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], cpp: bool) -> bool {
         let Some(Attribute::Type(Type::Function(fty))) = cr.rw.body[op].get("function_type").cloned() else { return false };
@@ -102,7 +96,6 @@ impl FuncToEmitc {
         true
     }
 
-    /// `ReturnOpConversion`.
     #[convert("func.return")]
     fn ret(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], cpp: bool) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -119,7 +112,6 @@ impl FuncToEmitc {
         }
         let Some(st) = Self::multi_return_type(cr, op, &types) else { return false };
         cr.rw.set_before(op);
-        // `packValuesIntoStruct`.
         let var = cr.rw.create(OpData::build("emitc.variable").with("value", Attribute::dialect("emitc.opaque", "<\"\">")), &[EmitcType::lvalue(&st)]);
         let lv = cr.rw.body[var].results[0];
         for (i, (v, t)) in ops.iter().zip(&types).enumerate() {
@@ -135,26 +127,19 @@ impl FuncToEmitc {
 }
 
 impl FuncToEmitc {
-    /// `fieldN`.
     fn field(i: usize) -> String {
         alloc::format!("field{i}")
     }
 
-    /// An `!emitc.array`: no function takes or returns one.
     fn array(t: &Type<'_>) -> bool {
         matches!(t, Type::Extended(e) if e.name == "emitc.array")
     }
 
-    /// The result types converted, none of them an array.
     fn converted<'a>(cr: &Cr<'_, 'a, '_>, types: &[Type<'a>]) -> Option<Vec<Type<'a>>> {
         let tc = cr.type_converter()?;
         types.iter().map(|t| tc.convert(t).filter(|c| !Self::array(c))).collect()
     }
 
-    /// `getOrCreateMultiReturnType`: `!emitc.opaque<"struct return_T_U">` of the
-    /// `emitc.class` struct `return_T_U` with fields `field0: T`, `field1: U`, made before the
-    /// nearest symbol table's child holding `op` unless already there (with exactly those
-    /// fields and no methods).
     fn multi_return_type<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, types: &[Type<'a>]) -> Option<Type<'a>> {
         let mut name = String::from("return");
         for t in types {

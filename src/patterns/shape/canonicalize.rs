@@ -1,6 +1,3 @@
-//! `shape`: folds, canonicalization patterns and constants, as `Shape.cpp` and
-//! `ShapeCanonicalization.td`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -8,46 +5,38 @@ use mlirformat::{Attribute, Dim, ShapedKind, Type};
 
 use crate::{ApInt, Body, Const, Fold, Folded, OpData, OpId, Rewriter, Scalar, ValueId};
 
-/// The shape dialect's types and attributes.
 struct Shp;
 
 impl Shp {
-    /// `!shape.<name>`.
     fn is(t: &Type<'_>, name: &str) -> bool {
         matches!(t, Type::Extended(e) if e.name.strip_prefix("shape.") == Some(name) && e.body.is_none())
     }
 
-    /// `isExtentTensorType`: `tensor<?xindex>` or `tensor<Nxindex>`.
     fn extent_tensor(t: &Type<'_>) -> bool {
         matches!(t, Type::Shaped(s) if s.kind == ShapedKind::Tensor && s.shape.as_ref().is_some_and(|d| d.len() == 1) && *s.elem == Type::Index)
     }
 
-    /// `getIndexTensorAttr`.
     fn index_tensor<'a>(v: &[i64]) -> Attribute<'a> {
         let values = v.iter().map(|x| Scalar::Int(ApInt::new(64, i128::from(*x)))).collect();
         Const { ty: Type::tensor(&[v.len() as i64], Type::Index), values, elements: true }.into()
     }
 
-    /// `v : index`.
     fn index<'a>(v: i64) -> Attribute<'a> {
         Const::int(ApInt::new(64, i128::from(v)), Type::Index).into()
     }
 
-    /// The values of a `DenseIntElementsAttr`.
     fn ints(a: &Attribute<'_>) -> Option<Vec<i64>> {
         let c = Const::try_from(a).ok().filter(|c| c.elements)?;
         let n = c.ty.element_count()?;
         (0..n).map(|i| c.at(i).int().map(|x| x.signed() as i64)).collect()
     }
 
-    /// An `IntegerAttr`'s value.
     fn int(a: &Attribute<'_>) -> Option<i64> {
         Const::try_from(a).ok().filter(|c| !c.elements)?.as_int().map(|x| x.signed() as i64)
     }
 }
 
 impl<'a> Body<'a> {
-    /// `getShapeVec`: the extents of a `shape_of` of a ranked value, or of a constant.
     fn shape_vec(&self, v: ValueId) -> Option<Vec<i64>> {
         if let Some(s) = self.def_named(v, "shape.shape_of") {
             return (self[self[s].operands[0]].ty).dims();
@@ -55,7 +44,6 @@ impl<'a> Body<'a> {
         Shp::ints(&self.constant_of(v)?)
     }
 
-    /// `getConstantIndex` / `getConstantDim`: a `const_size` or `arith.constant` operand.
     fn shape_const_index(&self, v: ValueId) -> Option<i64> {
         let d = self.def_op(v)?;
         match &*self[d].name {
@@ -64,7 +52,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// The op's data with other operands (same name, properties and attributes).
     fn rebuilt(&self, op: OpId, operands: &[ValueId]) -> OpData<'a> {
         let d = &self[op];
         OpData { properties: d.properties.clone(), attributes: d.attributes.clone(), loc: d.loc.clone(), ..OpData::named(d.name.clone()) }.operands(operands)
@@ -72,13 +59,11 @@ impl<'a> Body<'a> {
 }
 
 impl<'a> Rewriter<'_, 'a> {
-    /// A new `name` op of operands `ops` and one result `ty`; its result.
     fn one(&mut self, data: OpData<'a>, ty: Type<'a>) -> ValueId {
         let o = self.create(data, &[ty]);
         self.body[o].results[0]
     }
 
-    /// `RemoveDuplicateOperandsPattern`.
     fn remove_duplicate_operands(&mut self, op: OpId) -> bool {
         let b = &*self.body;
         let mut unique: Vec<ValueId> = Vec::new();
@@ -96,7 +81,6 @@ impl<'a> Rewriter<'_, 'a> {
         true
     }
 
-    /// `RemoveEmptyShapeOperandsPattern`.
     fn remove_empty_shape_operands(&mut self, op: OpId) -> bool {
         let b = &*self.body;
         let empty = |v: &ValueId| {
@@ -117,7 +101,6 @@ impl<'a> Rewriter<'_, 'a> {
         true
     }
 
-    /// `CanonicalizeCastExtentTensorOperandsPattern`: information-losing casts are skipped.
     fn skip_lossy_casts(&mut self, op: OpId) -> bool {
         let b = &*self.body;
         let mut changed = false;
@@ -141,7 +124,6 @@ impl<'a> Rewriter<'_, 'a> {
         true
     }
 
-    /// `AssumingOp::inlineRegionIntoParent`.
     fn inline_assuming(&mut self, op: OpId) {
         let before = self.body[op].parent.expect("placed");
         let after = self.split_block(before, op);
@@ -158,12 +140,10 @@ impl<'a> Rewriter<'_, 'a> {
     }
 }
 
-/// `shape` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct ShapeCanon;
 
 #[crate::patterns]
 impl ShapeCanon {
-    /// `AssumingOpRemoveUnusedResults`.
     #[rewrite("shape.assuming")]
     fn assuming_op_remove_unused_results(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -196,7 +176,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `AssumingWithTrue`: a constant witness inlines the region.
     #[rewrite("shape.assuming")]
     fn assuming_with_true(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -207,7 +186,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `MergeAssumingAllOps`.
     #[rewrite("shape.assuming_all")]
     fn merge_assuming_all_ops(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -226,7 +204,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `AssumingAllOneOp`.
     #[rewrite("shape.assuming_all")]
     fn assuming_all_one_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -235,7 +212,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `AssumingAllOfCstrBroadcastable`: constraints whose shapes another one covers go.
     #[rewrite("shape.assuming_all")]
     fn assuming_all_of_cstr_broadcastable(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -274,7 +250,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `AssumingAllToCstrEqCanonicalization`.
     #[rewrite("shape.assuming_all")]
     fn assuming_all_to_cstr_eq_canonicalization(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -298,7 +273,6 @@ impl ShapeCanon {
         rw.remove_duplicate_operands(op)
     }
 
-    /// `BroadcastConcretizeResultTypePattern`.
     #[rewrite("shape.broadcast")]
     fn broadcast_concretize_result_type(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -322,7 +296,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `BroadcastFoldConstantOperandsPattern`.
     #[rewrite("shape.broadcast")]
     fn broadcast_fold_constant_operands(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -348,7 +321,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `BroadcastForwardSingleOperandPattern`.
     #[rewrite("shape.broadcast")]
     fn broadcast_forward_single_operand(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -378,7 +350,6 @@ impl ShapeCanon {
         rw.remove_empty_shape_operands(op)
     }
 
-    /// `TensorCastConstShape`.
     #[rewrite("tensor.cast", benefit = 2)]
     fn tensor_cast_const_shape(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -398,7 +369,6 @@ impl ShapeCanon {
         rw.skip_lossy_casts(op)
     }
 
-    /// `CstrBroadcastableEqOps`.
     #[rewrite("shape.cstr_broadcastable")]
     fn cstr_broadcastable_eq_ops(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -420,7 +390,6 @@ impl ShapeCanon {
         rw.remove_empty_shape_operands(op)
     }
 
-    /// `CstrEqEqOps`.
     #[rewrite("shape.cstr_eq")]
     fn cstr_eq_eq_ops(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -432,7 +401,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `SizeToIndexToSizeCanonicalization`.
     #[rewrite("shape.index_to_size", benefit = 2)]
     fn size_to_index_to_size(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -447,7 +415,6 @@ impl ShapeCanon {
         rw.remove_duplicate_operands(op)
     }
 
-    /// `RankShapeOfCanonicalizationPattern`.
     #[rewrite("shape.rank")]
     fn rank_shape_of(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -468,7 +435,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `ShapeOfCastExtentTensor`.
     #[rewrite("tensor.cast")]
     fn shape_of_cast_extent_tensor(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -484,7 +450,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `ShapeOfFromReshape`.
     #[rewrite("shape.shape_of")]
     fn shape_of_from_reshape(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -507,14 +472,12 @@ impl ShapeCanon {
         true
     }
 
-    /// `ExtractFromShapeOfExtentTensor`.
     #[rewrite("tensor.extract", benefit = 2)]
     fn extract_from_shape_of_extent_tensor(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
         let Some(s) = b.def_named(b[op].operands[0], "shape.shape_of") else { return false };
         let Some(&i) = b[op].operands.get(1) else { return false };
         let arg = b[s].operands[0];
-        // (only of a tensor: a memref would need `memref.dim`)
         if !matches!(&b[arg].ty, Type::Shaped(sh) if sh.kind == mlirformat::ShapedKind::Tensor) {
             return false;
         }
@@ -522,7 +485,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `ShapeOfOpToConstShapeOp`.
     #[rewrite("shape.shape_of")]
     fn shape_of_op_to_const_shape(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -530,7 +492,6 @@ impl ShapeCanon {
         let Some(d) = arg.dims().filter(|d| !d.contains(&Dim::DYNAMIC)) else { return false };
         let ty = b[b[op].results[0]].ty.clone();
         rw.set_before(op);
-        // (a `!shape.shape` result takes the constant as it is)
         let ct = if Shp::is(&ty, "shape") { ty.clone() } else { Type::tensor(&[d.len() as i64], Type::Index) };
         let mut c = rw.one(OpData::build("shape.const_shape").with("shape", Shp::index_tensor(&d)), ct.clone());
         if ct != ty {
@@ -540,7 +501,6 @@ impl ShapeCanon {
         true
     }
 
-    /// `IndexToSizeToIndexCanonicalization`.
     #[rewrite("shape.size_to_index", benefit = 2)]
     fn index_to_size_to_index(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -552,7 +512,6 @@ impl ShapeCanon {
 }
 
 impl ShapeCanon {
-    /// `ShapeDialect::materializeConstant`.
     pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
         if value.is_poison() {
             return Some(OpData::build("ub.poison").with("value", value.clone()));
@@ -569,7 +528,6 @@ impl ShapeCanon {
         crate::ArithCanon::materialize(value, ty)
     }
 
-    /// The fold of a `shape` op.
     pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold<'a> {
         let attr = |a: Attribute<'a>| Folded::Attr(a).into();
         let ints = |k: usize| c.get(k).cloned().flatten().and_then(|a| Shp::ints(&a));
@@ -701,7 +659,6 @@ impl ShapeCanon {
         }
     }
 
-    /// The shape ops' canonicalization patterns, by op name as `getRegisteredOperations` sorts them.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(AssumingOpRemoveUnusedResults).add(AssumingWithTrue);
         set.add(MergeAssumingAllOps).add(AssumingAllOneOp).add(AssumingAllOfCstrBroadcastable).add(AssumingAllToCstrEqCanonicalization).add(RemoveDuplicateAssumingAll);

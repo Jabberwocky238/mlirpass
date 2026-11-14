@@ -1,6 +1,3 @@
-//! `convert-vector-to-scf`, as `VectorToSCF.cpp`, after the permutation-map lowerings of
-//! `LowerVectorTransfer.cpp` (`populateVectorTransferPermutationMapLoweringPatterns`).
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -11,10 +8,8 @@ use crate::patterns::{VectorBuild, elem, vshape};
 use crate::MemrefOfr as Ofr;
 use crate::{AffineExpr, AffineMap, Body, MemrefLayout, OpData, OpId, Pattern, PatternSet, Rewriter, Trait, ValueId};
 
-/// The label of transfers being lowered (`kPassLabel`).
 const LABEL: &str = "__vector_to_scf_lowering__";
 
-/// `VectorTransferToSCFOptions`.
 #[derive(Clone, Copy)]
 pub struct VectorToScfOptions {
     pub unroll: bool,
@@ -24,14 +19,11 @@ pub struct VectorToScfOptions {
 }
 
 impl VectorToScfOptions {
-    /// The transfer permutation-map and rank-reducing rewrites run first
-    /// (`populateVectorTransferPermutationMapLoweringPatterns` and friends).
     pub fn prepare_patterns(self, set: &mut PatternSet) {
         let o = self;
         set.add(TransferReadPermutationLowering(o)).add(TransferWritePermutationLowering(o)).add(TransferOpReduceRank(o)).add(TransferWriteNonPermutationLowering(o));
     }
 
-    /// `populateVectorToSCFConversionPatterns`.
     pub fn patterns(self, set: &mut PatternSet) {
         let o = self;
     if o.unroll {
@@ -51,13 +43,11 @@ impl VectorToScfOptions {
 
 type Rw<'r, 'a> = Rewriter<'r, 'a>;
 
-/// What a transfer op is, read off its operands and attributes.
 #[derive(Clone)]
 struct Xfer<'a> {
     read: bool,
     base: ValueId,
     indices: Vec<ValueId>,
-    /// The padding (read) or the stored vector write.
     value: ValueId,
     mask: Option<ValueId>,
     vt: Type<'a>,
@@ -85,7 +75,6 @@ impl<'a> Xfer<'a> {
         vshape(&self.vt).is_some_and(|s| s.1.first() == Some(&true))
     }
 
-    /// `unpackedDim`: the source dim of vector dim 0, `None` for a broadcast.
     fn unpacked_dim(&self) -> Option<usize> {
         match self.map.results.first() {
             Some(AffineExpr::Dim(d)) => Some(*d as usize),
@@ -101,7 +90,6 @@ impl<'a> Xfer<'a> {
         self.in_bounds.first().copied().unwrap_or(false)
     }
 
-    /// `unpackedPermutationMap`.
     fn unpacked_map(&self) -> AffineMap {
         AffineMap { results: self.map.results[1..].to_vec(), ..self.map.clone() }
     }
@@ -115,19 +103,16 @@ impl<'a> Xfer<'a> {
     }
 }
 
-/// `isMinorIdentity`.
 fn minor_identity(m: &AffineMap) -> bool {
     let (d, n) = (m.dims as usize, m.results.len());
     d >= n && m.results.iter().enumerate().all(|(i, r)| *r == AffineExpr::Dim((d - n + i) as u32))
 }
 
-/// `isMinorIdentityWithBroadcasting`.
 fn minor_identity_with_broadcasting(m: &AffineMap) -> bool {
     let (d, n) = (m.dims as usize, m.results.len());
     d >= n && m.results.iter().enumerate().all(|(i, r)| matches!(r, AffineExpr::Const(0)) || *r == AffineExpr::Dim((d - n + i) as u32))
 }
 
-/// `isPermutationOfMinorIdentityWithBroadcasting`.
 fn permutation_of_minor_identity(m: &AffineMap) -> Option<Vec<usize>> {
     let (d, n) = (m.dims as usize, m.results.len());
     let start = d.saturating_sub(n);
@@ -157,7 +142,6 @@ fn permutation_of_minor_identity(m: &AffineMap) -> Option<Vec<usize>> {
     Some(perm)
 }
 
-/// `inversePermutation`.
 fn inverse_permutation(m: &AffineMap) -> Option<AffineMap> {
     let mut exprs: Vec<Option<AffineExpr>> = vec![None; m.dims as usize];
     for (i, r) in m.results.iter().enumerate() {
@@ -180,13 +164,11 @@ impl<'a> Rw<'_, 'a> {
         self.make1(OpData::build("arith.constant").with("value", Attribute::index(v)), Type::Index)
     }
 
-    /// `makeComposedAffineApply(d0 + d1, {a, b})`.
     fn add_apply(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let sum = AffineMap { dims: 2, syms: 0, results: vec![AffineExpr::Dim(0).add(AffineExpr::Dim(1))] };
         self.composed_apply(sum, &[Ofr::V(a), Ofr::V(b)])
     }
 
-    /// A `vector.transfer_read`.
     fn xfer_read(&mut self, vt: Type<'a>, base: ValueId, indices: &[ValueId], map: &AffineMap, padding: ValueId, mask: Option<ValueId>, in_bounds: &[bool]) -> OpId {
         let mut ops = vec![base];
         ops.extend(indices);
@@ -196,7 +178,6 @@ impl<'a> Rw<'_, 'a> {
         self.make(data, &[vt])
     }
 
-    /// A `vector.transfer_write`, of a tensor when `ty` is given.
     fn xfer_write(&mut self, ty: Option<Type<'a>>, vec: ValueId, base: ValueId, indices: &[ValueId], map: &AffineMap, mask: Option<ValueId>, in_bounds: &[bool]) -> OpId {
         let mut ops = vec![vec, base];
         ops.extend(indices);
@@ -206,7 +187,6 @@ impl<'a> Rw<'_, 'a> {
         self.make(data, &types)
     }
 
-    /// `memref.load`; without indices the builder sets no `nontemporal` / `invariant`.
     fn mload(&mut self, buf: ValueId, indices: &[ValueId]) -> ValueId {
         let ty = elem(&self.body[buf].ty).clone();
         let mut ops = vec![buf];
@@ -229,7 +209,6 @@ impl<'a> Rw<'_, 'a> {
         self.make(data, &[]);
     }
 
-    /// `vector.extract` at a dynamic index.
     fn extract_dyn(&mut self, v: ValueId, i: ValueId) -> ValueId {
         let ty = self.body[v].ty.clone();
         let (s, sc) = vshape(&ty).expect("a vector");
@@ -237,7 +216,6 @@ impl<'a> Rw<'_, 'a> {
         self.make1(OpData::build("vector.extract").operands(&[v, i]).with("static_position", Attribute::dense_i64(&[Dim::DYNAMIC])), rt)
     }
 
-    /// `vector.extract` / `vector.insert` positions as mixed values.
     fn mixed_extract(&mut self, v: ValueId, pos: &[Ofr]) -> ValueId {
         let ty = self.body[v].ty.clone();
         let (s, sc) = vshape(&ty).expect("a vector");
@@ -256,14 +234,11 @@ impl<'a> Rw<'_, 'a> {
         self.make1(OpData::build("vector.insert").operands(&ops).with("static_position", Attribute::dense_i64(&st)), ty)
     }
 
-    /// `vector.print` of `v` (or of nothing), with a punctuation.
     fn print(&mut self, v: Option<ValueId>, punct: &str) -> OpId {
         let data = OpData::build("vector.print").operands(&v.into_iter().collect::<Vec<_>>()).with("punctuation", Attribute::dialect("vector.punctuation", &alloc::format!("<{punct}>")));
         self.make(data, &[])
     }
 
-    /// `scf::ForOp::create` without a body builder: an empty body, only its terminator
-    /// (`ensureTerminator`, unreported).
     fn bare_for(&mut self, lb: ValueId, ub: ValueId, step: ValueId) -> OpId {
         let op = self.body.create(OpData::build("scf.for").operands(&[lb, ub, step]), &[]);
         let r = self.body.add_region(op);
@@ -273,14 +248,12 @@ impl<'a> Rw<'_, 'a> {
         self.insert(op)
     }
 
-    /// `vector::createOrFoldDimOp`.
     fn dim_of(&mut self, v: ValueId, d: usize) -> ValueId {
         let i = self.cidx(d as i64);
         let name = if matches!(&self.body[v].ty, Type::Shaped(s) if s.kind == ShapedKind::Tensor) { "tensor.dim" } else { "memref.dim" };
         self.create_or_fold(OpData::build(name).operands(&[v, i]), &[Type::Index])[0]
     }
 
-    /// `getXferIndices`.
     fn xfer_indices(&mut self, x: &Xfer<'a>, iv: ValueId) -> Vec<ValueId> {
         let mut idx = x.indices.clone();
         if let Some(d) = x.unpacked_dim() {
@@ -289,7 +262,6 @@ impl<'a> Rw<'_, 'a> {
         idx
     }
 
-    /// `generateInBoundsCheck`.
     fn in_bounds_check(&mut self, x: &Xfer<'a>, iv: ValueId, dim: Option<usize>, types: &[Type<'a>], inside: &mut dyn FnMut(&mut Self) -> Option<ValueId>, outside: &mut dyn FnMut(&mut Self) -> Option<ValueId>) -> Option<ValueId> {
         let mut cond = None;
         if let (false, Some(d)) = (x.in_bounds0(), dim) {
@@ -297,7 +269,6 @@ impl<'a> Rw<'_, 'a> {
             let idx = self.add_apply(x.indices[d], iv);
             cond = Some(self.make1(OpData::build("arith.cmpi").operands(&[size, idx]).with("predicate", Attribute::Int { lit: "4".into(), ty: Some(Type::int(64)) }), Type::int(1)));
         }
-        // `generateMaskCheck`.
         if let Some(m) = x.mask.filter(|_| x.mask_rank(self.body) == 1 && !x.broadcast0()) {
             let mc = self.extract_dyn(m, iv);
             cond = Some(match cond {
@@ -310,7 +281,6 @@ impl<'a> Rw<'_, 'a> {
         self.body[i].results.first().copied()
     }
 
-    /// `allocBuffers`: the data (and mask) buffers at the start of the allocation scope.
     fn alloc_buffers(&mut self, op: OpId, x: &Xfer<'a>) -> (ValueId, Option<ValueId>) {
         let mut scope = self.body.parent_op(op);
         while let Some(s) = scope.filter(|s| !self.body.has(*s, Trait::AutomaticAllocationScope)) {
@@ -350,13 +320,11 @@ fn split(pos: &[Ofr]) -> (Vec<i64>, Vec<ValueId>) {
     (st, dy)
 }
 
-/// The mixed position of a `vector.extract` / `vector.insert` (`lead` operands before it).
 fn mixed_position(b: &Body<'_>, op: OpId, lead: usize) -> Vec<Ofr> {
     let mut dy = b[op].operands[lead..].iter();
     b.dense_i64(op, "static_position").into_iter().map(|s| if s == Dim::DYNAMIC { Ofr::V(*dy.next().expect("dynamic")) } else { Ofr::C(s) }).collect()
 }
 
-/// `unpackOneDim`: `memref<...xvector<NxV>>` ⇒ `memref<...xNxvector<V>>`.
 fn unpack_one_dim<'a>(t: &Type<'a>) -> Option<Type<'a>> {
     let Type::Shaped(m) = t else { return None };
     let (vs, sc) = vshape(&m.elem)?;
@@ -369,7 +337,6 @@ fn unpack_one_dim<'a>(t: &Type<'a>) -> Option<Type<'a>> {
     Some(Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(shape), elem: inner.into(), extras: Vec::new() })))
 }
 
-/// A vector type with its leading dim dropped (`VectorType::Builder::dropDim(0)`).
 fn drop_dim0<'a>(t: &Type<'a>) -> Type<'a> {
     let (s, sc) = vshape(t).expect("a vector");
     Type::vector(&s[1..], &sc[1..], elem(t).clone())
@@ -397,19 +364,16 @@ macro_rules! patterns {
     )*};
 }
 
-/// `checkPrepareXferOp`.
 fn check_prepare(b: &Body<'_>, op: OpId, x: &Xfer<'_>, o: VectorToScfOptions) -> bool {
     b[op].get(LABEL).is_none() && x.rank() > o.target_rank && !x.scalable0() && (!x.tensor || o.lower_tensors) && elem(&x.vt) == x.shaped_elem(b)
 }
 
-/// `TransferOpConversion<TransferReadOp / TransferWriteOp>`.
 fn transfer_op_conversion<'a>(rw: &mut Rw<'_, 'a>, op: OpId, o: VectorToScfOptions) -> bool {
     let b = &*rw.body;
     if b[op].get(LABEL).is_none() {
         return false;
     }
     let Some(x) = Xfer::of(b, op) else { return false };
-    // `Strategy<...>::getBuffer` and its indices.
     let (buffer, buf_indices, store) = if x.read {
         let r = b[op].results[0];
         let Some(u) = b[r].uses.first() else { return false };
@@ -449,7 +413,6 @@ fn transfer_op_conversion<'a>(rw: &mut Rw<'_, 'a>, op: OpId, o: VectorToScfOptio
         let state = state.to_vec();
         let x2 = x.clone();
         let mut inside = |rw: &mut Rw<'_, 'a>| -> Option<ValueId> {
-            // `Strategy<...>::rewriteOp`.
             let mut bi = buf_indices.clone();
             bi.push(iv);
             let xi = rw.xfer_indices(&x2, iv);
@@ -476,7 +439,6 @@ fn transfer_op_conversion<'a>(rw: &mut Rw<'_, 'a>, op: OpId, o: VectorToScfOptio
             {
                 let saved = rw.ip;
                 rw.set_before(new);
-                // `getMaskBufferLoadIndices`.
                 let mut li: Vec<ValueId> = rw.body[mb].uses.iter().find(|u| rw.body[u.op].name == "memref.load").map(|u| rw.body[u.op].operands[1..].to_vec()).unwrap_or_default();
                 if !x2.broadcast0() {
                     li.push(iv);
@@ -499,7 +461,6 @@ fn transfer_op_conversion<'a>(rw: &mut Rw<'_, 'a>, op: OpId, o: VectorToScfOptio
             (!state.is_empty()).then(|| rw.body[new].results[0])
         };
         let mut outside = |rw: &mut Rw<'_, 'a>| -> Option<ValueId> {
-            // `Strategy<...>::handleOutOfBoundsDim`.
             if x.read {
                 let mut bi = buf_indices.clone();
                 bi.push(iv);
@@ -515,7 +476,6 @@ fn transfer_op_conversion<'a>(rw: &mut Rw<'_, 'a>, op: OpId, o: VectorToScfOptio
         let r = rw.in_bounds_check(&x, iv, x.unpacked_dim(), &state_ty, &mut inside, &mut outside);
         if state.is_empty() { Vec::new() } else { r.into_iter().collect() }
     });
-    // `Strategy<...>::cleanup`.
     match store {
         Some(s) => {
             rw.erase_op(s);
@@ -530,7 +490,6 @@ fn transfer_op_conversion<'a>(rw: &mut Rw<'_, 'a>, op: OpId, o: VectorToScfOptio
     true
 }
 
-/// `maybeAssignMask`.
 fn maybe_assign_mask(rw: &mut Rw<'_, '_>, x: &Xfer<'_>, new: OpId, i: i64) {
     let Some(m) = x.mask else { return };
     let mask = if x.broadcast0() {
@@ -772,7 +731,6 @@ patterns! {
             return false;
         }
         let Some(perm) = permutation_of_minor_identity(&x.map) else { return false };
-        // `compressUnusedDims`, then `inversePermutation`.
         let used: Vec<u32> = (0..x.map.dims).filter(|d| x.map.uses_dim(*d)).collect();
         let comp = AffineMap { dims: used.len() as u32, syms: 0, results: x.map.results.iter().map(|r| if let AffineExpr::Dim(d) = r { AffineExpr::Dim(used.iter().position(|u| u == d).expect("used") as u32) } else { r.clone() }).collect() };
         let Some(inv) = inverse_permutation(&comp) else { return false };
@@ -887,7 +845,6 @@ patterns! {
     }
 }
 
-/// `DecomposePrintOpConversion`: a vector printed element by element in loops.
 fn decompose_print(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let Some(&src) = b[op].operands.first() else { return false };
@@ -968,7 +925,6 @@ fn decompose_print(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
     true
 }
 
-/// `ScalableTransposeTransferWriteConversion`.
 fn scalable_transpose_write(rw: &mut Rw<'_, '_>, op: OpId, o: VectorToScfOptions) -> bool {
     let b = &*rw.body;
     let Some(x) = Xfer::of(b, op) else { return false };
@@ -1008,7 +964,6 @@ fn scalable_transpose_write(rw: &mut Rw<'_, '_>, op: OpId, o: VectorToScfOptions
         let c = rw.cidx(n);
         rw.make1(OpData::build("arith.muli").operands(&[v, c]), Type::Index)
     };
-    // Constant mask sizes of scalable dims, as vscale multiples (encoded as `-n - 1`).
     let mask_dims: Vec<Ofr> = mask_dims.into_iter().map(|d| if let Ofr::C(c) = d && c < 0 { Ofr::V(vs_mul(rw, -c - 1)) } else { d }).collect();
     let slices: Vec<ValueId> = (0..shape[1]).map(|i| rw.vextract_(src, &[i])).collect();
     let lb = rw.cidx(0);
@@ -1049,7 +1004,6 @@ fn scalable_transpose_write(rw: &mut Rw<'_, '_>, op: OpId, o: VectorToScfOptions
     true
 }
 
-/// `TransferOp1dConversion`.
 fn transfer_1d(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let Some(x) = Xfer::of(b, op) else { return false };
@@ -1076,7 +1030,6 @@ fn transfer_1d(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
     let inits: Vec<ValueId> = if x.read { vec![rw.broadcast(x.vt.clone(), x.value)] } else { Vec::new() };
     let vt = x.vt.clone();
     let f = rw.build_for(lb, ub, step, &inits, &mut |rw, iv, state| {
-        // `get1dMemrefIndices`.
         let mut idx = x.indices.clone();
         if let Some(d) = x.unpacked_dim() {
             idx[d] = rw.add_apply(x.indices[d], iv);
@@ -1115,4 +1068,3 @@ fn transfer_1d(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
     rw.replace_op(op, &results);
     true
 }
-

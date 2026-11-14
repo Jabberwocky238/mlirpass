@@ -1,15 +1,6 @@
-//! Xe2 / Xe3 EU instructions (Lunar Lake, Battlemage, Panther Lake): the instruction as data (`Inst`, what an
-//! `xe3.eu.*` op says, see `asm.rs`) and its native 128-bit encoding (`Inst::encode`). Bit positions are Mesa's `src/intel/compiler/gen/xe.json` ("Xe2", which is
-//! "Xe" with its overrides); the rules for filling them follow Mesa's `gen_encoding.cpp`. Compacted (64-bit) forms
-//! are not produced.
-//!
-//! Registers: a GRF is 64 bytes, there are 128 of them (256 with the large GRF mode); `subnr` is in bytes.
-
 #[allow(unused_imports, reason = "the alloc prelude")]
 use alloc::{borrow::ToOwned, boxed::Box, format, string::{String, ToString}, vec, vec::Vec};
 
-/// A register type (Mesa `gen_reg_type`): bits 1:0 size (8 << x bits), bits 3:2 base (uint / sint / float /
-/// bfloat), bit 4 vector immediate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Elem {
@@ -25,11 +16,8 @@ pub enum Elem {
     F = 0b01010,
     DF = 0b01011,
     BF = 0b01101,
-    /// 8 x u4 immediate
     UV = 0b10001,
-    /// 8 x i4 immediate
     V = 0b10101,
-    /// 4 x restricted 8-bit float immediate
     VF = 0b11010,
 }
 
@@ -45,7 +33,6 @@ impl Elem {
         (self as u8 & 0b01000) != 0 && (self as u8 & 0b10000) == 0
     }
 
-    /// The 4-bit type field of one / two source instructions.
     const fn code(self) -> u64 {
         match self {
             Elem::UV | Elem::V | Elem::VF => (self as u8 & !(0b10000 | 0b00011)) as u64,
@@ -53,7 +40,6 @@ impl Elem {
         }
     }
 
-    /// The 3-bit type field of three source instructions (the exec data type bit tells float from int).
     const fn code3(self) -> u64 {
         match self {
             Elem::UB => 0b000,
@@ -80,7 +66,6 @@ pub enum File {
     Imm,
 }
 
-/// Architecture register numbers (the high nibble picks the register, the low one its number).
 pub struct Arf;
 
 impl Arf {
@@ -98,7 +83,6 @@ impl Arf {
     pub const TIMESTAMP: u8 = 0xc0;
 }
 
-/// A source region `<vstride;width,hstride>` (in elements); a destination uses only `hstride`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Region {
     pub vstride: u8,
@@ -110,10 +94,8 @@ impl Region {
     pub const fn new(vstride: u8, width: u8, hstride: u8) -> Region {
         Region { vstride, width, hstride }
     }
-    /// `<0;1,0>`: one value for every channel.
     pub const SCALAR: Region = Region::new(0, 1, 0);
 
-    /// Elements from one channel to the next (within a row).
     pub const fn step(self) -> u8 {
         if self.width == 1 { self.vstride } else { self.hstride }
     }
@@ -124,18 +106,14 @@ pub struct Operand {
     pub file: File,
     pub ty: Elem,
     pub nr: u8,
-    /// byte offset in the register
     pub subnr: u8,
     pub region: Region,
     pub negate: bool,
     pub abs: bool,
-    /// immediate bits (File::Imm)
     pub imm: u64,
 }
 
 impl Operand {
-    /// `r<nr>` as `ty`, with the region a SIMD instruction reads contiguous elements with (`<w;w,1>` of a full
-    /// register's worth would be the same; `<1;1,0>` is how Mesa writes it for any width).
     pub const fn grf(nr: u8, ty: Elem) -> Operand {
         Operand {
             file: File::Grf,
@@ -161,7 +139,6 @@ impl Operand {
         Operand { file: File::Imm, imm: bits, region: Region::SCALAR, ..Operand::grf(0, ty) }
     }
 
-    /// Byte offset `subnr` into the register.
     pub const fn sub(mut self, subnr: u8) -> Operand {
         self.subnr = subnr;
         self
@@ -182,13 +159,11 @@ pub enum Format {
     Branch1,
     Branch2,
     Nop,
-    /// DPAS: three sources, the systolic depth and repeat count in place of the regions
     Dpas,
 }
 
 macro_rules! opcodes {
     ($($name:ident = $hw:expr, $format:ident;)*) => {
-        /// Xe2 / Xe3 opcodes (Mesa gen_opcodes.py, the "xe2" column).
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub enum Opcode { $($name),* }
 
@@ -200,10 +175,8 @@ macro_rules! opcodes {
                 match self { $(Opcode::$name => Format::$format),* }
             }
 
-            /// Every opcode.
             pub const ALL: &[Opcode] = &[$(Opcode::$name),*];
 
-            /// The mnemonic (lower case; `NopOp` is `nop`, `Nop` the illegal opcode's format).
             pub fn mnemonic(self) -> String {
                 #[allow(unreachable_patterns, reason = "NopOp is spelled nop")]
                 match self {
@@ -311,7 +284,6 @@ pub enum Pred {
     #[default]
     None = 0,
     Normal = 1,
-    /// any channel of the execution group (Xe2: one predicate for the whole instruction)
     Any = 2,
     All = 3,
 }
@@ -326,7 +298,6 @@ pub enum MathFn {
     Rsq = 5,
     Sin = 6,
     Cos = 7,
-    // no POW (10) or FDIV (9) since Xe-HPG: pow is exp(y * log(x))
     IntDivBoth = 11,
     IntDivQuotient = 12,
     IntDivRemainder = 13,
@@ -345,10 +316,8 @@ pub enum SyncFn {
     Host = 0xf,
 }
 
-/// The ALU pipe an in-order dependency is on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Pipe {
-    /// the previous instruction's pipe (no pipe given)
     #[default]
     None,
     Float,
@@ -359,10 +328,8 @@ pub enum Pipe {
     All,
 }
 
-/// Software scoreboard (Xe2: 32 SBIDs, register distances up to 7).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Swsb {
-    /// wait until the instruction `regdist` back on `pipe` has finished (0: none)
     pub regdist: u8,
     pub pipe: Pipe,
     pub sbid: u8,
@@ -373,11 +340,8 @@ pub struct Swsb {
 pub enum SbidMode {
     #[default]
     Null,
-    /// wait until the out-of-order instruction with `sbid` has read its sources
     Src,
-    /// wait until it has written its destination
     Dst,
-    /// this (out-of-order) instruction takes `sbid`
     Set,
 }
 
@@ -388,7 +352,6 @@ impl Swsb {
         Swsb { regdist: n, pipe, sbid: 0, mode: SbidMode::Null }
     }
 
-    /// Mesa gen_swsb_encode, ver >= 20.
     fn encode(self, op: Opcode) -> u64 {
         let pipe = match self.pipe {
             Pipe::Float => 0x10,
@@ -430,16 +393,10 @@ impl Swsb {
     }
 }
 
-/// The shape of a DPAS (Mesa `gen_inst.dpas`): `dst = src0 + src1 * src2` over a systolic array `sdepth` deep,
-/// repeated `rcount` times (rows of the result). src1 is B (`sdepth` registers of packed K pairs / quads, one column
-/// per channel), src2 is A (`rcount` rows of `sdepth` dwords).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Dpas {
-    /// 2, 4, 8 or 16 (Xe2 / Xe3: 8)
     pub sdepth: u8,
-    /// 1 ..= 8
     pub rcount: u8,
-    /// sub-byte precision of src1 / src2 (0: none, 1: u4 / s4, 2: u2 / s2)
     pub src1_subbyte: u8,
     pub src2_subbyte: u8,
 }
@@ -447,7 +404,6 @@ pub struct Dpas {
 impl Dpas {
     pub const DEFAULT: Dpas = Dpas { sdepth: 8, rcount: 8, src1_subbyte: 0, src2_subbyte: 0 };
 
-    /// Mesa `encode_sdepth`.
     const fn sdepth_code(self) -> u64 {
         match self.sdepth {
             16 => 0,
@@ -459,18 +415,13 @@ impl Dpas {
     }
 }
 
-/// What a SEND carries besides its operands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct SendInfo {
     pub sfid: u8,
-    /// message descriptor (see `msg`)
     pub desc: u32,
-    /// extended descriptor (immediate); bits 10:0 must be zero: bits 10:6 are where `src1_len` goes
     pub ex_desc: u32,
-    /// registers in src1
     pub src1_len: u8,
     pub eot: bool,
-    /// extended descriptor is bindless surface offset (ExBSO)
     pub ex_bso: bool,
 }
 
@@ -478,15 +429,12 @@ pub struct SendInfo {
 pub struct Inst {
     pub op: Opcode,
     pub exec_size: u8,
-    /// first channel (multiple of 8)
     pub chan_offset: u8,
     pub cond: Cond,
     pub pred: Pred,
     pub pred_inv: bool,
-    /// flag register (f0 / f1 / ...) and subregister for `pred` and `cond`
     pub flag: (u8, u8),
     pub saturate: bool,
-    /// write all channels, ignoring the execution mask (`(W)`)
     pub no_mask: bool,
     pub atomic: bool,
     pub swsb: Swsb,
@@ -497,7 +445,6 @@ pub struct Inst {
     pub bfn_ctrl: u8,
     pub send: SendInfo,
     pub dpas: Dpas,
-    /// branches: jump targets, in bytes from this instruction
     pub jip: i32,
     pub uip: i32,
     pub branch_ctrl: bool,
@@ -530,7 +477,6 @@ impl Inst {
         }
     }
 
-    /// The native (uncompacted) 16 bytes.
     pub fn encode(&self) -> [u8; 16] {
         let mut e = Enc([0; 2]);
         e.inst(self);
@@ -538,7 +484,6 @@ impl Inst {
     }
 }
 
-/// Bit fields of the native Xe2 instruction: (high bit, low bit). The whole table, used or not.
 #[allow(dead_code)]
 mod f {
     pub type F = (u32, u32);
@@ -586,7 +531,6 @@ mod f {
     pub const THREE_DST_TYPE: F = (38, 36);
     pub const THREE_EXEC_DATA_TYPE: F = (39, 39);
     pub const THREE_SRC0_TYPE: F = (42, 40);
-    /// two pieces: (43) high, (35) low
     pub const THREE_SRC0_VSTRIDE: [F; 2] = [(43, 43), (35, 35)];
     pub const THREE_SRC2_IS_IMM: F = (47, 47);
     pub const THREE_DST_HSTRIDE: F = (48, 48);
@@ -628,12 +572,10 @@ mod f {
 struct Enc([u64; 2]);
 
 impl Enc {
-    /// log2 + 1 of a power of two (0 stays 0): Mesa `cvt`.
     fn cvt(v: u8) -> u64 {
         if v == 0 { 0 } else { v.trailing_zeros() as u64 + 1 }
     }
 
-    /// Mesa ENCODE_VSTRIDE_3SRC: 0, 1 (also for 2), 4, 8 (also for 16).
     fn vstride3(v: u8) -> u64 {
         match v {
             0 => 0,
@@ -653,14 +595,12 @@ impl Enc {
         *q = (*q & !mask) | (v << (lo % 64));
     }
 
-    /// A field in two pieces: the low bits go in `parts[1]`, the rest in `parts[0]`.
     fn set2(&mut self, parts: [f::F; 2], v: u64) {
         let lo_bits = parts[1].0 - parts[1].1 + 1;
         self.set(parts[1], v & ((1 << lo_bits) - 1));
         self.set(parts[0], v >> lo_bits);
     }
 
-    /// A sub-range of a field, relative to its low bit.
     fn sub(field: f::F, hi: u32, lo: u32) -> f::F {
         (field.1 + hi, field.1 + lo)
     }
@@ -674,7 +614,6 @@ impl Enc {
     }
 
     fn vstride(v: u8) -> u64 {
-        // one-dimensional (0xff) is 0xf, masked to the 3 bits Xe2 has
         (if v == 0xff { 0xf } else { Self::cvt(v) }) & 0x7
     }
 
@@ -708,7 +647,6 @@ impl Enc {
             self.set(f::BFN_COND_MODIFIER, c);
         } else {
             let has_cond = match format {
-                // a 64-bit immediate overlays the field
                 Format::One => !(i.src[0].file == File::Imm && i.src[0].ty.size() >= 8),
                 Format::Two | Format::Three | Format::Dpas => true,
                 _ => false,
@@ -726,7 +664,6 @@ impl Enc {
                     self.direct(f::DST_OPERAND, d, false);
                     self.set(f::DST_OPERAND_EXTRA, (d.subnr & 1) as u64);
                 }
-                // a destination stride of 0 does not exist: 0 is the operand constructors' default, meaning 1
                 self.set(f::DST_HSTRIDE, Self::cvt(i.dst.region.hstride.max(1)));
                 self.set(f::SRC0_TYPE, i.src[0].ty.code());
                 let mut imm = None;
@@ -790,7 +727,6 @@ impl Enc {
                     self.set(f::THREE_SRC2_IS_IMM, 1);
                     self.set(f::THREE_SRC2_IMM, s2.imm & 0xffff);
                 } else {
-                    // src2 has only a horizontal stride: the region's step from one channel to the next
                     self.direct(f::THREE_SRC2_OPERAND, s2, false);
                     self.set(f::THREE_SRC2_HSTRIDE, Self::cvt(s2.region.step()));
                 }
@@ -828,11 +764,9 @@ impl Enc {
                 self.direct(f::DST_OPERAND, &i.dst, true);
                 self.direct(f::SRC0_OPERAND, &i.src[0], true);
                 self.direct(f::SRC1_OPERAND, &i.src[1], true);
-                // UGM on Xe2 always has ExBSO (BSpec 56890): the bit does not exist there
                 if s.ex_bso && s.sfid != crate::Sfid::Ugm as u8 {
                     self.set(f::SEND_EX_BSO, 1);
                 }
-                // with an immediate extended descriptor, src1's length is its bits 10:6 (the same bits)
                 self.set(f::SEND_SRC1_LEN, s.src1_len as u64);
                 let d = s.desc as u64;
                 self.set((123, 122), (d >> 30) & 0x3);
@@ -852,7 +786,6 @@ impl Enc {
                     self.set(f::BRANCH_CONTROL, i.branch_ctrl as u64);
                 }
                 let s0 = &i.src[0];
-                // a register target (jmpi / call / ret ...): src0 a GRF or an ARF other than null; else jip / uip
                 let reg = s0.file == File::Grf || (s0.file == File::Arf && s0.nr != Arf::NULL);
                 if reg {
                     self.set(f::SRC0_TYPE, s0.ty.code());

@@ -1,11 +1,8 @@
-//! `tosa-to-arith`.
-
 use crate::{TosaToArith};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, Run};
 
-/// `tosa-to-arith`.
 #[pass("tosa-to-arith")]
 pub struct TosaToArithPass {
     #[opt("include-apply-rescale")]

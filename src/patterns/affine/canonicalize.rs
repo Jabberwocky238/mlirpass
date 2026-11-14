@@ -1,5 +1,3 @@
-//! `affine`: folds and canonicalization patterns, as `AffineOps.cpp`.
-
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::vec;
@@ -9,9 +7,6 @@ use mlirformat::{arith, Attribute, Type};
 
 use crate::{AffineExpr, AffineMap, Body, Def, Fold, Folded, IntegerSet, OpData, OpId, RegionId, Trait, ValueId};
 
-/// An `affine_map<...>` attribute.
-
-/// A map or a set, for the operand canonicalizations shared by both.
 pub trait MapOrSet: Clone {
     fn dims(&self) -> u32;
     fn syms(&self) -> u32;
@@ -56,7 +51,6 @@ impl MapOrSet for IntegerSet {
 }
 
 impl<'a> Body<'a> {
-    /// The affine map in attribute `name` of `op`.
     pub fn affine_map(&self, op: OpId, name: &str) -> Option<AffineMap> {
         AffineMap::try_from(self[op].get(name)?).ok()
     }
@@ -72,7 +66,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `isTopLevelValue`: defined at the top level of an affine scope.
     pub fn is_top_level_value(&self, v: ValueId) -> bool {
         let owner = match self[v].def {
             Def::Arg(b, _) => self.block_owner(b),
@@ -81,7 +74,6 @@ impl<'a> Body<'a> {
         owner.is_some_and(|p| self.has(p, Trait::AffineScope))
     }
 
-    /// `getAffineScope`: the region of the closest enclosing affine scope.
     pub fn affine_scope(&self, op: OpId) -> Option<RegionId> {
         let mut cur = op;
         while let Some(p) = self.parent_op(cur) {
@@ -97,7 +89,6 @@ impl<'a> Body<'a> {
         matches!(self[v].ty, Type::Index)
     }
 
-    /// `affine.for` / `affine.parallel` induction variable owner.
     pub fn affine_iv_owner(&self, v: ValueId) -> Option<OpId> {
         let Def::Arg(b, _) = self[v].def else { return None };
         let o = self.block_owner(b)?;
@@ -108,7 +99,6 @@ impl<'a> Body<'a> {
         self.affine_iv_owner(v).filter(|o| self[*o].name == "affine.for")
     }
 
-    /// `isValidDim(value)`.
     pub fn is_valid_dim(&self, v: ValueId) -> bool {
         if !self.is_index(v) {
             return false;
@@ -123,7 +113,6 @@ impl<'a> Body<'a> {
         self.block_owner(b).is_some_and(|p| self.has(p, Trait::AffineScope))
     }
 
-    /// `isValidDim(value, region)`.
     pub fn is_valid_dim_in(&self, v: ValueId, region: Option<RegionId>) -> bool {
         if !self.is_index(v) {
             return false;
@@ -139,7 +128,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `isValidSymbol(value)`.
     pub fn is_valid_symbol(&self, v: ValueId) -> bool {
         if !self.is_index(v) {
             return false;
@@ -169,7 +157,6 @@ impl<'a> Body<'a> {
         false
     }
 
-    /// `isValidSymbol(value, region)`.
     pub fn is_valid_symbol_in(&self, v: ValueId, region: Option<RegionId>) -> bool {
         if !self.is_index(v) {
             return false;
@@ -229,9 +216,6 @@ impl<'a> Body<'a> {
         sizes.get(pos).is_some_and(|s| self.is_valid_symbol_in(*s, region))
     }
 
-    // ---- map and operand canonicalization ---------------------------------------------
-
-    /// `canonicalizePromotedSymbols`: dims that are valid symbols become symbols.
     fn promote_symbols<M: MapOrSet>(&self, m: &mut M, ops: &mut crate::Ids<ValueId>) {
         if ops.is_empty() {
             return;
@@ -261,7 +245,6 @@ impl<'a> Body<'a> {
         *m = m.replace(&remap, &[], next_dim, ns + n);
     }
 
-    /// `legalizeDemotedDims`: symbols that are only valid dims become dims.
     fn demote_dims<M: MapOrSet>(&self, m: &mut M, ops: &mut crate::Ids<ValueId>) {
         if ops.is_empty() {
             return;
@@ -287,7 +270,6 @@ impl<'a> Body<'a> {
         *m = m.replace(&[], &remap, nd + a, b);
     }
 
-    /// `canonicalizeMapOrSetAndOperands`.
     pub fn canonicalize_map_or_set<M: MapOrSet>(&self, m: &mut M, ops: &mut crate::Ids<ValueId>) {
         if ops.is_empty() {
             return;
@@ -348,7 +330,6 @@ impl<'a> Body<'a> {
         *ops = result.into();
     }
 
-    /// `m_Constant(&IntegerAttr)`: an integer constant op's value.
     fn const_index_attr(&self, v: ValueId) -> Option<i64> {
         let d = self.def_op(v)?;
         if !self.has(d, Trait::ConstantLike) {
@@ -357,7 +338,6 @@ impl<'a> Body<'a> {
         self.const_index(v)
     }
 
-    /// `replaceDimOrSym`: an `affine.apply` operand inlined into the map.
     fn replace_dim_or_sym(&self, map: &mut AffineMap, pos: usize, dims: &mut Vec<Option<ValueId>>, syms: &mut Vec<Option<ValueId>>) -> bool {
         let is_dim = pos < dims.len();
         let p = if is_dim { pos } else { pos - dims.len() };
@@ -382,8 +362,6 @@ impl<'a> Body<'a> {
         true
     }
 
-    /// `replaceAffineDelinearizeIndexInverseExpression`: `q * s + r` over all the results of a
-    /// delinearization becomes its input.
     fn replace_delinearize_inverse(&self, d: OpId, v: ValueId, map: &mut AffineMap, dims: &mut Vec<Option<ValueId>>, syms: &mut Vec<Option<ValueId>>) -> bool {
         if !self.dynamic_basis(d).is_empty() || self[d].results.last() != Some(&v) {
             return false;
@@ -442,7 +420,6 @@ impl<'a> Body<'a> {
         true
     }
 
-    /// `composeAffineMapAndOperands`.
     pub fn compose_map(&self, map: &mut AffineMap, ops: &mut crate::Ids<ValueId>) {
         if map.results.is_empty() {
             self.canonicalize_map_or_set(map, ops);
@@ -494,14 +471,11 @@ impl<'a> Body<'a> {
         *map = map.simplified();
     }
 
-    /// `fullyComposeAffineMapAndOperands`.
     pub fn fully_compose_map(&self, map: &mut AffineMap, ops: &mut crate::Ids<ValueId>) {
         while ops.iter().any(|v| self.def_named(*v, "affine.apply").is_some()) {
             self.compose_map(map, ops);
         }
     }
-
-    // ---- bounds ------------------------------------------------------------------------
 
     pub fn for_constant_bound(&self, f: OpId, lower: bool) -> Option<i64> {
         self.affine_map(f, if lower { "lowerBoundMap" } else { "upperBoundMap" })?.single_constant().filter(|_| {
@@ -555,7 +529,6 @@ impl<'a> Body<'a> {
         self.for_constant_bound(f, true).is_some_and(|lb| lb >= 0) && self.for_constant_bound(f, false).is_some_and(|ub| ub <= k)
     }
 
-    /// `simplifyExprAndOperands`.
     fn simplify_expr_with(&self, expr: &AffineExpr, nd: u32, ns: u32, ops: &[ValueId]) -> AffineExpr {
         use crate::AffineBin as B;
         let AffineExpr::Bin(k, l, r) = expr else { return expr.clone() };
@@ -574,7 +547,6 @@ impl<'a> Body<'a> {
                 _ => {}
             }
         }
-        // `isQTimesDPlusR`.
         if let AffineExpr::Bin(B::Add, ll, lr) = &**l {
             let mut found = None;
             let div = self.expr_largest_divisor(ll, ops);
@@ -602,12 +574,10 @@ impl<'a> Body<'a> {
         e
     }
 
-    /// `simplifyMapWithOperands`.
     pub fn simplify_map_with(&self, map: &AffineMap, ops: &[ValueId]) -> AffineMap {
         AffineMap { results: map.results.iter().map(|r| self.simplify_expr_with(r, map.dims, map.syms, ops)).collect(), ..map.clone() }
     }
 
-    /// `simplifyMinOrMaxExprWithOperands`.
     pub fn simplify_min_max_with(&self, map: &AffineMap, ops: &[ValueId], is_max: bool) -> AffineMap {
         if ops.is_empty() {
             return map.clone();
@@ -677,8 +647,6 @@ impl<'a> Body<'a> {
     }
 }
 
-/// `shortenAddChainsContainingAll`: an add chain holding every expected term maps to `new`
-/// plus the rest.
 fn shorten_add_chains(e: &AffineExpr, expected: &[AffineExpr], new: &AffineExpr, repl: &mut Vec<(AffineExpr, AffineExpr)>) {
     use crate::AffineBin as B;
     let AffineExpr::Bin(k, l, r) = e else { return };
@@ -721,8 +689,6 @@ fn shorten_add_chains(e: &AffineExpr, expected: &[AffineExpr], new: &AffineExpr,
     }
 }
 
-// ---- folds -----------------------------------------------------------------------------
-
 fn fold_apply<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let Some(map) = b.affine_map(op, "map") else { return Fold::Failed };
     let Some(e) = map.results.first() else { return Fold::Failed };
@@ -739,7 +705,6 @@ fn fold_apply<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     }
 }
 
-/// `foldMinMaxOp`.
 fn fold_min_max<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let Some(map) = b.affine_map(op, "map") else { return Fold::Failed };
     let consts: Vec<Option<i64>> = b[op].operands.iter().map(|v| b.const_index(*v)).collect();
@@ -771,14 +736,12 @@ fn fold_min_max<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
 }
 
 impl<'a> Body<'a> {
-    /// An `affine.for`'s (lower bound, upper bound, inits) operands.
     fn for_operands(&self, f: OpId) -> (crate::Ids<ValueId>, crate::Ids<ValueId>, crate::Ids<ValueId>) {
         let s = self.segments(f, "operandSegmentSizes").unwrap_or_default();
         let o = &self[f].operands;
         (o[..s[0]].to_vec().into(), o[s[0]..s[0] + s[1]].to_vec().into(), o[s[0] + s[1]..].to_vec().into())
     }
 
-    /// `setLowerBound` / `setUpperBound`.
     fn set_for_bound(&mut self, f: OpId, lower: bool, ops: Vec<ValueId>, map: &AffineMap) {
         let (mut lb, mut ub, inits) = self.for_operands(f);
         if lower {
@@ -799,7 +762,6 @@ impl<'a> Body<'a> {
         Some((self.for_constant_bound(f, true)?, self.for_constant_bound(f, false)?))
     }
 
-    /// `getTrivialConstantTripCount`.
     fn trivial_trip_count(&self, f: OpId) -> Option<u64> {
         let step = self.for_step(f);
         let (lb, ub) = self.for_constant_bounds(f)?;
@@ -810,7 +772,6 @@ impl<'a> Body<'a> {
     }
 }
 
-/// `removeDuplicateExprs`: consecutive repeats go.
 fn dedup_consecutive(m: AffineMap) -> AffineMap {
     let mut r: Vec<AffineExpr> = Vec::new();
     for e in m.results {
@@ -821,10 +782,8 @@ fn dedup_consecutive(m: AffineMap) -> AffineMap {
     AffineMap { results: r, ..m }
 }
 
-/// `AffineForOp::fold`.
 fn fold_for<'a>(b: &mut Body<'a>, f: OpId) -> Fold<'a> {
     let mut folded = false;
-    // `foldLoopBounds`.
     for lower in [true, false] {
         if b.for_constant_bound(f, lower).is_some() {
             continue;
@@ -838,7 +797,6 @@ fn fold_for<'a>(b: &mut Body<'a>, f: OpId) -> Fold<'a> {
         b.set_for_bound(f, lower, Vec::new(), &AffineMap::constant(*v.expect("a bound")));
         folded = true;
     }
-    // `canonicalizeLoopBounds`.
     let (mut lbo, mut ubo, _) = b.for_operands(f);
     if let (Some(mut lbm), Some(mut ubm)) = (b.affine_map(f, "lowerBoundMap"), b.affine_map(f, "upperBoundMap")) {
         let (plb, pub_) = (lbm.clone(), ubm.clone());
@@ -874,7 +832,6 @@ fn fold_for<'a>(b: &mut Body<'a>, f: OpId) -> Fold<'a> {
     }
 }
 
-/// `AffineForEmptyLoopFolder`.
 fn empty_loop_folder(b: &Body<'_>, f: OpId) -> Option<Vec<ValueId>> {
     let body = b[b[f].regions[0]].blocks[0];
     if b.len_ops(body) != 1 || b[f].results.is_empty() {
@@ -916,9 +873,6 @@ fn empty_loop_folder(b: &Body<'_>, f: OpId) -> Option<Vec<ValueId>> {
     Some(repl)
 }
 
-/// `AffineIfOp::fold`: compose and canonicalize the condition and its operands.
-/// `AffineLoadOp::fold`: through a `memref.cast`, or an element of a constant global (any of a
-/// splat, else at constant indices).
 fn fold_load<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     if b.fold_memref_cast(op, None) {
         return Fold::InPlace;
@@ -935,8 +889,6 @@ fn fold_load<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     Folded::Attr(crate::Const::scalar(c.at(at as usize), elem).into()).into()
 }
 
-/// `AffineParallelOp::fold` (`canonicalizeLoopBounds`): each bound map composed with the
-/// `affine.apply`s and constants feeding it.
 fn fold_parallel<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let (Some(lbm), Some(ubm)) = (b.affine_map(op, "lowerBoundsMap"), b.affine_map(op, "upperBoundsMap")) else { return Fold::Failed };
     let n = (lbm.dims + lbm.syms) as usize;
@@ -967,7 +919,6 @@ fn fold_if<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let old_ops = b[op].operands.clone();
     let mut set = old.clone();
     let mut ops = old_ops.clone();
-    // `composeSetAndOperands`.
     if ops.iter().any(|v| b.def_named(*v, "affine.apply").is_some()) {
         let mut map = AffineMap { dims: set.dims, syms: set.syms, results: set.constraints.iter().map(|c| c.0.clone()).collect() };
         b.compose_map(&mut map, &mut ops);
@@ -982,7 +933,6 @@ fn fold_if<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     Fold::InPlace
 }
 
-/// `canonicalizeMapExprAndTermOrder`: results sorted by their flattened forms.
 fn sort_min_max_terms(map: &AffineMap) -> Option<AffineMap> {
     let mut flat = Vec::new();
     for r in &map.results {
@@ -1008,7 +958,6 @@ fn replace_min_max(rw: &mut crate::Rewriter<'_, '_>, op: OpId, name: &str, map: 
     true
 }
 
-/// `MergeAffineMinMaxOp`: a min (max) of a min (max) flattens.
 fn merge_min_max(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let name = b[op].name.clone();
@@ -1050,7 +999,6 @@ fn merge_min_max(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     replace_min_max(rw, op, &name, &map, &nd)
 }
 
-/// An `OpFoldResult` of a basis: a constant, a value, or nothing (no outer bound).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Ofr {
     C(i64),
@@ -1066,7 +1014,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// The dynamic basis operands of a (de)linearize.
     fn dynamic_basis(&self, op: OpId) -> Vec<ValueId> {
         if self[op].name == "affine.delinearize_index" {
             return self[op].operands[1..].to_vec();
@@ -1080,13 +1027,11 @@ impl<'a> Body<'a> {
         self[op].operands[..segs[0]].to_vec()
     }
 
-    /// `getMixedBasis`.
     fn mixed_basis(&self, op: OpId) -> Vec<Ofr> {
         let mut d = self.dynamic_basis(op).into_iter();
         self.static_basis(op).into_iter().map(|b| if b == i64::MIN { Ofr::V(d.next().expect("dynamic basis")) } else { Ofr::C(b) }).collect()
     }
 
-    /// `UnitProp` `disjoint`: printed bare when set, `= false` otherwise.
     fn disjoint(&self, op: OpId) -> bool {
         matches!(self[op].get("disjoint"), Some(Attribute::Unit | Attribute::Bool(true)))
     }
@@ -1096,7 +1041,6 @@ impl<'a> Body<'a> {
         n == self.static_basis(op).len()
     }
 
-    /// `getPaddedBasis`.
     fn padded_basis(&self, op: OpId) -> Vec<Ofr> {
         let mut b = self.mixed_basis(op);
         if !self.has_outer_bound(op) {
@@ -1113,13 +1057,11 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `getConstantIntValue`: an integer constant, or a splat of one.
     fn const_int_or_splat(&self, v: ValueId) -> Option<i64> {
         let c = crate::Const::try_from(&self.constant_of(v)?).ok()?;
         Some(c.as_int()?.signed() as i64)
     }
 
-    /// `foldCstValueToCstAttrBasis`: constant dynamic basis entries become static.
     fn fold_constant_basis(&mut self, op: OpId) -> bool {
         let dynamic = self.dynamic_basis(op);
         if !dynamic.iter().any(|v| self.const_index(*v).is_some()) {
@@ -1197,7 +1139,6 @@ fn fold_linearize<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
 }
 
 impl<'a> crate::Rewriter<'_, 'a> {
-    /// `AffineDelinearizeIndexOp::create(index, basis, hasOuterBound)`.
     fn delinearize(&mut self, index: ValueId, basis: &[Ofr], outer: bool) -> Vec<ValueId> {
         let (basis, outer) = if outer && basis.first() == Some(&Ofr::None) { (&basis[1..], false) } else { (basis, outer) };
         let mut dynamic = Vec::new();
@@ -1221,7 +1162,6 @@ impl<'a> crate::Rewriter<'_, 'a> {
         self.body[o].results.clone().to_vec()
     }
 
-    /// `AffineLinearizeIndexOp::create(multiIndex, basis, disjoint)` (a leading `None` dropped).
     fn linearize_data(&self, multi: &[ValueId], basis: &[Ofr], disjoint: bool) -> OpData<'a> {
         let basis = if basis.first() == Some(&Ofr::None) { &basis[1..] } else { basis };
         let mut dynamic = Vec::new();
@@ -1245,7 +1185,6 @@ impl<'a> crate::Rewriter<'_, 'a> {
             .with("static_basis", Attribute::dense_i64(&statics))
     }
 
-    /// The linearized index: of the multi-index's type (`index` or a vector of them).
     fn linearize(&mut self, multi: &[ValueId], basis: &[Ofr], disjoint: bool) -> ValueId {
         let d = self.linearize_data(multi, basis, disjoint);
         let ty = multi.first().map_or(Type::Index, |v| self.body[*v].ty.clone());
@@ -1253,7 +1192,6 @@ impl<'a> crate::Rewriter<'_, 'a> {
         self.body[o].results[0]
     }
 
-    /// `getZeroAttr(ty)` as a constant: `ty` is `index` or a vector of them.
     fn zero_of(&mut self, ty: &Type<'a>) -> ValueId {
         let value = match ty {
             Type::Index => Attribute::index(0),
@@ -1263,7 +1201,6 @@ impl<'a> crate::Rewriter<'_, 'a> {
         self.body[o].results[0]
     }
 
-    /// `computeProduct`: constants multiply out; anything else goes through an `affine.apply`.
     fn product(&mut self, terms: &[Ofr]) -> Ofr {
         let mut e = AffineExpr::Const(1);
         let mut dynamic = Vec::new();
@@ -1293,9 +1230,6 @@ impl<'a> crate::Rewriter<'_, 'a> {
     }
 }
 
-// ---- patterns --------------------------------------------------------------------------
-
-/// The map attribute name and the operand range its operands occupy.
 fn map_operands(b: &Body<'_>, op: OpId) -> Option<(&'static str, usize)> {
     Some(match &*b[op].name {
         "affine.apply" | "affine.min" | "affine.max" => ("map", 0),
@@ -1305,7 +1239,6 @@ fn map_operands(b: &Body<'_>, op: OpId) -> Option<(&'static str, usize)> {
     })
 }
 
-/// `SimplifyAffineOp<...>`: compose, canonicalize and simplify the map and its operands.
 fn simplify_affine_op(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let Some((attr, start)) = map_operands(b, op) else { return false };
@@ -1329,12 +1262,10 @@ fn simplify_affine_op(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     true
 }
 
-/// `affine` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct AffineCanon;
 
 #[crate::patterns]
 impl AffineCanon {
-    /// `CancelDelinearizeOfLinearizeDisjointExactTail`.
     #[rewrite("affine.delinearize_index")]
     fn cancel_delinearize_of_linearize_disjoint_exact_tail(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1361,7 +1292,6 @@ impl AffineCanon {
         true
     }
 
-    /// `DropUnitExtentBasis`.
     #[rewrite("affine.delinearize_index")]
     fn drop_unit_extent_basis(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1396,7 +1326,6 @@ impl AffineCanon {
         true
     }
 
-    /// `SplitDelinearizeSpanningLastLinearizeArg`.
     #[rewrite("affine.delinearize_index")]
     fn split_delinearize_spanning_last_linearize_arg(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1443,7 +1372,6 @@ impl AffineCanon {
         true
     }
 
-    /// `CancelLinearizeOfDelinearizePortion`.
     #[rewrite("affine.linearize_index")]
     fn cancel_linearize_of_delinearize_portion(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1533,7 +1461,6 @@ impl AffineCanon {
         true
     }
 
-    /// `DropLinearizeLeadingZero`.
     #[rewrite("affine.linearize_index")]
     fn drop_linearize_leading_zero(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1557,7 +1484,6 @@ impl AffineCanon {
         true
     }
 
-    /// `DropLinearizeUnitComponentsIfDisjointOrZero`.
     #[rewrite("affine.linearize_index")]
     fn drop_linearize_unit_components_if_disjoint_or_zero(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1596,7 +1522,6 @@ impl AffineCanon {
         true
     }
 
-    /// `SimplifyDeadElse`: an else holding only its terminator goes.
     #[rewrite("affine.if")]
     fn simplify_dead_else(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1610,7 +1535,6 @@ impl AffineCanon {
         true
     }
 
-    /// `AlwaysTrueOrFalseIf`.
     #[rewrite("affine.if")]
     fn always_true_or_false_if(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1637,67 +1561,51 @@ impl AffineCanon {
         true
     }
 
-    /// `CanonicalizeSingleResultAffineMinMaxOp<AffineMinOp>`.
     #[rewrite("affine.min")]
     fn single_result_affine_min(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { single_result_min_max(rw, op) }
 
-    /// `DeduplicateAffineMinMaxExpressions<AffineMinOp>`.
     #[rewrite("affine.min")]
     fn deduplicate_affine_min(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { dedup_min_max(rw, op) }
 
-    /// `MergeAffineMinMaxOp<AffineMinOp>`.
     #[rewrite("affine.min")]
     fn merge_affine_min(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { merge_min_max(rw, op) }
 
-    /// `SimplifyAffineOp<AffineMinOp>`.
     #[rewrite("affine.min")]
     fn simplify_affine_min(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_affine_op(rw, op) }
 
-    /// `CanonicalizeAffineMinMaxOpExprAndTermOrder<AffineMinOp>`.
     #[rewrite("affine.min")]
     fn order_affine_min(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { order_min_max(rw, op) }
 
-    /// `CanonicalizeSingleResultAffineMinMaxOp<AffineMaxOp>`.
     #[rewrite("affine.max")]
     fn single_result_affine_max(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { single_result_min_max(rw, op) }
 
-    /// `DeduplicateAffineMinMaxExpressions<AffineMaxOp>`.
     #[rewrite("affine.max")]
     fn deduplicate_affine_max(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { dedup_min_max(rw, op) }
 
-    /// `MergeAffineMinMaxOp<AffineMaxOp>`.
     #[rewrite("affine.max")]
     fn merge_affine_max(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { merge_min_max(rw, op) }
 
-    /// `SimplifyAffineOp<AffineMaxOp>`.
     #[rewrite("affine.max")]
     fn simplify_affine_max(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_affine_op(rw, op) }
 
-    /// `CanonicalizeAffineMinMaxOpExprAndTermOrder<AffineMaxOp>`.
     #[rewrite("affine.max")]
     fn order_affine_max(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { order_min_max(rw, op) }
 
-    /// `SimplifyAffineOp<AffineApplyOp>`.
     #[rewrite("affine.apply")]
     fn simplify_affine_apply(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_affine_op(rw, op) }
 
-    /// `SimplifyAffineOp<AffineLoadOp>`.
     #[rewrite("affine.load")]
     fn simplify_affine_load(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_affine_op(rw, op) }
 
-    /// `SimplifyAffineOp<AffineStoreOp>`.
     #[rewrite("affine.store")]
     fn simplify_affine_store(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_affine_op(rw, op) }
 
-    /// `SimplifyAffineOp<AffineVectorLoadOp>`.
     #[rewrite("affine.vector_load")]
     fn simplify_affine_vector_load(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_affine_op(rw, op) }
 
-    /// `SimplifyAffineOp<AffineVectorStoreOp>`.
     #[rewrite("affine.vector_store")]
     fn simplify_affine_vector_store(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_affine_op(rw, op) }
 
-    /// `SimplifyAffineOp<AffinePrefetchOp>`.
     #[rewrite("affine.prefetch")]
     fn simplify_affine_prefetch(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_affine_op(rw, op) }
 }
@@ -1733,12 +1641,10 @@ fn order_min_max(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
 }
 
 impl AffineCanon {
-    /// `AffineDialect::materializeConstant`.
     pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
         crate::ArithCanon::materialize(value, ty)
     }
 
-    /// The fold of an `affine` op.
     pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         match &*b[op].name {
             "affine.apply" => fold_apply(b, op),
@@ -1753,7 +1659,6 @@ impl AffineCanon {
         }
     }
 
-    /// The affine dialect's canonicalization patterns.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(SimplifyAffineApply);
         set.add(SimplifyDeadElse);
@@ -1783,9 +1688,7 @@ impl AffineCanon {
 }
 
 impl crate::Rewriter<'_, '_> {
-    /// `makeComposedFoldedAffineApply`.
     pub fn composed_folded_apply(&mut self, map: AffineMap, operands: &[crate::MemrefOfr]) -> crate::MemrefOfr {
-        // `foldAttributesIntoMap`.
         let mut values = crate::Ids::new();
         let (mut nd, mut ns) = (0, 0);
         let dims: Vec<AffineExpr> = operands[..map.dims as usize]
@@ -1834,7 +1737,6 @@ impl crate::Rewriter<'_, '_> {
         }
     }
 
-    /// `makeComposedAffineApply`: the composed `affine.apply`, not folded.
     pub fn composed_apply(&mut self, map: AffineMap, operands: &[crate::MemrefOfr]) -> ValueId {
         let mut values = crate::Ids::new();
         let (mut nd, mut ns) = (0, 0);

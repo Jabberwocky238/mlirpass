@@ -1,6 +1,3 @@
-//! `amdgpu` memory ops ⇒ `rocdl`, as `AMDGPUToROCDL.cpp`'s `TransposeLoadOpLowering` and
-//! `GatherToLDSOpLowering`: an element pointer into the memref, one intrinsic.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -12,14 +9,12 @@ use crate::{AmdChipset, AmdgpuRocdlOptions, ConversionRewriter, MemrefToLlvm, Op
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `kGfx950`.
 const GFX950: AmdChipset = AmdChipset::new(9, 5, 0);
-/// `kGfx1200`.
+
 const GFX1200: AmdChipset = AmdChipset::new(12, 0, 0);
-/// `kGfx1250`.
+
 const GFX1250: AmdChipset = AmdChipset::new(12, 5, 0);
 
-/// The LDS transpose load of each element width on gfx950 / gfx1250+, and the elements it loads.
 const TRANSPOSE_LOADS: [(u32, &str, &str, usize, usize); 4] = [
     (4, "rocdl.ds.read.tr4.b64", "rocdl.ds.load.tr4.b64", 16, 16),
     (6, "rocdl.ds.read.tr6.b96", "rocdl.ds.load.tr6.b96", 16, 16),
@@ -27,22 +22,16 @@ const TRANSPOSE_LOADS: [(u32, &str, &str, usize, usize); 4] = [
     (16, "rocdl.ds.read.tr16.b64", "rocdl.ds.load.tr16.b128", 4, 8),
 ];
 
-/// The global transpose load of each element width, and whether it needs gfx1250.
 const GLOBAL_TRANSPOSE_LOADS: [(u32, &str, bool); 4] = [(4, "rocdl.global.load.tr4.b64", true), (6, "rocdl.global.load.tr6.b96", true), (8, "rocdl.global.load.tr.b64", false), (16, "rocdl.global.load.tr.b128", false)];
 
-/// `GEPNoWrapFlags::inbounds | GEPNoWrapFlags::nuw`.
 const INBOUNDS_NUW: i64 = 7;
 
-/// `getGlobalPrefetchLLVMEncoding` as `#rocdl<gfx12_cache_policy ..>` names: the temporal hint
-/// (bits 2:0) of each `amdgpu.load_temporal_hint`, then the scope (bits 4:3) of each
-/// `amdgpu.cache_scope`.
 const PREFETCH_HINTS: [(&str, u32); 7] = [("RT", 0), ("NT", 1), ("HT", 2), ("LU", 3), ("NT_RT", 4), ("RT_NT", 5), ("NT_HT", 6)];
 const PREFETCH_SCOPES: [(&str, u32); 4] = [("WGP", 0), ("SE", 1), ("DEV", 2), ("SYS", 3)];
-/// The printed groups of the temporal bits, by value, and of the scope bits.
+
 const GFX12_TEMPORAL: [&str; 8] = ["", "nt", "ht", "lu", "nt_rt", "rt_nt", "nt_ht", "nt_wb"];
 const GFX12_SCOPE: [&str; 4] = ["", "scope_se", "scope_dev", "scope_sys"];
 
-/// The amdgpu memory ops.
 pub struct AmdgpuMemToRocdl;
 
 #[patterns(converter, options = AmdgpuRocdlOptions)]
@@ -54,7 +43,6 @@ impl AmdgpuMemToRocdl {
         }
     }
 
-    /// `getStridedElementPtr` of original operand `k` (a memref) at operand group `g`.
     fn element_ptr(cr: &mut Cr<'_, '_, '_>, op: OpId, seg: &AmdgpuOperands<'_>, k: usize, g: usize, flags: i64, o: AmdgpuRocdlOptions) -> Option<ValueId> {
         let mem = cr.rw.body[op].operands.get(k).copied()?;
         let s = Self::memref(cr, mem)?;
@@ -63,7 +51,6 @@ impl AmdgpuMemToRocdl {
         MemrefToLlvm::strided_ptr(cr, o.llvm, &s, desc, &indices, flags)
     }
 
-    /// `TransposeLoadOpLowering` (gfx950, gfx1250+).
     #[convert("amdgpu.transpose_load")]
     fn transpose_load(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let new = o.chipset >= GFX1250;
@@ -95,12 +82,10 @@ impl AmdgpuMemToRocdl {
         true
     }
 
-    /// What a transpose load returns: dwords below 16-bit elements, else the result itself.
     fn transpose_type<'a>(n: usize, w: u32, llvm: &Type<'a>) -> Type<'a> {
         if w < 16 { Type::vector(&[(n as i64 * i64::from(w)) / 32], &[false], Type::int(32)) } else { llvm.clone() }
     }
 
-    /// `GlobalTransposeLoadOpLowering` (gfx1200+; 4- and 6-bit on gfx1250+).
     #[convert("amdgpu.global_transpose_load")]
     fn global_transpose_load(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         if o.chipset < GFX1200 {
@@ -126,7 +111,6 @@ impl AmdgpuMemToRocdl {
         true
     }
 
-    /// `GlobalPrefetchOpLowering` (gfx1250+): the hint and scope as a gfx12 cache policy.
     #[convert("amdgpu.global_prefetch")]
     fn global_prefetch(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         if o.chipset < GFX1250 {
@@ -140,7 +124,6 @@ impl AmdgpuMemToRocdl {
         let speculative = b[op].get("speculative").is_some();
         let (Some(hint), Some(scope)) = (case("temporalHint"), case("cacheScope")) else { return false };
         let (Some(&(_, mut h)), Some(&(_, sc))) = (PREFETCH_HINTS.iter().find(|(n, _)| *n == hint), PREFETCH_SCOPES.iter().find(|(n, _)| *n == scope)) else { return false };
-        // (only RT and HT also run non-speculatively, with bit 0 set)
         if matches!(hint.as_str(), "RT" | "HT") && !speculative {
             h |= 1;
         }
@@ -154,7 +137,6 @@ impl AmdgpuMemToRocdl {
         true
     }
 
-    /// `GatherToLDSOpLowering` (gfx9 / gfx10; 12- and 16-byte loads on gfx950).
     #[convert("amdgpu.gather_to_lds")]
     fn gather_to_lds(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         if !(9..=10).contains(&o.chipset.major) {

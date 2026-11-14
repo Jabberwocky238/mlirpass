@@ -1,5 +1,3 @@
-//! `bufferization` rule sets.
-
 mod canonicalize;
 mod to_memref;
 

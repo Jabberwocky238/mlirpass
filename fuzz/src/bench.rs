@@ -1,20 +1,10 @@
-//! ⭐ `bench`: one big generated module through each pipeline, timed.
-//!
-//! Both tools read the module as mlir-opt prints it back (`--raw yes`: as generated).
-//! mlirpass runs in process, phase by phase (parse, run, print), on one thread and on the thread
-//! pool; mlir-opt runs as a process (its wall time: parse, run, print and start-up), with and
-//! without `--mlir-disable-threading`. Each figure is the best of `--reps` runs, and the outputs
-//! are checked: mlirpass serial against threaded, and against mlir-opt.
-
 use std::time::{Duration, Instant};
-
 
 use crate::irgen::{Gen, Shape};
 use crate::oracle::{Mlirpass, MlirOptTool};
 use crate::rng::Rng;
 use crate::Args;
 
-/// Best-of times of mlirpass's phases.
 #[derive(Clone, Copy)]
 struct Phases {
     parse: Duration,
@@ -41,13 +31,10 @@ pub struct Bench<'a> {
     seed: u64,
     pipelines: Vec<&'a str>,
     reps: usize,
-    /// The module as generated (custom form), not as mlir-opt prints it back.
     raw: bool,
-    /// `--opt no`: mlirpass alone, mlir-opt neither timed nor compared.
     opt: bool,
 }
 
-/// Milliseconds, for the table.
 struct Ms(Duration);
 
 impl core::fmt::Display for Ms {
@@ -62,7 +49,6 @@ impl<'a> Bench<'a> {
         Ok(Self { shape, seed: a.get("seed", 1)?, pipelines: a.pipelines(), reps: a.get("reps", 3)?, raw: a.get("raw", String::from("no"))? == "yes", opt: a.get("opt", String::from("yes"))? == "yes" })
     }
 
-    /// One mlirpass run of `src`, phase by phase, and what it printed.
     fn once(pass: &Mlirpass, inv: &mlirpass::Invocation, src: &str) -> Result<(Phases, String), String> {
         let t = Instant::now();
         let mut body = inv.read(pass.ctx(), src).map_err(|e| e.0)?;
@@ -76,7 +62,6 @@ impl<'a> Bench<'a> {
         Ok((Phases { parse, run, print: t.elapsed() }, out))
     }
 
-    /// Best of `reps` mlirpass runs, threaded or not.
     fn mlirpass(&self, pass: &Mlirpass, pipeline: &str, src: &str, threading: bool) -> Result<(Phases, String), String> {
         let inv = pass.invocation(pipeline, threading)?;
         let mut best = Phases::NONE;
@@ -103,7 +88,6 @@ impl<'a> Bench<'a> {
     pub fn run(&self) -> Result<(), String> {
         let (pass, tool) = (Mlirpass::default(), MlirOptTool::default());
         let src = Gen::new(&mut Rng::from(self.seed), self.shape).module();
-        // Both tools read the same text: as mlir-opt prints it back (generic), as `diff` does.
         let src = if self.raw { src } else { tool.run(&src, "builtin.module()", &[]).0? };
         let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
         println!("module: seed {}, {} funcs, {} lines, {:.1} MB; {threads} threads; best of {}", self.seed, self.shape.funcs, src.lines().count(), src.len() as f64 / 1e6, self.reps);

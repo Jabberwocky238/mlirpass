@@ -1,17 +1,3 @@
-//! `convert-spirv-entry-points`: a GPU target's SPIR-V intake. Every `spirv.module` in a `gpu.module` becomes its entry
-//! points as functions of the `gpu.module`, the form the targets select instructions from:
-//!
-//! ```text
-//!   spirv.EntryPoint Vertex / Fragment @f   ⇒ func.func @f {spirv.execution_model = #spirv.execution_model<...>}
-//!     Input variables (by location)         ⇒ its arguments, in location order
-//!     Output variables                      ⇒ its results: BuiltIn Position first, then by location
-//!     a resource it uses (UniformConstant,  ⇒ an argument after those, the variable's pointer, with
-//!     StorageBuffer, Uniform, PushConstant)     {spirv.interface_var_abi = #spirv.interface_var_abi<(set, binding), Class>}
-//!   spirv arithmetic / composites / GLSL    ⇒ arith / math / vector ([`SpirvToArith`])
-//! ```
-//!
-//! What has no upstream counterpart stays SPIR-V for the target: the resources' loads, access chains and image ops.
-
 use alloc::boxed::Box;
 use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
@@ -24,24 +10,18 @@ use mlirformat::{Attribute, Error, Extended, FunctionType, NamedAttr, Type};
 
 use crate::{Attrs, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpData, OpId, Quiet, Rewriter, SpirvToArith, ValueId, pass};
 
-/// A variable's storage class, as the entry point sees it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Class {
     Input,
     Output,
-    /// Bound by the pipeline: a texture, a sampler, a buffer, the push constants.
     Resource,
 }
 
-/// A global variable of a `spirv.module`.
 #[derive(Clone)]
 struct Var<'a> {
-    /// What it points to.
     ty: Type<'a>,
-    /// Its pointer type.
     ptr: Type<'a>,
     class: Class,
-    /// Its storage class's name, for a resource's ABI attribute.
     storage: String,
     location: Option<i64>,
     position: bool,
@@ -66,27 +46,23 @@ impl<'a> Var<'a> {
         Ok((name, var))
     }
 
-    /// `#spirv.interface_var_abi<(set, binding), Class>`.
     fn abi(&self) -> Attribute<'a> {
         Attribute::Extended { ext: Box::new(Extended { name: String::from("spirv.interface_var_abi").into(), body: Some(format!("<({}, {}), {}>", self.set, self.binding, self.storage).into()), params: Vec::new() }), ty: None }
     }
 }
 
-/// One entry point being turned into a function.
 struct Entry<'r, 'b, 'a> {
     rw: &'b mut Rewriter<'r, 'a>,
     vars: &'b BTreeMap<String, Var<'a>>,
 }
 
 impl<'a> Entry<'_, '_, 'a> {
-    /// `spirv.func @f` with entry point `model` and `interface` ⇒ `func.func @f`, placed before `before`.
     fn func(&mut self, f: OpId, model: Attribute<'a>, interface: &[String], before: OpId) -> Result<OpId, Error> {
         let var = |n: &String| self.vars.get(n).cloned().map(|v| (n.clone(), v)).ok_or_else(|| Error(format!("no variable @{n}")));
         let vars = interface.iter().map(var).collect::<Result<Vec<_>, _>>()?;
         let (mut inputs, mut outputs): (Vec<_>, Vec<_>) = vars.into_iter().filter(|(_, v)| v.class != Class::Resource).partition(|(_, v)| v.class == Class::Input);
         inputs.sort_by_key(|(_, v)| v.location);
         outputs.sort_by_key(|(_, v)| (!v.position, v.location));
-        // the resources it uses, in (set, binding) order, the push constants last
         let from = self.rw.body.top_block(f);
         let mut used: Vec<(String, Var<'a>)> = Vec::new();
         for op in self.rw.body.block_ops(from) {
@@ -128,7 +104,6 @@ impl<'a> Entry<'_, '_, 'a> {
                     let a = self.rw.body[op].all_attrs();
                     let v = Attrs(&a).symbol("variable")?.to_owned();
                     let r = self.rw.body[op].results[0];
-                    // a resource: its argument; an input / output: followed through its loads and stores
                     if let Some(k) = used.iter().position(|(n, _)| *n == v) {
                         let arg = self.rw.body[block].args[inputs.len() + k];
                         self.rw.replace_all_uses(r, arg);
@@ -162,7 +137,6 @@ impl<'a> Entry<'_, '_, 'a> {
     }
 }
 
-/// `convert-spirv-entry-points`.
 #[pass("convert-spirv-entry-points", on = "builtin.module")]
 pub fn convert_spirv_entry_points<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let mut modules = Vec::new();

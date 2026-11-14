@@ -1,5 +1,3 @@
-//! `math` ⇒ `emitc`, as `MathToEmitC.cpp`: libm calls through `emitc.call_opaque`.
-
 use alloc::format;
 use alloc::vec::Vec;
 
@@ -9,8 +7,6 @@ use crate::patterns;
 
 use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
-/// The math ⇒ emitc patterns, as `populateConvertMathToEmitCPatterns` lists them: each a
-/// libm call (`LowerToEmitCCallOpaque`); the option is `cpp11` (`std::` calls, else C99's).
 pub struct MathToEmitc;
 
 #[patterns(options = bool)]
@@ -28,7 +24,6 @@ pub struct MathToEmitc;
 #[map("math.powf" => "pow", via = Self::call_opaque)]
 #[map("math.sqrt" => "sqrt", via = Self::call_opaque)]
 impl MathToEmitc {
-    /// `LowerToEmitCCallOpaque`: `emitc.call_opaque` of `callee` on f32 / f64.
     fn call_opaque(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], callee: &str, cpp11: bool) -> bool {
         let b = &*cr.rw.body;
         let f32_or_f64 = |v: &ValueId| matches!(b[*v].ty, Type::Float(FloatKind::F32 | FloatKind::F64));

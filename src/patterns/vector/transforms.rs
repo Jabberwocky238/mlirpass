@@ -1,7 +1,3 @@
-//! The vector-to-vector lowerings `convert-vector-to-llvm` runs first, as
-//! `Vector/Transforms/Lower*.cpp` and `VectorTransforms.cpp`, and the transfer lowerings it
-//! also runs during the conversion.
-
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -9,7 +5,6 @@ use alloc::vec::Vec;
 use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
 use crate::{ApInt, Body, Build, Const, MemrefLayout, OpData, OpId, PatternSet, Rewriter, Scalar, ValueId};
-
 
 pub fn vshape(t: &Type<'_>) -> Option<(Vec<i64>, Vec<bool>)> {
     match t {
@@ -33,7 +28,6 @@ pub fn zeros<'a>(ty: &Type<'a>) -> Attribute<'a> {
     Const::splat(z, ty.clone()).into()
 }
 
-/// Vector-op builders shared by the lowerings.
 pub trait VectorBuild<'a>: Build<'a> {
     fn vextract_(&mut self, v: ValueId, pos: &[i64]) -> ValueId {
         let ty = self.body()[v].ty.clone();
@@ -67,7 +61,6 @@ impl<'a> Body<'a> {
         self.segments(op, "operandSegmentSizes").unwrap_or_default()
     }
 
-    /// (base, indices, padding / vector, mask) of a transfer.
     pub fn xfer_parts(&self, op: OpId) -> (ValueId, Vec<ValueId>, ValueId, Option<ValueId>) {
         let s = self.xfer_segments(op);
         let o = &self[op].operands;
@@ -95,7 +88,6 @@ impl<'a> Body<'a> {
         self.parent_op(op).is_some_and(|p| self[p].name == "vector.mask")
     }
 
-    /// The permutation map's results: dims, or `None` for broadcast (constant 0).
     pub fn xfer_perm(&self, op: OpId) -> Option<(u32, Vec<Option<u32>>)> {
         let m = self.affine_map(op, "permutation_map")?;
         let r = m.results.iter().map(|e| match e {
@@ -107,7 +99,6 @@ impl<'a> Body<'a> {
     }
 }
 
-/// `TransferReadToVectorLoadLowering` (`max_rank` as `maxTransferRank`).
 pub fn transfer_read_to_load<'a, B: Build<'a> + ?Sized>(rw: &mut B, op: OpId, max_rank: Option<usize>) -> bool {
     let b = rw.body();
     let vt = b.xfer_vector_type(op);
@@ -116,7 +107,6 @@ pub fn transfer_read_to_load<'a, B: Build<'a> + ?Sized>(rw: &mut B, op: OpId, ma
         return false;
     }
     let Some((nd, perm)) = b.xfer_perm(op) else { return false };
-    // `isMinorIdentityWithBroadcasting`.
     let n = perm.len() as u32;
     let mut bcast = Vec::new();
     for (i, r) in perm.iter().enumerate() {
@@ -175,7 +165,6 @@ pub fn transfer_read_to_load<'a, B: Build<'a> + ?Sized>(rw: &mut B, op: OpId, ma
     true
 }
 
-/// `TransferWriteToVectorStoreLowering`.
 pub fn transfer_write_to_store<'a, B: Build<'a> + ?Sized>(rw: &mut B, op: OpId, max_rank: Option<usize>) -> bool {
     let b = rw.body();
     let vt = b.xfer_vector_type(op);
@@ -228,7 +217,6 @@ pub fn transfer_write_to_store<'a, B: Build<'a> + ?Sized>(rw: &mut B, op: OpId, 
     true
 }
 
-/// `buildVectorComparison`: `[0, 1, ...] (+ off) < bound`.
 fn vector_comparison<'a>(rw: &mut Rewriter<'_, 'a>, dim: i64, bound: ValueId, off: Option<ValueId>, force32: bool) -> ValueId {
     let it = Type::int(if force32 { 32 } else { 64 });
     let shape: Vec<i64> = if dim == 0 { Vec::new() } else { vec![dim] };
@@ -242,7 +230,6 @@ fn vector_comparison<'a>(rw: &mut Rewriter<'_, 'a>, dim: i64, bound: ValueId, of
         let ov = rw.broadcast(vt.clone(), o);
         indices = rw.make1(OpData::build("arith.addi").operands(&[ov, indices]), vt.clone());
     }
-    // With 32-bit indices the bound is capped at INT32_MAX before the cast (no signed wrap).
     let bound = if force32 { min_i32_max(rw, bound) } else { bound };
     let bnd = cast_index_like(rw, &it, bound);
     let bounds = rw.broadcast(vt.clone(), bnd);
@@ -250,14 +237,12 @@ fn vector_comparison<'a>(rw: &mut Rewriter<'_, 'a>, dim: i64, bound: ValueId, of
     rw.make1(OpData::build("arith.cmpi").operands(&[indices, bounds]).with("predicate", Attribute::i64(2)), mt)
 }
 
-/// `arith.minsi v, INT32_MAX`: a bound cast to `i32` afterwards keeps its sign.
 fn min_i32_max<'a>(rw: &mut Rewriter<'_, 'a>, v: ValueId) -> ValueId {
     let ty = rw.body[v].ty.clone();
     let max = rw.constant(Attribute::integer(i128::from(i32::MAX), Type::Index), Type::Index);
     rw.make1(OpData::build("arith.minsi").operands(&[v, max]), ty)
 }
 
-/// `getValueOrCreateCastToIndexLike`.
 fn cast_index_like<'a>(rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, v: ValueId) -> ValueId {
     let vt = rw.body[v].ty.clone();
     if vt == *ty {
@@ -277,13 +262,10 @@ fn i64s(b: &Body<'_>, op: OpId, name: &str) -> Vec<i64> {
     }
 }
 
-/// An `ArrayAttr` of `i64`.
 fn arr<'a>(v: &[i64]) -> Attribute<'a> {
     Attribute::Array(v.iter().map(|x| Attribute::Int { lit: format!("{x}").into(), ty: None }).collect())
 }
 
-/// `createUnrollIterator(type, 1)`: the positions of the leading dims, up to the first
-/// scalable one.
 fn unroll_positions(shape: &[i64], scal: &[bool]) -> Option<Vec<Vec<i64>>> {
     if shape.len() <= 1 {
         return None;
@@ -312,7 +294,6 @@ fn unroll_positions(shape: &[i64], scal: &[bool]) -> Option<Vec<Vec<i64>>> {
     }
 }
 
-/// `unrollVectorOp`: a rank-n result rebuilt from `make(i)` rank-(n-1) pieces.
 fn unroll_op<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, mut make: impl FnMut(&mut Rewriter<'_, 'a>, Type<'a>, i64) -> ValueId) -> bool {
     let rt = rw.body[rw.body[op].results[0]].ty.clone();
     let Some((shape, scal)) = vshape(&rt) else { return false };
@@ -330,7 +311,6 @@ fn unroll_op<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, mut make: impl FnMut(&mut 
     true
 }
 
-/// `createContractArithOp`.
 fn contract_arith<'a>(rw: &mut Rewriter<'_, 'a>, x: ValueId, y: ValueId, acc: Option<ValueId>, kind: &str, is_int: bool, mask: Option<ValueId>) -> Option<ValueId> {
     let ty = rw.body[x].ty.clone();
     let mul = if is_int {
@@ -358,16 +338,13 @@ fn contract_arith<'a>(rw: &mut Rewriter<'_, 'a>, x: ValueId, y: ValueId, acc: Op
     Some(rw.arith_reduction(kind, mul, a, None, mask))
 }
 
-/// Options of the pre-pass patterns that need them.
 #[derive(Clone, Copy)]
 struct Force32(bool);
 
-/// The rewrite patterns of this module.
 pub struct Rules;
 
 #[crate::patterns]
 impl Rules {
-    /// `BroadcastOpLowering`.
     #[rewrite("vector.broadcast")]
     fn broadcast_op_lowering(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -377,7 +354,6 @@ impl Rules {
         let Some((ds, dsc)) = vshape(&dt) else { return false };
         let (sr, dr) = (ss.len(), ds.len());
         rw.set_before(op);
-        // A single-element fixed-size source: its scalar broadcast.
         if ss.iter().product::<i64>() == 1 && !ssc.iter().any(|s| *s) {
             let e = rw.vextract_(src, &vec![0; sr]);
             rw.replace_with(op, OpData::build("vector.broadcast").operands(&[e]), &[dt]);
@@ -418,7 +394,6 @@ impl Rules {
         true
     }
 
-    /// `UnrollBitCastOp` to rank 1.
     #[rewrite("vector.bitcast")]
     fn unroll_bit_cast_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -439,7 +414,6 @@ impl Rules {
         true
     }
 
-    /// `UnrollInterleaveOp` to rank 1.
     #[rewrite("vector.interleave")]
     fn unroll_interleave_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -460,7 +434,6 @@ impl Rules {
         true
     }
 
-    /// `UnrollDeinterleaveOp` to rank 1.
     #[rewrite("vector.deinterleave")]
     fn unroll_deinterleave_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -484,7 +457,6 @@ impl Rules {
         true
     }
 
-    /// `StepToArithConstantOpRewrite`.
     #[rewrite("vector.step")]
     fn step_to_arith_constant_op_rewrite(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -499,7 +471,6 @@ impl Rules {
         true
     }
 
-    /// `UnrollGather`.
     #[rewrite("vector.gather")]
     fn unroll_gather(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -520,7 +491,6 @@ impl Rules {
         })
     }
 
-    /// `UnrollFromElements`.
     #[rewrite("vector.from_elements")]
     fn unroll_from_elements(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let all = rw.body[op].operands.clone();
@@ -531,7 +501,6 @@ impl Rules {
         })
     }
 
-    /// `UnrollToElements`.
     #[rewrite("vector.to_elements")]
     fn unroll_to_elements(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -553,7 +522,6 @@ impl Rules {
         true
     }
 
-    /// `Convert1DExtractStridedSliceIntoExtractInsertChain`, for scalable vectors.
     #[rewrite("vector.extract_strided_slice")]
     fn convert1_d_extract_strided_slice_into_extract_insert_chain(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -579,7 +547,6 @@ impl Rules {
         true
     }
 
-    /// `CreateMaskOpLowering`: n-D masks become selects of (n-1)-D ones.
     #[rewrite("vector.create_mask")]
     fn create_mask_op_lowering(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -604,7 +571,6 @@ impl Rules {
         true
     }
 
-    /// `ConstantMaskOpLowering`.
     #[rewrite("vector.constant_mask")]
     fn constant_mask_op_lowering(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -640,7 +606,6 @@ impl Rules {
         true
     }
 
-    /// `VectorFMAOpNDRewritePattern`.
     #[rewrite("vector.fma", name = "VectorFMAOpNDRewritePattern")]
     fn vector_fma_op_nd_rewrite_pattern(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -668,15 +633,12 @@ impl Rules {
         true
     }
 
-    /// `TransferReadToVectorLoadLowering` (rank 1).
     #[rewrite("vector.transfer_read")]
     fn transfer_read_to_load1(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { transfer_read_to_load(rw, op, Some(1)) }
 
-    /// `TransferWriteToVectorStoreLowering` (rank 1).
     #[rewrite("vector.transfer_write")]
     fn transfer_write_to_store1(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { transfer_write_to_store(rw, op, Some(1)) }
 
-    /// `OuterProductOpLowering`.
     #[rewrite("vector.outerproduct")]
     fn outer_product_op_lowering(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -718,7 +680,6 @@ impl Rules {
         true
     }
 
-    /// `DecomposeDifferentRankInsertStridedSlice`.
     #[rewrite("vector.insert_strided_slice")]
     fn decompose_different_rank_insert_strided_slice(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -744,9 +705,6 @@ impl Rules {
         true
     }
 
-    /// `ShapeCastOpRewritePattern` (`LowerVectorShapeCast.cpp`): through extracts and inserts
-    /// of the largest slices the shapes share (their common suffix with the gcd of the first
-    /// dimension before it), with strided slices when that gcd is not 1.
     #[rewrite("vector.shape_cast", name = "ShapeCastOpRewritePattern")]
     fn shape_cast_op_rewrite_pattern(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -756,7 +714,6 @@ impl Rules {
             return false;
         }
         let et = elem(&rt).clone();
-        // The first dimension, from the end, where the shapes differ.
         let (mut sd, mut rd) = (ss.len() as i64 - 1, rs.len() as i64 - 1);
         while sd >= 0 && rd >= 0 && ss[sd as usize] == rs[rd as usize] {
             sd -= 1;
@@ -764,7 +721,6 @@ impl Rules {
         }
         rw.set_before(op);
         if sd < 0 || rd < 0 {
-            // `leadingOnesLowering`.
             let delta = ss.len() as i64 - rs.len() as i64;
             let poison = rw.poison(rt);
             let x = rw.vextract_(source, &vec![0; delta.max(0) as usize]);
@@ -782,7 +738,6 @@ impl Rules {
         };
         let n: i64 = ss.iter().product();
         if gcd == 1 {
-            // `noStridedSliceLowering`: whole suffix slices.
             let (sd, rd) = (sd + 1, rd + 1);
             let slices: i64 = ss[..sd].iter().product();
             let (mut ei, mut ii) = (vec![0i64; sd], vec![0i64; rd]);
@@ -831,7 +786,6 @@ impl Rules {
         true
     }
 
-    /// `DecomposeNDExtractStridedSlice`.
     #[rewrite("vector.extract_strided_slice", name = "DecomposeNDExtractStridedSlice")]
     fn decompose_nd_extract_strided_slice(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -869,7 +823,6 @@ impl Rules {
         true
     }
 
-    /// `ConvertSameRankInsertStridedSliceIntoShuffle`.
     #[rewrite("vector.insert_strided_slice")]
     fn convert_same_rank_insert_strided_slice_into_shuffle(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -921,7 +874,6 @@ impl Rules {
         true
     }
 
-    /// `Convert1DExtractStridedSliceIntoShuffle`.
     #[rewrite("vector.extract_strided_slice")]
     fn convert1_d_extract_strided_slice_into_shuffle(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -945,7 +897,6 @@ impl Rules {
         true
     }
 
-    /// `FoldI1Select`.
     #[rewrite("arith.select")]
     fn fold_i1_select(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -967,7 +918,6 @@ impl Rules {
     }
 }
 
-/// `VectorCreateMaskOpConversion` (1-D, fixed size).
 struct CreateMaskMaterialize(Force32);
 
 impl crate::Pattern for CreateMaskMaterialize {
@@ -992,7 +942,6 @@ impl crate::Pattern for CreateMaskMaterialize {
     }
 }
 
-/// `MaterializeTransferMask<TransferReadOp / TransferWriteOp>`.
 struct MaterializeTransferMask(&'static str, Force32);
 
 impl crate::Pattern for MaterializeTransferMask {
@@ -1016,7 +965,6 @@ impl crate::Pattern for MaterializeTransferMask {
         let last = indices.len() - 1;
         let off = indices[last];
         rw.set_before(op);
-        // `createOrFoldDimOp`.
         let idx = rw.constant(Attribute::index(last as i64), Type::Index);
         let tensor = matches!(&rw.body[base].ty, Type::Shaped(s) if s.kind == ShapedKind::Tensor);
         let dim = rw.create_or_fold(OpData::build(if tensor { "tensor.dim" } else { "memref.dim" }).operands(&[base, idx]), &[Type::Index])[0];
@@ -1044,8 +992,6 @@ impl crate::Pattern for MaterializeTransferMask {
     }
 }
 
-/// The `convert-vector-to-llvm` pre-pass: the patterns of `ConvertVectorToLLVMPass` that are
-/// ported, in its order.
 pub fn pre_patterns(force32: bool) -> PatternSet {
     let mut set = PatternSet::default();
     crate::VectorCanon::to_vector_patterns(&mut set);
@@ -1076,8 +1022,6 @@ pub fn pre_patterns(force32: bool) -> PatternSet {
 }
 
 impl Rules {
-    /// `inplaceAdd(1, base, index)`: the next index in mixed radix `base` (most significant
-    /// first).
     fn mixed_add(base: &[i64], index: &mut [i64]) {
         for d in (0..index.len()).rev() {
             index[d] += 1;

@@ -1,12 +1,9 @@
-//! `finalize-memref-to-llvm`.
-
 use crate::{llvm_target};
 use crate::{LlvmConverter, LlvmOptions, MemrefOptions, MemrefToLlvm};
 use crate::pass;
 use mlirformat::Error;
 use crate::{Body, ConversionConfig, ConversionPatterns, Converter, Mode, OpId, Run};
 
-/// `finalize-memref-to-llvm`.
 #[pass("finalize-memref-to-llvm")]
 pub struct FinalizeMemrefToLlvm {
     #[opt("use-aligned-alloc")]

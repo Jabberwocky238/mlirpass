@@ -1,31 +1,8 @@
-//! Mesa's asahi genxml ⇒ the agx dialect's ops: reads data/apple/cmdbuf.xml (every AGX struct: the words of the
-//! VDM / CDM control streams, of the PPP state, the texture / sampler / PBE descriptors, the USC words) and writes
-//! `src/dialects/agx/cmdbuf.gen.rs`:
-//!
-//! - `ITEMS`: every struct's layout (fields' first bit, width, type, default), sorted by op name, for
-//!   `Layouts::pack`; `num` is the struct's length in bytes (Mesa's `AGX_*_LENGTH`; a few are not whole dwords);
-//! - a typed op per struct: `agx.<name>`, the name as Mesa's C names it (`safe_name`, lower case), its settable
-//!   fields typed (bool, float, or `crate::Fill`: a number or a place);
-//! - the enum values as constants, as Mesa's (`AGX_<ENUM>_<VALUE>` without `AGX_`).
-//!
-//! A field's type follows gen_pack.py: bool; uint / hex / address / an enum ⇒ unsigned; float; half; lod; `exact` ⇒ fixed
-//! to that value; the modifiers `shr(n)`, `minus(n)`, `log2`, `groups(n)` ⇒ their types, with gen_pack.py's defaults
-//! (what encodes to zero).
-//!
-//! It also reads data/apple/agx2-isa.json (Mesa's model of the USC instruction set, dumped by scripts/agx_isa_dump.py)
-//! and writes `src/dialects/agx/usc.gen.rs`: `UscOp`, every instruction, and `USC` its lengths, exact bits,
-//! modifiers, immediates and operands (in `UscOp`'s order); `Enc`, every operand encoding, and its cases; `UscMod`,
-//! the modifiers' names; an operand enum an encoding (a variant a case); a typed op an instruction.
-//!
-//! `cargo run -p agxgen -- data/apple/cmdbuf.xml src/dialects/agx/cmdbuf.gen.rs data/apple/agx2-isa.json
-//! src/dialects/agx/usc.gen.rs`
-
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use serde::Deserialize;
 
-/// data/apple/agx2-isa.json.
 #[derive(Deserialize)]
 struct Isa {
     instructions: Vec<Ins>,
@@ -53,7 +30,6 @@ struct Case {
     modifiers: Vec<Part>,
 }
 
-/// A field: its name (none for an operand), kind, bit ranges, shift.
 #[derive(Deserialize)]
 struct Part {
     #[serde(default)]
@@ -65,7 +41,6 @@ struct Part {
 }
 
 impl Part {
-    /// `operand`: an instruction's destination or source (its kind an operand encoding).
     fn rust(&self, operand: bool) -> String {
         let bits: Vec<String> = self.bits.iter().map(|[a, b]| format!("({a}, {b})")).collect();
         let kind = match self.kind.as_str() {
@@ -78,12 +53,10 @@ impl Part {
     }
 }
 
-/// FNV-1a, 64 bits (the agx dialect hashes a mnemonic the same way to look it up).
 fn fnv1a(s: &str) -> u64 {
     s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3))
 }
 
-/// gen_pack.py `safe_name`: its substitutions, then `_` before a leading non-letter.
 struct Name;
 
 impl Name {
@@ -106,13 +79,11 @@ impl Name {
         out
     }
 
-    /// The op's Rust type: the name in camel case.
     fn camel(name: &str) -> String {
         name.split('_').filter(|w| !w.is_empty()).map(|w| w[..1].to_uppercase() + &w[1..]).collect()
     }
 }
 
-/// A field as the table spells it.
 struct Field {
     name: String,
     bit: u32,
@@ -122,12 +93,10 @@ struct Field {
 }
 
 struct Reader<'x> {
-    /// enum ⇒ (value name ⇒ value)
     enums: BTreeMap<&'x str, Vec<(&'x str, u64)>>,
 }
 
 impl Reader<'_> {
-    /// gen_pack.py: int(value, 0).
     fn num(v: &str) -> u64 {
         v.strip_prefix("0x").map_or_else(|| v.parse::<u64>(), |h| u64::from_str_radix(h, 16)).unwrap()
     }
@@ -153,7 +122,6 @@ impl Reader<'_> {
         if let Some(x) = a("exact") {
             let v = match ty {
                 "bool" => u64::from(x == "true"),
-                // gen_pack.py names it by its C name, upper case: `AGX_<ENUM>_<VALUE>`
                 e if self.enums.contains_key(e) => self.enums[e].iter().find(|(n, _)| Name::safe(n).to_uppercase() == Name::safe(x).to_uppercase()).unwrap_or_else(|| panic!("{e} has no {x}")).1,
                 _ => Reader::num(x),
             };
@@ -178,7 +146,6 @@ impl Reader<'_> {
 }
 
 impl Isa {
-    /// usc.gen.rs.
     fn write(mut self, output: &str) {
         let parts = |v: &[Part], operand: bool| v.iter().map(|p| p.rust(operand)).collect::<Vec<_>>().join(", ");
         self.instructions.sort_by(|a, b| a.name.cmp(&b.name));
@@ -188,7 +155,6 @@ impl Isa {
         out.push_str("// data/apple/agx2-isa.json src/dialects/agx/usc.gen.rs`.\n//\n");
         out.push_str("// The instruction set is Mesa's model of it (src/asahi/isa AGX2.xml, isa.py; Copyright Valve Corporation, MIT license).\n\n");
         out.push_str("#[allow(unused_imports, reason = \"what the encodings use\")]\nuse alloc::{format, vec, vec::Vec};\n\nuse super::{Kind, UscCase, UscField, UscIns};\n\n");
-        // the instructions
         out.push_str("/// Every USC instruction (`agx.usc.<name>`), in [`USC`]'s order.\n#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]\npub enum UscOp {\n");
         for i in &self.instructions {
             writeln!(out, "    {},", Name::camel(&i.name)).unwrap();
@@ -215,7 +181,6 @@ impl Isa {
             }
             out.push_str("    },\n");
         }
-        // the operand encodings
         out.push_str("];\n\n/// Every operand encoding.\n#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]\npub enum Enc {\n");
         for kind in self.encodings.keys() {
             writeln!(out, "    {},", Name::camel(kind)).unwrap();
@@ -238,16 +203,12 @@ impl Isa {
         std::fs::write(output, out).unwrap();
     }
 
-    /// A case's variant names, unique within its encoding: its value field's (`Reg`, `Imm`, `None`), with the case's
-    /// index where two cases share one.
     fn variants(cases: &[Case]) -> Vec<String> {
         let base: Vec<String> = cases.iter().map(|c| Name::camel(c.field.as_ref().map_or("none", |f| f.name.as_str()))).collect();
         base.iter().enumerate().map(|(k, b)| if base.iter().filter(|x| *x == b).count() > 1 { format!("{b}{k}") } else { b.clone() }).collect()
     }
 
-    /// The typed half: `UscMod`, an operand enum an encoding, an op an instruction.
     fn typed(&self, out: &mut String) {
-        // the modifiers and immediates by name
         let mut mods: Vec<&str> = self.instructions.iter().flat_map(|i| i.modifiers.iter().chain(&i.immediates)).map(|m| m.name.as_str()).collect();
         mods.sort();
         mods.dedup();
@@ -260,7 +221,6 @@ impl Isa {
             writeln!(out, "            Self::{} => \"{m}\",", Name::camel(m)).unwrap();
         }
         out.push_str("        }\n    }\n}\n\n");
-        // an enum an operand encoding
         for (kind, cases) in &self.encodings {
             let ty = format!("{}Operand", Name::camel(kind));
             let variants = Isa::variants(cases);
@@ -293,7 +253,6 @@ impl Isa {
                 }
             }
             writeln!(out, "            _ => return Err(mlirformat::Error(format!(\"{kind}: case {{case}} with {{}} values\", values.len()))),\n        }})\n    }}\n}}\n").unwrap();
-            // the register it names and a memory operand's mask (agx-wait reads them)
             for field in ["reg", "mask"] {
                 writeln!(out, "impl {ty} {{\n    /// Its `{field}` field, if its case has one.\n    pub fn {field}(&self) -> Option<u32> {{").unwrap();
                 let has: Vec<&String> = cases.iter().zip(&variants).filter(|(c, _)| fields(c).iter().any(|f| f == field)).map(|(_, v)| v).collect();
@@ -314,14 +273,12 @@ impl Isa {
             writeln!(out, "impl serde::Serialize for {ty} {{\n    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {{\n        super::Usc::serialize_operand(self, s)\n    }}\n}}\n").unwrap();
             writeln!(out, "impl<'de> serde::Deserialize<'de> for {ty} {{\n    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {{\n        super::Usc::deserialize_operand(d)\n    }}\n}}\n").unwrap();
         }
-        // an operand's register and mask by its encoding
         out.push_str("impl Enc {\n    /// ⭐ The `reg` and `mask` fields of operand `a` of this encoding (its dictionary read as its typed enum).\n    pub fn regs(self, a: &mlirformat::Attribute<'_>) -> Result<(Option<u32>, Option<u32>), mlirformat::Error> {\n        match self {\n");
         for kind in self.encodings.keys() {
             let ty = format!("{}Operand", Name::camel(kind));
             writeln!(out, "            Self::{} => super::Usc::of_attr::<{ty}>(a).map(|o| (o.reg(), o.mask())),", Name::camel(kind)).unwrap();
         }
         out.push_str("        }\n    }\n}\n\n");
-        // an op an instruction
         let format = "(`(` $operands^ `:` type($operands) `)`)? attr-dict (`->` type($results)^)?";
         for i in &self.instructions {
             let ty = format!("Usc{}", Name::camel(&i.name));
@@ -337,7 +294,6 @@ impl Isa {
             }
             for (k, src) in i.sources.iter().enumerate() {
                 writeln!(out, "    pub s{k}: Option<{}Operand>,", Name::camel(&src.kind)).unwrap();
-                // a float source's negation / absolute value, before the allocation spells them into the operand
                 if self.encodings[&src.kind].iter().any(|c| c.modifiers.iter().any(|m| m.name == "neg")) {
                     writeln!(out, "    pub neg{k}: bool,\n    pub abs{k}: bool,").unwrap();
                 }
@@ -369,12 +325,10 @@ fn main() {
         r.enums.insert(e.attribute("name").unwrap(), values);
     }
 
-    // (op, name, bytes, fields)
     let mut items: Vec<(String, String, u32, Vec<Field>)> = Vec::new();
     for s in root.children().filter(|c| c.has_tag_name("struct")) {
         let name = s.attribute("name").unwrap();
         let fields: Vec<Field> = s.children().filter(|c| c.has_tag_name("field")).map(|f| r.field(f)).collect();
-        // gen_pack.py Group.get_length: the size, else up to the byte of the last bit
         let bytes = s.attribute("size").map_or_else(|| fields.iter().map(|f| (f.bit + f.width - 1) / 8 + 1).max().unwrap_or(0), |v| v.parse().unwrap());
         items.push((format!("agx.{}", Name::safe(name).to_lowercase()), name.to_owned(), bytes, fields));
     }
@@ -394,7 +348,6 @@ fn main() {
         out.push_str("        ],\n        group: None,\n    },\n");
     }
     out.push_str("];\n\n");
-    // a typed op a struct: its settable fields (an exact one is fixed), a bool / a float / a number or a place
     for (op, name, _, fields) in &items {
         writeln!(out, "/// `{op}`: Mesa's {name}.\n#[mlirformat::mlir::op(\"{op}\", format = \"attr-dict\")]\n#[derive(Default)]\npub struct {} {{", Name::camel(&op["agx.".len()..])).unwrap();
         for f in fields.iter().filter(|f| f.ty != "Ty::Exact") {
@@ -418,7 +371,6 @@ fn main() {
     out.push_str("])]\npub(crate) struct StructOps;\n\n");
     let mut consts = BTreeMap::new();
     for (e, values) in &r.enums {
-        // gen_pack.py emit_enum: `agx_<enum>_<value>` upper case (the Format enum without its name)
         let prefix = if *e == "Format" { String::new() } else { format!("{}_", Name::safe(e)) };
         for (v, x) in values {
             consts.insert(Name::safe(&format!("{prefix}{v}")).to_uppercase(), *x);

@@ -1,12 +1,8 @@
-//! `spirv-rewrite-inserts`.
-
 use crate::{insertion_chain};
 use alloc::vec::Vec;
 use mlirformat::Error;
 use crate::{Body, OpData, OpId, ValueId};
 
-/// `spirv-rewrite-inserts`: a chain of inserts filling every element as one
-/// `spirv.CompositeConstruct`.
 #[crate::pass("spirv-rewrite-inserts", on = "spirv.module")]
 pub fn spirv_rewrite_inserts<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
     let mut chains = Vec::new();

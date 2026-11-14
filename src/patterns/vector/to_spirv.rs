@@ -1,5 +1,3 @@
-//! `vector` ⇒ `spirv`, as `VectorToSPIRV.cpp` (the dot-product reductions aside).
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -12,17 +10,14 @@ use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// What the vector patterns need of the type converter.
 #[derive(Debug, Clone, Copy)]
 pub struct VectorSpirvOptions {
     pub index64: bool,
     pub kernel: bool,
 }
 
-/// The vector ⇒ spirv patterns (`populateVectorToSPIRVPatterns`).
 pub struct VectorToSpirv;
 
-/// `vector::ExtractOp::kPoisonIndex`.
 const POISON: i64 = -1;
 
 impl VectorToSpirv {
@@ -57,7 +52,6 @@ impl VectorToSpirv {
         cr.build(OpData::build("spirv.CompositeExtract").operands(&[v]).with("indices", Self::i32_array(&[i])), ty)
     }
 
-    /// `sanitizeDynamicIndex`.
     fn sanitize<'a>(cr: &mut Cr<'_, 'a, '_>, index: ValueId, size: i64) -> ValueId {
         let ty = cr.rw.body[index].ty.clone();
         if (size as u64).is_power_of_two() {
@@ -74,7 +68,6 @@ impl VectorToSpirv {
         cr.rw.body[v].ty.element_count().unwrap_or(1) as i64
     }
 
-    /// The `(lhs, next)` combiner of a reduction kind.
     fn combine<'a>(cr: &mut Cr<'_, 'a, '_>, kind: &str, ty: &Type<'a>, l: ValueId, r: ValueId, gl: bool) -> Option<ValueId> {
         let float = matches!(ty, Type::Float(_));
         let name = match (kind, float, gl) {
@@ -98,7 +91,6 @@ impl VectorToSpirv {
         Some(cr.build(OpData::build(name).operands(&[l, r]), ty.clone()))
     }
 
-    /// `getReductionInfo` and the element by element combination.
     fn reduce<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, ops: &[ValueId], f: &dyn Fn(&mut Cr<'_, 'a, '_>, &str, &Type<'a>, ValueId, ValueId) -> Option<ValueId>) -> bool {
         let Some(ty) = Self::result_ty(cr, op, 0) else { return false };
         let src = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
@@ -110,7 +102,6 @@ impl VectorToSpirv {
         let n = src.element_count().unwrap_or(0) as i64;
         let elem = src.element_type().clone();
         let mut values: Vec<ValueId> = (0..n).map(|i| Self::extract(cr, ops[0], i, elem.clone())).collect();
-        // A boolean `or` / `and` is `spirv.Any` / `spirv.All` (the extracts made all the same).
         if ty == Type::I1 && matches!(&*kind, "or" | "and") {
             let (all, combine) = if kind == "or" { ("spirv.Any", "spirv.LogicalOr") } else { ("spirv.All", "spirv.LogicalAnd") };
             let mut r = cr.build(OpData::build(all).operands(&[ops[0]]), ty.clone());
@@ -130,7 +121,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `vector.load` / `vector.store`'s element pointer, bitcast to a vector pointer.
     fn vector_ptr<'a>(cr: &mut Cr<'_, 'a, '_>, mt: &Type<'a>, base: ValueId, indices: &[ValueId], vt: &Type<'a>, o: VectorSpirvOptions) -> Option<ValueId> {
         let Type::Shaped(s) = mt else { return None };
         let storage = SpirvTypes::storage_class(s)?;
@@ -150,7 +140,6 @@ impl VectorToSpirv {
 
 #[patterns(converter, options = VectorSpirvOptions)]
 impl VectorToSpirv {
-    /// `VectorBitcastConvert`.
     #[convert("vector.bitcast")]
     fn bitcast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -169,8 +158,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorBroadcastConvert` (then `VectorScalarBroadcastPattern`, its equal from a
-    /// scalar).
     #[convert("vector.broadcast")]
     fn broadcast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -186,7 +173,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorExtractOpConvert`.
     #[convert("vector.extract")]
     fn extract_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -213,7 +199,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorExtractStridedSliceOpConvert`.
     #[convert("vector.extract_strided_slice")]
     fn extract_strided_slice<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -233,7 +218,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorFmaOpConvert`: GLSL's `Fma`, else OpenCL's.
     #[convert("vector.fma")]
     fn fma_gl<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -252,7 +236,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorFromElementsOpConvert`.
     #[convert("vector.from_elements")]
     fn from_elements<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -262,7 +245,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorToElementOpConvert`.
     #[convert("vector.to_elements")]
     fn to_elements<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -272,7 +254,6 @@ impl VectorToSpirv {
             return true;
         }
         let Some(ty) = cr.converted(&cr.rw.body[results[0]].ty.clone()) else { return false };
-        // A dead element is not extracted: it is replaced by nothing.
         let mut out = Vec::new();
         for (i, r) in results.iter().enumerate() {
             if cr.rw.body[*r].uses.is_empty() {
@@ -285,7 +266,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorInsertOpConvert`.
     #[convert("vector.insert")]
     fn insert<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -313,7 +293,6 @@ impl VectorToSpirv {
             _ => {
                 let n = dest_t.element_count().unwrap_or(1) as i64;
                 let i = Self::sanitize(cr, ops[2], n);
-                // Upstream inserts into the unconverted destination.
                 cr.build(OpData::build("spirv.VectorInsertDynamic").operands(&[orig[1], ops[0], i]), dest_t.clone())
             }
         };
@@ -321,7 +300,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorInsertStridedSliceOpConvert`.
     #[convert("vector.insert_strided_slice")]
     fn insert_strided_slice<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -347,7 +325,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorReductionPattern` (GLSL's min / max, else OpenCL's).
     #[convert("vector.reduction")]
     fn reduction_gl<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -360,7 +337,6 @@ impl VectorToSpirv {
         Self::reduce(cr, op, &ops, &|cr, k, t, l, r| Self::combine(cr, k, t, l, r, false))
     }
 
-    /// `VectorReductionFloatMinMax` (OpenCL's, else GLSL's).
     #[convert("vector.reduction")]
     fn reduction_float_cl<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -387,8 +363,6 @@ impl VectorToSpirv {
         })
     }
 
-    /// `VectorReductionToFPDotProd`: a float `add` reduction as `spirv.Dot` (of the operands
-    /// of an `arith.mulf`, else with ones), ahead of the generic patterns.
     #[convert("vector.reduction", benefit = 2)]
     fn reduction_dot<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -423,7 +397,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorShapeCast`.
     #[convert("vector.shape_cast")]
     fn shape_cast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -436,7 +409,6 @@ impl VectorToSpirv {
         false
     }
 
-    /// `VectorShuffleOpConvert`.
     #[convert("vector.shuffle")]
     fn shuffle<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -461,7 +433,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorInterleaveOpConvert`.
     #[convert("vector.interleave")]
     fn interleave<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -477,7 +448,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorDeinterleaveOpConvert`.
     #[convert("vector.deinterleave")]
     fn deinterleave<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -496,7 +466,6 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorLoadOpConverter`.
     #[convert("vector.load")]
     fn load<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -513,12 +482,10 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorStoreOpConverter`.
     #[convert("vector.store")]
     fn store<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let mt = cr.rw.body[cr.rw.body[op].operands[1]].ty.clone();
-        // (the converted vector type: a size-1 vector is a scalar)
         let Some(vt) = cr.converted(&cr.rw.body[cr.rw.body[op].operands[0]].ty.clone()) else { return false };
         let Some(ptr) = Self::vector_ptr(cr, &mt, ops[1], &ops[2..], &vt, o) else { return false };
         let mut data = OpData::build("spirv.Store").operands(&[ptr, ops[0]]);
@@ -529,13 +496,11 @@ impl VectorToSpirv {
         true
     }
 
-    /// `VectorStepOpConvert`.
     #[convert("vector.step")]
     fn step<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], _: VectorSpirvOptions) -> bool {
         let Some(ty) = Self::result_ty(cr, op, 0) else { return false };
         let r = cr.rw.body[op].results[0];
         let n = cr.rw.body[r].ty.element_count().unwrap_or(1) as i64;
-        // The converted element type (a size-1 vector is already the scalar).
         let it = ty.element_type().clone();
         if n == 1 {
             let z = cr.spirv_int_like(&it, 0);

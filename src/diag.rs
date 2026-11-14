@@ -1,8 +1,3 @@
-//! Diagnostics (`mlir/IR/Diagnostics`): what a pass reports about the IR, each at an op's location,
-//! as many as it finds, kept on the [`Body`] until the driver takes them ([`Body::take_diagnostics`]).
-//! A pass that refuses its input emits them and returns an `Err` (MLIR's `emitError` and
-//! `signalPassFailure`); the `mlir-opt` command line prints them as `mlir-opt` does.
-
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
@@ -11,7 +6,6 @@ use mlirformat::Str;
 
 use crate::{Body, OpId};
 
-/// `DiagnosticSeverity`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
     Error,
@@ -28,16 +22,12 @@ impl Severity {
     }
 }
 
-/// A note attached to a diagnostic (`Diagnostic::attachNote`), at its own location or none.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Note<'a> {
     pub loc: Option<Str<'a>>,
     pub message: String,
 }
 
-/// ⭐ One diagnostic: severity, where (the op's name and location when it was emitted), the message,
-/// notes, and fields a tool attaches for machine readers (a refusal code, a contract section), which
-/// the text form leaves out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic<'a> {
     pub severity: Severity,
@@ -49,12 +39,10 @@ pub struct Diagnostic<'a> {
 }
 
 impl<'a> Diagnostic<'a> {
-    /// A diagnostic at `op` (its name and location).
     pub fn at(body: &Body<'a>, op: OpId, severity: Severity, message: impl Into<String>) -> Self {
         Self { severity, op: Some(body[op].name.clone()), loc: body[op].loc.clone(), message: message.into(), notes: Vec::new(), fields: Vec::new() }
     }
 
-    /// A diagnostic about no op (the input as a whole, an option).
     pub fn bare(severity: Severity, message: impl Into<String>) -> Self {
         Self { severity, op: None, loc: None, message: message.into(), notes: Vec::new(), fields: Vec::new() }
     }
@@ -71,14 +59,11 @@ impl<'a> Diagnostic<'a> {
         self
     }
 
-    /// The value of field `key`, if attached.
     pub fn get(&self, key: &str) -> Option<&str> {
         self.fields.iter().find(|(k, _)| *k == key).map(|(_, v)| v.as_str())
     }
 }
 
-/// The first `"file":line:col` in a location's text, as `file:line:col` (what `mlir-opt` prints a
-/// diagnostic at: a name, call site or fused location shows its first file location).
 fn file_line_col(loc: &str) -> Option<String> {
     let b = loc.as_bytes();
     let mut i = 0;
@@ -108,8 +93,6 @@ fn file_line_col(loc: &str) -> Option<String> {
     None
 }
 
-/// `mlir-opt`'s printing: `file:line:col: error: message` (`loc(unknown)`: no position), each note on
-/// a line of its own after it.
 impl fmt::Display for Diagnostic<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let at = |f: &mut fmt::Formatter<'_>, loc: &Option<Str<'_>>| match loc.as_deref().and_then(file_line_col) {
@@ -128,28 +111,23 @@ impl fmt::Display for Diagnostic<'_> {
 }
 
 impl<'a> Body<'a> {
-    /// ⭐ Reports `d` (`emitError` / `emitWarning` / `emitRemark` with what is built on them).
     pub fn report(&mut self, d: Diagnostic<'a>) {
         self.diagnostics.push(d);
     }
 
-    /// ⭐ `op->emitError(message)`.
     pub fn emit_error(&mut self, op: OpId, message: impl Into<String>) {
         let d = Diagnostic::at(self, op, Severity::Error, message);
         self.report(d);
     }
 
-    /// The diagnostics reported so far, in order.
     pub fn diagnostics(&self) -> &[Diagnostic<'a>] {
         &self.diagnostics
     }
 
-    /// ⭐ Takes the diagnostics reported so far (the driver, after the pipeline).
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic<'a>> {
         core::mem::take(&mut self.diagnostics)
     }
 
-    /// Whether an error has been reported.
     pub fn has_errors(&self) -> bool {
         self.diagnostics.iter().any(|d| d.severity == Severity::Error)
     }

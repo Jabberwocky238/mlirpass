@@ -1,5 +1,3 @@
-//! `convert-gpu-to-nvvm`.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -8,16 +6,12 @@ use mlirformat::{Attribute, Error};
 
 use crate::{Body, CConv, ConversionConfig, ConversionPatterns, Converter, DialectInterfaces, GpuLlvmOptions, GpuSpaces, GpuToLlvm, GpuToNvvm, LlvmConverter, LlvmEnv, LlvmOptions, Mode, OpId, Printf, ToLlvmInterfaces};
 
-/// `nvgpu::populateCommonGPUTypeAndAttributeConversions`: global 1, shared 3, private 0.
 const NVVM_SPACES: GpuSpaces = GpuSpaces { global: 1, workgroup: 3, private: 0, constant: 4 };
 
-/// The llvm intrinsics `configureGpuToNVVMConversionLegality` keeps out (libdevice instead).
 const ILLEGAL_LLVM: [&str; 17] = [
     "llvm.intr.copysign", "llvm.intr.cos", "llvm.intr.exp", "llvm.intr.exp2", "llvm.intr.fabs", "llvm.intr.ceil", "llvm.intr.floor", "llvm.frem", "llvm.intr.log", "llvm.intr.log10", "llvm.intr.log2", "llvm.intr.pow", "llvm.intr.roundeven", "llvm.intr.round", "llvm.intr.sin", "llvm.intr.sincos", "llvm.intr.sqrt",
 ];
 
-/// `populateGpuToNVVMConversionPatterns` with `configureGpuToNVVMConversionLegality`: the
-/// NVVM half of the conversion, shared with `convert-to-llvm{dynamic}` (`#nvvm.target`).
 pub fn configure_nvvm<'p>(patterns: &mut ConversionPatterns<'p>, i: usize, llvm: LlvmOptions, target: &mut crate::ConversionTarget<'_>) {
     GpuToNvvm::populate(patterns, i, llvm);
     crate::AssertToNvvm::populate(patterns, i);
@@ -43,10 +37,8 @@ pub fn configure_nvvm<'p>(patterns: &mut ConversionPatterns<'p>, i: usize, llvm:
     target.op("gpu.yield", crate::Action::Legal).op("gpu.module", crate::Action::Legal);
 }
 
-/// `configureGpuToNVVMTypeConverter`'s memory spaces.
 pub const NVVM_GPU_SPACES: GpuSpaces = NVVM_SPACES;
 
-/// `convert-gpu-to-nvvm`, as `LowerGpuOpsToNVVMOpsPass`.
 #[crate::pass("convert-gpu-to-nvvm", on = "gpu.module")]
 pub struct ConvertGpuToNvvm {
     #[opt("index-bitwidth")]
@@ -65,16 +57,13 @@ pub struct ConvertGpuToNvvm {
 
 impl crate::Run for ConvertGpuToNvvm {
     fn run<'a>(&self, body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-        // Request C wrapper emission.
         let blk = body.top_block(op);
         let funcs: Vec<OpId> = body.ops(blk).filter(|f| body[*f].name == "func.func").collect();
         for f in funcs {
             body[f].set("llvm.emit_c_interface", Attribute::Unit);
         }
-        // In-dialect lowering first: what needs lowering further than one conversion goes.
         let mut set = crate::PatternSet::default();
         crate::GpuRewrite::patterns(&mut set);
-        // `applyPatternsGreedily`'s default config: aggressive region simplification.
         let config = crate::GreedyConfig { region_simplify: crate::RegionSimplify::Aggressive, ..crate::GreedyConfig::default() };
         for r in body[op].regions.clone() {
             body.apply_greedily(r, &set, &config);
@@ -85,7 +74,6 @@ impl crate::Run for ConvertGpuToNvvm {
         }
         let mut tc = LlvmConverter::build(llvm);
         crate::convert_mma_types(&mut tc);
-        // A named barrier is its id and thread count.
         tc.conversion(|t| matches!(t, mlirformat::Type::Extended(e) if e.name == "gpu.named_barrier").then(|| Some(alloc::vec![mlirformat::llvm_types::LlvmType::literal(alloc::vec![mlirformat::Type::int(32), mlirformat::Type::int(32)])])));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
@@ -95,7 +83,6 @@ impl crate::Run for ConvertGpuToNvvm {
         let env = LlvmEnv { llvm, counter: &self.counter };
         let mut target = crate::llvm_target();
         for d in self.interfaces.dialects() {
-            // math lowers to libdevice instead.
             if d == "math" || (!self.allowed.is_empty() && !self.allowed.iter().any(|a| a == d)) {
                 continue;
             }

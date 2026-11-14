@@ -1,5 +1,3 @@
-//! The `cf` dialect's op interfaces.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -7,7 +5,6 @@ use mlirformat::Attribute;
 
 use crate::{BlockId, Body, BranchLayout, Const, DialectInliner, EffectInstance, EffectKind, InlineAll, OpId, OpInterfaces};
 
-/// The `cf` dialect.
 pub struct CfDialect;
 
 impl OpInterfaces for CfDialect {
@@ -20,7 +17,6 @@ impl OpInterfaces for CfDialect {
         matches!(name, "cf.br" | "cf.cond_br").then_some(&bufferizable::Branch as &dyn crate::Bufferizable)
     }
 
-    /// Calls and ops inline; `cf` has no regions (`ControlFlowInlinerInterface`).
     fn inliner(&self) -> Option<&dyn DialectInliner> {
         Some(&InlineAll { calls: true, regions: false })
     }
@@ -62,8 +58,6 @@ mod bufferizable {
 
     use crate::{AliasingValue, AnalysisState, Body, BufferRelation, Bufferizable, BufferizationOptions, OpId, Operand, Rewriter};
 
-    /// `cf.br`, `cf.cond_br` (`BranchOpBufferizableOpInterfaceExternalModel`): an operand may
-    /// alias the successor argument it is forwarded to; bufferized with the block signatures.
     pub(super) struct Branch;
 
     impl Bufferizable for Branch {

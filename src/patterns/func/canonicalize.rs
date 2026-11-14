@@ -1,16 +1,11 @@
-//! `func` canonicalization patterns, as `FuncOps.cpp`.
-
 use mlirformat::Attribute;
 
 use crate::OpData;
 
-/// `func` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct FuncCanon;
 
 #[crate::patterns]
 impl FuncCanon {
-    /// `CallIndirectOp::canonicalize`: an indirect call of a constant function is a direct
-    /// call.
     #[rewrite("func.call_indirect")]
     fn call_indirect_of_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -23,7 +18,6 @@ impl FuncCanon {
 }
 
 impl FuncCanon {
-    /// The func canonicalization patterns.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(CallIndirectOfConstant);
     }

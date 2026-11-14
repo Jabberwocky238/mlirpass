@@ -1,5 +1,3 @@
-//! `convert-arith-to-amdgpu`.
-
 use alloc::format;
 use alloc::string::String;
 
@@ -7,7 +5,6 @@ use mlirformat::Error;
 
 use crate::{AmdChipset, ArithToAmdgpu, Body, GreedyConfig, OpId, PatternSet};
 
-/// `convert-arith-to-amdgpu`, as `ArithToAMDGPUConversionPass`: [`ArithToAmdgpu`] greedily.
 #[crate::pass("convert-arith-to-amdgpu")]
 pub struct ConvertArithToAmdgpu {
     #[opt("chipset", default = String::from("gfx000"))]

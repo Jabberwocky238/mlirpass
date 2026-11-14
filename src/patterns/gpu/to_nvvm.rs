@@ -1,7 +1,3 @@
-//! `gpu` ⇒ `nvvm`, as `LowerGpuOpsToNVVMOps.cpp`: launch configuration as the PTX special
-//! registers, shuffles as `nvvm.shfl.sync`, `gpu.barrier` as `nvvm.barrier`, math as libdevice
-//! calls (`populateLibDeviceConversionPatterns`).
-
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -15,19 +11,16 @@ use crate::LibFns;
 use crate::patterns;
 use crate::{ConversionRewriter, LlvmOptions, OpData, OpId, ValueId};
 
-/// Every lane of a warp.
 const FULL_WARP_MASK: i64 = -1;
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `kWarpSize`.
 const WARP: i64 = 32;
-/// The globals holding named barrier ids, and the ids NVVM has for them.
+
 const NAMED_BARRIER_ID: &str = "__named_barrier_id";
 const FIRST_NAMED_BARRIER: i64 = 1;
 const LAST_NAMED_BARRIER: i64 = 15;
 
-/// The libdevice functions of each op (`populateLibDeviceConversionPatterns`).
 const LIBDEVICE: [(&str, LibFns); 41] = [
     ("arith.remf", LibFns::float("__nv_fmodf", "__nv_fmod")),
     ("arith.maxnumf", LibFns::float("__nv_fmaxf", "__nv_fmax")),
@@ -72,8 +65,6 @@ const LIBDEVICE: [(&str, LibFns); 41] = [
     ("math.tanh", LibFns::float("__nv_tanhf", "__nv_tanh")),
 ];
 
-/// The gpu ⇒ nvvm patterns (`populateGpuToNVVMConversionPatterns`, but `gpu.func` /
-/// `gpu.return` / `gpu.printf`: [`GpuToLlvm`](crate::GpuToLlvm)).
 pub struct GpuToNvvm;
 
 #[patterns(converter, options = LlvmOptions)]
@@ -118,7 +109,6 @@ impl GpuToNvvm {
         cr.gpu_index(op, o, "nvvm.read.ptx.sreg.nctaid", IndexKind::Grid, true)
     }
 
-    /// `GPULaneIdOpToNVVM`.
     #[convert("gpu.lane_id", benefit = 10)]
     fn lane_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let ub = match cr.rw.body[op].get("upper_bound") {
@@ -132,7 +122,6 @@ impl GpuToNvvm {
         true
     }
 
-    /// `GPUShuffleOpLowering`: `nvvm.shfl.sync` over the lanes `width` keeps active.
     #[convert("gpu.shuffle", benefit = 10)]
     fn shuffle(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let Some(mode) = cr.rw.body[op].get("mode").and_then(|a| ShuffleMode::try_from(a).ok()) else { return false };
@@ -172,8 +161,6 @@ impl GpuToNvvm {
         true
     }
 
-    /// `SincosOpLowering`: `__nv_sincos{f}` writing through two stack slots at the start of the
-    /// function.
     #[convert("math.sincos", benefit = 10)]
     fn sincos<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         use mlirformat::FloatKind;
@@ -211,10 +198,6 @@ impl GpuToNvvm {
         true
     }
 
-    /// `GPUBarrierOpToNVVMLowering`: a workgroup barrier is `nvvm.barrier`, a subgroup one
-    /// `__syncwarp(0xFFFFFFFF)` (named barriers are not ported).
-    /// `GPUInitializeNamedBarrierOpToNVVMLowering`: the next free barrier id (1 to 15, one
-    /// internal constant global each) and the member count in threads.
     #[convert("gpu.initialize_named_barrier")]
     fn initialize_named_barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let Some(count) = operands.first().and_then(|v| v.first().copied()) else { return false };
@@ -261,7 +244,6 @@ impl GpuToNvvm {
     #[convert("gpu.barrier", benefit = 10)]
     fn barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         if let Some(named) = operands.iter().find_map(|v| v.first().copied()) {
-            // A named barrier: its id and thread count.
             cr.rw.set_before(op);
             let [id, threads] = [0i64, 1].map(|i| cr.build(OpData::build("llvm.extractvalue").operands(&[named]).with("position", Attribute::dense_i64(&[i])), Type::int(32)));
             cr.replace_new(op, OpData::build("nvvm.barrier").operands(&[id, threads]).with("aligned", Attribute::Bool(true)).segments(&[1, 1]), &[]);
@@ -282,7 +264,6 @@ impl GpuToNvvm {
         }
     }
 
-    /// `GPUBallotOpToNVVM`: `nvvm.vote.sync ballot` of the full warp, zero-extended to `i64`.
     #[convert("gpu.ballot")]
     fn ballot(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let t = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
@@ -301,14 +282,12 @@ impl GpuToNvvm {
         true
     }
 
-    /// `ScalarizeVectorOpLowering` of the libdevice ops.
     #[convert("arith.remf", "arith.maxnumf", "arith.minnumf", "math.absi", "math.absf", "math.acos", "math.acosh", "math.asin", "math.asinh", "math.atan", "math.atan2", "math.atanh", "math.cbrt", "math.ceil", "math.copysign", "math.cos", "math.cosh", "math.erf", "math.erfc", "math.exp", "math.exp2", "math.expm1", "math.floor", "math.fma", "math.isfinite", "math.isinf", "math.isnan", "math.log", "math.log10", "math.log1p", "math.log2", "math.powf", "math.fpowi", "math.round", "math.roundeven", "math.rsqrt", "math.sin", "math.sinh", "math.sqrt", "math.tan", "math.tanh", benefit = 10)]
     fn scalarize_libdevice(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let ops: Vec<ValueId> = operands.iter().flatten().copied().collect();
         cr.scalarize(op, &ops)
     }
 
-    /// `OpToFuncCallLowering`, as libdevice calls.
     #[convert("arith.remf", "arith.maxnumf", "arith.minnumf", "math.absi", "math.absf", "math.acos", "math.acosh", "math.asin", "math.asinh", "math.atan", "math.atan2", "math.atanh", "math.cbrt", "math.ceil", "math.copysign", "math.cos", "math.cosh", "math.erf", "math.erfc", "math.exp", "math.exp2", "math.expm1", "math.floor", "math.fma", "math.isfinite", "math.isinf", "math.isnan", "math.log", "math.log10", "math.log1p", "math.log2", "math.powf", "math.fpowi", "math.round", "math.roundeven", "math.rsqrt", "math.sin", "math.sinh", "math.sqrt", "math.tan", "math.tanh", benefit = 10)]
     fn libdevice(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let name = cr.rw.body[op].name.clone();
@@ -318,12 +297,10 @@ impl GpuToNvvm {
     }
 }
 
-/// `populateGpuSubgroupReduceOpLoweringPattern` (`has-redux`).
 pub struct GpuReduxToNvvm;
 
 #[patterns(converter)]
 impl GpuReduxToNvvm {
-    /// `GPUSubgroupReduceOpLowering`: a uniform, unclustered `i32` reduction as `nvvm.redux.sync`.
     #[convert("gpu.subgroup_reduce")]
     fn subgroup_reduce(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -352,16 +329,13 @@ impl GpuReduxToNvvm {
     }
 }
 
-/// `AssertOpToAssertfailLowering`: a failed `cf.assert` calls `__assertfail`.
 pub struct AssertToNvvm;
 
 #[patterns(converter)]
 impl AssertToNvvm {
-    /// The file, line and function of a location (`FileLineColRange`, or one inside a `NameLoc`).
     fn where_from(loc: Option<&str>) -> (alloc::string::String, i64, alloc::string::String) {
         let unknown = || alloc::string::String::from("(unknown)");
         let Some(mut l) = loc.map(str::trim) else { return (unknown(), 0, unknown()) };
-        // `CallSiteLoc`: the callee.
         while let Some(rest) = l.strip_prefix("callsite(") {
             l = rest.split(" at ").next().unwrap_or(rest).trim();
         }
@@ -375,7 +349,6 @@ impl AssertToNvvm {
             return (f, n, unknown());
         }
         if let Some(s) = l.strip_prefix('"') {
-            // `NameLoc`: `"name"(child)`.
             if let Some(end) = s.find('"') {
                 let name = alloc::string::String::from(&s[..end]);
                 let child = s[end + 1..].trim().strip_prefix('(').and_then(|c| c.strip_suffix(')'));

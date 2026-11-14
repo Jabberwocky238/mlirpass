@@ -1,23 +1,3 @@
-//! ⭐ Apple9 (the GPU of Apple M3 / M4) as MLIR: the `apple9` dialect.
-//!
-//! ```text
-//!   apple9.<form>   an instruction, by its fields (registers r0 ..: 32-bit GPRs)       ⇒ its bytes ([`Apple9Isa`])
-//!   apple9.kernel   one shader's instructions and what running it needs
-//! ```
-//!
-//! ```text
-//!   apple9.kernel @k {stage = "compute", params = 2, gprs = 33} {     one shader's instructions, in order
-//!     apple9.iadd {dst = 4, a = 2, b = 3, wait = 32}                 an instruction (registers allocated)
-//!   }
-//! ```
-//!
-//! Before its registers are allocated an instruction is virtual: its SSA operands are its sources in the order
-//! [`Apple9Op::sources`] names them, its results (`!apple9.r<i32 | f32>`) its destination (a load's: its components'
-//! registers, one after another).
-//!
-//! Apple9 is not Apple7 (M1, the `agx` dialect: Mesa's AGX2 model): the encodings differ. There is no Mesa model of
-//! Apple9; see [`Apple9Isa`] for where each form comes from and how it was checked.
-
 mod isa;
 
 pub use isa::{APPLE9_GPRS, Apple9Isa, Apple9Op};
@@ -29,7 +9,6 @@ use mlirformat::{Attribute, Error, Region, Type};
 
 use crate::{OpRows, RegType, ShaderStage};
 
-/// ⭐ The register type of a virtual instruction's values: `!apple9.r<elem>`, a 32-bit GPR (a thread each).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Apple9Type<'e>(pub &'e str);
 
@@ -50,12 +29,10 @@ impl<'t> TryFrom<&'t Type<'_>> for Apple9Type<'t> {
     }
 }
 
-/// ⭐ The `apple9` dialect: load it with `MlirOpt::load(Apple9Dialect)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Apple9Dialect;
 
 impl Apple9Dialect {
-    /// The declared attributes of the ops that are not instructions.
     pub const INHERENT: &[(&str, &[&str])] = &[("apple9.kernel", &["sym_name", "stage", "params", "gprs"])];
 }
 
@@ -73,10 +50,6 @@ impl mlirformat::Dialect for Apple9Dialect {
     }
 }
 
-/// ⭐ `apple9.kernel @k {stage, params, gprs, shared} {...}`: one shader's instructions, in order, and what running it
-/// needs: its `params` (32-bit words: the parameter buffer's), the GPRs it uses (`gprs`: r0 .. r(gprs - 1)), the bytes of
-/// threadgroup memory it uses (`shared`), the invocations of its workgroup (`workgroup`: 32, or 16, two a hardware
-/// workgroup).
 #[mlirformat::mlir::op("apple9.kernel", format = "$sym_name attr-dict-with-keyword $body")]
 pub struct Apple9Kernel<'a> {
     #[attr(symbol)]
@@ -89,7 +62,6 @@ pub struct Apple9Kernel<'a> {
     pub body: Region<'a>,
 }
 
-/// The ops of the dialect that are not instructions.
 #[mlirformat::mlir::dialect("apple9", ops = [Apple9Kernel])]
 struct PseudoOps;
 

@@ -1,5 +1,3 @@
-//! `gpu` passes.
-
 mod gpu_kernel_outlining;
 mod gpu_module_to_binary;
 mod gpu_launch_sink_index_computations;

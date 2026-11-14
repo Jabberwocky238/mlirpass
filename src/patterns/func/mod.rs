@@ -1,5 +1,3 @@
-//! `func` rule sets.
-
 mod canonicalize;
 
 pub use canonicalize::FuncCanon;

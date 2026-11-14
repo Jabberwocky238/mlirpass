@@ -1,12 +1,9 @@
-//! `convert-cf-to-llvm`.
-
 use crate::{llvm_target};
 use crate::{AssertLowering, CfToLlvm, LlvmConverter, LlvmOptions};
 use crate::pass;
 use mlirformat::Error;
 use crate::{Action, Body, ConversionConfig, ConversionPatterns, Converter, Mode, OpId, Run};
 
-/// `convert-cf-to-llvm`.
 #[pass("convert-cf-to-llvm")]
 pub struct ConvertCfToLlvm {
     #[opt("index-bitwidth")]

@@ -1,5 +1,3 @@
-//! `memref` passes.
-
 mod expand_strided_metadata;
 mod fold_memref_alias_ops;
 mod resolve_ranked_shaped_type_result_dims;

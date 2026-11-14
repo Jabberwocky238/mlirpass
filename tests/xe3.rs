@@ -1,11 +1,6 @@
-//! The Xe3 target against its oracles: EU instructions as Mesa's assembler (gentool) encodes them, genxml items as
-//! Mesa's C pack functions pack them.
-
 use mlirformat::{Item, MlirOpt, Module, NamedAttr, Operation};
 use mlirpass::{Body, Ctx, Inst, Interfaces, XE3, Xe3Dialect, Xe3Genxml};
 
-/// tests/xe3/eu.mlir has each instruction as an `xe3.eu` op, the gentool assembly it is in a comment above it;
-/// tests/xe3/eu.expected is what `gentool asm -p ptl` assembled that text into (scripts/xe3_eu_oracle.sh).
 #[test]
 fn eu_encodes_like_gentool() {
     let mut opt = MlirOpt::upstream();
@@ -25,9 +20,6 @@ fn eu_encodes_like_gentool() {
     assert!(bad.is_empty(), "{} of {} differ from gentool:\n{}", bad.len(), ops.len(), bad.join("\n"));
 }
 
-/// Every genxml item packed from MLIR (tests/xe3/oracle.mlir: each field set to the value Mesa's C pack functions were
-/// given) is what Mesa packed (tests/xe3/oracle.expected), dword for dword; reads as its typed op; and printed and
-/// read again packs the same.
 #[test]
 fn genxml_packs_as_mesa() {
     let mut opt = MlirOpt::upstream();
@@ -37,13 +29,11 @@ fn genxml_packs_as_mesa() {
     let printed = opt.show(&Module::from(&body)).to_string();
     let again = Body::parse(Ctx::new(&opt, &interfaces), &printed).unwrap();
     let expected: Vec<&str> = include_str!("xe3/oracle.expected").lines().collect();
-    // generic ops, as a body has them
     let ops: Vec<Operation<'_>> = body.ops(body.top_block(body.root)).map(|o| body.operation(o)).collect();
     let reread: Vec<Operation<'_>> = again.ops(again.top_block(again.root)).map(|o| again.operation(o)).collect();
     assert_eq!(ops.len(), expected.len());
     let mut bad = Vec::new();
     for ((op, re), want) in ops.iter().zip(&reread).zip(&expected) {
-        // the C side wrote the longest form (optional trailing dwords, an empty variable group) as zeros
         let n = want.split(' ').count() - 1;
         let pack = |op: &Operation<'_>| {
             let item = XE3.get(&op.name).unwrap();
@@ -60,7 +50,6 @@ fn genxml_packs_as_mesa() {
     assert!(bad.is_empty(), "{} of {} differ:\n{}", bad.len(), expected.len(), bad.join("\n"));
 }
 
-/// The properties and the discardable attributes together.
 fn all<'a>(op: &Operation<'a>) -> Vec<NamedAttr<'a>> {
     let mut a = match &op.properties {
         Some(mlirformat::Attribute::Dict(p)) => p.clone(),
@@ -70,11 +59,6 @@ fn all<'a>(op: &Operation<'a>) -> Vec<NamedAttr<'a>> {
     a
 }
 
-/// acgpu's shaders in upstream dialects (tests/xe3/kernels/*.mlir: compute kernels with integers, atomics, structured
-/// control flow, exact f64, shared memory with barriers, byte copies; vertex and fragment shaders as SPIR-V:
-/// a triangle, textures, push constants, buffers, a multisample resolve, two targets, exact division) through the SPIR-V intake and acgpu's frontend passes (inlined, canonicalize, cse)
-/// and the Xe3 backend: each kernel's head and bytes (its padding included) exactly as acgpu's own Xe3 backend made
-/// them before it moved here (tests/xe3/kernels/*.expected).
 #[cfg(feature = "target.xe3")]
 #[test]
 fn kernels_as_acgpu() {

@@ -1,11 +1,8 @@
-//! `tosa-to-scf`.
-
 use crate::{TosaToScf};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Action, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId};
 
-/// `tosa-to-scf`.
 #[pass("tosa-to-scf", on = "func.func", ty = TosaToScfPass)]
 pub fn tosa_to_scf<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let mut patterns = ConversionPatterns::default();

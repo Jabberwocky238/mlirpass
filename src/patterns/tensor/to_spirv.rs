@@ -1,6 +1,3 @@
-//! `tensor` ⇒ `spirv`, as `TensorToSPIRV.cpp`: a small constant tensor's element, through a
-//! `Function` variable holding it.
-
 use alloc::vec::Vec;
 
 use mlirformat::spirv_types::SpirvType;
@@ -12,13 +9,10 @@ use crate::{ConversionRewriter, MemrefToSpirv, OpData, OpId, TargetEnv, ValueId}
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The tensor ⇒ spirv patterns (`populateTensorToSPIRVPatterns`), `threshold` the byte count
-/// above which a tensor is left alone.
 pub struct TensorToSpirv;
 
 #[patterns(converter, options = i64)]
 impl TensorToSpirv {
-    /// `TensorExtractPattern`.
     #[convert("tensor.extract")]
     fn extract(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], threshold: i64) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };

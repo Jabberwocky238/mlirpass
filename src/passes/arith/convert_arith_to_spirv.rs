@@ -1,8 +1,5 @@
-//! `convert-arith-to-spirv`.
-
 use crate::{ArithSpirvOptions, ArithToSpirv, SpirvOptions, SpirvTypes, TargetEnv};
 
-/// `convert-arith-to-spirv`.
 #[crate::pass("convert-arith-to-spirv")]
 pub struct ConvertArithToSpirv {
     #[opt("emulate-lt-32-bit-scalar-types", default = true)]

@@ -1,5 +1,3 @@
-//! `spirv-update-vce`.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -7,7 +5,6 @@ use mlirformat::{Attribute, Error, Type};
 use crate::{EnumSpec, Needs, OpSpec, TargetEnv};
 use crate::{Body, OpId};
 
-/// `spirv-update-vce`: the minimal version, capabilities and extensions the module needs.
 #[crate::pass("spirv-update-vce", on = "spirv.module")]
 pub fn spirv_update_vce<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
     let env = TargetEnv::find(body, module).ok_or_else(|| Error(String::from("missing 'spirv.target_env' attribute")))?;
@@ -41,7 +38,6 @@ pub fn spirv_update_vce<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Err
             pick(&name, &c, true, &mut caps)?;
         }
         let d = &body[o];
-        // `bind(set, binding)` needs Shader; linkage attributes their linkage type's needs.
         if name == "spirv.GlobalVariable" && (d.get("binding").is_some() || d.get("descriptor_set").is_some()) {
             pick(&name, &alloc::vec![alloc::vec![String::from("Shader")]], true, &mut caps)?;
         }
@@ -60,7 +56,6 @@ pub fn spirv_update_vce<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Err
         {
             types.push(t.clone());
         }
-        // `FunctionOpInterface` ops (`spirv.func`, `spirv.ARM.Graph`): their signature.
         if let Some(Attribute::Type(Type::Function(f))) = d.get("function_type")
         {
             types.extend(f.inputs.iter().chain(&f.results).cloned());

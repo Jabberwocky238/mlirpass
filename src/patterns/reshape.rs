@@ -1,6 +1,3 @@
-//! What the `tensor` and `memref` reshapes share, as `ReshapeOpsUtils`: reassociations, the
-//! reshape fold, and the patterns composing reshapes.
-
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -9,8 +6,6 @@ use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
 use crate::{Body, Const, Fold, Folded, MemrefLayout, OpData, OpId, Pattern, Rewriter, ValueId};
 
-/// An `OpFoldResult` of offsets, sizes and strides: a constant or a value (shared by the shaped dialects: memref,
-/// tensor, linalg, tosa).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ofr {
     C(i64),
@@ -18,12 +13,10 @@ pub enum Ofr {
 }
 
 impl<'a> Body<'a> {
-    /// A dense i64 array attribute's values (none when absent).
     pub fn dense_i64(&self, op: OpId, name: &str) -> Vec<i64> {
         self[op].get(name).and_then(Attribute::dense_values).unwrap_or_default()
     }
 
-    /// An `OpFoldResult`'s constant, if it has one.
     pub fn ofr_int(&self, o: Ofr) -> Option<i64> {
         match o {
             Ofr::C(c) => Some(c),
@@ -35,10 +28,8 @@ impl<'a> Body<'a> {
     }
 }
 
-/// `ReassociationIndices` of each result (collapse) or source (expand) dimension.
 pub type Reassoc = Vec<Vec<i64>>;
 
-/// A `[l, r]` range of source dimensions (`ReassociationIndexRange`).
 #[derive(Clone, Copy)]
 struct Range {
     l: i64,
@@ -54,7 +45,6 @@ impl Range {
         (self.l..=self.r).collect()
     }
 
-    /// `getNonOverlappingIndicesWith`.
     fn non_overlapping(self, o: Range) -> Vec<i64> {
         if self.r < o.l {
             let mut v = self.full();
@@ -70,7 +60,6 @@ impl Range {
     }
 }
 
-/// The reassociation helpers.
 pub struct Reshape;
 
 impl Reshape {
@@ -79,7 +68,6 @@ impl Reshape {
         Attribute::Array(r.iter().map(|g| Attribute::Array(g.iter().map(int).collect())).collect())
     }
 
-    /// `composeReassociationIndices`.
     pub fn compose(producer: &Reassoc, consumer: &Reassoc) -> Option<Reassoc> {
         if producer.len() == consumer.len() {
             return None;
@@ -94,7 +82,6 @@ impl Reshape {
         Some(c.iter().map(|g| g.iter().flat_map(|i| p[*i as usize].iter().copied()).collect()).collect())
     }
 
-    /// `findReassociationRangeForDynamicDim`.
     fn range_for_dynamic(src: &[i64], start: i64, greedy: bool) -> Option<Range> {
         let n = src.len() as i64;
         let mut it = Range { l: start, r: start };
@@ -113,7 +100,6 @@ impl Reshape {
         Some(res)
     }
 
-    /// `findReassociationRangeForSize`.
     fn range_for_size(src: &[i64], start: i64, target: i64, greedy: bool) -> Option<Range> {
         let n = src.len() as i64;
         let mut it = Range { l: start, r: start };
@@ -148,7 +134,6 @@ impl Reshape {
         Some(res)
     }
 
-    /// `findReassociationRangesForCollapse`, left to right.
     fn ranges(src: &[i64], tgt: &[i64]) -> Option<Vec<Range>> {
         let n = src.len() as i64;
         let mut out: Vec<Range> = Vec::new();
@@ -174,7 +159,6 @@ impl Reshape {
         Some(out)
     }
 
-    /// The same, right to left, as ranges of the original order.
     fn ranges_reversed(src: &[i64], tgt: &[i64]) -> Option<Vec<Range>> {
         let rs: Vec<i64> = src.iter().rev().copied().collect();
         let rt: Vec<i64> = tgt.iter().rev().copied().collect();
@@ -184,7 +168,6 @@ impl Reshape {
         Some(out)
     }
 
-    /// `getReassociationIndicesForCollapse`.
     pub fn for_collapse(src: &[i64], tgt: &[i64]) -> Option<Reassoc> {
         if src.len() <= tgt.len() {
             return None;
@@ -207,7 +190,6 @@ impl Reshape {
         Some(out)
     }
 
-    /// `hasNonIdentityLayout`.
     fn non_identity(t: &Type<'_>) -> bool {
         matches!(t, Type::Shaped(s) if s.kind == ShapedKind::MemRef && !s.identity_layout())
     }
@@ -218,7 +200,6 @@ impl Reshape {
 }
 
 impl<'a> Body<'a> {
-    /// The `reassociation` of a reshape.
     pub fn reassociation(&self, op: OpId) -> Reassoc {
         let int = |a: &Attribute<'_>| if let Attribute::Int { lit, .. } = a { lit.parse().ok() } else { None };
         match self[op].get("reassociation") {
@@ -227,19 +208,16 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `getMixedOutputShape` of an `expand_shape`.
     pub fn mixed_output_shape(&self, op: OpId) -> Vec<Ofr> {
         let mut dynamic = self[op].operands[1..].iter();
         self.dense_i64(op, "static_output_shape").into_iter().map(|s| if s == Dim::DYNAMIC { Ofr::V(*dynamic.next().expect("dynamic")) } else { Ofr::C(s) }).collect()
     }
 
-    /// `foldReshapeOp<ReshapeOp, InverseReshapeOp>`.
     pub fn fold_reshape(&mut self, op: OpId, inverse: &str, src_const: Option<&Attribute<'a>>) -> Fold<'a> {
         let (src, res) = (self[op].operands[0], self[op].results[0]);
         if self[src].ty == self[res].ty {
             return Folded::Value(src).into();
         }
-        // (a dense constant needs a static shape)
         let static_res = self[res].ty.dims().is_some_and(|d| !d.contains(&Dim::DYNAMIC));
         if let Some(c) = src_const.and_then(|a| Const::try_from(a).ok()).filter(|c| c.elements && static_res) {
             return Folded::Attr(Const { ty: self[res].ty.clone(), ..c }.into()).into();
@@ -269,12 +247,10 @@ impl<'a> Body<'a> {
 }
 
 impl<'a> Rewriter<'_, 'a> {
-    /// A `collapse_shape` of `dialect`.
     fn collapse_data(dialect: &str, src: ValueId, r: &Reassoc) -> OpData<'a> {
         OpData::build(&format!("{dialect}.collapse_shape")).operands(&[src]).with("reassociation", Reshape::attr(r))
     }
 
-    /// An `expand_shape` of `dialect` to `shape`.
     pub fn expand_data(dialect: &str, src: ValueId, r: &Reassoc, shape: &[Ofr]) -> OpData<'a> {
         let mut ops = vec![src];
         let mut statics = Vec::new();
@@ -297,7 +273,6 @@ impl<'a> Rewriter<'_, 'a> {
     }
 }
 
-/// `ComposeReassociativeReshapeOps`: a reshape of a reshape of the same kind.
 pub struct ComposeReassociative {
     pub name: &'static str,
     pub dialect: &'static str,
@@ -330,7 +305,6 @@ impl Pattern for ComposeReassociative {
     }
 }
 
-/// `ComposeCollapseOfExpandOp`.
 pub struct ComposeCollapseOfExpand {
     pub name: &'static str,
     pub dialect: &'static str,
@@ -419,14 +393,12 @@ impl Pattern for ComposeCollapseOfExpand {
     }
 }
 
-/// `ComposeExpandOfCollapseOp`.
 pub struct ComposeExpandOfCollapse {
     pub name: &'static str,
     pub dialect: &'static str,
 }
 
 impl ComposeExpandOfCollapse {
-    /// `findCollapsingReassociation`.
     fn find(src_r: &Reassoc, res_r: &Reassoc, src: &[i64], res: &[i64]) -> Option<Reassoc> {
         if src_r.is_empty() {
             return Reshape::for_collapse(src, res);
@@ -472,7 +444,6 @@ impl Pattern for ComposeExpandOfCollapse {
         let src = b[c].operands[0];
         let (st, rt) = (b[src].ty.clone(), b[b[op].results[0]].ty.clone());
         if Reshape::non_identity(&b[b[op].operands[0]].ty) || Reshape::non_identity(&st) || Reshape::non_identity(&b[b[c].results[0]].ty) {
-            // Back to a static source's shape and layout: a cast.
             let fixed = st.dims().is_some_and(|d| d.iter().all(|x| *x != Dim::DYNAMIC));
             if fixed && crate::memref_cast_compatible(&st, &rt) {
                 rw.replace_with(op, OpData::build(&format!("{}.cast", self.dialect)).operands(&[src]), &[rt]);

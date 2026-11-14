@@ -1,13 +1,9 @@
-//! `spirv-attach-target`.
-
 use crate::{Regex};
 use alloc::format;
 use alloc::vec::Vec;
 use mlirformat::{Attribute, Error};
 use crate::{Body, OpId};
 
-/// `spirv-attach-target`: a `#spirv.target_env` appended to the `targets` of each
-/// `gpu.module` whose name `module` matches.
 #[crate::pass("spirv-attach-target")]
 pub struct SpirvAttachTarget {
     #[opt("module")]

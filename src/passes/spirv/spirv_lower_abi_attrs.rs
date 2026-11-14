@@ -1,5 +1,3 @@
-//! `spirv-lower-abi-attrs`.
-
 use crate::{Abi};
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -7,7 +5,6 @@ use mlirformat::Error;
 use crate::TargetEnv;
 use crate::{Body, OpId};
 
-/// `spirv-lower-abi-attrs`.
 #[crate::pass("spirv-lower-abi-attrs", on = "spirv.module")]
 pub fn spirv_lower_abi_attrs<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
     let env = TargetEnv::find(body, module).ok_or_else(|| Error(String::from("'spirv.module' op missing SPIR-V target env attribute")))?;

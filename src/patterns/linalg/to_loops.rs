@@ -1,8 +1,3 @@
-//! `convert-linalg-to-{loops,affine-loops,parallel-loops}`, as `Linalg/Transforms/Loops.cpp`: a
-//! structured op on buffers becomes a loop nest over its iteration domain, with the payload
-//! inlined between loads of its operands and stores of what it yields; then the greedy driver
-//! runs with the dim / apply canonicalizations and `FoldAffineOp`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -11,24 +6,15 @@ use mlirformat::{Attribute, Dim, Type};
 use crate::MemrefOfr as Ofr;
 use crate::{AffineExpr, AffineMap, Body, Def, GreedyConfig, Mapping, OpData, OpId, Pattern, Rewriter, ValueId};
 
-/// The loops a structured op becomes.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LinalgLoops {
-    /// `scf.for`, one per loop.
     Scf,
-    /// `affine.for`, one per loop, over `affine.load` / `affine.store`.
     Affine,
-    /// `scf.parallel` for each run of parallel loops, `scf.for` for each reduction.
     Parallel,
 }
 
-
-
-
 impl LinalgLoops {
-    /// `lowerLinalgToLoopsImpl`.
     pub(crate) fn lower(self, body: &mut Body<'_>, op: OpId) {
-        // `{memref,tensor}::DimOp` and `AffineApplyOp::getCanonicalizationPatterns`.
         let mut set = crate::canonicalization_patterns();
         set.retain(|p| matches!(p.root(), Some("memref.dim" | "tensor.dim" | "affine.apply")));
         set.add(LinalgRewrite(self));
@@ -39,7 +25,6 @@ impl LinalgLoops {
     }
 }
 
-/// `LinalgRewritePattern`: any structured op on buffers.
 struct LinalgRewrite(LinalgLoops);
 
 impl Pattern for LinalgRewrite {
@@ -76,8 +61,6 @@ impl Pattern for LinalgRewrite {
     }
 }
 
-/// `FoldAffineOp`: an `affine.apply` of one result and at most one input that is a constant or
-/// the input itself.
 struct FoldAffineOp;
 
 impl Pattern for FoldAffineOp {
@@ -112,9 +95,6 @@ impl Pattern for FoldAffineOp {
 }
 
 impl Body<'_> {
-    /// `getIteratorTypesArray`, `true` for a reduction: `iterator_types` when the op has it, the
-    /// OpDSL table, else a loop is parallel exactly when an init's map uses it (`matmul`,
-    /// `contract`, `transpose`, `broadcast`, `map`, `reduce`).
     fn iterator_reductions(&self, op: OpId, maps: &[AffineMap]) -> Vec<bool> {
         let n = maps.first().map_or(0, |m| m.dims);
         if let Some(Attribute::Array(its)) = self[op].get("iterator_types") {
@@ -128,12 +108,9 @@ impl Body<'_> {
     }
 }
 
-/// `Range` of a loop: offset, size, stride.
 type Range = [Ofr; 3];
 
 impl<'a> Rewriter<'_, 'a> {
-    /// `createLoopRanges`: each loop `[0, size, 1)`, its size the first operand dim its
-    /// `getLoopsToShapesMap` result names (`createFlatListOfOperandDims`).
     fn loop_ranges(&mut self, op: OpId, maps: &[AffineMap]) -> Option<Vec<Range>> {
         let mut sizes = Vec::new();
         for v in self.body[op].operands.clone() {
@@ -157,19 +134,16 @@ impl<'a> Rewriter<'_, 'a> {
         ranges.into_iter().collect()
     }
 
-    /// `createOrFoldDimOp` on a memref: `memref.dim` of a new index constant.
     fn dim(&mut self, v: ValueId, i: usize) -> ValueId {
         let c = self.index(i64::try_from(i).unwrap_or_default());
         self.create_or_fold(OpData::build("memref.dim").operands(&[v, c]), &[Type::Index])[0]
     }
 
-    /// `arith::ConstantIndexOp::create`.
     fn index(&mut self, v: i64) -> ValueId {
         let c = self.create(OpData::build("arith.constant").with("value", Attribute::index(v)), &[Type::Index]);
         self.body[c].results[0]
     }
 
-    /// `getValueOrCreateConstantIndexOp`.
     fn ofr_value(&mut self, o: &Ofr) -> ValueId {
         match o {
             Ofr::C(c) => self.index(*c),
@@ -177,9 +151,6 @@ impl<'a> Rewriter<'_, 'a> {
         }
     }
 
-    /// `GenerateLoopNest<scf::ForOp>` (`scf::buildLoopNest`, the bounds `unpackRanges` made):
-    /// nested `scf.for`s, the insertion point left at the start of the innermost body; their
-    /// induction variables.
     fn scf_nest(&mut self, bounds: &[[ValueId; 3]]) -> Vec<ValueId> {
         let mut ivs = Vec::new();
         for &[lb, ub, step] in bounds {
@@ -193,9 +164,6 @@ impl<'a> Rewriter<'_, 'a> {
         ivs
     }
 
-    /// `GenerateLoopNest<AffineForOp>` (`affine::buildAffineLoopNest`): nested `affine.for`s,
-    /// constant bounds folded into the maps (`buildAffineLoopFromConstants`), others passed as
-    /// operands of `(d0) -> (d0)`; the steps must be constants.
     fn affine_nest(&mut self, bounds: &[[ValueId; 3]]) -> Vec<ValueId> {
         let mut ivs = Vec::new();
         for &[lb, ub, step] in bounds {
@@ -215,9 +183,6 @@ impl<'a> Rewriter<'_, 'a> {
         ivs
     }
 
-    /// `GenerateLoopNest<scf::ParallelOp>` (`generateParallelLoopNest`, no distribution): the
-    /// leading parallel loops as one `scf.parallel`, a leading reduction as one `scf.for`, then
-    /// the rest inside it; the insertion point left where the body goes.
     fn parallel_nest(&mut self, bounds: &[[ValueId; 3]], reductions: &[bool], ivs: &mut Vec<ValueId>) {
         if bounds.is_empty() {
             return;
@@ -240,7 +205,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.parallel_nest(&bounds[n..], &reductions[n..], ivs);
     }
 
-    /// `makeCanonicalAffineApplies`: one `affine.apply` per result of `map` over `vals`.
     fn applies(&mut self, map: &AffineMap, vals: &[ValueId]) -> Vec<ValueId> {
         map.results
             .iter()
@@ -254,8 +218,6 @@ impl<'a> Rewriter<'_, 'a> {
             .collect()
     }
 
-    /// `emitScalarImplementation`: loads of the inputs (scalars as they are) and the inits, the
-    /// payload cloned, a store of each yielded value into its init.
     fn scalar_implementation(&mut self, op: OpId, maps: &[AffineMap], ivs: &[ValueId], affine: bool) {
         let inits = self.body.dps_inits(op).unwrap_or(0..0);
         let operands = self.body[op].operands.clone();
@@ -287,7 +249,6 @@ impl<'a> Rewriter<'_, 'a> {
         }
     }
 
-    /// `memref.load`, or `affine.load` through the identity map (`AffineLoadOp::build`).
     fn load(&mut self, v: ValueId, at: &[ValueId], affine: bool) -> ValueId {
         let ty = self.body[v].ty.element_type().clone();
         let mut operands = vec![v];
@@ -297,14 +258,11 @@ impl<'a> Rewriter<'_, 'a> {
         self.body[l].results[0]
     }
 
-    /// The identity map of `memref`'s rank (`() -> ()` at rank zero).
     fn access_map(&self, memref: ValueId) -> Attribute<'a> {
         let rank = self.body[memref].ty.dims().map_or(0, |d| d.len());
         Attribute::from(&AffineMap::identity(u32::try_from(rank).unwrap_or_default()))
     }
 
-    /// `replaceIndexOpsByInductionVariables`: the `linalg.index` ops directly in the innermost
-    /// loop's body become its induction variables.
     fn index_to_ivs(&mut self, ivs: &[ValueId]) {
         let Some(&last) = ivs.last() else { return };
         let Def::Arg(block, _) = self.body[last].def else { return };

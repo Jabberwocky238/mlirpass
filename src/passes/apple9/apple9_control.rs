@@ -1,15 +1,3 @@
-//! ⭐ `apple9-control` (after `apple9-regalloc`): structured control flow ⇒ the execution-mask stack, as Metal's own
-//! code for an M4 has it (a kernel with an if / else and a loop compiled by Metal, read back; GravityLinux Mesa's
-//! agx_apple9 backend names the forms). The hardware keeps a mask of the running lanes, so a condition may differ
-//! between lanes. What the ops carry is in its registers already; the condition is in predicate bank 0 (the
-//! `apple9.pred` the conversion put before an if and before a while's `scf.condition`: is the condition 0).
-//!
-//! ```text
-//!   scf.if      ⇒ push {invert} (the lanes whose condition is not 0), the then part, else, the else part, pop
-//!   scf.while   ⇒ loop_push, label L, the condition part, loop_update {invert} (the lanes whose condition is 0 leave),
-//!                 jmp_none X (none left), the body, jmp_any L, label X, loop_pop
-//! ```
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -23,13 +11,11 @@ struct Control<'r, 'a> {
 }
 
 impl Control<'_, '_> {
-    /// Instruction `inst` with `attrs` before `before`.
     fn put(&mut self, before: OpId, inst: Apple9Op, attrs: Vec<(&str, A)>) {
         self.rw.set_before(before);
         self.rw.create(OpData::build(inst.name()).with_attrs(attrs), &[]);
     }
 
-    /// Block `b`'s ops moved before `before`, its terminator (`scf.yield` / `scf.condition`) gone.
     fn inline(&mut self, b: BlockId, before: OpId) {
         let parent = self.rw.body[before].parent.expect("placed");
         let ends: Vec<OpId> = self.rw.body.ops(b).filter(|o| matches!(&*self.rw.body[*o].name, "scf.yield" | "scf.condition")).collect();
@@ -82,7 +68,6 @@ impl Control<'_, '_> {
     }
 }
 
-/// `apple9-control`.
 #[pass("apple9-control", on = "builtin.module")]
 pub fn apple9_control<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     for k in Kernels::all(body, op, Apple9Kernel::NAME) {

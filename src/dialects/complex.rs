@@ -1,8 +1,5 @@
-//! The `complex` dialect's op interfaces.
-
 use crate::{DialectInliner, InlineAll, OpInterfaces};
 
-/// The `complex` dialect.
 pub struct ComplexDialect;
 
 impl OpInterfaces for ComplexDialect {
@@ -10,12 +7,10 @@ impl OpInterfaces for ComplexDialect {
         "complex"
     }
 
-    /// `OpAsmOpInterface::getAsmResultNames`.
     fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
         if b[op].name == "complex.constant" { b.result_named(op, "cst") } else { alloc::vec::Vec::new() }
     }
 
-    /// Every op inlines (`ComplexInlinerInterface`).
     fn inliner(&self) -> Option<&dyn DialectInliner> {
         Some(&InlineAll { calls: false, regions: false })
     }

@@ -1,8 +1,3 @@
-//! `inline`, as `InlinerPass.cpp` / `Inliner.cpp` / `InliningUtils.cpp` over `CallGraph.cpp`:
-//! the call graph's SCCs bottom-up (LLVM's `scc_iterator`), each optimized with the op
-//! pipelines and then its calls inlined, up to `max-iterations` times; callables left without
-//! uses are erased at the end.
-
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::string::String;
@@ -20,14 +15,11 @@ enum Edge {
     Child,
 }
 
-/// A call graph node: a callable region (`None`: the external caller / unknown callee).
 struct Node {
     region: Option<RegionId>,
     edges: Vec<(usize, Edge)>,
 }
 
-/// `CallGraph`: node 0 is the external caller, node 1 the unknown callee, then the callable
-/// regions in discovery order.
 struct CallGraph {
     nodes: Vec<Node>,
     by_region: BTreeMap<RegionId, usize>,
@@ -37,7 +29,6 @@ const EXTERNAL: usize = 0;
 const UNKNOWN: usize = 1;
 
 impl<'a> Body<'a> {
-    /// `CallableOpInterface::getCallableRegion`: a callable's body, when it has one.
     pub fn callable_region(&self, op: OpId) -> Option<RegionId> {
         if !self.has(op, Trait::CallableOpInterface) {
             return None;
@@ -45,8 +36,6 @@ impl<'a> Body<'a> {
         self[op].regions.first().copied().filter(|r| !self[*r].blocks.is_empty())
     }
 
-    /// `CallOpInterface::resolveCallable`: the callee value's defining op, or the symbol
-    /// looked up from the nearest symbol table.
     pub fn resolve_call(&self, call: OpId) -> Option<OpId> {
         if let Some(callee) = self.interfaces(call).and_then(|i| i.indirect_callee(self, call)) {
             return self.def_op(callee);
@@ -55,7 +44,6 @@ impl<'a> Body<'a> {
         self.lookup_nearest(call, path)
     }
 
-    /// `SymbolTable::lookupNearestSymbolFrom(from, path)`.
     fn lookup_nearest(&self, from: OpId, path: &[Str<'_>]) -> Option<OpId> {
         let mut t = Some(from);
         while let Some(o) = t {
@@ -71,7 +59,6 @@ impl<'a> Body<'a> {
         self.has(op, Trait::CallOpInterface)
     }
 
-    /// The inliner interface of `op`'s dialect (borrowed from the context, not the body).
     fn inliner_of(&self, op: OpId) -> Option<&'a dyn DialectInliner> {
         let interfaces: &'a crate::Interfaces<'a> = self.ctx.interfaces;
         interfaces.of(&self[op].name).and_then(|i| i.inliner())
@@ -92,7 +79,6 @@ impl CallGraph {
         }
     }
 
-    /// `getOrAddNode`.
     fn node_for(&mut self, region: RegionId, parent: Option<usize>) -> usize {
         if let Some(n) = self.by_region.get(&region) {
             return *n;
@@ -107,7 +93,6 @@ impl CallGraph {
         n
     }
 
-    /// `computeCallGraph`.
     fn compute(&mut self, body: &Body<'_>, op: OpId, mut parent: Option<usize>, resolve: bool) {
         if body.is_call(op) {
             if resolve && let Some(p) = parent {
@@ -131,7 +116,6 @@ impl CallGraph {
         }
     }
 
-    /// `resolveCallable`: the callee's node, else the unknown callee.
     fn resolve(&self, body: &Body<'_>, call: OpId) -> usize {
         body.resolve_call(call).and_then(|c| body.callable_region(c)).and_then(|r| self.by_region.get(&r).copied()).unwrap_or(UNKNOWN)
     }
@@ -141,12 +125,10 @@ impl CallGraph {
     }
 }
 
-/// LLVM's `scc_iterator` (Tarjan, iterative) from the external caller.
 struct SccIter {
     visit_num: u32,
     numbers: BTreeMap<usize, u32>,
     scc_stack: Vec<usize>,
-    /// (node, next child, minimum visit number reached).
     visit_stack: Vec<(usize, usize, u32)>,
     current: Vec<usize>,
 }
@@ -183,7 +165,6 @@ impl SccIter {
         }
     }
 
-    /// `GetNextSCC`.
     fn next_scc(&mut self, cg: &CallGraph) {
         self.current.clear();
         while !self.visit_stack.is_empty() {
@@ -212,21 +193,17 @@ impl SccIter {
         self.current.is_empty()
     }
 
-    /// `ReplaceNode(node, nullptr)`: the node counts as unvisited again.
     fn forget(&mut self, n: usize) {
         self.numbers.remove(&n);
     }
 }
 
-/// `CGUseList`: how often each discardable callable is referenced.
 #[derive(Default)]
 struct UseList {
     discardable: BTreeMap<usize, i64>,
-    /// Per node: the nodes its op references itself, and those its body references.
     uses: BTreeMap<usize, (BTreeSet<usize>, BTreeMap<usize, i64>)>,
 }
 
-/// `walkReferencedSymbolNodes`: each symbol use in `op` resolving to a call graph node.
 fn referenced_nodes(body: &Body<'_>, cg: &CallGraph, op: OpId, resolved: &mut BTreeMap<Vec<String>, Option<usize>>, f: &mut dyn FnMut(usize, OpId)) {
     let Some(uses) = body.symbol_uses(op) else { return };
     let table = body.parent_op(op);
@@ -270,8 +247,6 @@ impl UseList {
         ul
     }
 
-    /// `SymbolTable::walkSymbolTables`: nested tables first, with whether all their symbols'
-    /// uses are visible.
     fn symbol_tables(body: &Body<'_>, op: OpId, mut visible: bool, out: &mut Vec<(OpId, bool)>) {
         let table = body.is_symbol_table(op);
         if table {
@@ -298,7 +273,6 @@ impl UseList {
         }
     }
 
-    /// `recomputeUses`.
     fn recompute(&mut self, body: &Body<'_>, cg: &CallGraph, n: usize) {
         let Some(region) = cg.nodes[n].region else { return };
         let op = body[region].parent;
@@ -317,7 +291,6 @@ impl UseList {
         self.uses.insert(n, (top, inner));
     }
 
-    /// `dropCallUses`.
     fn drop_call(&mut self, body: &Body<'_>, cg: &CallGraph, user: usize, call: OpId) {
         let (uses, discardable) = (&mut self.uses, &mut self.discardable);
         let inner = &mut uses.entry(user).or_default().1;
@@ -329,7 +302,6 @@ impl UseList {
         });
     }
 
-    /// `eraseNode`.
     fn erase(&mut self, cg: &CallGraph, n: usize) {
         for (c, k) in &cg.nodes[n].edges {
             if *k == Edge::Child {
@@ -341,7 +313,6 @@ impl UseList {
         self.discardable.remove(&n);
     }
 
-    /// `mergeUsesAfterInlining`.
     fn merge(&mut self, from: usize, into: usize) {
         let inner = self.uses.entry(from).or_default().1.clone();
         for (t, c) in inner {
@@ -350,7 +321,6 @@ impl UseList {
         }
     }
 
-    /// `isDead` (`hasOneUseAndDiscardable` with `uses = 1`).
     fn has_uses(&self, body: &Body<'_>, cg: &CallGraph, n: usize, uses: i64) -> bool {
         let op = body[cg.nodes[n].region.expect("internal node")].parent;
         if !body.has(op, Trait::SymbolOpInterface) {
@@ -361,7 +331,6 @@ impl UseList {
     }
 }
 
-/// `ResolvedCall`.
 #[derive(Clone, Copy)]
 struct Call {
     call: OpId,
@@ -369,14 +338,12 @@ struct Call {
     target: usize,
 }
 
-/// The inliner's options and pipelines.
 struct Inliner {
     max_iterations: u64,
     threshold: u64,
 }
 
 impl Inliner {
-    /// `collectCallOps`: the calls in `blocks` (a stack: last block first) to internal nodes.
     fn collect_calls(body: &Body<'_>, cg: &CallGraph, blocks: &[BlockId], source: usize, nested: bool, calls: &mut Vec<Call>) {
         let mut work: Vec<(BlockId, usize)> = blocks.iter().map(|b| (*b, source)).collect();
         while let Some((b, source)) = work.pop() {
@@ -404,7 +371,6 @@ impl Inliner {
         }
     }
 
-    /// `shouldInline`.
     fn should_inline(&self, body: &Body<'_>, cg: &CallGraph, c: Call) -> bool {
         if body.has(c.call, Trait::IsTerminator) {
             return false;
@@ -428,8 +394,6 @@ impl Inliner {
         self.profitable(body, cg, c)
     }
 
-    /// `isProfitableToInline`: the callee / caller op count ratio, in percent, within the
-    /// threshold.
     fn profitable(&self, body: &Body<'_>, cg: &CallGraph, c: Call) -> bool {
         if self.threshold == 0 {
             return false;
@@ -445,7 +409,6 @@ impl Inliner {
         caller == 0 || count(c.target) * 100 / caller <= self.threshold
     }
 
-    /// `inlineCallsInSCC`: whether anything was inlined.
     fn inline_calls(&self, body: &mut Body<'_>, cg: &CallGraph, uses: &mut UseList, scc: &mut Vec<usize>, iter: &mut SccIter, dead: &mut Vec<usize>) -> bool {
         let mut calls = Vec::new();
         let mut dead_here: Vec<usize> = Vec::new();
@@ -514,8 +477,6 @@ impl Inliner {
     }
 }
 
-/// `stackLocations`: `callee` inlined at `caller`, as `callsite(callee at caller)`, a callee
-/// that is a call site itself stacked onto the caller.
 fn stack_location(callee: &str, caller: &str) -> String {
     let mut stack = Vec::new();
     let mut last = String::from(callee);
@@ -530,7 +491,6 @@ fn stack_location(callee: &str, caller: &str) -> String {
     loc
 }
 
-/// `callsite(callee at caller)` taken apart.
 fn split_callsite(loc: &str) -> Option<(String, String)> {
     let inner = loc.strip_prefix("callsite(")?.strip_suffix(')')?;
     let (mut depth, mut quote) = (0i32, false);
@@ -547,12 +507,10 @@ fn split_callsite(loc: &str) -> Option<(String, String)> {
     None
 }
 
-/// The result types a callable promises (`getResultTypes`).
 fn callable_results<'a>(body: &Body<'a>, callable: OpId) -> Option<Vec<Type<'a>>> {
     use mlirformat::llvm_types::LlvmType;
     match body[callable].get("function_type") {
         Some(Attribute::Type(Type::Function(f))) => Some(f.results.clone()),
-        // `!llvm.func<ret (params)>`: no result for `void`.
         Some(Attribute::Type(t)) => match LlvmType::try_from(t).ok()? {
             LlvmType::Func { ret, .. } => Some(if matches!(LlvmType::try_from(&*ret), Ok(LlvmType::Void)) { Vec::new() } else { alloc::vec![*ret] }),
             _ => None,
@@ -564,7 +522,6 @@ fn callable_results<'a>(body: &Body<'a>, callable: OpId) -> Option<Vec<Type<'a>>
     }
 }
 
-/// `isLegalToInline` over `src`'s ops (recursively where the dialect says).
 fn legal_ops(body: &Body<'_>, src: RegionId) -> bool {
     body[src].blocks.iter().flat_map(|b| body.ops(*b)).all(|op| {
         if body[op].name == "builtin.unrealized_conversion_cast" {
@@ -575,8 +532,6 @@ fn legal_ops(body: &Body<'_>, src: RegionId) -> bool {
     })
 }
 
-/// `inlineCall` + `inlineRegionImpl`: `c`'s callee inlined in place of the call (the call
-/// itself left for the caller to erase); the calls of the inlined blocks added to `calls`.
 fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, calls: &mut Vec<Call>) -> bool {
     let call = c.call;
     let src = cg.nodes[c.target].region.expect("internal");
@@ -632,14 +587,12 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
     if !call_iface.is_some_and(|i| i.legal_call(body, call, callable)) {
         return cleanup(body, &casts);
     }
-    // `inlineRegionImpl`.
     let region = body[block].parent.expect("a placed block");
     let dest_ok = body.inliner_of(body[region].parent).is_some_and(|i| i.legal_region(body, region));
     if !dest_ok || !legal_ops(body, src) {
         return cleanup(body, &casts);
     }
     let callable_iface = body.inliner_of(callable);
-    // The builder's point: before what followed the call (iterator-stable, as in C++).
     let next = body.next_op(call);
     let at = InsertPoint { block, before: next };
     if let Some(i) = callable_iface {
@@ -653,7 +606,6 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
             map.map(arg, nv);
         }
     }
-    // `splitBlock` at the point: what follows goes to a new block right after.
     let post = body.add_block(region, &[]);
     body[region].blocks.pop();
     let pos = body[region].blocks.iter().position(|b| *b == block).expect("block in region");
@@ -661,7 +613,6 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
     if let Some(nx) = next {
         body.splice(block, Some(nx), post, None);
     }
-    // The clone callback: copy or move `src`'s blocks before `post`.
     let new_blocks: Vec<BlockId> = if clone {
         body.clone_region_into(src, region, Some(post), &mut map)
     } else {
@@ -722,7 +673,6 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
     if let Some(i) = call_iface {
         i.process_inlined(body, call, &new_blocks);
     }
-    // `processInlinedBlocks`: the calls the inlined code makes, from the node it now sits in.
     let mut r = Some(region);
     let mut node = None;
     while let Some(rr) = r {
@@ -785,7 +735,6 @@ fn inline_call<'a>(body: &mut Body<'a>, cg: &CallGraph, c: Call, clone: bool, ca
     true
 }
 
-/// `inline`.
 #[crate::pass("inline")]
 pub struct Inline {
     #[opt("default-pipeline", default = String::from("canonicalize"))]
@@ -816,7 +765,6 @@ impl crate::Run for Inline {
             iter.next_scc(&cg);
             for k in 0..inliner.max_iterations.max(1) {
                 let _ = k;
-                // `optimizeSCC`: the pipeline for each callable, by its op name.
                 let mut visited = Vec::new();
                 for &n in &scc {
                     let Some(region) = cg.nodes[n].region else { continue };

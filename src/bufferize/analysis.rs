@@ -1,8 +1,3 @@
-//! The One-Shot analysis, as `OneShotAnalysis.cpp`: every tensor operand, in the heuristic's
-//! order, bufferizes in place unless that would write to a non-writable buffer or create a
-//! read-after-write conflict; then which values are equivalent, which uses read undefined
-//! contents.
-
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::string::String;
@@ -14,7 +9,6 @@ use mlirformat::{Attribute, Error};
 use super::{is_tensor_type as is_tensor, OneShot, BufferizationOptions, BufferRelation, AnalysisState, TraversalConfig};
 use crate::{Body, Def, OpId, Operand, RegionId, ValueId};
 
-/// `std::mt19937`, the fuzzer heuristic's shuffle.
 struct Mt19937 {
     state: [u32; 624],
     at: usize,
@@ -50,7 +44,6 @@ impl Mt19937 {
         y ^ (y >> 18)
     }
 
-    /// `llvm::shuffle`.
     fn shuffle<T>(&mut self, v: &mut [T]) {
         let mut first = 0;
         let mut size = v.len();
@@ -66,12 +59,10 @@ impl Mt19937 {
 }
 
 impl Body<'_> {
-    /// `Operation::isProperAncestor`.
     fn proper_ancestor(&self, a: OpId, x: OpId) -> bool {
         a != x && self.is_ancestor(a, x)
     }
 
-    /// The op of `block` holding `x` (`findAncestorOpInBlock`).
     fn ancestor_in_block(&self, block: crate::BlockId, mut x: OpId) -> Option<OpId> {
         loop {
             if self[x].parent == Some(block) {
@@ -81,15 +72,12 @@ impl Body<'_> {
         }
     }
 
-    /// `DominanceInfo::properlyDominates(a, x)`.
     fn properly_dominates(&self, a: OpId, x: OpId) -> bool {
         let Some(blk) = self[a].parent else { return false };
         let Some(region) = self[blk].parent else { return false };
-        // An op properly dominates itself only in a graph region.
         if a == x {
             return !self.has_ssa_dominance(region);
         }
-        // `x`, or its ancestor, in `a`'s region.
         let mut xa = x;
         let xb = loop {
             let Some(b) = self[xa].parent else { return false };
@@ -105,7 +93,6 @@ impl Body<'_> {
             return true;
         }
         if xb == blk {
-            // In a graph region every op of a block dominates the others.
             if !self.has_ssa_dominance(region) {
                 return true;
             }
@@ -115,7 +102,6 @@ impl Body<'_> {
         !self.has_ssa_dominance(region) || self.dom_tree(region).dominates(blk, xb)
     }
 
-    /// `happensBefore`: `a` (or an ancestor) properly dominates `x`, `a` not holding it.
     fn happens_before(&self, mut a: OpId, x: OpId) -> bool {
         loop {
             if self.proper_ancestor(a, x) {
@@ -146,15 +132,11 @@ impl Body<'_> {
         self.region_of_op(self[r].parent)
     }
 
-    /// The index of region `r` in its op.
     fn region_index(&self, r: RegionId) -> usize {
         self[self[r].parent].regions.iter().position(|x| *x == r).expect("a region of its op")
     }
 
-    /// `Block::isReachable(other, except)`: `other` is reached from `from`'s successors, not
-    /// through `except`.
     fn block_reachable(&self, from: crate::BlockId, to: crate::BlockId, except: crate::BlockId) -> bool {
-        // No path to `except` that avoids it.
         if to == except {
             return false;
         }
@@ -175,13 +157,11 @@ impl Body<'_> {
 }
 
 impl BufferizationOptions {
-    /// Region `r` repeats (`isRepetitiveRegion` of its op's interface).
     fn repetitive(&self, b: &Body<'_>, r: RegionId) -> bool {
         let op = b[r].parent;
         self.bufferizable(b, op).is_some_and(|i| i.repetitive_region(b, op, b.region_index(r)))
     }
 
-    /// `getEnclosingRepetitiveRegion`: `r` or the first region around it that repeats.
     fn enclosing_repetitive(&self, b: &Body<'_>, mut r: Option<RegionId>) -> Option<RegionId> {
         while let Some(x) = r {
             if self.repetitive(b, x) {
@@ -192,12 +172,10 @@ impl BufferizationOptions {
         None
     }
 
-    /// `getNextEnclosingRepetitiveRegion`.
     fn next_repetitive(&self, b: &Body<'_>, r: RegionId) -> Option<RegionId> {
         self.enclosing_repetitive(b, b.parent_region(r))
     }
 
-    /// `getParallelRegion`: the first region around `r` (itself included) that is parallel.
     fn parallel_region(&self, b: &Body<'_>, mut r: Option<RegionId>) -> Option<RegionId> {
         while let Some(x) = r {
             let op = b[x].parent;
@@ -210,8 +188,6 @@ impl BufferizationOptions {
     }
 }
 
-/// `SubsetInsertionOpInterface` of the ops that implement it: (source, destination) operand
-/// indices.
 fn subset_insertion(b: &Body<'_>, op: OpId) -> Option<(usize, usize)> {
     matches!(&*b[op].name, "tensor.insert_slice" | "tensor.parallel_insert_slice" | "bufferization.materialize_in_destination").then_some((0, 1))
 }
@@ -225,7 +201,6 @@ impl<'o> AnalysisState<'o> {
         self.one_shot.as_mut().expect("a One-Shot analysis")
     }
 
-    /// `bufferizeInPlace`: `u` in place, its aliasing values in its alias set.
     fn bufferize_in_place(&mut self, b: &Body<'_>, u: Operand) {
         if !self.shot_mut().inplace.insert(u) {
             return;
@@ -236,7 +211,6 @@ impl<'o> AnalysisState<'o> {
         }
     }
 
-    /// `findDefinitionsCached`.
     fn definitions_cached(&mut self, b: &Body<'_>, u: Operand) -> Vec<ValueId> {
         let v = b[u.0].operands[u.1];
         if let Some(d) = self.shot().definitions.get(&v) {
@@ -251,7 +225,6 @@ impl<'o> AnalysisState<'o> {
         self.writes(b, u) && self.in_place(b, u)
     }
 
-    /// `getAliasingInplaceWrites`.
     fn aliasing_in_place_writes(&self, b: &Body<'_>, root: ValueId, res: &mut Vec<Operand>) {
         for alias in self.shot().alias.of(root) {
             for u in b.uses_of(alias) {
@@ -262,7 +235,6 @@ impl<'o> AnalysisState<'o> {
         }
     }
 
-    /// `getAliasingReads`.
     fn aliasing_reads(&self, b: &Body<'_>, root: ValueId, res: &mut Vec<Operand>) {
         for alias in self.shot().alias.of(root) {
             for u in b.uses_of(alias) {
@@ -274,8 +246,6 @@ impl<'o> AnalysisState<'o> {
         }
     }
 
-    /// `canUseOpDominance`: by regions (a definition in a repetitive region outside the read's
-    /// is reached again) and by blocks (read and write reach each other not through the def).
     fn can_use_dominance(&self, b: &Body<'_>, read: Operand, write: Operand, defs: &[ValueId]) -> bool {
         let o = self.options;
         for d in defs {
@@ -313,14 +283,11 @@ impl<'o> AnalysisState<'o> {
         true
     }
 
-    /// `hasEquivalentValueInReverseUseDefChain`.
     fn equivalent_in_chain(&self, b: &Body<'_>, start: Operand, other: ValueId) -> bool {
         let config = TraversalConfig { always_include_leaves: false, follow_equivalent_only: true, follow_same_type_or_casts_only: true, ..TraversalConfig::default() };
         !self.reverse_chain(b, start, &mut |_, v| v == other, config, None).is_empty()
     }
 
-    /// `SubsetInsertionOpInterface::isEquivalentSubset`: `candidate` extracts from a value
-    /// equivalent to `insert`'s destination exactly the subset it inserts.
     fn equivalent_subset(&self, b: &Body<'_>, insert: OpId, candidate: ValueId) -> bool {
         let Def::Result(ext, _) = b[candidate].def else { return false };
         let dest = b[insert].operands[1];
@@ -335,14 +302,12 @@ impl<'o> AnalysisState<'o> {
         (0..3).all(|k| same(&e[k], &i[k]))
     }
 
-    /// `matchesInsertDestination`: every value up the chain from `u` is such a subset.
     fn matches_insert_destination(&self, b: &Body<'_>, u: Operand, insert: OpId) -> bool {
         let matching = |s: &Self, v: ValueId| s.equivalent_subset(b, insert, v);
         let slice = self.reverse_chain(b, u, &mut |s, v| matching(s, v), TraversalConfig::default(), None);
         slice.iter().all(|v| matching(self, *v))
     }
 
-    /// `areNonConflictingSubsets`.
     fn non_conflicting_subsets(&self, b: &Body<'_>, read: Operand, write: Operand) -> bool {
         if let Some((src, dst)) = subset_insertion(b, read.0) {
             if read.1 == dst && self.matches_insert_destination(b, write, read.0) {
@@ -362,7 +327,6 @@ impl<'o> AnalysisState<'o> {
         false
     }
 
-    /// `hasReadAfterWriteInterference`.
     fn read_after_write(&mut self, b: &Body<'_>, reads: &[Operand], writes: &[Operand]) -> bool {
         let o = self.options;
         if o.check_parallel_regions && !reads.is_empty() {
@@ -425,7 +389,6 @@ impl<'o> AnalysisState<'o> {
         false
     }
 
-    /// `wouldCreateReadAfterWriteInterference`.
     fn would_create_raw(&mut self, b: &Body<'_>, u: Operand, consistency_only: bool) -> bool {
         let (mut reads, mut writes) = (Vec::new(), Vec::new());
         let v = b[u.0].operands[u.1];
@@ -441,7 +404,6 @@ impl<'o> AnalysisState<'o> {
         self.read_after_write(b, &reads, &writes)
     }
 
-    /// `wouldCreateWriteToNonWritableBuffer`.
     fn would_write_read_only(&self, b: &Body<'_>, u: Operand, consistency_only: bool) -> bool {
         let mut found = !consistency_only && self.writes(b, u);
         let v = b[u.0].operands[u.1];
@@ -463,7 +425,6 @@ impl<'o> AnalysisState<'o> {
         read_only
     }
 
-    /// `analyzeSingleOp`: each tensor operand in place unless that conflicts.
     fn analyze_single(&mut self, b: &Body<'_>, op: OpId) {
         for i in 0..b[op].operands.len() {
             let u = (op, i);
@@ -477,7 +438,6 @@ impl<'o> AnalysisState<'o> {
         }
     }
 
-    /// `hasTensorSemantics`: through the op's interface (whatever the options allow).
     fn tensor_semantics(b: &Body<'_>, op: OpId) -> bool {
         match b.ctx.interfaces.of(&b[op].name).and_then(|i| i.bufferizable(&b[op].name)) {
             Some(i) => i.tensor_semantics(b, op),
@@ -485,7 +445,6 @@ impl<'o> AnalysisState<'o> {
         }
     }
 
-    /// `bottomUpFromTerminatorsHeuristic`.
     fn bottom_up_from_terminators(&self, b: &Body<'_>, root: OpId) -> Vec<OpId> {
         let mut traversed: Vec<OpId> = Vec::new();
         let mut terms = Vec::new();
@@ -519,7 +478,6 @@ impl<'o> AnalysisState<'o> {
             }
         }
         let mut result = traversed.clone();
-        // `walk<PostOrder, ReverseIterator>`: the post order with each block's ops reversed.
         for op in Self::reverse_post_order(b, root) {
             if !traversed.contains(&op) && Self::tensor_semantics(b, op) {
                 result.push(op);
@@ -528,7 +486,6 @@ impl<'o> AnalysisState<'o> {
         result
     }
 
-    /// `walk<WalkOrder::PostOrder, ReverseIterator>`.
     fn reverse_post_order(b: &Body<'_>, op: OpId) -> Vec<OpId> {
         let mut out = Vec::new();
         for r in b[op].regions.iter().rev() {
@@ -542,7 +499,6 @@ impl<'o> AnalysisState<'o> {
         out
     }
 
-    /// `OneShotAnalysisState::analyzeOp`: every op in the heuristic's order, then equivalence.
     fn analyze_ops(&mut self, b: &Body<'_>, root: OpId) {
         let ordered = match self.options.heuristic {
             super::AnalysisHeuristic::BottomUpFromTerminators => self.bottom_up_from_terminators(b, root),
@@ -567,7 +523,6 @@ impl<'o> AnalysisState<'o> {
         self.equivalence(b, root);
     }
 
-    /// `equivalenceAnalysis`.
     fn equivalence(&mut self, b: &Body<'_>, root: OpId) {
         let mut ops = Vec::new();
         b.walk_post(root, &mut |op| {
@@ -609,7 +564,6 @@ impl<'o> AnalysisState<'o> {
         }
     }
 
-    /// `gatherUndefinedTensorUses`: the uses of a result no definition reaches.
     fn gather_undefined(&mut self, b: &Body<'_>, root: OpId) {
         let mut ops = Vec::new();
         b.walk_post(root, &mut |op| ops.push(op));
@@ -630,7 +584,6 @@ impl<'o> AnalysisState<'o> {
         }
     }
 
-    /// `checkPreBufferizationAssumptions`.
     fn check_assumptions(&mut self, b: &Body<'_>, root: OpId) -> Result<(), Error> {
         let mut ops = Vec::new();
         b.walk_post(root, &mut |op| ops.push(op));
@@ -664,8 +617,6 @@ impl<'o> AnalysisState<'o> {
         Ok(())
     }
 
-    /// `OneShotAnalysisState(op, options)`: every tensor in `root` in its own alias and
-    /// equivalence set, the operands that must bufferize in place in place.
     pub(crate) fn one_shot(options: &'o BufferizationOptions, b: &Body<'_>, root: OpId) -> Self {
         let mut s = Self { options, one_shot: Some(OneShot::default()) };
         b.walk_post(root, &mut |op| {
@@ -696,8 +647,6 @@ impl<'o> AnalysisState<'o> {
         s
     }
 
-    /// `analyzeOp(root, state)`: the checks, the in-place decisions, equivalence, undefined uses
-    /// and each op's `verifyAnalysis`.
     pub(crate) fn analyze_root(&mut self, b: &Body<'_>, root: OpId) -> Result<(), Error> {
         self.check_assumptions(b, root)?;
         self.analyze_ops(b, root);
@@ -715,19 +664,16 @@ impl<'o> AnalysisState<'o> {
         failed.map_or(Ok(()), Err)
     }
 
-    /// ⭐ The One-Shot analysis of `root`.
     pub fn analyze(options: &'o BufferizationOptions, b: &Body<'_>, root: OpId) -> Result<Self, Error> {
         let mut s = Self::one_shot(options, b, root);
         s.analyze_root(b, root)?;
         Ok(s)
     }
 
-    /// `isValueWritten`: an alias is written by an in-place use.
     fn value_written(&self, b: &Body<'_>, v: ValueId) -> bool {
         self.shot().alias.of(v).into_iter().any(|a| b.uses_of(a).into_iter().any(|u| self.in_place(b, u) && self.writes(b, u)))
     }
 
-    /// `aliasingFuncOpBBArgsAnalysis` and `funcOpBbArgReadWriteAnalysis` of `f`.
     fn func_summary(&mut self, b: &Body<'_>, f: OpId) -> Result<(), Error> {
         let (inputs, results) = func_signature(b, f);
         let mut info_aliasing: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
@@ -815,8 +761,6 @@ impl<'o> AnalysisState<'o> {
         Ok(())
     }
 
-    /// ⭐ `analyzeModuleOp`: the functions callees first, each analyzed and summarized for its
-    /// callers; then those in call cycles.
     pub fn analyze_module(options: &'o BufferizationOptions, b: &Body<'_>, module: OpId) -> Result<Self, Error> {
         let mut s = Self::one_shot(options, b, module);
         s.shot_mut().funcs = Some(Default::default());
@@ -838,8 +782,6 @@ impl<'o> AnalysisState<'o> {
         Ok(s)
     }
 
-    /// The `test-analysis-only` marks of the module analysis: each analyzed function's ops,
-    /// its returns' `__equivalent_func_args__` and its arguments' `bufferization.access`.
     pub fn annotate_module(&self, b: &mut Body<'_>, module: OpId) {
         let (ordered, remaining) = funcs_by_calls(b, module);
         for f in ordered.iter().chain(&remaining) {
@@ -893,8 +835,6 @@ impl<'o> AnalysisState<'o> {
         }
     }
 
-    /// `annotateOpsWithBufferizationMarkers` (`test-analysis-only`): each op's
-    /// `__inplace_operands_attr__`, "true" / "false" per tensor operand, "none" for the others.
     pub fn annotate(&self, b: &mut Body<'_>, root: OpId) {
         let mut ops = Vec::new();
         b.walk_post(root, &mut |op| ops.push(op));
@@ -914,7 +854,6 @@ impl<'o> AnalysisState<'o> {
     }
 }
 
-/// The inputs and results of `func.func` `f` (`getFunctionType`).
 pub(crate) fn func_signature<'a>(b: &Body<'a>, f: OpId) -> (Vec<mlirformat::Type<'a>>, Vec<mlirformat::Type<'a>>) {
     match b[f].get("function_type") {
         Some(Attribute::Type(mlirformat::Type::Function(t))) => (t.inputs.clone(), t.results.clone()),
@@ -922,13 +861,11 @@ pub(crate) fn func_signature<'a>(b: &Body<'a>, f: OpId) -> (Vec<mlirformat::Type
     }
 }
 
-/// `getReturnOps`: the `func.return`s ending `f`'s blocks.
 pub(crate) fn return_ops(b: &Body<'_>, f: OpId) -> Vec<OpId> {
     let Some(r) = b[f].regions.first() else { return Vec::new() };
     b[*r].blocks.iter().filter_map(|blk| b.last_op(*blk)).filter(|t| b[*t].name == "func.return").collect()
 }
 
-/// Argument attribute `name` of argument `i` of `f`.
 pub(crate) fn func_arg_attr<'b, 'a>(b: &'b Body<'a>, f: OpId, i: usize, name: &str) -> Option<&'b Attribute<'a>> {
     match b[f].get("arg_attrs")? {
         Attribute::Array(ds) => match ds.get(i)? {
@@ -939,7 +876,6 @@ pub(crate) fn func_arg_attr<'b, 'a>(b: &'b Body<'a>, f: OpId, i: usize, name: &s
     }
 }
 
-/// `setArgAttr`: argument attribute `name` of argument `i` of `f` set to `value`.
 pub(crate) fn set_func_arg_attr<'a>(b: &mut Body<'a>, f: OpId, i: usize, name: &str, value: Attribute<'a>) {
     let n = func_signature(b, f).0.len();
     let mut dicts: Vec<Vec<mlirformat::NamedAttr<'a>>> = match b[f].get("arg_attrs") {
@@ -949,7 +885,6 @@ pub(crate) fn set_func_arg_attr<'a>(b: &mut Body<'a>, f: OpId, i: usize, name: &
     dicts.resize(n, Vec::new());
     match dicts[i].iter_mut().find(|a| a.name == name) {
         Some(a) => a.value = Some(value),
-        // A `DictionaryAttr` keeps its entries sorted by name.
         None => {
             let at = dicts[i].iter().position(|a| &*a.name > name).unwrap_or(dicts[i].len());
             dicts[i].insert(at, mlirformat::NamedAttr { name: String::from(name).into(), value: Some(value) });
@@ -958,7 +893,6 @@ pub(crate) fn set_func_arg_attr<'a>(b: &mut Body<'a>, f: OpId, i: usize, name: &
     b[f].set("arg_attrs", Attribute::Array(dicts.into_iter().map(Attribute::Dict).collect()));
 }
 
-/// `removeArgAttr` of `name` from every argument of `f` (the attribute gone when all empty).
 pub(crate) fn remove_func_arg_attr(b: &mut Body<'_>, f: OpId, name: &str) {
     let Some(Attribute::Array(ds)) = b[f].get("arg_attrs").cloned() else { return };
     let dicts: Vec<Attribute<'_>> = ds.into_iter().map(|d| match d {
@@ -975,7 +909,6 @@ pub(crate) fn remove_func_arg_attr(b: &mut Body<'_>, f: OpId, name: &str) {
     }
 }
 
-/// The callee `func.func` of `func.call` `call`.
 pub(crate) fn callee(b: &Body<'_>, call: OpId) -> Option<OpId> {
     let Some(Attribute::SymbolRef(path)) = b[call].get("callee") else { return None };
     let mut table = b.parent_op(call)?;
@@ -985,8 +918,6 @@ pub(crate) fn callee(b: &Body<'_>, call: OpId) -> Option<OpId> {
     b.lookup_path(table, path)?.last().copied().filter(|f| b[*f].name == "func.func")
 }
 
-/// `getFuncOpsOrderedByCalls`: the module's functions, each after the functions with tensor
-/// signatures it calls; those in cycles apart.
 pub(crate) fn funcs_by_calls(b: &Body<'_>, module: OpId) -> (Vec<OpId>, Vec<OpId>) {
     let funcs: Vec<OpId> = b[module].regions.iter().flat_map(|r| b[*r].blocks.iter()).flat_map(|blk| b.ops(*blk)).filter(|o| b[*o].name == "func.func").collect();
     let tensor_signature = |f: OpId| {
@@ -1034,8 +965,6 @@ pub(crate) fn funcs_by_calls(b: &Body<'_>, module: OpId) -> (Vec<OpId>, Vec<OpId
 }
 
 impl AnalysisState<'_> {
-    /// `annotateOpsWithAliasSets` (`dump-alias-sets`): each op's tensor results' and block
-    /// arguments' alias sets, by their SSA names under `root`.
     pub fn annotate_alias_sets(&self, b: &mut Body<'_>, root: OpId) {
         let names = crate::Names::of(b, root, true);
         let set = |v: ValueId| Attribute::Array(self.shot().alias.of(v).into_iter().map(|a| Attribute::str(&names.print(a))).collect());

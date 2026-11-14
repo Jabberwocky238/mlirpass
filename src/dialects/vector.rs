@@ -1,10 +1,7 @@
-//! The `vector` dialect's op interfaces.
-
 use alloc::vec::Vec;
 
 use crate::{Body, DialectInliner, EffectInstance, EffectKind, InlineAll, OpId, OpInterfaces};
 
-/// The `vector` dialect.
 pub struct VectorDialect;
 
 impl OpInterfaces for VectorDialect {
@@ -12,7 +9,6 @@ impl OpInterfaces for VectorDialect {
         "vector"
     }
 
-    /// `OpAsmOpInterface::getAsmResultNames`.
     fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
         match &*b[op].name {
             "vector.vscale" => b.result_named(op, "vscale"),
@@ -25,7 +21,6 @@ impl OpInterfaces for VectorDialect {
         Self::bufferizable_op(name)
     }
 
-    /// Every op inlines (`VectorInlinerInterface`).
     fn inliner(&self) -> Option<&dyn DialectInliner> {
         Some(&InlineAll { calls: false, regions: false })
     }
@@ -57,10 +52,8 @@ mod bufferizable {
     use super::VectorDialect;
     use crate::{buffer_of, is_tensor, replace_with_buffers, AliasingOperand, AliasingValue, AnalysisState, Body, BufferRelation, Bufferizable, BufferizationOptions, Def, OpData, OpId, Operand, Rewriter, ValueId};
 
-    /// `vector.transfer_read`, `vector.transfer_write`.
     struct TransferRead;
     struct TransferWrite;
-    /// `vector.scatter`, `vector.gather`, `vector.mask` and its `vector.yield`.
     struct Scatter;
     struct Gather;
     struct Mask;
@@ -80,7 +73,6 @@ mod bufferizable {
         }
     }
 
-    /// `op` again with operand `at` replaced by `buffer` and results of `types`.
     fn rebuilt<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, at: usize, buffer: ValueId, types: &[Type<'a>]) -> OpId {
         let old = rw.body[op].clone();
         let mut operands = old.operands.to_vec();
@@ -108,7 +100,6 @@ mod bufferizable {
     }
 
     impl Bufferizable for TransferWrite {
-        /// Unless the write covers the whole static tensor from index 0, unmasked.
         fn reads(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, _): Operand) -> bool {
             let base = b[op].operands[1];
             let shape = b[base].ty.dims().unwrap_or_default();
@@ -173,12 +164,10 @@ mod bufferizable {
     }
 
     impl Mask {
-        /// The body's terminator.
         fn yield_of(b: &Body<'_>, op: OpId) -> OpId {
             b.last_op(b[b[op].regions[0]].blocks[0]).expect("a terminator")
         }
 
-        /// `getMaskableOp`: the body's op, if any.
         fn masked(b: &Body<'_>, op: OpId) -> Option<OpId> {
             let ops = &b.block_ops(b[b[op].regions[0]].blocks[0]);
             (ops.len() > 1).then(|| ops[0])
@@ -200,7 +189,6 @@ mod bufferizable {
             Ok(())
         }
 
-        /// A new mask yielding only the masked op's results; the others are their buffers.
         fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
             let Some(masked) = Self::masked(rw.body, op).filter(|m| o.bufferizable(rw.body, *m).is_some()) else { return Ok(()) };
             let y = Self::yield_of(rw.body, op);

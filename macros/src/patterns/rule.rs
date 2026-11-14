@@ -1,15 +1,9 @@
-//! `#[rewrite(..)]` / `#[convert(..)]`: a method of a `#[patterns]` impl as one of its rules.
-
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::{Expr, Ident, ImplItemFn, LitInt, LitStr, Token, Type};
 
 use super::{PatternsArgs, Populate};
 
-/// A method's `#[rewrite("root", benefit = n, when = expr, name = "Name")]` (a rewrite
-/// pattern: the greedy / walk drivers', and the conversion driver's through `Plain`) or
-/// `#[convert("root", .., benefit = n, when = expr, untyped, plain)]` (a conversion pattern);
-/// a root `_` matches any op (`MatchAnyOpTypeTag`).
 pub struct RuleArgs {
     roots: Vec<LitStr>,
     benefit: Option<LitInt>,
@@ -17,7 +11,6 @@ pub struct RuleArgs {
     untyped: bool,
     plain: bool,
     name: Option<LitStr>,
-    /// `#[convert]` (set by the caller from the attribute's name).
     pub convert: bool,
 }
 
@@ -59,7 +52,6 @@ impl Parse for RuleArgs {
 }
 
 impl RuleArgs {
-    /// Adds method `m` of `self_ty` to `out`.
     pub fn declare(&self, args: &PatternsArgs, self_ty: &Type, m: &ImplItemFn, out: &mut Populate) -> syn::Result<()> {
         if self.convert {
             return self.declare_convert(args, m, out);
@@ -100,7 +92,6 @@ impl RuleArgs {
         Ok(())
     }
 
-    /// `fold_fill_with_tensor_extract` ⇒ `FoldFillWithTensorExtract`.
     fn camel(snake: &str) -> String {
         snake.split('_').map(|w| {
             let mut c = w.chars();
@@ -108,7 +99,6 @@ impl RuleArgs {
         }).collect()
     }
 
-    /// A `#[convert]` method (with the wrapper a typed one is called through).
     fn declare_convert(&self, args: &PatternsArgs, m: &ImplItemFn, out: &mut Populate) -> syn::Result<()> {
         let typed = args.builder.is_some()
             && match m.sig.inputs.first() {
@@ -121,7 +111,6 @@ impl RuleArgs {
             };
             let name = &m.sig.ident;
             let w = format_ident!("__typed_{}", name);
-            // Without a type converter, the op's own operands (an `OpRewritePattern`).
             let ops_src = if args.converter && !self.untyped {
                 quote!(crate::ConversionRewriter::one_to_one(operands)?)
             } else {

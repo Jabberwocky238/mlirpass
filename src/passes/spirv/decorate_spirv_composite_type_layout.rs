@@ -1,5 +1,3 @@
-//! `decorate-spirv-composite-type-layout`.
-
 use alloc::format;
 use alloc::vec::Vec;
 use mlirformat::spirv_types::SpirvType;
@@ -7,8 +5,6 @@ use mlirformat::{Attribute, Error};
 use crate::VulkanLayout;
 use crate::{Body, OpId};
 
-/// `decorate-spirv-composite-type-layout`: each `spirv.module`'s globals of buffer structs
-/// get Vulkan offsets and strides, and their `spirv.mlir.addressof`s the new type.
 #[crate::pass("decorate-spirv-composite-type-layout", on = "builtin.module")]
 pub fn decorate_spirv_composite_type_layout<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
     let modules: Vec<OpId> = body.ops(body.top_block(module)).filter(|o| body[*o].name == "spirv.module").collect();

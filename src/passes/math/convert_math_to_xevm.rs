@@ -1,9 +1,5 @@
-//! `convert-math-to-xevm`.
-
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, MathToXevm, MathXevmOptions, Mode, OpId};
 
-/// `convert-math-to-xevm`, as `ConvertMathToXeVMPass`: builtin and llvm legal, the rest
-/// converted where a pattern applies.
 #[crate::pass("convert-math-to-xevm")]
 pub struct ConvertMathToXevm {
     #[opt("convert-arith", default = true)]

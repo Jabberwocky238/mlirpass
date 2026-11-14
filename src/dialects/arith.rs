@@ -1,5 +1,3 @@
-//! The `arith` dialect's op interfaces.
-
 use alloc::borrow::Cow;
 use alloc::format;
 use alloc::string::String;
@@ -9,7 +7,6 @@ use mlirformat::{Attribute, Type};
 
 use crate::{Body, DialectInliner, InlineAll, OpId, OpInterfaces, ValueId};
 
-/// The `arith` dialect.
 pub struct ArithDialect;
 
 impl OpInterfaces for ArithDialect {
@@ -22,7 +19,6 @@ impl OpInterfaces for ArithDialect {
         Self::bufferizable_op(name)
     }
 
-    /// Every op inlines (`ArithInlinerInterface`).
     fn inliner(&self) -> Option<&dyn DialectInliner> {
         Some(&InlineAll { calls: false, regions: false })
     }
@@ -40,7 +36,6 @@ impl OpInterfaces for ArithDialect {
         match &*b[op].name {
             "arith.divui" | "arith.ceildivui" | "arith.remui" => divisor().filter(|r| r.unsigned_divisor()).map(|_| false),
             "arith.divsi" | "arith.ceildivsi" => divisor().filter(|r| r.signed_divisor()).map(|_| false),
-            // `X % -1` is defined (0): only a zero divisor is undefined.
             "arith.remsi" => divisor().filter(|r| r.without_zero_s()).map(|_| false),
             _ => None,
         }
@@ -48,13 +43,9 @@ impl OpInterfaces for ArithDialect {
 }
 
 impl ArithDialect {
-    /// `ConstantOp::getAsmResultNames`: `%true` / `%false` for an `i1`, `%c<value>_<type>` for
-    /// another integer (`%c<value>` for an index), `%cst` for anything else.
     fn constant_name(b: &Body<'_>, op: OpId) -> Cow<'static, str> {
         let ty = b[op].results.first().map(|r| &b[*r].ty);
         let value = b[op].get("value");
-        // The value as `APInt` prints it, signed; wider than 128 bits, the literal (which
-        // `mlir-opt` writes the same way).
         let int = match value.and_then(|a| crate::Const::try_from(a).ok()).filter(|c| !c.elements).and_then(|c| c.as_int()) {
             Some(i) => Some(Cow::Owned(format!("{}", i.signed()))),
             None => match value {
@@ -70,7 +61,6 @@ impl ArithDialect {
         }
     }
 
-    /// `MulIOp::getAsmResultNames`: `%c<base>_vscale` for an index `base * vector.vscale`.
     fn vscale_name(b: &Body<'_>, op: OpId) -> Option<Cow<'static, str>> {
         if !matches!(b[b[op].results[0]].ty, Type::Index) {
             return None;
@@ -98,7 +88,6 @@ mod bufferizable {
     use super::ArithDialect;
     use crate::{buffer_of, buffer_type, replace_with_buffers, AliasingValue, AnalysisState, Body, Bufferizable, BufferizationOptions, OpData, OpId, Operand, Rewriter, ValueId};
 
-    /// `arith.constant` (of a tensor), `arith.index_cast`, `arith.select`.
     struct Constant;
     struct IndexCast;
     struct Select;
@@ -114,7 +103,6 @@ mod bufferizable {
         }
     }
 
-    /// The module around `op`.
     fn module_of(b: &Body<'_>, op: OpId) -> Option<OpId> {
         let mut at = b.parent_op(op);
         while let Some(p) = at {
@@ -142,7 +130,6 @@ mod bufferizable {
             let value = rw.body[op].get("value").cloned().expect("a value");
             let alignment = o.buffer_alignment;
             let block = rw.body[rw.body[module].regions[0]].blocks[0];
-            // An existing global of this value and alignment.
             let existing = rw.body.ops(block).find(|g| {
                 let g = &rw.body[*g];
                 g.name == "memref.global"
@@ -232,7 +219,6 @@ mod bufferizable {
             vec![AliasingValue { value: b[op].results[0], relation: crate::BufferRelation::Equivalent, definite: false }]
         }
 
-        /// Both sides' buffer type when they agree, else fully dynamic.
         fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
             let op = b.owner_of(v);
             let t = crate::buffer_type_in(o, b, b[op].operands[1], stack)?;

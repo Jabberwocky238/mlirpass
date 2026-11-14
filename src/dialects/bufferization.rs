@@ -1,10 +1,7 @@
-//! The `bufferization` dialect's op interfaces.
-
 use alloc::vec::Vec;
 
 use crate::{Body, EffectInstance, EffectKind, OpId, OpInterfaces};
 
-/// The `bufferization` dialect.
 pub struct BufferizationDialect;
 
 impl OpInterfaces for BufferizationDialect {
@@ -38,15 +35,10 @@ mod bufferizable {
     use super::BufferizationDialect;
     use crate::{buffer_of, buffer_type, replace_with_buffers, AliasingValue, AnalysisState, Body, Bufferizable, BufferizationOptions, MemrefOfr as Ofr, OpData, OpId, Operand, Rewriter, ValueId};
 
-    /// `bufferization.alloc_tensor`.
     struct AllocTensor;
-    /// `bufferization.to_tensor`.
     struct ToTensor;
-    /// `bufferization.to_buffer`.
     struct ToBuffer;
-    /// `bufferization.materialize_in_destination`.
     struct Materialize;
-    /// `bufferization.dealloc_tensor`.
     struct DeallocTensor;
 
     impl BufferizationDialect {
@@ -63,7 +55,6 @@ mod bufferizable {
     }
 
     impl Rewriter<'_, '_> {
-        /// `populateDynamicDimSizes`: a `tensor.dim` / `memref.dim` of each dynamic size of `v`.
         pub(crate) fn dynamic_dims(&mut self, v: ValueId) -> Vec<ValueId> {
             let dims = self.body[v].ty.dims().unwrap_or_default();
             let name = if self.body.is_memref(v) { "memref.dim" } else { "tensor.dim" };
@@ -78,7 +69,6 @@ mod bufferizable {
             out
         }
 
-        /// `createMemCpy`: a `memref.copy`.
         pub(crate) fn mem_cpy(&mut self, from: ValueId, to: ValueId) {
             self.create(OpData::build("memref.copy").operands(&[from, to]), &[]);
         }
@@ -89,7 +79,6 @@ mod bufferizable {
             true
         }
 
-        /// The `copy` operand is read, not written.
         fn writes(&self, _: &AnalysisState<'_>, _: &Body<'_>, _: Operand) -> bool {
             false
         }
@@ -122,7 +111,6 @@ mod bufferizable {
             Ok(())
         }
 
-        /// A static identity layout, in its memory space, its copy's, or the default one.
         fn buffer_type<'a>(&self, o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
             let op = b.owner_of(v);
             let Type::Shaped(t) = &b[v].ty else { return Err(Error("expected a tensor".into())) };
@@ -144,7 +132,6 @@ mod bufferizable {
     }
 
     impl AllocTensor {
-        /// Its `copy` operand.
         fn copy(b: &Body<'_>, op: OpId) -> Option<ValueId> {
             let segs = b.segments(op, "operandSegmentSizes")?;
             (segs.get(1).copied() == Some(1)).then(|| b[op].operands[segs[0]])

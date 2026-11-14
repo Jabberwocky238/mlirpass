@@ -1,8 +1,3 @@
-//! ⭐ The SSA names of the custom form: every fixture output `mlir-opt` printed in custom form
-//! (`%c0`, `%cst`, `%extracted_slice`, `%in`, `%arg0`, `%3`), read into a body and printed back
-//! custom, must come back with the same names. Only the chunks mlirformat prints back as they are
-//! on their own count: what this checks is the naming, not the custom forms.
-
 mod common;
 
 use common::Fixtures;
@@ -23,9 +18,7 @@ fn asm_names() {
             }
             let Ok(body) = Body::import(ctx, m) else { continue };
             chunks += 1;
-            // The input's aliases are inlined: printing makes them again.
             let named = body.show(&opt, false, |i| !matches!(i, Item::AttrAlias { .. } | Item::TypeAlias { .. }));
-            // An op printed in another form is not a naming matter.
             if Fixtures::anon(named.trim()) != Fixtures::anon(chunk.trim()) {
                 other += 1;
                 if std::env::var_os("SHOW").is_some() {

@@ -1,5 +1,3 @@
-//! `llvm-request-c-wrappers`.
-
 use crate::pass;
 use mlirformat::{Attribute, Error};
 use crate::{Body, OpId};

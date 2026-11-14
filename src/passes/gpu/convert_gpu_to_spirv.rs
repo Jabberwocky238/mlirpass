@@ -1,12 +1,9 @@
-//! `convert-gpu-to-spirv`.
-
 use crate::{GpuSpirvOptions, GpuToSpirv};
 use alloc::format;
 use alloc::vec::Vec;
 use mlirformat::{Attribute, Type};
 use crate::{OpData, OpId};
 
-/// `convert-gpu-to-spirv`.
 #[crate::pass("convert-gpu-to-spirv", on = "builtin.module")]
 pub struct ConvertGpuToSpirv {
     #[opt("use-64bit-index")]
@@ -14,7 +11,6 @@ pub struct ConvertGpuToSpirv {
 }
 
 impl ConvertGpuToSpirv {
-    /// `lookupTargetEnvOrDefault`: the module's own `targets` first.
     fn target_env(body: &crate::Body<'_>, gm: OpId) -> crate::TargetEnv {
         if let Some(Attribute::Array(ts)) = body[gm].get("targets")
             && let Some(env) = ts.iter().find_map(|t| crate::TargetEnv::parse(&format!("{t}")).filter(|_| format!("{t}").starts_with("#spirv.target_env")))
@@ -50,7 +46,6 @@ impl crate::Run for ConvertGpuToSpirv {
             let types = crate::SpirvTypes { env: &env, opts };
             let mut tc = types.converter();
             crate::WmmaToSpirv::convert_types(&mut tc);
-            // `populateGPUNamedBarrierToSPIRVTypeConversion`.
             tc.conversion(|t| matches!(t, mlirformat::Type::Extended(e) if e.name == "gpu.named_barrier").then(|| Some(alloc::vec![mlirformat::spirv_types::SpirvType::NamedBarrier.into()])));
             let gpu = GpuSpirvOptions { index64: self.index64, shader: env.allows_cap("Shader"), kernel: env.allows_cap("Kernel"), interface_abi: env.shader(), subgroup_size: env.subgroup_size(), addressing: env.addressing_model(self.index64) };
             let mut patterns = crate::ConversionPatterns::default();

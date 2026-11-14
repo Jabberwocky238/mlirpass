@@ -1,40 +1,3 @@
-//! ⭐ Compute shaders ⇒ `rdna2.kernel`s of virtual RDNA2 instructions (dialect conversion).
-//!
-//! ```text
-//!   gpu.func {gpu.kernel}           ⇒ rdna2.kernel {stage = "compute", params}: wave32, a workgroup of 16 invocations
-//!   i32, f32, index, !llvm.ptr<1>, vector<N x ...> ⇒ 1, N × !rdna2.v<i32 | f32>: a VGPR a component, a lane an
-//!                                     invocation (an index and a global pointer: 32 bits, a flat byte address)
-//!   i8, i16                         ⇒ !rdna2.v<i32>: zero-extended (a narrow load's result, what a narrow store keeps)
-//!   i1                              ⇒ !rdna2.s<i1>: a lane mask in an SGPR (wave32)
-//!   arith.constant                  ⇒ v_mov_b32 of an inline constant or a literal, per component
-//!   arith.addi / subi / muli / andi / ori / xori / shli / shrui / shrsi / min* / max*
-//!                                   ⇒ v_add_nc_u32 / v_sub_nc_u32 / v_mul_lo_u32 / v_and / v_or / v_xor /
-//!                                     v_lshlrev / v_lshrrev / v_ashrrev / v_min_* / v_max_*
-//!   arith.addf / subf / mulf, math.fma ⇒ v_add_f32 / v_sub_f32 / v_mul_f32 / v_fma_f32 (IEEE: denormals kept,
-//!                                     round to nearest even: the kernel's FLOAT_MODE)
-//!   arith.negf / math.absf          ⇒ v_xor_b32 / v_and_b32 of the sign bit
-//!   arith.cmpi / cmpf               ⇒ v_cmp_*_e64 into a lane mask
-//!   arith.select, extui / extsi (of i1) ⇒ v_cndmask_b32_e64 of the mask
-//!   arith.extui of i8 / i16, index_cast(ui), llvm.inttoptr ⇒ the value itself (already 32 bits); arith.trunci to
-//!                                     i8 / i16 only for a narrow store
-//!   arith.sitofp / uitofp / fptosi / fptoui ⇒ v_cvt_f32_i32 / f32_u32 / i32_f32 / u32_f32
-//!   arith.bitcast                   ⇒ v_mov_b32 (the same bits, the other type)
-//!   llvm.load / llvm.store (!llvm.ptr<1>) ⇒ global_load / global_store (ubyte / ushort / dword ... dwordx4): the
-//!                                     32-bit byte address in a VGPR on a zero 64-bit base in an SGPR pair (`saddr`,
-//!                                     made by rdna2-regalloc)
-//!   gpu.block_id x / y / z          ⇒ s8 / s9 / s10 (after the 8 parameters); gpu.thread_id x ⇒ v0
-//!   the arguments                   ⇒ s0 ..= s7 (COMPUTE_USER_DATA_0 ..= 7), each copied to a VGPR at the start
-//!   gpu.return                      ⇒ s_endpgm
-//!   vector.extract / insert / from_elements / broadcast / shuffle ⇒ the components themselves
-//! ```
-//!
-//! The layout of the inputs is radv's for a compute shader (radv_shader.c: user SGPRs first, then TGID_X/Y/Z_EN's
-//! workgroup ids; v0 the thread id x, TIDIG_COMP_CNT 0). A virtual instruction's SSA operands go to the attributes
-//! its `slots` name, in order; its result is `dst`. `rdna2-regalloc` turns all of it into registers.
-//!
-//! 🚨 Exact IEEE f32 only: what the table above lists is. divf, sqrt, min / max of floats and the rest are refused
-//! (no lowering), not approximated.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -48,18 +11,16 @@ use Slot::{Addr, Data, Src0, Src1, Src2};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// Parameters of a compute shader: user SGPRs s0 ..= s7.
 pub const RDNA2_PARAMS: usize = 8;
-/// Where the workgroup ids are: right after the parameters (TGID_X/Y/Z_EN).
+
 pub const RDNA2_TGID_SGPR: u32 = RDNA2_PARAMS as u32;
-/// Invocations of a workgroup (COMPUTE_NUM_THREAD_X).
+
 pub const RDNA2_WORKGROUP: u32 = 16;
-/// Zeros after a kernel: the instruction prefetch reads past its end (3 cache lines of 64 bytes and more).
+
 pub const RDNA2_KERNEL_PAD: u64 = 256;
-/// A kernel's alignment: COMPUTE_PGM_LO holds its address >> 8.
+
 pub const RDNA2_KERNEL_ALIGN: u64 = 256;
 
-/// ⭐ The shader types ⇒ RDNA2 registers.
 pub struct Rdna2Types;
 
 impl Rdna2Types {
@@ -75,7 +36,6 @@ impl Rdna2Types {
         }
     }
 
-    /// The registers of a shader value: one a component.
     pub fn of(t: &Type<'_>) -> Option<Vec<Type<'static>>> {
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::Vector => match t.dims()?[..] {
@@ -93,7 +53,6 @@ impl Rdna2Types {
         tc
     }
 
-    /// A vector's element, a scalar itself.
     fn scalar<'t, 'a>(t: &'t Type<'a>) -> &'t Type<'a> {
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::Vector => &s.elem,
@@ -101,7 +60,6 @@ impl Rdna2Types {
         }
     }
 
-    /// The bytes of a memory access of `t`'s components, and how many.
     fn access(t: &Type<'_>) -> Option<(u32, usize)> {
         let (elem, n) = match t {
             Type::Shaped(s) if s.kind == ShapedKind::Vector => match t.dims()?[..] {
@@ -120,19 +78,15 @@ impl Rdna2Types {
     }
 }
 
-/// ⭐ The compute shader ⇒ virtual RDNA2 patterns.
 pub struct GpuToRdna2;
 
 impl GpuToRdna2 {
-    /// `inst` before `before`.
     fn put<'a>(cr: &mut Cr<'_, 'a, '_>, before: OpId, inst: Build<'a>) -> OpId {
         cr.rw.set_before(before);
         let (data, types) = inst.split();
         cr.rw.create(data, &types)
     }
 
-    /// A virtual VALU instruction `op` of `operands` (into `slots`), its constant sources `consts`, before `before`;
-    /// its result, of type `ty`.
     fn valu(cr: &mut Cr<'_, '_, '_>, before: OpId, op: Opcode, (operands, slots): (&[ValueId], &[Slot]), consts: &[(Slot, Operand)], vop3: bool, ty: Type<'static>) -> ValueId {
         let mut v = Build::new::<Valu>(op, operands, slots, vec![ty]);
         for (slot, c) in consts {
@@ -145,20 +99,16 @@ impl GpuToRdna2 {
         cr.rw.body[i].results[0]
     }
 
-    /// `op dst, src0, src1` per component (a VOP2 / VOP1 / VOP3), of the result type of `root`: the `#[map]` rows'
-    /// template, its sources the operands' (into `slots`), `consts` the constant ones.
     fn lanes(cr: &mut Cr<'_, '_, '_>, root: OpId, o: &[Vec<ValueId>], _: &str, op: Opcode, slots: &[Slot], consts: &[(Slot, Operand)]) -> bool {
         let Some(ty) = Self::result_type(cr, root) else { return false };
         Self::each(cr, root, o, |cr, x| Self::valu(cr, root, op, (x, slots), consts, false, ty.clone()))
     }
 
-    /// The register type of `op`'s (first) result's components.
     fn result_type(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<Type<'static>> {
         let r = *cr.rw.body[op].results.first()?;
         Rdna2Types::of(&cr.rw.body[r].ty).and_then(|t| t.into_iter().next())
     }
 
-    /// Per component, what `f` makes of the operands' components.
     fn each(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], mut f: impl FnMut(&mut Cr<'_, '_, '_>, &[ValueId]) -> ValueId) -> bool {
         let n = o[0].len();
         if o.iter().any(|v| v.len() != n) {
@@ -169,13 +119,11 @@ impl GpuToRdna2 {
         true
     }
 
-    /// The 32 bits of each of the `n` components of a constant.
     fn constant_bits(value: &Attribute<'_>, n: usize) -> Option<Vec<u32>> {
         let c = Const::try_from(value).ok()?;
         let bits = |s: Scalar| match s {
             Scalar::Float(f) => (f.kind == FloatKind::F32).then_some(f.bits as u32),
             Scalar::Int(i) => (i.width == 32).then_some(i.bits() as u32),
-            // complex and the wide floats (f80 / f128) are not one 32-bit register
             Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => None,
         };
         (0..n).map(|i| bits(c.at(i))).collect()
@@ -185,7 +133,6 @@ impl GpuToRdna2 {
         cr.rw.body[op].get(name)?.dense_values().map(|v| v.into_iter().map(|i| i as usize).collect())
     }
 
-    /// The one index of `vector.extract` / `insert`.
     fn position(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<usize> {
         match Self::positions(cr, op, "static_position")?[..] {
             [at] => Some(at),
@@ -193,19 +140,15 @@ impl GpuToRdna2 {
         }
     }
 
-    /// `v_cmp_*_e64` `op` of each component pair into a lane mask.
     fn cmp(cr: &mut Cr<'_, '_, '_>, root: OpId, o: &[Vec<ValueId>], op: Opcode) -> bool {
         Self::each(cr, root, o, |cr, x| Self::valu(cr, root, op, (x, &[Src0, Src1]), &[], true, Rdna2Type::S("i1").into()))
     }
 
-    /// `v_cndmask_b32_e64 dst, src0 (mask clear), src1 (mask set), mask`, of the result type of `root` (the bits
-    /// move as they are: an f32 select stays f32).
     fn cndmask(cr: &mut Cr<'_, '_, '_>, root: OpId, operands: (&[ValueId], &[Slot]), consts: &[(Slot, Operand)]) -> Option<ValueId> {
         let ty = Self::result_type(cr, root)?;
         Some(Self::valu(cr, root, Opcode::VCndmaskB32, operands, consts, true, ty))
     }
 
-    /// The global memory instruction of `n` components of `size` bytes.
     fn memory(access: Access, size: u32, n: usize) -> Option<Opcode> {
         use Opcode::*;
         Some(match (access, size, n) {
@@ -233,7 +176,7 @@ impl GpuToRdna2 {
 #[map("arith.andi" => "rdna2.isa.valu", via = Self::lanes(Opcode::VAndB32, &[Src0, Src1], &[]))]
 #[map("arith.ori" => "rdna2.isa.valu", via = Self::lanes(Opcode::VOrB32, &[Src0, Src1], &[]))]
 #[map("arith.xori" => "rdna2.isa.valu", via = Self::lanes(Opcode::VXorB32, &[Src0, Src1], &[]))]
-// The shift amount first (`*rev`): src0 the amount, src1 the value.
+
 #[map("arith.shli" => "rdna2.isa.valu", via = Self::lanes(Opcode::VLshlrevB32, &[Src1, Src0], &[]))]
 #[map("arith.shrui" => "rdna2.isa.valu", via = Self::lanes(Opcode::VLshrrevB32, &[Src1, Src0], &[]))]
 #[map("arith.shrsi" => "rdna2.isa.valu", via = Self::lanes(Opcode::VAshrrevI32, &[Src1, Src0], &[]))]
@@ -245,7 +188,7 @@ impl GpuToRdna2 {
 #[map("arith.subf" => "rdna2.isa.valu", via = Self::lanes(Opcode::VSubF32, &[Src0, Src1], &[]))]
 #[map("arith.mulf" => "rdna2.isa.valu", via = Self::lanes(Opcode::VMulF32, &[Src0, Src1], &[]))]
 #[map("math.fma" => "rdna2.isa.valu", via = Self::lanes(Opcode::VFmaF32, &[Src0, Src1, Src2], &[]))]
-// The sign bit flipped (exact for every value, NaN included).
+
 #[map("arith.negf" => "rdna2.isa.valu", via = Self::lanes(Opcode::VXorB32, &[Src1], &[(Src0, Operand::from(0x80000000))]))]
 #[map("math.absf" => "rdna2.isa.valu", via = Self::lanes(Opcode::VAndB32, &[Src1], &[(Src0, Operand::from(0x7fffffff))]))]
 #[map("arith.sitofp" => "rdna2.isa.valu", via = Self::lanes(Opcode::VCvtF32I32, &[Src0], &[]))]
@@ -254,8 +197,6 @@ impl GpuToRdna2 {
 #[map("arith.fptoui" => "rdna2.isa.valu", via = Self::lanes(Opcode::VCvtU32F32, &[Src0], &[]))]
 #[map("arith.bitcast" => "rdna2.isa.valu", via = Self::lanes(Opcode::VMovB32, &[Src0], &[]))]
 impl GpuToRdna2 {
-    /// `gpu.func {gpu.kernel}` ⇒ `rdna2.kernel {stage = "compute", params}`; its arguments are the parameters
-    /// (rdna2-regalloc puts them in s0 ...).
     #[convert("gpu.func")]
     fn func(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         if !cr.rw.body[op].gpu_kernel() {
@@ -297,7 +238,6 @@ impl GpuToRdna2 {
         true
     }
 
-    /// Already 32 bits in a VGPR: an index, a narrow integer zero-extended, a global pointer.
     #[convert("arith.index_cast", "arith.index_castui", "llvm.inttoptr")]
     fn same(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let r = cr.rw.body[op].results[0];
@@ -318,7 +258,6 @@ impl GpuToRdna2 {
             .iter()
             .zip(types)
             .map(|(b, t)| {
-                // an inline integer (0 ..= 64) as itself, anything else a literal
                 Self::valu(cr, op, Opcode::VMovB32, (&[], &[]), &[(Src0, Operand::from(i64::from(*b)))], false, t)
             })
             .collect();
@@ -347,7 +286,6 @@ impl GpuToRdna2 {
 
     #[convert("arith.cmpf")]
     fn cmpf(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        // the unordered predicates are the negated ordered compares (v_cmp_n*)
         use CmpFPredicate::*;
         let Ok(c) = cr.rw.body.head::<CmpF>(op) else { return false };
         let inst = match c.predicate {
@@ -382,8 +320,6 @@ impl GpuToRdna2 {
         true
     }
 
-    /// To i8 / i16 for a narrow store only (a byte / short store keeps the low bits; a register's narrow integer is
-    /// zero-extended otherwise): the value itself.
     #[convert("arith.trunci")]
     fn trunci(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let r = cr.rw.body[op].results[0];
@@ -394,7 +330,6 @@ impl GpuToRdna2 {
         true
     }
 
-    /// Of an i1: 0 or 1; of an i8 / i16 (zero-extended already): itself.
     #[convert("arith.extui")]
     fn extui(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let from = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
@@ -414,7 +349,6 @@ impl GpuToRdna2 {
         Self::each(cr, op, o, |cr, x| Self::cndmask(cr, op, (x, &[Src2]), &[(Src0, 0.into()), (Src1, (-1).into())]).expect("an i32 result"))
     }
 
-    /// The workgroup's id, x / y / z: the SGPR after the parameters, copied to a VGPR.
     #[convert("gpu.block_id")]
     fn block_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(d) = cr.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok()) else { return false };
@@ -425,7 +359,6 @@ impl GpuToRdna2 {
         true
     }
 
-    /// The invocation in its (one-dimensional) workgroup: v0.
     #[convert("gpu.thread_id")]
     fn thread_id(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         if cr.rw.body[op].get("dimension").and_then(|a| Dimension::try_from(a).ok()) != Some(Dimension::X) {
@@ -437,7 +370,6 @@ impl GpuToRdna2 {
         true
     }
 
-    /// `n` components at each lane's address; the zero base (`saddr`) is added by rdna2-regalloc.
     #[convert("llvm.load")]
     fn load(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let [addr] = o else { return false };
@@ -510,10 +442,8 @@ impl GpuToRdna2 {
     }
 }
 
-/// Which way a global memory instruction goes.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Access {
     Load,
     Store,
 }
-

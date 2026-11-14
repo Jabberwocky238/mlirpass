@@ -1,7 +1,3 @@
-//! `expand-strided-metadata`, as `ExpandStridedMetadata.cpp`: subviews, reshapes and the
-//! metadata of allocations become `memref.extract_strided_metadata` + affine arithmetic +
-//! `memref.reinterpret_cast`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -17,7 +13,6 @@ fn memref<'t, 'a>(t: &'t Type<'a>) -> Option<&'t Shaped<'a>> {
     }
 }
 
-/// `inferFromExprList` for one expression: as many dims and symbols as it names.
 fn infer_map(e: AffineExpr) -> AffineMap {
     let (mut d, mut s) = (0, 0);
     e.walk(&mut |x| match x {
@@ -28,7 +23,6 @@ fn infer_map(e: AffineExpr) -> AffineMap {
     AffineMap { dims: d, syms: s, results: vec![e] }
 }
 
-/// The strided layout metadata of a memref value: base buffer, offset, sizes, strides.
 struct Metadata {
     base: ValueId,
     offset: Ofr,
@@ -41,7 +35,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.composed_folded_apply(infer_map(e), operands)
     }
 
-    /// `memref.extract_strided_metadata %src`, its result types inferred.
     pub(crate) fn extract_metadata(&mut self, src: ValueId) -> OpId {
         let s = memref(&self.body[src].ty).expect("a ranked memref").clone();
         let rank = s.shape.as_ref().map_or(0, Vec::len);
@@ -52,7 +45,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.create(OpData::build("memref.extract_strided_metadata").operands(&[src]), &types)
     }
 
-    /// `memref.reinterpret_cast` to `ty`.
     fn reinterpret_cast_data(&self, src: ValueId, offset: Ofr, sizes: &[Ofr], strides: &[Ofr]) -> OpData<'a> {
         let mut operands = vec![src];
         let mut segs = vec![1usize];
@@ -82,7 +74,6 @@ impl<'a> Rewriter<'_, 'a> {
             .with("static_strides", arr(&statics[2]))
     }
 
-    /// `resolveSubviewStridedMetadata`.
     fn subview_metadata(&mut self, sv: OpId) -> Option<Metadata> {
         let b = &*self.body;
         let src = b[sv].operands[0];
@@ -117,7 +108,6 @@ impl<'a> Rewriter<'_, 'a> {
         Some(Metadata { base: er[0], offset, sizes, strides: fs })
     }
 
-    /// `getAsOpFoldResult(value)`: a constant becomes its value.
     fn ofr_of(&self, v: ValueId) -> Ofr {
         let b = &*self.body;
         match b.def_op(v) {
@@ -126,7 +116,6 @@ impl<'a> Rewriter<'_, 'a> {
         }
     }
 
-    /// `resolveReshapeStridedMetadata` for `memref.expand_shape` / `memref.collapse_shape`.
     fn reshape_metadata(&mut self, r: OpId) -> Option<Metadata> {
         let b = &*self.body;
         let expand = b[r].name == "memref.expand_shape";
@@ -150,10 +139,8 @@ impl<'a> Rewriter<'_, 'a> {
         let (mut fs, mut fst) = (Vec::new(), Vec::new());
         for (g, group) in groups.iter().enumerate() {
             if expand {
-                // `getExpandedSizes`: the output shape's.
                 let shape = Ofr::mixed(&self.body.dense_i64(r, "static_output_shape"), &self.body[r].operands[1..]);
                 let sizes: Vec<Ofr> = group.iter().map(|d| shape[*d]).collect();
-                // `getExpandedStrides`: the original stride times the inner output sizes.
                 let mut current = if strides[g] == Dim::DYNAMIC { orig_strides[g] } else { Ofr::C(strides[g]) };
                 let mut out = vec![Ofr::C(0); group.len()];
                 for i in (0..group.len()).rev() {
@@ -163,7 +150,6 @@ impl<'a> Rewriter<'_, 'a> {
                 fs.extend(sizes);
                 fst.extend(out);
             } else {
-                // `getCollapsedSize`.
                 if res_dims[g] != Dim::DYNAMIC {
                     fs.push(Ofr::C(res_dims[g]));
                 } else {
@@ -175,7 +161,6 @@ impl<'a> Rewriter<'_, 'a> {
                     }
                     fs.push(self.apply_expr(e, &inputs));
                 }
-                // `getCollapsedStride`.
                 let mut last = None;
                 for d in group {
                     if src_dims[*d] == 1 {
@@ -201,7 +186,6 @@ impl<'a> Rewriter<'_, 'a> {
         Some(Metadata { base: er[0], offset: off, sizes: fs, strides: fst })
     }
 
-    /// Replaces an `extract_strided_metadata` by the values of `m`.
     fn replace_metadata(&mut self, op: OpId, m: Metadata) {
         let mut results = vec![m.base];
         results.push(self.value_of(m.offset));
@@ -215,7 +199,6 @@ impl<'a> Rewriter<'_, 'a> {
     }
 }
 
-/// The `reassociation` groups of a reshape.
 fn reassociation(b: &Body<'_>, op: OpId) -> Vec<Vec<usize>> {
     match b[op].get("reassociation") {
         Some(Attribute::Array(groups)) => groups
@@ -229,7 +212,6 @@ fn reassociation(b: &Body<'_>, op: OpId) -> Vec<Vec<usize>> {
     }
 }
 
-/// `ExtractStridedMetadataOpAllocFolder<AllocLikeOp>`.
 fn alloc_folder(rw: &mut Rewriter<'_, '_>, op: OpId, alloc: &str) -> bool {
     let b = &*rw.body;
     let Some(a) = b.def_named(b[op].operands[0], alloc) else { return false };
@@ -277,11 +259,9 @@ fn alloc_folder(rw: &mut Rewriter<'_, '_>, op: OpId, alloc: &str) -> bool {
     true
 }
 
-/// The `expand-strided-metadata` rule set.
 pub struct StridedMetadata;
 
 impl StridedMetadata {
-    /// `populateExpandStridedMetadataPatterns`.
     pub fn patterns() -> PatternSet {
         let mut set = PatternSet::default();
         set.add(SubviewFolder);
@@ -302,12 +282,10 @@ impl StridedMetadata {
     }
 }
 
-/// The rewrite patterns of this module.
 pub struct Rules;
 
 #[crate::patterns]
 impl Rules {
-    /// `SubviewFolder`.
     #[rewrite("memref.subview")]
     fn subview_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         rw.set_before(op);
@@ -318,7 +296,6 @@ impl Rules {
         true
     }
 
-    /// `ReshapeFolder<memref::ExpandShapeOp, ...>`.
     #[rewrite("memref.expand_shape")]
     fn expand_shape_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         rw.set_before(op);
@@ -329,7 +306,6 @@ impl Rules {
         true
     }
 
-    /// `ReshapeFolder<memref::CollapseShapeOp, ...>`.
     #[rewrite("memref.collapse_shape")]
     fn collapse_shape_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         rw.set_before(op);

@@ -1,9 +1,3 @@
-//! Every instruction of tests/rdna2/isa.mlir encodes as `llvm-mc -mcpu=gfx1036` does (tests/rdna2/isa.expected,
-//! scripts/rdna2_isa_oracle.sh), byte for byte, but one field: a VOP3 source the instruction does not have. ACO sets
-//! it to the inline constant 0 (128, aco_assembler.cpp emit_vop3_instruction: "RDNA: Set unused operands to inline
-//! constant 0"), LLVM to 0 (s0); the hardware reads neither, so both sides compare with it cleared. The module
-//! printed and read again encodes the same (the operands print as they read).
-
 use mlirpass::{Heads, Rdna2Dialect, Rdna2Format as Format, Rdna2Isa as Isa, Rdna2Valu as Valu};
 use mlirformat::{MlirOpt, Module};
 use mlirpass::{Body, Ctx, Interfaces};
@@ -24,7 +18,6 @@ fn encodes_as_llvm_mc() {
     assert_eq!(ops.len(), expected.len());
     let mut bad = Vec::new();
     for (((op, re), want), asm) in ops.iter().zip(&reread).zip(&expected).zip(&asm) {
-        // a VOP3 encoding's second dword: the source fields the op leaves out, src1 [17:9], src2 [26:18]
         let unused: u32 = match body.head::<Valu>(*op) {
             Ok(v) if v.vop3 || v.op.format() == Format::Vop3 => [(v.src1, 0x1ff << 9), (v.src2, 0x1ff << 18)].iter().filter(|(s, _)| s.is_none()).map(|(_, m)| m).sum(),
             _ => 0,
@@ -45,8 +38,6 @@ fn encodes_as_llvm_mc() {
     assert!(bad.is_empty(), "{} of {} differ:\n{}", bad.len(), expected.len(), bad.join("\n"));
 }
 
-/// `src` (a module of compute kernels in upstream dialects) through acgpu's frontend passes (inlined, canonicalize, cse)
-/// and the RDNA2 backend: each kernel, its registers and its bytes.
 #[cfg(feature = "target.rdna2")]
 fn kernels(src: &str) -> String {
     use mlirpass::{Emit, PassManager, Passes, Rdna2Emit};
@@ -67,8 +58,6 @@ fn kernels(src: &str) -> String {
     out
 }
 
-/// acgpu's `ints` and copy shaders, in upstream dialects (tests/rdna2/{ints,copy}.mlir): each kernel's bytes and
-/// registers exactly as acgpu's own RDNA2 backend made them before it moved here (tests/rdna2/*.expected).
 #[cfg(feature = "target.rdna2")]
 #[test]
 fn kernels_as_acgpu() {
@@ -76,9 +65,6 @@ fn kernels_as_acgpu() {
     assert_eq!(kernels(include_str!("rdna2/copy.mlir")), include_str!("rdna2/copy.expected"));
 }
 
-/// Every gfx103 register / packet dword with fields, packed from MLIR (tests/rdna2/oracle.mlir: each field set to the
-/// value Mesa's S_* macros were given) is what Mesa packed (tests/rdna2/oracle.expected, scripts/rdna2_reg_oracle.sh);
-/// reads as its typed op; and printed and read again packs the same.
 #[test]
 fn registers_pack_as_mesa() {
     use mlirpass::{OpId, RDNA2, Rdna2Regs};
@@ -109,9 +95,6 @@ fn registers_pack_as_mesa() {
     assert!(bad.is_empty(), "{} of {} differ:\n{}", bad.len(), expected.len(), bad.join("\n"));
 }
 
-/// tests/rdna2/pm4.mlir through `rdna2-pm4, rdna2-pad, rdna2-layout` packs to the IB Mesa's macros write for it
-/// (tests/rdna2/pm4.expected, scripts/rdna2_pm4_oracle.sh), dword for dword; every packet, the padding's NOP among
-/// them, reads as its typed op.
 #[cfg(feature = "target.rdna2")]
 #[test]
 fn ib_as_mesa() {

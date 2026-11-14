@@ -1,5 +1,3 @@
-//! `symbol-privatize`: the op's top-level symbols become private, but those in `exclude`.
-
 use alloc::string::String;
 use alloc::vec::Vec;
 

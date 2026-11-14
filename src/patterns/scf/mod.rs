@@ -1,5 +1,3 @@
-//! `scf` rule sets.
-
 mod canonicalize;
 mod forall;
 mod structural;

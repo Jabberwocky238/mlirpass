@@ -1,12 +1,3 @@
-//! `gpu-module-to-binary`: each `gpu.module` with targets ⇒ a `gpu.binary` of one `#gpu.object` per target.
-//!
-//! A `#spirv.target_env` serializes the module's `spirv.module` (`SPIRVTarget::serializeToObject`). A module whose
-//! kernels are machine code already (`rdna2.kernel`, `agx.kernel`, `apple9.kernel`, `xe3.kernel`: lowered by `convert-gpu-to-<isa>`
-//! and allocated) is encoded here without LLVM: its object's bytes are the kernels one after another (each at its
-//! alignment, its padding after it),
-//! `properties` each kernel's offset, size and what the driver needs to run it. Anything else needs LLVM (NVVM, ROCDL
-//! from LLVM IR, XeVM) and is refused.
-
 use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::String;
@@ -16,7 +7,6 @@ use mlirformat::{Attribute, Error, Extended};
 
 use crate::{Body, OpData, OpId, Quiet, Rewriter, Run, escape};
 
-/// `gpu::CompilationTarget`: what an object holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum CompilationFormat {
     Offloading,
@@ -42,7 +32,6 @@ impl core::str::FromStr for CompilationFormat {
     }
 }
 
-/// `gpu-module-to-binary`.
 #[crate::pass("gpu-module-to-binary", extra = ["toolkit", "l", "opts", "section"])]
 pub struct GpuModuleToBinary {
     #[opt("format", default = CompilationFormat::Fatbin, from_str)]
@@ -79,7 +68,6 @@ impl Run for GpuModuleToBinary {
 }
 
 impl GpuModuleToBinary {
-    /// Module `m`'s object for target `t`.
     fn object<'a>(&self, body: &Body<'a>, m: OpId, t: &Attribute<'a>) -> Result<Attribute<'a>, Error> {
         let inner: Vec<OpId> = body.ops(body.top_block(m)).collect();
         #[cfg(feature = "target.rdna2")]
@@ -105,7 +93,6 @@ impl GpuModuleToBinary {
                 let h = body.head::<crate::Xe3Kernel>(k)?;
                 let code = crate::Xe3Code::of(body, k)?;
                 let info = alloc::vec![("simd", u64::from(h.simd.unwrap_or(0))), ("inputs", u64::from(h.inputs.unwrap_or(0))), ("threads", u64::from(h.threads.unwrap_or(1))), ("shared", u64::from(h.shared.unwrap_or(0)))];
-                // the Kernel Start Pointer's alignment (64 bytes)
                 kernels.push((code.name, h.align.unwrap_or(64), h.pad.unwrap_or(0), code.bytes, info));
             }
             return self.native(t, kernels.into_iter());
@@ -121,7 +108,6 @@ impl GpuModuleToBinary {
         Err(Error(format!("gpu-module-to-binary: {t} needs LLVM")))
     }
 
-    /// `#gpu.object<target, [properties = {...},] [format =] "bytes">`.
     #[cfg_attr(not(any(feature = "target.spirv", feature = "target.rdna2", feature = "target.agx", feature = "target.apple9", feature = "target.xe3")), allow(dead_code, reason = "no target that emits here"))]
     fn make<'a>(t: &Attribute<'_>, properties: Option<Attribute<'_>>, format: CompilationFormat, bytes: &[u8]) -> Attribute<'a> {
         let key = match format {
@@ -136,8 +122,6 @@ impl GpuModuleToBinary {
         Attribute::Extended { ext: alloc::boxed::Box::new(Extended { name: String::from("gpu.object").into(), body: Some(body.into()), params: Vec::new() }), ty: None }
     }
 
-    /// Kernels of machine code (name, alignment, padding after, bytes, what the driver needs) one after another: the
-    /// object, `properties` each kernel's `offset`, `size` and the rest.
     #[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
     fn native<'a>(&self, t: &Attribute<'a>, kernels: impl Iterator<Item = (String, u64, u64, Vec<u8>, Vec<(&'static str, u64)>)>) -> Result<Attribute<'a>, Error> {
         if !matches!(self.format, CompilationFormat::Fatbin | CompilationFormat::Binary) {

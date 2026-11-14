@@ -1,22 +1,15 @@
-//! `sparse_tensor` canonicalization (`SparseTensorDialect.cpp`).
-
 use alloc::vec::Vec;
 
 use mlirformat::Attribute;
 
 use crate::{OpId, Rewriter};
 
-/// `sparse_tensor`'s rewrite patterns.
 pub struct SparseTensorCanon;
 
 #[crate::patterns]
 impl SparseTensorCanon {
-    /// `RemoveUnusedLvlCrds`: an unused level coordinate of `sparse_tensor.iterate` goes, its bit
-    /// in `crdUsedLvls` cleared. The body takes the iteration arguments, one coordinate per used
-    /// level in order, then the iterator.
     #[rewrite("sparse_tensor.iterate")]
     fn remove_unused_lvl_crds(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
-        /// The levels an `I64BitSet` holds.
         const LEVELS: u32 = 64;
         let b = &*rw.body;
         let Some(Attribute::Int { lit, .. }) = b[op].get("crdUsedLvls") else { return false };

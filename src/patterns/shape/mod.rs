@@ -1,5 +1,3 @@
-//! `shape` rule sets.
-
 mod canonicalize;
 mod to_std;
 

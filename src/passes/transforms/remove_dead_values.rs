@@ -1,6 +1,3 @@
-//! `remove-dead-values`, as `RemoveDeadValues.cpp`: what liveness proves unused goes, with the
-//! function arguments and results, branch operands and block arguments carrying it.
-
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::string::String;
 use alloc::vec;
@@ -12,13 +9,10 @@ use mlirformat::{Attribute, Error, Type};
 use super::dataflow::Solver;
 use crate::{Body, BlockId, OpData, OpId, Run, Trait, ValueId, Visibility};
 
-/// `RDVFinalCleanupList`.
 #[derive(Default, Clone)]
 struct Cleanup {
     operations: Vec<OpId>,
-    /// (function, dead arguments, dead results).
     functions: Vec<(OpId, Vec<bool>, Vec<bool>)>,
-    /// (op, dead operands, callee, replace with poison).
     operands: Vec<(OpId, Vec<bool>, Option<OpId>, bool)>,
     results: Vec<(OpId, Vec<bool>)>,
     blocks: Vec<(BlockId, Vec<bool>)>,
@@ -30,11 +24,7 @@ struct Rdv<'s, 'b, 'a> {
     alive: &'s crate::IdVec<ValueId, bool>,
     dead: BTreeSet<ValueId>,
     cl: Cleanup,
-    /// The ops naming each private function of the top, in preorder: what a function's callers
-    /// are looked up in (`None`: by a scan of the top).
     users: Option<&'s BTreeMap<String, Vec<OpId>>>,
-    /// The op of the top's block this walk is of ([`Rdv::cleanup_in`]), and whether a function
-    /// was met under it.
     root: Option<OpId>,
     nested: bool,
 }
@@ -44,7 +34,6 @@ impl<'a> Rdv<'_, '_, 'a> {
         self.body
     }
 
-    /// `markLives`: whether each value is live (`None`, a produced operand, counts as live).
     fn lives(&self, vs: &[Option<ValueId>]) -> Vec<bool> {
         vs.iter().map(|v| v.is_none_or(|v| !self.dead.contains(&v) && *self.alive.get(v))).collect()
     }
@@ -90,7 +79,6 @@ impl<'a> Rdv<'_, '_, 'a> {
             Some(users) => users.get(name).cloned().unwrap_or_default(),
             None => b.ops_in(top).into_iter().filter(|o| b.symbol_uses_of(*o).iter().any(|p| p.last().is_some_and(|s| Body::symbol_eq(s, name)))).collect(),
         };
-        // A user that is not a call (`spirv.EntryPoint`): what it expects is unknown.
         if !calls.iter().all(|c| self.body().has(*c, Trait::CallOpInterface)) {
             return;
         }
@@ -191,7 +179,6 @@ impl<'a> Rdv<'_, '_, 'a> {
         self.visit(op, top);
     }
 
-    /// What the walk does at `op`, its regions walked.
     fn visit(&mut self, op: OpId, top: OpId) {
         let b = self.body();
         if b.has(op, Trait::FunctionOpInterface) {
@@ -215,12 +202,6 @@ impl<'s, 'b, 'a> Rdv<'s, 'b, 'a> {
         Rdv { body, alive, dead: BTreeSet::new(), cl: Cleanup::default(), users, root: None, nested: false }
     }
 
-    /// ⭐ The cleanup of `top`, its ops walked in parallel on `exec`: each op of `top`'s block on
-    /// its own, its list after the last one's, then `top` itself — the list one walk gives. What
-    /// one op's walk marks dead outside it (the results of calls to a function) was not live
-    /// already, so no walk sees another's marks. Each function's callers are looked up in one
-    /// table made in parallel first, not by a scan of the top per function. A function nested
-    /// under an op of the block, or a top with operands or results, is walked serially.
     fn cleanup_in<X: moremath::Executor + Sync>(body: &'b Body<'a>, top: OpId, alive: &'s crate::IdVec<ValueId, bool>, exec: &X) -> Cleanup {
         let serial = || {
             let mut r = Rdv::new(body, alive, None);
@@ -232,7 +213,6 @@ impl<'s, 'b, 'a> Rdv<'s, 'b, 'a> {
             return serial();
         }
         let step = children.len().div_ceil(moremath::Executor::threads(exec) * 4).max(1);
-        // The private functions' names, and the ops naming each, in preorder.
         let private: BTreeSet<&str> = children.iter().filter(|c| body.has(**c, Trait::FunctionOpInterface) && body.visibility(**c) != Visibility::Public).filter_map(|c| body.sym_name(*c)).collect();
         let naming = |o: OpId, out: &mut BTreeMap<String, Vec<OpId>>| {
             let mut names: Vec<&str> = body.symbol_uses_of(o).iter().filter_map(|p| p.last().map(|s| Body::unquoted(s))).filter(|s| private.contains(s)).map(|s| *private.get(s).expect("a private name")).collect();
@@ -294,12 +274,10 @@ impl<'s, 'b, 'a> Rdv<'s, 'b, 'a> {
 }
 
 impl<'a> Body<'a> {
-    /// A symbol reference's name, unquoted.
     fn unquoted(s: &str) -> &str {
         s.strip_prefix('"').and_then(|s| s.strip_suffix('"')).unwrap_or(s)
     }
 
-    /// The symbol references `op` itself holds.
     fn symbol_uses_of(&self, op: OpId) -> Vec<Vec<mlirformat::Str<'a>>> {
         let mut out = Vec::new();
         let mut visit = |a: &Attribute<'a>| Self::symbol_refs(a, &mut out);
@@ -321,7 +299,6 @@ impl<'a> Body<'a> {
         s.strip_prefix('"').and_then(|s| s.strip_suffix('"')).unwrap_or(s) == name
     }
 
-    /// `dropAllUses`: the uses of `v` go to a detached placeholder.
     fn drop_all_uses(&mut self, v: ValueId) {
         if self[v].uses.is_empty() {
             return;
@@ -332,7 +309,6 @@ impl<'a> Body<'a> {
         self.replace_all_uses(v, r);
     }
 
-    /// Erases the flagged results of `op` (`eraseOpResults`), their uses dropped.
     fn erase_results(&mut self, op: OpId, dead: &[bool]) {
         let results = self[op].results.clone();
         let mut kept = Vec::new();
@@ -349,7 +325,6 @@ impl<'a> Body<'a> {
         self[op].results = kept.into();
     }
 
-    /// Removes the flagged entries of array attribute `name`; an array left all empty goes.
     fn erase_attr_entries(&mut self, op: OpId, name: &str, dead: &[bool]) {
         let Some(Attribute::Array(xs)) = self[op].get(name).cloned() else { return };
         let kept: Vec<_> = xs.into_iter().zip(dead.iter().chain(core::iter::repeat(&false))).filter(|(_, d)| !**d).map(|(x, _)| x).collect();
@@ -360,7 +335,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `FunctionOpInterface::eraseArguments` / `eraseResults`.
     fn erase_signature(&mut self, f: OpId, args: &[bool], rets: &[bool]) {
         let Some(Attribute::Type(Type::Function(mut t))) = self[f].get("function_type").cloned() else { return };
         let keep = |v: Vec<Type<'a>>, d: &[bool]| v.into_iter().enumerate().filter(|(i, _)| !d.get(*i).copied().unwrap_or(false)).map(|(_, x)| x).collect();
@@ -381,7 +355,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `eraseOperands`, the operand segments shrinking with them.
     fn erase_flagged_operands(&mut self, op: OpId, dead: &[bool]) {
         if let Some(seg) = self.segments(op, "operandSegmentSizes") {
             let mut start = 0;
@@ -398,7 +371,6 @@ impl<'a> Body<'a> {
 }
 
 impl Cleanup {
-    /// `o`'s lists after this one's.
     fn extend(&mut self, o: Cleanup) {
         self.operations.extend(o.operations);
         self.functions.extend(o.functions);
@@ -408,15 +380,10 @@ impl Cleanup {
         self.successors.extend(o.successors);
     }
 
-    /// The functions losing arguments, and which.
     fn erased_args(&self) -> Vec<(OpId, Vec<bool>)> {
         self.functions.iter().filter(|(_, a, _)| a.contains(&true)).map(|(f, a, _)| (*f, a.clone())).collect()
     }
 
-    /// ⭐ [`apply`](Self::apply) on `exec`: what touches a function with a seg of its own is done
-    /// there, on its own thread (lent), in the lists' order; the rest here, in the same order. The
-    /// only thing one part needs of another is which arguments each function loses (its calls
-    /// drop those operands), known from the lists before anything is done.
     fn apply_in<X: moremath::Executor + Sync>(&self, body: &mut Body<'_>, top: OpId, exec: &X) {
         let erased = self.erased_args();
         let owners: BTreeMap<u32, OpId> = body.children(top).into_iter().filter(|c| body.lendable(*c)).map(|c| (crate::Id::seg(c), c)).collect();
@@ -456,11 +423,8 @@ impl Cleanup {
         rest.apply(body, erased);
     }
 
-    /// `cleanUpDeadVals`.
     fn apply(&self, body: &mut Body<'_>, erased_args: &[(OpId, Vec<bool>)]) {
-        // The poisons made here: those left unused at the end go again.
         let mut poisons = Vec::new();
-        // Operands to poison first: they need the original values' types.
         for (op, dead, _, poison) in &self.operands {
             if !*poison {
                 continue;
@@ -527,7 +491,6 @@ impl Cleanup {
                 let u = body.create(OpData::build("ub.unreachable"), &[]);
                 body.insert_before(u, op);
             }
-            // Results still used get a poison: the users stay valid until cleaned up.
             for r in body[op].results.clone() {
                 if !body[r].uses.is_empty() {
                     let p = Self::poison(body, r, op, &mut poisons);
@@ -543,7 +506,6 @@ impl Cleanup {
         }
     }
 
-    /// `createPoisonedValue`: a `ub.poison` of `v`'s type before `at`, kept in `made`.
     fn poison(body: &mut Body<'_>, v: ValueId, at: OpId, made: &mut Vec<OpId>) -> ValueId {
         let ty = body[v].ty.clone();
         let loc = body.value_loc(v);
@@ -570,18 +532,11 @@ impl Run for RemoveDeadValues {
         self.run_in(body, op, &crate::Exec::from(&moremath::ThreadSingle))
     }
 
-    /// The analyses solved function by function on `exec` ([`Solver::liveness_in`]); the cleanup as
-    /// before.
     fn run_in<'a>(&self, body: &mut Body<'a>, op: OpId, exec: &crate::Exec<'_>) -> Result<(), Error> {
         let alive = Solver::liveness_in(body, op, exec);
         let cl = Rdv::cleanup_in(body, op, &alive, exec);
         cl.apply_in(body, op, exec);
         if self.canonicalize {
-            // In `Operation::walk`'s order (postorder): the worklist pops the last first. A
-            // function's region branches are its own: each function's go on its own thread, the
-            // rest here, each in that order.
-            // Only the region branch ops' own patterns (`getCanonicalizationPatterns` of each
-            // one's name); folding still reaches every op on the worklist.
             let mut names = alloc::collections::BTreeSet::new();
             body.walk_post(op, &mut |o| {
                 if body.is_region_branch(o) {

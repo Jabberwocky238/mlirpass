@@ -1,5 +1,3 @@
-//! `spirv` passes.
-
 #[cfg(feature = "target.spirv")]
 mod spirv_canonicalize_gl;
 #[cfg(feature = "target.spirv")]

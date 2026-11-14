@@ -1,11 +1,8 @@
-//! `gpu-map-parallel-loops`.
-
 use alloc::string::String;
 use alloc::vec::Vec;
 use mlirformat::Error;
 use crate::{Body, OpId};
 
-/// `gpu-map-parallel-loops`.
 #[crate::pass("gpu-map-parallel-loops")]
 pub struct GpuMapParallelLoops {
     #[opt("mapping-policy", default = String::from("outermost-first"))]

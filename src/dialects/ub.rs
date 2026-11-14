@@ -1,5 +1,3 @@
-//! The `ub` dialect's op interfaces.
-
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -7,7 +5,6 @@ use mlirformat::{Attribute, Extended};
 
 use crate::{Body, DialectInliner, InlineAll, OpId, OpInterfaces};
 
-/// The `ub` dialect.
 pub struct UbDialect;
 
 impl OpInterfaces for UbDialect {
@@ -15,7 +12,6 @@ impl OpInterfaces for UbDialect {
         "ub"
     }
 
-    /// Every op inlines (`UBInlinerInterface`).
     fn inliner(&self) -> Option<&dyn DialectInliner> {
         Some(&InlineAll { calls: false, regions: false })
     }

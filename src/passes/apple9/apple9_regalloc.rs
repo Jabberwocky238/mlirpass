@@ -1,18 +1,3 @@
-//! ⭐ `apple9-regalloc`: a kernel's virtual Apple9 instructions ⇒ GPRs ([`LinearScan`] over the 32-bit GPRs r0 ..
-//! r62; r63 is `apple9-wait`'s). A store of several dwords gets its data copied into a run first (`or` of a value
-//! with itself); a load's (an atomic's) destination is kept apart from its sources. Then each instruction gets its registers in the
-//! attributes [`Apple9Op::sources`] names (a store's `data` the run's first), `dst` its result's (a load's: the
-//! first of its components), and the kernel `gprs`.
-//!
-//! Structured control flow (`scf.if`, `scf.while`) stays, of registers: what it carries gets one register (a web: a
-//! copy of each value going in, the region arguments, a copy of what each region yields, the results; a loop's yields
-//! copied twice, so one carried value read for another is read before it is written), a value read in a loop lives to
-//! the loop's end; then the ops lose their values (`apple9-control` makes them masks).
-//!
-//! A source read for the last time is released (`release`, a bit per source; the forms [`Apple9Op::releases`]):
-//! no later instruction reads it, the instruction does not read it twice, and no loop around the instruction runs it
-//! again with the value from outside the loop. (A released source is gone: one still needed reads back as zero.)
-
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::vec;
@@ -22,12 +7,10 @@ use mlirformat::{Attribute, Error, Op};
 
 use crate::{A, Apple9Kernel, Apple9Op, Apple9Type, Body, Groups, Kernels, LinearScan, OpData, OpId, Quiet, RegTarget, Rewriter, Updates, ValueId, pass};
 
-/// The GPRs a kernel's values may take (r63 is the waits').
 const GPRS: core::ops::Range<u32> = 0..63;
-/// The register `apple9-wait`'s waits write (nothing reads it).
+
 pub const APPLE9_WAIT_GPR: u32 = 63;
 
-/// The one register file.
 struct Files;
 
 impl RegTarget for Files {
@@ -52,17 +35,14 @@ impl RegTarget for Files {
     }
 }
 
-/// The structured control flow ops a kernel keeps through the allocation.
 pub const APPLE9_STRUCTURED: [&str; 4] = ["scf.if", "scf.while", "scf.condition", "scf.yield"];
 
-/// One kernel being allocated.
 struct Alloc<'r, 'a> {
     rw: Rewriter<'r, 'a>,
     kernel: OpId,
 }
 
 impl<'a> Alloc<'_, 'a> {
-    /// The kernel's instructions in order, into its loops and branches (not those ops themselves).
     fn ops(&self) -> Vec<OpId> {
         let mut out = Vec::new();
         Self::instructions(self.rw.body, self.rw.body.top_block(self.kernel), &mut out);
@@ -82,7 +62,6 @@ impl<'a> Alloc<'_, 'a> {
         }
     }
 
-    /// The structured ops of the kernel, outer before inner.
     fn structured(&self) -> Vec<OpId> {
         let mut out = Vec::new();
         self.rw.body.walk(self.kernel, &mut |o| {
@@ -97,7 +76,6 @@ impl<'a> Alloc<'_, 'a> {
         self.rw.body[op].name == name
     }
 
-    /// A copy of `v` (`or` of it with itself) before `before`.
     fn copy(&mut self, v: ValueId, before: OpId) -> ValueId {
         let ty = self.rw.body[v].ty.clone();
         self.rw.set_before(before);
@@ -105,8 +83,6 @@ impl<'a> Alloc<'_, 'a> {
         self.rw.body[c].results[0]
     }
 
-    /// The operands of terminator `t` from `from` on, each copied to a temporary and the temporary copied again (all
-    /// the temporaries first); the second copies.
     fn twice(&mut self, t: OpId, from: usize) -> Vec<ValueId> {
         let values = self.rw.body[t].operands[from..].to_vec();
         let temps: Vec<ValueId> = values.iter().map(|v| self.copy(*v, t)).collect();
@@ -119,14 +95,11 @@ impl<'a> Alloc<'_, 'a> {
         out
     }
 
-    /// What a loop or a branch carries, a register each (the linear scan's webs).
     fn webs(&mut self) -> Vec<Vec<ValueId>> {
         let mut webs = Vec::new();
         for op in self.structured() {
             match &*self.rw.body[op].name {
                 "scf.while" => {
-                    // carried: the initial copy, the condition region's argument, (twice) copied what the body yields;
-                    // forwarded: (twice) copied what the condition passes on, the body's argument, the result
                     let [before, after] = [0, 1].map(|i| self.rw.body[self.rw.body[op].regions[i]].blocks[0]);
                     let inits = self.rw.body[op].operands.to_vec();
                     let mut carried: Vec<Vec<ValueId>> = Vec::new();
@@ -174,7 +147,6 @@ impl<'a> Alloc<'_, 'a> {
         webs
     }
 
-    /// Whether block `b` is inside op `l` (at any depth).
     fn within(body: &Body<'_>, mut b: crate::BlockId, l: OpId) -> bool {
         while let Some(owner) = body.block_owner(b) {
             if owner == l {
@@ -186,9 +158,6 @@ impl<'a> Alloc<'_, 'a> {
         false
     }
 
-    /// The sources each instruction reads for the last time (a bit per source, in [`Apple9Op::sources`] order): no
-    /// later instruction reads the value, it is not read by the same instruction twice, and no loop around the
-    /// instruction that the value comes from outside of runs it again.
     fn releases(&self) -> BTreeMap<OpId, u32> {
         let body = &*self.rw.body;
         let ops = self.ops();
@@ -202,7 +171,6 @@ impl<'a> Alloc<'_, 'a> {
                     continue;
                 }
                 let last = body[*v].uses.iter().filter_map(|u| at.get(&u.op)).all(|i| *i <= at[&op]);
-                // the loops around the instruction: none may lie between it and the value's definition
                 let Some(home) = body.value_block(*v) else { continue };
                 let mut looped = false;
                 let mut b = body[op].parent;
@@ -225,7 +193,6 @@ impl<'a> Alloc<'_, 'a> {
         out
     }
 
-    /// The structured ops without their values (what they carry is in its registers already).
     fn structure(&mut self) {
         for op in self.structured() {
             self.rw.modify(op, |b| {
@@ -240,7 +207,6 @@ impl<'a> Alloc<'_, 'a> {
         }
     }
 
-    /// A store's data copied into a run.
     fn prepare(&mut self) -> Groups {
         let mut groups = Groups::new();
         for op in self.ops() {
@@ -266,7 +232,6 @@ impl<'a> Alloc<'_, 'a> {
         groups
     }
 
-    /// Every instruction with its registers; `gprs` on the kernel.
     fn rewrite(&mut self, reg: &BTreeMap<ValueId, u32>, releases: &BTreeMap<OpId, u32>) -> Result<(), Error> {
         let top = reg.values().copied().max().map_or(0, |r| r + 1).max(APPLE9_WAIT_GPR + 1);
         for op in self.ops() {
@@ -306,7 +271,6 @@ impl<'a> Alloc<'_, 'a> {
                 attrs.push(("dst", A::from(first).into()));
             }
             if let Some(&m) = releases.get(&op).filter(|_| inst.releases()) {
-                // a store's operands are its data, then its index: only the index is released (source 1)
                 let m = if matches!(inst, Apple9Op::Store | Apple9Op::SharedStore) { u32::from(m & (1 << (operands.len() - 1)) != 0) << 1 } else { m };
                 if m != 0 {
                     attrs.push(("release", A::from(m).into()));
@@ -325,7 +289,6 @@ impl<'a> Alloc<'_, 'a> {
     }
 }
 
-/// `apple9-regalloc`.
 #[pass("apple9-regalloc", on = "builtin.module")]
 pub fn apple9_regalloc<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     for k in Kernels::all(body, op, Apple9Kernel::NAME) {

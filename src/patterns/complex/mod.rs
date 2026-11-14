@@ -1,5 +1,3 @@
-//! `complex` rule sets.
-
 mod canonicalize;
 mod to_libm;
 mod to_std;

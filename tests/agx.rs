@@ -1,11 +1,6 @@
-//! The AGX target against its oracles: USC instructions as Mesa's AGX2 model encodes them, the structs and a CDM
-//! stream as Mesa's agx_pack writes them, and acgpu's kernels as its own AGX backend made them before it moved here.
-
 use mlirformat::{MlirOpt, Module};
 use mlirpass::{AGX, AgxDialect, AgxStructs, Body, Ctx, Interfaces, OpId, Usc};
 
-/// Every instruction of Mesa's AGX2 disassembler cases, as its fields (tests/agx/usc.mlir), encodes back to the
-/// case's bytes (tests/agx/usc.expected); reads as its typed op; printed and read again encodes the same.
 #[test]
 fn usc_encodes_mesa_cases() {
     let mut opt = MlirOpt::upstream();
@@ -35,9 +30,6 @@ fn usc_encodes_mesa_cases() {
     assert!(bad.is_empty(), "{} of {} differ:\n{}", bad.len(), expected.len(), bad.join("\n"));
 }
 
-/// Every AGX struct packed from MLIR (tests/agx/oracle.mlir: each settable field set to the value Mesa's agx_pack was
-/// given) is what Mesa packed (tests/agx/oracle.expected), dword for dword; reads as its typed op; printed and read
-/// again packs the same.
 #[test]
 fn structs_pack_as_mesa() {
     let mut opt = MlirOpt::upstream();
@@ -67,8 +59,6 @@ fn structs_pack_as_mesa() {
     assert!(bad.is_empty(), "{} of {} differ:\n{}", bad.len(), expected.len(), bad.join("\n"));
 }
 
-/// tests/agx/cdm.mlir through `agx-end, agx-layout` is the CDM stream Mesa's agx_pack writes for it
-/// (tests/agx/cdm.expected), byte for byte, and `stream_end` is the address after its terminate.
 #[cfg(feature = "target.agx")]
 #[test]
 fn cdm_stream_as_mesa() {
@@ -90,8 +80,6 @@ fn cdm_stream_as_mesa() {
     assert_eq!(image.stream_end - image.stream, want.len() as u64);
 }
 
-/// acgpu's `ints` shader in upstream dialects (tests/agx/ints.mlir), canonicalized as acgpu's frontend did, lowered
-/// and allocated: the kernel's bytes and registers exactly as acgpu's own AGX backend made them (tests/agx/ints.expected).
 #[cfg(feature = "target.agx")]
 #[test]
 fn kernels_as_acgpu() {

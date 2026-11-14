@@ -1,5 +1,3 @@
-//! `vector` passes.
-
 mod convert_vector_to_scf;
 
 pub use convert_vector_to_scf::{ConvertVectorToScf};

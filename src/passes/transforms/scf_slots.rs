@@ -1,26 +1,11 @@
-//! `scf`'s `PromotableRegionOpInterface`, as `SCF/IR/MemorySlot.cpp`: `mem2reg` follows a slot
-//! into the regions of `scf` ops, which carry its value in and out as region arguments,
-//! yielded values and results.
-//!
-//! ```text
-//! op                       stores inside             no stores inside
-//! execute_region / if /    a result fed by every     the value in, unchanged out
-//!   index_switch             yield (if: else made)
-//! for / while              an iter arg + a result
-//! forall / parallel /      not promotable            the value in, unchanged out
-//!   reduce
-//! ```
-
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
 use super::memslot::{MemorySlot, Promotable};
 use crate::{BlockId, Body, OpData, OpId, RegionId, Rewriter, ValueId};
 
-/// `scf`'s memory slot interfaces.
 pub struct ScfSlots;
 
-/// The `scf` ops implementing `PromotableRegionOpInterface`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RegionOp {
     ExecuteRegion,
@@ -49,15 +34,12 @@ impl RegionOp {
         Self::TABLE.iter().find(|(n, _)| *n == b[op].name).map(|(_, k)| *k)
     }
 
-    /// Whether the body may run in parallel: only loads can be promoted there.
     fn parallel(self) -> bool {
         matches!(self, RegionOp::Forall | RegionOp::Parallel | RegionOp::Reduce)
     }
 }
 
 impl ScfSlots {
-    /// `memoryslot::updateTerminator`: `block`'s terminator also passes on the value reaching
-    /// its end (`default` when none was recorded).
     fn update_terminator(b: &mut Body<'_>, block: BlockId, default: ValueId, at_end: &BTreeMap<BlockId, Option<ValueId>>) {
         let v = at_end.get(&block).copied().flatten().unwrap_or(default);
         let t = b.last_op(block).expect("a terminator");
@@ -66,13 +48,11 @@ impl ScfSlots {
         b.set_operands(t, ops);
     }
 
-    /// `memoryslot::replaceWithNewResults` with the slot's type added: the new last result.
     fn add_result<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, slot: &MemorySlot<'a>) -> ValueId {
         let new = rw.with_extra_results(op, core::slice::from_ref(&slot.elem));
         *rw.body[new].results.last().expect("the added result")
     }
 
-    /// An argument of the slot's type added to `region`'s entry block.
     fn add_arg<'a>(b: &mut Body<'a>, region: RegionId, slot: &MemorySlot<'a>) -> ValueId {
         let entry = b[region].blocks[0];
         let arg = b.add_arg(entry, slot.elem.clone());
@@ -157,4 +137,3 @@ impl Promotable for ScfSlots {
         Self::add_result(rw, op, slot)
     }
 }
-

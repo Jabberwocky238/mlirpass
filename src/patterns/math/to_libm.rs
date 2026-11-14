@@ -1,6 +1,3 @@
-//! `math` ⇒ libm calls, as `MathToLibm.cpp`: each op a `func.call` of its `float` / `double` function, declared at
-//! the start of the module (crate::Libm).
-
 use alloc::vec::Vec;
 
 use mlirformat::{FloatKind, Type};
@@ -9,9 +6,6 @@ use crate::patterns;
 use crate::patterns::{vshape, zeros, VectorBuild};
 use crate::{ConversionPatterns, ConversionRewriter as Cr, Libm, Lowering, OpData, OpId, ValueId};
 
-/// The math ⇒ libm patterns; `to` is `float,double`. Each op has three, as C++: the call
-/// (`ScalarOpToLibmCall`), and the vector unrolling and f32 promotion that make its scalar
-/// form (which the call then lowers: another pattern, so no recursion).
 pub struct MathToLibm;
 
 #[patterns(extra = Self::reshape)]
@@ -49,13 +43,11 @@ pub struct MathToLibm;
 #[map("math.tanh" => "tanhf,tanh", via = Self::math)]
 #[map("math.trunc" => "truncf,trunc", via = Self::math)]
 impl MathToLibm {
-    /// `ScalarOpToLibmCall`.
     fn math(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], to: &str) -> bool {
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
         Libm::call(cr, op, to, Libm::float(&ty), true)
     }
 
-    /// The other two of each op.
     fn reshape(p: &mut ConversionPatterns<'_>) {
         for root in Self::ROOTS {
             p.add(Lowering { root, benefit: 1, f: Self::unroll });
@@ -63,7 +55,6 @@ impl MathToLibm {
         }
     }
 
-    /// `VecOpToScalarOp`: element by element into a zero vector.
     fn unroll(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.owned();
         let Some((shape, _)) = vshape(&ty) else { return false };
@@ -88,7 +79,6 @@ impl MathToLibm {
         true
     }
 
-    /// `PromoteOpToF32`: computed in f32, truncated back.
     fn promote(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.owned();
         if !matches!(ty, Type::Float(FloatKind::F16 | FloatKind::BF16)) {
@@ -103,6 +93,3 @@ impl MathToLibm {
         true
     }
 }
-
-
-

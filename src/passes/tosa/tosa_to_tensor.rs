@@ -1,11 +1,8 @@
-//! `tosa-to-tensor`.
-
 use crate::{TosaToTensor};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId};
 
-/// `tosa-to-tensor`.
 #[pass("tosa-to-tensor", ty = TosaToTensorPass)]
 pub fn tosa_to_tensor<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let tc = TosaToTensor::converter();

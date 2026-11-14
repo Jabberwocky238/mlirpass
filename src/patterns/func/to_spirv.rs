@@ -1,5 +1,3 @@
-//! `func` ⇒ `spirv`, as `FuncToSPIRV.cpp` and `FuncOpConversion` (`SPIRVConversion.cpp`).
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -10,13 +8,10 @@ use crate::{ConversionRewriter, OpData, OpId, SignatureConversion, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The func ⇒ spirv patterns (`populateFuncToSPIRVPatterns` and
-/// `populateBuiltinFuncToSPIRVPatterns`).
 pub struct FuncToSpirv;
 
 #[patterns(converter)]
 impl FuncToSpirv {
-    /// `ReturnOpPattern`.
     #[convert("func.return")]
     fn ret(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -28,7 +23,6 @@ impl FuncToSpirv {
         true
     }
 
-    /// `CallOpPattern`.
     #[convert("func.call")]
     fn call(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -49,7 +43,6 @@ impl FuncToSpirv {
         true
     }
 
-    /// `FuncOpConversion`.
     #[convert("func.func")]
     fn func(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(Attribute::Type(Type::Function(fty))) = cr.rw.body[op].get("function_type").cloned() else { return false };

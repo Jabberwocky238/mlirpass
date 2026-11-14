@@ -1,8 +1,5 @@
-//! The `spirv` dialect's op interfaces.
-
 use crate::{BlockId, Body, BranchLayout, DialectInliner, OpData, OpId, OpInterfaces, ValueId};
 
-/// The `spirv` dialect.
 pub struct SpirvDialect;
 
 impl OpInterfaces for SpirvDialect {
@@ -10,11 +7,9 @@ impl OpInterfaces for SpirvDialect {
         "spirv"
     }
 
-    /// `OpAsmOpInterface::getAsmResultNames`.
     fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
         match &*b[op].name {
             "spirv.Constant" => b.result_named(op, Self::constant_name(b, op)),
-            // `<variable>_addr`.
             "spirv.mlir.addressof" => match b[op].get("variable") {
                 Some(mlirformat::Attribute::SymbolRef(path)) => match path.last() {
                     Some(leaf) => b.result_named(op, alloc::format!("{}_addr", leaf.trim_matches('"'))),
@@ -40,18 +35,15 @@ impl OpInterfaces for SpirvDialect {
     }
 }
 
-/// `SPIRVInlinerInterface`.
 impl DialectInliner for SpirvDialect {
     fn legal_call(&self, _: &Body<'_>, _: OpId, _: OpId) -> bool {
         true
     }
 
-    /// Into a function, a selection or a loop.
     fn legal_region(&self, b: &Body<'_>, dest: crate::RegionId) -> bool {
         matches!(&*b[b[dest].parent].name, "spirv.func" | "spirv.mlir.selection" | "spirv.mlir.loop")
     }
 
-    /// Not a selection or loop that returns, not a kill.
     fn legal_op(&self, b: &Body<'_>, op: OpId) -> bool {
         let returns = |r: crate::RegionId| b[r].blocks.iter().any(|blk| b.last_op(*blk).is_some_and(|t| matches!(&*b[t].name, "spirv.Return" | "spirv.ReturnValue")));
         if matches!(&*b[op].name, "spirv.mlir.selection" | "spirv.mlir.loop") && b[op].regions.first().is_some_and(|r| returns(*r)) {
@@ -60,7 +52,6 @@ impl DialectInliner for SpirvDialect {
         b[op].name != "spirv.Kill"
     }
 
-    /// `spirv.Return` / `spirv.ReturnValue` as a `spirv.Branch` to `dest`.
     fn branch_terminator(&self, b: &mut Body<'_>, op: OpId, dest: BlockId) {
         if !matches!(&*b[op].name, "spirv.Return" | "spirv.ReturnValue") {
             return;
@@ -83,9 +74,6 @@ impl DialectInliner for SpirvDialect {
 }
 
 impl SpirvDialect {
-    /// `ConstantOp::getAsmResultNames`: `%true` / `%false` for an `i1`; else `%cst`, the integer
-    /// value as its signedness reads it, `_<type>` for an integer or float, `_vec_<n>x<element>`
-    /// for a vector.
     fn constant_name(b: &Body<'_>, op: OpId) -> alloc::borrow::Cow<'static, str> {
         use mlirformat::{ShapedKind, Signedness, Type};
         let ty = &b[b[op].results[0]].ty;

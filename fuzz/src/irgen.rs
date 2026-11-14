@@ -1,21 +1,7 @@
-//! ⭐ Random MLIR that is valid by construction, in custom form.
-//!
-//! ```text
-//! module    funcs, each calling only the ones before it
-//! func      typed arguments, a block of random ops, a return of the result types
-//! op        arith (constants, int / float binaries, compares, select, casts), math,
-//!           scf.if / scf.for with results (nested up to `depth`), memref.alloca / load /
-//!           store, func.call
-//! ```
-//!
-//! An operand is any value of its type visible at that point (defined earlier in the block or
-//! an enclosing one), else a fresh constant: dominance holds without ever being checked.
-
 use core::fmt::{self, Write};
 
 use crate::rng::Rng;
 
-/// The scalar types values get.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ty {
     I1,
@@ -36,7 +22,6 @@ impl Ty {
         matches!(self, Ty::F32 | Ty::F64)
     }
 
-    /// An integer of a fixed width (not `index`).
     fn int(self) -> bool {
         Ty::INTS.contains(&self)
     }
@@ -67,7 +52,6 @@ impl fmt::Display for Ty {
     }
 }
 
-/// `t1, t2` as a type list.
 struct Tys<'t>(&'t [Ty]);
 
 impl fmt::Display for Tys<'_> {
@@ -76,13 +60,10 @@ impl fmt::Display for Tys<'_> {
     }
 }
 
-/// How big and how deep a module gets.
 #[derive(Debug, Clone, Copy)]
 pub struct Shape {
     pub funcs: usize,
-    /// Ops per block, at most.
     pub ops: usize,
-    /// Nesting of scf regions, at most.
     pub depth: usize,
 }
 
@@ -92,29 +73,24 @@ impl Default for Shape {
     }
 }
 
-/// A value in scope.
 #[derive(Debug, Clone)]
 struct Val {
     name: String,
     ty: Ty,
 }
 
-/// What a block (and the blocks around it) can use.
 #[derive(Default)]
 struct Frame {
     vals: Vec<Val>,
-    /// `memref<4xT>` allocas: name and element type.
     mems: Vec<Val>,
 }
 
-/// A function's signature, for calls.
 struct Sig {
     name: String,
     args: Vec<Ty>,
     results: Vec<Ty>,
 }
 
-/// Op kinds, each with how often it is picked.
 macro_rules! kinds {
     ($($k:ident = $w:literal),* $(,)?) => {
         #[derive(Debug, Clone, Copy)]
@@ -129,7 +105,6 @@ macro_rules! kinds {
 
 kinds! { Const = 3, IntBin = 8, FloatBin = 5, Cmp = 4, Select = 2, Cast = 5, Math = 4, If = 2, For = 2, Mem = 2, Call = 1 }
 
-/// Int binaries (on `iN` and `index`), float binaries, unary math.
 const INT_BIN: &[&str] = &[
     "addi", "subi", "muli", "divsi", "divui", "remsi", "remui", "ceildivsi", "floordivsi", "andi", "ori", "xori", "shli", "shrsi", "shrui", "maxsi", "minsi", "maxui", "minui",
 ];
@@ -144,7 +119,6 @@ const MATH_F2: &[&str] = &["copysign", "atan2", "powf"];
 const MATH_CLASS: &[&str] = &["isfinite", "isinf", "isnan", "isnormal"];
 const MATH_I: &[&str] = &["absi", "ctpop", "ctlz", "cttz"];
 
-/// ⭐ One module being written.
 pub struct Gen<'r> {
     rng: &'r mut Rng,
     shape: Shape,
@@ -160,7 +134,6 @@ impl<'r> Gen<'r> {
         Self { rng, shape, out: String::new(), indent: 0, next: 0, frames: Vec::new(), sigs: Vec::new() }
     }
 
-    /// ⭐ The module's text.
     pub fn module(mut self) -> String {
         for i in 0..self.shape.funcs {
             self.func(i);
@@ -190,7 +163,6 @@ impl<'r> Gen<'r> {
         name
     }
 
-    /// A visible value of type `ty`, or a fresh constant.
     fn value(&mut self, ty: Ty) -> String {
         let seen: Vec<&Val> = self.frames.iter().flat_map(|f| &f.vals).filter(|v| v.ty == ty).collect();
         if seen.is_empty() || self.rng.chance(0.08) {
@@ -199,7 +171,6 @@ impl<'r> Gen<'r> {
         seen[self.rng.below(seen.len())].name.clone()
     }
 
-    /// A visible value whose type `want` accepts, with its type; a constant of `fallback` when none.
     fn value_where(&mut self, want: impl Fn(Ty) -> bool, fallback: Ty) -> (String, Ty) {
         let seen: Vec<(String, Ty)> = self.frames.iter().flat_map(|f| &f.vals).filter(|v| want(v.ty)).map(|v| (v.name.clone(), v.ty)).collect();
         match seen.len() {
@@ -218,7 +189,6 @@ impl<'r> Gen<'r> {
         self.define(v, ty)
     }
 
-    /// A literal of `ty`: edge values often, else anything in range.
     fn literal(&mut self, ty: Ty) -> String {
         match ty {
             Ty::I1 => String::from(if self.rng.chance(0.5) { "true" } else { "false" }),
@@ -230,7 +200,6 @@ impl<'r> Gen<'r> {
                     _ => {
                         let exp = self.rng.range(0, 24) as i32 - 12;
                         let mant = (self.rng.next() % 2_000_000) as f64 / 100_000.0 - 10.0;
-                        // As MLIR prints one: a signed two-digit exponent (`1.500000e+00`).
                         let lit = format!("{:.6e}", mant * 10f64.powi(exp));
                         let (m, e) = lit.split_once('e').expect("{:e} has an exponent");
                         let e: i32 = e.parse().expect("an integer exponent");
@@ -334,7 +303,6 @@ impl<'r> Gen<'r> {
         }
     }
 
-    /// A `math` op: a float unary or binary, a classification (to `i1`), an integer unary, `ipowi`.
     fn math(&mut self) {
         let ft = *self.rng.pick(&[Ty::F32, Ty::F64]);
         let it = *self.rng.pick(&Ty::INTS[1..]);
@@ -351,7 +319,6 @@ impl<'r> Gen<'r> {
         self.define(v, res);
     }
 
-    /// One of arith's casts, between types it accepts.
     fn cast(&mut self) {
         let (op, (a, from), to) = match self.rng.below(7) {
             0 => {
@@ -400,7 +367,6 @@ impl<'r> Gen<'r> {
         self.define(v, to);
     }
 
-    /// The results of an op making `tys.len()` of them: their names, defined in the block.
     fn results(&mut self, tys: &[Ty]) -> (String, Vec<String>) {
         let v = self.fresh();
         let names: Vec<String> = match tys.len() {
@@ -421,7 +387,6 @@ impl<'r> Gen<'r> {
         }
     }
 
-    /// A nested block: ops, then `scf.yield` of `tys` (bare when there are none).
     fn region(&mut self, depth: usize, frame: Frame, tys: &[Ty]) {
         self.indent += 2;
         self.frames.push(frame);
@@ -477,7 +442,6 @@ impl<'r> Gen<'r> {
         self.define_all(names, &tys);
     }
 
-    /// An alloca, or a load / store on one in scope (constant index in bounds).
     fn mem(&mut self) {
         let mems: Vec<Val> = self.frames.iter().flat_map(|f| f.mems.iter().cloned()).collect();
         if mems.is_empty() || self.rng.chance(0.2) {

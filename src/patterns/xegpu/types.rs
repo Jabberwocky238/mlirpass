@@ -1,11 +1,8 @@
-//! The `xegpu` dialect's types and enum attributes, read once into structs.
-
 use alloc::string::String;
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, Type};
 
-/// The `key = value` parameters of a `<...>` body.
 fn params(body: &str) -> Option<Vec<(String, Attribute<'static>)>> {
     mlirformat::Parser::read(body, |p| {
         p.expect("<")?;
@@ -26,7 +23,6 @@ fn params(body: &str) -> Option<Vec<(String, Attribute<'static>)>> {
     .ok()
 }
 
-/// The ints of an `[a, b]` array attribute.
 fn ints(a: &Attribute<'_>) -> Option<Vec<i64>> {
     match a {
         Attribute::Array(es) => es.iter().map(|e| if let Attribute::Int { lit, .. } = e { lit.parse().ok() } else { None }).collect(),
@@ -35,7 +31,6 @@ fn ints(a: &Attribute<'_>) -> Option<Vec<i64>> {
     }
 }
 
-/// `shape x elem` and the attributes after it, of a shaped dialect type's body.
 fn shaped(body: &str) -> Option<(Vec<i64>, Type<'static>, Vec<Attribute<'static>>)> {
     mlirformat::Parser::read(body, |p| {
         p.expect("<")?;
@@ -52,13 +47,11 @@ fn shaped(body: &str) -> Option<(Vec<i64>, Type<'static>, Vec<Attribute<'static>
     .and_then(|(dims, elem, attrs)| Some((dims.into_iter().map(|d| if let Dim::Static(n) = d { Some(n) } else { None }).collect::<Option<Vec<_>>>()?, elem, attrs)))
 }
 
-/// The body of a dialect type or attribute named `name`.
 fn body_of<'t>(name: &str, ext: &'t mlirformat::Extended<'_>) -> Option<&'t str> {
     (ext.name == name).then_some(())?;
     ext.body.as_deref()
 }
 
-/// `xegpu::MemorySpace`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemorySpace {
     Global,
@@ -68,7 +61,6 @@ pub enum MemorySpace {
 impl MemorySpace {
     const NAMES: [(&'static str, Self); 2] = [("global", Self::Global), ("slm", Self::Slm)];
 
-    /// `getNumericXeVMAddrSpace`: xevm's global 1, shared 3.
     pub fn xevm(self) -> u32 {
         match self {
             MemorySpace::Global => 1,
@@ -83,7 +75,6 @@ impl MemorySpace {
 
 impl TryFrom<&Attribute<'_>> for MemorySpace {
     type Error = ();
-    /// `#xegpu.memory_space<slm>` or the bare case.
     fn try_from(a: &Attribute<'_>) -> Result<Self, ()> {
         match a {
             Attribute::Extended { ext, .. } => {
@@ -96,7 +87,6 @@ impl TryFrom<&Attribute<'_>> for MemorySpace {
     }
 }
 
-/// `!xegpu.tensor_desc<shape x elem, encoding?, layout?>`.
 #[derive(Debug, Clone)]
 pub struct TensorDesc {
     pub shape: Vec<i64>,
@@ -131,7 +121,6 @@ impl TryFrom<&Type<'_>> for TensorDesc {
     }
 }
 
-/// `!xegpu.mem_desc<shape x elem, #xegpu.mem_layout<stride = .., block = ..>?>`.
 #[derive(Debug, Clone)]
 pub struct MemDesc {
     pub shape: Vec<i64>,
@@ -162,17 +151,14 @@ impl TryFrom<&Type<'_>> for MemDesc {
 }
 
 impl MemDesc {
-    /// `getStrideAttr`: the layout's, or row major.
     fn strides(&self) -> Vec<i64> {
         self.stride.clone().unwrap_or_else(|| self.shape.iter().skip(1).copied().chain([1]).collect())
     }
 
-    /// `getBlockShape`: the layout's block, or the whole shape.
     pub fn block_shape(&self) -> Vec<i64> {
         self.block.clone().filter(|b| !b.is_empty()).unwrap_or_else(|| self.shape.clone())
     }
 
-    /// `getStrideShape`: the outer blocks' strides then the inner block's.
     pub fn stride_shape(&self) -> Vec<i64> {
         let strides = self.strides();
         let inner = self.block_shape();
@@ -199,7 +185,6 @@ impl MemDesc {
     }
 }
 
-/// `xegpu::CachePolicy`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CachePolicy {
     Cached,
@@ -214,7 +199,6 @@ impl CachePolicy {
     const NAMES: [(&'static str, Self); 6] = [("cached", Self::Cached), ("uncached", Self::Uncached), ("streaming", Self::Streaming), ("read_invalidate", Self::ReadInvalidate), ("write_back", Self::WriteBack), ("write_through", Self::WriteThrough)];
 }
 
-/// A case of `#xegpu.<name><case>` among `names`.
 fn case_of<T: Copy>(a: &Attribute<'_>, name: &str, names: &[(&'static str, T)]) -> Option<T> {
     let Attribute::Extended { ext, .. } = a else { return None };
     let b = body_of(name, ext)?.strip_prefix('<')?.strip_suffix('>')?.trim();
@@ -228,7 +212,6 @@ impl TryFrom<&Attribute<'_>> for CachePolicy {
     }
 }
 
-/// `xegpu::FenceScope`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FenceScope {
     Workgroup,
@@ -239,7 +222,6 @@ impl FenceScope {
     const NAMES: [(&'static str, Self); 2] = [("workgroup", Self::Workgroup), ("gpu", Self::Gpu)];
 }
 
-/// A case of `#xegpu<kind case>` among `names`.
 fn short_case<T: Copy>(a: &Attribute<'_>, kind: &str, names: &[(&'static str, T)]) -> Option<T> {
     let Attribute::Extended { ext, .. } = a else { return None };
     let b = body_of("xegpu", ext)?.strip_prefix('<')?.strip_suffix('>')?.trim().strip_prefix(kind)?.trim();
@@ -254,13 +236,11 @@ impl TryFrom<&Attribute<'_>> for FenceScope {
 }
 
 impl MemorySpace {
-    /// An op's `memory_kind` (`#xegpu<memory_space global>`).
     pub fn kind(a: &Attribute<'_>) -> Option<Self> {
         short_case(a, "memory_space", &Self::NAMES)
     }
 }
 
-/// The chip an `#xevm.target<chip = "..">` names (`xegpu::getChipStr`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Chip {
     Pvc,
@@ -270,7 +250,6 @@ pub enum Chip {
 }
 
 impl Chip {
-    /// The chip of `#xevm.target<..>` `a`, if it is one.
     pub fn of_target(a: &Attribute<'_>) -> Option<Self> {
         let Attribute::Extended { ext, .. } = a else { return None };
         let ps = params(body_of("xevm.target", ext)?)?;

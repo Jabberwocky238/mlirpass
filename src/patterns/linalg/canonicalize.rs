@@ -1,5 +1,3 @@
-//! `linalg`: folds and canonicalization patterns, as `LinalgOps.cpp`.
-
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -10,7 +8,6 @@ use crate::MemrefOfr as Ofr;
 use crate::patterns::RegionLocs;
 use crate::{AffineExpr, AffineMap, Body, OpDsl, Const, Def, Fold, Folded, Mapping, OpData, OpId, Rewriter, Trait, TypedOp, ValueId};
 
-/// The `linalg` ops' helpers.
 struct Lg;
 
 impl Lg {
@@ -33,7 +30,6 @@ impl Lg {
         Self::kind(t) == Some(ShapedKind::MemRef)
     }
 
-    /// `LinalgOp::isScalar`: neither a tensor nor a memref.
     fn is_scalar(t: &Type<'_>) -> bool {
         !Self::is_tensor(t) && !Self::is_memref(t)
     }
@@ -42,19 +38,16 @@ impl Lg {
         Self::dims(t).is_some_and(|d| !d.contains(&Dim::DYNAMIC))
     }
 
-    /// `RankedTensorType::clone(dims)`: element type and encoding kept.
     fn with_dims<'a>(t: &Type<'a>, dims: &[i64]) -> Type<'a> {
         let Type::Shaped(s) = t else { return t.clone() };
         let shape = dims.iter().map(|d| if *d == Dim::DYNAMIC { Dim::Dynamic } else { Dim::Static(*d) }).collect();
         Type::Shaped(alloc::boxed::Box::new(Shaped { shape: Some(shape), ..*s.clone() }))
     }
 
-    /// `RankedTensorType::get(dims, elem)`.
     fn tensor<'a>(dims: &[i64], elem: Type<'a>) -> Type<'a> {
         Self::with_dims(&Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Tensor, shape: None, elem: elem.into(), extras: Vec::new() })), dims)
     }
 
-    /// The result types of a destination-style op writing `init`: its type, when a tensor.
     fn results_for<'a>(init: &Type<'a>) -> Vec<Type<'a>> {
         if Self::is_tensor(init) { vec![init.clone()] } else { Vec::new() }
     }
@@ -74,7 +67,6 @@ impl Lg {
         }
     }
 
-    /// `invertPermutationVector`.
     fn invert(p: &[i64]) -> Vec<i64> {
         let mut inv = vec![0; p.len()];
         for (i, x) in p.iter().enumerate() {
@@ -83,7 +75,6 @@ impl Lg {
         inv
     }
 
-    /// `applyPermutation`: `out[i] = v[p[i]]`.
     fn permute<T: Clone>(v: &[T], p: &[i64]) -> Vec<T> {
         p.iter().map(|i| v[*i as usize].clone()).collect()
     }
@@ -92,7 +83,6 @@ impl Lg {
         p.iter().enumerate().all(|(i, x)| *x == i as i64)
     }
 
-    /// `dropDims`.
     fn drop_dims(perm: &[i64], drop: &[i64]) -> Vec<i64> {
         let mut res = Vec::new();
         for p in perm {
@@ -114,7 +104,6 @@ impl Lg {
         res
     }
 
-    /// `AffineMap::isProjectedPermutation()`.
     fn projected_permutation(m: &AffineMap) -> bool {
         if m.syms > 0 || m.results.len() > m.dims as usize {
             return false;
@@ -129,7 +118,6 @@ impl Lg {
         })
     }
 
-    /// `tensor::CastOp::areCastCompatible`.
     fn cast_compatible(a: &Type<'_>, b: &Type<'_>) -> bool {
         if !Self::is_tensor(a) || !Self::is_tensor(b) || a.element_type() != b.element_type() {
             return false;
@@ -144,13 +132,10 @@ impl Lg {
         matches!(t, Type::Shaped(s) if s.extras.iter().any(|e| format!("{e}").starts_with("#sparse_tensor.encoding")))
     }
 
-    /// The OpDSL ops whose maps are identities of the init's rank (scalars: no results).
     fn rank_polymorphic(name: &str) -> bool {
         OpDsl::of(name).is_some_and(OpDsl::rank_polymorphic)
     }
 
-    /// Whether `linalg` op `name` folds with `memref::foldMemRefCast` (the OpDSL ops and the
-    /// ODS ops declaring that folder).
     fn folds_memref_cast(name: &str) -> bool {
         !matches!(name, "linalg.transpose" | "linalg.broadcast" | "linalg.map" | "linalg.reduce")
     }
@@ -161,7 +146,6 @@ impl<'a> Body<'a> {
         self[v].uses.len()
     }
 
-    /// `getIndexingMapsArray`: from `indexing_maps`, or as the op computes them.
     pub(crate) fn indexing_maps(&self, op: OpId) -> Option<Vec<AffineMap>> {
         if let Some(Attribute::Array(ms)) = self[op].get("indexing_maps") {
             return ms
@@ -191,7 +175,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `getStaticLoopRanges`: each loop's first operand dim, through the inverted maps.
     fn static_loop_ranges(&self, op: OpId) -> Option<Vec<i64>> {
         let maps = self.indexing_maps(op)?;
         let mut flat = Vec::new();
@@ -201,22 +184,18 @@ impl<'a> Body<'a> {
         (0..maps.first()?.dims).map(|d| flat.iter().find(|(e, _)| **e == AffineExpr::Dim(d)).map(|(_, s)| *s)).collect()
     }
 
-    /// `hasPureTensorSemantics`.
     fn pure_tensor(&self, op: OpId) -> bool {
         self[op].operands.iter().all(|v| !Lg::is_memref(&self[*v].ty))
     }
 
-    /// `hasPureBufferSemantics`.
     pub(crate) fn pure_buffer(&self, op: OpId) -> bool {
         self[op].operands.iter().all(|v| !Lg::is_tensor(&self[*v].ty))
     }
 
-    /// `isEqualConstantIntOrValue`.
     fn same_int_or_value(&self, a: Ofr, b: Ofr) -> bool {
         a == b || matches!((self.ofr_int(a), self.ofr_int(b)), (Some(x), Some(y)) if x == y)
     }
 
-    /// `getAsOpFoldResult(a) == getAsOpFoldResult(b)`.
     fn same_fold_result(&self, a: ValueId, b: ValueId) -> bool {
         match (self.constant_of(a), self.constant_of(b)) {
             (Some(x), Some(y)) => x == y,
@@ -226,7 +205,6 @@ impl<'a> Body<'a> {
     }
 }
 
-/// A `linalg.pack` or `linalg.unpack`, by its parts.
 struct Relayout<'a> {
     pack: bool,
     source: ValueId,
@@ -248,7 +226,6 @@ impl<'a> Relayout<'a> {
         Self { pack, source: ops[0], dest: ops[1], padding, tiles, inner: b.dense_i64(op, "inner_dims_pos"), outer: b.dense_i64(op, "outer_dims_perm"), attrs: b[op].attributes.clone() }
     }
 
-    /// `PackOp::create` / `UnPackOp::create`, with the discardable attributes `attrs`.
     fn create(&self, rw: &mut Rewriter<'_, 'a>) -> ValueId {
         let b = &*rw.body;
         let mut st = Vec::new();
@@ -275,17 +252,14 @@ impl<'a> Relayout<'a> {
         rw.body[op].results[0]
     }
 
-    /// `hasSameInnerOuterAttribute`.
     fn same_layout(&self, o: &Self) -> bool {
         self.inner == o.inner && (self.outer == o.outer || (Lg::is_identity(&self.outer) && Lg::is_identity(&o.outer)))
     }
 
-    /// `haveSameTiles`.
     fn same_tiles(&self, b: &Body<'_>, o: &Self) -> bool {
         self.tiles.len() == o.tiles.len() && self.tiles.iter().zip(&o.tiles).all(|(x, y)| b.same_int_or_value(*x, *y))
     }
 
-    /// `PackOp::requirePaddingValue`.
     fn requires_padding(&self, b: &Body<'_>, input: &[i64], output: &[i64]) -> bool {
         let mut tiles = output[..input.len()].to_vec();
         if !self.outer.is_empty() {
@@ -303,15 +277,12 @@ impl<'a> Relayout<'a> {
         })
     }
 
-    /// `paddingIsNotNeeded`.
     fn padding_not_needed(&self, b: &Body<'_>) -> bool {
         let (Some(src), Some(dst)) = (Lg::dims(&b[self.source].ty), Lg::dims(&b[self.dest].ty)) else { return false };
-        // (a dynamic source dim is fine under a unit tile)
         let unit_or_static = self.inner.iter().zip(&self.tiles).all(|(p, t)| src[*p as usize] != Dim::DYNAMIC || matches!(t, Ofr::C(1)));
         !self.tiles.iter().any(|t| matches!(t, Ofr::V(_))) && unit_or_static && !self.requires_padding(b, &src, &dst)
     }
 
-    /// `inferStaticShape`: the source and dest shapes with the untiled dims each side knows.
     fn infer_static(&self, b: &Body<'_>) -> Option<(Vec<i64>, Vec<i64>)> {
         let (mut src, mut dst) = (Lg::dims(&b[self.source].ty)?, Lg::dims(&b[self.dest].ty)?);
         let inv = if self.outer.is_empty() { Vec::new() } else { Lg::invert(&self.outer) };
@@ -339,7 +310,6 @@ impl<'a> Relayout<'a> {
         changed.then_some((src, dst))
     }
 
-    /// `UnPackOp::canFoldSliceOp`.
     fn can_fold_slice(&self, b: &Body<'_>, slice: OpId) -> bool {
         let (Some(st), Some(dest), Some(src)) = (Lg::dims(&b[b[slice].results[0]].ty), Lg::dims(&b[self.dest].ty), Lg::dims(&b[self.source].ty)) else { return false };
         if st.len() != dest.len() {
@@ -357,14 +327,11 @@ impl<'a> Relayout<'a> {
             let (p, tile) = (*pos as usize, if let Ofr::C(c) = tile { *c } else { Dim::DYNAMIC });
             st[p] != Dim::DYNAMIC && outer[p] != Dim::DYNAMIC && tile != Dim::DYNAMIC && outer[p] * tile - st[p] < tile
         });
-        // The slice must keep every dim that is not unpacked whole.
         tiled && (0..outer.len()).filter(|p| !self.inner.contains(&(*p as i64))).all(|p| outer[p] != Dim::DYNAMIC && outer[p] == st[p])
     }
 }
 
 impl<'a> Rewriter<'_, 'a> {
-    /// `mlir::clone(b, op, types, operands)`: `op` with other operands and result types, its
-    /// regions copied.
     fn clone_linalg(&mut self, op: OpId, operands: Vec<ValueId>, types: &[Type<'a>]) -> OpId {
         let new = self.body.clone_op(op, &mut Mapping::default());
         self.body.set_operands(new, operands);
@@ -374,9 +341,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.insert(new)
     }
 
-    /// A structured op whose body yields its first block argument (`fill`, `copy`,
-    /// `transpose`, `broadcast`), result types those of its tensor init; its results. The
-    /// OpDSL scalar cast is not built: the first operand's element type is the init's.
     fn structured(&mut self, data: OpData<'a>) -> Vec<ValueId> {
         let locs = RegionLocs::from(&*data.name);
         let unknown = || Some(Str::from("unknown"));
@@ -418,7 +382,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.structured(OpData::build("linalg.broadcast").operands(&[input, init]).with("dimensions", Lg::dense(dims)))
     }
 
-    /// `tensor::DimOp::create(b, loc, v, i)`: the index constant, then the dim.
     fn tensor_dim(&mut self, v: ValueId, i: usize) -> ValueId {
         let k = self.emit(&arith::Constant::new(Lg::index(i as i64), Type::Index));
         let k = self.body[k].results[0];
@@ -426,7 +389,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.body[d].results[0]
     }
 
-    /// `tensor::EmptyOp::create(b, loc, sizes, elem)`.
     fn empty(&mut self, sizes: &[Ofr], elem: Type<'a>) -> ValueId {
         let dims: Vec<i64> = sizes.iter().map(|s| if let Ofr::C(c) = s { *c } else { Dim::DYNAMIC }).collect();
         let dynamic: Vec<ValueId> = sizes.iter().filter_map(|s| if let Ofr::V(v) = s { Some(*v) } else { None }).collect();
@@ -434,7 +396,6 @@ impl<'a> Rewriter<'_, 'a> {
         self.body[e].results[0]
     }
 
-    /// `EraseIdentityLinalgOp`: a body that only yields block arguments, all maps equal.
     fn erase_identity(&mut self, op: OpId) -> bool {
         let b = &*self.body;
         let Some(maps) = b.indexing_maps(op) else { return false };
@@ -487,7 +448,6 @@ impl<'a> Rewriter<'_, 'a> {
         true
     }
 
-    /// `FoldFillWithTensorReshape`: the reshape of a fill is a fill of the reshaped init.
     fn fill_reshape(&mut self, op: OpId) -> bool {
         let b = &*self.body;
         let Some(fill) = b.def_named(b[op].operands[0], "linalg.fill") else { return false };
@@ -509,8 +469,6 @@ impl<'a> Rewriter<'_, 'a> {
         true
     }
 
-    /// `getScalarConstantAttrFromDenseSplat` of `op`'s input as a constant of its result type
-    /// (`static_only`: only a static one).
     fn splat_through(&mut self, op: OpId, static_only: bool) -> bool {
         let b = &*self.body;
         let Some(&r) = b[op].results.first() else { return false };
@@ -527,10 +485,8 @@ impl<'a> Rewriter<'_, 'a> {
         true
     }
 
-    /// `FoldTensorCastPackOp` / `FoldTensorCastUnPackOp`.
     fn relayout_cast(&mut self, op: OpId) -> bool {
         let b = &*self.body;
-        // (memref packs are not handled)
         if b[op].results.is_empty() {
             return false;
         }
@@ -544,7 +500,6 @@ impl<'a> Rewriter<'_, 'a> {
         let packed = Lg::dims(&b[if r.pack { r.dest } else { r.source }].ty).unwrap_or_default();
         let tail = &packed[packed.len() - r.tiles.len()..];
         r.tiles = tail.iter().zip(&r.tiles).map(|(s, t)| if *s == Dim::DYNAMIC || matches!(t, Ofr::C(_)) { *t } else { Ofr::C(*s) }).collect();
-        // (a tile the cast makes zero is left alone)
         if r.tiles.iter().any(|t| matches!(t, Ofr::C(0))) {
             return false;
         }
@@ -558,7 +513,6 @@ impl<'a> Rewriter<'_, 'a> {
         true
     }
 
-    /// `PackOp::canonicalize`.
     fn pack_canonicalize(&mut self, op: OpId) -> bool {
         let b = &*self.body;
         let p = Relayout::of(b, op);
@@ -601,7 +555,6 @@ impl<'a> Rewriter<'_, 'a> {
         true
     }
 
-    /// `UnPackOp::canonicalize`.
     fn unpack_canonicalize(&mut self, op: OpId) -> bool {
         let b = &*self.body;
         let u = Relayout::of(b, op);
@@ -649,12 +602,10 @@ impl<'a> Rewriter<'_, 'a> {
     }
 }
 
-/// `linalg` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct LinalgCanon;
 
 #[crate::patterns]
 impl LinalgCanon {
-    /// `EraseDeadLinalgOp`: an op over a memref with a zero-sized dim goes.
     #[rewrite(_)]
     fn erase_dead_linalg_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -665,8 +616,6 @@ impl LinalgCanon {
         true
     }
 
-    /// `FoldTensorCastConsumerOp`: a cast to a more static type of a linalg result goes into
-    /// the op, through its init.
     #[rewrite("tensor.cast")]
     fn fold_tensor_cast_consumer_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -705,8 +654,6 @@ impl LinalgCanon {
         rw.relayout_cast(op)
     }
 
-    /// `InferStaticShapeOfOperands`: dims one operand knows statically, through the
-    /// (projected permutation) maps, cast onto the others.
     #[rewrite(_)]
     fn infer_static_shape_of_operands(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -791,7 +738,6 @@ impl LinalgCanon {
         rw.erase_identity(op)
     }
 
-    /// `FoldBroadcasts`: a broadcast of a broadcast is one broadcast.
     #[rewrite("linalg.broadcast")]
     fn fold_broadcasts(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -810,20 +756,16 @@ impl LinalgCanon {
         true
     }
 
-    /// `FoldBroadcastSplatConstant`: a broadcast of a splat constant, a splat of the result's
-    /// static shape.
     #[rewrite("linalg.broadcast")]
     fn fold_broadcast_splat_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         rw.splat_through(op, true)
     }
 
-    /// `FoldTransposeSplatConstant`.
     #[rewrite("linalg.transpose")]
     fn fold_transpose_splat_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         rw.splat_through(op, false)
     }
 
-    /// `EraseSelfCopy`.
     #[rewrite("linalg.copy")]
     fn erase_self_copy(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -841,7 +783,6 @@ impl LinalgCanon {
         true
     }
 
-    /// `FoldConcatsOfFill`: a concat of fills of one value is a fill of the concatenated inits.
     #[rewrite("tensor.concat")]
     fn fold_concats_of_fill(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -863,7 +804,6 @@ impl LinalgCanon {
         true
     }
 
-    /// `FoldFillWithCopy`: a copy from a fill is a fill; a copy into a fill copies into its init.
     #[rewrite("linalg.copy")]
     fn fold_fill_with_copy(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -879,7 +819,6 @@ impl LinalgCanon {
         true
     }
 
-    /// `FoldFillWithTensorExtract`: an element of a fill is the fill value.
     #[rewrite("tensor.extract")]
     fn fold_fill_with_tensor_extract(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -889,7 +828,6 @@ impl LinalgCanon {
         true
     }
 
-    /// `FoldFillWithPack`: a pack of a fill (padded with the fill value) fills the pack's dest.
     #[rewrite("linalg.pack")]
     fn fold_fill_with_pack(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -905,7 +843,6 @@ impl LinalgCanon {
         true
     }
 
-    /// `FoldFillWithPad`: padding a fill with its value is a fill of the padded shape.
     #[rewrite("tensor.pad")]
     fn fold_fill_with_pad(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -916,7 +853,6 @@ impl LinalgCanon {
         let Some(dims) = Lg::dims(&rt) else { return false };
         let [low, high] = b.pad_lists(op);
         rw.set_before(op);
-        // `PadOp::reifyResultShapes`.
         let sum = AffineMap { dims: 3, syms: 0, results: vec![AffineExpr::Dim(0).add(AffineExpr::Dim(1)).add(AffineExpr::Dim(2))] };
         let mut sizes = Vec::new();
         for (i, d) in dims.iter().enumerate() {
@@ -948,8 +884,6 @@ impl LinalgCanon {
         rw.fill_reshape(op)
     }
 
-    /// `FoldInsertPadIntoFill`: inserting a pad (of the fill value) into a fill inserts the
-    /// pad's source instead, when the inserts before it touch other elements.
     #[rewrite("tensor.insert_slice")]
     fn fold_insert_pad_into_fill(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1000,7 +934,6 @@ impl LinalgCanon {
         true
     }
 
-    /// `FoldFillWithTranspose`: a transpose of a fill is a fill of the transpose's init.
     #[rewrite("linalg.transpose")]
     fn fold_fill_with_transpose(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1022,7 +955,6 @@ impl LinalgCanon {
         rw.pack_canonicalize(op)
     }
 
-    /// `FoldTransposeWithTranspose`: two transposes are one, permutations composed.
     #[rewrite("linalg.transpose")]
     fn fold_transpose_with_transpose(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1035,7 +967,6 @@ impl LinalgCanon {
         true
     }
 
-    /// `SwapTransposeWithBroadcast`: `transpose(broadcast(x))` ⇒ `broadcast(transpose(x))`.
     #[rewrite("linalg.transpose")]
     fn swap_transpose_with_broadcast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1066,7 +997,6 @@ impl LinalgCanon {
 }
 
 impl LinalgCanon {
-    /// The fold of a `linalg` op.
     pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold<'a> {
         let name = b[op].name.clone();
         match &*name {
@@ -1082,7 +1012,6 @@ impl LinalgCanon {
                     _ => Fold::Failed,
                 }
             }
-            // `reshapeConstantSource`: a splat source (equal to the padding value, if constant).
             "linalg.pack" | "linalg.unpack" if !b[op].results.is_empty() => {
                 let rt = b[b[op].results[0]].ty.clone();
                 let Some(k) = c[0].as_ref().and_then(|a| Const::try_from(a).ok()).filter(|k| k.elements && k.is_splat()) else { return Fold::Failed };
@@ -1099,7 +1028,6 @@ impl LinalgCanon {
         }
     }
 
-    /// `LinalgDialect::getCanonicalizationPatterns`, then the ops', by op name.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(EraseDeadLinalgOp).add(FoldTensorCastConsumerOp).add(FoldTensorCastPackOp).add(FoldTensorCastUnPackOp).add(InferStaticShapeOfOperands);
         set.add(EraseIdentityBroadcastOp).add(FoldBroadcasts).add(FoldBroadcastSplatConstant);

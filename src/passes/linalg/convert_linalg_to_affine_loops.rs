@@ -1,5 +1,3 @@
-//! `convert-linalg-to-affine-loops`.
-
 use crate::{LinalgLoops};
 use crate::pass;
 use crate::{Body, OpId};

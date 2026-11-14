@@ -1,15 +1,10 @@
-//! The libm call `math` and `complex` share (`ScalarOpToLibmCall`): an op as a `func.call` of its `float` /
-//! `double` function, declared at the start of the nearest symbol table.
-
 use mlirformat::{Attribute, FloatKind, FunctionType, Type};
 
 use crate::{ConversionRewriter as Cr, OpData, OpId};
 
-/// The libm call both share.
 pub(crate) struct Libm;
 
 impl Libm {
-    /// f64 ⇒ `Some(true)`, f32 ⇒ `Some(false)`, anything else ⇒ `None`.
     pub(crate) fn float(t: &Type<'_>) -> Option<bool> {
         match t {
             Type::Float(FloatKind::F64) => Some(true),
@@ -18,8 +13,6 @@ impl Libm {
         }
     }
 
-    /// The op as a call of `float,double`'s function, declared (private; `readnone` for math)
-    /// at the start of the nearest symbol table when it is not yet.
     pub(crate) fn call(cr: &mut Cr<'_, '_, '_>, op: OpId, to: &str, double: Option<bool>, readnone: bool) -> bool {
         let (Some(double), Some((float_fn, double_fn))) = (double, to.split_once(',')) else { return false };
         let name = if double { double_fn } else { float_fn };

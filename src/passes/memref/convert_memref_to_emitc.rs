@@ -1,11 +1,8 @@
-//! `convert-memref-to-emitc`.
-
 use crate::{Emitc, MemrefToEmitc};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, Run};
 
-/// `convert-memref-to-emitc`.
 #[pass("convert-memref-to-emitc", on = "builtin.module")]
 pub struct ConvertMemrefToEmitc {
     #[opt("lower-to-cpp")]

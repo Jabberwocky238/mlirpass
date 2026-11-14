@@ -1,7 +1,3 @@
-//! What turns a lowered kernel into a shader module: `spirv-lower-abi-attrs`
-//! (`LowerABIAttributesPass.cpp`, with `VulkanLayoutUtils::decorateType`) and
-//! `spirv-update-vce` (`UpdateVCEPass.cpp`).
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -13,12 +9,9 @@ use mlirformat::{Attribute, Error, FunctionType, ShapedKind, Type};
 use super::{EnumSpec, TargetEnv};
 use crate::{Body, OpData, OpId};
 
-/// `VulkanLayoutUtils`: explicit offsets and strides, as Vulkan lays buffers out.
 pub struct VulkanLayout;
 
 impl VulkanLayout {
-    /// `decorateType`: the type with its layout, its size (`u64::MAX`: runtime sized) and
-    /// alignment; `None` for what has no layout (pointers, identified structs).
     pub fn decorate<'a>(t: &Type<'a>) -> Option<(Type<'a>, u64, u64)> {
         if TargetEnv::is_scalar(t) {
             let w = u64::from(t.bit_width()?);
@@ -65,7 +58,6 @@ impl VulkanLayout {
     }
 }
 
-/// `spirv.entry_point_abi`'s fields.
 #[derive(Default)]
 struct EntryAbi {
     workgroup_size: Option<Vec<i64>>,
@@ -100,7 +92,6 @@ impl Abi {
         Attribute::integer(i128::from(v), Type::int(32))
     }
 
-    /// `#spirv.interface_var_abi<(set, binding), StorageClass>`.
     fn interface_var(a: &Attribute<'_>) -> Option<(i64, i64, Option<String>)> {
         let text = format!("{a}");
         let (nums, rest) = text.split_once('(')?.1.split_once(')')?;
@@ -119,7 +110,6 @@ impl Abi {
         TargetEnv::is_scalar(t) || TargetEnv::is_valid_vector(t)
     }
 
-    /// `createGlobalVarForEntryPointArgument`.
     fn global<'a>(body: &mut Body<'a>, f: OpId, i: usize, arg_ty: &Type<'a>, abi: &Attribute<'a>) -> Option<OpId> {
         let (set, binding, sc) = Self::interface_var(abi)?;
         let name = format!("{}_arg_{i}", super::lower::symbol_text(body[f].get("sym_name")?)?);
@@ -137,7 +127,6 @@ impl Abi {
         Some(g)
     }
 
-    /// `ProcessInterfaceVarABI`: entry function arguments as global variables.
     pub(crate) fn interface_vars(body: &mut Body<'_>, f: OpId) -> Result<(), Error> {
         let Some(Attribute::Type(Type::Function(fty))) = body[f].get("function_type").cloned() else { return Err(Error(String::from("spirv.func without a type"))) };
         let abis: Vec<_> = (0..fty.inputs.len()).map(|i| Self::arg_abi(body, f, i)).collect();
@@ -168,7 +157,6 @@ impl Abi {
                 repl = body[ld].results[0];
             }
             if body[repl].ty != *t && !body[args[i]].uses.is_empty() {
-                // The source materialization: a `spirv.Bitcast` right after the replacement.
                 let bc = body.create(OpData::build("spirv.Bitcast").operands(&[repl]), core::slice::from_ref(t));
                 let def = body.def_op(repl).expect("defined");
                 let next = body.next_op(def);
@@ -187,8 +175,6 @@ impl Abi {
         Ok(())
     }
 
-    /// `ProcessGraphInterfaceVarABI`: an entry graph's arguments and results as
-    /// `<name>_arg_<i>` / `<name>_res_<i>` globals, named by a `spirv.ARM.GraphEntryPoint`.
     pub(crate) fn graph_vars(body: &mut Body<'_>, g: OpId) -> Result<(), Error> {
         let failed = || Error(String::from("failed to legalize operation 'spirv.ARM.Graph'"));
         fn abis<'a>(body: &Body<'a>, g: OpId, key: &str) -> Vec<Option<Attribute<'a>>> {
@@ -229,7 +215,6 @@ impl Abi {
         Ok(())
     }
 
-    /// `lowerEntryPointABIAttr`.
     pub(crate) fn entry_point(body: &mut Body<'_>, module: OpId, f: OpId, env: &TargetEnv) -> Result<(), Error> {
         let Some(attr) = body[f].get("spirv.entry_point_abi").cloned() else { return Ok(()) };
         let mut abi = EntryAbi::parse(&attr);
@@ -295,6 +280,3 @@ impl Abi {
         Ok(())
     }
 }
-
-
-

@@ -1,8 +1,5 @@
-//! `convert-tensor-to-spirv`.
-
 use crate::{ArithSpirvOptions, ArithToSpirv, FuncToSpirv, SpirvOptions, SpirvTypes, TargetEnv, TensorToSpirv};
 
-/// `convert-tensor-to-spirv`.
 #[crate::pass("convert-tensor-to-spirv")]
 pub struct ConvertTensorToSpirv {
     #[opt("emulate-lt-32-bit-scalar-types", default = true)]

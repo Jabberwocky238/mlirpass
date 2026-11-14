@@ -1,6 +1,3 @@
-//! `convert-shape-to-std`, as `ShapeToStandard.cpp`: extent tensors and sizes as `tensor`,
-//! `arith` and `scf`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -11,7 +8,6 @@ use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The shape ⇒ standard patterns.
 pub struct ShapeToStd;
 
 #[patterns]
@@ -24,7 +20,6 @@ impl ShapeToStd {
         cr.rw.create(OpData::build(name).operands(v), &[]);
     }
 
-    /// An op built with its regions' contents first, as builders with body callbacks do.
     fn with_body<'a>(cr: &mut Cr<'_, 'a, '_>, data: OpData<'a>, types: &[Type<'a>], blocks: &[Vec<Type<'a>>], fill: &mut dyn FnMut(&mut Cr<'_, 'a, '_>, usize, &[ValueId])) -> OpId {
         let op = cr.rw.body.create(data, types);
         let mut made = Vec::new();
@@ -43,7 +38,6 @@ impl ShapeToStd {
         cr.rw.insert(op)
     }
 
-    /// `scf::ForOp::create` with a body builder returning what it yields.
     fn scf_for<'a>(cr: &mut Cr<'_, 'a, '_>, lb: ValueId, ub: ValueId, step: ValueId, inits: &[ValueId], body: &mut dyn FnMut(&mut Cr<'_, 'a, '_>, ValueId, &[ValueId]) -> Vec<ValueId>) -> OpId {
         let types = cr.rw.body.types(inits);
         let mut ops = vec![lb, ub, step];
@@ -56,7 +50,6 @@ impl ShapeToStd {
         })
     }
 
-    /// `scf::IfOp::create` with then and else builders.
     fn scf_if<'a>(cr: &mut Cr<'_, 'a, '_>, cond: ValueId, types: &[Type<'a>], then: &mut dyn FnMut(&mut Cr<'_, 'a, '_>) -> Option<ValueId>, other: &mut dyn FnMut(&mut Cr<'_, 'a, '_>) -> Option<ValueId>) -> OpId {
         Self::with_body(cr, OpData::build("scf.if").operands(&[cond]), types, &[Vec::new(), Vec::new()], &mut |cr, k, _| {
             let v = if k == 0 { then(cr) } else { other(cr) };
@@ -105,7 +98,6 @@ impl ShapeToStd {
         Type::tensor(&[Dim::DYNAMIC], Type::Index)
     }
 
-    /// The ranks of `shapes`, and their differences to the greatest one.
     fn ranks(cr: &mut Cr<'_, '_, '_>, shapes: &[ValueId], zero: ValueId) -> (ValueId, Vec<ValueId>) {
         let ranks: Vec<ValueId> = shapes.iter().map(|s| Self::dim(cr, *s, zero)).collect();
         let mut max = ranks[0];
@@ -116,7 +108,6 @@ impl ShapeToStd {
         (max, diffs)
     }
 
-    /// `getBroadcastedDim`.
     fn broadcasted_dim(cr: &mut Cr<'_, '_, '_>, shapes: &[ValueId], diffs: &[ValueId], d: ValueId) -> ValueId {
         let one = Self::cidx(cr, 1);
         let mut dim = one;
@@ -317,7 +308,7 @@ impl ShapeToStd {
             let shape = s[0];
             let rank = Self::dim(cr, shape, zero);
             let eq = Self::cmpi(cr, 0, frank, rank);
-            let same = Self::scf_if(cr, 
+            let same = Self::scf_if(cr,
                 eq,
                 &[Type::int(1)],
                 &mut |cr| {
@@ -419,7 +410,6 @@ impl ShapeToStd {
         true
     }
 
-    /// The DRR `CstrBroadcastableToRequire` / `CstrEqToRequire`.
     #[convert("shape.cstr_broadcastable", "shape.cstr_eq")]
     fn cstr(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -430,5 +420,4 @@ impl ShapeToStd {
         cr.replace_new(op, OpData::build("shape.cstr_require").operands(&[c]).with("msg", Attribute::Str { lit: msg.into(), ty: None }), &[wt]);
         true
     }
-
 }

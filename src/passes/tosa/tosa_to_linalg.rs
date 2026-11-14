@@ -1,11 +1,8 @@
-//! `tosa-to-linalg`.
-
 use crate::{TosaToLinalg, TosaToTensor};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Action, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId};
 
-/// `tosa-to-linalg`.
 #[pass("tosa-to-linalg", on = "func.func", ty = TosaToLinalgPass)]
 pub fn tosa_to_linalg<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let tc = TosaToTensor::converter();

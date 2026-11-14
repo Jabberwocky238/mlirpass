@@ -1,8 +1,5 @@
-//! `convert-vector-to-spirv`.
-
 use crate::{SpirvOptions, SpirvTypes, TargetEnv, UbToSpirv, VectorSpirvOptions, VectorToSpirv};
 
-/// `convert-vector-to-spirv`.
 #[crate::pass("convert-vector-to-spirv")]
 pub fn convert_vector_to_spirv<'a>(body: &mut crate::Body<'a>, op: crate::OpId) -> Result<(), mlirformat::Error> {
     let env = TargetEnv::lookup(body, op);

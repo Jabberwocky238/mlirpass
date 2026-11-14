@@ -1,9 +1,3 @@
-//! The `mlirpass` command line: `mlir-opt`'s, for the passes this crate has.
-//!
-//! ```text
-//! mlirpass in.mlir -split-input-file --convert-to-llvm -o out.mlir
-//! ```
-
 use std::io::Read;
 use std::process::ExitCode;
 
@@ -22,8 +16,6 @@ fn main() -> ExitCode {
 }
 
 fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    // The managers this run works with: every pass, and every upstream dialect, op and op
-    // interface.
     let (passes, opt, interfaces) = (Passes::upstream(), MlirOpt::upstream(), Interfaces::upstream());
     let inv = Invocation::parse(&passes, args)?;
     let src = match inv.input.as_deref() {

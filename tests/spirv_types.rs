@@ -1,6 +1,3 @@
-//! Every SPIR-V dialect type `mlir-opt` 22.1.8 printed in the fixtures reads back into a
-//! `SpirvType` and prints the same.
-
 mod common;
 
 use std::collections::BTreeSet;
@@ -17,7 +14,6 @@ fn spirv_types_print_as_mlir_opt() {
     let mut bad = Vec::new();
     for e in fs::read_dir(Fixtures::dir()).unwrap() {
         let path = e.unwrap().path();
-        // What mlir-opt printed (not the upstream inputs, written by hand).
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
         if ![".in.mlir", ".out.mlir", ".generic.mlir"].iter().any(|x| name.ends_with(x)) {
             continue;

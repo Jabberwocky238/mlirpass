@@ -1,5 +1,3 @@
-//! `symbol-dce`: erases the symbols nothing live can reach, as `SymbolDCE.cpp`.
-
 use alloc::collections::BTreeSet;
 use alloc::format;
 use alloc::vec::Vec;
@@ -14,7 +12,6 @@ pub fn symbol_dce<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     if !body.is_symbol_table(op) {
         return Err(Error(format!("'{}' op  was scheduled to run under SymbolDCE, but does not define a symbol table", body[op].name)));
     }
-    // A top-level table is hidden; one nested in the IR only when it is a private symbol.
     let hidden = body.parent_op(op).is_none() || !body.has(op, Trait::SymbolOpInterface) || body.visibility(op) == Visibility::Private;
     let mut live = BTreeSet::new();
     body.liveness(op, hidden, &mut live)?;
@@ -28,8 +25,6 @@ pub fn symbol_dce<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
 }
 
 impl Body<'_> {
-    /// `SymbolDCE::computeLiveness`: the symbols of `table` (and the tables nested in it) that
-    /// are live. `hidden`: no parent scope can see into `table`.
     fn liveness(&self, table: OpId, hidden: bool, live: &mut BTreeSet<OpId>) -> Result<(), Error> {
         let mut work = Vec::new();
         let region = self[table].regions[0];
@@ -38,7 +33,6 @@ impl Body<'_> {
                 work.push(op);
                 continue;
             }
-            // `canDiscardOnUseEmpty` defaults to «not public»; no upstream symbol overrides it.
             let vis = self.visibility(op);
             let discardable = (hidden || vis == Visibility::Private) && vis != Visibility::Public;
             if !discardable && live.insert(op) {
@@ -50,7 +44,6 @@ impl Body<'_> {
                 let inner = hidden || !self.has(op, Trait::SymbolOpInterface) || self.visibility(op) == Visibility::Private;
                 self.liveness(op, inner, live)?;
             } else {
-                // Uses inside a non-table op count as if they were at the top level.
                 work.extend(self.children(op).into_iter().filter(|o| !self[*o].regions.is_empty()));
             }
             let Some(parent) = self.parent_op(op).filter(|p| self.is_symbol_table(*p)) else { continue };

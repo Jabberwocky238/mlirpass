@@ -1,5 +1,3 @@
-//! Dialect-independent passes (and the memory-slot interfaces of `mem2reg` / `sroa`), as `mlir/lib/Transforms`.
-
 mod canonicalize;
 mod cse;
 mod dataflow;

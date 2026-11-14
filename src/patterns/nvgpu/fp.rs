@@ -1,7 +1,3 @@
-//! `nvgpu.truncf` / `nvgpu.extf` to NVVM's packed conversions (`NVGPUToNVVM.cpp`): the
-//! vector bitcast to 32-bit registers, one `nvvm.convert.*` per pair of elements, the results
-//! packed back; and the canonicalization that first makes the vector 1-D and register-aligned.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -10,12 +6,10 @@ use mlirformat::{Attribute, FloatKind, Type};
 use super::to_nvvm::NvgpuToNvvm;
 use crate::{ConversionRewriter as Cr, OpData, OpId, Rewriter, ValueId};
 
-/// The bits of one register.
 const REG_BITS: i64 = 32;
-/// The bits an `f6` takes in NVVM (an 8-bit container).
+
 const F6_CONTAINER: i64 = 8;
 
-/// `FPKind`: the float classes the conversions are between.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum FpKind {
     F32,
@@ -27,7 +21,6 @@ enum FpKind {
 }
 
 impl FpKind {
-    /// `classifyFPType`.
     fn of(t: &Type<'_>) -> Option<Self> {
         Some(match t {
             Type::Float(FloatKind::F32) => FpKind::F32,
@@ -41,16 +34,13 @@ impl FpKind {
     }
 }
 
-/// What one truncating conversion consumes and makes.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Trunc {
-    /// From two f32s: to two f16 / bf16 (packed in a vector), or to f8 / f6 / f4 pairs.
     F32ToF16,
     F32ToBf16,
     F32ToF8,
     F32ToF6,
     F32ToF4,
-    /// From a packed f16 / bf16 pair.
     F16ToF8,
     F16ToF6,
     F16ToF4,
@@ -60,7 +50,6 @@ enum Trunc {
 }
 
 impl Trunc {
-    /// `kFPTruncTable`.
     const TABLE: [(FpKind, FpKind, Trunc); 11] = [
         (FpKind::F32, FpKind::F16, Trunc::F32ToF16),
         (FpKind::F32, FpKind::Bf16, Trunc::F32ToBf16),
@@ -80,8 +69,6 @@ impl Trunc {
         Self::TABLE.iter().copied().find(|(a, b, _)| *a == s && *b == d)
     }
 
-    /// The op, its result's integer width (`None`: a packed 16-bit pair), and whether it takes
-    /// the rounding and saturation modes.
     fn op(self) -> (&'static str, Option<u32>, bool) {
         match self {
             Trunc::F32ToF16 => ("nvvm.convert.f32x2.to.f16x2", None, true),
@@ -99,7 +86,6 @@ impl Trunc {
     }
 }
 
-/// What one extending conversion consumes and makes.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Ext {
     F8ToF16,
@@ -111,7 +97,6 @@ enum Ext {
 }
 
 impl Ext {
-    /// `kFPExtTable`.
     const TABLE: [(FpKind, FpKind, Ext); 6] = [
         (FpKind::F8, FpKind::F16, Ext::F8ToF16),
         (FpKind::F8, FpKind::Bf16, Ext::F8ToBf16),
@@ -126,7 +111,6 @@ impl Ext {
         Self::TABLE.iter().find(|(a, b, _)| *a == s && *b == d).map(|(_, _, e)| *e)
     }
 
-    /// The op and whether it makes bf16 (which takes no `relu`).
     fn op(self) -> (&'static str, bool) {
         match self {
             Ext::F8ToF16 => ("nvvm.convert.f8x2.to.f16x2", false),
@@ -139,7 +123,6 @@ impl Ext {
     }
 }
 
-/// `getEffectiveBitWidth`: f6 lives in 8 bits.
 fn effective(bits: i64) -> i64 {
     if bits == 6 { F6_CONTAINER } else { bits }
 }
@@ -148,7 +131,6 @@ fn vec_of<'a>(n: i64, elem: Type<'a>) -> Type<'a> {
     Type::vector(&[n], &[false], elem)
 }
 
-/// One op of one result at the insertion point.
 fn make<'a>(rw: &mut Rewriter<'_, 'a>, data: OpData<'a>, ty: Type<'a>) -> ValueId {
     let o = rw.create(data, &[ty]);
     rw.body[o].results[0]
@@ -159,7 +141,6 @@ fn bit_width(t: &Type<'_>) -> i64 {
 }
 
 impl NvgpuToNvvm {
-    /// `extractElement`: an i64 index constant, then the element.
     fn element<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, i: i64, elem: Type<'a>) -> ValueId {
         let idx = Self::c(cr, i, 64);
         cr.build(OpData::build("llvm.extractelement").operands(&[v, idx]), elem)
@@ -175,8 +156,6 @@ impl NvgpuToNvvm {
         cr.build(OpData::build("llvm.insertelement").operands(&[into, v, idx]), ty)
     }
 
-    /// `createTruncConversion`: one conversion of the source registers at `base`, as an i32
-    /// (f16 / bf16) or the packed pair's integer.
     #[allow(clippy::too_many_arguments)]
     fn trunc_one<'a>(cr: &mut Cr<'_, 'a, '_>, conv: Trunc, src: ValueId, base: i64, modes: &[(&str, Attribute<'a>)], relu: &Attribute<'a>, dst_elem: &Type<'a>, random: Option<ValueId>) -> ValueId {
         let (name, int, rounding) = conv.op();
@@ -184,7 +163,6 @@ impl NvgpuToNvvm {
         let from_f32 = matches!(conv, Trunc::F32ToF16 | Trunc::F32ToBf16 | Trunc::F32ToF8 | Trunc::F32ToF6 | Trunc::F32ToF4);
         let mut operands = Vec::new();
         if from_f32 {
-            // `extractF32Pair`: both elements, then both bitcasts; the op takes them high first.
             let e0 = Self::element(cr, src, base, Type::int(32));
             let e1 = Self::element(cr, src, base + 1, Type::int(32));
             let lo = Self::bitcast(cr, e0, f32t.clone());
@@ -219,7 +197,6 @@ impl NvgpuToNvvm {
         if int.is_none() { Self::bitcast(cr, r, Type::int(32)) } else { r }
     }
 
-    /// `lowerTruncf`.
     pub(super) fn lower_truncf(cr: &mut Cr<'_, '_, '_>, op: OpId, input: ValueId, random: Option<ValueId>) -> bool {
         let b = &*cr.rw.body;
         let (src_ty, dst_ty) = (b[b[op].operands[0]].ty.clone(), b[b[op].results[0]].ty.clone());
@@ -285,7 +262,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `createExtConversion`: one conversion, as an i32.
     fn ext_one<'a>(cr: &mut Cr<'_, 'a, '_>, conv: Ext, src: ValueId, relu: &Attribute<'a>, src_elem: &Type<'a>) -> ValueId {
         let (name, bf16) = conv.op();
         let mut data = OpData::build(name).operands(&[src]).with("srcType", Attribute::Type(src_elem.clone()));
@@ -297,7 +273,6 @@ impl NvgpuToNvvm {
         Self::bitcast(cr, r, Type::int(32))
     }
 
-    /// `lowerExtf`.
     pub(super) fn lower_extf(cr: &mut Cr<'_, '_, '_>, op: OpId, input: ValueId) -> bool {
         let b = &*cr.rw.body;
         let (src_ty, dst_ty) = (b[b[op].operands[0]].ty.clone(), b[b[op].results[0]].ty.clone());
@@ -336,7 +311,6 @@ impl NvgpuToNvvm {
         for src_idx in 0..src_regs {
             let reg = Self::element(cr, regs, src_idx, Type::int(32));
             if eff_src == F6_CONTAINER {
-                // Four bytes: two pairs.
                 let halves = Self::bitcast(cr, reg, vec_of(2, Type::int(16)));
                 for half in 0..2 {
                     let h = Self::element(cr, halves, half, Type::int(16));
@@ -346,7 +320,6 @@ impl NvgpuToNvvm {
                     dst_idx += 1;
                 }
             } else {
-                // f4: four bytes, each a pair.
                 let bytes = Self::bitcast(cr, reg, vec_of(4, Type::int(8)));
                 for byte in 0..4 {
                     let pair = Self::element(cr, bytes, byte, Type::int(8));
@@ -366,7 +339,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `computePaddedElems`.
     fn padded(n: i64, src_bw: i64, dst_bw: i64, step: i64) -> i64 {
         let ceil = |x: i64, y: i64| (x + y - 1) / y;
         let (es, ed) = (effective(src_bw), effective(dst_bw));
@@ -374,8 +346,6 @@ impl NvgpuToNvvm {
         ceil(p, step) * step
     }
 
-    /// `NVGPUFPCanonicalizePattern`: a scalar broadcast, a multi-dimensional vector flattened,
-    /// one not filling whole registers padded with zeros; the conversion on that, taken back.
     pub(super) fn canonicalize_fp(rw: &mut Rewriter<'_, '_>, op: OpId, trunc: bool) -> bool {
         let b = &*rw.body;
         let (in_ty, out_ty) = (b[b[op].operands[0]].ty.clone(), b[b[op].results[0]].ty.clone());
@@ -403,11 +373,9 @@ impl NvgpuToNvvm {
         if multi {
             input = make(rw, OpData::build("vector.shape_cast").operands(&[input]), vec_of(n, src_elem.clone()));
         }
-        // `I64ArrayAttr`: i64 elements print untyped.
         let i64s = |xs: &[i64]| Attribute::Array(xs.iter().map(|x| Attribute::Int { lit: alloc::format!("{x}").into(), ty: None }).collect());
         if pad {
             let pty = vec_of(padded, src_elem.clone());
-            // `getZeroAttr` splat (written out: not every float format folds).
             let zero = Attribute::Builtin { name: "dense".into(), body: "<0.000000e+00>".into(), ty: Some(pty.clone()) };
             let z = make(rw, OpData::build("arith.constant").with("value", zero), pty.clone());
             input = make(rw, OpData::build("vector.insert_strided_slice").operands(&[input, z]).with("offsets", i64s(&[0])).with("strides", i64s(&[1])), pty);

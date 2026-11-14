@@ -1,5 +1,3 @@
-//! `gpu-kernel-outlining`.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -7,7 +5,6 @@ use alloc::vec::Vec;
 use mlirformat::{Attribute, Error};
 use crate::{Body, Mapping, OpData, OpId, Trait};
 
-/// `gpu-kernel-outlining`.
 #[crate::pass("gpu-kernel-outlining", on = "builtin.module")]
 pub struct GpuKernelOutlining {
     #[opt("data-layout-str")]
@@ -15,8 +12,6 @@ pub struct GpuKernelOutlining {
 }
 
 impl GpuKernelOutlining {
-    /// A `#dlti.dl_spec` as MLIR prints it: each `#dlti.dl_entry<key, value>` as
-    /// `key = value`, the value printed back.
     fn canonical_dl_spec(text: &str) -> String {
         let Some(inner) = text.trim().strip_prefix("#dlti.dl_spec<").and_then(|t| t.strip_suffix('>')) else { return String::from(text) };
         let mut entries = Vec::new();
@@ -80,8 +75,6 @@ impl crate::Run for GpuKernelOutlining {
                     format!("{}_kernel", p.and_then(|o| body.sym_name(o)).unwrap_or(""))
                 });
                 let (func, operands) = body.outline_kernel(l, &name);
-                // `createKernelModule`: an existing module of the launch's `module`, else a new
-                // one named after the kernel; with the symbols the kernel references.
                 let wanted = sym(body[l].get("module"));
                 let existing = wanted.as_deref().and_then(|m| body.lookup(module, m)).filter(|o| body[*o].name == "gpu.module");
                 let kmod = existing.unwrap_or_else(|| {
@@ -103,8 +96,6 @@ impl crate::Run for GpuKernelOutlining {
                 while let Some(o) = work.pop() {
                     for u in body.symbol_uses(o).unwrap_or_default() {
                         let Some(root) = u.path.first().map(|s| String::from(&**s)) else { continue };
-                        // A nested reference into a symbol of the parent does not resolve in the
-                        // kernel module.
                         if u.path.len() > 1 && body.lookup(module, &root).is_some() {
                             let path: Vec<String> = u.path.iter().map(|s| format!("@{s}")).collect();
                             return Err(Error(format!("nested symbol reference '{}' cannot be resolved inside the outlined kernel module; gpu-kernel-outlining does not support cross-module symbol references inside gpu.launch bodies", path.join("::"))));

@@ -1,5 +1,3 @@
-//! `convert-math-to-rocdl`.
-
 use alloc::format;
 use alloc::string::String;
 
@@ -7,10 +5,8 @@ use mlirformat::Error;
 
 use crate::{AmdChipset, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, LlvmConverter, LlvmOptions, MathRocdlOptions, MathToRocdl, Mode, OpId};
 
-/// The llvm intrinsics the pass keeps out (OCML instead).
 const ILLEGAL_LLVM: [&str; 13] = ["llvm.intr.cos", "llvm.intr.exp", "llvm.intr.exp2", "llvm.intr.fabs", "llvm.intr.ceil", "llvm.intr.floor", "llvm.frem", "llvm.intr.log", "llvm.intr.log10", "llvm.intr.log2", "llvm.intr.pow", "llvm.intr.sin", "llvm.intr.sqrt"];
 
-/// `convert-math-to-rocdl`, as `ConvertMathToROCDLPass`.
 #[crate::pass("convert-math-to-rocdl", on = "builtin.module")]
 pub struct ConvertMathToRocdl {
     #[opt("chipset")]

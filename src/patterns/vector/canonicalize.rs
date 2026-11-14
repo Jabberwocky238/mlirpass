@@ -1,5 +1,3 @@
-//! `vector`: folds, as `VectorOps.cpp`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -7,11 +5,8 @@ use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
 use crate::{ApInt, Body, Const, Def, Fold, Folded, OpData, OpId, Scalar, ValueId};
 
-/// `kPoisonIndex` of extract / insert positions and shuffle masks.
 const POISON: i64 = -1;
-/// `ShapedType::kDynamic`.
 
-/// A vector type's shape and its scalable flags.
 fn vshape(t: &Type<'_>) -> Option<(Vec<i64>, Vec<bool>)> {
     match t {
         Type::Shaped(s) if s.kind == ShapedKind::Vector => {
@@ -30,7 +25,6 @@ fn elem<'x, 'a>(t: &'x Type<'a>) -> &'x Type<'a> {
     t.element_type()
 }
 
-/// `computeStrides` of a shape (row-major suffix products).
 fn strides(shape: &[i64]) -> Vec<i64> {
     let mut out = vec![1; shape.len()];
     for i in (0..shape.len().saturating_sub(1)).rev() {
@@ -43,7 +37,6 @@ fn linearize(pos: &[i64], strides: &[i64]) -> i64 {
     pos.iter().zip(strides).map(|(p, s)| p * s).sum()
 }
 
-/// `isBroadcastableTo` (success only).
 pub fn broadcastable(src: &Type<'_>, dst: &Type<'_>) -> bool {
     let Some((dshape, dscal)) = vshape(dst) else { return false };
     let Some((sshape, sscal)) = vshape(src) else { return elem(dst) == src };
@@ -66,12 +59,10 @@ impl<'a> Body<'a> {
         self[op].set(name, Attribute::dense_i64(&v));
     }
 
-    /// `vector.extract` / `vector.insert` positions: static, dynamic ones as `Dim::DYNAMIC`.
     fn static_position(&self, op: OpId) -> Vec<i64> {
         self.dense_array(op, "static_position")
     }
 
-    /// The operands before the dynamic positions: 1 for extract, 2 for insert.
     fn fixed_operands(&self, op: OpId) -> usize {
         if self[op].name == "vector.insert" { 2 } else { 1 }
     }
@@ -80,7 +71,6 @@ impl<'a> Body<'a> {
         self[op].operands.len() > self.fixed_operands(op)
     }
 
-    /// `getMixedPosition`: constants as `Ok`, dynamic values as `Err`.
     fn mixed_position(&self, op: OpId) -> Vec<Result<i64, ValueId>> {
         let mut dynamic = self[op].operands[self.fixed_operands(op)..].iter();
         self.static_position(op).into_iter().map(|p| if p == Dim::DYNAMIC { Err(*dynamic.next().expect("dynamic position")) } else { Ok(p) }).collect()
@@ -102,7 +92,6 @@ impl<'a> Body<'a> {
         self[self[op].operands[i]].ty.clone()
     }
 
-    /// `isBroadcastLike`: a broadcast, or a shape_cast that only prepends unit dims.
     fn broadcast_like(&self, op: OpId) -> bool {
         match &*self[op].name {
             "vector.broadcast" => true,
@@ -114,7 +103,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `isOrderPreserving` of a transpose.
     fn order_preserving(&self, op: OpId) -> bool {
         let perm = self.dense_array(op, "permutation");
         let Some((shape, scal)) = vshape(&self.operand_ty(op, 0)) else { return false };
@@ -132,7 +120,6 @@ impl<'a> Body<'a> {
     }
 }
 
-/// The fold of a `vector` op.
 pub struct Folder<'b, 'a> {
     pub b: &'b mut Body<'a>,
     pub op: OpId,
@@ -179,7 +166,6 @@ impl<'a> Folder<'_, 'a> {
             "constant_mask" => self.constant_mask(),
             "mask" => self.mask(),
             "multi_reduction" => {
-                // No reduction dims: the source, whatever the rank.
                 if self.b.dense_array(self.op, "reduction_dims").is_empty() {
                     return Self::value(self.b[self.op].operands[0]);
                 }
@@ -199,7 +185,6 @@ impl<'a> Folder<'_, 'a> {
         }
     }
 
-    /// `extractInsertFoldConstantOp`: constant dynamic positions become static.
     fn fold_constant_positions(&mut self) -> bool {
         let op = self.op;
         if !self.b.has_dynamic_position(op) {
@@ -255,7 +240,6 @@ impl<'a> Folder<'_, 'a> {
         if in_place { Fold::InPlace } else { Fold::Failed }
     }
 
-    /// `foldDenseElementsAttrSrcExtractOp`.
     fn extract_dense(&self) -> Option<Fold<'a>> {
         let c = self.dense(0)?;
         let rt = self.b.result_ty(self.op);
@@ -281,7 +265,6 @@ impl<'a> Folder<'_, 'a> {
         }))
     }
 
-    /// `foldExtractOpFromExtractChain`.
     fn extract_chain(&mut self) -> Option<Fold<'a>> {
         let op = self.op;
         let mut current = self.def(0, "vector.extract")?;
@@ -306,7 +289,6 @@ impl<'a> Folder<'_, 'a> {
         Some(Fold::InPlace)
     }
 
-    /// `ExtractFromInsertTransposeChainState::fold`.
     fn extract_insert_transpose(&mut self) -> Option<Fold<'a>> {
         let op = self.op;
         if self.b.has_dynamic_position(op) {
@@ -327,7 +309,6 @@ impl<'a> Folder<'_, 'a> {
                 break;
             }
             if let Some(t) = transpose {
-                // `inversePermutation` then `applyPermutationMap`.
                 let perm = self.b.dense_array(t, "permutation");
                 let mut inv = vec![0usize; perm.len()];
                 for (i, p) in perm.iter().enumerate() {
@@ -363,7 +344,6 @@ impl<'a> Folder<'_, 'a> {
         self.extract_in_place(from, &position, extracted_rank, ok)
     }
 
-    /// `tryToFoldExtractOpInPlace`.
     fn extract_in_place(&mut self, source: ValueId, position: &[i64], rank: usize, can_fold: bool) -> Option<Fold<'a>> {
         if source == self.b[self.op].operands[0] || !can_fold {
             return None;
@@ -373,7 +353,6 @@ impl<'a> Folder<'_, 'a> {
         Some(Fold::InPlace)
     }
 
-    /// `foldExtractFromBroadcast`.
     fn extract_broadcast(&mut self) -> Option<Fold<'a>> {
         let op = self.op;
         let def = self.b.def_op(self.b[op].operands[0]).filter(|d| self.b.broadcast_like(*d))?;
@@ -402,7 +381,6 @@ impl<'a> Folder<'_, 'a> {
         Some(Fold::InPlace)
     }
 
-    /// `foldExtractFromShuffle`.
     fn extract_shuffle(&mut self) -> Option<Fold<'a>> {
         let op = self.op;
         if self.b.has_dynamic_position(op) {
@@ -421,7 +399,6 @@ impl<'a> Folder<'_, 'a> {
         Some(Fold::InPlace)
     }
 
-    /// `foldExtractFromShapeCast`.
     fn extract_shape_cast(&mut self) -> Option<Fold<'a>> {
         let op = self.op;
         if self.b.has_dynamic_position(op) {
@@ -486,7 +463,6 @@ impl<'a> Folder<'_, 'a> {
         }
     }
 
-    /// `foldExtractFromExtractStrided`.
     fn extract_strided(&mut self) -> Option<Fold<'a>> {
         let op = self.op;
         if self.b.has_dynamic_position(op) {
@@ -520,8 +496,6 @@ impl<'a> Folder<'_, 'a> {
         Some(Fold::InPlace)
     }
 
-    /// `foldExtractStridedOpFromInsertChain`, for `vector.extract` (offsets = position) and
-    /// `vector.extract_strided_slice` (offsets attribute).
     fn insert_strided_chain(&mut self, offsets: Vec<i64>, dest_rank: usize, set: impl FnOnce(&mut Body<'a>, OpId, ValueId, Vec<i64>)) -> Option<Fold<'a>> {
         let mut ins = self.def(0, "vector.insert_strided_slice")?;
         if self.has_zero_d(ins) {
@@ -579,7 +553,6 @@ impl<'a> Folder<'_, 'a> {
         })
     }
 
-    /// `foldScalarExtractFromFromElements`.
     fn extract_from_elements(&mut self) -> Option<Fold<'a>> {
         let op = self.op;
         if self.b.has_dynamic_position(op) {
@@ -602,7 +575,6 @@ impl<'a> Folder<'_, 'a> {
             return Self::value(v);
         }
         let in_place = self.fold_constant_positions();
-        // `foldInsertUseChain`.
         if let Some(prev) = self.b.def_named(dest, "vector.insert")
             && self.b.mixed_position(op) == self.b.mixed_position(prev)
         {
@@ -619,7 +591,6 @@ impl<'a> Folder<'_, 'a> {
         if in_place { Fold::InPlace } else { Fold::Failed }
     }
 
-    /// `foldDenseElementsAttrDestInsertOp`.
     fn insert_dense(&self) -> Option<Fold<'a>> {
         let op = self.op;
         if self.b.has_dynamic_position(op) {
@@ -655,8 +626,6 @@ impl<'a> Folder<'_, 'a> {
         Some(Self::attr(Const { ty: dt, values: all, elements: true }.into()))
     }
 
-    /// `convertNumericAttr`: an integer to the element width, a float bit-cast into an
-    /// integer element.
     fn numeric(s: Scalar, ty: &Type<'_>) -> Scalar {
         match (s, ty) {
             (Scalar::Int(i), Type::Integer { width, .. }) => Scalar::Int(ApInt::new(*width, i.signed())),
@@ -672,7 +641,6 @@ impl<'a> Folder<'_, 'a> {
         if self.b[src].ty == rt {
             return Self::value(src);
         }
-        // `foldBroadcastOfShapeCast`.
         if let Some(sc) = self.def(0, "vector.shape_cast") {
             let st = self.b.operand_ty(sc, 0);
             if broadcastable(&st, &rt) {
@@ -691,7 +659,6 @@ impl<'a> Folder<'_, 'a> {
             return Self::poison();
         }
         let Ok(c) = Const::try_from(a) else {
-            // A float of a format `Const` cannot hold (`f8E4M3FN`, `f4E2M1FN`, ..): its literal splat.
             if let Attribute::Float { lit, ty: Some(t) } = a
                 && *t == *elem(&rt)
                 && let Ok(d) = mlirformat::Parser::read(&alloc::format!("dense<{lit}> : {rt}"), |p| p.attr())
@@ -722,7 +689,6 @@ impl<'a> Folder<'_, 'a> {
         if step(s1[0], s2[0]) {
             return Self::value(self.b[op].operands[1]);
         }
-        // `foldShufflePoisonOperandToMask`: indices into a poison operand are poison.
         let (q1, q2) = (self.cst(0).is_some_and(Attribute::is_poison), self.cst(1).is_some_and(Attribute::is_poison));
         if q1 || q2 {
             let new: Vec<i64> = mask.iter().map(|&m| if m != POISON && ((q1 && m < s1[0]) || (q2 && m >= s1[0])) { POISON } else { m }).collect();
@@ -860,7 +826,6 @@ impl<'a> Folder<'_, 'a> {
     fn from_elements(&mut self) -> Fold<'a> {
         let op = self.op;
         let elems = self.b[op].operands.clone();
-        // `foldFromElementsToElements`.
         if let Some(&first) = elems.first()
             && let Some(te) = self.b.def_named(first, "vector.to_elements")
             && elems.iter().all(|e| self.b.def_op(*e) == Some(te))
@@ -870,7 +835,6 @@ impl<'a> Folder<'_, 'a> {
                 return Self::value(input);
             }
         }
-        // `foldFromElementsToConstant`.
         if elems.is_empty() || self.c.iter().any(|c| c.as_ref().is_none_or(Attribute::is_poison)) {
             return Fold::Failed;
         }
@@ -921,7 +885,6 @@ impl<'a> Folder<'_, 'a> {
         Fold::Failed
     }
 
-    /// `MaskOp::fold`: an empty mask region forwards its yield; an all-true mask unwraps.
     fn mask(&mut self) -> Fold<'a> {
         let op = self.op;
         let region = self.b[op].regions[0];
@@ -958,7 +921,6 @@ impl<'a> Folder<'_, 'a> {
         if c.is_splat() {
             return Self::attr(Const::splat(c.values[0], rt).into());
         }
-        // `foldExtractStridedSliceNonSplatConstant`.
         if self.array_attr(op, "strides").iter().any(|s| *s != 1) {
             return Fold::Failed;
         }
@@ -991,7 +953,6 @@ impl<'a> Folder<'_, 'a> {
         Self::attr(Const { ty: rt, values, elements: true }.into())
     }
 
-    /// `foldExtractStridedOpFromInsertChain` for `vector.extract_strided_slice`.
     fn strided_from_insert_chain(&mut self) -> bool {
         let op = self.op;
         let (eo, es, esz) = (self.array_attr(op, "offsets"), self.array_attr(op, "strides"), self.array_attr(op, "sizes"));
@@ -1057,7 +1018,6 @@ impl<'a> Folder<'_, 'a> {
         let base = b[op].operands[1];
         let tensor = matches!(&b[base].ty, Type::Shaped(s) if s.kind == ShapedKind::Tensor && s.shape.is_some());
         if tensor && let Some(read) = b.def_named(b[op].operands[0], "vector.transfer_read") {
-            // `foldReadInitWrite`.
             let (rp, wp) = (b.perm(read), b.perm(op));
             let minor = |p: &Option<Perm>| p.as_ref().is_some_and(Perm::minor_identity);
             let zero = |vs: Vec<ValueId>| vs.iter().all(|v| const_int(b, *v) == Some(0));
@@ -1080,7 +1040,6 @@ impl<'a> Folder<'_, 'a> {
             {
                 return Self::value(b[read].operands[0]);
             }
-            // `foldWAR`.
             if b[read].operands[0] == base && b.transfer_indices(read) == b.transfer_indices(op) && b[read].get("permutation_map") == b[op].get("permutation_map") && b.result_ty(read) == b.operand_ty(op, 0) && b.transfer_mask(read).is_none() && b.transfer_mask(op).is_none() {
                 return Self::value(b[read].operands[0]);
             }
@@ -1091,7 +1050,6 @@ impl<'a> Folder<'_, 'a> {
         self.memref_cast()
     }
 
-    /// `foldRAW`: a read of what a write to the same tensor just wrote.
     fn fold_raw(&self) -> Option<ValueId> {
         let (b, op) = (&*self.b, self.op);
         let base = b[op].operands[0];
@@ -1112,7 +1070,6 @@ impl<'a> Folder<'_, 'a> {
         None
     }
 
-    /// `tensor::foldTensorCast`: a `tensor.cast` that loses static information folds away.
     fn tensor_cast(&mut self) -> Fold<'a> {
         let op = self.op;
         let mut changed = false;
@@ -1128,14 +1085,12 @@ impl<'a> Folder<'_, 'a> {
         if changed { Fold::InPlace } else { Fold::Failed }
     }
 
-    /// `memref::foldMemRefCast`.
     fn memref_cast(&mut self) -> Fold<'a> {
         if self.b.fold_memref_cast(self.op, None) { Fold::InPlace } else { Fold::Failed }
     }
 }
 
 impl<'a> Body<'a> {
-    /// `getMaskFormat`: `Some(true)` all true, `Some(false)` all false, `None` unknown.
     pub fn mask_format(&self, mask: ValueId) -> Option<bool> {
         let d = self.def_op(mask)?;
         match &*self[d].name {
@@ -1183,8 +1138,6 @@ impl<'a> Body<'a> {
     }
 }
 
-/// A transfer op's permutation map: per result, the dim it reads, or `None` for a
-/// broadcast (constant `0`).
 #[derive(Debug, Clone, PartialEq)]
 struct Perm {
     dims: usize,
@@ -1216,13 +1169,11 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// The vector rank of a transfer.
     fn transfer_rank(&self, op: OpId) -> usize {
         let v = if self[op].name == "vector.transfer_read" { self.result_ty(op) } else { self.operand_ty(op, 0) };
         vrank(&v).unwrap_or(0)
     }
 
-    /// (base, indices, padding?, mask?) operand ranges of a transfer.
     fn transfer_segments(&self, op: OpId) -> Vec<usize> {
         self.segments(op, "operandSegmentSizes").unwrap_or_default()
     }
@@ -1250,7 +1201,6 @@ impl<'a> Body<'a> {
         self.in_bounds(op).contains(&false)
     }
 
-    /// `foldTransferInBoundsAttribute`.
     fn transfer_in_bounds(&mut self, op: OpId) -> bool {
         let rank = self.transfer_rank(op);
         if rank == 0 {
@@ -1294,7 +1244,6 @@ impl<'a> Body<'a> {
         true
     }
 
-    /// `foldTransferFullMask`: an all-true mask goes.
     fn transfer_full_mask(&mut self, op: OpId) -> bool {
         let Some(m) = self.transfer_mask(op) else { return false };
         if self.mask_format(m) != Some(true) {
@@ -1309,7 +1258,6 @@ impl<'a> Body<'a> {
         true
     }
 
-    /// `isDisjointTransferIndices` (constant indices only).
     fn disjoint_transfers(&self, a: OpId, b: OpId) -> bool {
         let vt = |o: OpId| if self[o].name == "vector.transfer_read" { self.result_ty(o) } else { self.operand_ty(o, 0) };
         let (ta, tb) = (vt(a), vt(b));
@@ -1334,22 +1282,17 @@ impl<'a> Body<'a> {
     }
 }
 
-// ---- canonicalization patterns -----------------------------------------------------------
-
-/// `getConstantIntValue`: an integer `arith.constant` (or other constant) behind `v`.
 fn const_int(b: &Body<'_>, v: ValueId) -> Option<i64> {
     let c = Const::try_from(&b.constant_of(v)?).ok().filter(|c| !c.elements)?;
     Some(c.as_int()?.signed() as i64)
 }
 
-/// `getScalarSplatSource`: the scalar a `vector.broadcast` splats.
 fn splat_source(b: &Body<'_>, v: ValueId) -> Option<ValueId> {
     let d = b.def_named(v, "vector.broadcast")?;
     let s = b[d].operands[0];
     vrank(&b[s].ty).is_none().then_some(s)
 }
 
-/// The `#vector.kind<...>` of an op.
 fn kind(b: &Body<'_>, op: OpId) -> Option<alloc::string::String> {
     match b[op].get("kind")? {
         Attribute::Extended { ext, .. } => Some(ext.body.as_deref()?.trim_matches(|c| c == '<' || c == '>').into()),
@@ -1357,7 +1300,6 @@ fn kind(b: &Body<'_>, op: OpId) -> Option<alloc::string::String> {
     }
 }
 
-/// An `ArrayAttr` of `i64` integers (the type is implied, so not spelled).
 fn array_i64<'a>(v: &[i64]) -> Attribute<'a> {
     Attribute::Array(v.iter().map(|x| Attribute::Int { lit: alloc::format!("{x}").into(), ty: None }).collect())
 }
@@ -1370,7 +1312,6 @@ fn i64_array(b: &Body<'_>, op: OpId, name: &str) -> Vec<i64> {
 }
 
 impl<'a> crate::Rewriter<'_, 'a> {
-    /// `vector.extract %src[pos]`, its type inferred.
     fn vextract(&mut self, src: ValueId, pos: &[i64]) -> ValueId {
         let ty = self.body[src].ty.clone();
         let (shape, scal) = vshape(&ty).expect("a vector");
@@ -1391,7 +1332,6 @@ impl<'a> crate::Rewriter<'_, 'a> {
         true
     }
 
-    /// `makeArithReduction`: `v1 kind acc`, selected against `acc` by `mask`.
     pub fn arith_reduction(&mut self, kind: &str, v1: ValueId, acc: ValueId, fastmath: Option<Attribute<'a>>, mask: Option<ValueId>) -> ValueId {
         let ty = self.body[v1].ty.clone();
         let float = matches!(elem(&ty), Type::Float(_));
@@ -1424,18 +1364,15 @@ impl<'a> crate::Rewriter<'_, 'a> {
     }
 }
 
-/// The `vector.mask` around `op`, if it is the maskable op of one.
 fn masking_op(b: &Body<'_>, op: OpId) -> Option<OpId> {
     let p = b.parent_op(op)?;
     (b[p].name == "vector.mask").then_some(p)
 }
 
-/// `vector` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct VectorCanon;
 
 #[crate::patterns]
 impl VectorCanon {
-    /// `ElideUnitDimsInMultiDimReduction`.
     #[rewrite("vector.multi_reduction")]
     fn elide_unit_dims_in_multi_dim_reduction(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1472,7 +1409,6 @@ impl VectorCanon {
         true
     }
 
-    /// `ElideSingleElementReduction`.
     #[rewrite("vector.reduction")]
     fn elide_single_element_reduction(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1501,7 +1437,6 @@ impl VectorCanon {
         true
     }
 
-    /// `ExtractOpFromBroadcast`.
     #[rewrite("vector.extract")]
     fn extract_op_from_broadcast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1517,7 +1452,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.broadcast", src, rt)
     }
 
-    /// `ExtractOpFromCreateMask`.
     #[rewrite("vector.extract")]
     fn extract_op_from_create_mask(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1556,8 +1490,6 @@ impl VectorCanon {
         true
     }
 
-    /// `ExtractOpFromConstantMask`: an extract of a `constant_mask` is all false outside the
-    /// mask, else the inner `constant_mask` (true for a scalar).
     #[rewrite("vector.extract")]
     fn extract_op_from_constant_mask(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1575,7 +1507,6 @@ impl VectorCanon {
         };
         for (i, p) in pos.iter().enumerate() {
             if *p == Dim::DYNAMIC {
-                // (a dynamic position is fine in an all-true dim)
                 if sizes[i] == mshape[i] {
                     continue;
                 }
@@ -1595,7 +1526,6 @@ impl VectorCanon {
         true
     }
 
-    /// `ExtractToShapeCast`: an extract at zeros keeping every element is a `shape_cast`.
     #[rewrite("vector.extract")]
     fn extract_to_shape_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1612,8 +1542,6 @@ impl VectorCanon {
         true
     }
 
-    /// `FoldExtractFromInsertUnitDim`: extracting a prefix of an insert's position whose
-    /// remaining dims are all 1 is the inserted value, shape-cast or broadcast.
     #[rewrite("vector.extract")]
     fn fold_extract_from_insert_unit_dim(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1639,7 +1567,6 @@ impl VectorCanon {
         true
     }
 
-    /// `BroadcastToShapeCast`: a vector broadcast keeping the element count is a `shape_cast`.
     #[rewrite("vector.broadcast")]
     fn broadcast_to_shape_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1653,8 +1580,6 @@ impl VectorCanon {
         true
     }
 
-    /// `FoldShapeCastOfFromElements`: a `shape_cast` of a `from_elements` is one of the result
-    /// type.
     #[rewrite("vector.shape_cast")]
     fn fold_shape_cast_of_from_elements(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1665,8 +1590,6 @@ impl VectorCanon {
         true
     }
 
-    /// `FoldUnusedShuffleOperand`: an all-poison mask is poison; an operand no index uses is
-    /// replaced by poison.
     #[rewrite("vector.shuffle")]
     fn fold_unused_shuffle_operand(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1694,7 +1617,6 @@ impl VectorCanon {
         false
     }
 
-    /// `foldExtractFromShapeCastToShapeCast`.
     #[rewrite("vector.extract")]
     fn extract_from_shape_cast_to_shape_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1708,7 +1630,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.shape_cast", s, rt)
     }
 
-    /// `foldExtractFromFromElements`.
     #[rewrite("vector.extract")]
     fn extract_from_from_elements(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1731,7 +1652,6 @@ impl VectorCanon {
         true
     }
 
-    /// `ToElementsOfBroadcast`.
     #[rewrite("vector.to_elements")]
     fn to_elements_of_broadcast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1757,7 +1677,6 @@ impl VectorCanon {
         true
     }
 
-    /// `rewriteFromElementsAsBroadcast`.
     #[rewrite("vector.from_elements")]
     fn from_elements_as_broadcast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1769,7 +1688,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.broadcast", s, rt)
     }
 
-    /// `FromElementsToShapeCast`.
     #[rewrite("vector.from_elements")]
     fn from_elements_to_shape_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1821,7 +1739,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.shape_cast", x, rt)
     }
 
-    /// `BroadcastFolder`.
     #[rewrite("vector.broadcast")]
     fn broadcast_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1830,7 +1747,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.broadcast", s, rt)
     }
 
-    /// `ShuffleSplat`.
     #[rewrite("vector.shuffle")]
     fn shuffle_splat(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1842,7 +1758,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.broadcast", s, rt)
     }
 
-    /// `ShuffleInterleave`.
     #[rewrite("vector.shuffle")]
     fn shuffle_interleave(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1866,7 +1781,6 @@ impl VectorCanon {
         true
     }
 
-    /// `Canonicalize0DShuffleOp`.
     #[rewrite("vector.shuffle")]
     fn canonicalize0_d_shuffle_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1880,7 +1794,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.broadcast", src, rt)
     }
 
-    /// `InsertToBroadcast`.
     #[rewrite("vector.insert")]
     fn insert_to_broadcast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1895,7 +1808,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.broadcast", v, dt)
     }
 
-    /// `InsertSplatToSplat`.
     #[rewrite("vector.insert")]
     fn insert_splat_to_splat(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1907,7 +1819,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.broadcast", s, rt)
     }
 
-    /// `InsertChainFullyInitialized`.
     #[rewrite("vector.insert")]
     fn insert_chain_fully_initialized(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1979,7 +1890,6 @@ impl VectorCanon {
         true
     }
 
-    /// `FoldInsertStridedSliceSplat`.
     #[rewrite("vector.insert_strided_slice")]
     fn fold_insert_strided_slice_splat(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1992,7 +1902,6 @@ impl VectorCanon {
         true
     }
 
-    /// `FoldInsertStridedSliceOfExtract`.
     #[rewrite("vector.insert_strided_slice")]
     fn fold_insert_strided_slice_of_extract(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2005,7 +1914,6 @@ impl VectorCanon {
         true
     }
 
-    /// `InsertStridedSliceConstantFolder`.
     #[rewrite("vector.insert_strided_slice")]
     fn insert_strided_slice_constant_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2056,7 +1964,6 @@ impl VectorCanon {
         true
     }
 
-    /// `StridedSliceFolder`: a slice of a slice (unit strides) as one slice of the source.
     #[rewrite("vector.extract_strided_slice")]
     fn strided_slice_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2076,7 +1983,6 @@ impl VectorCanon {
         true
     }
 
-    /// `StridedSliceCreateMaskFolder`.
     #[rewrite("vector.extract_strided_slice")]
     fn strided_slice_create_mask_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2102,7 +2008,6 @@ impl VectorCanon {
         true
     }
 
-    /// `StridedSliceConstantMaskFolder`.
     #[rewrite("vector.extract_strided_slice")]
     fn strided_slice_constant_mask_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2122,7 +2027,6 @@ impl VectorCanon {
         true
     }
 
-    /// `StridedSliceBroadcast`.
     #[rewrite("vector.extract_strided_slice")]
     fn strided_slice_broadcast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2154,7 +2058,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.broadcast", source, rt)
     }
 
-    /// `StridedSliceSplat`.
     #[rewrite("vector.extract_strided_slice")]
     fn strided_slice_splat(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2163,7 +2066,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.broadcast", s, rt)
     }
 
-    /// `ContiguousExtractStridedSliceToExtract`.
     #[rewrite("vector.extract_strided_slice")]
     fn contiguous_extract_strided_slice_to_extract(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2193,7 +2095,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.shape_cast", x, rt)
     }
 
-    /// `MaskedLoadFolder`.
     #[rewrite("vector.maskedload")]
     fn masked_load_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2213,7 +2114,6 @@ impl VectorCanon {
         true
     }
 
-    /// `MaskedStoreFolder`.
     #[rewrite("vector.maskedstore")]
     fn masked_store_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2230,7 +2130,6 @@ impl VectorCanon {
         true
     }
 
-    /// `ExpandLoadFolder`.
     #[rewrite("vector.expandload")]
     fn expand_load_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2250,7 +2149,6 @@ impl VectorCanon {
         true
     }
 
-    /// `CompressStoreFolder`.
     #[rewrite("vector.compressstore")]
     fn compress_store_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2267,7 +2165,6 @@ impl VectorCanon {
         true
     }
 
-    /// `GatherFolder`: an all-false gather is its pass-through.
     #[rewrite("vector.gather")]
     fn gather_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2280,7 +2177,6 @@ impl VectorCanon {
         true
     }
 
-    /// `FoldContiguousGather`.
     #[rewrite("vector.gather")]
     fn fold_contiguous_gather(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2299,7 +2195,6 @@ impl VectorCanon {
         true
     }
 
-    /// `ScatterFolder`.
     #[rewrite("vector.scatter")]
     fn scatter_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2321,7 +2216,6 @@ impl VectorCanon {
         true
     }
 
-    /// `FoldContiguousScatter`.
     #[rewrite("vector.scatter")]
     fn fold_contiguous_scatter(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2339,7 +2233,6 @@ impl VectorCanon {
         true
     }
 
-    /// `ShapeCastCreateMaskFolderTrailingOneDim`.
     #[rewrite("vector.shape_cast")]
     fn shape_cast_create_mask_folder_trailing_one_dim(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2380,7 +2273,6 @@ impl VectorCanon {
         true
     }
 
-    /// `ShapeCastBroadcastFolder`.
     #[rewrite("vector.shape_cast")]
     fn shape_cast_broadcast_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2399,7 +2291,6 @@ impl VectorCanon {
         false
     }
 
-    /// `FoldTransposeCreateMask`.
     #[rewrite("vector.transpose")]
     fn fold_transpose_create_mask(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2418,7 +2309,6 @@ impl VectorCanon {
         true
     }
 
-    /// `FoldTransposeShapeCast`.
     #[rewrite("vector.transpose")]
     fn fold_transpose_shape_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2430,7 +2320,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.shape_cast", s, rt)
     }
 
-    /// `TransposeFolder`: two transposes compose.
     #[rewrite("vector.transpose")]
     fn transpose_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2442,7 +2331,6 @@ impl VectorCanon {
         true
     }
 
-    /// `FoldTransposeSplat`.
     #[rewrite("vector.transpose")]
     fn fold_transpose_splat(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2451,7 +2339,6 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.broadcast", s, rt)
     }
 
-    /// `FoldTransposeFromElements`.
     #[rewrite("vector.transpose")]
     fn fold_transpose_from_elements(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2478,7 +2365,6 @@ impl VectorCanon {
         true
     }
 
-    /// `FoldTransposeBroadcast`.
     #[rewrite("vector.transpose")]
     fn fold_transpose_broadcast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2503,19 +2389,16 @@ impl VectorCanon {
         rw.replace_unary(op, "vector.broadcast", src, rt)
     }
 
-    /// `CanonicalizeContractAdd<arith::AddIOp>`.
     #[rewrite("arith.addi")]
     fn canonicalize_contract_add_i(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         contract_add(rw, op)
     }
 
-    /// `CanonicalizeContractAdd<arith::AddFOp>`.
     #[rewrite("arith.addf")]
     fn canonicalize_contract_add_f(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         contract_add(rw, op)
     }
 
-    /// `FoldWaw`: a write overwriting an earlier identical one skips it.
     #[rewrite("vector.transfer_write")]
     fn fold_waw(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2541,7 +2424,6 @@ impl VectorCanon {
         false
     }
 
-    /// `CreateMaskFolder`: constant bounds make a `vector.constant_mask`.
     #[rewrite("vector.create_mask")]
     fn create_mask_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2577,9 +2459,6 @@ impl VectorCanon {
         true
     }
 
-    /// `TransferReadAfterWriteToBroadcast`: reading back (unmasked, in bounds, at the same
-    /// indices and chunk) what a tensor transfer write wrote is a transpose of a broadcast of the
-    /// written vector.
     #[rewrite("vector.transfer_read")]
     fn transfer_read_after_write_to_broadcast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2595,7 +2474,6 @@ impl VectorCanon {
         let read_ty = b.result_ty(op);
         let written = b[write].operands[0];
         let (Some((rshape, rscal)), Some((wshape, _))) = (vshape(&read_ty), vshape(&b[written].ty)) else { return false };
-        // `getTransferChunkAccessed`.
         let chunk = |p: &Perm, shape: &[i64]| {
             let mut c = vec![1i64; p.dims];
             for (r, n) in p.results.iter().zip(shape) {
@@ -2608,7 +2486,6 @@ impl VectorCanon {
         if chunk(&rp, &rshape) != chunk(&wp, &wshape) {
             return false;
         }
-        // `inverseWithUnusedDims(write)` then the read map composed with it.
         let inv: Vec<Option<usize>> = (0..wp.dims).map(|t| wp.results.iter().position(|r| *r == Some(t))).collect();
         let composed: Vec<Option<usize>> = rp.results.iter().map(|r| r.and_then(|t| inv[t])).collect();
         if (0..wp.results.len()).any(|i| !composed.contains(&Some(i))) {
@@ -2637,8 +2514,6 @@ impl VectorCanon {
         true
     }
 
-    /// `SwapExtractSliceOfTransferWrite`: inserting a zero-offset slice of a full transfer write
-    /// writes into the matching slice of the insert's destination instead.
     #[rewrite("tensor.insert_slice")]
     fn swap_extract_slice_of_transfer_write(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2667,7 +2542,6 @@ impl VectorCanon {
         if ins[1].len() != exl[1].len() || ins[1].iter().zip(&exl[1]).any(|(x, y)| x != y && (b.ofr_int(*x).is_none() || b.ofr_int(*x) != b.ofr_int(*y))) {
             return false;
         }
-        // The write must cover its whole tensor.
         let Some(perm) = b.perm(write) else { return false };
         let base_ty = b[b[write].operands[1]].ty.clone();
         let Some(tshape) = base_ty.shape().map(|d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { Dim::DYNAMIC }).collect::<Vec<i64>>()) else { return false };
@@ -2696,8 +2570,6 @@ impl VectorCanon {
         true
     }
 
-    /// `InterleaveDeinterleaveFolder`: interleaving the two halves of a deinterleave, in order,
-    /// is its source.
     #[rewrite("vector.interleave")]
     fn interleave_deinterleave_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2711,7 +2583,6 @@ impl VectorCanon {
         true
     }
 
-    /// `CanonializeEmptyMaskOp`: an empty mask with a pass-through is a select.
     #[rewrite("vector.mask")]
     fn canonicalize_empty_mask_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2723,7 +2594,6 @@ impl VectorCanon {
         let y = b.first_op(block).expect("an op in the block");
         let (m, p, v) = (b[op].operands[0], b[op].operands[1], b[y].operands[0]);
         let types = b.types(&b[op].results.clone());
-        // (a select on the mask needs results of its vector shape)
         let mask_shape = vshape(&b[m].ty).map(|s| s.0);
         if types.iter().any(|t| vshape(t).map(|s| s.0) != mask_shape) {
             return false;
@@ -2732,7 +2602,6 @@ impl VectorCanon {
         true
     }
 
-    /// `StepCompareFolder`.
     #[rewrite("vector.step")]
     fn step_compare_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2767,7 +2636,6 @@ impl VectorCanon {
     }
 }
 
-/// `CanonicalizeContractAdd`: `add(contract(a, b, 0), c)` is `contract(a, b, c)`.
 fn contract_add(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     for (x, other) in [(0, 1), (1, 0)] {
         let b = &*rw.body;
@@ -2794,7 +2662,6 @@ fn contract_add(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     false
 }
 
-/// `isZeroBasedContiguousSeq`: a `vector.step`, or the constant `[0, 1, ...]`.
 fn zero_based_seq(b: &Body<'_>, v: ValueId) -> bool {
     let Some((s, sc)) = vshape(&b[v].ty) else { return false };
     if s.len() != 1 || sc[0] {
@@ -2807,7 +2674,6 @@ fn zero_based_seq(b: &Body<'_>, v: ValueId) -> bool {
     (0..s[0] as usize).all(|i| c.values.get(if c.is_splat() { 0 } else { i }).and_then(|x| x.int()).map(|x| x.signed()) == Some(i as i128))
 }
 
-/// `getConstantVscaleMultiplier`.
 fn vscale_multiplier(b: &Body<'_>, v: ValueId) -> Option<i64> {
     if b.def_named(v, "vector.vscale").is_some() {
         return Some(1);
@@ -2824,12 +2690,10 @@ fn vscale_multiplier(b: &Body<'_>, v: ValueId) -> Option<i64> {
 }
 
 impl VectorCanon {
-    /// `VectorDialect::materializeConstant`.
     pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
         crate::ArithCanon::materialize(value, ty)
     }
 
-    /// The vector dialect's canonicalization patterns, op by op.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(ElideUnitDimsInMultiDimReduction);
         set.add(ElideSingleElementReduction);
@@ -2891,7 +2755,6 @@ impl VectorCanon {
 }
 
 impl VectorCanon {
-    /// `populateVectorToVectorCanonicalizationPatterns`.
     pub fn to_vector_patterns(set: &mut crate::PatternSet) {
         set.add(CreateMaskFolder);
         set.add(MaskedLoadFolder);

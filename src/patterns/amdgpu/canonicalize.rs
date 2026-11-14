@@ -1,5 +1,3 @@
-//! `amdgpu` canonicalization, as `AMDGPUOps.cpp`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -7,7 +5,6 @@ use mlirformat::{Attribute, Const, Dim, Type};
 
 use crate::{ApFloat, ApInt, Body, MemrefLayout, OpData, OpId, Scalar, ValueId};
 
-/// The raw buffer ops, and which of their operand groups is the memref.
 const RAW_BUFFER_OPS: [(&str, usize); 7] = [
     ("amdgpu.raw_buffer_load", 0),
     ("amdgpu.raw_buffer_store", 1),
@@ -18,14 +15,11 @@ const RAW_BUFFER_OPS: [(&str, usize); 7] = [
     ("amdgpu.raw_buffer_atomic_cmpswap", 2),
 ];
 
-/// The counters of `amdgpu.memory_counter_wait`.
 const WAIT_COUNTERS: [&str; 5] = ["load", "store", "ds", "exp", "tensor"];
 
-/// How many scales one `amdgpu.scaled_mfma` operand packs.
 const PACKED_SCALES: i64 = 4;
 
 impl Body<'_> {
-    /// The operands of group `g` of `op` by its `operandSegmentSizes`.
     fn amdgpu_group(&self, op: OpId, g: usize) -> &[ValueId] {
         let sizes = self.segments(op, "operandSegmentSizes").unwrap_or_default();
         let start: usize = sizes.iter().take(g).sum();
@@ -33,7 +27,6 @@ impl Body<'_> {
         self[op].operands.get(start..start + n).unwrap_or(&[])
     }
 
-    /// `getConstantUint32`: an i32 constant, zero-extended.
     fn const_u32(&self, v: ValueId) -> Option<i64> {
         if self[v].ty != Type::int(32) {
             return None;
@@ -42,8 +35,6 @@ impl Body<'_> {
         Some(c.as_int()?.unsigned() as i64)
     }
 
-    /// `staticallyOutOfBounds`: a bounds-checked access to a static buffer at constant indices
-    /// past its end.
     fn raw_buffer_out_of_bounds(&self, op: OpId, memref_group: usize) -> bool {
         if matches!(self[op].get("boundsCheck"), Some(Attribute::Bool(false))) {
             return false;
@@ -76,7 +67,6 @@ impl Body<'_> {
         result >= elements
     }
 
-    /// An integer attribute's value.
     fn amdgpu_int(&self, op: OpId, name: &str) -> Option<i64> {
         match self[op].get(name)? {
             Attribute::Int { lit, .. } => lit.parse().ok(),
@@ -85,13 +75,10 @@ impl Body<'_> {
     }
 }
 
-/// `amdgpu` canonicalization patterns.
 pub struct AmdgpuCanon;
 
 #[crate::patterns]
 impl AmdgpuCanon {
-    /// `RemoveStaticallyOobBufferLoads` / `RemoveStaticallyOobBufferWrites`: an access past
-    /// the end loads zero, or stores nothing.
     #[rewrite("_")]
     fn remove_statically_oob_buffer_ops(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -110,7 +97,6 @@ impl AmdgpuCanon {
         true
     }
 
-    /// `eraseRedundantLDSBarrierOps`: a barrier right before another.
     #[rewrite("amdgpu.lds_barrier")]
     fn erase_redundant_lds_barrier(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         if !rw.body.next_op(op).is_some_and(|n| rw.body[n].name == "amdgpu.lds_barrier") {
@@ -120,7 +106,6 @@ impl AmdgpuCanon {
         true
     }
 
-    /// `FuseMemoryCounterWaitOp`: two adjacent waits as one, each counter the smaller.
     #[rewrite("amdgpu.memory_counter_wait")]
     fn fuse_memory_counter_wait(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -146,7 +131,6 @@ impl AmdgpuCanon {
         true
     }
 
-    /// `FoldGatherToLDSOfCast`: a `memref.cast` that only drops static information, skipped.
     #[rewrite("amdgpu.gather_to_lds")]
     fn fold_gather_to_lds_of_cast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -170,7 +154,6 @@ impl AmdgpuCanon {
         true
     }
 
-    /// `foldGlobalLoadAsyncToLDSConstantMask`: a constant mask either drops the load or goes.
     #[rewrite("amdgpu.global_load_async_to_lds")]
     fn fold_global_load_async_to_lds_constant_mask(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -193,8 +176,6 @@ impl AmdgpuCanon {
         true
     }
 
-    /// `PackScales`: each scale inserted from one element of a static vector of 4 or more
-    /// becomes the 4-element slice holding it, the index selecting it.
     #[rewrite("amdgpu.scaled_mfma")]
     fn pack_scales(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let mut picks = Vec::new();
@@ -251,12 +232,10 @@ impl AmdgpuCanon {
 }
 
 impl AmdgpuCanon {
-    /// A one-element `I64ArrayAttr`.
     fn i64_array(v: i64) -> Attribute<'static> {
         Attribute::Array(vec![Attribute::Int { lit: alloc::format!("{v}").into(), ty: None }])
     }
 
-    /// `getZeroAttr` of a scalar or vector integer / float type.
     fn zero<'a>(ty: &Type<'a>) -> Option<Attribute<'a>> {
         let elem = ty.element_type();
         let s = match elem {

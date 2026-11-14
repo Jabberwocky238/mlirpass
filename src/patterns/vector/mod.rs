@@ -1,5 +1,3 @@
-//! `vector` rule sets.
-
 mod canonicalize;
 mod to_scf;
 mod transforms;

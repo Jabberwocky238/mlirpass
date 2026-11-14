@@ -1,6 +1,3 @@
-//! `lower-affine`, as `AffineToStandard.cpp`, the affine expression expansion of
-//! `Affine/Utils/Utils.cpp` and `AffineExpandIndexOps.cpp`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -9,8 +6,6 @@ use mlirformat::{arith, Attribute, Type};
 
 use crate::{AffineBin, AffineExpr, AffineMap, Build, ConversionRewriter, OpData, OpId, TypedOp, ValueId};
 
-/// The affine expansion (`AffineApplyExpander`, `expandAffineMap`, the min / max reduction) on
-/// any rewriter.
 pub trait AffineExpand<'a>: Build<'a> {
     fn index_constant(&mut self, v: i64) -> ValueId {
         let (data, types) = arith::Constant::new(Attribute::index(v), Type::Index).split();
@@ -37,7 +32,6 @@ pub trait AffineExpand<'a>: Build<'a> {
         self.make1(OpData::build("arith.select").operands(&[c, t, f]), ty)
     }
 
-    /// `AffineApplyExpander::visit`.
     fn expand(&mut self, e: &AffineExpr, dims: &[ValueId], syms: &[ValueId]) -> Option<ValueId> {
         Some(match e {
             AffineExpr::Const(c) => self.index_constant(*c),
@@ -86,13 +80,11 @@ pub trait AffineExpand<'a>: Build<'a> {
         })
     }
 
-    /// `expandAffineMap`.
     fn expand_map(&mut self, map: &AffineMap, operands: &[ValueId]) -> Option<Vec<ValueId>> {
         let (dims, syms) = operands.split_at(map.dims as usize);
         map.results.iter().map(|e| self.expand(e, dims, syms)).collect()
     }
 
-    /// `buildMinMaxReductionSeq` over the expanded results.
     fn min_max(&mut self, map: &AffineMap, operands: &[ValueId], max: bool) -> Option<ValueId> {
         let values = self.expand_map(map, operands)?;
         let mut v = values[0];
@@ -105,7 +97,6 @@ pub trait AffineExpand<'a>: Build<'a> {
 
 impl<'a, B: Build<'a> + ?Sized> AffineExpand<'a> for B {}
 
-/// The affine ⇒ arith / scf / memref / vector patterns.
 pub struct AffineToStd;
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
@@ -146,7 +137,6 @@ impl AffineToStd {
         true
     }
 
-    /// `affine.load` / `affine.store` / `affine.prefetch` / `affine.vector_load` / `affine.vector_store`.
     #[convert("affine.load", "affine.prefetch", "affine.store", "affine.vector_load", "affine.vector_store")]
     fn access(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let name = alloc::string::String::from(&*cr.rw.body[op].name);
@@ -240,9 +230,6 @@ impl AffineToStd {
         true
     }
 
-    /// `AffineDmaStartLowering`: each memref's indices through its map, as `memref.dma_start`
-    /// (source, its indices, destination, its indices, element count, tag, its indices, then the
-    /// stride operands).
     #[convert("affine.dma_start")]
     fn dma_start(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let maps = ["src_map", "dst_map", "tag_map"].map(|n| Self::map_of(cr, op, n));
@@ -268,7 +255,6 @@ impl AffineToStd {
         true
     }
 
-    /// `AffineDmaWaitLowering`.
     #[convert("affine.dma_wait")]
     fn dma_wait(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let Some(tag) = Self::map_of(cr, op, "tag_map") else { return false };
@@ -282,15 +268,12 @@ impl AffineToStd {
         true
     }
 
-    /// `AffineParallelLowering`: an `scf.parallel` over each dimension's max of lower bounds
-    /// and min of upper bounds, the reductions starting at their identities.
     #[convert("affine.parallel")]
     fn parallel(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (Some(lbm), Some(ubm)) = (Self::map_of(cr, op, "lowerBoundsMap"), Self::map_of(cr, op, "upperBoundsMap")) else { return false };
         let b = &*cr.rw.body;
         let groups = |n: &str| b[op].get(n).and_then(|a| mlirformat::Const::try_from(a).ok()).and_then(|c| c.ints());
         let ints = |n: &str| match b[op].get(n) {
-            // Untyped `i64` literals.
             Some(Attribute::Array(xs)) => xs.iter().map(|x| if let Attribute::Int { lit, .. } = x { lit.parse::<i64>().ok() } else { None }).collect::<Option<Vec<_>>>(),
             _ => None,
         };
@@ -351,7 +334,6 @@ impl AffineToStd {
         true
     }
 
-    /// `computeStrides` of the index-op expansion.
     fn strides(cr: &mut Cr<'_, '_, '_>, dynamic: &[ValueId], basis: &[i64], non_negative: bool) -> Vec<ValueId> {
         if basis.is_empty() {
             return Vec::new();
@@ -419,7 +401,6 @@ impl AffineToStd {
         true
     }
 
-    /// `numEnclosingInvariantLoops` of operand `v` of `op`.
     fn invariant_loops(cr: &Cr<'_, '_, '_>, op: OpId, v: ValueId) -> i64 {
         let b = &*cr.rw.body;
         let def_owner = match b[v].def {
@@ -474,10 +455,8 @@ impl AffineToStd {
         cr.replace_values(op, &[r]);
         true
     }
-
 }
 
-/// `arith::AtomicRMWKind`, as `affine.parallel`'s `reductions` number them.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Reduction {
     AddF,
@@ -498,7 +477,6 @@ enum Reduction {
 }
 
 impl Reduction {
-    /// The enum values (`assign`, 3, reduces nothing).
     const TABLE: [(i64, Reduction, &str); 15] = [
         (0, Reduction::AddF, "arith.addf"),
         (1, Reduction::AddI, "arith.addi"),
@@ -521,12 +499,10 @@ impl Reduction {
         Self::TABLE.iter().find(|(n, _, _)| *n == k).map(|(_, r, _)| *r)
     }
 
-    /// `getReductionOp`.
     fn op(self) -> &'static str {
         Self::TABLE.iter().find(|(_, r, _)| *r == self).map(|(_, _, n)| *n).expect("in the table")
     }
 
-    /// `getIdentityValueAttr` (not only finite values).
     fn identity<'a>(self, ty: &Type<'a>) -> Option<Attribute<'a>> {
         use mlirformat::{ApFloat, ApInt, Const, Scalar};
         let float = |f: fn(mlirformat::FloatKind) -> Option<ApFloat>| match ty {

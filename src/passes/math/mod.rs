@@ -1,5 +1,3 @@
-//! `math` passes.
-
 mod convert_math_to_funcs;
 mod convert_math_to_libm;
 

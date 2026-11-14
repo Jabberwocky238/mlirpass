@@ -1,6 +1,3 @@
-//! `complex` ⇒ `arith` + `math`, as `ComplexToStandard.cpp` (and the division algorithms of
-//! `ComplexCommon/DivisionConverter.cpp`).
-
 use crate::{ops, patterns};
 use mlirformat::arith::CmpFPredicate as P;
 use mlirformat::{Attribute, FloatKind, Type};
@@ -8,12 +5,10 @@ use mlirformat::{Attribute, FloatKind, Type};
 use crate::FromOp;
 use crate::{ApFloat, Const, ConversionRewriter, Fmf, OpData, OpId, Scalar, ValueId};
 
-/// An `ImplicitLocOpBuilder` over complex values of element type `et`.
 pub struct Cx<'c, 'r, 'a, 'p> {
     cr: &'c mut ConversionRewriter<'r, 'a, 'p>,
     pub et: Type<'a>,
     ct: Type<'a>,
-    /// Build `llvm` ops (`ComplexToLLVM`) instead of `arith` / `math`.
     pub llvm: bool,
 }
 
@@ -30,7 +25,6 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         self.cr.build(data, ty)
     }
 
-    /// An element-typed op with fast-math flags.
     fn f(&mut self, name: &str, ops: &[ValueId], fmf: Fmf) -> ValueId {
         let ty = self.et.clone();
         #[cfg(feature = "target.llvm")]
@@ -95,7 +89,6 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         self.mk(OpData::build("complex.create").operands(&[re, im]), ty)
     }
 
-    /// A complex op of the complex type.
     fn c(&mut self, name: &str, ops: &[ValueId], fmf: Fmf) -> ValueId {
         let ty = self.ct.clone();
         self.mk(OpData::build(name).operands(ops).with("fastmath", fmf.attr()), ty)
@@ -126,19 +119,16 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         self.mk(OpData::build(if self.llvm { "llvm.select" } else { "arith.select" }).operands(&[c, a, b]), ty)
     }
 
-    /// `ComplexStructBuilder`: field `i` of the struct `v`.
     pub fn field(&mut self, v: ValueId, i: i64) -> ValueId {
         let ty = self.et.clone();
         self.mk(OpData::build("llvm.extractvalue").operands(&[v]).with("position", Attribute::DenseArray { ty: Type::int(64), values: alloc::vec![alloc::format!("{i}").into()].into() }), ty)
     }
 
-    /// `ComplexStructBuilder::poison` with both fields set.
     pub fn pack(&mut self, st: Type<'a>, re: ValueId, im: ValueId) -> ValueId {
         let v = self.mk(OpData::build("llvm.mlir.poison"), st);
         self.insert(v, re, im)
     }
 
-    /// `setReal`, then `setImaginary`.
     pub fn insert(&mut self, mut v: ValueId, re: ValueId, im: ValueId) -> ValueId {
         let st = self.cr.rw.body[v].ty.clone();
         for (i, x) in [re, im].into_iter().enumerate() {
@@ -168,7 +158,6 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         self.f(&alloc::format!("math.{name}"), &[a], f)
     }
 
-    /// `computeAbs`.
     #[ops(self, fmf = f2)]
     fn abs(&mut self, real: ValueId, imag: ValueId, fmf: Fmf, fun: AbsFn) -> ValueId {
         let one = 1.0;
@@ -197,7 +186,6 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         self.select(nan, min, result)
     }
 
-    /// `evaluatePolynomial`.
     fn poly(&mut self, arg: ValueId, coeffs: &[f64], fmf: Fmf) -> ValueId {
         let mut p = self.cst(coeffs[0]);
         for c in &coeffs[1..] {
@@ -207,7 +195,6 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         p
     }
 
-    /// `convertDivToStandardUsingAlgebraic` (and its LLVM twin).
     #[ops(self, fmf = f)]
     pub fn div_algebraic(&mut self, lr: ValueId, li: ValueId, rr: ValueId, ri: ValueId, f: Fmf) -> (ValueId, ValueId) {
         let norm = rr * rr + ri * ri;
@@ -216,7 +203,6 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         (rnum / norm, inum / norm)
     }
 
-    /// `convertDivToStandardUsingRangeReduction` (and its LLVM twin).
     #[ops(self, fmf = f)]
     pub fn div_range_reduction(&mut self, lr: ValueId, li: ValueId, rr: ValueId, ri: ValueId, f: Fmf) -> (ValueId, ValueId) {
         let n = Fmf::NONE;
@@ -287,7 +273,6 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         self.f("arith.negf", &[x], f)
     }
 
-    /// `a * b + c`, fused.
     pub(crate) fn fma(&mut self, a: ValueId, b: ValueId, c: ValueId, f: Fmf) -> ValueId {
         self.f("math.fma", &[a, b, c], f)
     }
@@ -296,7 +281,6 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         self.bit(if self.llvm { "llvm.xor" } else { "arith.xori" }, a, b)
     }
 
-    /// `TrigonometricOpConversion`: `cos` or `sin` of `x`.
     #[ops(self, fmf = fmf)]
     fn trig(&mut self, x: ValueId, fmf: Fmf, cos_op: bool) -> ValueId {
         let (re, im) = (self.re(x), self.im(x));
@@ -318,7 +302,6 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         self.create(r, i)
     }
 
-    /// `TanTanhOpConversion`: `tan` (through `tanh` of `i x`) or `tanh` of `x`.
     #[ops(self, fmf = fmf)]
     fn tan_tanh(&mut self, x: ValueId, fmf: Fmf, tan: bool) -> ValueId {
         let (mut re, mut im) = (self.re(x), self.im(x));
@@ -366,7 +349,6 @@ impl<'a> Cx<'_, '_, 'a, '_> {
         self.create(r, i)
     }
 
-    /// `powOpConversionImpl`.
     fn pow(&mut self, lhs: ValueId, c: ValueId, d: ValueId, fmf: Fmf) -> ValueId {
         let a = self.re(lhs);
         let b = self.im(lhs);
@@ -429,12 +411,10 @@ enum AbsFn {
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The complex ⇒ standard patterns.
 pub struct ComplexToStd;
 
 #[patterns(improved: bool, builder = Self::cx)]
 impl ComplexToStd {
-    /// The builder over the complex type of the first operand.
     fn cx<'c, 'r, 'a, 'p>(cr: &'c mut Cr<'r, 'a, 'p>, op: OpId) -> Cx<'c, 'r, 'a, 'p> {
         let ty = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
         Cx::new(cr, ty)
@@ -508,13 +488,11 @@ impl ComplexToStd {
         b.create(re, ni)
     }
 
-    /// `TrigonometricOpConversion`.
     #[convert("complex.cos")]
     fn cos(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
         b.trig(x, fmf, true)
     }
 
-    /// `TrigonometricOpConversion`.
     #[convert("complex.sin")]
     fn sin(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
         b.trig(x, fmf, false)
@@ -552,7 +530,6 @@ impl ComplexToStd {
         let em1 = b.m("expm1", re, fmf);
         let er = em1 + one;
         let si = b.m("sin", im, fmf);
-        // `emitCosm1`.
         let neg_half = -0.5;
         let neg_one = -1.0;
         const K: [f64; 7] = [4.7377507964246204691685E-14, -1.1470284843425359765671E-11, 2.0876754287081521758361E-9, -2.7557319214999787979814E-7, 2.4801587301570552304991E-5, -1.3888888888888872993737E-3, 4.1666666666666666609054E-2];
@@ -614,7 +591,6 @@ impl ComplexToStd {
     #[ops(b, fmf = fmf)]
     fn mul(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId, fmf: Fmf) -> ValueId {
         let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
-        // `contract`: fused, `re = fma(lr, rr, -(li * ri))`, `im = fma(lr, ri, li * rr)`.
         if fmf.contract() {
             let ii = b.mul(li, ri, fmf);
             let neg = b.neg(ii, fmf);
@@ -688,13 +664,11 @@ impl ComplexToStd {
         b.create(r, i)
     }
 
-    /// `TanTanhOpConversion`.
     #[convert("complex.tan")]
     fn tan(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
         b.tan_tanh(x, fmf, true)
     }
 
-    /// `TanTanhOpConversion`.
     #[convert("complex.tanh")]
     fn tanh(b: &mut Cx<'_, '_, '_, '_>, x: ValueId, fmf: Fmf) -> ValueId {
         b.tan_tanh(x, fmf, false)
@@ -750,7 +724,6 @@ impl ComplexToStd {
         b.create(r, i)
     }
 
-    /// `DivOpConversion` with `complex-range=improved`.
     #[convert("complex.div", when = improved)]
     fn div_improved(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId, fmf: Fmf) -> ValueId {
         let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));
@@ -758,7 +731,6 @@ impl ComplexToStd {
         b.create(re, im)
     }
 
-    /// `DivOpConversion` with `complex-range=basic` or `none`.
     #[convert("complex.div", when = !improved)]
     fn div_basic(b: &mut Cx<'_, '_, '_, '_>, l: ValueId, r: ValueId, fmf: Fmf) -> ValueId {
         let (lr, li, rr, ri) = (b.re(l), b.im(l), b.re(r), b.im(r));

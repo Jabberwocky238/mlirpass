@@ -1,5 +1,3 @@
-//! `convert-math-to-funcs`.
-
 use crate::{MathToFuncs};
 use alloc::format;
 use alloc::string::String;
@@ -27,7 +25,6 @@ impl ConvertMathToFuncs {
         matches!(e, Type::Integer { .. }) && MathToFuncs::width(e) >= self.min_width
     }
 
-    /// `generateOpImplementations`: one function per (op, type), in post-order of first use.
     fn generate(&self, b: &mut Body<'_>, module: OpId) {
         let mut ops = Vec::new();
         b.walk_post(module, &mut |o| ops.push(o));

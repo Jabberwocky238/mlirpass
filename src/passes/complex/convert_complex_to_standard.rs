@@ -1,18 +1,14 @@
-//! `convert-complex-to-standard`.
-
 use crate::{ComplexToStd};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, Run};
 
-/// `convert-complex-to-standard`.
 #[pass("convert-complex-to-standard")]
 pub struct ConvertComplexToStandard {
     #[opt("complex-range", default = ComplexRange::Improved, from_str)]
     range: ComplexRange,
 }
 
-/// `complex::ComplexRangeFlags`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ComplexRange {
     Improved,

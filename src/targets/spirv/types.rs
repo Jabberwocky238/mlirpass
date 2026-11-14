@@ -1,7 +1,3 @@
-//! `SPIRVTypeConverter` (`SPIRVConversion.cpp`): builtin types as the SPIR-V types a target
-//! allows — scalars emulated to 32 bits where the target lacks them, `index` as `i32` /
-//! `i64`, memrefs as pointers to (structs wrapping) arrays in their storage class.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -11,18 +7,12 @@ use mlirformat::{Attribute, Dim, FloatKind, Shaped, ShapedKind, Signedness, Type
 use super::TargetEnv;
 use crate::{MemrefLayout, OpData, Rewriter, TypeConverter, ValueId};
 
-/// `SPIRVConversionOptions`.
 #[derive(Debug, Clone, Copy)]
 pub struct SpirvOptions {
-    /// `emulateLT32BitScalarTypes`: scalars the target lacks become 32-bit ones.
     pub emulate_lt32: bool,
-    /// `emulateUnsupportedFloatTypes`: 8-bit floats become integers of their width.
     pub emulate_unsupported_floats: bool,
-    /// `use64bitIndex`.
     pub index64: bool,
-    /// `boolNumBits`: the bits of an `i1` in memory.
     pub bool_bits: u32,
-    /// `subByteTypeStorage == Packed`.
     pub sub_byte_packed: bool,
 }
 
@@ -32,13 +22,11 @@ impl Default for SpirvOptions {
     }
 }
 
-/// ⭐ The SPIR-V types of a target.
 pub struct SpirvTypes<'t> {
     pub env: &'t TargetEnv,
     pub opts: SpirvOptions,
 }
 
-/// `needsExplicitLayout`.
 pub fn explicit_layout(storage: &str) -> bool {
     matches!(storage, "PhysicalStorageBuffer" | "PushConstant" | "StorageBuffer" | "Uniform")
 }
@@ -63,7 +51,6 @@ impl<'t> SpirvTypes<'t> {
         }
     }
 
-    /// `getTypeNumBytes`.
     pub fn num_bytes(&self, t: &Type<'_>) -> Option<i64> {
         if TargetEnv::is_scalar(t) {
             let w = t.bit_width()?;
@@ -102,7 +89,6 @@ impl<'t> SpirvTypes<'t> {
         }
     }
 
-    /// `convertScalarType`.
     pub fn scalar(&self, t: &Type<'_>, storage: Option<&str>) -> Option<Type<'static>> {
         if self.env.allows_type(t, storage) {
             return Some(t.owned());
@@ -117,13 +103,11 @@ impl<'t> SpirvTypes<'t> {
         })
     }
 
-    /// `convertSubByteIntegerType`.
     fn sub_byte(&self, t: &Type<'_>) -> Option<Type<'static>> {
         let Type::Integer { signedness, width } = t else { return None };
         (*width <= 8 && self.opts.sub_byte_packed && width.is_power_of_two()).then_some(Type::Integer { signedness: *signedness, width: 32 })
     }
 
-    /// The shape `s` with `index` / 8-bit float elements as they convert.
     fn element_converted(&self, s: &Shaped<'_>) -> Shaped<'static> {
         let mut s = Self::owned_shape(s);
         if *s.elem == Type::Index {
@@ -134,7 +118,6 @@ impl<'t> SpirvTypes<'t> {
         s
     }
 
-    /// `convertVectorType`.
     pub fn vector(&self, s: &Shaped<'_>, storage: Option<&str>) -> Option<Type<'static>> {
         let s = self.element_converted(s);
         let t = Type::Shaped(alloc::boxed::Box::new(s.clone()));
@@ -162,7 +145,6 @@ impl<'t> SpirvTypes<'t> {
         Some(Type::Shaped(alloc::boxed::Box::new(Shaped { elem: elem.into(), ..s })))
     }
 
-    /// `convertComplexType`.
     fn complex(&self, e: &Type<'_>, storage: Option<&str>) -> Option<Type<'static>> {
         if !TargetEnv::is_scalar(e) {
             return None;
@@ -171,7 +153,6 @@ impl<'t> SpirvTypes<'t> {
         (elem == e.owned()).then(|| Type::vector(&[2], &[false], elem))
     }
 
-    /// `convertTensorType`.
     fn tensor(&self, s: &Shaped<'_>) -> Option<Type<'static>> {
         let s = self.element_converted(s);
         if s.dims()?.contains(&Dim::DYNAMIC) || !TargetEnv::is_scalar(&s.elem) {
@@ -186,13 +167,11 @@ impl<'t> SpirvTypes<'t> {
         Some(SpirvType::array(count as u32, elem, 0))
     }
 
-    /// `wrapInStructAndGetPointer`.
     fn wrapped(elem: Type<'static>, storage: &str) -> Type<'static> {
         let member = SpirvMember { ty: elem, offset: explicit_layout(storage).then_some(0), decorations: Vec::new() };
         SpirvType::ptr(SpirvType::Struct { name: None, members: Some(vec![member]), decorations: Vec::new() }.into(), storage)
     }
 
-    /// The pointer to the array of `count` elements (`None`: a runtime array) of `elem`.
     fn array_ptr(&self, elem: Type<'static>, size: i64, count: Option<i64>, storage: &str) -> Option<Type<'static>> {
         let stride = if explicit_layout(storage) { size as u32 } else { 0 };
         let kernel = self.env.allows_cap("Kernel");
@@ -206,7 +185,6 @@ impl<'t> SpirvTypes<'t> {
         Some(if kernel { SpirvType::ptr(arr, storage) } else { Self::wrapped(arr, storage) })
     }
 
-    /// The storage class of a memref (`#spirv.storage_class<..>` memory space).
     pub fn storage_class(s: &Shaped<'_>) -> Option<alloc::string::String> {
         let Some(Attribute::Extended { ext, .. }) = s.memory_space() else { return None };
         if ext.name != "spirv.storage_class" {
@@ -215,14 +193,12 @@ impl<'t> SpirvTypes<'t> {
         Some(alloc::string::String::from(ext.body.as_deref()?.trim_start_matches('<').trim_end_matches('>')))
     }
 
-    /// `convertMemrefType` (and its bool and sub-byte variants).
     pub fn memref(&self, s: &Shaped<'_>) -> Option<Type<'static>> {
         let storage = Self::storage_class(s)?;
         let st = Some(&*storage);
         let fixed = !s.dims()?.contains(&Dim::DYNAMIC);
         let elements = Type::Shaped(alloc::boxed::Box::new(s.clone())).element_count().unwrap_or(0) as i64;
         if storage == "Image" {
-            // A sampled image of single-element texels (`R32f`, ...), whatever the rank.
             let dim = match s.dims()?.len() {
                 1 => "Dim1D",
                 2 => "Dim2D",
@@ -300,7 +276,6 @@ impl<'t> SpirvTypes<'t> {
         self.array_ptr(elem, size, Some(Self::ceil_div(bytes, size)), &storage)
     }
 
-    /// `convertType`, as the conversions registered last to first try it.
     pub fn convert(&self, t: &Type<'_>) -> Option<Type<'static>> {
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::MemRef => self.memref(s),
@@ -319,7 +294,6 @@ impl<'t> SpirvTypes<'t> {
         }
     }
 
-    /// The `TypeConverter`, with `castToSourceType` as its source materialization.
     pub fn converter(&'t self) -> TypeConverter<'t> {
         let mut tc = TypeConverter::default();
         tc.conversion(move |t| Some(self.convert(t).map(|t| vec![t])));
@@ -329,7 +303,6 @@ impl<'t> SpirvTypes<'t> {
                 Some(rw.body[o].results[0])
             })
         });
-        // `addTargetMaterialization`: an `unrealized_conversion_cast`.
         tc.target(|rw, types, inputs, _| {
             let o = rw.create(OpData::build("builtin.unrealized_conversion_cast").operands(inputs), types);
             Some(rw.body[o].results.clone().to_vec())
@@ -337,8 +310,6 @@ impl<'t> SpirvTypes<'t> {
         tc
     }
 
-    /// `castToSourceType`: an integer narrowed back with `spirv.IEqual` (to `i1`) or
-    /// `spirv.SConvert` / `spirv.UConvert`; `None`: anything else, left to a cast.
     fn cast_to_source<'a>(&self, rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, inputs: &[ValueId]) -> Option<ValueId> {
         let [input] = inputs else { return None };
         let in_t = rw.body[*input].ty.clone();

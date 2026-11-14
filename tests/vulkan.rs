@@ -1,16 +1,3 @@
-//! MLIR's own Vulkan execution tests (`mlir/test/Integration/GPU/Vulkan`, see
-//! `scripts/vulkan_fixtures.py`), run: kernels through `convert-gpu-to-spirv`,
-//! `spirv-lower-abi-attrs`, `spirv-update-vce`, then both as mlirpass's SPIR-V binary and as
-//! mlirpass's GLSL compiled by glslang, on lavapipe; the host side (`@main`: allocations,
-//! fills, launches, prints) interpreted here. What `printMemref*` would print must pass the
-//! test's own FileCheck lines.
-//!
-//! Skipped without a C compiler, glslang or lavapipe. `FILTER=<substring>` narrows the tests;
-//! `SHOW=1` prints what each run printed. `VULKAN_ICD=<icd.json>` runs them on another driver,
-//! e.g. a real GPU's (`/usr/share/vulkan/icd.d/intel_icd.json`); there,
-//! `cooperative_matrix_on_device` also checks a subgroup MMA kernel lowered with the device's
-//! own target env (`tests/support/vkinfo.c`) against the product computed on the host.
-
 mod common;
 
 use std::collections::BTreeMap;
@@ -24,13 +11,10 @@ use mlirpass::{Body, Ctx, Emit, Interfaces, Invocation, OpId, Passes, SpirvBinar
 
 const LAVAPIPE: &str = "/usr/share/vulkan/icd.d/lvp_icd.json";
 
-/// The Vulkan driver to run on: `VULKAN_ICD` (an ICD manifest, e.g. `intel_icd.json` for a real
-/// GPU), lavapipe by default.
 fn icd() -> String {
     std::env::var("VULKAN_ICD").unwrap_or_else(|_| String::from(LAVAPIPE))
 }
 
-/// A host buffer: a memref's elements, as the device sees them.
 #[derive(Clone)]
 struct Buf {
     elem: Type<'static>,
@@ -81,7 +65,6 @@ impl Buf {
         }
     }
 
-    /// C++ `std::ostream << double` (`%g`, 6 significant digits).
     fn fmt_g(x: f64) -> String {
         if x == 0.0 {
             return String::from(if x.is_sign_negative() { "-0" } else { "0" });
@@ -100,7 +83,6 @@ impl Buf {
         }
     }
 
-    /// `printMemref*`: `MemRefDataPrinter` over a row-major memref.
     fn print(&self) -> String {
         let rank = self.shape.len() as i64;
         let strides: Vec<i64> = (0..self.shape.len()).map(|i| self.shape[i + 1..].iter().product()).collect();
@@ -149,7 +131,6 @@ impl Buf {
     }
 }
 
-/// FileCheck's default: horizontal whitespace runs are one space.
 fn squash(s: &str) -> String {
     let mut out = String::new();
     let mut space = false;
@@ -167,7 +148,6 @@ fn squash(s: &str) -> String {
     out
 }
 
-/// `CHECK:` / `CHECK-COUNT-N:` in order over `output`.
 fn file_check(checks: &[String], output: &str) -> Result<(), String> {
     let text = squash(output);
     let mut at = 0;
@@ -219,8 +199,6 @@ impl<'b, 'a> Host<'b, 'a> {
         }
     }
 
-    /// Runs `@main`; `launch` runs one kernel on the buffers.
-    /// `launch` runs a kernel and returns what the runtime printed (its timings).
     fn run(&mut self, main: OpId, launch: &mut dyn FnMut(&str, &str, [i64; 3], &mut [Buf]) -> Result<String, String>) -> Result<(), String> {
         let b = self.body;
         let block = b[b[main].regions[0]].blocks[0];
@@ -309,7 +287,6 @@ impl<'b, 'a> Host<'b, 'a> {
     }
 }
 
-/// Runs `spv` on lavapipe over `bufs`.
 fn device(vkrun: &Path, dir: &Path, spv: &[u8], entry: &str, grid: [i64; 3], bufs: &mut [Buf]) -> Result<String, String> {
     let shader = dir.join("shader.spv");
     fs::write(&shader, spv).map_err(|e| e.to_string())?;
@@ -410,7 +387,6 @@ fn vulkan_integration() {
     }
 }
 
-/// The device's `#spirv.target_env` (`tests/support/vkinfo.c`), when it reports one.
 fn device_target_env(target: &Path) -> Option<String> {
     let vkinfo = target.join("vkinfo");
     let built = Command::new("cc").args(["-O1", "-o"]).arg(&vkinfo).arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/vkinfo.c")).arg("-lvulkan").status().ok()?;
@@ -419,7 +395,6 @@ fn device_target_env(target: &Path) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
 }
 
-/// The first `f16 x f16 + f32` cooperative matrix configuration of a target env: `(m, n, k)`.
 fn f16_f32_coop_matrix(env: &str) -> Option<(i64, i64, i64)> {
     env.split("#spirv.coop_matrix_props_khr<").skip(1).find_map(|p| {
         let field = |key: &str| p.split(&format!("{key} = ")).nth(1)?.split([',', '>']).next().map(str::trim);
@@ -428,12 +403,6 @@ fn f16_f32_coop_matrix(env: &str) -> Option<(i64, i64, i64)> {
     })
 }
 
-/// A `C += A x B` subgroup MMA kernel on the device's own cooperative matrix shape, lowered by
-/// mlirpass with the device's target env, run on the device, and compared element by element
-/// with the product computed here (small integers: exact in f16 and in the f32 sums).
-///
-/// Runs where `VULKAN_ICD` names a device with `VK_KHR_cooperative_matrix` and an f16 / f32
-/// configuration (lavapipe has none: skipped).
 #[test]
 fn cooperative_matrix_on_device() {
     if !tool("cc") || !Path::new(&icd()).exists() {

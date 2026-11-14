@@ -1,5 +1,3 @@
-//! `ptr` folds (`PtrDialect.cpp`).
-
 use mlirformat::{Attribute, Const, Type};
 
 #[cfg(feature = "target.llvm")]
@@ -9,7 +7,6 @@ pub use to_llvm::PtrToLlvm;
 
 use crate::{Body, Fold, Folded, OpId, ValueId};
 
-/// The `ptr` ops that fold.
 #[derive(Clone, Copy)]
 enum Op {
     Constant,
@@ -26,17 +23,13 @@ impl Op {
     }
 }
 
-/// `ptr`'s folds.
 pub struct PtrCanon;
 
 impl PtrCanon {
-    /// `PtrLikeTypeInterface::hasPtrMetadata`: all but `!ptr.ptr` (a memref has metadata).
     fn has_metadata(ty: &Type<'_>) -> bool {
         !matches!(ty, Type::Extended(e) if e.name == "ptr.ptr")
     }
 
-    /// `FromPtrOp::fold`: through `to_ptr` / `from_ptr` round trips, the metadata taken from
-    /// the same value.
     fn from_ptr(b: &Body<'_>, op: OpId) -> Option<ValueId> {
         let mut like = None;
         let mut from = Some(op);
@@ -59,7 +52,6 @@ impl PtrCanon {
         like
     }
 
-    /// `ToPtrOp::fold`: through `from_ptr` / `to_ptr` chains.
     fn to_ptr(b: &Body<'_>, op: OpId) -> Option<ValueId> {
         let mut ptr = None;
         let mut to = Some(op);

@@ -1,6 +1,3 @@
-//! `spirv` folds and canonicalization patterns, as `SPIRVCanonicalization.cpp` (and its DRR
-//! patterns, `SPIRVCanonicalization.td`).
-
 use alloc::vec::Vec;
 
 use mlirformat::spirv_types::SpirvType;
@@ -8,7 +5,6 @@ use mlirformat::{ApInt, Attribute, Const, Scalar, Type};
 
 use crate::{Body, Fold, Folded, OpData, OpId, Rewriter, ValueId};
 
-/// Folds one `spirv` op with its operands' constants `c`.
 pub struct Folder<'x, 'a> {
     pub b: &'x mut Body<'a>,
     pub op: OpId,
@@ -31,7 +27,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         }
     }
 
-    /// `m_ConstantInt` / `m_Zero` / `m_One` on operand `i`: a scalar or splat integer.
     fn int(&self, i: usize) -> Option<ApInt> {
         let c = self.cst(i)?;
         if !c.is_splat() && c.values.len() != 1 {
@@ -48,7 +43,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         Fold::Results(alloc::vec![Folded::Attr(a)])
     }
 
-    /// `getZeroAttr` / a bool splat of the result type.
     fn splat(&self, f: impl Fn(&Type<'a>) -> ApInt) -> Fold<'a> {
         let ty = self.ty();
         if ty == Type::I1 {
@@ -68,7 +62,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         self.splat(|_| ApInt::new(1, i128::from(v)))
     }
 
-    /// `constFoldBinaryOp<IntegerAttr>`: element by element; `None` from `f` gives up.
     fn binary(&self, result_bool: bool, f: impl Fn(ApInt, ApInt) -> Option<ApInt>) -> Fold<'a> {
         if let Some(p) = self.poison() {
             return p;
@@ -84,7 +77,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         self.result(out, result_bool, a.elements || b.elements)
     }
 
-    /// A poison operand makes the result poison (`constFoldBinaryOp` / `constFoldUnaryOp`).
     fn poison(&self) -> Option<Fold<'a>> {
         self.c.iter().flatten().find(|a| a.is_poison()).map(|a| Self::attr(a.clone()))
     }
@@ -223,8 +215,6 @@ impl<'x, 'a> Folder<'x, 'a> {
 }
 
 impl<'a> Folder<'_, 'a> {
-    /// `SelectOp::fold` of three dense constants, element by element (a splat when all agree,
-    /// as `DenseElementsAttr::get`).
     fn select_elements(&self) -> Fold<'a> {
         let (Some(c), Some(t), Some(f)) = (self.cst(0), self.cst(1), self.cst(2)) else { return Fold::Failed };
         if !(c.elements && t.elements && f.elements) {
@@ -242,8 +232,6 @@ impl<'a> Folder<'_, 'a> {
         Self::attr(Const { ty: t.ty.clone(), values, elements: true }.into())
     }
 
-    /// `BitcastOp::fold` through a bitcast: back to its input's type folds to the input, else
-    /// the outer cast reads the inner one's input.
     fn bitcast_chain(&mut self) -> Fold<'a> {
         let Some(prev) = self.b.def_op(self.v(0)).filter(|d| self.b[*d].name == "spirv.Bitcast") else { return Fold::Failed };
         let input = self.b[prev].operands[0];
@@ -254,8 +242,6 @@ impl<'a> Folder<'_, 'a> {
         Fold::InPlace
     }
 
-    /// `CompositeExtractOp::fold`: through inserts of other indices to an insert of the same,
-    /// a full single-index construct's constituent, or the constant's element.
     fn composite_extract(&self) -> Fold<'a> {
         let Some(Attribute::Array(idx)) = self.b[self.op].get("indices") else { return Fold::Failed };
         let idx: Vec<i64> = idx.iter().filter_map(|a| Const::try_from(a).ok()?.as_int().map(|i| i.signed() as i64)).collect();
@@ -287,7 +273,6 @@ impl<'a> Folder<'_, 'a> {
         }
     }
 
-    /// `extractCompositeElement`.
     fn element(composite: Attribute<'a>, idx: &[i64]) -> Option<Attribute<'a>> {
         let Some((&i, rest)) = idx.split_first() else { return Some(composite) };
         match composite {
@@ -307,7 +292,6 @@ impl<'a> Folder<'_, 'a> {
     }
 }
 
-/// A constant operand: its `Const` (a bool as `i1`).
 fn constant<'a>(b: &Body<'a>, v: ValueId) -> Option<Const<'a>> {
     match b.constant_of(v)? {
         Attribute::Bool(x) => Some(Const::int(ApInt::new(1, i128::from(x)), Type::I1)),
@@ -315,32 +299,26 @@ fn constant<'a>(b: &Body<'a>, v: ValueId) -> Option<Const<'a>> {
     }
 }
 
-/// `m_Zero` / `m_One`: a scalar or splat integer `v`.
 fn is_int(b: &Body<'_>, v: ValueId, want: i128) -> bool {
     constant(b, v).is_some_and(|c| c.is_splat() && c.at(0).int().is_some_and(|i| i.signed() == want || (want == 1 && i.bits() == 1)))
 }
 
-/// `constFoldBinaryOp<IntegerAttr>` of two constants, as the attribute for `ty`.
 fn fold_binary<'a>(a: &Const<'a>, b: &Const<'a>, ty: &Type<'a>, f: impl Fn(ApInt, ApInt) -> ApInt) -> Option<Attribute<'a>> {
     let n = a.values.len().max(b.values.len());
     let values = (0..n).map(|i| Some(Scalar::Int(f(a.at(i).int()?, b.at(i).int()?)))).collect::<Option<Vec<_>>>()?;
     Some(Const { ty: ty.clone(), values, elements: a.elements || b.elements }.into())
 }
 
-/// A pair of constituents as the op's struct: `spirv.CompositeConstruct`.
 fn construct<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, parts: &[ValueId]) {
     let ty = rw.body[rw.body[op].results[0]].ty.clone();
     rw.replace_with(op, OpData::build("spirv.CompositeConstruct").operands(parts), &[ty]);
 }
 
-/// The two constituents as one `spirv.Constant` of the op's struct.
 fn constant_pair<'a>(rw: &mut Rewriter<'_, 'a>, op: OpId, first: Attribute<'a>, second: Attribute<'a>) {
     let ty = rw.body[rw.body[op].results[0]].ty.clone();
     rw.replace_with(op, OpData::build("spirv.Constant").with("value", Attribute::Array(alloc::vec![first, second])), &[ty]);
 }
 
-/// `ArithmeticExtendedBinaryFold`: `(x, 0)` is `<0, x>` for a carry, `<x, 0>` for a borrow;
-/// constants fold to the low bits and the wrap bit.
 fn extended_binary(rw: &mut Rewriter<'_, '_>, op: OpId, sub: bool) -> bool {
     let (lhs, rhs) = (rw.body[op].operands[0], rw.body[op].operands[1]);
     if is_int(rw.body, rhs, 0) {
@@ -359,7 +337,6 @@ fn extended_binary(rw: &mut Rewriter<'_, '_>, op: OpId, sub: bool) -> bool {
     true
 }
 
-/// `MulExtendedFold`: a zero rhs gives zeros; constants fold to the low and high halves.
 fn mul_extended(rw: &mut Rewriter<'_, '_>, op: OpId, signed: bool) -> bool {
     rw.set_before(op);
     let (lhs, rhs) = (rw.body[op].operands[0], rw.body[op].operands[1]);
@@ -385,7 +362,6 @@ fn mul_extended(rw: &mut Rewriter<'_, '_>, op: OpId, signed: bool) -> bool {
     true
 }
 
-/// The DRR `LogicalNot` rewrites: the negated comparison.
 fn negate_compare(rw: &mut Rewriter<'_, '_>, op: OpId, from: &str, to: &str) -> bool {
     let Some(cmp) = rw.body.def_op(rw.body[op].operands[0]).filter(|d| rw.body[*d].name == from) else { return false };
     let ops = rw.body[cmp].operands.clone();
@@ -394,8 +370,6 @@ fn negate_compare(rw: &mut Rewriter<'_, '_>, op: OpId, from: &str, to: &str) -> 
     true
 }
 
-/// The DRR clamp rewrites: `select(cmp(select(cmp(min, x), x, min), max), .., max)` and
-/// `select(cmp(max, x), max, select(cmp(x, min), min, x))` as `spirv.GL.*Clamp(x, min, max)`.
 #[cfg_attr(not(feature = "target.spirv"), allow(dead_code))]
 fn clamp(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     const PAIRS: [(&str, &str); 6] = [
@@ -412,7 +386,6 @@ fn clamp(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let found = PAIRS.iter().find_map(|(cmp, clamp)| {
         let outer = def(c, cmp)?;
         let [l, r] = b[outer].operands[..] else { return None };
-        // `$min < $input`, `$input < $max`.
         let first = (|| {
             let inner = def(l, "spirv.Select")?;
             let [ic, it, if_] = b[inner].operands[..] else { return None };
@@ -420,7 +393,6 @@ fn clamp(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
             let [min, input] = b[icmp].operands[..] else { return None };
             (it == input && if_ == min && r == f && t == l).then_some([input, min, f])
         })();
-        // `$input < $min`, `$max < $input`.
         let second = || {
             let inner = def(f, "spirv.Select")?;
             let [ic, it, if_] = b[inner].operands[..] else { return None };
@@ -436,12 +408,10 @@ fn clamp(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     true
 }
 
-/// `spirv` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct SpirvCanon;
 
 #[crate::patterns]
 impl SpirvCanon {
-    /// `CombineChainedAccessChain`.
     #[rewrite("spirv.AccessChain")]
     fn combine_chained_access_chain(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let Some(parent) = rw.body.def_op(rw.body[op].operands[0]).filter(|d| rw.body[*d].name == "spirv.AccessChain") else { return false };
@@ -452,31 +422,26 @@ impl SpirvCanon {
         true
     }
 
-    /// `ArithmeticExtendedBinaryFold<IAddCarryOp>`: a zero rhs is no carry; constants fold.
     #[rewrite("spirv.IAddCarry")]
     fn i_add_carry_fold(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         extended_binary(rw, op, false)
     }
 
-    /// `ArithmeticExtendedBinaryFold<ISubBorrowOp>`: a zero rhs is no borrow; constants fold.
     #[rewrite("spirv.ISubBorrow")]
     fn i_sub_borrow_fold(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         extended_binary(rw, op, true)
     }
 
-    /// `MulExtendedFold<SMulExtendedOp>`.
     #[rewrite("spirv.SMulExtended")]
     fn s_mul_extended_fold(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         mul_extended(rw, op, true)
     }
 
-    /// `MulExtendedFold<UMulExtendedOp>`.
     #[rewrite("spirv.UMulExtended")]
     fn u_mul_extended_fold(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         mul_extended(rw, op, false)
     }
 
-    /// `UMulExtendedOpXOne`: times one is the lhs, no high bits.
     #[rewrite("spirv.UMulExtended")]
     fn u_mul_extended_op_x_one(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let (lhs, rhs) = (rw.body[op].operands[0], rw.body[op].operands[1]);
@@ -495,7 +460,6 @@ impl SpirvCanon {
         true
     }
 
-    /// `UModSimplification`: `(x % a) % b` is `x % b` when `b` divides `a`.
     #[rewrite("spirv.UMod")]
     fn u_mod_simplification(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -537,8 +501,6 @@ impl SpirvCanon {
         clamp(rw, op)
     }
 
-    /// `ConvertSelectionOpToSelect`: a diamond storing one of two values to the same pointer is
-    /// a store of a `spirv.Select`.
     #[rewrite("spirv.mlir.selection")]
     fn convert_selection_op_to_select(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -580,7 +542,6 @@ impl SpirvCanon {
 }
 
 impl SpirvCanon {
-    /// The spirv canonicalization patterns, in op registration order.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(CombineChainedAccessChain);
         set.add(IAddCarryFold).add(ISubBorrowFold);
@@ -595,13 +556,11 @@ impl SpirvCanon {
         set.add(ConvertSelectionOpToSelect);
     }
 
-    /// `populateSPIRVGLCanonicalizationPatterns`: the clamp patterns.
     #[cfg(feature = "target.spirv")]
     pub fn gl_patterns(set: &mut crate::PatternSet) {
         set.add(ConvertComparisonIntoClamp);
     }
 
-    /// `SPIRVDialect::materializeConstant`: a `spirv.Constant`.
     pub fn materialize<'a>(value: &Attribute<'a>, _: &Type<'a>) -> Option<OpData<'a>> {
         if value.is_poison() {
             return Some(OpData::build("ub.poison").with("value", value.clone()));

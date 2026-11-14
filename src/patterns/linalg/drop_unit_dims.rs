@@ -1,12 +1,3 @@
-//! `linalg-fold-unit-extent-dims`, as `Linalg/Transforms/DropUnitDims.cpp`: unit-extent loops of a
-//! `linalg.generic` and unit dims of its operands indexed by a constant 0 dropped (operands
-//! collapsed, results expanded back), unit dims of a `tensor.pad` likewise; then the
-//! fold-unit-extent-dims canonicalizations run greedily.
-//!
-//! Upstream's two phases: `DropUnitDims` and `DropPadUnitDims` through `walkAndApplyPatterns`
-//! ([`Body::walk_and_apply`]), then `MoveInitOperandsToInput`, the rank-reducing slice patterns
-//! and the reshape / fill / empty canonicalizations with the greedy driver.
-
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -16,61 +7,46 @@ use mlirformat::{arith, memref, tensor, AffineExpr, AffineMap, Attribute, Dim, S
 use crate::{MemrefOfr as Ofr, Reshape};
 use crate::{ops, Body, Def, Mapping, MemrefLayout, OpData, OpId, PatternSet, Rewriter, Trait, TypedOp, ValueId};
 
-/// `ControlDropUnitDims::RankReductionStrategy`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Strategy {
     ReassociativeReshape,
     ExtractInsertSlice,
 }
 
-/// The rewrite patterns of this module.
 pub struct Rules;
 
 #[crate::patterns]
 impl Rules {
-    /// `DropUnitDims` (reassociative reshapes).
     #[rewrite("linalg.generic")]
     fn drop_unit_dims(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::generic(rw, op, Strategy::ReassociativeReshape) }
 
-    /// `DropUnitDims` (rank-reducing slices).
     #[rewrite("linalg.generic")]
     fn drop_unit_dims_with_slices(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::generic(rw, op, Strategy::ExtractInsertSlice) }
 
-    /// `DropPadUnitDims` (reassociative reshapes).
     #[rewrite("tensor.pad")]
     fn drop_pad_unit_dims(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::pad(rw, op, Strategy::ReassociativeReshape) }
 
-    /// `DropPadUnitDims` (rank-reducing slices).
     #[rewrite("tensor.pad")]
     fn drop_pad_unit_dims_with_slices(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::pad(rw, op, Strategy::ExtractInsertSlice) }
 
-    /// `MoveInitOperandsToInput`: an all-parallel generic reading an init reads it as an input,
-    /// the init a fresh `tensor.empty`.
     #[rewrite("linalg.generic")]
     fn move_init_operands_to_input(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::move_init_to_input(rw, op) }
 
-    /// `RankReducedExtractSliceOp`: an extract_slice with unit dims in its result becomes a
-    /// rank-reduced one expanded back.
     #[rewrite("tensor.extract_slice")]
     fn rank_reduced_extract_slice_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::rank_reduced_extract(rw, op) }
 
-    /// `RankReducedInsertSliceOp<tensor::InsertSliceOp>`.
     #[rewrite("tensor.insert_slice")]
     fn rank_reduced_insert_slice_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::rank_reduced_insert(rw, op, false) }
 
-    /// `RankReducedInsertSliceOp<tensor::ParallelInsertSliceOp>`.
     #[rewrite("tensor.parallel_insert_slice")]
     fn rank_reduced_parallel_insert_slice_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::rank_reduced_insert(rw, op, true) }
 
-    /// `FoldEmptyTensorWithReshapeOp<tensor::ExpandShapeOp>`.
     #[rewrite("tensor.expand_shape")]
     fn fold_empty_tensor_with_expand_shape_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::empty_of_reshape(rw, op) }
 
-    /// `FoldEmptyTensorWithReshapeOp<tensor::CollapseShapeOp>`.
     #[rewrite("tensor.collapse_shape")]
     fn fold_empty_tensor_with_collapse_shape_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { Unit::empty_of_reshape(rw, op) }
 
-    /// `FoldEmptyTensorWithExtractSliceOp`.
     #[rewrite("tensor.extract_slice")]
     fn fold_empty_tensor_with_extract_slice_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         if rw.body.def_named(rw.body[op].operands[0], "tensor.empty").is_none() {
@@ -85,14 +61,12 @@ impl Rules {
     }
 }
 
-/// `UnitExtentReplacementInfo`.
 struct Info {
     map: AffineMap,
     reassoc: Vec<Vec<i64>>,
     shape: Vec<i64>,
 }
 
-/// The index arithmetic `#[ops]` builds (`inferExpandShapeOutputShape`), folded as created.
 struct Ix<'w, 'r, 'a> {
     rw: &'w mut Rewriter<'r, 'a>,
 }
@@ -108,9 +82,7 @@ impl Ix<'_, '_, '_> {
     }
 }
 
-/// The helpers of the patterns above.
 impl Strategy {
-    /// `populateFoldUnitExtentDimsPatterns`.
     pub fn patterns(self) -> PatternSet {
         let s = self;
         let mut set = PatternSet::default();
@@ -121,7 +93,6 @@ impl Strategy {
         set
     }
 
-    /// `populateMoveInitOperandsToInputPattern` + `populateFoldUnitExtentDimsCanonicalizationPatterns`.
     pub fn canonicalizations(self) -> PatternSet {
         let s = self;
         let mut names = vec![
@@ -138,7 +109,6 @@ impl Strategy {
             set.add(RankReducedExtractSliceOp).add(RankReducedInsertSliceOp).add(RankReducedParallelInsertSliceOp);
         }
         set.add(FoldEmptyTensorWithExpandShapeOp).add(FoldEmptyTensorWithCollapseShapeOp).add(FoldEmptyTensorWithExtractSliceOp);
-        // `memref::populateResolveRankedShapedTypeResultDimsPatterns`.
         crate::ResolveDims::patterns(&mut set);
         set
     }
@@ -176,7 +146,6 @@ impl Unit {
         b.segments(op, "operandSegmentSizes").map_or(b[op].operands.len().saturating_sub(1), |s| s[0])
     }
 
-    /// `inversePermutation(concatAffineMaps(maps))`, as the result position of each loop.
     fn inverse(maps: &[AffineMap]) -> Option<Vec<usize>> {
         let n = maps.first().map_or(0, |m| m.dims) as usize;
         let mut seen = vec![None; n];
@@ -190,12 +159,10 @@ impl Unit {
         seen.into_iter().collect()
     }
 
-    /// `getStaticOperandShape`.
     fn shape(b: &Body<'_>, v: ValueId) -> Vec<i64> {
         if matches!(b[v].ty, Type::Shaped(_)) { b[v].ty.dims().unwrap_or_default() } else { Vec::new() }
     }
 
-    /// `dropUnitExtentFromOperandMetadata`.
     fn info(m: &AffineMap, shape: &[i64], old_to_new: &BTreeMap<usize, usize>, repl: &[AffineExpr]) -> Info {
         let exprs = &m.results;
         let n = old_to_new.len() as u32;
@@ -224,7 +191,6 @@ impl Unit {
         info
     }
 
-    /// `tensor::getMixedSizes` / `memref::getMixedSizes`: dynamic sizes by a folded `dim`.
     fn mixed_sizes(rw: &mut Rewriter<'_, '_>, v: ValueId) -> Vec<Ofr> {
         let dims = rw.body[v].ty.dims().unwrap_or_default();
         let is_memref = matches!(&rw.body[v].ty, Type::Shaped(s) if s.kind == ShapedKind::MemRef);
@@ -244,13 +210,11 @@ impl Unit {
         }).collect()
     }
 
-    /// `tensor.empty` of type `ty` with `dynamic` sizes.
     fn empty<'a>(rw: &mut Rewriter<'_, 'a>, dynamic: &[ValueId], ty: Type<'a>) -> ValueId {
         let o = rw.emit(&tensor::EmptyOp::new(dynamic.iter().map(|v| (*v).into()).collect(), Type::Index, ty));
         rw.body[o].results[0]
     }
 
-    /// `ControlDropUnitDims::collapseValue`.
     fn collapse(rw: &mut Rewriter<'_, '_>, v: ValueId, target: &[i64], r: &[Vec<i64>], s: Strategy) -> Option<ValueId> {
         let Type::Shaped(sh) = rw.body[v].ty.clone() else { return None };
         let reassociation = Reshape::attr(&r.to_vec());
@@ -270,7 +234,6 @@ impl Unit {
         Some(rw.body[o].results[0])
     }
 
-    /// `SubViewOp::rankReduceIfNeeded` / `ExtractSliceOp::rankReduceIfNeeded`.
     fn rank_reduce(rw: &mut Rewriter<'_, '_>, v: ValueId, target: &[i64], name: &str) -> ValueId {
         let shape = rw.body[v].ty.dims().unwrap_or_default();
         if shape == target {
@@ -287,13 +250,11 @@ impl Unit {
         rw.body[o].results[0]
     }
 
-    /// One dynamic size of an expanded group: the source size over the group's static product.
     #[ops(ix)]
     fn group_size(ix: &mut Ix<'_, '_, '_>, size: ValueId, product: i64) -> ValueId {
         size / ix.cst(product)
     }
 
-    /// `inferExpandShapeOutputShape` from the source's mixed sizes.
     fn expand_output_shape(rw: &mut Rewriter<'_, '_>, src: ValueId, out: &[i64], r: &[Vec<i64>]) -> Vec<Ofr> {
         if rw.body[src].ty.dims().unwrap_or_default().is_empty() {
             return out.iter().map(|_| Ofr::C(1)).collect();
@@ -313,14 +274,12 @@ impl Unit {
         shape
     }
 
-    /// A `tensor.expand_shape` of `src` to `ty` (`ExpandShapeOp::build` inferring the output shape).
     fn expand_to<'a>(rw: &mut Rewriter<'_, 'a>, src: ValueId, r: &[Vec<i64>], ty: Type<'a>) -> ValueId {
         let shape = Self::expand_output_shape(rw, src, &ty.dims().unwrap_or_default(), r);
         let o = rw.create(Rewriter::expand_data("tensor", src, &r.to_vec(), &shape), &[ty]);
         rw.body[o].results[0]
     }
 
-    /// `ControlDropUnitDims::expandValue`.
     fn expand(rw: &mut Rewriter<'_, '_>, v: ValueId, orig_dest: ValueId, r: &[Vec<i64>], s: Strategy) -> Option<ValueId> {
         let ot = rw.body[orig_dest].ty.clone();
         let Type::Shaped(sh) = &ot else { return None };
@@ -336,7 +295,6 @@ impl Unit {
         Some(Self::expand_to(rw, v, r, ot))
     }
 
-    /// `dropUnitDims` of a `linalg.generic`.
     fn generic(rw: &mut Rewriter<'_, '_>, op: OpId, s: Strategy) -> bool {
         let b = &*rw.body;
         let maps = Self::maps(b, op);
@@ -409,7 +367,6 @@ impl Unit {
         true
     }
 
-    /// `replaceUnitDimIndexOps`.
     fn replace_index_ops(rw: &mut Rewriter<'_, '_>, g: OpId, unit: &BTreeSet<usize>) {
         let blk = rw.body[rw.body[g].regions[0]].blocks[0];
         for o in rw.body.block_ops(blk) {
@@ -433,7 +390,6 @@ impl Unit {
         }
     }
 
-    /// `PadOp::getConstantPaddingValue`.
     fn padding_value(b: &Body<'_>, pad: OpId) -> Option<ValueId> {
         let blk = *b[*b[pad].regions.first()?].blocks.first()?;
         let y = b.last_op(blk)?;
@@ -445,7 +401,6 @@ impl Unit {
         }
     }
 
-    /// `DropPadUnitDims`.
     fn pad(rw: &mut Rewriter<'_, '_>, op: OpId, s: Strategy) -> bool {
         let b = &*rw.body;
         let (src, res) = (b[op].operands[0], b[op].results[0]);
@@ -528,7 +483,6 @@ impl Unit {
         true
     }
 
-    /// `MoveInitOperandsToInput`.
     fn move_init_to_input(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
         let operands = b[op].operands.to_vec();
@@ -574,7 +528,6 @@ impl Unit {
             .with("indexing_maps", Attribute::Array(new_maps.iter().map(Attribute::from).collect()))
             .with("iterator_types", Attribute::Array(iters))
             .segments(&[ins.len(), outs.len()]);
-        // `getPrunedAttributeList`: the old op's discardable attributes besides the new ones.
         for a in &rw.body[op].attributes {
             if !d.attributes.iter().any(|x| x.name == a.name) {
                 d.attributes.push(a.clone());
@@ -612,7 +565,6 @@ impl Unit {
         true
     }
 
-    /// `getReassociationMapForFoldingUnitDims`.
     fn folding_unit_dims(sizes: &[i64]) -> Vec<Vec<i64>> {
         let mut out: Vec<Vec<i64>> = Vec::new();
         let mut cur = Vec::new();
@@ -630,7 +582,6 @@ impl Unit {
         out
     }
 
-    /// `RankReducedExtractSliceOp`.
     fn rank_reduced_extract(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let rt = rw.body[rw.body[op].results[0]].ty.clone();
         let shape = rt.dims().unwrap_or_default();
@@ -638,7 +589,6 @@ impl Unit {
         if re.len() == shape.len() {
             return false;
         }
-        // `inferCanonicalRankReducedResultType`: the first unit dims projected out.
         let mut drop = shape.len() - re.len();
         let reduced: Vec<i64> = shape.iter().copied().filter(|s| if *s == 1 && drop > 0 { drop -= 1; false } else { true }).collect();
         let lists = rw.body.slice_lists(op);
@@ -651,7 +601,6 @@ impl Unit {
         true
     }
 
-    /// `RankReducedInsertSliceOp<InsertOpTy>`.
     fn rank_reduced_insert(rw: &mut Rewriter<'_, '_>, op: OpId, parallel: bool) -> bool {
         let (src, dest) = (rw.body[op].operands[0], rw.body[op].operands[1]);
         let st = rw.body[src].ty.clone();
@@ -664,7 +613,6 @@ impl Unit {
             (true, Some(p)) => rw.set_before(p),
             _ => rw.set_before(op),
         }
-        // `CollapseShapeOp::build` without a result type: `computeTensorReshapeCollapsedType`.
         let collapsed: Vec<i64> = re.iter().map(|g| g.iter().map(|d| shape[*d as usize]).try_fold(1i64, |p, d| (d != Dim::DYNAMIC).then_some(p * d)).unwrap_or(Dim::DYNAMIC)).collect();
         let c = rw.emit(&tensor::CollapseShapeOp::new(src.into(), Reshape::attr(&re), st.clone(), Type::tensor(&collapsed, st.element_type().clone())));
         let cv = rw.body[c].results[0];
@@ -678,8 +626,6 @@ impl Unit {
         true
     }
 
-    /// `FoldEmptyTensorWithReshapeOp`: the result shape reified (an expand's output shape; a
-    /// collapse's static groups).
     fn empty_of_reshape(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         if rw.body.def_named(rw.body[op].operands[0], "tensor.empty").is_none() {
             return false;

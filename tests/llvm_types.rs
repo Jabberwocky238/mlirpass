@@ -1,6 +1,3 @@
-//! Every LLVM dialect type `mlir-opt` 22.1.8 printed in the fixtures reads back into an
-//! `LlvmType` and prints the same.
-
 mod common;
 
 use std::collections::BTreeSet;

@@ -1,18 +1,14 @@
-//! `convert-math-to-emitc`.
-
 use crate::{MathToEmitc};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, Run};
 
-/// `convert-math-to-emitc`.
 #[pass("convert-math-to-emitc")]
 pub struct ConvertMathToEmitc {
     #[opt("language-target", default = LanguageTarget::C99, from_str)]
     target: LanguageTarget,
 }
 
-/// `emitc::LanguageTarget`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LanguageTarget {
     C99,

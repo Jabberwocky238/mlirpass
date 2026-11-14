@@ -1,14 +1,3 @@
-//! ⭐ `transformCFGToSCF` (`mlir/Transforms/CFGToSCF.h`, `lib/Transforms/Utils/CFGToSCF.cpp`): lifts a
-//! region's control flow graph to structured control flow through a [`CfgToScfInterface`] that builds
-//! the ops of the dialects on either side (`ControlFlowToScf` does it for `cf` ⇒ `scf`).
-//!
-//! The algorithm, the order ops and blocks are made in and the places they go follow upstream step by
-//! step, down to what its data structures make observable:
-//! - predecessors in use-list order (the edge set last first), kept here as edges are redirected;
-//! - cycles found by LLVM's lazy `scc_iterator`, the next SCC computed before the current cycle is
-//!   rewritten, over the graph as it is then;
-//! - dominance trees cached per region and invalidated at upstream's points only.
-
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -17,7 +6,6 @@ use mlirformat::{Error, Str, Type};
 
 use crate::{BlockId, Body, DomTree, OpId, RegionId, ValueId};
 
-/// Where an op goes: before `before` in `block`, or at its end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct At {
     pub block: BlockId,
@@ -33,12 +21,10 @@ impl At {
         Self { block, before: body.first_op(block) }
     }
 
-    /// Before the block's terminator (`OpBuilder::atBlockTerminator`).
     pub fn terminator(body: &Body<'_>, block: BlockId) -> Self {
         Self { block, before: body.last_op(block) }
     }
 
-    /// Places detached `op` here.
     pub fn place(self, body: &mut Body<'_>, op: OpId) -> OpId {
         match self.before {
             Some(b) => body.insert_before(op, b),
@@ -48,77 +34,54 @@ impl At {
     }
 }
 
-/// ⭐ `CFGToSCFInterface`: what the caller of [`transform_cfg_to_scf`] builds.
 pub trait CfgToScfInterface<'a> {
-    /// `createStructuredBranchRegionOp`: a structured op replacing `cond` (a branch), with results
-    /// `result_types`, whose regions take the blocks of `regions` (one per successor of `cond`, in its
-    /// successor order; the blocks are detached and must be moved in as they are).
     fn branch_region_op(&mut self, body: &mut Body<'a>, at: At, cond: OpId, result_types: &[Type<'a>], regions: Vec<Vec<BlockId>>) -> Result<OpId, Error>;
 
-    /// `createStructuredBranchRegionTerminatorOp`: the terminator of a branch region of `op`.
     fn branch_region_terminator(&mut self, body: &mut Body<'a>, at: At, loc: Option<Str<'a>>, op: OpId, replaced: Option<OpId>, results: &[ValueId]) -> Result<(), Error>;
 
-    /// `createStructuredDoWhileLoopOp`: a do-while loop replacing `replaced`, iteration values `init`,
-    /// its body the blocks of `loop_body` (detached; the first is the header, the last the latch, where
-    /// the loop continues on `condition` passing `next`).
     fn do_while_loop(&mut self, body: &mut Body<'a>, at: At, replaced: OpId, init: &[ValueId], condition: ValueId, next: &[ValueId], loop_body: Vec<BlockId>) -> Result<OpId, Error>;
 
-    /// `getCFGSwitchValue`: a constant usable as the flag of [`Self::cfg_switch`].
     fn switch_value(&mut self, body: &mut Body<'a>, at: At, loc: Option<Str<'a>>, value: u32) -> ValueId;
 
-    /// `createCFGSwitchOp`: a switch branch to one of `case_dests` on `flag` or to `default`; returns it.
     #[expect(clippy::too_many_arguments, reason = "createCFGSwitchOp's parameters")]
     fn cfg_switch(&mut self, body: &mut Body<'a>, at: At, loc: Option<Str<'a>>, flag: ValueId, case_values: &[u32], case_dests: &[BlockId], case_args: &[Vec<ValueId>], default: BlockId, default_args: &[ValueId]) -> OpId;
 
-    /// `getUndefValue`.
     fn undef_value(&mut self, body: &mut Body<'a>, at: At, loc: Option<Str<'a>>, ty: &Type<'a>) -> ValueId;
 
-    /// `createUnreachableTerminator`: a return-like terminator of `region` saying unreachable.
     fn unreachable_terminator(&mut self, body: &mut Body<'a>, at: At, loc: Option<Str<'a>>, region: RegionId) -> Result<OpId, Error>;
 
-    /// `canConvertMultiSuccessorBranchOp`: whether [`Self::branch_region_op`] takes `op`, a
-    /// terminator with several successors; asked before the IR changes.
     fn can_convert_multi_successor(&self, _body: &Body<'a>, _op: OpId) -> bool {
         true
     }
 }
 
-/// An edge: successor `index` of terminator `term` (the block holding it is wherever it now is).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Edge {
     term: OpId,
     index: usize,
 }
 
-/// The state of one run.
 struct Lift<'i, 'a> {
     interface: &'i mut dyn CfgToScfInterface<'a>,
     region: RegionId,
     loc: Option<Str<'a>>,
     switch_values: Vec<Option<ValueId>>,
     undef: Vec<(Type<'a>, ValueId)>,
-    /// Each block's incoming edges in use-list order (last set first).
     preds: BTreeMap<BlockId, Vec<Edge>>,
-    /// Cached dominance trees (`DominanceInfo`), by region.
     dom: BTreeMap<RegionId, DomTree>,
-    /// Return-like op kinds ⇒ their combined exit block (`ReturnLikeExitCombiner`).
     exits: Vec<(OpId, BlockId)>,
 }
 
-/// `EdgeMultiplexer`.
 struct Multiplexer {
     block: BlockId,
-    /// Entry block ⇒ offset of its arguments in the multiplexer block, in insertion order.
     mapping: Vec<(BlockId, usize)>,
     discriminator: Option<ValueId>,
 }
 
-/// LLVM's `scc_iterator` over a region's blocks, lazily, reading successors as they are now.
 struct Scc {
     visit_num: u32,
     numbers: BTreeMap<BlockId, u32>,
     node_stack: Vec<BlockId>,
-    /// (node, next child index, min visited)
     visit_stack: Vec<(BlockId, usize, u32)>,
     current: Vec<BlockId>,
 }
@@ -194,8 +157,6 @@ impl Scc {
 }
 
 impl<'i, 'a> Lift<'i, 'a> {
-    // ---- edges and predecessors ----------------------------------------------------------------
-
     fn from(&self, body: &Body<'_>, e: Edge) -> BlockId {
         body[e.term].parent.expect("terminator in a block")
     }
@@ -217,7 +178,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         self.preds.get(&b).cloned().unwrap_or_default()
     }
 
-    /// `Block::getSinglePredecessor`: exactly one incoming edge.
     fn single_pred(&self, body: &Body<'_>, b: BlockId) -> Option<BlockId> {
         match self.preds(b)[..] {
             [e] => Some(self.from(body, e)),
@@ -225,14 +185,12 @@ impl<'i, 'a> Lift<'i, 'a> {
         }
     }
 
-    /// The successors of a new terminator become uses, in operand order (each first in its list).
     fn add_uses(&mut self, body: &Body<'_>, term: OpId) {
         for (index, s) in body[term].successors.clone().into_iter().enumerate() {
             self.preds.entry(s).or_default().insert(0, Edge { term, index });
         }
     }
 
-    /// A terminator about to go: its successors' uses go.
     fn drop_uses(&mut self, body: &Body<'_>, term: OpId) {
         for s in body[term].successors.clone() {
             if let Some(l) = self.preds.get_mut(&s) {
@@ -241,7 +199,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         }
     }
 
-    /// `Edge::setSuccessor`.
     fn set_successor(&mut self, body: &mut Body<'_>, e: Edge, to: BlockId) {
         let old = Self::successor(body, e);
         if let Some(l) = self.preds.get_mut(&old) {
@@ -251,10 +208,8 @@ impl<'i, 'a> Lift<'i, 'a> {
         self.preds.entry(to).or_default().insert(0, e);
     }
 
-    /// Every edge to `from` now goes to `to` (`Block::replaceAllUsesWith`).
     fn replace_block_uses(&mut self, body: &mut Body<'_>, from: BlockId, to: BlockId) {
         let moved = self.preds.remove(&from).unwrap_or_default();
-        // `while (!use_empty()) use_begin()->set(to)`: each one first in `to`'s list
         for e in &moved {
             body[e.term].successors[e.index] = to;
             self.preds.entry(to).or_default().insert(0, *e);
@@ -266,7 +221,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         body[e.term].operands[r].to_vec()
     }
 
-    /// `getMutableSuccessorOperands(..).assign(values)`.
     fn set_succ_operands(body: &mut Body<'_>, e: Edge, values: &[ValueId]) {
         let n = body.successor_operands(e.term, e.index).map_or(0, |r| r.len());
         let all: Vec<usize> = (0..n).collect();
@@ -277,8 +231,6 @@ impl<'i, 'a> Lift<'i, 'a> {
     fn append_succ_operands(body: &mut Body<'_>, e: Edge, values: &[ValueId]) {
         body.append_successor_operands(e.term, e.index, values);
     }
-
-    // ---- constants ----------------------------------------------------------------------------
 
     fn entry(&self, body: &Body<'_>) -> BlockId {
         body[self.region].blocks[0]
@@ -313,15 +265,11 @@ impl<'i, 'a> Lift<'i, 'a> {
         op
     }
 
-    /// `createSingleDestinationBranch`.
     fn branch_to(&mut self, body: &mut Body<'a>, at: At, loc: Option<Str<'a>>, dest: BlockId, args: &[ValueId]) -> OpId {
         let flag = self.switch_value(body, 0);
         self.cfg_switch(body, at, loc, flag, &[], &[], &[], dest, args)
     }
 
-    // ---- blocks -------------------------------------------------------------------------------
-
-    /// A new block right after `after` (or at the end), with `like`'s arguments (types and locations).
     fn new_block_after(body: &mut Body<'a>, region: RegionId, after: Option<BlockId>, args: Vec<(Type<'a>, Option<Str<'a>>)>) -> BlockId {
         let b = body.add_block(region, &args);
         if let Some(a) = after {
@@ -344,19 +292,15 @@ impl<'i, 'a> Lift<'i, 'a> {
         }
     }
 
-    /// Takes a block out of its region (to be moved into a new one).
     fn detach_block(body: &mut Body<'_>, b: BlockId) -> BlockId {
         body.remove_block(b);
         b
     }
 
-    /// Erases an empty block (its ops already moved away), with its arguments' uses gone.
     fn erase_block(&mut self, body: &mut Body<'_>, b: BlockId) {
         self.preds.remove(&b);
         body.remove_block(b);
     }
-
-    // ---- dominance ----------------------------------------------------------------------------
 
     fn dom(&mut self, body: &Body<'_>, region: RegionId) -> &DomTree {
         self.dom.entry(region).or_insert_with(|| body.dom_tree(region))
@@ -366,8 +310,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         self.dom.remove(&region);
     }
 
-    /// LLVM's `DominatorTree::dominates(A, B)`: a block not in the tree is dominated by everything,
-    /// and dominates nothing else.
     fn dominates(&mut self, body: &Body<'_>, region: RegionId, a: BlockId, b: BlockId) -> bool {
         let t = self.dom(body, region);
         if a == b || !t.reachable(b) {
@@ -379,7 +321,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         t.dominates(a, b)
     }
 
-    /// `depth_first(dominanceInfo.getNode(n))`: `n`'s dominator subtree in preorder.
     fn dominated(&mut self, body: &Body<'_>, region: RegionId, n: BlockId) -> Vec<BlockId> {
         let t = self.dom(body, region);
         let mut out = Vec::new();
@@ -391,9 +332,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         out
     }
 
-    // ---- EdgeMultiplexer ----------------------------------------------------------------------
-
-    /// `EdgeMultiplexer::create`.
     fn multiplexer(&mut self, body: &mut Body<'a>, loc: Option<Str<'a>>, entries: &[BlockId], extra: &[Type<'a>]) -> Multiplexer {
         let region = body[entries[0]].parent.expect("in region");
         let block = Self::new_block_after(body, region, Some(entries[0]), Vec::new());
@@ -419,7 +357,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         Multiplexer { block, mapping, discriminator }
     }
 
-    /// `EdgeMultiplexer::redirectEdge`.
     fn redirect(&mut self, body: &mut Body<'a>, m: &Multiplexer, e: Edge, extra: &[ValueId]) {
         let succ = Self::successor(body, e);
         let (slot, offset) = m.mapping.iter().enumerate().find(|(_, (b, _))| *b == succ).map(|(i, (_, o))| (i, *o)).expect("an entry block");
@@ -446,7 +383,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         Self::set_succ_operands(body, e, &new);
     }
 
-    /// `EdgeMultiplexer::createSwitch`.
     fn create_switch(&mut self, body: &mut Body<'a>, m: &Multiplexer, at: At, loc: Option<Str<'a>>, excluded: &[BlockId]) {
         let mut values = Vec::new();
         let mut dests = Vec::new();
@@ -470,7 +406,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         self.cfg_switch(body, at, loc, flag, &values, &dests, &args, default, &default_args);
     }
 
-    /// `createSingleEntryBlock`.
     fn single_entry(&mut self, body: &mut Body<'a>, loc: Option<Str<'a>>, edges: &[Edge]) -> Multiplexer {
         let entries: Vec<BlockId> = edges.iter().map(|e| Self::successor(body, *e)).collect();
         let m = self.multiplexer(body, loc.clone(), &entries, &[]);
@@ -482,14 +417,10 @@ impl<'i, 'a> Lift<'i, 'a> {
         m
     }
 
-    // ---- ReturnLikeExitCombiner ---------------------------------------------------------------
-
-    /// `ReturnLikeOpEquivalence`: same kind, attributes, properties and operand types.
     fn equivalent(body: &Body<'_>, a: OpId, b: OpId) -> bool {
         body[a].name == body[b].name && body[a].properties == body[b].properties && body[a].attributes == body[b].attributes && body.types(&body[a].operands) == body.types(&body[b].operands)
     }
 
-    /// `ReturnLikeExitCombiner::combineExit`.
     fn combine_exit(&mut self, body: &mut Body<'a>, ret: OpId) {
         let found = self.exits.iter().find(|(r, _)| Self::equivalent(body, *r, ret)).copied();
         if let Some((r, _)) = found
@@ -522,9 +453,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         body.set_operands(ret, args.into_iter().collect::<crate::Ids<ValueId>>());
     }
 
-    // ---- cycles -------------------------------------------------------------------------------
-
-    /// `calculateCycleEdges`: (entry, exit, back) edges.
     fn cycle_edges(&self, body: &Body<'_>, cycle: &[BlockId]) -> (Vec<Edge>, Vec<Edge>, Vec<Edge>) {
         let (mut entry, mut exit, mut back) = (Vec::new(), Vec::new(), Vec::new());
         let mut entry_blocks = BTreeSet::new();
@@ -552,7 +480,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         (entry, exit, back)
     }
 
-    /// `createSingleExitingLatch`: (latch, condition, exit block).
     fn single_exiting_latch(&mut self, body: &mut Body<'a>, loc: Option<Str<'a>>, back: &[Edge], exits: &[Edge]) -> Result<(BlockId, ValueId, BlockId), Error> {
         let mut succs: Vec<BlockId> = back.iter().map(|e| Self::successor(body, *e)).collect();
         succs.extend(exits.iter().map(|e| Self::successor(body, *e)));
@@ -576,7 +503,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         let repeat = *body[latch].args.last().expect("the flag");
         let nh = body[header].args.len();
         let header_args = body[latch].args[..nh].to_vec();
-        // `createConditionalBranch`: true ⇒ the header, false ⇒ the exit block
         let at = At::begin(body, latch);
         self.cfg_switch(body, at, loc.clone(), repeat, &[0], &[exit], &[Vec::new()], header, &header_args);
         let at = At::begin(body, exit);
@@ -589,7 +515,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         Ok((latch, repeat, exit))
     }
 
-    /// `transformToReduceLoop`: the values passed to the next iteration.
     fn reduce_loop(&mut self, body: &mut Body<'a>, header: BlockId, exit: BlockId, loop_blocks: &[BlockId]) -> Vec<ValueId> {
         let latch = self.single_pred(body, exit).expect("the latch alone leads to the exit block");
         let region = body[header].parent.expect("in region");
@@ -629,7 +554,6 @@ impl<'i, 'a> Lift<'i, 'a> {
                 let mut arg: Option<ValueId> = None;
                 let uses: Vec<_> = body[value].uses.iter().cloned().collect();
                 for u in uses {
-                    // the block of the use, up to one in the loop's region
                     let mut cur = body[u.op].parent;
                     while let Some(c) = cur
                         && body[c].parent != Some(region)
@@ -686,7 +610,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         header_operands
     }
 
-    /// `transformCyclesToSCFLoops`: the entry blocks of the loop bodies made.
     fn cycles(&mut self, body: &mut Body<'a>, region_entry: BlockId) -> Result<Vec<BlockId>, Error> {
         let mut out = Vec::new();
         let mut scc = Scc::new(body, region_entry);
@@ -748,10 +671,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         Ok(out)
     }
 
-    // ---- branches -----------------------------------------------------------------------------
-
-    /// `createSingleExitBranchRegion`: the blocks of one branch region, with a single exit block made
-    /// for several edges to `continuation`; records the created empty blocks.
     fn single_exit_branch_region(&mut self, body: &mut Body<'a>, branch: &[BlockId], continuation: BlockId, empty: &mut Vec<(BlockId, Vec<ValueId>)>) -> Vec<BlockId> {
         let region = body[branch[0]].parent.expect("in region");
         let mut single: Option<BlockId> = None;
@@ -784,7 +703,6 @@ impl<'i, 'a> Lift<'i, 'a> {
         blocks
     }
 
-    /// `transformToStructuredCFBranches`.
     fn branches(&mut self, body: &mut Body<'a>, entry: BlockId) -> Result<Vec<BlockId>, Error> {
         let region = body[entry].parent.expect("in region");
         let succs = body.successors(entry).to_vec();
@@ -801,7 +719,6 @@ impl<'i, 'a> Lift<'i, 'a> {
             self.drop_uses(body, et);
             body.erase(et);
             body.splice(s, None, entry, None);
-            // the spliced terminator's edges now leave `entry`: same terminator, same uses
             self.erase_block(body, s);
             return Ok(vec![entry]);
         }
@@ -887,7 +804,6 @@ impl<'i, 'a> Lift<'i, 'a> {
             let loc = body[op].loc.clone();
             self.interface.branch_region_terminator(body, At::end(b), loc, op, None, &values)?;
         }
-        // the users of the continuation left: one unconditional branch per branch region
         for e in self.preds(continuation) {
             let user = e.term;
             let block = body[user].parent.expect("in a block");
@@ -908,12 +824,8 @@ impl<'i, 'a> Lift<'i, 'a> {
         Ok(new_regions)
     }
 
-    // ---- preconditions ------------------------------------------------------------------------
-
-    /// `checkTransformationPreconditions`: reported on the op as `emitOpError` does.
     fn preconditions(&self, body: &mut Body<'a>) -> bool {
         let blocks = body[self.region].blocks.to_vec();
-        // Every block reachable from the entry (a cycle of unreachable blocks is unreachable too).
         let mut reachable = alloc::collections::BTreeSet::new();
         let mut stack = vec![blocks[0]];
         while let Some(b) = stack.pop() {
@@ -958,7 +870,6 @@ impl<'i, 'a> Lift<'i, 'a> {
                 }
             }
         }
-        // Every multi-successor terminator converts, before anything changes.
         for &b in &blocks {
             if body.successors(b).len() <= 1 {
                 continue;
@@ -974,9 +885,6 @@ impl<'i, 'a> Lift<'i, 'a> {
     }
 }
 
-/// ⭐ `transformCFGToSCF(region, interface, dominanceInfo)`: whether the IR changed; `Err` when a
-/// precondition does not hold (reported as a diagnostic) or `interface` failed, the IR then in an
-/// unspecified state.
 pub fn transform_cfg_to_scf<'a>(body: &mut Body<'a>, region: RegionId, interface: &mut dyn CfgToScfInterface<'a>) -> Result<bool, Error> {
     if body[region].blocks.len() <= 1 {
         return Ok(false);
@@ -984,7 +892,6 @@ pub fn transform_cfg_to_scf<'a>(body: &mut Body<'a>, region: RegionId, interface
     let owner = body[region].parent;
     let loc = body[owner].loc.clone();
     let mut s = Lift { interface, region, loc, switch_values: Vec::new(), undef: Vec::new(), preds: BTreeMap::new(), dom: BTreeMap::new(), exits: Vec::new() };
-    // use lists as the parser leaves them: each new use first, so the last branch written first
     for b in body[region].blocks.to_vec() {
         for o in body.block_ops(b) {
             let mut nested = Vec::new();
@@ -999,7 +906,6 @@ pub fn transform_cfg_to_scf<'a>(body: &mut Body<'a>, region: RegionId, interface
     if !s.preconditions(body) {
         return Err(Error::from("transformation preconditions not met"));
     }
-    // `createSingleExitBlocksForReturnLike`
     for b in body[region].blocks.to_vec() {
         if !body.successors(b).is_empty() {
             continue;

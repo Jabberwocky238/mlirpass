@@ -1,8 +1,5 @@
-//! `map-memref-spirv-storage-class`.
-
 use crate::{ClientApi, TargetEnv};
 
-/// `map-memref-spirv-storage-class`.
 #[crate::pass("map-memref-spirv-storage-class")]
 pub struct MapMemrefSpirvStorageClass {
     #[opt("client-api", default = alloc::string::String::from("vulkan"))]
@@ -16,7 +13,6 @@ impl crate::Run for MapMemrefSpirvStorageClass {
             "opencl" => ClientApi::OpenCl,
             a => return Err(mlirformat::Error(alloc::format!("Invalid clienAPI: {a}"))),
         };
-        // `lookupTargetEnv`: a target, when there is one, decides.
         let mut at = Some(op);
         while let Some(o) = at {
             if body.is_symbol_table(o)

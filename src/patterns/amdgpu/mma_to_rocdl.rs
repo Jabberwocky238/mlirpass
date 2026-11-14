@@ -1,7 +1,3 @@
-//! `amdgpu` matrix ops ⇒ `rocdl`, as `AMDGPUToROCDL.cpp`'s `MFMAOpLowering`,
-//! `ScaledMFMAOpLowering`, `SparseMFMAOpLowering` and `WMMAOpLowering`: the intrinsic picked by
-//! element types, shape and chipset, the operands packed the way the intrinsic takes them.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -19,7 +15,6 @@ const GFX942: AmdChipset = AmdChipset::new(9, 4, 2);
 const GFX950: AmdChipset = AmdChipset::new(9, 5, 0);
 const GFX1250: AmdChipset = AmdChipset::new(12, 5, 0);
 
-/// The element types the matrix intrinsics distinguish; `Fp8` / `Bf8` as the chipset reads them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum El {
     F32,
@@ -52,16 +47,13 @@ impl El {
     }
 }
 
-/// When an intrinsic is there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Since {
     Any,
     Chip(AmdChipset),
-    /// `reducePrecision` on gfx942 and later.
     Xf32,
 }
 
-/// `mfmaOpToIntrinsic`, in its order: A and D element types, m n k blocks.
 const MFMA: &[(El, El, [u32; 4], Since, &str)] = &[
     (El::F32, El::F32, [32, 32, 4, 1], Since::Xf32, "rocdl.mfma.f32.32x32x4.xf32"),
     (El::F32, El::F32, [16, 16, 8, 1], Since::Xf32, "rocdl.mfma.f32.16x16x8.xf32"),
@@ -100,7 +92,6 @@ const MFMA: &[(El, El, [u32; 4], Since, &str)] = &[
     (El::I8, El::I32, [16, 16, 32, 1], Since::Chip(GFX942), "rocdl.mfma.i32.16x16x32.i8"),
     (El::F64, El::F64, [16, 16, 4, 1], Since::Chip(GFX90A), "rocdl.mfma.f64.16x16x4f64"),
     (El::F64, El::F64, [4, 4, 4, 4], Since::Chip(GFX90A), "rocdl.mfma.f64.4x4x4f64"),
-    // fp8 / bf8 A: the B type picks the second half of the name.
     (El::Bf8, El::Bf8, [16, 16, 32, 1], Since::Any, "rocdl.mfma.f32.16x16x32.bf8.bf8"),
     (El::Bf8, El::Fp8, [16, 16, 32, 1], Since::Any, "rocdl.mfma.f32.16x16x32.bf8.fp8"),
     (El::Bf8, El::Bf8, [32, 32, 16, 1], Since::Any, "rocdl.mfma.f32.32x32x16.bf8.bf8"),
@@ -111,7 +102,6 @@ const MFMA: &[(El, El, [u32; 4], Since, &str)] = &[
     (El::Fp8, El::Fp8, [32, 32, 16, 1], Since::Any, "rocdl.mfma.f32.32x32x16.fp8.fp8"),
 ];
 
-/// `smfmacOpToIntrinsic`, in its order: A, B, D element types, m n k.
 const SMFMAC: &[(El, El, El, [u32; 3], bool, &str)] = &[
     (El::F16, El::F16, El::F32, [16, 16, 32], false, "rocdl.smfmac.f32.16x16x32.f16"),
     (El::Bf16, El::Bf16, El::F32, [16, 16, 32], false, "rocdl.smfmac.f32.16x16x32.bf16"),
@@ -143,7 +133,6 @@ const SMFMAC: &[(El, El, El, [u32; 3], bool, &str)] = &[
     (El::Bf8, El::Bf8, El::F32, [32, 32, 64], true, "rocdl.smfmac.f32.32x32x64.bf8.bf8"),
 ];
 
-/// `wmmaOpToIntrinsicRDNA`, in its order: A, B, D element types, k, RDNA3 too, RDNA4 too.
 const WMMA_RDNA: &[(El, Option<El>, El, u32, bool, bool, &str)] = &[
     (El::F16, None, El::F32, 16, true, true, "rocdl.wmma.f32.16x16x16.f16"),
     (El::Bf16, None, El::F32, 16, true, true, "rocdl.wmma.f32.16x16x16.bf16"),
@@ -159,17 +148,14 @@ const WMMA_RDNA: &[(El, Option<El>, El, u32, bool, bool, &str)] = &[
     (El::I4, None, El::I32, 32, false, true, "rocdl.wmma.i32.16x16x32.iu4"),
 ];
 
-/// `amdgpu::MFMAPermB`.
 const MFMA_PERM_B: [&str; 8] = ["none", "bcast_first_32", "bcast_second_32", "rotate_16_right", "bcast_first_16", "bcast_second_16", "bcast_third_16", "bcast_fourth_16"];
 
-/// The chips with sparse WMMA.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SparseGen {
     Rdna4,
     Gfx1250,
 }
 
-/// An element type of a sparse WMMA row.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SEl {
     F16,
@@ -193,7 +179,6 @@ impl SEl {
     }
 }
 
-/// `SparseWMMAOpInfo` of one row of `sparseWMMAOpToIntrinsic`.
 #[derive(Clone, Copy)]
 struct SparseWmma {
     chip: SparseGen,
@@ -213,8 +198,6 @@ macro_rules! swmmac {
     };
 }
 
-/// `sparseWMMAOpToIntrinsic`, in its order (gfx1250's i8 ⇒ f16 row names the bf8 intrinsic,
-/// as upstream does).
 const SPARSE_WMMA: &[SparseWmma] = swmmac! {
     Rdna4 32 F16 F16 F32 "rocdl.swmmac.f32.16x16x32.f16" false false false;
     Rdna4 32 Bf16 Bf16 F32 "rocdl.swmmac.f32.16x16x32.bf16" false false false;
@@ -243,7 +226,6 @@ const SPARSE_WMMA: &[SparseWmma] = swmmac! {
     Gfx1250 128 I8 I8 I32 "rocdl.swmmac.i32.16x16x128.iu8" true true true;
 };
 
-/// The amdgpu matrix ops.
 pub struct AmdgpuMmaToRocdl;
 
 #[patterns(converter, options = AmdgpuRocdlOptions)]
@@ -268,7 +250,6 @@ impl AmdgpuMmaToRocdl {
         cr.rw.body[v].ty.clone()
     }
 
-    /// A vector's length and element type.
     fn vector<'t, 'a>(t: &'t Type<'a>) -> Option<(i64, &'t Type<'a>)> {
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::Vector => Some((t.element_count()? as i64, &s.elem)),
@@ -276,12 +257,10 @@ impl AmdgpuMmaToRocdl {
         }
     }
 
-    /// `t` with its bf16 elements as i16.
     fn bf16_as_i16<'a>(t: &Type<'a>) -> Option<Type<'a>> {
         Self::vector(t).filter(|(_, e)| matches!(e, Type::Float(FloatKind::BF16))).map(|_| t.with_element(Type::int(16)))
     }
 
-    /// `packSmallFloatVectorOperand` (`sparse`: `convertSparseMFMAVectorOperand`).
     fn pack(cr: &mut Cr<'_, '_, '_>, v: ValueId, allow_bf16: bool, sparse: bool) -> ValueId {
         let t = Self::ty(cr, v);
         let Some((n, e)) = Self::vector(&t) else { return v };
@@ -304,13 +283,11 @@ impl AmdgpuMmaToRocdl {
         El::of(t, |e| Small::of_chipset(chipset, e))
     }
 
-    /// `mfmaOpToIntrinsic`.
     fn mfma_intrinsic(cr: &Cr<'_, '_, '_>, op: OpId, chipset: AmdChipset, [m, n, k, b]: [u32; 4]) -> Option<&'static str> {
         let ops = &cr.rw.body[op].operands;
         let (a, bt, d) = (Self::ty(cr, ops[0]), Self::ty(cr, ops[1]), Self::ty(cr, ops[2]));
         let (a, d) = (Self::chip_el(chipset, &a)?, Self::chip_el(chipset, &d)?);
         let small = matches!(a, El::Fp8 | El::Bf8);
-        // fp8 rows key on B in the D slot; D must be f32.
         let second = if small {
             if d != El::F32 {
                 return None;
@@ -329,7 +306,6 @@ impl AmdgpuMmaToRocdl {
         }).map(|r| r.4)
     }
 
-    /// `smallFloatTypeToMatrixFormat`: the `#rocdl<matrix_format ..>` case.
     fn matrix_format(t: &Type<'_>) -> Option<&'static str> {
         match t.element_type() {
             Type::Float(FloatKind::F8E4M3FN) => Some("fp8_e4m3"),
@@ -341,19 +317,16 @@ impl AmdgpuMmaToRocdl {
         }
     }
 
-    /// `#rocdl<matrix_format f>`.
     fn matrix_format_attr(f: &str) -> Attribute<'static> {
         Attribute::dialect("rocdl", &alloc::format!("<matrix_format {f}>"))
     }
 
-    /// `#rocdl<mfma_neg_modifier ..>` of negation bits (A, B, C from bit 0).
     fn neg_modifier(bits: i64) -> Attribute<'static> {
         let names: Vec<&str> = ["neg_a", "neg_b", "neg_c"].iter().enumerate().filter(|(i, _)| bits >> i & 1 == 1).map(|(_, n)| *n).collect();
         let body = if names.is_empty() { alloc::string::String::from("none") } else { names.join("|") };
         Attribute::dialect("rocdl", &alloc::format!("<mfma_neg_modifier {body}>"))
     }
 
-    /// `mfmaOpToScaledIntrinsic`.
     fn scaled_intrinsic(cr: &Cr<'_, '_, '_>, op: OpId, chipset: AmdChipset, [m, n, k, b]: [u32; 4]) -> Option<(&'static str, &'static str, &'static str)> {
         let ops = &cr.rw.body[op].operands;
         if chipset < GFX950 || !matches!(Self::ty(cr, ops[2]).element_type(), Type::Float(FloatKind::F32)) {
@@ -372,7 +345,6 @@ impl AmdgpuMmaToRocdl {
         [Self::int(cr, op, "m"), Self::int(cr, op, "n"), Self::int(cr, op, "k"), blocks].map(|v| v as u32)
     }
 
-    /// `blgp` with the negation bits.
     fn blgp(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<i64> {
         let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("blgp") else { return Some(0) };
         let body = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?.trim();
@@ -380,7 +352,6 @@ impl AmdgpuMmaToRocdl {
         MFMA_PERM_B.iter().position(|p| *p == name).map(|p| p as i64)
     }
 
-    /// `MFMAOpLowering`.
     #[convert("amdgpu.mfma")]
     fn mfma(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let chipset = o.chipset;
@@ -442,7 +413,6 @@ impl AmdgpuMmaToRocdl {
         true
     }
 
-    /// `castScaleOperand`: an i8 zero-extended, 4 / 8 bytes as one integer.
     fn scale(cr: &mut Cr<'_, '_, '_>, v: ValueId) -> ValueId {
         let t = Self::ty(cr, v);
         match Self::vector(&t) {
@@ -451,7 +421,6 @@ impl AmdgpuMmaToRocdl {
         }
     }
 
-    /// `ScaledMFMAOpLowering`.
     #[convert("amdgpu.scaled_mfma")]
     fn scaled_mfma(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         if o.chipset.major != 9 || o.chipset < GFX950 {
@@ -478,7 +447,6 @@ impl AmdgpuMmaToRocdl {
         true
     }
 
-    /// `SparseMFMAOpLowering` (gfx942+).
     #[convert("amdgpu.sparse_mfma")]
     fn sparse_mfma(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let chipset = o.chipset;
@@ -492,7 +460,6 @@ impl AmdgpuMmaToRocdl {
         let Some(&[a, b, d]) = els.as_deref() else { return false };
         let [m, n, k, _] = Self::shape(cr, op);
         let Some(name) = SMFMAC.iter().find(|r| (r.0, r.1, r.2, r.3) == (a, b, d, [m, n, k]) && (!r.4 || chipset >= GFX950)).map(|r| r.5) else { return false };
-        // (the gfx942 bf16 forms take bf16 as i16 even on gfx950)
         let gfx942_bf16 = matches!(name, "rocdl.smfmac.f32.16x16x32.bf16" | "rocdl.smfmac.f32.32x32x16.bf16");
         let gfx950 = chipset >= GFX950 && !gfx942_bf16;
         cr.rw.set_before(op);
@@ -509,7 +476,6 @@ impl AmdgpuMmaToRocdl {
         true
     }
 
-    /// `wmmaPushInputOperand`: 8-bit and narrower inputs packed into dwords, with their sign.
     fn wmma_input(cr: &mut Cr<'_, '_, '_>, v: ValueId, mlir: &Type<'_>, unsigned: bool, sign: &'static str, attrs: &mut Vec<(&'static str, Attribute<'static>)>) -> ValueId {
         let t = Self::ty(cr, v);
         let Some((n, e)) = Self::vector(&t) else { return v };
@@ -526,7 +492,6 @@ impl AmdgpuMmaToRocdl {
         r
     }
 
-    /// `WMMAOpLowering` (gfx11, gfx12.0).
     #[convert("amdgpu.wmma")]
     fn wmma(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let chipset = o.chipset;
@@ -579,8 +544,6 @@ impl AmdgpuMmaToRocdl {
         true
     }
 
-    /// `dotOpToIntrinsic`: the intrinsic, whether it takes signs (`sudot*`) and whether it
-    /// takes a clamp.
     fn dot_intrinsic(cr: &Cr<'_, '_, '_>, op: OpId, chipset: AmdChipset) -> Option<(&'static str, bool, bool)> {
         let ops = &cr.rw.body[op].operands;
         let (at, bt, dest) = (Self::ty(cr, ops[0]), Self::ty(cr, ops[1]), Self::ty(cr, ops[2]));
@@ -626,7 +589,6 @@ impl AmdgpuMmaToRocdl {
         supported.then_some((name, false, true))
     }
 
-    /// `DotOpLowering`: 8-bit and narrower sources packed in dwords.
     #[convert("amdgpu.dot")]
     fn dot(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let Some((name, signs, clamp)) = Self::dot_intrinsic(cr, op, o.chipset) else { return false };
@@ -648,9 +610,6 @@ impl AmdgpuMmaToRocdl {
         true
     }
 
-
-    /// `sparseWMMAOpToIntrinsic`: the intrinsic, and whether it takes signs, reuse flags and a
-    /// clamp; RDNA4 (`k` 32 / 64) or gfx1250 wave32 (`k` 64 / 128).
     fn sparse_wmma_intrinsic(cr: &Cr<'_, '_, '_>, op: OpId, chipset: AmdChipset) -> Option<SparseWmma> {
         let ops = &cr.rw.body[op].operands;
         let [a, b, d] = [ops[0], ops[1], ops[2]].map(|v| Self::ty(cr, v).element_type().clone());
@@ -668,7 +627,6 @@ impl AmdgpuMmaToRocdl {
         SPARSE_WMMA.iter().find(|r| r.chip == chip && r.k == k && r.a.is(&a) && r.b.is(&b) && r.d.is(&d)).copied()
     }
 
-    /// `SparseWMMAOpLowering`.
     #[convert("amdgpu.sparse_wmma")]
     fn sparse_wmma(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let d_ty = Self::ty(cr, cr.rw.body[op].results[0]);
@@ -686,8 +644,6 @@ impl AmdgpuMmaToRocdl {
         let raw_out = Self::ty(cr, c);
         let idx = Self::bitcast(cr, operands[3][0], Type::int(32));
         let mut r = cr.build(OpData::build(w.name).operands(&[a, b, c, idx]), raw_out.clone());
-        // A flag passed on is the unit attribute itself, which an i1 property does not take:
-        // that property ends up unset (the others keep their defaults).
         let given = [("signA", ua && w.sign), ("signB", ub && w.sign), ("reuseA", ra && w.reuse), ("reuseB", rb && w.reuse), ("clamp", cl && w.clamp)];
         if let Some(lowered) = cr.rw.body.def_op(r) {
             for (prop, _) in given.iter().filter(|(_, g)| *g) {
@@ -700,5 +656,4 @@ impl AmdgpuMmaToRocdl {
         cr.replace(op, vec![vec![r]]);
         true
     }
-
 }

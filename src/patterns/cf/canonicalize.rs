@@ -1,5 +1,3 @@
-//! `cf`: canonicalization patterns, as `ControlFlowOps.cpp`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -8,7 +6,6 @@ use mlirformat::{arith, Attribute, Type};
 use crate::{ApInt, Body, BlockId, Const, OpData, OpId, Rewriter, ValueId};
 
 impl<'a> Body<'a> {
-    /// `getSinglePredecessor`: the one edge into `b`.
     pub fn single_predecessor(&self, b: BlockId) -> Option<BlockId> {
         match self.predecessors(b)[..] {
             [(t, _)] => self[t].parent,
@@ -16,7 +13,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `getUniquePredecessor`: every edge into `b` comes from the same block.
     pub fn unique_predecessor(&self, b: BlockId) -> Option<BlockId> {
         let preds = self.predecessors(b);
         let first = self[preds.first()?.0].parent?;
@@ -27,8 +23,6 @@ impl<'a> Body<'a> {
         self.last_op(b)
     }
 
-    /// `collapseBranch`: if `succ` only forwards to another block with a `cf.br`, the block it
-    /// reaches and the operands it would get from `operands`.
     fn collapse_branch(&self, succ: BlockId, operands: &[ValueId]) -> Option<(BlockId, Vec<ValueId>)> {
         if self.len_ops(succ) != 1 {
             return None;
@@ -41,7 +35,6 @@ impl<'a> Body<'a> {
         if dest == succ {
             return None;
         }
-        // A chain of `cf.br` leading into a cycle never ends: leave it.
         let mut visited = vec![succ, dest];
         let mut next = self.terminator(dest).filter(|t| self[*t].name == "cf.br");
         while let Some(n) = next {
@@ -67,7 +60,6 @@ impl<'a> Body<'a> {
         self.successor_operands(op, i).map(|r| self[op].operands[r].to_vec()).unwrap_or_default()
     }
 
-    /// A `cf.switch`'s case values.
     fn case_values(&self, op: OpId) -> Option<(Const<'a>, Vec<ApInt>)> {
         let c = Const::try_from(self[op].get("case_values")?).ok()?;
         let n = c.ty.element_count()?;
@@ -77,13 +69,11 @@ impl<'a> Body<'a> {
 }
 
 impl<'a> Rewriter<'_, 'a> {
-    /// Replaces `op` by `cf.br` to `dest` with `operands`.
     fn br(&mut self, op: OpId, dest: BlockId, operands: &[ValueId]) -> bool {
         self.replace_with(op, OpData::build("cf.br").operands(operands).successors(&[dest]), &[]);
         true
     }
 
-    /// Replaces `op` by a `cf.switch`.
     fn switch(&mut self, op: OpId, flag: ValueId, default: (BlockId, Vec<ValueId>), cases: Vec<(ApInt, BlockId, Vec<ValueId>)>) -> bool {
         let flag_ty = self.body[flag].ty.clone();
         let mut operands = vec![flag];
@@ -104,12 +94,10 @@ impl<'a> Rewriter<'_, 'a> {
     }
 }
 
-/// `cf` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct CfCanon;
 
 #[crate::patterns]
 impl CfCanon {
-    /// `AssertOp::canonicalize`: an assertion of `true` goes.
     #[rewrite("cf.assert")]
     fn assert_true(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -121,7 +109,6 @@ impl CfCanon {
         true
     }
 
-    /// `BranchOp::canonicalize`: merge into a single-predecessor successor, or skip a pass-through block.
     #[rewrite("cf.br")]
     fn branch_canonicalize(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -143,7 +130,6 @@ impl CfCanon {
         CfCanon::uniform_block_args(rw, succ)
     }
 
-    /// `SimplifyUniformBlockArguments`: for any branch, its successors' uniform arguments.
     #[rewrite("_")]
     fn simplify_uniform_block_arguments(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         if !rw.body.has(op, crate::Trait::BranchOpInterface) {
@@ -397,8 +383,6 @@ impl CfCanon {
 }
 
 impl CfCanon {
-    /// `simplifyUniformBlockArgs`: an argument of `dest` that every edge into it passes the
-    /// same value (none produced by the branch) is that value.
     fn uniform_block_args(rw: &mut crate::Rewriter<'_, '_>, dest: crate::BlockId) -> bool {
         let b = &*rw.body;
         let preds = b.predecessors(dest);
@@ -416,7 +400,6 @@ impl CfCanon {
                     common = None;
                     break;
                 }
-                // A produced operand has no value.
                 let val = b.successor_arg_value(*t, *k, i).flatten();
                 if val.is_none() || (common.is_some() && common != val) {
                     common = None;

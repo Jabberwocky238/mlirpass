@@ -1,6 +1,3 @@
-//! `complex` ⇒ OCML calls, as `ComplexToROCDLLibraryCalls.cpp`: the functions as private
-//! `func.func`s, `complex.pow` through log / mul / exp, `complex.powi` through `complex.pow`.
-
 use alloc::vec::Vec;
 
 use mlirformat::{ApFloat, Attribute, Const, FloatKind, Scalar, Type};
@@ -10,7 +7,6 @@ use crate::{ConversionRewriter, Libm, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The `f32,f64` OCML functions of each op.
 const OCML: [(&str, &str); 8] = [
     ("complex.abs", "__ocml_cabs_f32,__ocml_cabs_f64"),
     ("complex.cos", "__ocml_ccos_f32,__ocml_ccos_f64"),
@@ -22,12 +18,10 @@ const OCML: [(&str, &str); 8] = [
     ("complex.tanh", "__ocml_ctanh_f32,__ocml_ctanh_f64"),
 ];
 
-/// The complex ⇒ ROCDL library call patterns (`populateComplexToROCDLLibraryCallsConversionPatterns`).
 pub struct ComplexToRocdlLibCalls;
 
 #[patterns]
 impl ComplexToRocdlLibCalls {
-    /// `ComplexOpToROCDLLibraryCalls`: an f32 / f64 op as a call.
     #[convert("complex.abs", "complex.cos", "complex.exp", "complex.log", "complex.sin", "complex.sqrt", "complex.tan", "complex.tanh")]
     fn library_call(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let name = cr.rw.body[op].name.clone();
@@ -40,7 +34,6 @@ impl ComplexToRocdlLibCalls {
         Libm::call(cr, op, fns, Libm::float(&elem), false)
     }
 
-    /// `PowOpToROCDLLibraryCalls`: `exp(rhs * log(lhs))`.
     #[convert("complex.pow")]
     fn pow<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -61,7 +54,6 @@ impl ComplexToRocdlLibCalls {
         true
     }
 
-    /// `PowiOpToROCDLLibraryCalls`: the integer exponent as a real complex one.
     #[convert("complex.powi")]
     fn powi(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;

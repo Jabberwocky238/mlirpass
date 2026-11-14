@@ -1,20 +1,3 @@
-//! ⭐ `xe3.eu.*` ops ⇄ [`Inst`]: an EU instruction in MLIR, its operands spelled as gentool spells them.
-//!
-//! ```text
-//! xe3.eu.add {exec = 16, dst = "r10<1>:f", src0 = "r11<1;1,0>:f", src1 = "0x3f800000:f", swsb = "F@1"}
-//! xe3.eu.send {exec = 16, dst = "null", src0 = "r112", src1 = "r113", sfid = "urb", desc = 0x2080000c, src1_len = 8, eot}
-//! ```
-//!
-//! The op name is the mnemonic. Attributes, each only when it is not the default: `exec` (exec size), `chan`
-//! (first channel), `dst`, `src0` / `src1` / `src2` (an operand other than `null`), `sat`, `w` (no mask),
-//! `atomic`, `cond` and `flag` (`"lt"`, `"f0.0"`), `pred` (`"normal"`, `"any"`, `"all"`) and `pred_inv`, `swsb`
-//! (`"F@1"`, `"A@7"`, `"$3"`, `"$5.dst"`, `"F@2,$4.src"`), `fn` (math / sync function), `bfn`, send's `sfid`,
-//! `desc`, `ex_desc`, `src1_len`, `eot`, `ex_bso`, dpas's `sdepth`, `rcount`, `src1_subbyte`, `src2_subbyte`,
-//! branches' `jip`, `uip`, `branch_ctrl`.
-//!
-//! An operand: `[-][(abs)]r<nr>[.<byte>][<vstride;width,hstride>|<hstride>][:<type>]`, `null…`, `arf<nr>…`, or an
-//! immediate `<bits>:<type>`. Before register allocation an operand can instead be an SSA value (see the codegen).
-
 #[allow(unused_imports, reason = "the alloc prelude")]
 use alloc::{borrow::ToOwned, boxed::Box, format, string::{String, ToString}, vec, vec::Vec};
 
@@ -22,7 +5,6 @@ use mlirformat::{Attribute, Error, NamedAttr};
 
 use super::{Cond, Dpas, Elem, File, Inst, MathFn, Opcode, Operand, Pipe, Pred, Region, SbidMode, SendInfo, Sfid, Swsb, SyncFn};
 
-/// Enum ⇄ its spelling.
 macro_rules! names {
     ($($ty:ident { $($v:ident $s:literal),* $(,)? })*) => {$(
         impl From<$ty> for &str {
@@ -64,8 +46,6 @@ impl TryFrom<&str> for Opcode {
     }
 }
 
-// ---- operands ---------------------------------------------------------------------------------------------------
-
 impl core::fmt::Display for Operand {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let ty: &str = self.ty.into();
@@ -94,8 +74,6 @@ impl core::fmt::Display for Operand {
 impl TryFrom<&str> for Operand {
     type Error = Error;
 
-    /// The canonical form `Display` writes, plus the short ones: `r6` (a whole register, `ud`), `<h>` (a destination
-    /// stride), `:type` without a region.
     fn try_from(s: &str) -> Result<Operand, Error> {
         let bad = || Error(format!("bad operand {s}"));
         let (body, ty) = match s.rsplit_once(':') {
@@ -186,9 +164,6 @@ impl TryFrom<&str> for Swsb {
     }
 }
 
-// ---- instructions -----------------------------------------------------------------------------------------------
-
-/// Attributes being written.
 struct Attrs<'a>(Vec<NamedAttr<'a>>);
 
 impl<'a> Attrs<'a> {
@@ -196,7 +171,6 @@ impl<'a> Attrs<'a> {
         self.0.push(NamedAttr { name: name.into(), value: Some(value) });
     }
 
-    /// Decimal; descriptors in hex.
     fn int(&mut self, name: &'a str, v: i128) {
         let lit = if name.contains("desc") { format!("{v:#010x}") } else { v.to_string() };
         self.put(name, Attribute::Int { lit: lit.into(), ty: None });
@@ -213,7 +187,6 @@ impl<'a> Attrs<'a> {
     }
 }
 
-/// Attributes being read.
 struct Read<'r, 'a>(&'r [NamedAttr<'a>]);
 
 impl Read<'_, '_> {
@@ -250,7 +223,6 @@ impl Read<'_, '_> {
     }
 }
 
-/// The attribute names an instruction reads.
 const KNOWN: &[&str] = &[
     "exec", "chan", "dst", "src0", "src1", "src2", "sat", "w", "atomic", "cond", "flag", "pred", "pred_inv", "swsb", "fn",
     "bfn", "sfid", "desc", "ex_desc", "src1_len", "eot", "ex_bso", "sdepth", "rcount", "src1_subbyte", "src2_subbyte",
@@ -258,7 +230,6 @@ const KNOWN: &[&str] = &[
 ];
 
 impl Inst {
-    /// ⭐ The op this instruction is: its name and attributes.
     pub fn op<'a>(&self) -> (String, Vec<NamedAttr<'a>>) {
         let mut a = Attrs(Vec::new());
         let d = Inst::new(self.op, self.exec_size);
@@ -337,7 +308,6 @@ impl Inst {
 impl TryFrom<(&str, &[NamedAttr<'_>])> for Inst {
     type Error = Error;
 
-    /// ⭐ An `xe3.eu.*` op (its operands all registers or immediates) as an instruction.
     fn try_from((name, attrs): (&str, &[NamedAttr<'_>])) -> Result<Inst, Error> {
         let mnemonic = name.strip_prefix("xe3.eu.").ok_or_else(|| Error(format!("{name}: not an xe3.eu op")))?;
         if let Some(a) = attrs.iter().find(|a| !KNOWN.contains(&&*a.name)) {

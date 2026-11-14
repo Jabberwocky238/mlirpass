@@ -1,5 +1,3 @@
-//! `tosa`: folds and constants, as `TosaCanonicalizations.cpp` and `TosaOps.cpp`.
-
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Dim, FloatKind, Signedness, Type, UniformQuantized};
@@ -7,10 +5,8 @@ use mlirformat::{Attribute, Dim, FloatKind, Signedness, Type, UniformQuantized};
 use crate::patterns::Broadcast;
 use crate::{ApFloat, ApInt, Body, Const, Fold, Folded, OpData, OpId, Scalar, ValueId};
 
-/// `kInferableDimSize`: a slice size taking the rest of the dim.
 const INFERABLE_DIM: i64 = -1;
 
-/// The integer folds of the shape ops (`*FoldAdaptor`), on index elements.
 #[derive(Clone, Copy)]
 enum ShapeFold {
     Add,
@@ -27,7 +23,6 @@ enum ShapeFold {
 }
 
 impl ShapeFold {
-    /// `DivFoldAdaptor<ceil>`: the quotient, rounded up when `ceil` and the exact one is positive.
     fn div(a: ApInt, b: ApInt, unsigned: bool, ceil: bool) -> Option<ApInt> {
         if b.is_zero() {
             return None;
@@ -45,7 +40,6 @@ impl ShapeFold {
         Some(if ceil && !r.is_zero() && a.is_negative() == b.is_negative() { q.add(one) } else { q })
     }
 
-    /// Two operands (signed).
     fn binary(self, a: ApInt, b: ApInt) -> Option<ApInt> {
         let ov = |(r, o): (ApInt, bool)| (!o).then_some(r);
         match self {
@@ -64,7 +58,6 @@ impl ShapeFold {
         }
     }
 
-    /// One operand (signed).
     fn unary(self, v: ApInt) -> Option<ApInt> {
         let bits = v.width;
         match self {
@@ -78,7 +71,6 @@ impl ShapeFold {
     }
 }
 
-/// One fold: the op, its operands' constants.
 struct Tf<'b, 'c, 'a> {
     b: &'b mut Body<'a>,
     op: OpId,
@@ -98,29 +90,23 @@ impl<'a> Tf<'_, '_, 'a> {
         self.ty(self.b[self.op].results[0])
     }
 
-    /// Operand `i` as a `DenseElementsAttr`.
     fn dense(&self, i: usize) -> Option<Const<'a>> {
         Const::try_from(self.c.get(i)?.as_ref()?).ok().filter(|k| k.elements)
     }
 
-    /// `isSplat` (every element the same) and that element.
     fn splat(k: &Const<'_>) -> Option<Scalar> {
         let first = *k.values.first()?;
         k.values.iter().all(|v| *v == first).then_some(first)
     }
 
-    /// A `RankedTensorType`'s dims (dynamic as `None`).
     fn dims(t: &Type<'_>) -> Option<Vec<Option<i64>>> {
         Some(t.shape()?.iter().map(|d| if let Dim::Static(n) = d { Some(*n) } else { None }).collect())
     }
 
-    /// `getStorageElementTypeFromQuantized` of a `!quant.uniform` element type (its storage
-    /// type, unsigned for `u`), else the type itself.
     fn storage(t: &Type<'a>) -> Type<'a> {
         UniformQuantized::try_from(t).map_or_else(|()| t.clone(), |q| q.storage_type())
     }
 
-    /// The elements of constant `v` as integers (`m_Constant` of a `DenseIntElementsAttr`).
     fn ints_of(b: &Body<'a>, v: ValueId) -> Option<Vec<i64>> {
         Const::try_from(&b.constant_of(v)?).ok().filter(|k| k.elements)?.ints()
     }
@@ -129,23 +115,19 @@ impl<'a> Tf<'_, '_, 'a> {
         Self::dims(t).is_some_and(|d| d.iter().all(Option::is_some))
     }
 
-    /// A ranked type's dims, dynamic as [`Dim::DYNAMIC`].
     fn dims64(t: &Type<'_>) -> Option<Vec<i64>> {
         Some(Self::dims(t)?.into_iter().map(|d| d.unwrap_or(Dim::DYNAMIC)).collect())
     }
 
-    /// `staticallyKnownBroadcastable` of the ranked types of `vs`.
     fn broadcastable(&self, vs: &[ValueId]) -> bool {
         let shapes: Option<Vec<Vec<i64>>> = vs.iter().map(|v| Self::dims64(&self.b[*v].ty)).collect();
         shapes.is_some_and(|s| Broadcast::known(&s))
     }
 
-    /// `foldToInputIfTypeMatches`.
     fn input_if_same(&self, input: ValueId) -> Fold<'a> {
         if self.b[input].ty == self.result_ty() { Self::value(input) } else { Fold::Failed }
     }
 
-    /// Whether `t`'s element type is an unsigned integer.
     fn unsigned(t: &Type<'_>) -> bool {
         matches!(t.element_type(), Type::Integer { signedness: Signedness::Unsigned, .. })
     }
@@ -169,7 +151,6 @@ impl<'a> Tf<'_, '_, 'a> {
         Self::attr(Const::splat(s, ty))
     }
 
-    /// `isSplatZero`.
     fn splat_zero(k: Option<&Const<'_>>) -> bool {
         match k.and_then(Self::splat) {
             Some(Scalar::Int(i)) => i.is_zero(),
@@ -178,7 +159,6 @@ impl<'a> Tf<'_, '_, 'a> {
         }
     }
 
-    /// `isSplatOne`, `1 << shift` for integers.
     fn splat_one(k: Option<&Const<'_>>, shift: i64) -> bool {
         match k.and_then(Self::splat) {
             Some(Scalar::Int(i)) => i.signed() == 1i128 << shift,
@@ -187,8 +167,6 @@ impl<'a> Tf<'_, '_, 'a> {
         }
     }
 
-    /// `binaryFolder`: two splats of the same element type through `int` (given whether it is
-    /// unsigned) / `float`, into a static result.
     fn binary(&self, ty: Type<'a>, int: impl Fn(ApInt, ApInt, bool) -> Option<Scalar>, float: impl Fn(ApFloat, ApFloat) -> Option<Scalar>) -> Fold<'a> {
         let (Some(l), Some(r)) = (self.dense(0), self.dense(1)) else { return Fold::Failed };
         if !Self::is_static(&ty) || l.ty.element_type() != r.ty.element_type() {
@@ -204,7 +182,6 @@ impl<'a> Tf<'_, '_, 'a> {
         s.map_or(Fold::Failed, |s| Self::splat_of(s, ty))
     }
 
-    /// A comparison's `i1`.
     fn bool(b: bool) -> Option<Scalar> {
         Some(Scalar::Int(ApInt::new(1, i128::from(b))))
     }
@@ -254,7 +231,6 @@ impl<'a> Tf<'_, '_, 'a> {
         }
     }
 
-    /// `AddOp::fold`, `SubOp::fold`.
     fn add_sub(&self, add: bool) -> Fold<'a> {
         let (lt, rt, ty) = (self.ty(self.operand(0)), self.ty(self.operand(1)), self.result_ty());
         if Self::dims(&lt).is_none() || Self::dims(&rt).is_none() || Self::dims(&ty).is_none() {
@@ -275,7 +251,6 @@ impl<'a> Tf<'_, '_, 'a> {
         }
     }
 
-    /// `MulOp::fold`, with `shift` for i32 results.
     fn mul(&self) -> Fold<'a> {
         let (lt, rt, ty) = (self.ty(self.operand(0)), self.ty(self.operand(1)), self.result_ty());
         if Self::dims(&lt).is_none() || Self::dims(&rt).is_none() || Self::dims(&ty).is_none() {
@@ -321,7 +296,6 @@ impl<'a> Tf<'_, '_, 'a> {
         s.map_or(Fold::Failed, |s| Self::splat_of(s, ty))
     }
 
-    /// `IntDivOp::fold`.
     fn int_div(&self) -> Fold<'a> {
         let (lt, rt, ty) = (self.ty(self.operand(0)), self.ty(self.operand(1)), self.result_ty());
         if Self::dims(&ty).is_none() || Self::dims(&lt).is_none() || Self::dims(&rt).is_none() || lt.element_type() != rt.element_type() {
@@ -349,7 +323,6 @@ impl<'a> Tf<'_, '_, 'a> {
         }
     }
 
-    /// `EqualOp::fold`.
     fn equal(&self) -> Fold<'a> {
         let ty = self.result_ty();
         let lt = self.ty(self.operand(0));
@@ -359,7 +332,6 @@ impl<'a> Tf<'_, '_, 'a> {
         self.binary(ty, |a, b, _| Self::bool(a == b), |a, b| Self::bool(a.compare(b) == Some(core::cmp::Ordering::Equal)))
     }
 
-    /// `CastOp::fold`: the same type, or a splat converted.
     fn cast(&self) -> Fold<'a> {
         let (input, ty) = (self.operand(0), self.result_ty());
         let it = self.ty(input);
@@ -401,7 +373,6 @@ impl<'a> Tf<'_, '_, 'a> {
         out.map_or(Fold::Failed, |s| Self::splat_of(s, ty))
     }
 
-    /// `REDUCE_FOLDER`.
     fn reduce(&self) -> Fold<'a> {
         let (input, ty) = (self.operand(0), self.result_ty());
         let it = self.ty(input);
@@ -413,7 +384,6 @@ impl<'a> Tf<'_, '_, 'a> {
         if dims.is_empty() || dims.get(axis) == Some(&Some(1)) { Self::value(input) } else { Fold::Failed }
     }
 
-    /// `ReshapeOp::fold`.
     fn reshape(self) -> Fold<'a> {
         let (input, ty) = (self.operand(0), self.result_ty());
         let it = self.ty(input);
@@ -439,7 +409,6 @@ impl<'a> Tf<'_, '_, 'a> {
         Self::attr(Const { ty, ..k })
     }
 
-    /// `PadOp::fold`: a zero padding.
     fn pad(&self) -> Fold<'a> {
         let (input, ty) = (self.operand(0), self.result_ty());
         if self.ty(input) == ty && matches!(self.dense(1).as_ref().and_then(Self::splat), Some(Scalar::Int(i)) if i.is_zero()) {
@@ -448,7 +417,6 @@ impl<'a> Tf<'_, '_, 'a> {
         Fold::Failed
     }
 
-    /// `ResizeOp::fold`: unit scaling, no offset, no border.
     fn resize(&self) -> Fold<'a> {
         let ints = |i: usize| self.dense(i)?.ints();
         let (Some(scale), Some(offset), Some(border)) = (ints(1), ints(2), ints(3)) else { return Fold::Failed };
@@ -459,7 +427,6 @@ impl<'a> Tf<'_, '_, 'a> {
         if self.ty(input) == self.result_ty() { Self::value(input) } else { Fold::Failed }
     }
 
-    /// `ReverseOp::fold`.
     fn reverse(&self) -> Fold<'a> {
         let input = self.operand(0);
         let splat = self.dense(0).as_ref().and_then(Self::splat).is_some();
@@ -470,7 +437,6 @@ impl<'a> Tf<'_, '_, 'a> {
         }
     }
 
-    /// `SliceOp::fold`.
     fn slice(&self) -> Fold<'a> {
         let (input, ty) = (self.operand(0), self.result_ty());
         let it = self.ty(input);
@@ -478,7 +444,6 @@ impl<'a> Tf<'_, '_, 'a> {
         if it == ty && Self::is_static(&it) {
             return Self::value(input);
         }
-        // A slice of everything from the start.
         let Some(start) = Self::ints_of(self.b, self.operand(1)) else { return Fold::Failed };
         if start.iter().all(|s| *s == 0) {
             let Some(size) = Self::ints_of(self.b, self.operand(2)) else { return Fold::Failed };
@@ -504,7 +469,6 @@ impl<'a> Tf<'_, '_, 'a> {
         Fold::Failed
     }
 
-    /// `SelectOp::fold`, when no operand needs broadcasting.
     fn select(&self) -> Fold<'a> {
         let ops = self.b[self.op].operands.clone();
         if ops.iter().any(|v| Self::dims(&self.b[*v].ty).is_none()) {
@@ -519,7 +483,6 @@ impl<'a> Tf<'_, '_, 'a> {
         if self.b[chosen].ty == ty && self.broadcastable(&ops) { Self::value(chosen) } else { Fold::Failed }
     }
 
-    /// `TileOp::fold`: every multiple 1.
     fn tile(&self) -> Fold<'a> {
         let input = self.operand(0);
         if self.ty(input) != self.result_ty() {
@@ -531,7 +494,6 @@ impl<'a> Tf<'_, '_, 'a> {
         }
     }
 
-    /// `TransposeOp::fold`: a splat reshaped, or the identity.
     fn transpose(&self) -> Fold<'a> {
         let (input, ty) = (self.operand(0), self.result_ty());
         if let Some(k) = self.dense(0)
@@ -548,7 +510,6 @@ impl<'a> Tf<'_, '_, 'a> {
         if perms.iter().enumerate().all(|(i, p)| *p == i as i64) { self.input_if_same(input) } else { Fold::Failed }
     }
 
-    /// A constant single zero.
     fn zero_point(&self, v: ValueId) -> bool {
         let Some(a) = self.b.constant_of(v) else { return false };
         Const::try_from(&a).ok().is_some_and(|k| k.values.iter().all(|s| match s {
@@ -558,7 +519,6 @@ impl<'a> Tf<'_, '_, 'a> {
         }))
     }
 
-    /// `NegateOp::fold`: `negate(negate(x))`, every zero point 0.
     fn negate(&self) -> Fold<'a> {
         let Some(inner) = self.b.def_named(self.operand(0), "tosa.negate") else { return Fold::Failed };
         let zps = self.b[self.op].operands[1..].iter().chain(&self.b[inner].operands[1..]);
@@ -568,26 +528,22 @@ impl<'a> Tf<'_, '_, 'a> {
         self.input_if_same(self.b[inner].operands[0])
     }
 
-    /// The `values` of `v`'s `tosa.const_shape`.
     fn shape_values(&self, v: ValueId) -> Option<Const<'a>> {
         let def = self.b.def_named(v, "tosa.const_shape")?;
         Const::try_from(self.b[def].get("values")?).ok().filter(|k| k.elements)
     }
 
-    /// Every element of `k`.
     fn elements(k: &Const<'_>) -> Option<Vec<ApInt>> {
         let n = if k.is_splat() { k.ty.element_count()? } else { k.values.len() };
         (0..n).map(|i| k.at(i).int()).collect()
     }
 
-    /// A `tensor<Nxindex>` of `values`.
     fn index_tensor(values: Vec<ApInt>) -> Fold<'a> {
         let n = values.len() as i64;
         let ty = Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { kind: mlirformat::ShapedKind::Tensor, shape: Some(alloc::vec![Dim::Static(n)]), elem: Type::Index.into(), extras: Vec::new() }));
         Self::attr(Const { ty, values: values.into_iter().map(Scalar::Int).collect(), elements: true })
     }
 
-    /// `binaryFold` of a shape op: element by element.
     fn shape_binary(&self, f: ShapeFold) -> Fold<'a> {
         let (Some(l), Some(r)) = (self.shape_values(self.operand(0)), self.shape_values(self.operand(1))) else { return Fold::Failed };
         if !Self::is_static(&l.ty) || l.ty.element_type() != r.ty.element_type() {
@@ -598,7 +554,6 @@ impl<'a> Tf<'_, '_, 'a> {
         out.map_or(Fold::Failed, |v| Self::attr(Const { ty: l.ty, values: v.into_iter().map(Scalar::Int).collect(), elements: true }))
     }
 
-    /// `unaryShapeFold`.
     fn shape_unary(&self, f: ShapeFold) -> Fold<'a> {
         let Some(k) = self.shape_values(self.operand(0)) else { return Fold::Failed };
         let Some(vs) = Self::elements(&k).filter(|_| Self::is_static(&k.ty)) else { return Fold::Failed };
@@ -606,7 +561,6 @@ impl<'a> Tf<'_, '_, 'a> {
         out.map_or(Fold::Failed, |v| Self::attr(Const { ty: k.ty, values: v.into_iter().map(Scalar::Int).collect(), elements: true }))
     }
 
-    /// `DimOp::fold`: a static dim.
     fn dim(&self) -> Fold<'a> {
         let axis = self.int_attr("axis").unwrap_or(0) as usize;
         match Self::dims(&self.ty(self.operand(0))).and_then(|d| d.get(axis).copied().flatten()) {
@@ -615,7 +569,6 @@ impl<'a> Tf<'_, '_, 'a> {
         }
     }
 
-    /// `concatShapeFold`.
     fn concat_shape(&self) -> Fold<'a> {
         let ops = &self.b[self.op].operands;
         if ops.is_empty() {
@@ -629,7 +582,6 @@ impl<'a> Tf<'_, '_, 'a> {
         Self::index_tensor(all)
     }
 
-    /// `sliceShapeFold`.
     fn slice_shape(&self) -> Fold<'a> {
         let Some(vs) = self.shape_values(self.operand(0)).as_ref().and_then(Self::elements) else { return Fold::Failed };
         let one = |i: usize| Self::ints_of(self.b, self.operand(i)).and_then(|v| v.first().copied());
@@ -641,7 +593,6 @@ impl<'a> Tf<'_, '_, 'a> {
         Self::index_tensor(vs[start as usize..(start + size) as usize].to_vec())
     }
 
-    /// `ReciprocalOp::fold`: of a float splat.
     fn reciprocal(&self) -> Fold<'a> {
         let ty = self.result_ty();
         if !Self::is_static(&ty) {
@@ -653,7 +604,6 @@ impl<'a> Tf<'_, '_, 'a> {
         }
     }
 
-    /// `ArgMaxOp::fold`: the axis has one element.
     fn argmax(&self) -> Fold<'a> {
         let (it, ty) = (self.ty(self.operand(0)), self.result_ty());
         if !Self::is_static(&it) || !Self::is_static(&ty) {
@@ -666,9 +616,6 @@ impl<'a> Tf<'_, '_, 'a> {
 }
 
 impl<'a> Tf<'_, '_, 'a> {
-    /// `FoldPadToTensorOp`: `op`'s input padded by a `tosa.pad` in H and W only, the padding
-    /// moved into `op`'s own; `pool` for `max_pool2d` (`PoolPadFoldAdaptor`), else a conv
-    /// (`ConvPadFoldAdaptor`).
     fn fold_pad(rw: &mut crate::Rewriter<'_, 'a>, op: OpId, pool: bool) -> bool {
         let b = &*rw.body;
         let Some(pad) = b.def_named(b[op].operands[0], "tosa.pad") else { return false };
@@ -704,7 +651,6 @@ impl<'a> Tf<'_, '_, 'a> {
         data.operands = b[op].operands.clone();
         data.operands[0] = b[pad].operands[0];
         b[op].properties.iter().for_each(|a| data.set(&a.name, a.value.clone().unwrap_or(Attribute::Unit)));
-        // The conv builders spell `local_bound` (`DefaultValuedOptionalAttr`) out.
         if !pool && data.get("local_bound").is_none() {
             data.set("local_bound", Attribute::Bool(false));
         }
@@ -715,17 +661,14 @@ impl<'a> Tf<'_, '_, 'a> {
     }
 }
 
-/// A `min_val` / `max_val` scalar.
 fn scalar_attr(a: Option<&Attribute<'_>>) -> Option<Scalar> {
     Const::try_from(a?).ok().filter(|k| !k.elements)?.splat_value()
 }
 
-/// The dims of a shaped value's type (dynamic as `None`).
 fn dims_of(b: &Body<'_>, v: ValueId) -> Option<Vec<Option<i64>>> {
     Tf::dims(&b[v].ty)
 }
 
-/// The `perms` of a `tosa.transpose`.
 fn perms(b: &Body<'_>, op: OpId) -> Vec<i64> {
     match b[op].get("perms") {
         Some(Attribute::DenseArray { values, .. }) => values.iter().filter_map(|v| v.parse().ok()).collect(),
@@ -733,12 +676,10 @@ fn perms(b: &Body<'_>, op: OpId) -> Vec<i64> {
     }
 }
 
-/// `tosa` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct TosaCanon;
 
 #[crate::patterns]
 impl TosaCanon {
-    /// `ClampIsNoOp`: a clamp to the whole range of its type.
     #[rewrite("tosa.clamp")]
     fn clamp_is_no_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -760,7 +701,6 @@ impl TosaCanon {
         true
     }
 
-    /// `ClampClampOptimization`: two clamps whose ranges meet, as one.
     #[rewrite("tosa.clamp")]
     fn clamp_clamp_optimization(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -806,7 +746,6 @@ impl TosaCanon {
         true
     }
 
-    /// `AvgPool2dIsNoOp`: a float pool of one element at a time, zero points known.
     #[rewrite("tosa.avg_pool2d")]
     fn avg_pool2d_is_no_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -821,19 +760,16 @@ impl TosaCanon {
         true
     }
 
-    /// `AvgPool2dAdaptiveToAvgPool2d`: constant kernel, stride and pad as attributes.
     #[rewrite("tosa.avg_pool2d_adaptive")]
     fn avg_pool2d_adaptive_to_avg_pool2d(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Pool::from_adaptive(rw, op, "tosa.avg_pool2d", 3)
     }
 
-    /// `MaxPool2dAdaptiveToMaxPool2d`.
     #[rewrite("tosa.max_pool2d_adaptive")]
     fn max_pool2d_adaptive_to_max_pool2d(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Pool::from_adaptive(rw, op, "tosa.max_pool2d", 1)
     }
 
-    /// `MaxPool2dIsNoOp`: one element at a time propagating NaNs, or 1x1 in and out.
     #[rewrite("tosa.max_pool2d")]
     fn max_pool2d_is_no_op(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -852,25 +788,21 @@ impl TosaCanon {
         true
     }
 
-    /// `FoldPadToTensorOp<MaxPool2dOp>`: a pad of the lowest value into the pool's padding.
     #[rewrite("tosa.max_pool2d")]
     fn fold_pad_to_max_pool2d(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Tf::fold_pad(rw, op, true)
     }
 
-    /// `FoldPadToTensorOp<Conv2DOp>`: a pad of the input zero point into the conv's padding.
     #[rewrite("tosa.conv2d")]
     fn fold_pad_to_conv2d(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Tf::fold_pad(rw, op, false)
     }
 
-    /// `FoldPadToTensorOp<DepthwiseConv2DOp>`.
     #[rewrite("tosa.depthwise_conv2d")]
     fn fold_pad_to_depthwise_conv2d(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Tf::fold_pad(rw, op, false)
     }
 
-    /// `ConcatSliceOptimization`: a slice within one input of a concat slices that input.
     #[rewrite("tosa.slice")]
     fn concat_slice_optimization(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -904,7 +836,6 @@ impl TosaCanon {
         true
     }
 
-    /// `PadSliceOptimization`: a slice of a pad pads only what the slice keeps.
     #[rewrite("tosa.slice")]
     fn pad_slice_optimization(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -953,7 +884,6 @@ impl TosaCanon {
         true
     }
 
-    /// `SliceDynamicSizeCanonicalization`: a `-1` size where the result's dim is static.
     #[rewrite("tosa.slice")]
     fn slice_dynamic_size_canonicalization(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -974,8 +904,6 @@ impl TosaCanon {
         true
     }
 
-    /// `ConsecutiveConcatOptimization`: concats on the same axis flattened in, within the
-    /// target level's tensor list size.
     #[rewrite("tosa.concat")]
     fn consecutive_concat_optimization(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1000,7 +928,6 @@ impl TosaCanon {
         true
     }
 
-    /// `NonNarrowingCastsOptimization`: a widening cast then another, as one cast.
     #[rewrite("tosa.cast")]
     fn non_narrowing_casts_optimization(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1016,7 +943,6 @@ impl TosaCanon {
         true
     }
 
-    /// `CancellingBlockScaledCastsOptimization`: block scaled to f32 and back.
     #[rewrite("tosa.cast")]
     fn cancelling_block_scaled_casts_optimization(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1030,8 +956,6 @@ impl TosaCanon {
         true
     }
 
-    /// `CancellingCastToFromBlockScaledOptimization`: from block scaled and back, the same types
-    /// and block size.
     #[rewrite("tosa.cast_to_block_scaled")]
     fn cancelling_cast_to_from_block_scaled(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1045,7 +969,6 @@ impl TosaCanon {
         true
     }
 
-    /// `RowGatherToGather`: rows of one.
     #[rewrite("tosa.row_gather")]
     fn row_gather_to_gather(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1058,8 +981,6 @@ impl TosaCanon {
         true
     }
 
-    /// `RemoveBroadcastTileFromBinaryElementwise`: a tile only broadcasting unit dims into a
-    /// binary elementwise op, left to the op's own broadcasting.
     #[rewrite("tosa.tile")]
     fn remove_broadcast_tile_from_binary_elementwise(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1094,7 +1015,6 @@ impl TosaCanon {
         true
     }
 
-    /// `ConcatOptimization`: one input, cast to the result type when it differs.
     #[rewrite("tosa.concat")]
     fn concat_optimization(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1108,7 +1028,6 @@ impl TosaCanon {
         true
     }
 
-    /// `SelectOp::canonicalize`: a select on `logical_not(p)` swaps its branches.
     #[rewrite("tosa.select")]
     fn select_of_logical_not(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1118,7 +1037,6 @@ impl TosaCanon {
         true
     }
 
-    /// `ConsolidateTransposeOptimization`: a transpose of a transpose, as one.
     #[rewrite("tosa.transpose")]
     fn consolidate_transpose_optimization(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1136,7 +1054,6 @@ impl TosaCanon {
         true
     }
 
-    /// `TransposeIsReshape`: a transpose that only moves unit dims is a reshape.
     #[rewrite("tosa.transpose")]
     fn transpose_is_reshape(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1162,7 +1079,6 @@ impl TosaCanon {
     }
 }
 
-/// A pool's `kernel`, `stride` and `pad`.
 struct Pool {
     kernel: Vec<i64>,
     stride: Vec<i64>,
@@ -1178,13 +1094,10 @@ impl Pool {
         Pool { kernel: get("kernel"), stride: get("stride"), pad: get("pad") }
     }
 
-    /// A unit kernel and stride, no padding.
     fn unit(&self) -> bool {
         self.kernel.iter().all(|k| *k == 1) && self.stride.iter().all(|s| *s == 1) && self.pad.iter().all(|p| *p == 0)
     }
 
-    /// An adaptive pool (`kernel`, `stride`, `pad` from operand `at` on, each a
-    /// `tosa.const_shape`) as `name` with them as attributes; the other attributes kept.
     fn from_adaptive(rw: &mut crate::Rewriter<'_, '_>, op: OpId, name: &str, at: usize) -> bool {
         let b = &*rw.body;
         let shape = |i: usize| {
@@ -1205,7 +1118,6 @@ impl Pool {
     }
 }
 
-/// The element types `NonNarrowingCastsOptimization` handles.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CastKind {
     Int { width: u32, signedness: Signedness },
@@ -1216,7 +1128,6 @@ enum CastKind {
     F32,
 }
 
-/// `fltSemantics` of a float: max and min exponents, precision, NaN, infinity.
 struct Semantics {
     max_exp: i32,
     min_exp: i32,
@@ -1258,7 +1169,6 @@ impl CastKind {
         }
     }
 
-    /// Whether a cast `self` ⇒ `out` is legal in every TOSA version.
     fn allowed(self, out: CastKind) -> bool {
         use CastKind::*;
         let (iw, ow) = (self.width(), out.width());
@@ -1270,7 +1180,6 @@ impl CastKind {
             && !(iw.is_none() && matches!(ow, Some(1 | 64)))
     }
 
-    /// `isNarrowingCast`: whether `self` ⇒ `out` may lose values.
     fn narrows_to(self, out: CastKind) -> bool {
         match (self, out) {
             (CastKind::Int { width: a, signedness: sa }, CastKind::Int { width: b, signedness: sb }) => sa != sb || a > b,
@@ -1282,7 +1191,6 @@ impl CastKind {
     }
 }
 
-/// `TosaLevel` of a `#tosa.target_env`.
 #[derive(Clone, Copy)]
 enum TosaLevel {
     EightK,
@@ -1290,7 +1198,6 @@ enum TosaLevel {
 }
 
 impl TosaLevel {
-    /// `lookupTargetEnv`: the level of the nearest enclosing symbol table's `tosa.target_env`.
     fn of(b: &Body<'_>, op: OpId) -> Option<Self> {
         let mut at = b.parent_op(op);
         while let Some(o) = at {
@@ -1305,7 +1212,6 @@ impl TosaLevel {
         None
     }
 
-    /// `MAX_TENSOR_LIST_SIZE`.
     fn max_tensor_list_size(self) -> usize {
         match self {
             TosaLevel::EightK => 64,
@@ -1314,7 +1220,6 @@ impl TosaLevel {
     }
 }
 
-/// `getTosaConstShape`: a `tosa.const_shape` of `shape` (dynamic as -1).
 fn const_shape<'a>(rw: &mut crate::Rewriter<'_, 'a>, shape: &[i64]) -> ValueId {
     let values = shape.iter().map(|d| Scalar::Int(ApInt::new(64, i128::from(if *d == i64::MIN { -1 } else { *d })))).collect();
     let n = shape.len() as i64;
@@ -1325,13 +1230,10 @@ fn const_shape<'a>(rw: &mut crate::Rewriter<'_, 'a>, shape: &[i64]) -> ValueId {
 }
 
 impl TosaCanon {
-    /// The fold hook of tosa op `op`.
     pub fn fold<'a>(b: &mut Body<'a>, op: OpId, c: &[Option<Attribute<'a>>]) -> Fold<'a> {
         Tf { b, op, c }.fold()
     }
 
-    /// `TosaDialect::materializeConstant`: `tosa.const_shape` for a `!tosa.shape`, else
-    /// `tosa.const` of an elements attribute.
     pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
         let k = Const::try_from(value).ok().filter(|k| k.elements)?;
         let name = if matches!(ty, Type::Extended(e) if e.name == "tosa.shape") { "tosa.const_shape" } else { "tosa.const" };

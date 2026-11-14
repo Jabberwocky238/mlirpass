@@ -1,5 +1,3 @@
-//! `memref`: folds, as `MemRefOps.cpp`.
-
 use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, ShapedKind, StridedLayout, Type};
@@ -8,13 +6,10 @@ use crate::MemrefOfr as Ofr;
 use crate::{Body, Def, Fold, Folded, MemrefLayout, OpData, OpId, ValueId};
 
 impl<'a> Body<'a> {
-    /// A shaped type's dims, `Dim::DYNAMIC` for `?`.
     pub fn dims_of(&self, v: ValueId) -> Option<Vec<i64>> {
         self[v].ty.dims()
     }
 
-    /// The mixed `offsets`, `sizes` and `strides` of a subview / reinterpret_cast: operand
-    /// groups 1, 2, 3 against `static_*`.
     pub fn mixed_osz(&self, op: OpId) -> [Vec<Ofr>; 3] {
         let segs = self.segments(op, "operandSegmentSizes").unwrap_or_default();
         let mut at = segs.first().copied().unwrap_or(1);
@@ -29,7 +24,6 @@ impl<'a> Body<'a> {
         out
     }
 
-    /// `getDroppedDims` of a subview, as `computeRankReductionMask` over its sizes.
     pub fn subview_dropped_dims(&self, op: OpId) -> Vec<bool> {
         let Some(res) = self.dims_of(self[op].results[0]) else { return Vec::new() };
         let orig: Vec<i64> = self.mixed_osz(op)[1].iter().map(|s| self.ofr_int(*s).unwrap_or(Dim::DYNAMIC)).collect();
@@ -46,8 +40,6 @@ impl<'a> Body<'a> {
     }
 }
 
-/// `TransposeOp::fold`: an identity of the same type is its input; a transpose of a
-/// transpose takes the inner one's input with the composed permutation.
 fn fold_transpose<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let (src, res) = (b[op].operands[0], b[op].results[0]);
     let Some(perm) = b.affine_map(op, "permutation") else { return Fold::Failed };
@@ -153,8 +145,6 @@ fn fold_subview<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     Fold::Failed
 }
 
-/// `ExtractStridedMetadataOp::fold`: results the source type knows statically are replaced
-/// by constants, and a ranked `memref.cast` source folds.
 fn fold_extract_strided_metadata<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let src = b[op].operands[0];
     let Type::Shaped(s) = b[src].ty.clone() else { return Fold::Failed };
@@ -179,7 +169,6 @@ fn fold_extract_strided_metadata<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     }
     let mut changed = false;
     for (v, c) in known {
-        // `replaceConstantUsesOf`: unused results and constants already in place stay.
         if b[v].uses.is_empty() {
             continue;
         }
@@ -201,22 +190,17 @@ fn fold_extract_strided_metadata<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     in_place(changed)
 }
 
-/// `memref` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct MemrefCanon;
 
 #[crate::patterns]
 impl MemrefCanon {
-    /// `AllocaScopeInliner`: a scope that allocates nothing (or that ends its parent scope)
-    /// goes, its body inlined.
     #[rewrite("memref.alloca_scope")]
     fn alloca_scope_inliner(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
-        // `isOpItselfPotentialAutomaticAllocation`, pre-order, not entering nested scopes.
         let children = |o: OpId| -> Vec<OpId> { b[o].regions.iter().flat_map(|r| &b[*r].blocks).flat_map(|k| b.ops(*k)).collect() };
         let mut work: Vec<OpId> = children(op);
         let mut potential = false;
         while let Some(o) = work.pop() {
-            // (an op with recursive effects allocates nothing itself; what it holds is walked)
             let itself = !b.has(o, crate::Trait::HasRecursiveMemoryEffects) && (!b.has(o, crate::Trait::MemoryEffectOpInterface) || b[o].name == "memref.alloca");
             if itself {
                 potential = true;
@@ -245,14 +229,10 @@ impl MemrefCanon {
         true
     }
 
-    /// `AllocaScopeHoister`: the allocas of a scope, their operands available there, move
-    /// before the outermost op between it and the enclosing allocation scope, when the scope
-    /// and every op on the way are the last before their terminator in a one-block region.
     #[rewrite("memref.alloca_scope")]
     fn alloca_scope_hoister(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
         let auto = |o: OpId| b.has(o, crate::Trait::AutomaticAllocationScope);
-        // `lastNonTerminatorInRegion`.
         let last = |o: OpId| {
             let Some(block) = b[o].parent else { return false };
             let ops = b.block_ops(block);
@@ -281,7 +261,6 @@ impl MemrefCanon {
                 return false;
             }
         }
-        // The region of `outer` holding the scope: an operand defined in it cannot move.
         let inside = |v: ValueId| {
             let mut r = b.value_block(v).and_then(|k| b[k].parent);
             while let Some(region) = r {
@@ -306,7 +285,6 @@ impl MemrefCanon {
         true
     }
 
-    /// `ViewOpShapeFolder`: constant non-negative sizes made static; the new view cast back.
     #[rewrite("memref.view")]
     fn view_op_shape_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -341,7 +319,6 @@ impl MemrefCanon {
         true
     }
 
-    /// `ViewOpMemrefCastFolder`: a view of a cast views the cast's source.
     #[rewrite("memref.view")]
     fn view_op_memref_cast_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -353,8 +330,6 @@ impl MemrefCanon {
         true
     }
 
-    /// `OpWithOffsetSizesAndStridesConstantArgumentFolder<SubViewOp>`: constant offsets, sizes
-    /// and strides made static; the new subview's type inferred, cast back to the old one.
     #[rewrite("memref.subview")]
     fn sub_view_constant_arguments(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -379,8 +354,6 @@ impl MemrefCanon {
         true
     }
 
-    /// `TrivialSubViewOpFolder`: no offset, unit strides, the whole source ⇒ the source (cast
-    /// when the types differ).
     #[rewrite("memref.subview")]
     fn trivial_sub_view_op_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -403,8 +376,6 @@ impl MemrefCanon {
         true
     }
 
-    /// `SubViewOpMemRefCastFolder`: a subview of a foldable cast takes the cast's source; its
-    /// result is cast back.
     #[rewrite("memref.subview")]
     fn sub_view_op_mem_ref_cast_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -431,27 +402,21 @@ impl MemrefCanon {
         true
     }
 
-    /// `SimplifyAllocConst<AllocOp>`.
     #[rewrite("memref.alloc")]
     fn simplify_alloc_const(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_alloc_const(rw, op) }
 
-    /// `SimplifyDeadAlloc<AllocOp>`.
     #[rewrite("memref.alloc")]
     fn simplify_dead_alloc(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_dead_alloc(rw, op) }
 
-    /// `SimplifyAllocConst<AllocaOp>`.
     #[rewrite("memref.alloca")]
     fn simplify_alloca_const(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_alloc_const(rw, op) }
 
-    /// `SimplifyDeadAlloc<AllocaOp>`.
     #[rewrite("memref.alloca")]
     fn simplify_dead_alloca(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_dead_alloc(rw, op) }
 
-    /// `SimplifyDeadAlloc<ReallocOp>`.
     #[rewrite("memref.realloc")]
     fn simplify_dead_realloc(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool { simplify_dead_alloc(rw, op) }
 
-    /// `FoldEmptyCopy`: a copy of or into a memref with a zero dimension goes.
     #[rewrite("memref.copy")]
     fn fold_empty_copy(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -463,7 +428,6 @@ impl MemrefCanon {
         true
     }
 
-    /// `FoldSelfCopy`: a copy of a memref into itself goes.
     #[rewrite("memref.copy")]
     fn fold_self_copy(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         if rw.body[op].operands[0] != rw.body[op].operands[1] {
@@ -473,8 +437,6 @@ impl MemrefCanon {
         true
     }
 
-    /// `DimOfMemRefReshape`: the dim of a `memref.reshape` loaded from its shape, right after it,
-    /// when the index is known there.
     #[rewrite("memref.dim")]
     fn dim_of_mem_ref_reshape(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -492,7 +454,6 @@ impl MemrefCanon {
         } else if b[op].parent != rblock {
             let (Some(ib), Some(rb)) = (idx_block, rblock) else { return false };
             let (Some(ir), Some(mut r)) = (b[ib].parent, b[rb].parent) else { return false };
-            // Whether the index's region is a proper ancestor of the reshape's.
             let mut ancestor = false;
             while let Some(up) = b[b[r].parent].parent.and_then(|blk| b[blk].parent) {
                 if up == ir {
@@ -519,8 +480,6 @@ impl MemrefCanon {
         true
     }
 
-    /// `CollapseShapeOpMemRefCastFolder`, for a cast from an identity layout: the collapse takes
-    /// the cast's source (and is cast back when its type changes).
     #[rewrite("memref.collapse_shape")]
     fn collapse_shape_op_mem_ref_cast_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -556,8 +515,6 @@ impl MemrefCanon {
         true
     }
 
-    /// `ExpandShapeOpMemRefCastFolder`, for a cast from an identity layout: constant output sizes
-    /// made static, the expansion of the cast's source (cast back when its type changes).
     #[rewrite("memref.expand_shape")]
     fn expand_shape_op_mem_ref_cast_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -601,8 +558,6 @@ impl MemrefCanon {
         true
     }
 
-    /// `ReinterpretCastOpExtractStridedMetadataFolder`: of what `extract_strided_metadata` took
-    /// apart, the source itself when nothing changes, else the cast reads that source.
     #[rewrite("memref.reinterpret_cast")]
     fn reinterpret_cast_op_extract_strided_metadata_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -631,8 +586,6 @@ impl MemrefCanon {
         true
     }
 
-    /// `ReinterpretCastOpConstantFolder`: the constified lists, when they are more static; the
-    /// new cast's type `strided` by them, cast back.
     #[rewrite("memref.reinterpret_cast")]
     fn reinterpret_cast_op_constant_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -658,8 +611,6 @@ impl MemrefCanon {
     }
 }
 
-/// `SimplifyAllocConst`: constant non-negative dynamic sizes made static; the new alloc cast
-/// back to the old type.
 fn simplify_alloc_const(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let segs = b.segments(op, "operandSegmentSizes").unwrap_or_default();
@@ -700,7 +651,6 @@ fn simplify_alloc_const(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     true
 }
 
-/// `SimplifyDeadAlloc`: an alloc only stored into and deallocated goes, with those uses.
 fn simplify_dead_alloc(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let v = b[op].results[0];
@@ -725,7 +675,6 @@ fn simplify_dead_alloc(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
 }
 
 impl Ofr {
-    /// `constifyIndexValues`: the static values of the type first, then constant values.
     fn constify(b: &Body<'_>, list: &mut [Ofr], statics: &[i64]) {
         for (o, s) in list.iter_mut().zip(statics) {
             if *s != Dim::DYNAMIC {
@@ -736,7 +685,6 @@ impl Ofr {
         }
     }
 
-    /// A memref's static sizes, strides and offset (`Dim::DYNAMIC` where not).
     fn statics(t: &Type<'_>) -> Option<(Vec<i64>, Vec<i64>, i64)> {
         let Type::Shaped(s) = t else { return None };
         let sizes = s.shape.as_ref()?.iter().map(|d| if let Dim::Static(n) = d { *n } else { Dim::DYNAMIC }).collect();
@@ -745,10 +693,6 @@ impl Ofr {
     }
 }
 
-/// A `memref.reinterpret_cast`'s constified offset, sizes and strides
-/// (`getConstifiedMixed*`, from its result type).
-/// `LoadOp::fold`: a load from a `memref.get_global` of a constant global with a splat
-/// initial value is that value.
 fn fold_load_of_global<'a>(b: &Body<'a>, op: OpId) -> Fold<'a> {
     match b.constant_global(b[op].operands[0]) {
         Some(c) if c.is_splat() => Folded::Attr(mlirformat::Const::scalar(c.values[0], c.ty.element_type().clone()).into()).into(),
@@ -757,8 +701,6 @@ fn fold_load_of_global<'a>(b: &Body<'a>, op: OpId) -> Fold<'a> {
 }
 
 impl<'a> Body<'a> {
-    /// The initial value of the constant `memref.global` that `memref`'s `memref.get_global`
-    /// names (looked up from the nearest symbol table, then outside).
     pub(crate) fn constant_global(&self, memref: ValueId) -> Option<mlirformat::Const<'a>> {
         let get = self.def_named(memref, "memref.get_global")?;
         let Some(Attribute::SymbolRef(path)) = self[get].get("name") else { return None };
@@ -788,7 +730,6 @@ fn reinterpret_lists(b: &Body<'_>, op: OpId) -> Option<[Vec<Ofr>; 3]> {
     Ofr::constify(b, &mut o, &[offset]);
     Ofr::constify(b, &mut s, &sizes);
     Ofr::constify(b, &mut t, &strides);
-    // A negative constant offset or size stays as it was (its memref type would be invalid).
     for (now, was) in o.iter_mut().zip(o0).chain(s.iter_mut().zip(s0)) {
         if matches!(now, Ofr::C(c) if *c < 0) {
             *now = was;
@@ -798,8 +739,6 @@ fn reinterpret_lists(b: &Body<'_>, op: OpId) -> Option<[Vec<Ofr>; 3]> {
 }
 
 impl Ofr {
-    /// `computeRankReductionMask`: which of `sizes` the shape `reduced` drops (unit sizes, left
-    /// to right).
     pub(crate) fn dropped(sizes: &[Ofr], reduced: &[i64]) -> Vec<bool> {
         let mut j = 0;
         sizes.iter().map(|s| {
@@ -815,16 +754,12 @@ impl Ofr {
 }
 
 impl Ofr {
-    /// `SubViewOp::inferResultType` of memref `src`, then the `dropped` dims taken out
-    /// (`SubViewReturnTypeCanonicalizer`): a `strided` layout from the source's.
     pub(crate) fn subview_type<'a>(src: &mlirformat::Shaped<'a>, offsets: &[Ofr], sizes: &[Ofr], strides: &[Ofr], dropped: &[bool]) -> Option<Type<'a>> {
         let (src_strides, src_offset) = src.strides_and_offset()?;
         let c = |o: &Ofr| if let Ofr::C(c) = o { *c } else { Dim::DYNAMIC };
-        // `hasValidSizesOffsets`, `hasValidStrides`.
         if offsets.iter().chain(sizes).any(|o| matches!(o, Ofr::C(n) if *n < 0)) || strides.iter().any(|o| matches!(o, Ofr::C(0))) {
             return None;
         }
-        // `SaturatedInteger`: a product with a 0 is 0 even when the other side is dynamic.
         let mul = |a: i64, b: i64| if a == 0 || b == 0 { 0 } else if a == Dim::DYNAMIC || b == Dim::DYNAMIC { Dim::DYNAMIC } else { a * b };
         let mut offset = src_offset;
         for (o, s) in offsets.iter().map(c).zip(&src_strides) {
@@ -847,12 +782,10 @@ impl Ofr {
 }
 
 impl MemrefCanon {
-    /// `MemRefDialect::materializeConstant`.
     pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
         crate::ArithCanon::materialize(value, ty)
     }
 
-    /// The fold of a `memref` op.
     pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         let name = b[op].name.clone();
         match &*name {

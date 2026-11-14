@@ -1,10 +1,7 @@
-//! The `shape` dialect's op interfaces.
-
 use mlirformat::Attribute;
 
 use crate::{Body, OpId, OpInterfaces};
 
-/// The `shape` dialect.
 pub struct ShapeDialect;
 
 impl OpInterfaces for ShapeDialect {
@@ -12,10 +9,8 @@ impl OpInterfaces for ShapeDialect {
         "shape"
     }
 
-    /// `OpAsmOpInterface::getAsmResultNames`.
     fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
         match &*b[op].name {
-            // `c<value>`.
             "shape.const_size" => match b[op].get("value").and_then(|a| crate::Const::try_from(a).ok()).and_then(|c| c.as_int()) {
                 Some(i) => b.result_named(op, alloc::format!("c{}", i.signed())),
                 None => alloc::vec::Vec::new(),
@@ -52,10 +47,7 @@ mod bufferizable {
 
     use crate::{buffer_of, is_tensor, AliasingOperand, AliasingValue, AnalysisState, Body, BufferRelation, Bufferizable, BufferizationOptions, Def, OpData, OpId, Operand, Rewriter, ValueId};
 
-    /// `shape.assuming`: a new op on the (already bufferized) yield's types, its tensor
-    /// results through `to_tensor`.
     pub(super) struct Assuming;
-    /// `shape.assuming_yield`: yields buffers, always in place.
     pub(super) struct AssumingYield;
 
     fn yield_of(b: &Body<'_>, op: OpId) -> OpId {

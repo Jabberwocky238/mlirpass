@@ -1,6 +1,3 @@
-//! `arith` ⇒ `amdgpu` / `rocdl`, as `ArithToAMDGPU.cpp`: fp8 `extf` / `truncf` through the packed
-//! conversions, f32 ⇒ f16 through `rocdl.cvt.pkrtz`, the scaled conversions on gfx950.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -10,17 +7,14 @@ use crate::{AmdChipset, OpData, OpId, Pattern, PatternSet, Rewriter, ValueId};
 
 type Rw<'r, 'a> = Rewriter<'r, 'a>;
 
-/// `kGfx942`.
 const GFX942: AmdChipset = AmdChipset::new(9, 4, 2);
-/// `kGfx950`.
+
 const GFX950: AmdChipset = AmdChipset::new(9, 5, 0);
 
-/// `amdgpu::hasOcpFp8`.
 fn ocp_fp8(c: AmdChipset) -> bool {
     (c.major == 9 && c.minor >= 5) || c.major >= 12
 }
 
-/// `isSupportedF8`.
 fn supported_f8(t: &Type<'_>, c: AmdChipset) -> bool {
     if c == GFX942 {
         return matches!(t, Type::Float(FloatKind::F8E4M3FNUZ | FloatKind::F8E5M2FNUZ));
@@ -28,7 +22,6 @@ fn supported_f8(t: &Type<'_>, c: AmdChipset) -> bool {
     ocp_fp8(c) && matches!(t, Type::Float(FloatKind::F8E4M3FN | FloatKind::F8E5M2))
 }
 
-/// `APFloat::getLargest` of the 8-bit formats `ApFloat` has no layout for.
 fn largest_f64(k: FloatKind) -> Option<f64> {
     Some(match k {
         FloatKind::F8E4M3FN => 448.0,
@@ -57,7 +50,6 @@ fn i32a<'a>(v: i64) -> Attribute<'a> {
     Attribute::of_int(v.into(), Type::int(32))
 }
 
-/// A float zero of `elem` (bits 0 in every format).
 fn zero_attr<'a>(elem: &Type<'_>) -> Attribute<'a> {
     let Type::Float(k) = elem else { return Attribute::i64(0) };
     Attribute::Float { lit: "0.000000e+00".into(), ty: Some(Type::Float(*k)) }
@@ -111,12 +103,10 @@ impl<'a> Build<'a> for Rw<'_, 'a> {
         self.mk(OpData::build("vector.shape_cast").operands(&[v]), ty)
     }
 
-    /// `createOrFold<vector::BroadcastOp>`.
     fn splat(&mut self, v: ValueId, ty: Type<'a>) -> ValueId {
         self.create_or_fold(OpData::build("vector.broadcast").operands(&[v]), &[ty])[0]
     }
 
-    /// `castF32To`.
     fn cast_f32_to(&mut self, des: Type<'a>, v: ValueId) -> ValueId {
         let bits = des.element_type().bit_width().unwrap_or(32);
         match bits {
@@ -126,7 +116,6 @@ impl<'a> Build<'a> for Rw<'_, 'a> {
         }
     }
 
-    /// `castToF32`.
     fn cast_to_f32(&mut self, v: ValueId) -> ValueId {
         let f32t = Type::Float(FloatKind::F32);
         match self.body[v].ty.bit_width().unwrap_or(32) {
@@ -137,7 +126,6 @@ impl<'a> Build<'a> for Rw<'_, 'a> {
     }
 }
 
-/// The patterns `populateArithToAMDGPUConversionPatterns` adds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     ExtFOnFloat8,
@@ -147,17 +135,14 @@ enum Kind {
     ScalingTruncF,
 }
 
-/// One of the ArithToAMDGPU rewrite patterns.
 struct ArithToAmdgpuPattern {
     kind: Kind,
     chipset: AmdChipset,
 }
 
-/// The arith ⇒ amdgpu patterns.
 pub struct ArithToAmdgpu;
 
 impl ArithToAmdgpu {
-    /// `populateArithToAMDGPUConversionPatterns`.
     pub fn patterns(set: &mut PatternSet, chipset: AmdChipset, fp8: bool, saturate: bool, packed_f16_rtz: bool, scaled: bool) {
         let mut add = |kind| {
             set.add(ArithToAmdgpuPattern { kind, chipset });
@@ -175,7 +160,6 @@ impl ArithToAmdgpu {
         }
     }
 
-    /// `convert-arith-to-amdgpu`'s choice of patterns for `chipset`.
     pub fn for_chipset(set: &mut PatternSet, chipset: AmdChipset, saturate: bool, packed_f16_rtz: bool) {
         Self::patterns(set, chipset, chipset == GFX942 || ocp_fp8(chipset), saturate, packed_f16_rtz, chipset == GFX950);
     }
@@ -217,7 +201,6 @@ impl ArithToAmdgpuPattern {
         rw.mk(OpData::build("arith.constant").with("value", zero_attr(elem)), elem.owned())
     }
 
-    /// `ExtFOnFloat8RewritePattern`.
     fn ext_f8(&self, rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let input = rw.body[op].operands[0];
         let in_ty = rw.body[input].ty.clone();
@@ -279,7 +262,6 @@ impl ArithToAmdgpuPattern {
         true
     }
 
-    /// `clampInput`: `source` clamped to the target's finite range (non-finite kept).
     fn clamp<'a>(rw: &mut Rw<'_, 'a>, out_elem: &Type<'_>, source: ValueId) -> Option<ValueId> {
         let st = rw.body[source].ty.clone();
         let Type::Float(sk) = st.element_type().clone() else { return None };
@@ -299,7 +281,6 @@ impl ArithToAmdgpuPattern {
             None => Type::int(1),
         };
         let cmp = |rw: &mut Rw<'_, 'a>, pred: i64, a: ValueId, b: ValueId| rw.create_or_fold(OpData::build("arith.cmpf").operands(&[a, b]).with("predicate", Attribute::i64(pred)), &[i1.clone()])[0];
-        // `oeq` 1, `uno` 14.
         let is_inf = cmp(rw, 1, source, inf);
         let is_neg_inf = cmp(rw, 1, source, neg_inf);
         let is_nan = cmp(rw, 14, source, source);
@@ -318,7 +299,6 @@ impl ArithToAmdgpuPattern {
         rw.mk(data, ty.owned())
     }
 
-    /// `TruncFToFloat8RewritePattern`.
     fn trunc_f8(&self, rw: &mut Rw<'_, '_>, op: OpId, saturate: bool) -> bool {
         if rw.body[op].get("roundingmode").is_some() {
             return false;
@@ -395,7 +375,6 @@ impl ArithToAmdgpuPattern {
         true
     }
 
-    /// `TruncfToFloat16RewritePattern`: `rocdl.cvt.pkrtz` two at a time.
     fn trunc_f16(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let out_ty = rw.body[rw.body[op].results[0]].ty.clone();
         let mut input = rw.body[op].operands[0];
@@ -443,7 +422,6 @@ impl ArithToAmdgpuPattern {
         true
     }
 
-    /// `getOriginalVectorValue`: through shape casts, and one broadcast.
     fn original_vector(rw: &Rw<'_, '_>, mut v: ValueId) -> ValueId {
         while let Some(d) = rw.body.def_op(v) {
             match &*rw.body[d].name {
@@ -458,15 +436,12 @@ impl ArithToAmdgpuPattern {
         v
     }
 
-    /// `ScalingExtFRewritePattern` / `ScalingTruncFRewritePattern`: block by block with one
-    /// scale each.
     fn scaling(rw: &mut Rw<'_, '_>, op: OpId, ext: bool) -> bool {
         let (input, scale_orig) = (rw.body[op].operands[0], rw.body[op].operands[1]);
         let out_ty = rw.body[rw.body[op].results[0]].ty.clone();
         let in_elem = rw.body[input].ty.element_type().owned();
         let out_elem = out_ty.element_type().owned();
         let scale_ty = rw.body[scale_orig].ty.clone();
-        // Scalable vectors and ranked tensors are left alone.
         let tensor = |t: &Type<'_>| matches!(t, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Tensor && s.shape.is_some());
         let scalable = matches!(&out_ty, Type::Shaped(s) if s.shape.as_ref().is_some_and(|d| d.iter().any(|x| matches!(x, mlirformat::Dim::Scalable(_)))));
         if scalable || tensor(&out_ty) || tensor(&rw.body[input].ty) || tensor(&scale_ty) {
@@ -485,7 +460,6 @@ impl ArithToAmdgpuPattern {
             _ => {}
         }
         let (in_bits, out_bits) = (in_elem.bit_width().unwrap_or(8) as i64, out_elem.bit_width().unwrap_or(8) as i64);
-        // ext: 32 / in-width inputs give 2 outputs; trunc: 2 inputs give 32 / out-width outputs.
         let (in_width, out_width) = if ext { (32 / in_bits, 2) } else { (2, 32 / out_bits) };
         let res_ty = vty(&[if ext { 2 } else { out_width }], &out_elem);
         let ext_op = |rw: &mut Rw<'_, '_>, src: ValueId, s: ValueId, index: i64, existing: Option<ValueId>| {
@@ -512,7 +486,6 @@ impl ArithToAmdgpuPattern {
         let ratio: Vec<i64> = in_shape.iter().zip(&scale_shape).map(|(a, b)| if *b != 0 && a % b == 0 { a / b } else { 1 }).collect();
         let block: i64 = ratio.iter().product();
         let mut result = rw.splat(zero, out_ty.clone());
-        // `StaticTileOffsetRange`: the tiles of `ratio` in row-major order.
         let counts: Vec<i64> = in_shape.iter().zip(&ratio).map(|(a, r)| a / r).collect();
         let tiles: i64 = counts.iter().product();
         for t in 0..tiles {

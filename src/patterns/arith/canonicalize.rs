@@ -1,6 +1,3 @@
-//! `arith`: folds and canonicalization patterns, as `ArithOps.cpp` and
-//! `ArithCanonicalization.td`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
@@ -9,7 +6,6 @@ use mlirformat::{arith, Attribute, FloatKind, Type};
 
 use crate::{ApFloat, ApInt, Body, Const, Fold, Folded, OpData, OpId, Rewriter, Scalar, ValueId};
 
-/// `CmpIPredicate`, by case value.
 const EQ: i64 = 0;
 const NE: i64 = 1;
 const SLT: i64 = 2;
@@ -21,7 +17,6 @@ const ULE: i64 = 7;
 const UGT: i64 = 8;
 const UGE: i64 = 9;
 
-/// Integer overflow flags (`#arith.overflow<nsw, nuw>`) as bits: nsw = 1, nuw = 2.
 fn overflow(a: Option<&Attribute<'_>>) -> u8 {
     let Some(Attribute::Extended { ext, .. }) = a else { return 0 };
     let body = ext.body.as_deref().unwrap_or("");
@@ -38,7 +33,6 @@ fn overflow_attr<'a>(bits: u8) -> Attribute<'a> {
     Attribute::dialect("arith.overflow", body)
 }
 
-/// An IEEE float format's exponent and mantissa widths (the formats [`ApFloat`] holds).
 pub(crate) fn float_layout(kind: FloatKind) -> Option<(u32, u32)> {
     Some(match kind {
         FloatKind::F64 => (11, 52),
@@ -53,9 +47,6 @@ pub(crate) fn float_layout(kind: FloatKind) -> Option<(u32, u32)> {
     })
 }
 
-/// `APFloat::convert` of a NaN, when `convertFloatValue` keeps it: quiet (a signaling one is an
-/// invalid operation), and no payload bit shifted out (`losesInfo`); the payload moves with the
-/// mantissa's top, the sign stays.
 fn nan_convert(f: ApFloat, to: FloatKind) -> Option<ApFloat> {
     let ((_, ms), (ed, md)) = (float_layout(f.kind)?, float_layout(to)?);
     let mant = f.bits & ((1 << ms) - 1);
@@ -75,7 +66,6 @@ fn nan_convert(f: ApFloat, to: FloatKind) -> Option<ApFloat> {
     ApFloat::from_bits(to, sign | (((1 << ed) - 1) << md) | mant)
 }
 
-/// `f`, or a zero of its sign if it is denormal (a zero exponent, a nonzero mantissa).
 fn flush_denormal(f: ApFloat) -> Option<ApFloat> {
     let (e, m) = float_layout(f.kind)?;
     let exp = (f.bits >> m) & ((1 << e) - 1);
@@ -86,7 +76,6 @@ fn flush_denormal(f: ApFloat) -> Option<ApFloat> {
     ApFloat::from_bits(f.kind, u64::from(f.is_negative()) << (e + m))
 }
 
-/// Whether fastmath flags `a` include every flag named.
 fn fastmath_has(a: Option<&Attribute<'_>>, flags: &[&str]) -> bool {
     let Some(Attribute::Extended { ext, .. }) = a else { return false };
     let body = ext.body.as_deref().unwrap_or("");
@@ -140,14 +129,11 @@ fn cmpf(pred: i64, l: ApFloat, r: ApFloat) -> bool {
     }
 }
 
-/// `llvm::maximum` / `minimum` (NaN wins) and `maxnum` / `minnum` (NaN loses); -0 < +0.
 fn minmax(a: ApFloat, b: ApFloat, max: bool, nan_wins: bool) -> ApFloat {
     if a.is_nan() || b.is_nan() {
         if nan_wins {
             return if a.is_nan() { a.quieted() } else { b.quieted() };
         }
-        // `maxnum` / `minnum` (IEEE 754-2008): a signaling NaN comes back quieted, a quiet one
-        // gives way to the other operand.
         let signaling = |f: ApFloat| f.is_nan() && f.quieted() != f;
         return match () {
             _ if signaling(a) => a.quieted(),
@@ -163,7 +149,6 @@ fn minmax(a: ApFloat, b: ApFloat, max: bool, nan_wins: bool) -> ApFloat {
     if max { if less { b } else { a } } else if b.compare(a) == Some(Ordering::Less) { b } else { a }
 }
 
-/// One fold: the op, its operands' constants, and the body.
 pub struct Folder<'x, 'a> {
     pub b: &'x mut Body<'a>,
     pub op: OpId,
@@ -187,7 +172,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         self.c.get(i)?.as_ref().and_then(|a| Const::try_from(a).ok())
     }
 
-    /// `m_ConstantInt`.
     fn int(&self, i: usize) -> Option<ApInt> {
         self.cst(i)?.as_int()
     }
@@ -216,8 +200,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         self.b.def_named(self.v(i), name)
     }
 
-    /// `constFoldBinaryOp`: poison passes through; scalars, splats and elements fold
-    /// element-wise into `ty` (default: the operands' type).
     pub(crate) fn binary(&self, ty: Option<Type<'a>>, f: impl Fn(Scalar, Scalar) -> Option<Scalar>) -> Option<Attribute<'a>> {
         for i in 0..2 {
             if self.poison(i) {
@@ -242,7 +224,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         self.binary(None, |a, b| Some(Scalar::Float(f(a.float()?, b.float()?)))).map(Folded::Attr).into()
     }
 
-    /// `constFoldUnaryOp` / `constFoldCastOp` into `ty`.
     pub(crate) fn unary(&self, ty: Type<'a>, f: impl Fn(Scalar) -> Option<Scalar>) -> Fold<'a> {
         if self.poison(0) {
             return self.c[0].clone().map(Folded::Attr).into();
@@ -261,7 +242,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         a.map(Folded::Attr).into()
     }
 
-    /// `Builder::getZeroAttr`.
     fn zero_attr(ty: &Type<'a>) -> Option<Attribute<'a>> {
         let elem = ty.element_type();
         let z = match elem {
@@ -275,8 +255,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         })
     }
 
-    /// `getBoolAttribute`.
-    /// `getBoolAttribute`: none for a shape that is not static (no dense attribute of it).
     fn bool_attr(ty: &Type<'a>, v: bool) -> Option<Attribute<'a>> {
         match ty {
             Type::Shaped(s) if s.shape.as_ref().is_none_or(|d| d.contains(&mlirformat::Dim::Dynamic)) => None,
@@ -289,7 +267,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         self.b[v].ty.element_type().int_width().map(|w| w.0)
     }
 
-    /// The fold of the op.
     pub fn fold(&mut self) -> Fold<'a> {
         let name = self.b[self.op].name.clone();
         let Some(op) = name.strip_prefix("arith.") else { return Fold::Failed };
@@ -335,7 +312,6 @@ impl<'x, 'a> Folder<'x, 'a> {
                     if ov {
                         return None;
                     }
-                    // Round toward negative infinity.
                     let r = a.srem(b)?;
                     Some(if !r.is_zero() && (r.is_negative() != b.is_negative()) { q.sub(ApInt::new(a.width, 1)) } else { q })
                 })
@@ -398,7 +374,6 @@ impl<'x, 'a> Folder<'x, 'a> {
                 self.rounded_binary(Rounded::Div)
             }
             "flush_denormals" => {
-                // `flush_denormals(flush_denormals(x))`.
                 if let Some(inner) = self.def(0, "arith.flush_denormals") {
                     return Self::value(self.b[inner].results[0]);
                 }
@@ -468,7 +443,6 @@ impl<'x, 'a> Folder<'x, 'a> {
                         Some(Scalar::Int(if signed { i.sext(w.max(i.width)).trunc(w) } else { i.zext(w.max(i.width)).trunc(w) }))
                     });
                 }
-                // `index_cast(index_cast(x : A) : B) : A` is `x` when `B` is at least as wide as `A`.
                 if let Some(inner) = self.def(0, &name) {
                     let x = self.b[inner].operands[0];
                     let width = |t: &Type<'_>| t.element_type().int_width().map_or(64, |w| w.0);
@@ -544,7 +518,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         if self.zero(1) {
             return Self::value(self.v(0));
         }
-        // `subi(a, subi(a, b))` is `b`.
         if let Some(sub) = self.def(1, "arith.subi")
             && self.b[sub].operands[0] == self.v(0)
         {
@@ -562,7 +535,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         self.int_binary(|a, b| Some(a.sub(b)))
     }
 
-    /// `foldDivMul`, then the constant fold; division by zero (or `MIN / -1`) does not fold.
     fn div(&mut self, signed: bool) -> Fold<'a> {
         if self.one(1) {
             return Self::value(self.v(0));
@@ -592,7 +564,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         let w = a.width;
         let (zero, one) = (ApInt::zero(w), ApInt::new(w, 1));
         let pos = |x: ApInt| x.scmp(zero) == Ordering::Greater;
-        // `signedCeilNonnegInputs`: (a - 1) / b + 1, overflow checked.
         let ceil = |a: ApInt, b: ApInt| -> (ApInt, bool) {
             let (s, o1) = a.ssub_ov(one);
             let (q, o2) = s.sdiv_ov(b).unwrap_or((s, true));
@@ -630,7 +601,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         if self.int(1).is_some_and(ApInt::is_all_ones) {
             return Self::value(self.v(0));
         }
-        // x & ~x = 0.
         for (x, other) in [(0, 1), (1, 0)] {
             if let Some(xor) = self.def(other, "arith.xori")
                 && self.b[xor].operands[0] == self.v(x)
@@ -639,7 +609,6 @@ impl<'x, 'a> Folder<'x, 'a> {
                 return Self::attr(Self::zero_attr(&self.ty()));
             }
         }
-        // `foldAndIofAndI`.
         for (prev, other) in [(0, 1), (1, 0)] {
             if let Some(p) = self.def(prev, "arith.andi")
                 && self.b[p].operands.contains(&self.v(other))
@@ -700,7 +669,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         if let Some(r) = self.int(1) {
             let w = r.width;
             let (lo, hi) = if signed { (ApInt::signed_min(w), ApInt::signed_max(w)) } else { (ApInt::zero(w), ApInt::all_ones(w)) };
-            // max(x, MAX) = MAX, max(x, MIN) = x; min the other way round.
             if r == (if max { hi } else { lo }) {
                 return Self::value(self.v(1));
             }
@@ -756,12 +724,10 @@ impl<'x, 'a> Folder<'x, 'a> {
         self.float_convert()
     }
 
-    /// `convertFloatValue`: only conversions that lose nothing fold.
     fn float_convert(&self) -> Fold<'a> {
         let ty = self.ty();
         let Some(k) = self.float_kind(self.res()) else { return Fold::Failed };
         self.unary(ty, move |a| {
-            // `f80` / `f128`: exactly an `f64`, converted without loss or not at all.
             if matches!(a, Scalar::Wide(_)) || mlirformat::WideFloat::wide(k) {
                 return a.convert_float(k);
             }
@@ -830,7 +796,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         }
         if self.zero(1) {
             for ext in ["arith.extsi", "arith.extui"] {
-                // `getIntegerWidth`: an integer, or a vector of them.
                 let src = self.def(0, ext).map(|e| self.b[e].operands[0]);
                 let width1 = src.is_some_and(|v| match &self.b[v].ty {
                     Type::Integer { width: 1, .. } => true,
@@ -917,7 +882,6 @@ impl<'x, 'a> Folder<'x, 'a> {
             return Fold::Results(vec![Folded::Value(self.v(0)), Folded::Attr(z)]);
         }
         let Some(sum) = self.binary(None, |a, b| Some(Scalar::Int(a.int()?.add(b.int()?)))) else { return Fold::Failed };
-        // Poison: both results.
         if sum.is_poison() {
             return Fold::Results(vec![Folded::Attr(sum.clone()), Folded::Attr(sum)]);
         }
@@ -928,8 +892,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         Fold::Results(vec![Folded::Attr(sum), Folded::Attr(Const { ty: i1, values, elements: s.elements }.into())])
     }
 
-    /// `SubUIExtendedOp::fold`: `(x, 0)` ⇒ `x, false`; `(x, x)` ⇒ `0, false`; constants ⇒ the
-    /// difference and whether it borrowed (`lhs <u rhs`), poison passing through.
     fn subui_extended(&mut self) -> Fold<'a> {
         let borrow_ty = self.b[self.b[self.op].results[1]].ty.clone();
         if self.zero(1) {
@@ -951,8 +913,6 @@ impl<'x, 'a> Folder<'x, 'a> {
         Fold::Results(vec![Folded::Attr(diff), Folded::Attr(borrow)])
     }
 
-    /// A float `add` / `sub` / `mul` / `div` constant fold in the op's `roundingmode` (none:
-    /// to nearest, ties to even).
     fn rounded_binary(&self, kind: Rounded) -> Fold<'a> {
         let mode = match self.prop("roundingmode") {
             None => RoundingMode::NearestEven,
@@ -989,7 +949,6 @@ impl<'x, 'a> Folder<'x, 'a> {
     }
 }
 
-/// `arith`'s `RoundingMode` cases, by value.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RoundingMode {
     NearestEven,
@@ -1014,7 +973,6 @@ impl TryFrom<i64> for RoundingMode {
     }
 }
 
-/// The float operations that take a rounding mode.
 #[derive(Clone, Copy)]
 enum Rounded {
     Add,
@@ -1024,10 +982,6 @@ enum Rounded {
 }
 
 impl Rounded {
-    /// `a op b` rounded by `mode` (`APFloat::add` etc. with an `llvm::RoundingMode`): the
-    /// nearest-even result, moved one ulp when the exact result (an error-free transform's
-    /// remainder) lies on the other side. `f32` / `f64` only for a directed mode; none for a
-    /// tie under nearest-away it cannot tell.
     fn apply(self, a: ApFloat, b: ApFloat, mode: RoundingMode) -> Option<ApFloat> {
         let nearest = match self {
             Rounded::Add => a.add(b),
@@ -1039,12 +993,10 @@ impl Rounded {
             return Some(nearest);
         }
         let (x, y) = (a.to_f64(), b.to_f64());
-        // The sign of the exact result minus the nearest one (0: exact).
         let err = match a.kind {
             FloatKind::F64 => {
                 let r = nearest.to_f64();
                 if r.is_infinite() && x.is_finite() && y.is_finite() {
-                    // Overflowed: the exact value is past the largest finite.
                     -r
                 } else {
                     match self {
@@ -1102,7 +1054,6 @@ impl Rounded {
     }
 }
 
-/// `APFloatBase::isRepresentableBy(a, b)`: every value of `a` is one of `b`.
 fn representable_by(a: FloatKind, b: FloatKind) -> bool {
     use FloatKind::*;
     let rank = |k: FloatKind| match k {
@@ -1122,20 +1073,17 @@ fn representable_by(a: FloatKind, b: FloatKind) -> bool {
 }
 
 impl<'a> Rewriter<'_, 'a> {
-    /// An `arith.constant` of `value` at the insertion point.
     fn constant(&mut self, value: Attribute<'a>, ty: Type<'a>) -> ValueId {
         let c = self.emit(&arith::Constant::new(value, ty));
         self.body[c].results[0]
     }
 
-    /// A new op replacing `op` (built before it, with `op`'s result types).
     fn replace_new(&mut self, op: OpId, data: OpData<'a>) -> bool {
         let types = self.body.types(&self.body[op].results.clone());
         self.replace_with(op, data, &types);
         true
     }
 
-    /// A new op before `op`, its result of type `ty`.
     fn make(&mut self, op: OpId, data: OpData<'a>, ty: Type<'a>) -> ValueId {
         self.set_before(op);
         let n = self.create(data, &[ty]);
@@ -1144,13 +1092,11 @@ impl<'a> Rewriter<'_, 'a> {
 }
 
 impl<'a> Body<'a> {
-    /// `ConstantLikeMatcher APIntAttr`: a scalar integer constant (not a splat).
     fn int_attr(&self, v: ValueId) -> Option<(ApInt, Type<'a>)> {
         let c = Const::try_from(&self.constant_of(v)?).ok()?;
         (!c.elements).then(|| Some((c.as_int()?, c.ty)))?
     }
 
-    /// `getIntOrSplatIntValue`.
     fn int_or_splat(&self, v: ValueId) -> Option<ApInt> {
         Const::try_from(&self.constant_of(v)?).ok()?.as_int()
     }
@@ -1159,19 +1105,15 @@ impl<'a> Body<'a> {
         (self[op].operands[0], self[op].operands[1])
     }
 
-    /// The width of a scalar or element int / float type, `-1` otherwise.
     fn elem_width(&self, v: ValueId) -> i64 {
         self[v].ty.bit_width().map_or(-1, i64::from)
     }
 }
 
-/// How a constant-combining DRR pattern folds its two constants.
 #[derive(Clone, Copy)]
 enum ConstFold {
     Add,
-    /// `c0 - c1`.
     Sub01,
-    /// `c1 - c0`.
     Sub10,
     Mul,
     And,
@@ -1179,19 +1121,13 @@ enum ConstFold {
     Xor,
 }
 
-/// A constant-combining DRR pattern: `root(inner(x, c0), c1)` into
-/// `new(x, constant(c0 ⊕ c1))` (or with the constants on the other sides).
 struct Combine {
     inner: &'static str,
-    /// `inner(c0, x)`.
     inner_const_first: bool,
-    /// `root(c1, inner(..))`.
     const_on_lhs: bool,
     fold: ConstFold,
-    /// The new op's overflow flags: both ops' (or none).
     merge_flags: bool,
     new: &'static str,
-    /// `new(c, x)`.
     const_first: bool,
 }
 
@@ -1205,7 +1141,6 @@ impl Combine {
         let (x, c0_v) = if self.inner_const_first { (ir, il) } else { (il, ir) };
         let (Some((c0, t0)), Some((c1, t1))) = (b.int_attr(c0_v), b.int_attr(c1_v)) else { return false };
         let res_ty = b[b[op].results[0]].ty.clone();
-        // `IntAttrTypeMatchesResult` (the bitwise ones and `muli`).
         let bitwise = matches!(self.fold, ConstFold::And | ConstFold::Or | ConstFold::Xor);
         if (bitwise || matches!(self.fold, ConstFold::Mul)) && (t0 != res_ty || t1 != res_ty) {
             return false;
@@ -1220,7 +1155,6 @@ impl Combine {
             ConstFold::Xor => c0.xor(c1),
         };
         let flags = if self.merge_flags { overflow_attr(overflow(b[inner].get("overflowFlags")) & overflow(b[op].get("overflowFlags"))) } else { overflow_attr(0) };
-        // `tblgen_ops[1]`: the first constant op the DAG walk meets, the root's own when it is on the root's left
         let first_const = if self.const_on_lhs { c1_v } else { c0_v };
         let mut locs = vec![op];
         locs.extend(rw.body.def_op(first_const));
@@ -1233,15 +1167,12 @@ impl Combine {
     }
 }
 
-/// How `ext(x) root ext(y)` keeps the `extui`s' `nneg`: when both have it (`xori`, `ori`), or
-/// either (`andi`).
 #[derive(Clone, Copy, PartialEq)]
 enum Nneg {
     Both,
     Either,
 }
 
-/// `ext(x) root ext(y)` into `ext(x root y)` when `x` and `y` have the same type.
 fn hoist_ext(rw: &mut Rewriter<'_, '_>, op: OpId, root: &str, ext: &str, nneg: Nneg) -> bool {
     let b = &*rw.body;
     let (l, r) = b.operands2(op);
@@ -1259,12 +1190,10 @@ fn hoist_ext(rw: &mut Rewriter<'_, '_>, op: OpId, root: &str, ext: &str, nneg: N
     rw.replace_new(op, if keep { data.flag("nonNeg") } else { data })
 }
 
-/// `outer(inner(x))` into `new(x)`, or into `x` itself (`new` none: when the types agree).
 fn collapse(rw: &mut Rewriter<'_, '_>, op: OpId, inner: &str, new: Option<&str>) -> bool {
     let b = &*rw.body;
     let Some(i) = b.def_named(b[op].operands[0], inner) else { return false };
     let x = b[i].operands[0];
-    // `(Arith_ExtUIOp $x, $nneg)` ⇒ `(.. $x, $nneg)`: the inner `extui`'s `nneg` carries over.
     let nneg = b[i].name == "arith.extui" && b[i].get("nonNeg").is_some();
     match new {
         Some(n) => {
@@ -1282,114 +1211,95 @@ fn collapse(rw: &mut Rewriter<'_, '_>, op: OpId, inner: &str, new: Option<&str>)
     }
 }
 
-/// `arith` canonicalization: its rewrite patterns, folds and constant materialization.
 pub struct ArithCanon;
 
 #[crate::patterns]
 impl ArithCanon {
-    /// `AddIAddConstant` (DRR).
     #[rewrite("arith.addi", benefit = 2)]
     fn add_i_add_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.addi", inner_const_first: false, const_on_lhs: false, fold: ConstFold::Add, merge_flags: true, new: "arith.addi", const_first: false }.rewrite(rw, op)
     }
 
-    /// `AddISubConstantRHS` (DRR).
     #[rewrite("arith.addi", benefit = 2, name = "AddISubConstantRHS")]
     fn add_i_sub_constant_rhs(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.subi", inner_const_first: false, const_on_lhs: false, fold: ConstFold::Sub10, merge_flags: true, new: "arith.addi", const_first: false }.rewrite(rw, op)
     }
 
-    /// `AddISubConstantLHS` (DRR).
     #[rewrite("arith.addi", benefit = 2, name = "AddISubConstantLHS")]
     fn add_i_sub_constant_lhs(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.subi", inner_const_first: true, const_on_lhs: false, fold: ConstFold::Add, merge_flags: true, new: "arith.subi", const_first: true }.rewrite(rw, op)
     }
 
-    /// `MulIMulIConstant` (DRR).
     #[rewrite("arith.muli", benefit = 2)]
     fn mul_i_mul_i_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.muli", inner_const_first: false, const_on_lhs: false, fold: ConstFold::Mul, merge_flags: true, new: "arith.muli", const_first: false }.rewrite(rw, op)
     }
 
-    /// `SubIRHSAddConstant` (DRR).
     #[rewrite("arith.subi", benefit = 2, name = "SubIRHSAddConstant")]
     fn sub_irhs_add_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.addi", inner_const_first: false, const_on_lhs: false, fold: ConstFold::Sub01, merge_flags: false, new: "arith.addi", const_first: false }.rewrite(rw, op)
     }
 
-    /// `SubILHSAddConstant` (DRR).
     #[rewrite("arith.subi", benefit = 2, name = "SubILHSAddConstant")]
     fn sub_ilhs_add_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.addi", inner_const_first: false, const_on_lhs: true, fold: ConstFold::Sub10, merge_flags: true, new: "arith.subi", const_first: true }.rewrite(rw, op)
     }
 
-    /// `SubIRHSSubConstantRHS` (DRR).
     #[rewrite("arith.subi", benefit = 2, name = "SubIRHSSubConstantRHS")]
     fn sub_irhs_sub_constant_rhs(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.subi", inner_const_first: false, const_on_lhs: false, fold: ConstFold::Add, merge_flags: true, new: "arith.subi", const_first: false }.rewrite(rw, op)
     }
 
-    /// `SubIRHSSubConstantLHS` (DRR).
     #[rewrite("arith.subi", benefit = 2, name = "SubIRHSSubConstantLHS")]
     fn sub_irhs_sub_constant_lhs(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.subi", inner_const_first: true, const_on_lhs: false, fold: ConstFold::Sub01, merge_flags: true, new: "arith.subi", const_first: true }.rewrite(rw, op)
     }
 
-    /// `SubILHSSubConstantRHS` (DRR).
     #[rewrite("arith.subi", benefit = 2, name = "SubILHSSubConstantRHS")]
     fn sub_ilhs_sub_constant_rhs(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.subi", inner_const_first: false, const_on_lhs: true, fold: ConstFold::Add, merge_flags: true, new: "arith.subi", const_first: true }.rewrite(rw, op)
     }
 
-    /// `SubILHSSubConstantLHS` (DRR).
     #[rewrite("arith.subi", benefit = 2, name = "SubILHSSubConstantLHS")]
     fn sub_ilhs_sub_constant_lhs(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.subi", inner_const_first: true, const_on_lhs: true, fold: ConstFold::Sub10, merge_flags: true, new: "arith.addi", const_first: false }.rewrite(rw, op)
     }
 
-    /// `XOrIXOrIConstant` (DRR).
     #[rewrite("arith.xori", benefit = 2)]
     fn x_or_i_x_or_i_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.xori", inner_const_first: false, const_on_lhs: false, fold: ConstFold::Xor, merge_flags: false, new: "arith.xori", const_first: false }.rewrite(rw, op)
     }
 
-    /// `AndIAndIConstant` (DRR).
     #[rewrite("arith.andi", benefit = 2)]
     fn and_i_and_i_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.andi", inner_const_first: false, const_on_lhs: false, fold: ConstFold::And, merge_flags: false, new: "arith.andi", const_first: false }.rewrite(rw, op)
     }
 
-    /// `OrIOrIConstant` (DRR).
     #[rewrite("arith.ori", benefit = 2)]
     fn or_i_or_i_constant(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         Combine { inner: "arith.ori", inner_const_first: false, const_on_lhs: false, fold: ConstFold::Or, merge_flags: false, new: "arith.ori", const_first: false }.rewrite(rw, op)
     }
 
-    /// `SubUIExtendedToSubI`: the borrow unused, a plain `subi`.
     #[rewrite("arith.subui_extended", name = "SubUIExtendedToSubI")]
     fn sub_ui_extended_to_sub_i(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         extended_to_plain(rw, op, "arith.subi")
     }
 
-    /// `SIToFPOfExtSI`: `sitofp(extsi(x))` is `sitofp(x)`.
     #[rewrite("arith.sitofp", benefit = 2, name = "SIToFPOfExtSI")]
     fn si_to_fp_of_ext_si(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         collapse(rw, op, "arith.extsi", Some("arith.sitofp"))
     }
 
-    /// `SIToFPOfExtUI`: `sitofp(extui(x))` is `uitofp(x)`.
     #[rewrite("arith.sitofp", benefit = 2, name = "SIToFPOfExtUI")]
     fn si_to_fp_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         collapse(rw, op, "arith.extui", Some("arith.uitofp"))
     }
 
-    /// `UIToFPOfExtUI`: `uitofp(extui(x))` is `uitofp(x)`.
     #[rewrite("arith.uitofp", benefit = 2, name = "UIToFPOfExtUI")]
     fn ui_to_fp_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         collapse(rw, op, "arith.extui", Some("arith.uitofp"))
     }
 
-    /// `SubFOfNegZero`: `subf(-0.0, x)` is `negf(x)` (default rounding only).
     #[rewrite("arith.subf", name = "SubFOfNegZero")]
     fn sub_f_of_neg_zero(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1397,7 +1307,6 @@ impl ArithCanon {
         if b[op].get("roundingmode").is_some() {
             return false;
         }
-        // `m_NegZeroFloat`: a scalar or splat -0.0.
         let neg_zero = b.constant_of(c).and_then(|a| Const::try_from(&a).ok()).and_then(|k| k.as_float()).is_some_and(|f| f.is_zero() && f.is_negative());
         if !neg_zero {
             return false;
@@ -1409,61 +1318,51 @@ impl ArithCanon {
         rw.replace_new(op, data)
     }
 
-    /// `XOrIOfExtUI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.xori", benefit = 3, name = "XOrIOfExtUI")]
     fn x_or_i_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         hoist_ext(rw, op, "arith.xori", "arith.extui", Nneg::Both)
     }
 
-    /// `XOrIOfExtSI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.xori", benefit = 3, name = "XOrIOfExtSI")]
     fn x_or_i_of_ext_si(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         hoist_ext(rw, op, "arith.xori", "arith.extsi", Nneg::Both)
     }
 
-    /// `AndOfExtUI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.andi", benefit = 3, name = "AndOfExtUI")]
     fn and_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         hoist_ext(rw, op, "arith.andi", "arith.extui", Nneg::Either)
     }
 
-    /// `AndOfExtSI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.andi", benefit = 3, name = "AndOfExtSI")]
     fn and_of_ext_si(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         hoist_ext(rw, op, "arith.andi", "arith.extsi", Nneg::Either)
     }
 
-    /// `OrOfExtUI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.ori", benefit = 3, name = "OrOfExtUI")]
     fn or_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         hoist_ext(rw, op, "arith.ori", "arith.extui", Nneg::Both)
     }
 
-    /// `OrOfExtSI`: `ext(x) op ext(y)` into `ext(x op y)`.
     #[rewrite("arith.ori", benefit = 3, name = "OrOfExtSI")]
     fn or_of_ext_si(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         hoist_ext(rw, op, "arith.ori", "arith.extsi", Nneg::Both)
     }
 
-    /// `IndexCastOfExtSI`: `arith.index_cast(arith.extsi(x))` collapsed.
     #[rewrite("arith.index_cast", benefit = 2, name = "IndexCastOfExtSI")]
     fn index_cast_of_ext_si(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         collapse(rw, op, "arith.extsi", Some("arith.index_cast"))
     }
 
-    /// `IndexCastUIOfExtUI`: `arith.index_castui(arith.extui(x))` collapsed.
     #[rewrite("arith.index_castui", benefit = 2, name = "IndexCastUIOfExtUI")]
     fn index_cast_ui_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         collapse(rw, op, "arith.extui", Some("arith.index_castui"))
     }
 
-    /// `BitcastOfBitcast`: `arith.bitcast(arith.bitcast(x))` collapsed.
     #[rewrite("arith.bitcast", benefit = 2)]
     fn bitcast_of_bitcast(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         collapse(rw, op, "arith.bitcast", Some("arith.bitcast"))
     }
 
-    /// `ExtSIOfExtUI`: `arith.extsi(arith.extui(x))` collapsed.
     #[rewrite("arith.extsi", benefit = 2, name = "ExtSIOfExtUI")]
     fn ext_si_of_ext_ui(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         collapse(rw, op, "arith.extui", Some("arith.extui"))
@@ -1478,7 +1377,6 @@ impl ArithCanon {
         if !b.int_or_splat(c).is_some_and(ApInt::is_all_ones) {
             return false;
         }
-        // `tblgen_ops[1]`: the -1 constant
         let mut locs = vec![op];
         locs.extend(rw.body.def_op(c));
         rw.fuse_locs(&locs);
@@ -1596,7 +1494,6 @@ impl ArithCanon {
         if !b.int_attr(ones).is_some_and(|(v, _)| v.is_all_ones()) {
             return false;
         }
-        // `tblgen_ops[1]`: the all-ones constant
         let mut locs = vec![op];
         locs.extend(rw.body.def_op(ones));
         rw.fuse_locs(&locs);
@@ -1642,8 +1539,6 @@ impl ArithCanon {
         rw.replace_new(op, OpData::build("arith.xori").operands(&[p, one]))
     }
 
-    /// `SelectCmpI{Pred}To{Min,Max}{SI,UI}`: `select(cmpi(p, a, b), a, b)` (or `b, a`) is a
-    /// `min*` / `max*`.
     #[rewrite("arith.select", benefit = 2, name = "SelectCmpIToMinMax")]
     fn select_cmp_i_to_min_max(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -1651,7 +1546,6 @@ impl ArithCanon {
         let Some(cmp) = b.def_named(c, "arith.cmpi") else { return false };
         let (x, y) = b.operands2(cmp);
         let Some(p) = pred_of(b[cmp].get("predicate")) else { return false };
-        // The op when the select picks `a` for `a p b`.
         let direct = match p {
             SLT | SLE => "arith.minsi",
             SGT | SGE => "arith.maxsi",
@@ -1720,7 +1614,6 @@ impl ArithCanon {
         let exact = b[shr].get("isExact").is_some();
         let flags = b[op].get("overflowFlags").cloned();
         let (xty, cty) = (b[x].ty.clone(), b[c].ty.clone());
-        // `tblgen_ops[1]`: the shift amount's constant
         let mut locs = vec![op];
         locs.extend(rw.body.def_op(c));
         rw.fuse_locs(&locs);
@@ -1764,7 +1657,6 @@ impl ArithCanon {
     }
 }
 
-/// `addui_extended` / `mul*_extended` whose high half is unused: the plain op.
 fn extended_to_plain(rw: &mut Rewriter<'_, '_>, op: OpId, plain: &str) -> bool {
     let b = &*rw.body;
     if !b[b[op].results[1]].uses.is_empty() {
@@ -1834,7 +1726,6 @@ fn negf_pair(rw: &mut Rewriter<'_, '_>, op: OpId, name: &str) -> bool {
     rw.replace_new(op, d)
 }
 
-/// `CmpFIntToFPConst`: `cmpf(itofp(x), c)` as an integer comparison, or a constant.
 fn cmpf_int_to_fp_const(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
     let b = &*rw.body;
     let (l, r) = b.operands2(op);
@@ -1876,8 +1767,6 @@ fn cmpf_int_to_fp_const(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
                 return false;
             }
         } else if v != 0.0 {
-            // `ilogb`: the exact binary exponent (a subnormal's as if normalized), ⛔ `log2().floor()`,
-            // which rounds up to `k` just below 2ᵏ.
             let bits = v.abs().to_bits();
             let exp = match (bits >> 52) as i32 {
                 0 => 63 - bits.leading_zeros() as i32 - 1074,
@@ -1957,12 +1846,10 @@ fn cmpf_int_to_fp_const(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
 }
 
 impl ArithCanon {
-    /// `ConstantOp::materialize` (poison becomes `ub.poison`).
     pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
         if value.is_poison() {
             return Some(OpData::build("ub.poison").with("value", value.clone()));
         }
-        // `isBuildableWith`: a typed int, float or elements attribute of exactly `ty`, signless.
         let typed = match value {
             Attribute::Bool(_) => Some(Type::I1),
             Attribute::Int { ty, .. } | Attribute::Float { ty, .. } => ty.clone(),
@@ -1975,7 +1862,6 @@ impl ArithCanon {
         Some(OpData::build("arith.constant").with("value", value.clone()))
     }
 
-    /// The patterns, op by op, in `getCanonicalizationPatterns` order.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(AddIAddConstant).add(AddISubConstantRHS).add(AddISubConstantLHS).add(AddIMulNegativeOneRhs).add(AddIMulNegativeOneLhs);
         set.add(AddUIExtendedToAddI);

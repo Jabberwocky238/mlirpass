@@ -1,5 +1,3 @@
-//! `arith` ⇒ `emitc`, as `ArithToEmitC.cpp`.
-
 use alloc::vec::Vec;
 
 use crate::patterns;
@@ -11,8 +9,6 @@ use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The arith ⇒ emitc patterns, in `populateArithToEmitCPatterns` order: each row is one op
-/// family's template (`ArithOpConversion`, `IntegerOpConversion`, ..) and its target.
 pub struct ArithToEmitc;
 
 #[patterns(converter)]
@@ -52,7 +48,6 @@ pub struct ArithToEmitc;
 impl ArithToEmitc {
     fn constant(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], to: &str) -> bool {
         let (Some(ty), Some(v)) = (cr.converted_result(op), cr.rw.body[op].get("value").cloned()) else { return false };
-        // Memref constants are not supported.
         if matches!(cr.ty(cr.rw.body[op].results[0]), mlirformat::Type::Shaped(s) if s.kind == mlirformat::ShapedKind::MemRef) {
             return false;
         }
@@ -60,7 +55,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// `ArithOpConversion`.
     fn plain(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(ty) = cr.converted_result(op) else { return false };
@@ -68,7 +62,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// `BinaryUIOpConversion`.
     fn unsigned_binary(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(ty) = cr.converted_result(op).filter(|t| matches!(t, Type::Integer { .. })) else { return false };
@@ -80,7 +73,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// `IntegerOpConversion`.
     fn integer(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(ty) = cr.converted_result(op).filter(EmitcType::integral) else { return false };
@@ -94,7 +86,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// `BitwiseOpConversion`.
     fn bitwise(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(ty) = cr.converted_result(op).filter(|t| matches!(t, Type::Integer { .. })) else { return false };
@@ -107,7 +98,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// `CmpIOpConversion`.
     fn cmpi(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ty = cr.ty(ops[0]);
@@ -123,7 +113,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// `NegFOpConversion`.
     fn negf(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ty = cr.ty(ops[0]);
@@ -134,7 +123,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// `SelectOpConversion`.
     fn select(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(ty) = cr.converted_result(op) else { return false };
@@ -145,7 +133,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// `ItoFCastOpConversion`.
     fn itof(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ot = cr.ty(ops[0]);
@@ -161,7 +148,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// `FtoICastOpConversion`.
     fn ftoi(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         if !EmitcType::supported_float(&cr.ty(ops[0])) {
@@ -178,7 +164,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// `FpCastOpConversion`.
     fn fp_cast(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         if !EmitcType::supported_float(&cr.ty(ops[0])) || cr.rw.body[op].get("roundingmode").is_some() {
@@ -189,7 +174,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// The op's integer `predicate`.
     fn predicate(cr: &Cr<'_, '_, '_>, op: OpId) -> i64 {
         match cr.rw.body[op].get("predicate") {
             Some(Attribute::Int { lit, .. }) => lit.parse().unwrap_or(0),
@@ -197,7 +181,6 @@ impl ArithToEmitc {
         }
     }
 
-    /// The op computed in `arith`, its operands and result cast as needed.
     fn through<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, ops: &[ValueId], to: &str, arith: Type<'a>, ty: Type<'a>) {
         let (l, r) = (cr.emitc_cast(ops[0], arith.clone()), cr.emitc_cast(ops[1], arith.clone()));
         let v = cr.emitc(to, &[l, r], arith);
@@ -205,7 +188,6 @@ impl ArithToEmitc {
         cr.replace_values(op, &[res]);
     }
 
-    /// `ShiftOpConversion`: the shift, or zero when the amount is the width or more.
     fn shift<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str, unsigned: bool) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(ty) = cr.converted_result(op).filter(EmitcType::integral) else { return false };
@@ -246,7 +228,6 @@ impl ArithToEmitc {
         true
     }
 
-    /// `CmpFOpConversion`, NaN checks spelled out.
     fn cmpf(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let (l, r) = (ops[0], ops[1]);
@@ -255,7 +236,6 @@ impl ArithToEmitc {
         }
         let pred = Self::predicate(cr, op);
         let rt = cr.ty(cr.rw.body[op].results[0]);
-        // eq, gt, ge, lt, le, ne by `CmpFPredicate` order.
         const PRED: [i64; 6] = [0, 4, 5, 2, 3, 1];
         let (unordered, p) = match pred {
             0 | 15 => {
@@ -279,14 +259,12 @@ impl ArithToEmitc {
         true
     }
 
-    /// `createCheckIsUnordered` (either is NaN) or `createCheckIsOrdered` (neither is).
     fn nan_check(cr: &mut Cr<'_, '_, '_>, l: ValueId, r: ValueId, unordered: bool) -> ValueId {
         let pred = i64::from(unordered);
         let (a, b) = (cr.emitc_cmp(pred, l, l), cr.emitc_cmp(pred, r, r));
         cr.emitc(if unordered { "emitc.logical_or" } else { "emitc.logical_and" }, &[a, b], Type::int(1))
     }
 
-    /// `CastConversion`.
     fn cast(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str, unsigned: bool) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(ret) = cr.converted_result(op).filter(EmitcType::integral) else { return false };

@@ -1,7 +1,3 @@
-//! `amdgpu` buffer ops ⇒ `rocdl`, as `AMDGPUToROCDL.cpp`'s `FatRawBufferCastLowering` and
-//! `RawBufferOpLowering`: a buffer resource from the memref descriptor (`makeBufferRsrc`), then
-//! the `rocdl.raw.ptr.buffer.*` intrinsic at a byte offset.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -14,15 +10,12 @@ use mlirformat::llvm_types::LlvmType;
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `kGfx942`.
 const GFX942: AmdChipset = AmdChipset::new(9, 4, 2);
-/// `kGfx1250`.
+
 const GFX1250: AmdChipset = AmdChipset::new(12, 5, 0);
 
-/// `RawBufferOpLowering::maxVectorOpWidth`.
 const MAX_VECTOR_BITS: u32 = 128;
 
-/// The raw buffer ops, with their intrinsics.
 const RAW_BUFFER_OPS: [(&str, &str); 7] = [
     ("amdgpu.raw_buffer_load", "rocdl.raw.ptr.buffer.load"),
     ("amdgpu.raw_buffer_store", "rocdl.raw.ptr.buffer.store"),
@@ -33,7 +26,6 @@ const RAW_BUFFER_OPS: [(&str, &str); 7] = [
     ("amdgpu.raw_buffer_atomic_cmpswap", "rocdl.raw.ptr.buffer.atomic.cmpswap"),
 ];
 
-/// The amdgpu buffer ops.
 pub struct AmdgpuBufferToRocdl;
 
 #[patterns(converter, options = AmdgpuRocdlOptions)]
@@ -42,13 +34,11 @@ impl AmdgpuBufferToRocdl {
         cr.llvm_constant(Attribute::of_int(v.into(), Type::int(w)), Type::int(w))
     }
 
-    /// A two-operand op with `overflowFlags` none.
     fn arith<'a>(cr: &mut Cr<'_, 'a, '_>, name: &str, a: ValueId, b: ValueId) -> ValueId {
         let ty = cr.rw.body[a].ty.clone();
         cr.build(OpData::build(name).operands(&[a, b]).with("overflowFlags", Attribute::of_int(0, Type::int(32))), ty)
     }
 
-    /// `convertUnsignedTo{I32,I64}`.
     fn unsigned_to<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, w: u32) -> ValueId {
         match cr.rw.body[v].ty.int_width() {
             Some((have, _)) if have == w => v,
@@ -64,7 +54,6 @@ impl AmdgpuBufferToRocdl {
         }
     }
 
-    /// The bytes of an element (`DataLayout::getTypeSizeInBits` / 8).
     fn byte_width(t: &Type<'_>) -> Option<i64> {
         match t {
             Type::Index => Some(8),
@@ -72,7 +61,6 @@ impl AmdgpuBufferToRocdl {
         }
     }
 
-    /// `getNumRecords`.
     fn num_records(cr: &mut Cr<'_, '_, '_>, s: &Shaped<'_>, desc: ValueId, strides: &[i64], bytes: i64, chipset: AmdChipset, bounds: bool) -> ValueId {
         if chipset >= GFX1250 && !bounds {
             return Self::constant(cr, (1 << 45) - 1, 64);
@@ -100,7 +88,6 @@ impl AmdgpuBufferToRocdl {
         Self::arith(cr, "llvm.mul", max, bytes)
     }
 
-    /// `makeBufferRsrc`.
     fn rsrc(cr: &mut Cr<'_, '_, '_>, base: ValueId, records: ValueId, bounds: bool, chipset: AmdChipset, swizzle: Option<ValueId>, space: u32) -> ValueId {
         let stride = match swizzle {
             Some(sw) if chipset.major == 9 && chipset >= GFX942 => {
@@ -125,7 +112,6 @@ impl AmdgpuBufferToRocdl {
         !matches!(cr.rw.body[op].get("boundsCheck"), Some(Attribute::Bool(false)))
     }
 
-    /// `FatRawBufferCastLowering`: the descriptor with both pointers a fat buffer pointer.
     #[convert("amdgpu.fat_raw_buffer_cast")]
     fn fat_raw_buffer_cast(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         let body = &cr.rw.body;
@@ -163,7 +149,6 @@ impl AmdgpuBufferToRocdl {
         true
     }
 
-    /// `getLinearIndexI32`.
     fn linear_index(cr: &mut Cr<'_, '_, '_>, desc: ValueId, indices: &[ValueId], strides: &[i64]) -> ValueId {
         let mut index: Option<ValueId> = None;
         for (i, (&idx, &st)) in indices.iter().zip(strides).enumerate() {
@@ -185,8 +170,6 @@ impl AmdgpuBufferToRocdl {
         index.unwrap_or_else(|| Self::constant(cr, 0, 32))
     }
 
-    /// The type the intrinsic moves for data of `wanted` (`llvm` converted): scalars up to 32
-    /// bits, dwords beyond, integers for a compare-and-swap; `None` past 128 bits.
     fn buffer_type<'a>(cr: &Cr<'_, 'a, '_>, wanted: &Type<'a>, llvm: &Type<'a>, cmpswap: bool, packed_fadd: bool) -> Option<Type<'a>> {
         let mut t = llvm.clone();
         if cmpswap && let Type::Float(_) = wanted {
@@ -217,7 +200,6 @@ impl AmdgpuBufferToRocdl {
         Some(t)
     }
 
-    /// `RawBufferOpLowering`.
     #[convert("amdgpu.raw_buffer_load", "amdgpu.raw_buffer_store", "amdgpu.raw_buffer_atomic_fadd", "amdgpu.raw_buffer_atomic_fmax", "amdgpu.raw_buffer_atomic_smax", "amdgpu.raw_buffer_atomic_umin", "amdgpu.raw_buffer_atomic_cmpswap")]
     fn raw_buffer(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: AmdgpuRocdlOptions) -> bool {
         if o.chipset.major < 9 {
@@ -226,7 +208,6 @@ impl AmdgpuBufferToRocdl {
         let name = cr.rw.body[op].name.clone();
         let Some(&(_, intrinsic)) = RAW_BUFFER_OPS.iter().find(|(n, _)| *n == &*name) else { return false };
         let seg = AmdgpuOperands::new(cr, op, operands);
-        // Data operands ahead of the memref, indices and sgpr offset groups.
         let data = seg.groups.len().saturating_sub(3);
         let (store, cmp) = (seg.one(0).filter(|_| data >= 1), seg.one(1).filter(|_| data >= 2));
         let (Some(desc), indices, sgpr) = (seg.one(data), seg.group(data + 1).collect::<Vec<_>>(), seg.one(data + 2)) else { return false };
@@ -261,7 +242,6 @@ impl AmdgpuBufferToRocdl {
         let sgpr = sgpr.unwrap_or_else(|| Self::constant(cr, 0, 32));
         args.push(Self::arith(cr, "llvm.mul", sgpr, width));
         let results = if cr.rw.body[op].results.is_empty() { vec![] } else { vec![buf.clone()] };
-        // (aux 0: GLC / SLC / DLC off, not swizzled)
         let lowered = cr.rw.create(OpData::build(intrinsic).operands(&args).with("aux", Attribute::of_int(0, Type::int(32))), &results);
         match cr.rw.body[lowered].results.first().copied() {
             Some(mut r) => {

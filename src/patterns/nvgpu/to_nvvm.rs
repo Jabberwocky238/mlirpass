@@ -1,7 +1,3 @@
-//! `nvgpu` ⇒ `nvvm`, as `NVGPUToNVVM.cpp`: mma / ldmatrix fragments unpacked into the scalars
-//! the NVVM ops take, async copies, mbarriers, TMA, and the warpgroup GEMM unrolled into wgmma
-//! instructions.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -16,12 +12,10 @@ use crate::{ConversionRewriter, LlvmOptions, MemrefToLlvm, OpData, OpId, ValueId
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `exclude4LSB`: the bits a matrix descriptor leaves out.
 const EXCLUDE_4LSB: u32 = 4;
-/// `kWarpSize`.
+
 const WARP_SIZE: i64 = 32;
 
-/// `NVVM::MMATypes`, the PTX types of mma operands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MmaType {
     F16,
@@ -48,7 +42,6 @@ impl MmaType {
         }
     }
 
-    /// `getNvvmMmaType`: a multiplicand.
     fn multiplicand(t: &Type<'_>) -> Option<Self> {
         Some(match t.element_type() {
             Type::Integer { width: 8, .. } => MmaType::S8,
@@ -61,7 +54,6 @@ impl MmaType {
         })
     }
 
-    /// `MmaOp::inferOperandMMAType(t, /*isAccumulator=*/true)`.
     fn accumulator(t: &Type<'_>) -> Option<Self> {
         Some(match t.element_type() {
             Type::Float(FloatKind::F16) => MmaType::F16,
@@ -80,7 +72,6 @@ impl From<MmaType> for Attribute<'static> {
     }
 }
 
-/// `NVVM::WGMMATypes` of an element type (`f32`: tf32 for the inputs, f32 for the result).
 fn wgmma_type(t: &Type<'_>, result: bool) -> Option<&'static str> {
     Some(match t {
         Type::Float(FloatKind::F32 | FloatKind::TF32) => {
@@ -102,7 +93,6 @@ fn wgmma_type(t: &Type<'_>, result: bool) -> Option<&'static str> {
     })
 }
 
-/// `elementTypeAsLLVMConstant`: `CUtensorMapDataType`.
 fn tensor_map_data_type(t: &Type<'_>) -> Option<i64> {
     Some(match t {
         Type::Integer { width: 8, signedness: Signedness::Unsigned } => 0,
@@ -119,13 +109,10 @@ fn tensor_map_data_type(t: &Type<'_>) -> Option<i64> {
     })
 }
 
-/// The nvgpu ⇒ nvvm patterns (`populateNVGPUToNVVMConversionPatterns`).
 pub struct NvgpuToNvvm;
 
 #[patterns(converter, options = LlvmOptions)]
 impl NvgpuToNvvm {
-    // ---- helpers ----------------------------------------------------------------------------
-
     fn ty<'a>(cr: &Cr<'_, 'a, '_>, v: ValueId) -> Type<'a> {
         cr.rw.body[v].ty.clone()
     }
@@ -149,7 +136,6 @@ impl NvgpuToNvvm {
         cr.llvm_constant(Attribute::of_int(v.into(), Type::int(w)), Type::int(w))
     }
 
-    /// `makeI64Const`: an i64 constant holding an i32 attribute.
     fn c64(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
         cr.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(64))
     }
@@ -163,13 +149,11 @@ impl NvgpuToNvvm {
         cr.build(OpData::build(name).operands(&[a, b]), t)
     }
 
-    /// An `llvm.add` / `mul` / `shl` with no overflow flags.
     fn arith(cr: &mut Cr<'_, '_, '_>, name: &str, a: ValueId, b: ValueId) -> ValueId {
         let t = Self::ty(cr, a);
         cr.build(OpData::build(name).operands(&[a, b]).with("overflowFlags", Attribute::of_int(0, Type::int(32))), t)
     }
 
-    /// `truncToI32`.
     fn trunc32(cr: &mut Cr<'_, '_, '_>, v: ValueId) -> ValueId {
         match Self::ty(cr, v).int_width() {
             Some((w, _)) if w <= 32 => v,
@@ -184,20 +168,17 @@ impl NvgpuToNvvm {
         }
     }
 
-    /// `getStridedElementPtr` of memref operand `orig` (converted `desc`).
     fn element_ptr(cr: &mut Cr<'_, '_, '_>, o: LlvmOptions, orig: ValueId, desc: ValueId, indices: &[ValueId]) -> Option<ValueId> {
         let s = Self::memref(cr, orig)?;
         MemrefToLlvm::strided_ptr(cr, o, &s, desc, indices, 0)
     }
 
-    /// `getMbarrierPtr`: barrier `id` of the group `orig` (converted `desc`).
     fn mbarrier_ptr(cr: &mut Cr<'_, '_, '_>, o: LlvmOptions, orig: ValueId, desc: ValueId, id: ValueId) -> Option<ValueId> {
         let Some(NvgpuType::MbarrierGroup { shared, barriers }) = Self::nv(cr, orig) else { return None };
         let s = NvgpuType::mbarrier_memref(shared, barriers);
         MemrefToLlvm::strided_ptr(cr, o, &s, desc, &[id], 0)
     }
 
-    /// The operand groups of `op` by `operandSegmentSizes`.
     fn groups<'v>(cr: &Cr<'_, '_, '_>, op: OpId, operands: &'v [Vec<ValueId>]) -> Vec<&'v [Vec<ValueId>]> {
         let sizes = cr.rw.body.segments(op, "operandSegmentSizes").unwrap_or_else(|| vec![1; operands.len()]);
         let mut rest = operands;
@@ -216,9 +197,6 @@ impl NvgpuToNvvm {
         Attribute::dialect("nvvm.mem_scope", &format!("<{scope}>"))
     }
 
-    // ---- mma.sync / ldmatrix -------------------------------------------------------------
-
-    /// `unpackOperandVector`.
     fn unpack(cr: &mut Cr<'_, '_, '_>, v: ValueId, ptx: MmaType) -> Vec<ValueId> {
         let t = Self::ty(cr, v);
         let Ok(LlvmType::Array(n, elem)) = LlvmType::try_from(&t) else { return vec![v] };
@@ -253,7 +231,6 @@ impl NvgpuToNvvm {
         out
     }
 
-    /// `inferIntrinsicResultType`.
     fn intrinsic_result<'a>(t: &Type<'a>) -> Type<'a> {
         let Ok(LlvmType::Array(n, elem)) = LlvmType::try_from(t) else { return t.clone() };
         let n = n as usize;
@@ -276,7 +253,6 @@ impl NvgpuToNvvm {
         }
     }
 
-    /// `convertIntrinsicResult`: the intrinsic's struct repacked as the fragment array.
     fn intrinsic_to_fragment<'a>(cr: &mut Cr<'_, 'a, '_>, res_ty: &Type<'a>, r: ValueId) -> ValueId {
         let Ok(LlvmType::Array(_, elem)) = LlvmType::try_from(res_ty) else { return r };
         let elem: Type<'a> = (*elem).clone();
@@ -288,7 +264,6 @@ impl NvgpuToNvvm {
         if elem == v(2, Type::Float(FloatKind::F16)) || elem == v(1, Type::Float(FloatKind::F32)) {
             for i in 0..members as i64 {
                 let x = cr.extract(r, &[i]);
-                // `createOrFold` of a bitcast to its own type folds away.
                 elements.push(if Self::ty(cr, x) == elem { x } else { Self::op1(cr, "llvm.bitcast", x, elem.clone()) });
             }
         }
@@ -311,7 +286,6 @@ impl NvgpuToNvvm {
         out
     }
 
-    /// `MmaLdMatrixOpToNVVM`.
     #[convert("nvgpu.ldmatrix")]
     fn ldmatrix(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let res = Self::ty(cr, cr.rw.body[op].results[0]);
@@ -342,14 +316,12 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `mmaShape` as `[m, n, k]`.
     fn mma_shape(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<[i64; 3]> {
         let Some(Attribute::Array(a)) = cr.rw.body[op].get("mmaShape") else { return None };
         let v: Vec<i64> = a.iter().filter_map(|x| if let Attribute::Int { lit, .. } = x { lit.parse().ok() } else { None }).collect();
         v.try_into().ok()
     }
 
-    /// The PTX types of an mma op: A, B, C, and the integer overflow mode.
     fn mma_types(cr: &Cr<'_, '_, '_>, op: OpId, b_from_a: bool) -> Option<(MmaType, MmaType, MmaType, bool)> {
         let ops = &cr.rw.body[op].operands;
         let (a, b, c) = (Self::ty(cr, ops[0]), Self::ty(cr, ops[if b_from_a { 0 } else { 1 }]), Self::ty(cr, ops[2]));
@@ -359,10 +331,8 @@ impl NvgpuToNvvm {
         Some((MmaType::multiplicand(&a)?, MmaType::multiplicand(&b)?, MmaType::accumulator(c.element_type())?, matches!(a.element_type(), Type::Integer { .. })))
     }
 
-    /// `MmaSyncOptoNVVM`.
     #[convert("nvgpu.mma.sync")]
     fn mma_sync(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
-        // Upstream reads B's type from A.
         let Some((pa, pb, pc, int)) = Self::mma_types(cr, op, true) else { return false };
         let Some([m, n, k]) = Self::mma_shape(cr, op) else { return false };
         let res = Self::ty(cr, cr.rw.body[op].results[0]);
@@ -392,7 +362,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `buildMmaSparseAsmString`.
     fn sparse_asm(shape: [i64; 3], sizes: [usize; 3], [pa, pb, pc, pd]: [MmaType; 4], int: bool, selector: i64) -> String {
         let [m, n, k] = shape;
         let mut s = format!("mma.sp.sync.aligned.m{m}n{n}k{k}.row.col.");
@@ -414,7 +383,6 @@ impl NvgpuToNvvm {
         s
     }
 
-    /// `NVGPUMmaSparseSyncLowering`: `mma.sp.sync` as inline PTX.
     #[convert("nvgpu.mma.sp.sync")]
     fn mma_sparse(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let Some((pa, pb, pc, int)) = Self::mma_types(cr, op, false) else { return false };
@@ -457,9 +425,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    // ---- async copies -----------------------------------------------------------------------
-
-    /// `NVGPUAsyncCopyLowering`: `cp.async` into shared memory; the token is a dummy 0.
     #[convert("nvgpu.device_async_copy")]
     fn async_copy(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let g = Self::groups(cr, op, operands);
@@ -493,7 +458,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUAsyncCreateGroupLowering`.
     #[convert("nvgpu.device_async_create_group")]
     fn async_create_group(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         cr.rw.set_before(op);
@@ -503,7 +467,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUAsyncWaitLowering`.
     #[convert("nvgpu.device_async_wait")]
     fn async_wait(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let n = Self::int(cr, op, "numGroups").unwrap_or(0);
@@ -513,9 +476,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    // ---- mbarriers ----------------------------------------------------------------------------
-
-    /// `NVGPUMBarrierCreateLowering`: a private `__mbarrier` global at the front of the module.
     #[convert("nvgpu.mbarrier.create")]
     fn mbarrier_create(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let res = cr.rw.body[op].results[0];
@@ -536,7 +496,6 @@ impl NvgpuToNvvm {
             m = p;
         }
         let Some(module) = gpu.or(module) else { return false };
-        // `SymbolTable::insert` with a fresh table: `_0`, `_1`, … until unique.
         let mut name = String::from("__mbarrier");
         let mut k = 0;
         while cr.rw.body.lookup(module, &name).is_some() {
@@ -559,7 +518,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUMBarrierGetLowering`.
     #[convert("nvgpu.mbarrier.get")]
     fn mbarrier_get(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let group = cr.rw.body[op].operands[0];
@@ -571,7 +529,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUMBarrierInitLowering`.
     #[convert("nvgpu.mbarrier.init")]
     fn mbarrier_init(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let group = cr.rw.body[op].operands[0];
@@ -584,7 +541,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUMBarrierArriveLowering`.
     #[convert("nvgpu.mbarrier.arrive")]
     fn mbarrier_arrive(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let group = cr.rw.body[op].operands[0];
@@ -595,7 +551,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUMBarrierArriveNoCompleteLowering`.
     #[convert("nvgpu.mbarrier.arrive.nocomplete")]
     fn mbarrier_arrive_nocomplete(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let group = cr.rw.body[op].operands[0];
@@ -606,7 +561,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUMBarrierTestWaitLowering`.
     #[convert("nvgpu.mbarrier.test.wait")]
     fn mbarrier_test_wait(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let group = cr.rw.body[op].operands[0];
@@ -617,7 +571,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUMBarrierArriveExpectTxLowering`.
     #[convert("nvgpu.mbarrier.arrive.expect_tx")]
     fn mbarrier_arrive_expect_tx(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let group = cr.rw.body[op].operands[0];
@@ -626,7 +579,6 @@ impl NvgpuToNvvm {
         let tx = Self::trunc32(cr, operands[1][0]);
         let mut args = vec![p, tx];
         args.extend(operands.get(3).and_then(|v| v.first()));
-        // (its builder gives it the i64 state result, unused, but with a predicate)
         let predicated = args.len() > 2;
         let data = OpData::build("nvvm.mbarrier.arrive.expect_tx").operands(&args).with("scope", Self::mem_scope("cta")).with("relaxed", Attribute::Bool(false));
         let types = if predicated { Vec::new() } else { vec![Type::int(64)] };
@@ -635,7 +587,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUMBarrierTryWaitParityLowering`.
     #[convert("nvgpu.mbarrier.try_wait.parity")]
     fn mbarrier_try_wait_parity(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let group = cr.rw.body[op].operands[0];
@@ -647,9 +598,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    // ---- TMA ----------------------------------------------------------------------------------
-
-    /// `NVGPUTmaAsyncLoadOpLowering`.
     #[convert("nvgpu.tma.async.load")]
     fn tma_load(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let g = Self::groups(cr, op, operands);
@@ -675,7 +623,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUTmaAsyncStoreOpLowering`.
     #[convert("nvgpu.tma.async.store")]
     fn tma_store(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let g = Self::groups(cr, op, operands);
@@ -695,7 +642,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUTmaCreateDescriptorOpLowering`: `mgpuTensorMapEncodeTiledMemref` on the host.
     #[convert("nvgpu.tma.create.descriptor")]
     fn tma_create_descriptor(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let (tensor, res) = (cr.rw.body[op].operands[0], cr.rw.body[op].results[0]);
@@ -704,7 +650,6 @@ impl NvgpuToNvvm {
         let ptr: Type<'_> = LlvmType::ptr();
         cr.rw.set_before(op);
         let elem = Self::c64(cr, data_type);
-        // `promoteOperands`: an unranked descriptor as its rank and pointer.
         let desc = operands[0][0];
         let rank = cr.extract(desc, &[0]);
         let dptr = cr.extract(desc, &[1]);
@@ -740,7 +685,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// The `builtin.module` around `op`.
     fn enclosing_module(cr: &Cr<'_, '_, '_>, mut op: OpId) -> Option<OpId> {
         let body = &cr.rw.body;
         loop {
@@ -751,7 +695,6 @@ impl NvgpuToNvvm {
         }
     }
 
-    /// `NVGPUTmaFenceOpLowering`.
     #[convert("nvgpu.tma.fence.descriptor")]
     fn tma_fence(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         cr.rw.set_before(op);
@@ -765,7 +708,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUTmaPrefetchOpLowering`.
     #[convert("nvgpu.tma.prefetch.descriptor")]
     fn tma_prefetch(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let args: Vec<ValueId> = operands.iter().filter_map(|v| v.first().copied()).collect();
@@ -773,9 +715,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    // ---- warpgroup ----------------------------------------------------------------------------
-
-    /// `NVGPUGenerateWarpgroupDescriptorLowering`.
     #[convert("nvgpu.warpgroup.generate.descriptor")]
     fn warpgroup_descriptor(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: LlvmOptions) -> bool {
         let (tensor, map) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
@@ -814,7 +753,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// The tensor memref type of a `!nvgpu.warpgroup.descriptor` operand.
     fn wg_tensor(cr: &Cr<'_, '_, '_>, v: ValueId) -> Option<Type<'static>> {
         match Self::nv(cr, v)? {
             NvgpuType::WarpgroupDescriptor { tensor } => Some(tensor),
@@ -822,7 +760,6 @@ impl NvgpuToNvvm {
         }
     }
 
-    /// `NVGPUWarpgroupMmaOpLowering` (`WarpgroupGemm`).
     #[convert("nvgpu.warpgroup.mma")]
     fn warpgroup_mma(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let orig = cr.rw.body[op].operands.clone();
@@ -897,7 +834,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `storeFragmentedMatrix`: one 64-row block of the accumulator into `memref` at row `offset`.
     fn store_fragment(cr: &mut Cr<'_, '_, '_>, d: ValueId, memref: ValueId, offset: i64) {
         let i32t = Type::int(32);
         let k = |cr: &mut Cr<'_, '_, '_>, v: i64| Self::c(cr, v, 32);
@@ -942,7 +878,6 @@ impl NvgpuToNvvm {
         }
     }
 
-    /// `NVGPUWarpgroupMmaStoreOpLowering`.
     #[convert("nvgpu.warpgroup.mma.store")]
     fn warpgroup_store(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let d = operands[0][0];
@@ -963,7 +898,6 @@ impl NvgpuToNvvm {
         true
     }
 
-    /// `NVGPUWarpgroupMmaInitAccumulatorOpLowering`: an all-zero accumulator.
     #[convert("nvgpu.warpgroup.mma.init.accumulator")]
     fn warpgroup_init(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let res = Self::ty(cr, cr.rw.body[op].results[0]);
@@ -998,34 +932,27 @@ impl NvgpuToNvvm {
         true
     }
 
-    // The canonicalizations come before the lowerings: upstream's legalization graph tries the
-    // pattern added last first among equals.
-    /// `NVGPUTruncfCanonicalizePattern`.
     #[rewrite("nvgpu.truncf", name = "NvgpuTruncfCanonicalize")]
     fn truncf_canonicalize(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
         Self::canonicalize_fp(rw, op, true)
     }
 
-    /// `NVGPUExtfCanonicalizePattern`.
     #[rewrite("nvgpu.extf", name = "NvgpuExtfCanonicalize")]
     fn extf_canonicalize(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> bool {
         Self::canonicalize_fp(rw, op, false)
     }
 
-    /// `NVGPUTruncfOpLowering`.
     #[convert("nvgpu.truncf")]
     fn truncf(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let random = operands.get(1).and_then(|g| g.first().copied());
         Self::lower_truncf(cr, op, operands[0][0], random)
     }
 
-    /// `NVGPUExtfOpLowering`.
     #[convert("nvgpu.extf")]
     fn extf(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         Self::lower_extf(cr, op, operands[0][0])
     }
 
-    /// `rcp.approx.ftz.f` of each element of the 1-D vector `v`.
     fn rcp_1d<'a>(cr: &mut Cr<'_, 'a, '_>, t: Type<'a>, v: ValueId) -> ValueId {
         let n = t.element_count().unwrap_or(0);
         let mut out = cr.poison(t.clone());
@@ -1038,7 +965,6 @@ impl NvgpuToNvvm {
         out
     }
 
-    /// `NVGPURcpOpLowering`: `rcp.approx.ftz.f` of each element.
     #[convert("nvgpu.rcp")]
     fn rcp(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let src = operands[0][0];

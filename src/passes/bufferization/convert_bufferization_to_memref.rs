@@ -1,11 +1,8 @@
-//! `convert-bufferization-to-memref`.
-
 use crate::{BufferizationToMemref};
 use crate::pass;
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId};
 use mlirformat::Error;
 
-/// `convert-bufferization-to-memref`.
 #[pass("convert-bufferization-to-memref")]
 pub fn convert_bufferization_to_memref<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let mut patterns = ConversionPatterns::default();

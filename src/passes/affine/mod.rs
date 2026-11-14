@@ -1,5 +1,3 @@
-//! `affine` passes.
-
 mod convert_affine_for_to_gpu;
 mod lower_affine;
 

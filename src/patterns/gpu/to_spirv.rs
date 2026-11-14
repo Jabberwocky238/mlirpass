@@ -1,6 +1,3 @@
-//! `gpu` ⇒ `spirv`, as `GPUToSPIRV.cpp`: kernels as entry functions with their ABI, launch
-//! configuration as builtin variables, `gpu.module` as `spirv.module`.
-
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -13,20 +10,13 @@ use crate::{ConversionRewriter, OpData, OpId, SignatureConversion, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// What the gpu patterns need of the target and the type converter.
 #[derive(Debug, Clone, Copy)]
 pub struct GpuSpirvOptions {
-    /// `use64bitIndex`.
     pub index64: bool,
-    /// The target allows `Shader` (builtins read as `i32`).
     pub shader: bool,
-    /// The target allows `Kernel`.
     pub kernel: bool,
-    /// `needsInterfaceVarABIAttrs`: arguments get a default ABI when none is given.
     pub interface_abi: bool,
-    /// The resource limits' `subgroup_size`.
     pub subgroup_size: u32,
-    /// `getAddressingModel` of the target.
     pub addressing: &'static str,
 }
 
@@ -36,12 +26,10 @@ impl GpuSpirvOptions {
     }
 }
 
-/// The gpu ⇒ spirv patterns (`populateGPUToSPIRVPatterns`).
 pub struct GpuToSpirv;
 
 #[patterns(converter, options = GpuSpirvOptions)]
 impl GpuToSpirv {
-    /// The `#gpu<dim x>` of a launch configuration op, as 0, 1, 2.
     fn dim(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<i64> {
         let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("dimension") else { return None };
         match ext.body.as_deref()?.trim_start_matches('<').trim_end_matches('>').trim().strip_prefix("dim ")? {
@@ -52,8 +40,6 @@ impl GpuToSpirv {
         }
     }
 
-    /// `LaunchConfigConversion` (and, for `gpu.block_dim` with a known workgroup size,
-    /// `WorkGroupSizeConversion`, its higher-benefit rival).
     #[convert("gpu.block_id", "gpu.grid_dim", "gpu.block_dim", "gpu.thread_id", "gpu.global_id")]
     fn launch_config<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuSpirvOptions) -> bool {
         let Some(d) = Self::dim(cr, op) else { return false };
@@ -84,8 +70,6 @@ impl GpuToSpirv {
         true
     }
 
-    /// `lookupLocalWorkGroupSize`: the `workgroup_size` of the enclosing function's
-    /// `spirv.entry_point_abi`.
     fn workgroup_size(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<Vec<i64>> {
         let b = &cr.rw.body;
         let mut at = b.parent_op(op);
@@ -101,7 +85,6 @@ impl GpuToSpirv {
         None
     }
 
-    /// `SingleDimLaunchConfigConversion`.
     #[convert("gpu.subgroup_id", "gpu.num_subgroups", "gpu.subgroup_size", "gpu.lane_id")]
     fn single_dim<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuSpirvOptions) -> bool {
         let builtin = match &*cr.rw.body[op].name {
@@ -118,24 +101,20 @@ impl GpuToSpirv {
         true
     }
 
-    /// The case of a `#gpu<mnemonic case>` attribute.
     fn gpu_case(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> Option<alloc::string::String> {
         let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get(name) else { return None };
         let body = ext.body.as_deref()?.trim_start_matches('<').trim_end_matches('>');
         Some(alloc::string::String::from(body.rsplit(' ').next()?.trim()))
     }
 
-    /// `arith.cmpi` of `l`, `r` with predicate number `p`.
     fn cmpi<'a>(cr: &mut Cr<'_, 'a, '_>, p: i128, l: ValueId, r: ValueId) -> ValueId {
         cr.build(OpData::build("arith.cmpi").operands(&[l, r]).with("predicate", Attribute::integer(p, Type::int(64))), Type::I1)
     }
 
-    /// `gpu.lane_id` bounded by `width`.
     fn lane_id<'a>(cr: &mut Cr<'_, 'a, '_>, width: i128) -> ValueId {
         cr.build(OpData::build("gpu.lane_id").with("upper_bound", Attribute::integer(width, Type::Index)), Type::Index)
     }
 
-    /// `GPUShuffleConversion`.
     #[convert("gpu.shuffle")]
     fn shuffle<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: GpuSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -170,7 +149,6 @@ impl GpuToSpirv {
         true
     }
 
-    /// `GPURotateConversion`.
     #[convert("gpu.rotate")]
     fn rotate<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: GpuSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -195,7 +173,6 @@ impl GpuToSpirv {
         true
     }
 
-    /// `createGroupReduceOp`: `spirv.Group*` (uniform) or `spirv.GroupNonUniform*`.
     fn group_reduce<'a>(cr: &mut Cr<'_, 'a, '_>, arg: ValueId, kind: &str, workgroup: bool, uniform: bool, cluster: Option<i128>) -> Option<ValueId> {
         let ty = cr.rw.body[arg].ty.clone();
         let float = matches!(ty, Type::Float(_));
@@ -228,7 +205,6 @@ impl GpuToSpirv {
         Some(cr.build(OpData::build(&format!("spirv.GroupNonUniform{nu}")).operands(&operands).with("execution_scope", scope).with("group_operation", group), ty))
     }
 
-    /// `GPUAllReduceConversion`.
     #[convert("gpu.all_reduce")]
     fn all_reduce<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -239,7 +215,6 @@ impl GpuToSpirv {
         true
     }
 
-    /// `GPUSubgroupReduceConversion`.
     #[convert("gpu.subgroup_reduce")]
     fn subgroup_reduce<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -255,14 +230,12 @@ impl GpuToSpirv {
         true
     }
 
-    /// `makeVarName`: `prefix` and the first number no symbol of `table` has.
     fn var_name(cr: &Cr<'_, '_, '_>, table: crate::BlockId, prefix: &str) -> alloc::string::String {
         let b = &cr.rw.body;
         let taken = |n: &str| b.block_ops(table).iter().any(|o| b[*o].get("sym_name").and_then(symbol_text).as_deref() == Some(n));
         (0..).map(|i| format!("{prefix}{i}")).find(|n| !taken(n)).expect("a free name")
     }
 
-    /// `GPUPrintfConversion`: the format string as a constant global, `spirv.CL.printf`.
     #[convert("gpu.printf")]
     fn printf<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
         let Some(args) = Cr::one_to_one(operands) else { return false };
@@ -303,8 +276,6 @@ impl GpuToSpirv {
         true
     }
 
-    /// `GPUBarrierConversion`: of the barrier's scope (a cluster has none), on workgroup memory;
-    /// through a named barrier when given one.
     #[convert("gpu.barrier")]
     fn barrier<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
         let scope = match cr.rw.body[op].get("scope") {
@@ -327,7 +298,6 @@ impl GpuToSpirv {
         true
     }
 
-    /// `GPUInitializeNamedBarrierConversion`.
     #[convert("gpu.initialize_named_barrier")]
     fn initialize_named_barrier<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -335,7 +305,6 @@ impl GpuToSpirv {
         true
     }
 
-    /// `GPUSubgroupBroadcastConversion`.
     #[convert("gpu.subgroup_broadcast")]
     fn subgroup_broadcast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -351,8 +320,6 @@ impl GpuToSpirv {
         true
     }
 
-    /// `GPUBallotConversion`: the ballot's `vector<4xi32>`, its first word (i32) or first two
-    /// (i64).
     #[convert("gpu.ballot")]
     fn ballot<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -379,7 +346,6 @@ impl GpuToSpirv {
         true
     }
 
-    /// `GPUReturnOpConversion`.
     #[convert("gpu.return")]
     fn ret<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: GpuSpirvOptions) -> bool {
         if !operands.is_empty() {
@@ -389,7 +355,6 @@ impl GpuToSpirv {
         true
     }
 
-    /// `GPUModuleConversion`.
     #[convert("gpu.module")]
     fn module<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuSpirvOptions) -> bool {
         let memory = if o.kernel {
@@ -423,7 +388,6 @@ impl GpuToSpirv {
         true
     }
 
-    /// `getDefaultABIAttrs`, or the arguments' own `spirv.interface_var_abi`.
     fn arg_abi<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, inputs: &[Type<'a>], o: GpuSpirvOptions) -> Option<Vec<Option<Attribute<'a>>>> {
         let given: Vec<Option<Attribute<'a>>> = (0..inputs.len()).map(|i| Self::arg_attr(cr, op, i, "spirv.interface_var_abi")).collect();
         if o.interface_abi && given.iter().all(Option::is_none) {
@@ -451,7 +415,6 @@ impl GpuToSpirv {
         d.iter().find(|a| a.name == name).and_then(|a| a.value.clone())
     }
 
-    /// `GPUFuncOpConversion` (`lowerAsEntryFunction`).
     #[convert("gpu.func")]
     fn func<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: GpuSpirvOptions) -> bool {
         if !cr.rw.body[op].gpu_kernel() {
@@ -508,4 +471,3 @@ impl GpuToSpirv {
         true
     }
 }
-

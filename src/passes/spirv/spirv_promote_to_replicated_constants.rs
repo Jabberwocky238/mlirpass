@@ -1,12 +1,8 @@
-//! `spirv-promote-to-replicated-constants`.
-
 use crate::{is_composite, splat};
 use alloc::vec::Vec;
 use mlirformat::{Attribute, Error};
 use crate::{Body, OpData, OpId};
 
-/// `spirv-promote-to-replicated-constants`: splat composites as `SPV_EXT_replicated_composites`
-/// replicates.
 #[crate::pass("spirv-promote-to-replicated-constants", on = "spirv.module")]
 pub fn spirv_promote_to_replicated_constants<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
     let mut ops = Vec::new();

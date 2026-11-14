@@ -1,8 +1,5 @@
-//! The `gpu` dialect's enum attributes (`#gpu<dim x>`, `#gpu<shuffle_mode xor>`).
-
 use mlirformat::Attribute;
 
-/// The case of a `#gpu<kind case>` attribute among `names`.
 fn case_of<T: Copy>(a: &Attribute<'_>, kind: &str, names: &[(&'static str, T)]) -> Option<T> {
     let Attribute::Extended { ext, .. } = a else { return None };
     if ext.name != "gpu" {
@@ -12,7 +9,6 @@ fn case_of<T: Copy>(a: &Attribute<'_>, kind: &str, names: &[(&'static str, T)]) 
     names.iter().find(|(n, _)| *n == case).map(|(_, v)| *v)
 }
 
-/// `gpu::Dimension`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dimension {
     X = 0,
@@ -31,7 +27,6 @@ impl TryFrom<&Attribute<'_>> for Dimension {
     }
 }
 
-/// `gpu::ShuffleMode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShuffleMode {
     Xor,
@@ -51,7 +46,6 @@ impl TryFrom<&Attribute<'_>> for ShuffleMode {
     }
 }
 
-/// `gpu::AllReduceOperation`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AllReduceOp {
     Add,
@@ -86,7 +80,6 @@ impl AllReduceOp {
         ("maximumf", Self::MaximumF),
     ];
 
-    /// The case's name, as `vector::CombiningKind` spells it too.
     pub fn name(self) -> &'static str {
         Self::NAMES.iter().find(|(_, v)| *v == self).map_or("", |(n, _)| n)
     }
@@ -99,7 +92,6 @@ impl TryFrom<&Attribute<'_>> for AllReduceOp {
     }
 }
 
-/// `gpu::BroadcastType`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BroadcastType {
     FirstActiveLane,
@@ -118,7 +110,6 @@ impl TryFrom<&Attribute<'_>> for BroadcastType {
     }
 }
 
-/// The case of a `#gpu.<mnemonic><case>` attribute among `names`.
 #[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 fn mnemonic_case_of<T: Copy>(a: &Attribute<'_>, name: &str, names: &[(&'static str, T)]) -> Option<T> {
     let Attribute::Extended { ext, .. } = a else { return None };
@@ -129,7 +120,6 @@ fn mnemonic_case_of<T: Copy>(a: &Attribute<'_>, name: &str, names: &[(&'static s
     names.iter().find(|(n, _)| *n == case).map(|(_, v)| *v)
 }
 
-/// `gpu::BarrierScope` (`#gpu.barrier_scope<..>`).
 #[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BarrierScope {
@@ -151,7 +141,6 @@ impl TryFrom<&Attribute<'_>> for BarrierScope {
     }
 }
 
-/// `gpu::AddressSpace` (`#gpu.address_space<..>`).
 #[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressSpace {

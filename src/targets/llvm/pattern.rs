@@ -1,6 +1,3 @@
-//! `ConvertOpToLLVMPattern`'s helpers, as `LLVMCommon/Pattern.cpp` and `VectorPattern.cpp`:
-//! an op rewritten one to one into an llvm op, n-d vectors unrolled into 1-d ones.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -10,7 +7,6 @@ use mlirformat::{Attribute, NamedAttr, Type};
 use crate::{ConversionRewriter, OpData, OpId, TypeConverter, ValueId};
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
-    /// `packOperationResults`.
     fn pack_results(tc: &TypeConverter<'_>, types: &[Type<'a>]) -> Option<Type<'a>> {
         match types {
             [t] => tc.convert(t),
@@ -21,7 +17,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         }
     }
 
-    /// `oneToOneRewrite`: `op` as `target` with the same operands and the attributes given.
     pub fn one_to_one_rewrite(&mut self, op: OpId, target: &str, operands: &[ValueId], attrs: &[NamedAttr<'a>]) -> bool {
         let Some(tc) = self.type_converter() else { return false };
         let types = self.rw.body.types(&self.rw.body[op].results.clone());
@@ -45,8 +40,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         true
     }
 
-    /// `handleMultidimensionalVectors`: the op unrolled over the outer dimensions of an n-d
-    /// vector, each 1-d piece built by `make`.
     pub fn unroll_vectors(&mut self, op: OpId, operands: &[ValueId], mut make: impl FnMut(&mut Self, Type<'a>, &[ValueId]) -> ValueId) -> bool {
         let Some(tc) = self.type_converter() else { return false };
         let res_ty = self.rw.body[self.rw.body[op].results[0]].ty.clone();
@@ -75,7 +68,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         true
     }
 
-    /// `vectorOneToOneRewrite`.
     pub fn vector_one_to_one(&mut self, op: OpId, target: &str, operands: &[ValueId], attrs: &[NamedAttr<'a>]) -> bool {
         if operands.is_empty() || !operands.iter().all(|v| LlvmType::compatible(&self.rw.body[*v].ty)) {
             return false;
@@ -93,7 +85,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         })
     }
 
-    /// `getBitWidth` of an int, float or vector type.
     fn value_bits(t: &Type<'_>) -> u32 {
         match t {
             Type::Shaped(s) => s.dims().unwrap_or_default().iter().product::<i64>() as u32 * s.elem.bit_width().unwrap_or(0),
@@ -105,12 +96,10 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         self.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(32))
     }
 
-    /// An int, float or vector type: what has a fixed bit width.
     fn sized_leaf(t: &Type<'_>) -> bool {
         matches!(t, Type::Integer { .. } | Type::Float(_)) || matches!(t, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::Vector)
     }
 
-    /// The fields of an LLVM array or struct type.
     fn aggregate_fields<'t>(t: &Type<'t>) -> Option<Vec<Type<'t>>> {
         match LlvmType::try_from(t).ok()? {
             LlvmType::Array(n, e) => Some(vec![(*e).clone(); n as usize]),
@@ -119,7 +108,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         }
     }
 
-    /// `isFixedSizeAggregate`: every leaf of `t` is `dst` or has a fixed bit width.
     fn fixed_size_aggregate(t: &Type<'_>, dst: &Type<'_>) -> bool {
         if t == dst {
             return true;
@@ -130,9 +118,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         }
     }
 
-    /// `LLVM::decomposeValue`: `src` as values of `dst` (aggregates field by field; leaves
-    /// bitcast, zero-extended, or split through a vector); `None` when a leaf has no fixed size
-    /// and `variable` does not let it through as it is.
     pub fn decompose(&mut self, src: ValueId, dst: Type<'a>, variable: bool) -> Option<Vec<ValueId>> {
         if !variable && !Self::fixed_size_aggregate(&self.rw.body[src].ty.clone(), &dst) {
             return None;
@@ -175,7 +160,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         let n = i64::from(sb.div_ceil(db));
         let rounded = n as u32 * db;
         let mut v = src;
-        // (padded out when it does not split evenly)
         if rounded != sb {
             if st != Type::int(sb) {
                 v = self.build(OpData::build("llvm.bitcast").operands(&[v]), Type::int(sb));
@@ -190,7 +174,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
         }
     }
 
-    /// `LLVM::composeValue`: the inverse of [`decompose`](Self::decompose).
     pub fn compose(&mut self, src: &[ValueId], dst: Type<'a>) -> ValueId {
         let mut at = 0;
         self.compose_from(src, &mut at, &dst)
@@ -241,7 +224,6 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
             r = self.build(OpData::build("llvm.insertelement").operands(&[r, src[*at], idx]), vt.clone());
             *at += 1;
         }
-        // (the padding of the decomposition undone)
         if rounded != db {
             r = self.build(OpData::build("llvm.bitcast").operands(&[r]), Type::int(rounded));
             r = self.build(OpData::build("llvm.trunc").operands(&[r]), Type::int(db));

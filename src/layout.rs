@@ -1,6 +1,3 @@
-//! Builtin memref layouts (`MemRefLayoutAttrInterface`, `getStridesAndOffset`): what the
-//! strides and offset of a `memref` are, whichever dialect asks.
-
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -10,31 +7,22 @@ use mlirformat::{Attribute, Dim, Shaped, ShapedKind, StridedLayout, Type};
 
 use crate::{Body, OpId};
 
-/// A memref's layout, asked of its [`Shaped`] type.
 pub trait MemrefLayout {
-    /// `getStridesAndOffset`: from a `strided<...>` layout, or row-major for the identity.
     fn strides_and_offset(&self) -> Option<(Vec<i64>, i64)>;
 
-    /// `MemRefLayoutAttrInterface::isIdentity`: no layout, `strided<[1]>`, or `(d0, ...) -> (d0, ...)`.
     fn identity_layout(&self) -> bool;
 
-    /// `isStaticShapeAndContiguousRowMajor`.
     fn contiguous_row_major(&self) -> bool;
 }
 
-/// A memref reshaped (`memref.collapse_shape` / `memref.expand_shape`), its layout computed.
 pub trait MemrefReshape<'a> {
-    /// `CollapseShapeOp::isGuaranteedCollapsible`: the identity, or a strict collapsed layout.
     fn guaranteed_collapsible(&self, groups: &[Vec<i64>]) -> bool;
 
-    /// `CollapseShapeOp::computeCollapsedType`.
     fn collapsed(&self, groups: &[Vec<i64>]) -> Option<Type<'a>>;
 
-    /// `ExpandShapeOp::computeExpandedType` to `shape`.
     fn expanded(&self, shape: &[i64], groups: &[Vec<i64>]) -> Option<Type<'a>>;
 }
 
-/// `SaturatedInteger`: a size or stride, dynamic ones saturating (but times 0 is 0).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Saturated(Option<i64>);
 
@@ -62,19 +50,15 @@ impl core::ops::Mul for Saturated {
     }
 }
 
-/// The layout computations of [`MemrefReshape`].
 struct Reshaped;
 
 impl Reshaped {
-    /// The memref of `shape` and `layout` (`None`: the identity) with `src`'s element and memory
-    /// space.
     fn memref<'a>(src: &Shaped<'a>, shape: &[i64], layout: Option<StridedLayout>) -> Type<'a> {
         let space = src.extras.iter().find(|a| !a.is_layout()).cloned();
         let extras = layout.map(Attribute::from).into_iter().chain(space).collect();
         Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::MemRef, shape: Some(shape.iter().map(|d| Dim::from(*d)).collect()), elem: src.elem.clone(), extras }))
     }
 
-    /// `computeCollapsedLayoutMap` (`strict`: a dynamic stride cannot be checked, so fails).
     fn collapsed_layout(src: &Shaped<'_>, groups: &[Vec<i64>], strict: bool) -> Option<StridedLayout> {
         let shape = src.dims()?;
         let (strides, offset) = src.strides_and_offset()?;
@@ -165,7 +149,6 @@ impl MemrefLayout for Shaped<'_> {
     }
 }
 
-/// A coefficient of a linear affine expression: known, or depending on a symbol.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Coef {
     K(i64),
@@ -202,8 +185,6 @@ impl From<Coef> for i64 {
     }
 }
 
-/// `extractStrides` over a single-result affine map: `Σ dᵢ·strideᵢ + offset`, where a
-/// symbol makes its coefficient dynamic. Anything not linear in the dims has no strides.
 #[derive(Debug, Clone)]
 struct Linear {
     dims: Vec<Coef>,
@@ -239,7 +220,6 @@ impl Linear {
         }
     }
 
-    /// The strides and offset of `<(d0, ...)[s0, ...] -> (expr)>`; the identity map is row-major.
     fn strides(map: &str, rank: usize) -> Option<(Vec<i64>, i64)> {
         let (_, results) = map.split_once("->")?;
         let results = results.trim().strip_suffix('>')?.trim();
@@ -268,7 +248,6 @@ impl Linear {
     }
 }
 
-/// Recursive descent over affine expression tokens.
 struct Parser<'t, 's> {
     tokens: &'t [&'s str],
     at: usize,
@@ -326,20 +305,13 @@ impl<'s> Parser<'_, 's> {
     }
 }
 
-// `DataLayout`, as `DataLayoutInterfaces.cpp`: sizes and alignments of types. The default layout,
-// and of a `dlti.dl_spec` its pointer entries and endianness (no `llvm.data_layout` string).
-
-/// ⭐ A data layout; [`Default`]: what MLIR assumes with no spec.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DataLayout {
-    /// `!llvm.ptr<space>` entries: (size, ABI alignment), in bits.
     pointers: BTreeMap<u32, (u64, u64)>,
-    /// `"dlti.endianness" = "big"`.
     big_endian: bool,
 }
 
 impl DataLayout {
-    /// `DataLayout::closest(op)`: the `dlti.dl_spec` of `op` or its nearest ancestor.
     pub fn closest(body: &Body<'_>, op: OpId) -> Self {
         let mut at = Some(op);
         while let Some(o) = at {
@@ -351,8 +323,6 @@ impl DataLayout {
         Self::default()
     }
 
-    /// The `index` entry of the `dlti.dl_spec` at or above `op`
-    /// (`DataLayoutAnalysis::getAtOrAbove`); 64 without one.
     pub fn index_bitwidth(body: &Body<'_>, op: OpId) -> u32 {
         let mut at = Some(op);
         while let Some(o) = at {
@@ -364,7 +334,6 @@ impl DataLayout {
         64
     }
 
-    /// The `index` entry of a `#dlti.dl_spec<...>`: `#dlti.dl_entry<index, 32>` or `index = 32`.
     fn spec_index(a: &Attribute<'_>) -> Option<u32> {
         let Attribute::Extended { ext, .. } = a else { return None };
         let body = ext.body.as_deref()?;
@@ -372,7 +341,6 @@ impl DataLayout {
         rest.trim_start().split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
     }
 
-    /// The entries of a `#dlti.dl_spec<...>` body this layout knows.
     fn of_spec(spec: &str) -> Self {
         let mut dl = Self { big_endian: spec.contains(r#""dlti.endianness" = "big""#), ..Self::default() };
         for (_, rest) in spec.match_indices("!llvm.ptr").map(|(i, _)| ((), &spec[i + "!llvm.ptr".len()..])) {
@@ -393,32 +361,26 @@ impl DataLayout {
         dl
     }
 
-    /// Whether the spec says `"dlti.endianness" = "big"`.
     pub fn big_endian(&self) -> bool {
         self.big_endian
     }
 
-    /// `getTypeSizeInBits`; panics where MLIR reports a missing layout.
     pub fn size_in_bits(&self, ty: &Type<'_>) -> u64 {
         self.try_bits(ty).unwrap_or_else(|| Self::missing(ty))
     }
 
-    /// `getTypeSize`, in bytes.
     pub fn size(&self, ty: &Type<'_>) -> u64 {
         self.size_in_bits(ty).div_ceil(8)
     }
 
-    /// `getTypeABIAlignment`, in bytes.
     pub fn abi_align(&self, ty: &Type<'_>) -> u64 {
         self.try_abi_align(ty).unwrap_or_else(|| Self::missing(ty))
     }
 
-    /// `getTypePreferredAlignment`, in bytes.
     pub fn preferred_align(&self, ty: &Type<'_>) -> u64 {
         self.try_preferred_align(ty).unwrap_or_else(|| Self::missing(ty))
     }
 
-    /// `reportMissingDataLayout`.
     fn missing(ty: &Type<'_>) -> ! {
         panic!("neither the scoping op nor the type class provide data layout information for {ty}")
     }
@@ -431,13 +393,11 @@ impl DataLayout {
         Some(match ty {
             Type::Integer { width, .. } => u64::from(*width),
             Type::Float(_) => u64::from(ty.bit_width()?),
-            // `index` is an integer of the default index bitwidth.
             Type::Index => 64,
             Type::Complex(et) => {
                 let inner = self.try_bits(et)?;
                 inner.next_multiple_of(self.try_preferred_align(et)? * 8) + inner
             }
-            // Rounded up to a power of two elements in the innermost dimension.
             Type::Shaped(s) if s.kind == ShapedKind::Vector => {
                 let dims = s.dims()?;
                 let (n, last) = (dims.iter().product::<i64>() as u64, *dims.last()? as u64);
@@ -465,7 +425,6 @@ impl DataLayout {
             Type::Shaped(s) if s.kind == ShapedKind::Vector => self.try_size(ty)?.next_power_of_two(),
             Type::Float(_) => self.try_size(ty)?.next_power_of_two(),
             Type::Index => self.try_abi_align(&Type::int(64))?,
-            // Integers of 64 bits and more are 4-aligned by default.
             Type::Integer { width, .. } if *width < 64 => u64::from(width.div_ceil(8)).next_power_of_two(),
             Type::Integer { .. } => 4,
             Type::Complex(et) => self.try_abi_align(et)?,
@@ -507,7 +466,6 @@ impl<'a> MemrefReshape<'a> for Shaped<'a> {
         if self.identity_layout() {
             return Some(Reshaped::memref(self, shape, None));
         }
-        // `computeExpandedLayoutMap`.
         let (strides, offset) = self.strides_and_offset()?;
         let mut reversed = Vec::with_capacity(shape.len());
         let mut at = shape.len();

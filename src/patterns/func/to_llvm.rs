@@ -1,5 +1,3 @@
-//! `func` ⇒ `llvm`, as `FuncToLLVM.cpp`.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -11,7 +9,6 @@ use mlirformat::{Attribute, NamedAttr, Shaped, ShapedKind, Type};
 use crate::{ConversionRewriter, LlvmConverter, LlvmOptions, OpData, OpId, ValueId, Visibility};
 use mlirformat::llvm_types::LlvmType;
 
-/// The func ⇒ llvm patterns.
 pub struct FuncToLlvm;
 
 #[patterns(converter, options = LlvmOptions)]
@@ -30,12 +27,10 @@ impl FuncToLlvm {
         }
     }
 
-    /// `filterFuncAttributes`: the discardable attributes but linkage, varargs and readnone.
     fn func_attrs<'a>(cr: &ConversionRewriter<'_, 'a, '_>, op: OpId) -> Vec<NamedAttr<'a>> {
         cr.rw.body.discardable(op).into_iter().filter(|a| !matches!(&*a.name, "llvm.linkage" | "func.varargs" | "llvm.readnone")).collect()
     }
 
-    /// `LLVMFuncOp::build`: name, type, linkage, cconv and the extra attributes.
     fn llvm_func_data<'a>(name: &str, ty: Type<'a>, linkage: &str, attrs: Vec<NamedAttr<'a>>, loc: Option<mlirformat::Str<'a>>) -> OpData<'a> {
         let mut d = OpData::build("llvm.func").with("sym_name", Attribute::str(name)).with("function_type", Attribute::Type(ty)).with("linkage", Attribute::dialect("llvm.linkage", &format!("<{linkage}>")));
         for a in attrs {
@@ -65,9 +60,6 @@ impl FuncToLlvm {
         let readnone = b[op].get("llvm.readnone").is_some();
         let name = String::from(b.sym_name(op).unwrap_or(""));
         let visibility = b.visibility(op);
-        // `lowerDiscardableAttrsForLLVMFunc`: of the discardable attributes, an `llvm.X` with X
-        // an `llvm.func` attribute becomes that attribute, a bare X is dropped, the rest carry
-        // over.
         let llvm_func = b.ctx.opt.op_info("llvm.func").map_or(&[][..], |i| i.inherent);
         let attrs: Vec<NamedAttr<'_>> = b
             .discardable(op)
@@ -126,7 +118,6 @@ impl FuncToLlvm {
         true
     }
 
-    /// `llvm.byval` / `llvm.byref` / `llvm.sret` / `llvm.inalloca` take converted types.
     fn convert_arg_attrs<'a>(cr: &ConversionRewriter<'_, 'a, '_>, d: Attribute<'a>) -> Attribute<'a> {
         let Attribute::Dict(entries) = d else { return d };
         let tc = cr.type_converter();
@@ -144,8 +135,6 @@ impl FuncToLlvm {
         )
     }
 
-    /// `convertFunctionTypeCWrapper`: memrefs by pointer; a struct result returned through a
-    /// leading pointer argument.
     fn c_wrapper_type<'a>(cr: &ConversionRewriter<'_, 'a, '_>, opts: LlvmOptions, fty: &mlirformat::FunctionType<'a>) -> Option<(Type<'a>, Option<Type<'a>>)> {
         let tc = cr.type_converter()?;
         let mut ret = if fty.results.is_empty() { LlvmType::void() } else { cr.llvm_pack_results(opts, &fty.results, false)?.0 };
@@ -162,8 +151,6 @@ impl FuncToLlvm {
         Some((LlvmType::Func { ret: ret.into(), params, vararg: false }.into(), structured))
     }
 
-    /// The `_mlir_ciface_` wrapper of `orig`, with `filterFuncAttributes` and
-    /// `propagateArgResAttrs`.
     fn wrapper<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, orig: OpId, name: &str, ty: Type<'a>, structured: bool, loc: Option<mlirformat::Str<'a>>) -> OpId {
         let attrs = Self::func_attrs(cr, orig);
         let mut data = Self::llvm_func_data(&format!("_mlir_ciface_{name}"), ty, "external", attrs, loc);
@@ -192,7 +179,6 @@ impl FuncToLlvm {
         })
     }
 
-    /// The entry block of `f`, with `f`'s parameter types as arguments.
     fn entry_block<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, f: OpId, ty: &Type<'a>) -> crate::BlockId {
         let Ok(LlvmType::Func { params, .. }) = LlvmType::try_from(ty) else { unreachable!("llvm.func type") };
         let r = cr.rw.body[f].regions[0];
@@ -213,8 +199,6 @@ impl FuncToLlvm {
         cr.build(OpData::build("llvm.alloca").operands(&[n]).with("elem_type", Attribute::Type(elem)), LlvmType::ptr())
     }
 
-    /// `wrapForExternalCallers`: `_mlir_ciface_f` loads the memref descriptors its pointer
-    /// arguments point to and calls `f`.
     fn wrap_for_callers<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, opts: LlvmOptions, name: &str, fty: &mlirformat::FunctionType<'a>, orig: OpId, f: OpId, loc: Option<mlirformat::Str<'a>>) {
         let Some((wty, structured)) = Self::c_wrapper_type(cr, opts, fty) else { return };
         let w = Self::wrapper(cr, orig, name, wty.clone(), structured.is_some(), loc);
@@ -255,8 +239,6 @@ impl FuncToLlvm {
         cr.rw.ip = saved;
     }
 
-    /// `wrapExternalFunction`: `f` becomes private and forwards to `_mlir_ciface_f`, passing
-    /// memref descriptors through `alloca`'d memory.
     fn wrap_external<'a>(cr: &mut ConversionRewriter<'_, 'a, '_>, opts: LlvmOptions, name: &str, fty: &mlirformat::FunctionType<'a>, orig: OpId, f: OpId, loc: Option<mlirformat::Str<'a>>) {
         let Some((wty, structured)) = Self::c_wrapper_type(cr, opts, fty) else { return };
         Self::wrapper(cr, orig, name, wty.clone(), structured.is_some(), loc);
@@ -318,8 +300,6 @@ impl FuncToLlvm {
         true
     }
 
-    /// `promoteOperands`: memref descriptors unpacked into their fields (or the aligned
-    /// pointer, bare); everything else as converted.
     fn promote(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], bare: bool) -> Option<Vec<ValueId>> {
         let originals = cr.rw.body[op].operands.clone();
         let mut out = Vec::new();
@@ -346,7 +326,6 @@ impl FuncToLlvm {
         Some(out)
     }
 
-    /// `CallOpInterfaceLowering`.
     fn call_impl(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], opts: LlvmOptions, bare: bool, indirect: bool) -> bool {
         let result_types = cr.rw.body.types(&cr.rw.body[op].results.clone());
         let packed = if result_types.is_empty() {
@@ -424,11 +403,8 @@ impl FuncToLlvm {
         cr.llvm_return(op, operands, opts, bare)
     }
 
-    /// `populateFuncToLLVMConversionPatterns`.
-    /// `CallIndirectOpLowering`.
     #[convert("func.call_indirect")]
     fn call_indirect(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], opts: LlvmOptions) -> bool {
         Self::call_impl(cr, op, o, opts, false, true)
     }
-
 }

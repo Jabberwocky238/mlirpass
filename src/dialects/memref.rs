@@ -1,11 +1,8 @@
-//! The `memref` dialect's op interfaces.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::{Body, DialectInliner, InlineAll, OpId, OpInterfaces, Point, Succ, ValueId};
 
-/// The `memref` dialect.
 pub struct MemrefDialect;
 
 impl OpInterfaces for MemrefDialect {
@@ -13,7 +10,6 @@ impl OpInterfaces for MemrefDialect {
         "memref"
     }
 
-    /// `getAsmResultNames`: each op's fixed name (`%alloc`, `%subview`, ...).
     fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
         let name = match &*b[op].name {
             "memref.alloc" => "alloc",
@@ -30,7 +26,6 @@ impl OpInterfaces for MemrefDialect {
             "memref.subview" => "subview",
             "memref.transpose" => "transpose",
             "memref.view" => "view",
-            // `base_buffer`, `offset`, then `sizes` and `strides` when the memref has a rank.
             "memref.extract_strided_metadata" => {
                 let r = &b[op].results;
                 let rank = (r.len() - 2) / 2;
@@ -45,7 +40,6 @@ impl OpInterfaces for MemrefDialect {
         b.result_named(op, name)
     }
 
-    /// Ops inline, and into regions (`MemRefInlinerInterface`).
     fn inliner(&self) -> Option<&dyn DialectInliner> {
         Some(&InlineAll { calls: false, regions: true })
     }
@@ -72,13 +66,11 @@ impl OpInterfaces for MemrefDialect {
         b[t].name == "memref.alloca_scope.return"
     }
 
-    /// `ExpandShapeOp::reifyResultShapes`: its output shape.
     fn reify<'a>(&self, rw: &mut crate::Rewriter<'_, 'a>, op: OpId) -> Option<Vec<Vec<crate::MemrefOfr>>> {
         let b = &*rw.body;
         (b[op].name == "memref.expand_shape").then(|| vec![crate::MemrefOfr::mixed(&b.dense_i64(op, "static_output_shape"), &b[op].operands[1..])])
     }
 
-    /// `AssumeAlignmentOp::reifyDimOfResult`: its memref's size; the rest as [`reify`](Self::reify).
     fn reify_dim<'a>(&self, rw: &mut crate::Rewriter<'_, 'a>, op: OpId, result: usize, dim: usize) -> Option<crate::MemrefOfr> {
         if rw.body[op].name == "memref.assume_alignment" {
             let src = rw.body[op].operands[0];

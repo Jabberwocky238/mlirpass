@@ -1,9 +1,3 @@
-//! ⭐ Building and reading ops of dialects outside upstream (the GPU instruction sets, and any user's): attribute
-//! values in, `Attribute`s / `Type`s out ([`A`], [`RegType`], [`RegSlots`]); a typed op's head read and written by the
-//! op alone ([`Heads`], [`Updates`], [`OpHead`]); attribute-only ops declared in bulk ([`attr_ops!`]) and their
-//! `op_infos` ([`OpRows`]); rewrite patterns declared in bulk ([`rewrites!`]) and run alone ([`Rewrites`]);
-//! constants sunk next to their uses ([`SinkConstants`]).
-
 use alloc::borrow::ToOwned;
 use alloc::collections::BTreeSet;
 use alloc::format;
@@ -16,8 +10,6 @@ use mlirformat::{Attribute, Error, Extended, FunctionType, NamedAttr, Op, Operat
 
 use crate::{BlockId, Body, OpData, OpId, Quiet, Rewriter, ValueId};
 
-/// ⭐ A vendor dialect's register type `!<name><<elem>>` (`!xe3.grf<f32>`, `!rdna2.v<i32>`, `!agx.u<i64>`), as
-/// mlirformat keeps a dialect type (its text); each dialect wraps it in its own type (`Grf`, `Rdna2Type`, `AgxType`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RegType<'t> {
     pub name: &'t str,
@@ -41,8 +33,6 @@ impl<'t> TryFrom<&'t Type<'_>> for RegType<'t> {
     }
 }
 
-/// ⭐ A virtual instruction's `slots`: the field each of its SSA operands fills (`["src0", "src1"]`), until the
-/// register allocator spells the registers into those fields and drops it.
 #[derive(Clone, Copy, Debug)]
 pub struct RegSlots<'s>(pub &'s [&'s str]);
 
@@ -53,7 +43,6 @@ impl<'a> From<RegSlots<'_>> for Attribute<'a> {
 }
 
 impl RegSlots<'_> {
-    /// The slots `op` names (none without the attribute).
     pub fn of(op: &OpData<'_>) -> Result<Vec<String>, Error> {
         match op.get("slots") {
             Some(Attribute::Array(s)) => s
@@ -68,14 +57,12 @@ impl RegSlots<'_> {
     }
 }
 
-/// A value of an attribute: `true`, `3`, `0.5`, `@x`, `@m::@x`.
 #[derive(Clone, Debug)]
 pub enum A {
     Bool(bool),
     Int(i128),
     F32(f32),
     Sym(String),
-    /// `@memory::@x`: x's offset in its memory
     In(String, String),
     Str(String),
     Raw(Attribute<'static>),
@@ -140,15 +127,12 @@ impl<'a> From<A> for Attribute<'a> {
 }
 
 impl A {
-    /// A dictionary attribute.
     pub fn dict<'a>(entries: Vec<(&str, A)>) -> Attribute<'a> {
         Attribute::Dict(entries.into_iter().map(|(n, v)| NamedAttr { name: String::from(n).into(), value: Some(v.into()) }).collect())
     }
 }
 
-/// ⭐ [`OpData`] with several attributes at once.
 pub trait WithAttrs {
-    /// `attrs` set (in order).
     fn with_attrs(self, attrs: Vec<(&str, A)>) -> Self;
 }
 
@@ -161,8 +145,6 @@ impl WithAttrs for OpData<'_> {
     }
 }
 
-
-/// ⭐ An op's attributes, read by kind (integers in decimal or `0x` hex, booleans as a unit attribute too).
 pub struct Attrs<'r, 'a>(pub &'r [NamedAttr<'a>]);
 
 impl<'r, 'a> Attrs<'r, 'a> {
@@ -182,7 +164,6 @@ impl<'r, 'a> Attrs<'r, 'a> {
         Self::as_int(self.need(name)?)
     }
 
-    /// A boolean (`true` / `false`; a unit attribute is `true`).
     pub fn bool(&self, name: &str) -> Result<Option<bool>, Error> {
         self.get(name)
             .map(|a| match a {
@@ -200,7 +181,6 @@ impl<'r, 'a> Attrs<'r, 'a> {
         }
     }
 
-    /// A flat symbol reference `@x`.
     pub fn symbol(&self, name: &str) -> Result<&'r str, Error> {
         Self::as_symbol(self.need(name)?)
     }
@@ -213,7 +193,6 @@ impl<'r, 'a> Attrs<'r, 'a> {
         }
     }
 
-    /// Floats (or integers) of an array.
     pub fn floats(&self, name: &str) -> Result<Vec<f64>, Error> {
         self.array(name)?.iter().map(Self::as_float).collect()
     }
@@ -252,17 +231,11 @@ impl<'r, 'a> Attrs<'r, 'a> {
     }
 }
 
-/// ⭐ Typed ops in a [`Body`] by the op alone: a region op (a memory, a kernel) without exporting what is in it, any
-/// op without naming every value of the body ([`Body::operation`] does both). Operands and results are named by their
-/// [`ValueId`]s.
 pub trait Heads<'a> {
-    /// Op `op`'s attributes as the typed `O` (its regions read empty).
     fn head<O: Op>(&self, op: OpId) -> Result<O, Error>;
-    /// Op `op`'s attributes set to `typed`'s (what `typed` leaves out stays; regions as they are).
     fn store<O>(&mut self, op: OpId, typed: &O) -> Result<(), Error>
     where
         for<'o> Operation<'static>: TryFrom<&'o O, Error = Error>;
-    /// Op `op`'s attributes read as the typed `O`, changed by `f`, stored.
     fn update<O: Op>(&mut self, op: OpId, f: impl FnOnce(&mut O)) -> Result<(), Error>
     where
         for<'o> Operation<'static>: TryFrom<&'o O, Error = Error>,
@@ -271,13 +244,11 @@ pub trait Heads<'a> {
         f(&mut typed);
         self.store(op, &typed)
     }
-    /// Typed op `typed` (a memory, a stream) detached with one region of one empty block: the op and its block.
     fn container<O>(&mut self, typed: &O) -> Result<(OpId, BlockId), Error>
     where
         for<'o> Operation<'static>: TryFrom<&'o O, Error = Error>;
 }
 
-/// [`Heads::update`] through a [`Rewriter`]: the listener hears of the change.
 pub trait Updates {
     fn update<O: Op>(&mut self, op: OpId, f: impl FnOnce(&mut O)) -> Result<(), Error>
     where
@@ -295,8 +266,6 @@ impl Updates for Rewriter<'_, '_> {
     }
 }
 
-/// ⭐ A typed op with regions as a detached [`OpData`]: its name and attributes (its regions are added in the body;
-/// [`OpData::of`] refuses them).
 pub trait OpHead<'a>: Sized {
     fn head<O>(typed: &O) -> Result<Self, Error>
     where
@@ -321,9 +290,7 @@ impl<'a> OpHead<'a> for OpData<'a> {
 impl<'a> Heads<'a> for Body<'a> {
     fn head<O: Op>(&self, op: OpId) -> Result<O, Error> {
         let d = &self[op];
-        // the properties by the typed op's own fields (an attribute set after building may still be discardable)
         let (props, attributes): (Vec<_>, Vec<_>) = d.all_attrs().into_iter().partition(|a| O::FIELDS.iter().any(|f| matches!(f.role, Role::Prop { .. }) && f.name == &*a.name));
-        // values named by their ids (as `OpData::of` reads them back)
         let value = |v: &ValueId| Value::from(*v);
         let types = |vs: &[ValueId]| vs.iter().map(|v| self[*v].ty.clone()).collect();
         let g = Operation {
@@ -360,9 +327,6 @@ impl<'a> Heads<'a> for Body<'a> {
     }
 }
 
-
-/// Rewrite patterns, a unit struct each:
-/// `/// doc` `Name("root", benefit) |rw, op| { .. }` (`_` for any root, `(Op::NAME)` for a typed op's); the body says whether it rewrote.
 #[macro_export]
 macro_rules! rewrites {
     (@root _) => { None };
@@ -390,12 +354,9 @@ macro_rules! rewrites {
     )*};
 }
 
-/// ⭐ The greedy driver with only the given patterns: no folding, no constant uniquing, no region simplification
-/// (a backend's patterns change what they say and nothing else).
 pub struct Rewrites;
 
 impl Rewrites {
-    /// `patterns` over everything in `op` (a module) until none applies.
     pub fn apply(body: &mut Body<'_>, op: OpId, patterns: &crate::PatternSet) {
         let config = crate::GreedyConfig { region_simplify: crate::RegionSimplify::Disabled, fold: false, cse_constants: false, ..Default::default() };
         let region = body[op].regions[0];
@@ -403,15 +364,10 @@ impl Rewrites {
     }
 }
 
-/// ⭐ A dialect's `op_infos` rows: every op of `ops` with unknown effects (none may be dropped as dead: a command,
-/// an instruction), the ones in `inherent` with those attributes declared (they live in `<{...}>`: the custom form
-/// prints them).
 pub struct OpRows;
 
 impl OpRows {
     pub fn of(ops: &[mlirformat::Template], inherent: &[(&'static str, &'static [&'static str])]) -> Vec<mlirformat::OpInfo> {
-        // looked up once an op (a dialect may declare thousands)
-        // (the first row of a name wins, as a search would find it)
         let inherent: alloc::collections::BTreeMap<&str, &'static [&'static str]> = inherent.iter().rev().copied().collect();
         ops.iter()
             .map(|t| {
@@ -422,15 +378,6 @@ impl OpRows {
     }
 }
 
-/// Ops whose fields are attributes (`Type "op"`: a command, a state, a register, an instruction) in dialect `$ns`,
-/// gathered in the op table `$set` (`$set.ops()` for the dialect's `ops`). An instruction is virtual before its
-/// registers are allocated: its SSA operands (AMD's and Apple's `slots` attribute says which field each is; Intel's
-/// fill the source fields not given) and results are declared too, so both forms are the same op:
-///
-/// ```text
-///   rdna2.isa.v_add_u32 {dst = "v11", src0 = "v11", src1 = "v0"}                          allocated: attributes only
-///   %5 = rdna2.isa.v_add_u32(%3, %4 : !rdna2.v<i32>, !rdna2.v<i32>) {slots = ["src0", "src1"]} -> !rdna2.v<i32>   virtual
-/// ```
 #[macro_export]
 macro_rules! attr_ops {
     ($ns:tt $set:ident; $($ty:ident $op:literal,)*) => {
@@ -450,9 +397,7 @@ macro_rules! attr_ops {
     };
 }
 
-/// ⭐ [`Body`]'s constant sinking (a backend calls it on its shaders before lowering them).
 pub trait SinkConstants {
-    /// Every `arith.constant` in `shaders` copied next to each of its uses, the original gone.
     fn sink_constants(&mut self, shaders: &[OpId]);
 }
 
@@ -485,14 +430,12 @@ impl SinkConstants for Body<'_> {
         }
     }
 }
-/// ⭐ A symbol's name, as a `sym_name` defines it or a reference names it.
+
 pub struct Symbol;
 
 impl Symbol {
-    /// The attribute naming a symbol (`SymbolTable::getSymbolAttrName`).
     pub const ATTR: &str = "sym_name";
 
-    /// A `sym_name`: its string (or a symbol written `@name`).
     pub fn defined<'r>(a: &'r Attribute<'_>) -> Result<&'r str, Error> {
         match a {
             Attribute::Str { lit, .. } => Ok(lit),

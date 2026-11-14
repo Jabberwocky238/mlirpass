@@ -1,5 +1,3 @@
-//! `ub` ⇒ `llvm`, as `UBToLLVM.cpp`.
-
 use alloc::vec::Vec;
 
 use crate::patterns;
@@ -7,7 +5,6 @@ use mlirformat::Attribute;
 
 use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
-/// The ub ⇒ llvm patterns.
 pub struct UbToLlvm;
 
 #[patterns(converter)]
@@ -28,5 +25,4 @@ impl UbToLlvm {
         cr.replace_new(op, OpData::build("llvm.unreachable"), &[]);
         true
     }
-
 }

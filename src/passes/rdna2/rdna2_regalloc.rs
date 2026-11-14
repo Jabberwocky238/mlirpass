@@ -1,13 +1,3 @@
-//! ⭐ `rdna2-regalloc`: a kernel's virtual instructions ⇒ SGPRs and VGPRs ([`LinearScan`]), then
-//! `rdna2-waitcnt`: the waits for the loads.
-//!
-//! Before the scan: the zero base of the global accesses, an SGPR pair made once (`s_mov_b64`), goes to every
-//! global instruction's `saddr`; a store of several dwords gets its data copied into a run (`v_mov_b32`). Inputs
-//! (`rdna2.isa.input {file, reg}`: the parameters, the workgroup ids, the thread id) are where the wave finds them.
-//! A load's destination is kept apart from its address. Then each instruction gets its registers as LLVM spells
-//! them (`v5`, `v[4:7]`, `s[10:11]`) in the attributes its `slots` name, and the kernel `vgprs` / `sgprs` (how many
-//! it uses, for COMPUTE_PGM_RSRC1).
-
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::vec;
@@ -17,14 +7,13 @@ use mlirformat::{Error, Op};
 
 use crate::{Body, Groups, Heads, Kernels, LinearScan, OpId, Quiet, RegTarget, Rewriter, Updates, ValueId, pass};
 use crate::{Rdna2Build as Build, Rdna2Flat as Flat, Rdna2Format as Format, Rdna2Input, Rdna2Isa as Isa, Rdna2Kernel, Rdna2Opcode as Opcode, Rdna2Operand as Operand, Rdna2Reg as Reg, Rdna2Salu as Salu, Rdna2Slot as Slot, Rdna2Type, Rdna2Valu as Valu};
-/// The SGPRs a kernel may use (s106 on are vcc and the specials).
+
 const SGPRS: u32 = 106;
-/// The VGPRs of a wave32 wave.
+
 const VGPRS: u32 = 256;
-/// `s_waitcnt vmcnt(0)` (expcnt and lgkmcnt their maximum: not waited for), as llvm-mc encodes it for gfx1036.
+
 const WAIT_VMCNT0: i64 = 0x3f70;
 
-/// RDNA2's register files as the linear scan sees them: 0 the SGPRs, 1 the VGPRs.
 struct Files;
 
 impl RegTarget for Files {
@@ -47,7 +36,6 @@ impl RegTarget for Files {
         }
     }
 
-    /// An SGPR pair (`i64`, the base) two aligned to two; the rest one register.
     fn size(&self, body: &Body<'_>, v: ValueId) -> Result<(u32, u32), Error> {
         Ok(match Rdna2Type::try_from(&body[v].ty) {
             Ok(Rdna2Type::S("i64")) => (2, 2),
@@ -56,7 +44,6 @@ impl RegTarget for Files {
     }
 }
 
-/// One kernel being allocated: every change to it through a [`Rewriter`].
 pub(super) struct Alloc<'r, 'a> {
     pub(super) rw: Rewriter<'r, 'a>,
     pub(super) kernel: OpId,
@@ -67,7 +54,6 @@ impl<'a> Alloc<'_, 'a> {
         self.rw.body.block_ops(self.rw.body.top_block(self.kernel))
     }
 
-    /// The kernel's global instructions.
     fn global(&self) -> Result<Vec<OpId>, Error> {
         let mut out = Vec::new();
         for op in self.ops() {
@@ -78,7 +64,6 @@ impl<'a> Alloc<'_, 'a> {
         Ok(out)
     }
 
-    /// The zero base for `saddr`, and the store data runs.
     fn prepare(&mut self) -> Result<Groups, Error> {
         let mut groups = Groups::new();
         let global = self.global()?;
@@ -117,7 +102,6 @@ impl<'a> Alloc<'_, 'a> {
         Ok(groups)
     }
 
-    /// A register (run of `n` values) as an operand.
     fn operand(&self, v: ValueId, reg: &BTreeMap<ValueId, u32>, n: u32) -> Result<Operand, Error> {
         let r = reg[&v];
         let n = n * Files.size(self.rw.body, v)?.0;
@@ -127,7 +111,6 @@ impl<'a> Alloc<'_, 'a> {
         })
     }
 
-    /// Every instruction with its registers; the inputs gone; `vgprs` / `sgprs` on the kernel.
     fn rewrite(&mut self, reg: &BTreeMap<ValueId, u32>) -> Result<(), Error> {
         let mut used = [0u32; 2];
         for (v, r) in reg {
@@ -146,7 +129,6 @@ impl<'a> Alloc<'_, 'a> {
             let mut k = 0;
             while k < operands.len() {
                 let slot = *slots.get(k).ok_or_else(|| Error(format!("{:?}: operand {k} without a slot", inst.op)))?;
-                // a run: the operands in this slot one after another
                 let n = slots[k..].iter().take_while(|s| **s == slot).count();
                 let first = reg[&operands[k]];
                 if (0..n).any(|i| reg[&operands[k + i]] != first + i as u32) {
@@ -176,7 +158,6 @@ impl<'a> Alloc<'_, 'a> {
         self.rw.update::<Rdna2Kernel>(k, |k| (k.sgprs, k.vgprs) = (Some(used[0]), Some(used[1].max(1))))
     }
 
-    /// `rdna2-waitcnt` on this kernel.
     pub(super) fn waitcnt(&mut self) -> Result<(), Error> {
         let mut pending: BTreeSet<u32> = BTreeSet::new();
         for i in self.ops() {
@@ -195,7 +176,6 @@ impl<'a> Alloc<'_, 'a> {
     }
 }
 
-/// `rdna2-regalloc`.
 #[pass("rdna2-regalloc", on = "builtin.module")]
 pub fn rdna2_regalloc<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     for k in Kernels::all(body, op, Rdna2Kernel::NAME) {

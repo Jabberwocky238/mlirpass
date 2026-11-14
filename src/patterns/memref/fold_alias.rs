@@ -1,9 +1,3 @@
-//! `fold-memref-alias-ops`' rules, as `FoldMemRefAliasOps.cpp`: an indexed access, an
-//! indexed copy or a vector transfer through a `memref.subview`, `memref.expand_shape` or
-//! `memref.collapse_shape` goes to the aliased memref in place, its indices resolved
-//! (`affine.apply`, `affine.linearize_index`, `affine.delinearize_index`); a subview of a
-//! subview is one subview.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -12,22 +6,15 @@ use mlirformat::{AffineExpr, AffineMap, Attribute, Dim, Type};
 use crate::rewrite::Build;
 use crate::{MemrefLayout, MemrefOfr as Ofr, OpData, OpId, Rewriter, ValueId};
 
-/// `populateFoldMemRefAliasOpPatterns`.
 pub struct FoldAlias;
 
-/// What an `IndexedAccessOpInterface` op reads or writes at its indices.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Access {
-    /// One element (`memref.load` and the like): starts in bounds.
     Scalar,
-    /// A vector (`vector.load` and the like): its accessed shape is the vector's without
-    /// leading unit dims (a rank-0 access only when `rank_zero`); not known in bounds.
     Vector { rank_zero: bool },
-    /// A row of memory (`gpu.subgroup_mma_*_matrix`, `nvgpu.ldmatrix`): starts in bounds.
     Row,
 }
 
-/// The alias an access goes through.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Alias {
     SubView,
@@ -48,28 +35,21 @@ impl Alias {
 
 #[crate::patterns]
 impl FoldAlias {
-    /// `AccessOpOfSubViewOpFolder` / `AccessOpOfExpandShapeOpFolder` /
-    /// `AccessOpOfCollapseShapeOpFolder`.
     #[rewrite("_")]
     fn access_op_of_alias(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         Self::access(rw, op)
     }
 
-    /// `IndexedMemCopyOpOf{SubView,ExpandShape,CollapseShape}OpFolder`.
     #[rewrite("_")]
     fn indexed_mem_copy_op_of_alias(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         Self::mem_copy(rw, op)
     }
 
-    /// `TransferOpOf{SubView,ExpandShape,CollapseShape}OpFolder`.
     #[rewrite("_")]
     fn transfer_op_of_alias(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         Self::transfer(rw, op)
     }
 
-    /// `SubViewOfSubViewFolder` (`mergeOffsetsSizesAndStrides`): offsets
-    /// `producer offset + consumer offset * producer stride`, strides multiplied, the producer's
-    /// dropped dims kept.
     #[rewrite("memref.subview")]
     fn subview_of_subview(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let Some(inner) = rw.body.def_named(rw.body[op].operands[0], "memref.subview") else { return false };
@@ -100,12 +80,10 @@ impl FoldAlias {
 }
 
 impl FoldAlias {
-    /// `affine_map<()[s0, s1, s2] -> (e)>`.
     fn map(e: AffineExpr) -> AffineMap {
         AffineMap { dims: 0, syms: 3, results: vec![e] }
     }
 
-    /// An access op's memref operand position and kind.
     fn access_kind(name: &str) -> Option<(usize, Access)> {
         let vector = |rank_zero| Access::Vector { rank_zero };
         Some(match name {
@@ -120,7 +98,6 @@ impl FoldAlias {
         })
     }
 
-    /// The vector a vector access reads or writes: its result, else its stored value.
     fn access_vector<'a>(rw: &Rewriter<'_, 'a>, op: OpId) -> Option<Type<'a>> {
         let b = &*rw.body;
         let v = match (b[op].results.first(), &*b[op].name) {
@@ -131,12 +108,10 @@ impl FoldAlias {
         Some(b[v].ty.clone())
     }
 
-    /// The leading unit (not scalable) dims of a vector type.
     fn leading_units(t: &Type<'_>) -> usize {
         t.shape().map_or(0, |d| d.iter().take_while(|x| matches!(x, Dim::Static(1))).count())
     }
 
-    /// `getAccessedShape`'s rank.
     fn accessed_rank(rw: &Rewriter<'_, '_>, op: OpId, kind: Access) -> Option<usize> {
         Some(match kind {
             Access::Scalar => 0,
@@ -153,25 +128,20 @@ impl FoldAlias {
         })
     }
 
-    /// Whether the last `n` static strides of `subview` are 1 (`hasTrailingUnitStrides`).
     fn trailing_unit_strides(rw: &Rewriter<'_, '_>, subview: OpId, n: usize) -> bool {
         let strides = rw.body.dense_i64(subview, "static_strides");
         n <= strides.len() && strides[strides.len() - n..].iter().all(|s| *s == 1)
     }
 
-    /// Whether the last `n` reassociation groups are single dims (`hasTrivialReassociationSuffix`).
     fn trivial_suffix(rw: &Rewriter<'_, '_>, reshape: OpId, n: usize) -> bool {
         let groups = rw.body.reassociation(reshape);
         n <= groups.len() && groups[groups.len() - n..].iter().all(|g| g.len() == 1)
     }
 
-    /// The source rank of an alias op.
     fn src_rank(rw: &Rewriter<'_, '_>, alias: OpId) -> usize {
         rw.body[rw.body[alias].operands[0]].ty.dims().unwrap_or_default().len()
     }
 
-    /// The indices into the alias's source for `indices` into it (`startsInbounds` for the
-    /// reshapes).
     fn resolve_through(rw: &mut Rewriter<'_, '_>, alias: OpId, kind: Alias, indices: &[ValueId], inbounds: bool) -> Vec<ValueId> {
         match kind {
             Alias::SubView => {
@@ -185,7 +155,6 @@ impl FoldAlias {
         }
     }
 
-    /// The access ops' fold through an alias.
     fn access(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let Some((at, kind)) = Self::access_kind(&rw.body[op].name) else { return false };
         let base = rw.body[op].operands[at];
@@ -199,7 +168,6 @@ impl FoldAlias {
                 if !Self::trailing_unit_strides(rw, alias, accessed) {
                     return false;
                 }
-                // Reintroducing a dropped dim among the accessed ones would change the access.
                 let dropped = Self::dropped(rw, alias);
                 if accessed > 0 && (src_rank + 1 - accessed..src_rank).any(|d| dropped[d]) {
                     return false;
@@ -220,9 +188,6 @@ impl FoldAlias {
         true
     }
 
-    /// `updateMemrefAndIndices`: in place; a vector access of fewer indices than its rank drops
-    /// that many leading unit dims, its vector operands shape-cast down (a load cloned at the
-    /// lower rank and its result cast back).
     fn update_access(rw: &mut Rewriter<'_, '_>, op: OpId, at: usize, rank: usize, kind: Access, src: ValueId, indices: &[ValueId]) {
         let mut operands = rw.body[op].operands[..at].to_vec();
         operands.push(src);
@@ -238,7 +203,6 @@ impl FoldAlias {
             return;
         };
         let Type::Shaped(vs) = &vt else { return };
-        // A vector operand of the access's vector type, without the `n` leading dims.
         fn lower<'a>(t: &Type<'a>, vs: &mlirformat::Shaped<'_>, n: usize) -> Option<Type<'a>> {
             let Type::Shaped(s) = t else { return None };
             (s.kind == vs.kind && s.shape == vs.shape).then(|| Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { shape: s.shape.as_ref().map(|d| d[n..].to_vec()), ..*s.clone() })))
@@ -271,7 +235,6 @@ impl FoldAlias {
         }
     }
 
-    /// The indexed copies' fold through aliases of their source and destination.
     fn mem_copy(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
         if !matches!(&*b[op].name, "memref.dma_start" | "nvgpu.device_async_copy") {
@@ -279,7 +242,6 @@ impl FoldAlias {
         }
         let ops = b[op].operands.to_vec();
         let rank = |v: ValueId| b[v].ty.dims().map_or(0, |d| d.len());
-        // (source, its indices, destination, its indices) as operand positions.
         let (src_at, dst_at) = match &*b[op].name {
             "memref.dma_start" => (0, 1 + rank(ops[0])),
             _ => {
@@ -320,7 +282,6 @@ impl FoldAlias {
         true
     }
 
-    /// A transfer reads or writes out of bounds somewhere (`hasOutOfBoundsDim`).
     fn out_of_bounds(rw: &Rewriter<'_, '_>, op: OpId) -> bool {
         match rw.body[op].get("in_bounds") {
             Some(Attribute::Array(a)) => a.iter().any(|x| !matches!(x, Attribute::Bool(true))),
@@ -328,7 +289,6 @@ impl FoldAlias {
         }
     }
 
-    /// The transfers' fold through an alias (`updateStartingPosition`).
     fn transfer(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
         if !matches!(&*b[op].name, "vector.transfer_read" | "vector.transfer_write") {
@@ -354,7 +314,6 @@ impl FoldAlias {
                 if !Self::trailing_unit_strides(rw, alias, vrank) {
                     return false;
                 }
-                // `expandDimsToRank`.
                 let dropped = Self::dropped(rw, alias);
                 let kept: Vec<AffineExpr> = (0..dropped.len() as u32).filter(|d| !dropped[*d as usize]).map(AffineExpr::Dim).collect();
                 perm.compose(&AffineMap { dims: dropped.len() as u32, syms: 0, results: kept })
@@ -363,7 +322,6 @@ impl FoldAlias {
                 if src_rank < vrank {
                     return false;
                 }
-                // Each result dim must be the innermost of its group.
                 let groups = rw.body.reassociation(alias);
                 let mut results = Vec::new();
                 for e in &perm.results {
@@ -402,10 +360,6 @@ impl FoldAlias {
         true
     }
 
-    /// `SubViewOp::getDroppedDims` (`computeMemRefRankReductionMask`): the static unit sizes;
-    /// when there are more of them than dims dropped, by the strides the result lost (when a
-    /// stride but the innermost is static), else by position (each result size matched to the
-    /// next source size equal to it).
     fn dropped(rw: &Rewriter<'_, '_>, subview: OpId) -> Vec<bool> {
         let b = &*rw.body;
         let (src, res) = (&b[b[subview].operands[0]].ty, &b[b[subview].results[0]].ty);
@@ -429,7 +383,6 @@ impl FoldAlias {
                 return by_strides;
             }
         }
-        // `computeMemRefRankReductionMaskByPosition`.
         let mut used = vec![false; rank];
         let mut start = 0;
         for r in res.dims().unwrap_or_default() {
@@ -440,8 +393,6 @@ impl FoldAlias {
         used.into_iter().map(|u| !u).collect()
     }
 
-    /// `computeMemRefRankReductionMaskByStrides`: a unit dim is dropped while the source has
-    /// its stride more often than the result.
     fn dropped_by_strides(original: &[i64], candidate: &[i64], mut unused: Vec<bool>, reduced: usize) -> Option<Vec<bool>> {
         let count = |v: &[i64], x: i64| v.iter().filter(|y| **y == x).count();
         let mut unaccounted: alloc::collections::BTreeMap<i64, usize> = original.iter().map(|s| (*s, count(original, *s))).collect();
@@ -462,8 +413,6 @@ impl FoldAlias {
         (unused.iter().filter(|u| **u).count() + reduced == original.len()).then_some(unused)
     }
 
-    /// `resolveIndicesIntoOpWithOffsetsAndStrides`: each index (0 in a dropped dim) is
-    /// `offset + index * stride`, composed and folded.
     fn resolve(rw: &mut Rewriter<'_, '_>, offsets: &[Ofr], strides: &[Ofr], dropped: &[bool], indices: &[Ofr]) -> Vec<ValueId> {
         let mut consumer = indices.iter();
         let map = Self::map(AffineExpr::Sym(0).add(AffineExpr::Sym(1).mul(AffineExpr::Sym(2))));
@@ -479,8 +428,6 @@ impl FoldAlias {
             .collect()
     }
 
-    /// `resolveSourceIndicesExpandShape`: a group's indices linearized by the output shape,
-    /// `disjoint` when they start in bounds.
     fn resolve_expand(rw: &mut Rewriter<'_, '_>, ex: OpId, indices: &[ValueId], inbounds: bool) -> Vec<ValueId> {
         let shape = Ofr::mixed(&rw.body.dense_i64(ex, "static_output_shape"), &rw.body[ex].operands[1..]);
         let mut sources = Vec::new();
@@ -502,12 +449,9 @@ impl FoldAlias {
         sources
     }
 
-    /// `resolveSourceIndicesCollapseShape`: a group's index delinearized by the source's sizes
-    /// (without the outermost unless it starts in bounds).
     fn resolve_collapse(rw: &mut Rewriter<'_, '_>, co: OpId, indices: &[ValueId], inbounds: bool) -> Vec<ValueId> {
         let src = rw.body[co].operands[0];
         let groups = rw.body.reassociation(co);
-        // `getConstifiedMixedSizes` of the source's metadata.
         let meta = rw.extract_metadata(src);
         let dims = rw.body[src].ty.dims().unwrap_or_default();
         let sizes: Vec<Ofr> = dims.iter().enumerate().map(|(i, d)| if *d == Dim::DYNAMIC { Ofr::V(rw.body[meta].results[2 + i]) } else { Ofr::C(*d) }).collect();

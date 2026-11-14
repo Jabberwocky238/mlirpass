@@ -1,5 +1,3 @@
-//! `convert-gpu-to-rocdl`.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -8,16 +6,12 @@ use mlirformat::{Attribute, Error, FloatKind, Type};
 
 use crate::{AmdChipset, AmdgpuRocdlOptions, AmdgpuToRocdl, Body, CConv, ConversionConfig, ConversionPatterns, Converter, DialectInterfaces, GpuLlvmOptions, GpuRocdlOptions, GpuSpaces, GpuToLlvm, GpuToRocdl, LlvmConverter, LlvmEnv, LlvmOptions, MathRocdlOptions, MathToRocdl, Mode, OpId, Printf, PrintfCall, ToLlvmInterfaces};
 
-/// `amdgpu::populateCommonGPUTypeAndAttributeConversions`: global 1, shared 3, private 5.
 const ROCDL_SPACES: GpuSpaces = GpuSpaces { global: 1, workgroup: 3, private: 5, constant: 4 };
 
-/// `amdgcnDataLayout`.
 const AMDGCN_DATA_LAYOUT: &str = "e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9";
 
-/// The llvm intrinsics `configureGpuToROCDLConversionLegality` keeps out.
 const ILLEGAL_LLVM: [&str; 9] = ["llvm.intr.cos", "llvm.intr.exp2", "llvm.intr.ceil", "llvm.intr.floor", "llvm.frem", "llvm.intr.log10", "llvm.intr.log2", "llvm.intr.pow", "llvm.intr.sin"];
 
-/// `gpu::amd::Runtime`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AmdRuntime {
     #[default]
@@ -38,7 +32,6 @@ impl core::str::FromStr for AmdRuntime {
     }
 }
 
-/// `convert-gpu-to-rocdl`, as `LowerGpuOpsToROCDLOpsPass`.
 #[crate::pass("convert-gpu-to-rocdl", on = "gpu.module")]
 pub struct ConvertGpuToRocdl {
     #[opt("chipset", default = String::from("gfx000"))]
@@ -56,7 +49,6 @@ pub struct ConvertGpuToRocdl {
 }
 
 impl ConvertGpuToRocdl {
-    /// `canBeCalledWithBarePointers` of every `gpu.func`.
     fn bare_ptr_ok(body: &Body<'_>, op: OpId) -> bool {
         body.ops_in(op).into_iter().filter(|f| body[*f].name == "gpu.func").all(|f| match body[f].get("function_type") {
             Some(Attribute::Type(Type::Function(fty))) => fty.inputs.iter().all(|t| match t {
@@ -86,7 +78,6 @@ impl crate::Run for ConvertGpuToRocdl {
         if self.bare_ptr && !Self::bare_ptr_ok(body, op) {
             return Err(Error(String::from("bare pointer calling convention requires all memrefs to have static shape and use the identity map")));
         }
-        // In-dialect lowering first.
         let mut set = crate::PatternSet::default();
         crate::GpuRewrite::patterns(&mut set);
         crate::GpuPromoteShuffleToSwizzle::patterns(&mut set);
@@ -98,11 +89,9 @@ impl crate::Run for ConvertGpuToRocdl {
             body.apply_greedily(r, &set, &config);
         }
         let mut tc = LlvmConverter::build(llvm);
-        // A named barrier is the LDS pointer to its global.
         tc.conversion(|t| matches!(t, mlirformat::Type::Extended(e) if e.name == "gpu.named_barrier").then(|| Some(alloc::vec![mlirformat::llvm_types::LlvmType::Ptr(3).into()])));
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
-        // Ahead of the dialects' own lowerings: mlir-opt picks the OCML calls where both apply.
         MathToRocdl::populate(&mut patterns, i, MathRocdlOptions::new(Some(chipset)));
         let env = LlvmEnv { llvm, counter: &self.counter };
         let mut target = crate::llvm_target();
@@ -136,7 +125,6 @@ impl crate::Run for ConvertGpuToRocdl {
             dynamic_shmem_align: Some(0),
         };
         GpuToLlvm::populate(&mut patterns, i, gpu);
-        // `configureGpuToROCDLConversionLegality`.
         target.illegal_op("func.func").legal_dialect("llvm").legal_dialect("rocdl");
         target.dialect("gpu", crate::Action::Illegal);
         for o in ILLEGAL_LLVM {
@@ -147,7 +135,6 @@ impl crate::Run for ConvertGpuToRocdl {
         target.op("llvm.intr.log", crate::Action::Dynamic(alloc::boxed::Box::new(f32_operand)));
         target.op("gpu.yield", crate::Action::Legal).op("gpu.module", crate::Action::Legal);
         Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &[op], Mode::Partial)?;
-        // `rocdl.flat_work_group_size` from `rocdl.reqd_work_group_size`.
         let funcs: Vec<OpId> = body.ops_in(op).into_iter().filter(|f| body[*f].name == "llvm.func").collect();
         for f in funcs {
             let Some(sizes) = body[f].get("rocdl.reqd_work_group_size").and_then(Attribute::dense_values) else { continue };

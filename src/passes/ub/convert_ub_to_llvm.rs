@@ -1,11 +1,8 @@
-//! `convert-ub-to-llvm`.
-
 use crate::{LlvmConverter, LlvmOptions, UbToLlvm};
 use crate::pass;
 use mlirformat::Error;
 use crate::{Action, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, Run};
 
-/// `convert-ub-to-llvm`.
 #[pass("convert-ub-to-llvm")]
 pub struct ConvertUbToLlvm {
     #[opt("index-bitwidth")]

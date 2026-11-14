@@ -1,5 +1,3 @@
-//! `gpu` subgroup MMA ⇒ `spirv` KHR cooperative matrices, as `WmmaOpsToSPIRV.cpp`.
-
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -13,12 +11,9 @@ use crate::{ConversionRewriter, OpData, OpId, TypeConverter, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The wmma ⇒ cooperative matrix patterns (`populateGpuWMMAToSPIRVCoopMatrixKHRConversionPatterns`).
 pub struct WmmaToSpirv;
 
 impl WmmaToSpirv {
-    /// `populateMMAToSPIRVCoopMatrixTypeConversion`: `!gpu.mma_matrix<RxCxT, "AOp">` as
-    /// `!spirv.coopmatrix<RxCxT, Subgroup, MatrixA>`.
     pub fn convert_types(tc: &mut TypeConverter<'_>) {
         tc.conversion(|t| {
             let Type::Extended(e) = t else { return None };
@@ -40,7 +35,6 @@ impl WmmaToSpirv {
         });
     }
 
-    /// Constant `index` operands (`arith.constant`s), as an `i32` array.
     fn const_indices<'a>(cr: &Cr<'_, 'a, '_>, idx: &[ValueId]) -> Option<Attribute<'a>> {
         let b = &cr.rw.body;
         let vals = idx.iter().map(|v| {
@@ -60,13 +54,11 @@ impl WmmaToSpirv {
         matches!(SpirvType::try_from(t), Ok(SpirvType::CoopMatrix { .. }))
     }
 
-    /// `allOperandsHaveSameCoopMatrixType`.
     fn same_coop(cr: &Cr<'_, '_, '_>, ops: &[ValueId]) -> bool {
         let t = &cr.rw.body[ops[0]].ty;
         Self::is_coop(t) && ops.iter().all(|v| cr.rw.body[*v].ty == *t)
     }
 
-    /// The stride constant and layout of a load / store.
     fn stride_layout<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId) -> Option<(ValueId, Attribute<'a>)> {
         let stride = Const::try_from(cr.rw.body[op].get("leadDimension")?).ok()?.as_int()?.signed();
         let col = cr.rw.body[op].get("transpose").is_some_and(|a| !matches!(a, Attribute::Bool(false)));
@@ -74,7 +66,6 @@ impl WmmaToSpirv {
         Some((s, Cr::spirv_enum("coop_matrix_layout_khr", if col { "ColumnMajor" } else { "RowMajor" })))
     }
 
-    /// The element pointer of a load / store's memref at its indices.
     fn ptr(cr: &mut Cr<'_, '_, '_>, op: OpId, ops: &[ValueId], at: usize, o: MemrefSpirvOptions) -> Option<ValueId> {
         let m = cr.rw.body[op].operands[at];
         let Type::Shaped(s) = cr.rw.body[m].ty.clone() else { return None };
@@ -84,7 +75,6 @@ impl WmmaToSpirv {
 
 #[patterns(converter, options = MemrefSpirvOptions)]
 impl WmmaToSpirv {
-    /// `WmmaLoadOpToSPIRVLowering`.
     #[convert("gpu.subgroup_mma_load_matrix")]
     fn load(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -95,13 +85,11 @@ impl WmmaToSpirv {
         true
     }
 
-    /// `WmmaMmaOpToSPIRVLowering`.
     #[convert("gpu.subgroup_mma_compute")]
     fn compute(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MemrefSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ty = cr.rw.body[ops[2]].ty.clone();
         let Some(res) = Self::result_ty(cr, op) else { return false };
-        // `getSignedCoopMatrixOperands`: which of A, B, C and the result hold signed integers.
         let signed = |t: &Type<'_>| matches!(SpirvType::try_from(t), Ok(SpirvType::CoopMatrix { elem, .. }) if matches!(*elem, Type::Integer { signedness: Signedness::Signed, .. }));
         let types = [cr.rw.body[ops[0]].ty.clone(), cr.rw.body[ops[1]].ty.clone(), ty.clone(), res];
         let names: Vec<&str> = ["ASigned", "BSigned", "CSigned", "ResultSigned"].into_iter().zip(&types).filter(|(_, t)| signed(t)).map(|(n, _)| n).collect();
@@ -113,7 +101,6 @@ impl WmmaToSpirv {
         true
     }
 
-    /// `WmmaStoreOpToSPIRVLowering`.
     #[convert("gpu.subgroup_mma_store_matrix")]
     fn store(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -123,7 +110,6 @@ impl WmmaToSpirv {
         true
     }
 
-    /// `WmmaConstantOpToSPIRVLowering`: the scalar splat.
     #[convert("gpu.subgroup_mma_constant_matrix")]
     fn constant(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MemrefSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -132,7 +118,6 @@ impl WmmaToSpirv {
         true
     }
 
-    /// `WmmaExtractOpToSPIRVLowering`.
     #[convert("gpu.subgroup_mma_extract_thread_local")]
     fn extract(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MemrefSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -143,7 +128,6 @@ impl WmmaToSpirv {
         true
     }
 
-    /// `WmmaInsertOpToSPIRVLowering`.
     #[convert("gpu.subgroup_mma_insert_thread_local")]
     fn insert(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MemrefSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -154,7 +138,6 @@ impl WmmaToSpirv {
         true
     }
 
-    /// `WmmaElementwiseOpToSPIRVDefaultLowering`.
     #[convert("gpu.subgroup_mma_elementwise")]
     fn elementwise(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MemrefSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -182,8 +165,6 @@ impl WmmaToSpirv {
         true
     }
 
-    /// `WmmaElementwiseOpToSPIRVScalarMulLowering`: a product with a constant matrix is
-    /// `spirv.MatrixTimesScalar`.
     #[convert("gpu.subgroup_mma_elementwise", benefit = 2)]
     fn scalar_mul(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MemrefSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };

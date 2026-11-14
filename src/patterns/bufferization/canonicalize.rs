@@ -1,18 +1,13 @@
-//! `bufferization`: folds and canonicalization patterns, as `BufferizationOps.cpp`.
-
 use alloc::vec::Vec;
 
 use mlirformat::{Dim, Shaped, Type};
 
 use crate::{Body, Def, EffectKind, Fold, Folded, OpData, OpId, Rewriter, Trait, ValueId};
 
-/// `bufferization` canonicalization: its rewrite patterns and folds.
 pub struct BufferizationCanon;
 
 #[crate::patterns]
 impl BufferizationCanon {
-    /// `FoldDimOfAllocTensorOp`: a dynamic size of an `alloc_tensor` is its size operand (or
-    /// its copy's dim).
     #[rewrite("tensor.dim")]
     fn fold_dim_of_alloc_tensor_op(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -36,7 +31,6 @@ impl BufferizationCanon {
         true
     }
 
-    /// `ReplaceStaticShapeDims`: constant dynamic sizes made static, through a `tensor.cast`.
     #[rewrite("bufferization.alloc_tensor")]
     fn replace_static_shape_dims(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -71,7 +65,6 @@ impl BufferizationCanon {
         true
     }
 
-    /// `DimOfToTensorFolder`: the dim of a `to_tensor` is its buffer's.
     #[rewrite("tensor.dim")]
     fn dim_of_to_tensor_folder(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -82,7 +75,6 @@ impl BufferizationCanon {
         true
     }
 
-    /// `DimOfCastOp`: the dim of a `to_buffer` is its tensor's.
     #[rewrite("memref.dim")]
     fn dim_of_cast_op(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -93,7 +85,6 @@ impl BufferizationCanon {
         true
     }
 
-    /// `LoadOfToBuffer`: a load of a `read_only` `to_buffer` is an extract of its tensor.
     #[rewrite("memref.load")]
     fn load_of_to_buffer(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -109,8 +100,6 @@ impl BufferizationCanon {
         true
     }
 
-    /// `ToBufferOfCast`: a `to_buffer` of a `tensor.cast` of a ranked tensor is a `memref.cast` of
-    /// the source's `to_buffer`.
     #[rewrite("bufferization.to_buffer")]
     fn to_buffer_of_cast(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -134,7 +123,6 @@ impl BufferizationCanon {
         true
     }
 
-    /// `ToBufferToTensorFolding`: `foldToBufferToTensorPair` (no buffer alignment).
     #[rewrite("bufferization.to_buffer")]
     fn to_buffer_to_tensor_folding(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         if rw.body.def_named(rw.body[op].operands[0], "bufferization.to_tensor").is_none() {
@@ -145,8 +133,6 @@ impl BufferizationCanon {
         crate::fold_to_buffer_to_tensor(rw, &o, op)
     }
 
-    /// `SimplifyClones`: a clone whose source or itself is deallocated in its block (and
-    /// nothing frees in between) becomes its source (through a `memref.cast`).
     #[rewrite("bufferization.clone")]
     fn simplify_clones(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -193,8 +179,6 @@ impl BufferizationCanon {
         true
     }
 
-    /// `DeallocRemoveDuplicateDeallocMemrefs`: a memref deallocated once, under the `arith.ori`
-    /// of its conditions.
     #[rewrite("bufferization.dealloc")]
     fn dealloc_remove_duplicate_dealloc_memrefs(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let d = Dealloc::of(rw.body, op);
@@ -216,8 +200,6 @@ impl BufferizationCanon {
         Dealloc::update(rw, op, memrefs, conditions)
     }
 
-    /// `DeallocRemoveDuplicateRetainedMemrefs`: each retained memref once, its updated
-    /// condition shared.
     #[rewrite("bufferization.dealloc")]
     fn dealloc_remove_duplicate_retained_memrefs(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let d = Dealloc::of(rw.body, op);
@@ -244,7 +226,6 @@ impl BufferizationCanon {
         true
     }
 
-    /// `EraseEmptyDealloc`: nothing to deallocate ⇒ every updated condition `false`.
     #[rewrite("bufferization.dealloc")]
     fn erase_empty_dealloc(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         if !Dealloc::of(rw.body, op).memrefs.is_empty() {
@@ -258,7 +239,6 @@ impl BufferizationCanon {
         true
     }
 
-    /// `EraseAlwaysFalseDealloc`: memrefs under a `false` condition dropped.
     #[rewrite("bufferization.dealloc")]
     fn erase_always_false_dealloc(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let d = Dealloc::of(rw.body, op);
@@ -266,7 +246,6 @@ impl BufferizationCanon {
         Dealloc::update(rw, op, memrefs, conditions)
     }
 
-    /// `SkipExtractMetadataOfAlloc`: the base buffer of an allocation is the allocation.
     #[rewrite("bufferization.dealloc")]
     fn skip_extract_metadata_of_alloc(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -288,8 +267,6 @@ impl BufferizationCanon {
         Dealloc::update(rw, op, memrefs, d.conditions)
     }
 
-    /// `RemoveAllocDeallocPairWhenNoOtherUsers`: an allocation only deallocated here is
-    /// erased with its entry.
     #[rewrite("bufferization.dealloc")]
     fn remove_alloc_dealloc_pair_when_no_other_users(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -317,7 +294,6 @@ impl BufferizationCanon {
     }
 }
 
-/// A `bufferization.dealloc`'s operand groups: memrefs, conditions, retained.
 struct Dealloc {
     memrefs: Vec<ValueId>,
     conditions: Vec<ValueId>,
@@ -336,8 +312,6 @@ impl Dealloc {
         self.memrefs.iter().chain(&self.conditions).chain(&self.retained).copied().collect()
     }
 
-    /// `updateDeallocIfChanged`: `op` modified in place to deallocate `memrefs` under
-    /// `conditions`, when they differ.
     fn update(rw: &mut Rewriter<'_, '_>, op: OpId, memrefs: Vec<ValueId>, conditions: Vec<ValueId>) -> bool {
         let old = Self::of(rw.body, op);
         if old.memrefs == memrefs && old.conditions == conditions {
@@ -354,18 +328,14 @@ impl Dealloc {
 }
 
 impl Body<'_> {
-    /// `getEffectOnValue<kind>`: `op` has a `kind` effect on `v`.
     fn effect_on(&self, op: OpId, kind: EffectKind, v: ValueId) -> bool {
         self.effects_of(op).is_some_and(|e| e.iter().any(|x| x.kind == kind && x.value == Some(v)))
     }
 
-    /// `hasSingleEffect<kind>(op, v)`: every effect of `op` is a `kind` on `v`.
     fn single_effect_on(&self, op: OpId, kind: EffectKind, v: ValueId) -> bool {
         self.effects_of(op).is_some_and(|e| !e.is_empty() && e.iter().all(|x| x.kind == kind && x.value == Some(v)))
     }
 
-    /// `memref::findDealloc`: the one user freeing `v` (`Some(None)` when none); `None` with
-    /// several, or a `memref.realloc`.
     pub(crate) fn find_dealloc(&self, v: ValueId) -> Option<Option<OpId>> {
         let mut found = None;
         for u in self[v].uses.iter() {
@@ -382,7 +352,6 @@ impl Body<'_> {
 }
 
 impl BufferizationCanon {
-    /// The canonicalization patterns, in the ops' order.
     pub fn canonicalization(set: &mut crate::PatternSet) {
         set.add(FoldDimOfAllocTensorOp).add(ReplaceStaticShapeDims);
         set.add(SimplifyClones);
@@ -392,18 +361,15 @@ impl BufferizationCanon {
         set.add(EraseAlwaysFalseDealloc).add(SkipExtractMetadataOfAlloc).add(RemoveAllocDeallocPairWhenNoOtherUsers);
     }
 
-    /// `CloneOp::fold`, `ToTensorOp::fold` and `ToBufferOp::fold`.
     pub fn fold<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         if b[op].name == "bufferization.clone" {
             return if b.fold_memref_cast(op, None) { Fold::InPlace } else { Fold::Failed };
         }
         match &*b[op].name {
-            // A `to_buffer` right before it in its block.
             "bufferization.to_tensor" => match b[b[op].operands[0]].def {
                 Def::Result(m, _) if b[m].name == "bufferization.to_buffer" && b[m].parent.is_some() && b[m].parent == b[op].parent && { let ops = &b.block_ops(b[m].parent.expect("placed")); ops.iter().position(|o| *o == m).map(|i| i + 1) == ops.iter().position(|o| *o == op) } => Folded::Value(b[m].operands[0]).into(),
                 _ => Fold::Failed,
             },
-            // A `to_tensor` of a buffer of its type.
             "bufferization.to_buffer" => match b.def_named(b[op].operands[0], "bufferization.to_tensor") {
                 Some(t) if b[b[t].operands[0]].ty == b[b[op].results[0]].ty => Folded::Value(b[t].operands[0]).into(),
                 _ => Fold::Failed,

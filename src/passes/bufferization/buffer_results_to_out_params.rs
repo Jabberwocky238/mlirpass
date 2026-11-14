@@ -1,6 +1,3 @@
-//! `buffer-results-to-out-params`, as `BufferResultsToOutParams.cpp`: memref results become
-//! arguments the caller allocates.
-
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::vec;
@@ -23,7 +20,6 @@ pub struct BufferResultsToOutParams {
     modify_public: bool,
 }
 
-/// What the rewrite needs of a memref type.
 struct Memref;
 
 impl Memref {
@@ -34,7 +30,6 @@ impl Memref {
         }
     }
 
-    /// `hasFullyDynamicLayoutMap`.
     fn fully_dynamic(s: &Shaped<'_>) -> bool {
         s.strides_and_offset().is_some_and(|(st, off)| st.iter().all(|x| *x == Dim::DYNAMIC) && off == Dim::DYNAMIC)
     }
@@ -43,7 +38,6 @@ impl Memref {
         s.shape.as_ref().is_some_and(|d| d.iter().all(|x| matches!(x, mlirformat::Dim::Static(_))))
     }
 
-    /// The type without its layout (`MemRefType::get(shape, elem, {}, space)`).
     fn without_layout<'a>(s: &Shaped<'a>) -> Type<'a> {
         let extras = s.extras.iter().filter(|a| !a.is_layout()).cloned().collect();
         Type::Shaped(alloc::boxed::Box::new(Shaped { extras, ..s.clone() }))
@@ -62,7 +56,6 @@ impl BufferResultsToOutParams {
         }
     }
 
-    /// The dictionaries of `arg_attrs` / `res_attrs`, `n` of them.
     fn dicts<'a>(b: &Body<'a>, f: OpId, name: &str, n: usize) -> Vec<Attribute<'a>> {
         match b[f].get(name) {
             Some(Attribute::Array(xs)) => xs.clone(),
@@ -78,7 +71,6 @@ impl BufferResultsToOutParams {
         }
     }
 
-    /// `updateFuncOp`: the memref results become trailing arguments.
     fn update_func(&self, b: &mut Body<'_>, f: OpId) -> Result<Vec<ValueId>, Error> {
         let ft = Self::function_type(b, f);
         let mut erased = Vec::new();
@@ -116,7 +108,6 @@ impl BufferResultsToOutParams {
         Ok(types.into_iter().map(|t| b.add_arg(entry, t)).collect())
     }
 
-    /// `getDynamicSize`: the index operands of an allocation, when all are `f`'s arguments.
     fn dynamic_size(b: &Body<'_>, v: ValueId, f: OpId) -> Vec<ValueId> {
         let Some(def) = b.def_op(v) else { return Vec::new() };
         let entry = b[b[f].regions[0]].blocks[0];
@@ -133,7 +124,6 @@ impl BufferResultsToOutParams {
         out
     }
 
-    /// `updateReturnOps`; the dynamic sizes of the hoisted allocations.
     fn update_returns(&self, b: &mut Body<'_>, f: OpId, out: &[ValueId]) -> Vec<Vec<ValueId>> {
         let rets: Vec<OpId> = b.ops_in(f).into_iter().filter(|o| b[*o].name == "func.return").collect();
         let mut first = None;
@@ -169,7 +159,6 @@ impl BufferResultsToOutParams {
         first.unwrap_or_default()
     }
 
-    /// `updateCalls`.
     fn update_calls(&self, b: &mut Body<'_>, module: OpId, sizes: &BTreeMap<OpId, Vec<Vec<ValueId>>>) -> Result<(), Error> {
         let mut calls = Vec::new();
         b.walk_post(module, &mut |o| {

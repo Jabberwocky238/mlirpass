@@ -1,24 +1,3 @@
-//! ⭐ RDNA2 instructions: one op per encoding family, `rdna2.isa.{salu, valu, smem, flat, ds} {op = "<mnemonic>", ...}`
-//! ⇒ their dwords, encoded as Mesa's ACO does for GFX10.3 (src/amd/compiler/aco_assembler.cpp, `emit_*_instruction`),
-//! checked against `llvm-mc -mcpu=gfx1036`. The mnemonic is an [`Opcode`] (its format says which of a family's
-//! encodings), every register or constant field an [`Operand`].
-//!
-//! Operands are spelled as LLVM spells them: `v5`, `s7`, `v[2:3]`, `s[4:5]`, `vcc_lo`, `exec_lo`, `m0`, `null`, `off`,
-//! `scc`, an inline constant (`-16 ..= 64`, `0.5`, `1.0`, `2.0`, `4.0` and their negations), anything else a literal
-//! (`0x3f800000`: one more dword). A VOP3 source may be `-x` (neg) and `|x|` (abs). They are read into an
-//! [`Operand`] once, when the op is read.
-//!
-//! | op | formats | fields |
-//! | --- | --- | --- |
-//! | [`Salu`] | SOP1 / SOP2 / SOPC / SOPK / SOPP | `dst`, `src0`, `src1`, `simm16` (SOPK, SOPP) |
-//! | [`Smem`] | SMEM | `dst` (`data` for a store), `sbase`, `offset` (bytes) or `soffset`, `glc`, `dlc` |
-//! | [`Valu`] | VOP1 / VOP2 / VOPC / VOP3 | `dst`, `sdst` (VOP3b), `src0`, `src1`, `src2`, `clamp`, `omod`; `vop3`: the 64-bit encoding |
-//! | [`Flat`] | GLOBAL / FLAT / SCRATCH | `dst` (a load), `addr`, `data` (a store), `saddr` (`off`: none), `offset`, `glc`, `slc`, `dlc` |
-//! | [`Ds`] | DS | `dst`, `addr`, `data0`, `data1`, `offset0`, `offset1`, `gds` |
-//!
-//! Before rdna2-regalloc an instruction is virtual: its SSA `operands` go to the fields its `slots` name, in order,
-//! its results to `dst`; the allocation writes the registers into those fields and drops both.
-
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec;
@@ -31,7 +10,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use super::{HASHES, Opcode};
 use crate::{Body, OpData, OpId, ValueId};
 
-/// An instruction's encoding family (Mesa ACO's `Format`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
     Sop1,
@@ -56,14 +34,12 @@ pub enum Format {
     Vintrp,
 }
 
-/// `sgpr_null` on GFX10 (aco_ir.h).
 const NULL: u32 = 125;
-/// `SQ_SRC_LITERAL`: the source is the dword after the instruction.
+
 const LITERAL: u32 = 255;
-/// The first VGPR's source code.
+
 const VGPR: u32 = 256;
 
-/// aco_ir.h's fixed registers (SSRC codes) as LLVM spells them; the first spelling of a code is how it prints.
 const FIXED: &[(&str, u32)] = &[
     ("vcc_lo", 106),
     ("vcc", 106),
@@ -79,11 +55,8 @@ const FIXED: &[(&str, u32)] = &[
     ("scc", 253),
 ];
 
-/// The float inline constants of the GFX10 ISA (SSRC 240 ..= 247).
 const FLOATS: &[(&str, u32)] = &[("0.5", 240), ("-0.5", 241), ("1.0", 242), ("-1.0", 243), ("2.0", 244), ("-2.0", 245), ("4.0", 246), ("-4.0", 247)];
 
-/// ⭐ An operand: its 9-bit source code (VGPRs from 256), how many registers from there (a range), a literal if it
-/// takes one, its modifiers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Operand {
     pub code: u32,
@@ -98,17 +71,14 @@ impl Operand {
         Operand { code, len: 1, literal: None, neg: false, abs: false }
     }
 
-    /// `n` registers from SGPR `r`.
     pub const fn sgpr(r: u32, n: u32) -> Self {
         Operand { len: n, ..Self::plain(r) }
     }
 
-    /// `n` registers from VGPR `r`.
     pub const fn vgpr(r: u32, n: u32) -> Self {
         Operand { len: n, ..Self::plain(VGPR + r) }
     }
 
-    /// The VGPRs it names (none for anything else).
     pub fn vgprs(&self) -> core::ops::Range<u32> {
         match self.code {
             c @ VGPR.. => c - VGPR..c - VGPR + self.len,
@@ -117,7 +87,6 @@ impl Operand {
     }
 }
 
-/// An inline integer constant or a literal.
 impl From<i64> for Operand {
     fn from(v: i64) -> Self {
         match v {
@@ -139,7 +108,6 @@ impl TryFrom<&str> for Operand {
         if let Some(r) = s.strip_prefix('|').and_then(|r| r.strip_suffix('|')) {
             return Operand::try_from(r).map(|o| Operand { abs: true, ..o });
         }
-        // a register or a range `x[a:b]`
         let range = |p: &str| -> Option<(u32, u32)> {
             let r = s.strip_prefix(p)?;
             match r.strip_prefix('[').and_then(|r| r.strip_suffix(']')) {
@@ -158,7 +126,6 @@ impl TryFrom<&str> for Operand {
             return Ok(Operand::sgpr(r, n));
         }
         if let Some((_, c)) = FIXED.iter().chain(FLOATS).find(|(n, _)| *n == s) {
-            // `vcc` / `exec`: the pair
             return Ok(Operand { len: if matches!(s, "vcc" | "exec") { 2 } else { 1 }, ..Operand::plain(*c) });
         }
         let v = match s.strip_prefix("0x") {
@@ -169,7 +136,6 @@ impl TryFrom<&str> for Operand {
     }
 }
 
-/// As LLVM spells it.
 impl fmt::Display for Operand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (open, close) = if self.abs { ("|", "|") } else { ("", "") };
@@ -192,7 +158,6 @@ impl fmt::Display for Operand {
     }
 }
 
-/// As an op's property holds it (its LLVM spelling).
 impl From<Operand> for Attribute<'_> {
     fn from(o: Operand) -> Self {
         Attribute::Str { lit: o.to_string().into(), ty: None }
@@ -230,7 +195,6 @@ impl<'de> Deserialize<'de> for Operand {
 impl TryFrom<&str> for Opcode {
     type Error = Error;
 
-    /// By mnemonic: its hash searched in [`HASHES`], then the name compared once.
     fn try_from(s: &str) -> Result<Opcode, Error> {
         let h = s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
         HASHES.binary_search_by_key(&h, |(k, _)| *k).ok().map(|k| HASHES[k].1).filter(|o| o.name() == s).ok_or_else(|| Error(format!("{s}: not a GFX10 instruction")))
@@ -259,7 +223,6 @@ impl<'de> Deserialize<'de> for Opcode {
     }
 }
 
-/// ⭐ The field a virtual instruction's SSA operand goes to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Slot {
     Src0,
@@ -274,7 +237,6 @@ pub enum Slot {
 }
 
 impl Slot {
-    /// The field's name (an op's property key).
     pub const fn key(self) -> &'static str {
         match self {
             Slot::Src0 => "src0",
@@ -290,7 +252,6 @@ impl Slot {
     }
 }
 
-/// By its key (`"src0"`): how both the typed ops and [`Build`] spell it.
 impl Serialize for Slot {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(self.key())
@@ -313,7 +274,6 @@ impl<'de> Deserialize<'de> for Slot {
     }
 }
 
-/// `rdna2.isa.salu`: SOP1 / SOP2 / SOPC / SOPK / SOPP.
 #[mlir::op("rdna2.isa.salu", format = "(`(` $operands^ `:` type($operands) `)`)? attr-dict (`->` type($results)^)?", results(results))]
 pub struct Salu<'a> {
     pub op: Opcode,
@@ -328,7 +288,6 @@ pub struct Salu<'a> {
     pub results: Vec<Type<'a>>,
 }
 
-/// `rdna2.isa.valu`: VOP1 / VOP2 / VOPC (`vop3`: in the VOP3 encoding) / VOP3.
 #[mlir::op("rdna2.isa.valu", format = "(`(` $operands^ `:` type($operands) `)`)? attr-dict (`->` type($results)^)?", results(results))]
 pub struct Valu<'a> {
     pub op: Opcode,
@@ -347,7 +306,6 @@ pub struct Valu<'a> {
     pub results: Vec<Type<'a>>,
 }
 
-/// `rdna2.isa.smem`: SMEM.
 #[mlir::op("rdna2.isa.smem", format = "(`(` $operands^ `:` type($operands) `)`)? attr-dict (`->` type($results)^)?", results(results))]
 pub struct Smem<'a> {
     pub op: Opcode,
@@ -365,7 +323,6 @@ pub struct Smem<'a> {
     pub results: Vec<Type<'a>>,
 }
 
-/// `rdna2.isa.flat`: GLOBAL / FLAT / SCRATCH.
 #[mlir::op("rdna2.isa.flat", format = "(`(` $operands^ `:` type($operands) `)`)? attr-dict (`->` type($results)^)?", results(results))]
 pub struct Flat<'a> {
     pub op: Opcode,
@@ -384,7 +341,6 @@ pub struct Flat<'a> {
     pub results: Vec<Type<'a>>,
 }
 
-/// `rdna2.isa.ds`: DS.
 #[mlir::op("rdna2.isa.ds", format = "(`(` $operands^ `:` type($operands) `)`)? attr-dict (`->` type($results)^)?", results(results))]
 pub struct Ds<'a> {
     pub op: Opcode,
@@ -402,11 +358,9 @@ pub struct Ds<'a> {
     pub results: Vec<Type<'a>>,
 }
 
-/// The instruction ops.
 #[mlir::dialect("rdna2", ops = [Salu, Valu, Smem, Flat, Ds])]
 pub(crate) struct IsaOps;
 
-/// A modifier or encoding switch of an instruction (its unit property).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Flag {
     Vop3,
@@ -430,9 +384,6 @@ impl Flag {
     }
 }
 
-/// ⭐ A virtual instruction built straight into an [`OpData`] (the compiler makes thousands; going through the typed
-/// op's generic form costs more than the rest of the lowering): family `O`, its mnemonic, SSA operands into `slots`,
-/// results (`dst`). What it builds reads back as `O` ([`Isa::read`]).
 pub struct Build<'a> {
     data: OpData<'a>,
     results: Vec<Type<'a>>,
@@ -447,7 +398,6 @@ impl<'a> Build<'a> {
         Build { data, results }
     }
 
-    /// Constant source `slot`.
     pub fn source(mut self, slot: Slot, o: Operand) -> Self {
         self.data.set(slot.key(), o.into());
         self
@@ -458,19 +408,16 @@ impl<'a> Build<'a> {
         self
     }
 
-    /// SOPK / SOPP's immediate.
     pub fn simm16(mut self, v: i64) -> Self {
         self.data.set("simm16", Attribute::integer(v.into(), Type::int(64)));
         self
     }
 
-    /// The op and its results' types, for `create`.
     pub fn split(self) -> (OpData<'a>, Vec<Type<'a>>) {
         (self.data, self.results)
     }
 }
 
-/// ⭐ A field of an instruction op (its property key), read into this first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
     Op,
@@ -480,7 +427,6 @@ pub enum Key {
     Int(Int),
 }
 
-/// A register or constant field (an [`Operand`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reg {
     Dst,
@@ -497,7 +443,6 @@ pub enum Reg {
     Soffset,
 }
 
-/// An integer field.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Int {
     Simm16,
@@ -581,7 +526,6 @@ impl TryFrom<&str> for Slot {
     }
 }
 
-/// The five instruction ops.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Family {
     Salu,
@@ -592,13 +536,11 @@ pub enum Family {
 }
 
 impl Family {
-    /// The family of an op named `name`, if it is an instruction.
     pub fn of(name: &str) -> Option<Family> {
         use mlirformat::Op;
         [(Salu::NAME, Family::Salu), (Valu::NAME, Family::Valu), (Smem::NAME, Family::Smem), (Flat::NAME, Family::Flat), (Ds::NAME, Family::Ds)].into_iter().find(|(n, _)| *n == name).map(|(_, f)| f)
     }
 
-    /// The family of a format.
     const fn holds(format: Format) -> Option<Family> {
         Some(match format {
             Format::Sop1 | Format::Sop2 | Format::Sopk | Format::Sopp | Format::Sopc => Family::Salu,
@@ -611,8 +553,6 @@ impl Family {
     }
 }
 
-/// ⭐ An instruction read in one pass over its attributes, no generic form (the encoder and the passes after the
-/// lowering read every instruction; the typed ops [`Salu`] ... are for reading and printing modules).
 #[derive(Clone, Debug)]
 pub struct Fields {
     pub family: Family,
@@ -621,7 +561,6 @@ pub struct Fields {
     flags: u8,
     ints: [Option<i64>; 5],
     pub slots: Vec<Slot>,
-    /// How many results it has (virtual: its `dst`).
     pub results: usize,
 }
 
@@ -638,23 +577,19 @@ impl Fields {
         self.ints[i as usize]
     }
 
-    /// Its register and constant fields that are there (allocated: what it reads and writes).
     pub fn fields(&self) -> impl Iterator<Item = Operand> + '_ {
         self.regs.iter().flatten().copied()
     }
 
-    /// A global load: its destination written some time later (VM_CNT).
     pub fn global_load(&self) -> bool {
         self.op.format() == Format::Global && (self.results > 0 || self.reg(Reg::Dst).is_some())
     }
 
-    /// Instruction `d` of family `family`.
     fn read(family: Family, d: &OpData<'_>) -> Result<Fields, Error> {
         let mut op = None;
         let mut f = Fields { family, op: Opcode::SNop, regs: [None; Reg::ALL], flags: 0, ints: [None; 5], slots: Vec::new(), results: d.results.len() };
         let int = |v: &Attribute<'_>| crate::Attrs::as_int(v);
         for a in d.properties.iter().chain(&d.attributes) {
-            // a unit attribute has no value
             let v = a.value.as_ref().unwrap_or(&Attribute::Unit);
             match Key::try_from(&*a.name)? {
                 Key::Op => match v {
@@ -691,12 +626,10 @@ impl Fields {
     }
 }
 
-/// Its source code, `default` when absent.
 fn code(o: Option<Operand>, default: u32) -> u32 {
     o.map_or(default, |o| o.code)
 }
 
-/// ⭐ An instruction's dwords: the encoding's, then the literal one of its sources takes.
 pub struct Words(pub Vec<u32>);
 
 impl TryFrom<&Fields> for Words {
@@ -710,7 +643,6 @@ impl TryFrom<&Fields> for Words {
         let simm16 = n(Int::Simm16) as u32 & 0xffff;
         let (dw, sources) = match op.format() {
             Format::Sop2 => (vec![(0b10 << 30) | (c << 23) | (code(r(Reg::Dst), 0) << 16) | (code(r(Reg::Src1), 0) << 8) | code(r(Reg::Src0), 0)], [Reg::Src0, Reg::Src1].as_slice()),
-            // the destination field holds the source when there is no destination (s_cmpk_*)
             Format::Sopk => (vec![(0b1011 << 28) | (c << 23) | (code(r(Reg::Dst).or(r(Reg::Src0)), 0) << 16) | simm16], [].as_slice()),
             Format::Sop1 => (vec![(0b1_0111_1101 << 23) | (code(r(Reg::Dst), 0) << 16) | (c << 8) | code(r(Reg::Src0), 0)], [Reg::Src0].as_slice()),
             Format::Sopc => (vec![(0b1_0111_1110 << 23) | (c << 16) | (code(r(Reg::Src1), 0) << 8) | code(r(Reg::Src0), 0)], [Reg::Src0, Reg::Src1].as_slice()),
@@ -723,7 +655,6 @@ impl TryFrom<&Fields> for Words {
             Format::Vop1 if !i.flag(Flag::Vop3) => (vec![(0b011_1111 << 25) | ((code(r(Reg::Dst), 0) & 0xff) << 17) | (c << 9) | code(r(Reg::Src0), 0)], [Reg::Src0].as_slice()),
             Format::Vopc if !i.flag(Flag::Vop3) => (vec![(0b011_1110 << 25) | (c << 17) | ((need(Reg::Src1)? & 0xff) << 9) | need(Reg::Src0)?], [Reg::Src0, Reg::Src1].as_slice()),
             f @ (Format::Vop1 | Format::Vop2 | Format::Vopc | Format::Vop3) => {
-                // emit_vop3_instruction: VOP2 at 0x100 +, VOP1 at 0x180 +, VOPC as it is; unused sources inline 0
                 let c = c + match f {
                     Format::Vop2 => 0x100,
                     Format::Vop1 => 0x180,
@@ -737,7 +668,6 @@ impl TryFrom<&Fields> for Words {
                 (vec![w0, w1], [Reg::Src0, Reg::Src1, Reg::Src2].as_slice())
             }
             f @ (Format::Global | Format::Flat | Format::Scratch) => {
-                // emit_flatlike_instruction (GFX10): 12-bit offset (not for FLAT), seg 1 scratch / 2 global
                 let seg = match f {
                     Format::Scratch => 1,
                     Format::Global => 2,
@@ -771,17 +701,14 @@ impl TryFrom<&Fields> for Words {
     }
 }
 
-/// ⭐ The encoder.
 pub struct Isa;
 
 impl Isa {
-    /// ⭐ Instruction `op` of `body`, read; `None` when it is not one.
     pub fn read(body: &Body<'_>, op: OpId) -> Result<Option<Fields>, Error> {
         let d = &body[op];
         Family::of(&d.name).map(|f| Fields::read(f, d)).transpose()
     }
 
-    /// ⭐ The dwords of instruction `op` of `body` (allocated: its registers in its fields).
     pub fn encode(body: &Body<'_>, op: OpId) -> Result<Vec<u32>, Error> {
         let i = Isa::read(body, op)?.ok_or_else(|| Error(format!("{}: not an RDNA2 instruction", body[op].name)))?;
         Words::try_from(&i).map(|w| w.0)

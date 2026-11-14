@@ -1,11 +1,8 @@
-//! `set-llvm-module-datalayout`.
-
 use alloc::string::String;
 use crate::pass;
 use mlirformat::{Attribute, Error};
 use crate::{Body, OpId, Run};
 
-/// `set-llvm-module-datalayout`.
 #[pass("set-llvm-module-datalayout")]
 pub struct SetLlvmModuleDataLayout {
     #[opt("data-layout")]

@@ -1,5 +1,3 @@
-//! `memref` rule sets.
-
 mod canonicalize;
 mod expand_strided_metadata;
 mod fold_alias;

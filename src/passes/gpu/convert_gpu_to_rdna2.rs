@@ -1,8 +1,3 @@
-//! `convert-gpu-to-rdna2`: the kernels' calls inlined ([`Kernels::inline_calls`]); the compute kernels of each
-//! `gpu.module` ⇒ `rdna2.kernel`s of virtual RDNA2 instructions
-//! ([`GpuToRdna2`]); then each kernel's parameters, user SGPRs s0 ..., copied to VGPRs at its start (a VALU source
-//! is a VGPR).
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -10,7 +5,6 @@ use mlirformat::{Error, Op};
 
 use crate::{Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, GpuToRdna2, Kernels, Mode, OpId, Quiet, Rdna2Build, Rdna2Input, Rdna2Kernel, Rdna2Opcode, Rdna2Slot, Rdna2Type, Rdna2Types, Rdna2Valu, Rewriter, SinkConstants, Updates, pass, RDNA2_KERNEL_ALIGN, RDNA2_KERNEL_PAD};
 
-/// `convert-gpu-to-rdna2`.
 #[pass("convert-gpu-to-rdna2", on = "builtin.module")]
 pub fn convert_gpu_to_rdna2<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     Kernels::inline_calls(body, op)?;

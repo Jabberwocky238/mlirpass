@@ -1,11 +1,6 @@
-//! The Apple9 target (Apple M3 / M4) against what an M4 ran: no Mesa model of this instruction set exists, so the
-//! oracle is the hardware (scripts/apple9_metal.swift runs code through Metal and reads it back).
-
 use mlirformat::{MlirOpt, Module};
 use mlirpass::{Apple9Dialect, Apple9Isa, Body, Ctx, Interfaces, OpId};
 
-/// tests/apple9/isa.mlir is acgpu's `ints` kernel in Apple9 instructions, as an M4 ran it through Metal (160 of 160
-/// results right, 2026-11-08); each encodes to its bytes there (tests/apple9/isa.expected), printed and read again the same.
 #[test]
 fn encodes_as_the_m4_ran_it() {
     let mut opt = MlirOpt::upstream();
@@ -33,8 +28,6 @@ fn encodes_as_the_m4_ran_it() {
     assert!(bad.is_empty(), "{} of {} differ:\n{}", bad.len(), expected.len(), bad.join("\n"));
 }
 
-/// `src` (a module of compute kernels in upstream dialects) through the frontend passes acgpu runs (inlined, canonicalize,
-/// cse) and the Apple9 backend: each kernel's params, GPRs and bytes.
 #[cfg(feature = "target.apple9")]
 fn kernels(src: &str) -> String {
     use mlirpass::{Apple9Emit, Emit, PassManager, Passes};
@@ -57,8 +50,6 @@ fn kernels(src: &str) -> String {
     out
 }
 
-/// Kernels through the Apple9 backend (tests/apple9/{ints,floats,control,memory,ids,special,halves}.mlir): their bytes as the M4 ran them right
-/// (tests/apple9/*.expected; scripts/apple9_check.py runs them and checks every result).
 #[cfg(feature = "target.apple9")]
 #[test]
 fn kernels_as_the_m4_ran_them() {

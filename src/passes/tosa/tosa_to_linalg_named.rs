@@ -1,11 +1,8 @@
-//! `tosa-to-linalg-named`.
-
 use crate::{TosaToLinalgNamed, TosaToTensor};
 use mlirformat::Error;
 use crate::pass;
 use crate::{Action, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, Run};
 
-/// `tosa-to-linalg-named`.
 #[pass("tosa-to-linalg-named", on = "func.func")]
 pub struct TosaToLinalgNamedPass {
     #[opt("prefer-conv2d-kernel-layout-hwcf")]

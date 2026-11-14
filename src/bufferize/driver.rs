@@ -1,8 +1,3 @@
-//! Bufferizing, as `Bufferize.cpp` and `TensorCopyInsertion.cpp`: the conflicts the analysis
-//! found resolved by copies, then every op with tensor semantics rewritten on buffers (its
-//! tensors' buffers through `bufferization.to_buffer`, its results handed back through
-//! `bufferization.to_tensor`), and the `to_buffer` / `to_tensor` pairs folded.
-
 use alloc::format;
 use alloc::vec::Vec;
 
@@ -11,8 +6,6 @@ use mlirformat::{Error, Type};
 use super::{is_tensor, AnalysisState, BufferizationOptions};
 use crate::{BlockId, Body, Def, Listener, OpData, OpId, Rewriter, ValueId};
 
-/// `getBufferType(value, options, state, invocationStack)`: through the owner's interface,
-/// else the tensor type's default buffer.
 pub(crate) fn buffer_type_in<'a>(o: &BufferizationOptions, b: &Body<'a>, v: ValueId, stack: &mut Vec<ValueId>) -> Result<Type<'a>, Error> {
     stack.push(v);
     let owner = b.owner_of(v);
@@ -31,13 +24,10 @@ pub(crate) fn buffer_type_in<'a>(o: &BufferizationOptions, b: &Body<'a>, v: Valu
     r
 }
 
-/// `getBufferType(value, options, state)`.
 pub fn buffer_type<'a>(o: &BufferizationOptions, b: &Body<'a>, v: ValueId) -> Result<Type<'a>, Error> {
     buffer_type_in(o, b, v, &mut Vec::new())
 }
 
-/// `getBuffer`: the buffer of tensor `v`, a `to_tensor`'s operand or a new `to_buffer` right
-/// after `v`'s definition.
 pub fn buffer_of(rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, v: ValueId) -> Result<ValueId, Error> {
     if let Def::Result(d, _) = rw.body[v].def
         && rw.body[d].name == "bufferization.to_tensor"
@@ -55,8 +45,6 @@ pub fn buffer_of(rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, v: ValueId
     Ok(rw.body[t].results[0])
 }
 
-/// `replaceOpWithBufferizedValues`: `op`'s results replaced by `values`, a tensor one through a
-/// `to_tensor` of its buffer.
 pub fn replace_with_buffers(rw: &mut Rewriter<'_, '_>, op: OpId, values: &[ValueId]) {
     let saved = rw.ip;
     let results = rw.body[op].results.to_vec();
@@ -75,8 +63,6 @@ pub fn replace_with_buffers(rw: &mut Rewriter<'_, '_>, op: OpId, values: &[Value
     rw.ip = saved;
 }
 
-/// `bufferizeBlockSignature`: `block`'s tensor arguments become buffers (their uses through a
-/// `to_tensor`), and the branches to it pass buffers.
 pub fn bufferize_block_signature(rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, block: BlockId) -> Result<(), Error> {
     let saved = rw.ip;
     let args = rw.body[block].args.to_vec();
@@ -125,8 +111,6 @@ pub fn bufferize_block_signature(rw: &mut Rewriter<'_, '_>, o: &BufferizationOpt
     Ok(())
 }
 
-/// `castOrReallocMemRefValue`: `value` as `dest`: a `memref.cast` when that always succeeds,
-/// else a new buffer it is copied into.
 pub fn cast_or_realloc<'a>(rw: &mut Rewriter<'_, 'a>, o: &BufferizationOptions, value: ValueId, dest: &Type<'a>) -> Option<ValueId> {
     let (Type::Shaped(s), Type::Shaped(d)) = (&rw.body[value].ty, dest) else { return None };
     if s.elem != d.elem || s.shape.as_ref().map(Vec::len) != d.shape.as_ref().map(Vec::len) {
@@ -162,7 +146,6 @@ pub fn cast_or_realloc<'a>(rw: &mut Rewriter<'_, 'a>, o: &BufferizationOptions, 
 }
 
 impl BufferizationOptions {
-    /// `createAlloc`: a `memref.alloc` of `ty`, aligned to `buffer_alignment` unless 0.
     pub fn create_alloc<'a>(&self, rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, dynamic: &[ValueId]) -> ValueId {
         let mut data = OpData::build("memref.alloc").operands(dynamic).segments(&[dynamic.len(), 0]);
         if self.buffer_alignment != 0 {
@@ -173,8 +156,6 @@ impl BufferizationOptions {
     }
 }
 
-/// `foldToBufferToTensorPair`: a `to_buffer` of a `to_tensor` is the latter's buffer (cast or
-/// copied to the type asked).
 pub(crate) fn fold_to_buffer_to_tensor(rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> bool {
     let Some(tt) = rw.body.def_named(rw.body[op].operands[0], "bufferization.to_tensor") else { return false };
     let src = rw.body[tt].operands[0];
@@ -200,8 +181,6 @@ pub(crate) fn fold_to_buffer_to_tensor(rw: &mut Rewriter<'_, '_>, o: &Bufferizat
     true
 }
 
-/// What `bufferizeOp`'s rewriter hears (`BufferizationRewriter`): erased ops, new `to_buffer`s,
-/// and new ops with tensor semantics to bufferize.
 struct Tracker<'o> {
     options: &'o BufferizationOptions,
     erased: Vec<OpId>,
@@ -231,9 +210,7 @@ impl<'a> Listener<'a> for Tracker<'_> {
     fn moved(&mut self, _: &Body<'a>, _: OpId) {}
 }
 
-/// ⭐ `insertTensorCopies`: every allowed op resolves its conflicts (`resolveConflicts`).
 pub(crate) fn insert_copies(body: &mut Body<'_>, s: &AnalysisState<'_>, root: OpId) -> Result<(), Error> {
-    // `Operation::walk`: post order, as upstream.
     let mut ops = Vec::new();
     body.walk_post(root, &mut |op| ops.push(op));
     let symbol_table = body.is_symbol_table(root);
@@ -251,9 +228,6 @@ pub(crate) fn insert_copies(body: &mut Body<'_>, s: &AnalysisState<'_>, root: Op
     Ok(())
 }
 
-/// ⭐ `bufferizeOp`: every allowed op with tensor semantics, in post order (and those created
-/// meanwhile), bufferized; then the `to_buffer` / `to_tensor` pairs folded, unused `to_tensor`s
-/// erased, and what did not bufferize reported.
 pub(crate) fn bufferize_op(body: &mut Body<'_>, o: &BufferizationOptions, root: OpId) -> Result<(), Error> {
     if o.copy_before_write {
         let s = AnalysisState::new(o);
@@ -331,7 +305,6 @@ pub(crate) fn bufferize_op(body: &mut Body<'_>, o: &BufferizationOptions, root: 
 }
 
 impl AnalysisState<'_> {
-    /// `hasTensorSemantics` of `op` (its interface's, whatever the options allow).
     pub(crate) fn tensor_semantics_of(_: &BufferizationOptions, b: &Body<'_>, op: OpId) -> bool {
         match b.ctx.interfaces.of(&b[op].name).and_then(|i| i.bufferizable(&b[op].name)) {
             Some(i) => i.tensor_semantics(b, op),
@@ -340,8 +313,6 @@ impl AnalysisState<'_> {
     }
 }
 
-/// ⭐ `runOneShotBufferize`: analyze, resolve the conflicts with copies, bufferize; with
-/// `test-analysis-only`, annotate the analysis instead.
 pub fn one_shot_bufferize(body: &mut Body<'_>, o: &BufferizationOptions, root: OpId) -> Result<(), Error> {
     if !o.copy_before_write {
         let s = AnalysisState::analyze(o, body, root)?;
@@ -358,7 +329,6 @@ pub fn one_shot_bufferize(body: &mut Body<'_>, o: &BufferizationOptions, root: O
 }
 
 impl Body<'_> {
-    /// `getParentWithTrait<SymbolTable>`: the nearest op around `op` that is a symbol table.
     fn nearest_symbol_table(&self, op: OpId) -> Option<OpId> {
         let mut at = self.parent_op(op);
         while let Some(p) = at {
@@ -371,15 +341,12 @@ impl Body<'_> {
     }
 }
 
-/// `foldMemRefCasts`: a result every return yields through a `memref.cast` of one same type
-/// gets that type, the casts dropped.
 fn fold_memref_casts(body: &mut Body<'_>, f: OpId) {
     if body[f].regions.first().is_none_or(|r| body[*r].blocks.is_empty()) {
         return;
     }
     let returns = super::return_ops(body, f);
     let Some(&first) = returns.first() else { return };
-    // `unpackCast`: not from an unranked memref to a ranked one (the result would lose its rank).
     let unranked = |t: &Type<'_>| matches!(t, Type::Shaped(s) if s.kind == mlirformat::ShapedKind::MemRef && s.shape.is_none());
     let unpack = |b: &Body<'_>, v: ValueId| match b[v].def {
         Def::Result(c, _) if b[c].name == "memref.cast" && !(unranked(&b[b[c].operands[0]].ty) && !unranked(&b[v].ty)) => b[c].operands[0],
@@ -405,8 +372,6 @@ fn fold_memref_casts(body: &mut Body<'_>, f: OpId) {
     body[f].set("function_type", mlirformat::Attribute::Type(Type::Function(alloc::boxed::Box::new(mlirformat::FunctionType { inputs, results }))));
 }
 
-/// ⭐ `runOneShotModuleBufferize`: the module analysis, the copies, then each function callees
-/// first (and the module's other ops) bufferized, the bufferization argument attributes dropped.
 pub fn one_shot_module_bufferize(body: &mut Body<'_>, o: &BufferizationOptions, module: OpId) -> Result<(), Error> {
     if !o.copy_before_write {
         let mut ao = o.clone();

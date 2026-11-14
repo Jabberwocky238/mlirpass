@@ -1,5 +1,3 @@
-//! `strip-debuginfo`: every location becomes `unknown`.
-
 use crate::pass;
 use mlirformat::{Error, Str};
 
@@ -12,7 +10,6 @@ pub fn strip_debuginfo<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
 }
 
 impl<'a> Body<'a> {
-    /// Sets the location of `op`, every op in it, and their block arguments.
     pub fn set_locs(&mut self, op: OpId, loc: Option<Str<'a>>) {
         for o in self.ops_in(op) {
             self[o].loc = loc.clone();

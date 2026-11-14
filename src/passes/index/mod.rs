@@ -1,5 +1,3 @@
-//! `index` passes.
-
 #[cfg(feature = "target.llvm")]
 mod convert_index_to_llvm;
 #[cfg(feature = "target.llvm")]

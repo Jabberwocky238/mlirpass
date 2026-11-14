@@ -1,10 +1,3 @@
-//! `spirv.module` ⇒ GLSL 4.50 (Vulkan): the shader a `Shader`-capability module is, written
-//! back as source. Structured control flow (`spirv.mlir.selection` / `spirv.mlir.loop`)
-//! becomes `if` / `switch` / `while`, pointers become the lvalues they point at, interface
-//! blocks keep their offsets and strides (checked against std430 / std140). What GLSL cannot
-//! say (`Kernel` modules, physical pointers, images, unstructured branches) is an error, never
-//! approximated.
-
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::string::String;
@@ -17,7 +10,6 @@ use mlirformat::{ApFloat, Attribute, Const, Error, FloatKind, Scalar, ShapedKind
 use super::EnumSpec;
 use crate::{Body, BlockId, Emit, OpId, ValueId};
 
-/// GLSL out of a `spirv.module`.
 #[derive(Debug, Clone, Copy)]
 pub struct SpirvGlsl;
 
@@ -33,24 +25,18 @@ fn unsupported<T>(what: impl core::fmt::Display) -> Result<T, Error> {
     Err(Error(format!("GLSL cannot express {what}")))
 }
 
-/// What a value is in GLSL.
 #[derive(Clone)]
 enum Val {
-    /// An expression (a variable, a literal).
     Expr(String),
-    /// A pointer: the lvalue it points at; `cast`: a builtin read through a cast to the SPIR-V
-    /// type (`gl_GlobalInvocationID` is `uvec3`, its SPIR-V variable `vector<3xi32>`).
     Place { lvalue: String, pointee: Type<'static>, cast: bool },
 }
 
-/// The structured construct a branch is in.
 enum Frame {
     Selection { merge: BlockId },
     Loop { header: BlockId, cont: BlockId, merge: BlockId },
     Switch { merge: BlockId },
 }
 
-/// std430 / std140 size and alignment.
 #[derive(Clone, Copy)]
 struct Layout {
     size: u32,
@@ -61,14 +47,12 @@ struct Glsl<'b, 'a> {
     body: &'b Body<'a>,
     module: OpId,
     exts: BTreeSet<&'static str>,
-    /// Struct declarations, in order of first use, by type key.
     structs: Vec<(String, String, String)>,
     globals: String,
     funcs: String,
     vals: BTreeMap<ValueId, Val>,
     next: u32,
     frames: Vec<Frame>,
-    /// Blocks on the current branch path (an unstructured cycle is an error).
     path: Vec<BlockId>,
 }
 
@@ -94,8 +78,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         }
     }
 
-    /// A symbol as a GLSL identifier: `kind` keeps functions and globals apart and off the
-    /// reserved names (`main`, `gl_*`, keywords).
     fn ident(kind: &str, s: &str) -> String {
         let mut out = String::from(kind);
         for c in s.chars() {
@@ -115,8 +97,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
     fn int_attr(a: Option<&Attribute<'_>>) -> Option<i64> {
         Const::try_from(a?).ok()?.as_int().map(|i| i.signed() as i64)
     }
-
-    // ---- types -------------------------------------------------------------------------
 
     fn scalar(&mut self, t: &Type<'_>) -> Result<&'static str, Error> {
         Ok(match t {
@@ -156,7 +136,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         })
     }
 
-    /// The vector type of `n` elements of scalar `s`.
     fn vector(s: &str, n: usize) -> String {
         let prefix = match s {
             "bool" => "bvec",
@@ -175,7 +154,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         format!("{prefix}{n}")
     }
 
-    /// The unsigned type of the same shape (`ivec3` ⇒ `uvec3`).
     fn unsigned(t: &str) -> String {
         for (s, u) in [("int64_t", "uint64_t"), ("int16_t", "uint16_t"), ("int8_t", "uint8_t"), ("int", "uint"), ("ivec", "uvec"), ("i64vec", "u64vec"), ("i16vec", "u16vec"), ("i8vec", "u8vec")] {
             if let Some(rest) = t.strip_prefix(s) {
@@ -211,7 +189,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         })
     }
 
-    /// The name of a struct type, declared on first use.
     fn struct_name(&mut self, t: &Type<'_>, members: &[SpirvMember<'_>]) -> Result<String, Error> {
         let key = format!("{t}");
         if let Some((_, n, _)) = self.structs.iter().find(|s| s.0 == key) {
@@ -227,8 +204,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         Ok(name)
     }
 
-    /// `layout` std430 (`std140`: arrays and structs round up to 16) of `t`, checking every
-    /// explicit offset and stride inside against it.
     fn layout(&self, t: &Type<'_>, std140: bool) -> Result<Layout, Error> {
         let round = |x: u32, a: u32| x.div_ceil(a) * a;
         if let Type::Shaped(s) = t
@@ -282,8 +257,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         }
     }
 
-    // ---- literals ----------------------------------------------------------------------
-
     fn float_lit(&mut self, kind: FloatKind, bits: u64) -> Result<String, Error> {
         let f = ApFloat::from_bits(kind, bits).ok_or_else(|| Error(String::from("bad float")))?;
         let x = f.to_f64();
@@ -323,7 +296,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         })
     }
 
-    /// A constant of type `t` (scalar, vector, array, matrix) as an expression.
     fn constant(&mut self, t: &Type<'_>, a: &Attribute<'_>) -> Result<String, Error> {
         if let Attribute::Bool(b) = a {
             return Ok(String::from(if *b { "true" } else { "false" }));
@@ -354,8 +326,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         let parts = (0..shape[dim]).map(|i| self.dense(&inner_t, c, elem, shape, dim + 1, base + i * stride)).collect::<Result<Vec<_>, _>>()?;
         Ok(format!("{}({})", self.ty(t)?, parts.join(", ")))
     }
-
-    // ---- module ------------------------------------------------------------------------
 
     fn module(mut self) -> Result<String, Error> {
         let vce = format!("{}", self.attr(self.module, "vce_triple").ok_or_else(|| Error(String::from("no vce_triple")))?);
@@ -438,7 +408,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         Ok(out)
     }
 
-    /// `gl_*` for a `built_in` decoration: the GLSL variable and its type.
     fn builtin(name: &str) -> Result<(&'static str, &'static str), Error> {
         Ok(match name {
             "GlobalInvocationId" => ("gl_GlobalInvocationID", "uvec3"),
@@ -523,14 +492,11 @@ impl<'b, 'a> Glsl<'b, 'a> {
         Ok(())
     }
 
-    /// Globals live in `vals` under a key no SSA value has: past the end, by symbol order.
     fn global_key(&self, name: &str) -> ValueId {
         let globals: Vec<String> = self.body.block_ops(self.body.top_block(self.module)).iter().filter(|o| self.body[**o].name == "spirv.GlobalVariable").filter_map(|o| self.symbol(*o, "sym_name").ok()).collect();
         let i = globals.iter().position(|g| g == name).unwrap_or(0);
         ValueId::from_raw(u64::MAX - i as u64)
     }
-
-    // ---- functions ---------------------------------------------------------------------
 
     fn signature(&mut self, f: OpId) -> Result<String, Error> {
         let Some(Attribute::Type(Type::Function(ft))) = self.attr(f, "function_type") else { return unsupported("a function without a type") };
@@ -564,7 +530,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
             };
             self.vals.insert(a, v);
         }
-        // Block arguments (phis) of every block below the entry: variables of the function.
         let mut decls = String::new();
         for op in self.body.ops_in(f) {
             for r in self.body[op].regions.clone() {
@@ -607,7 +572,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         }
     }
 
-    /// Block `b` and the blocks it branches on to, until the construct around it ends.
     fn chain(&mut self, b: BlockId, out: &mut String, depth: usize) -> Result<(), Error> {
         if self.path.contains(&b) {
             return unsupported("an unstructured cycle");
@@ -623,10 +587,8 @@ impl<'b, 'a> Glsl<'b, 'a> {
         Ok(())
     }
 
-    /// Passes `values` to `target`'s arguments.
     fn assign_args(&mut self, target: BlockId, values: &[ValueId], out: &mut String, depth: usize) -> Result<(), Error> {
         let args = self.body[target].args.clone();
-        // All reads before any write: arguments may swap.
         let reads: Vec<String> = values.iter().map(|v| self.expr(*v)).collect::<Result<_, _>>()?;
         if args.len() > 1 {
             let mut tmps = Vec::new();
@@ -647,7 +609,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         Ok(())
     }
 
-    /// A branch to `target` with `values`, inside the current constructs.
     fn branch(&mut self, target: BlockId, values: &[ValueId], out: &mut String, depth: usize) -> Result<(), Error> {
         self.assign_args(target, values, out, depth)?;
         let p = Self::pad(depth);
@@ -668,7 +629,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
                         return Ok(());
                     }
                     if target == cont {
-                        // The continue block inline, then its back edge.
                         let saved = core::mem::take(&mut self.path);
                         let r = self.chain(cont, out, depth);
                         self.path = saved;
@@ -713,7 +673,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         Ok(())
     }
 
-    /// The results of a construct: the merge block's merge operands.
     fn construct_results(&mut self, op: OpId, merge: BlockId, out: &mut String, depth: usize) -> Result<(), Error> {
         let ops = self.body.block_ops(merge);
         let Some((last, rest)) = ops.split_last() else { return Ok(()) };
@@ -780,7 +739,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         self.construct_results(op, merge, out, depth)
     }
 
-    /// `T vN = e;` for result `r`.
     fn define(&mut self, r: ValueId, e: String, out: &mut String, depth: usize) -> Result<(), Error> {
         let t = self.ty(&self.body[r].ty.clone())?;
         let n = self.fresh("v");
@@ -789,7 +747,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         Ok(())
     }
 
-    /// The lvalue `ptr` points at, its pointee, and whether reading it casts.
     fn place(&self, ptr: ValueId) -> Result<(String, Type<'static>, bool), Error> {
         match self.vals.get(&ptr) {
             Some(Val::Place { lvalue, pointee, cast }) => Ok((lvalue.clone(), pointee.clone(), *cast)),
@@ -917,7 +874,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
                 let _ = writeln!(out, "{p}memoryBarrier();");
             }
             "spirv.IAddCarry" | "spirv.ISubBorrow" | "spirv.UMulExtended" | "spirv.SMulExtended" => {
-                // A `(low, high)` struct from GLSL's out-parameter builtins.
                 let r = res.expect("result");
                 let st = self.ty(&self.body[r].ty.clone())?;
                 let et = self.ty(&self.body[operands[0]].ty.clone())?;
@@ -1000,7 +956,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         Ok(())
     }
 
-    /// `[i][j]` / `.mK` for the `indices` of a composite of type `t`.
     fn indices(&mut self, op: OpId, t: &Type<'_>) -> Result<String, Error> {
         let Some(Attribute::Array(is)) = self.attr(op, "indices") else { return unsupported("no indices") };
         let mut t = t.owned();
@@ -1025,7 +980,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
         Ok(out)
     }
 
-    /// The expression an op with a result computes.
     fn value_expr(&mut self, op: OpId, r: ValueId) -> Result<String, Error> {
         let d = &self.body[op];
         let name = String::from(&*d.name);
@@ -1110,7 +1064,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
                 let Some(Attribute::Array(cs)) = self.attr(op, "components") else { return unsupported("VectorShuffle without components") };
                 let n1 = self.body[d.operands[0]].ty.element_count().unwrap_or(0) as i64;
                 let parts: Vec<String> = cs.iter().map(|c| Self::int_attr(Some(c)).unwrap_or(0)).map(|k| match k {
-                        // -1: an undefined component; any value will do.
                         k if k < 0 => format!("{}[0]", a[0]),
                         k if k < n1 => format!("{}[{k}]", a[0]),
                         k => format!("{}[{}]", a[1], k - n1),
@@ -1187,7 +1140,6 @@ impl<'b, 'a> Glsl<'b, 'a> {
 }
 
 impl SpirvGlsl {
-    /// The glslang stage of `module`'s entry point (`comp`, `vert`, `frag`), if it has one.
     pub fn stage(body: &Body<'_>, module: OpId) -> Option<&'static str> {
         let ep = body.ops(body.top_block(module)).find(|o| body[*o].name == "spirv.EntryPoint")?;
         let model = EnumSpec::attr_value(body[ep].get("execution_model")?)?;

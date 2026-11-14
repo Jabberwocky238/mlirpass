@@ -1,5 +1,3 @@
-//! `vector` ⇒ `llvm`, the conversion patterns of `ConvertVectorToLLVM.cpp`.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -14,19 +12,15 @@ type Cr<'r, 'a, 'p> = crate::ConversionRewriter<'r, 'a, 'p>;
 use crate::{LlvmOptions, MemrefLayout, OpData, OpId, ValueId};
 use mlirformat::llvm_types::LlvmType;
 
-/// The vector ⇒ llvm patterns.
 pub struct VectorToLlvm;
 
-/// `populateVectorToLLVMConversionPatterns`'s knobs.
 #[derive(Clone, Copy)]
 pub struct VectorOptions<'c> {
     pub llvm: LlvmOptions,
     pub reassociate_fp_reductions: bool,
     pub force_32bit_indices: bool,
     pub use_vector_alignment: bool,
-    /// `enable-gep-inbounds-nuw`: `vector.load` / `vector.store` address with `inbounds | nuw`.
     pub gep_inbounds_nuw: bool,
-    /// `ensureSymbolNameIsUnique`'s counter, for `vector.print` strings.
     pub counter: &'c AtomicU32,
 }
 
@@ -70,7 +64,6 @@ impl VectorToLlvm {
         cr.llvm_constant(Attribute::Int { lit: format!("{v}").into(), ty: Some(attr_ty) }, ty)
     }
 
-    /// An i64-typed `llvm.mlir.constant` of index value `v` (`insertOne` / `extractOne`).
     fn idx_const<'a>(cr: &mut Cr<'_, 'a, '_>, opts: LlvmOptions, v: i64) -> ValueId {
         Self::i_const(cr, v, Type::Index, opts.index())
     }
@@ -91,7 +84,6 @@ impl VectorToLlvm {
         cr.extract(v, &[pos])
     }
 
-    /// `getPreferredAlignment` under LLVM's default data layout.
     fn preferred_alignment(opts: LlvmOptions, t: &Type<'_>) -> Option<i64> {
         if let Ok(LlvmType::Ptr(_)) = LlvmType::try_from(t) {
             return Some(8);
@@ -120,7 +112,6 @@ impl VectorToLlvm {
         })
     }
 
-    /// `getVectorToLLVMAlignment`.
     fn alignment<'a>(cr: &Cr<'_, 'a, '_>, o: VectorOptions<'_>, op: OpId, vector: &Type<'a>, memref: &Shaped<'a>) -> Option<i64> {
         if let Some(a) = cr.rw.body[op].get("alignment").and_then(M::int).filter(|a| *a != 0) {
             return Some(a);
@@ -134,7 +125,6 @@ impl VectorToLlvm {
         }
     }
 
-    /// `isMemRefTypeSupported`: unit innermost stride and an integer address space.
     fn memref_supported(opts: LlvmOptions, s: &Shaped<'_>) -> bool {
         opts.address_space(s).is_some() && s.strides_and_offset().is_some_and(|(st, _)| st.last().is_none_or(|l| *l == 1))
     }
@@ -150,12 +140,9 @@ impl VectorToLlvm {
         true
     }
 
-    /// `vector.load` / `maskedload` / `store` / `maskedstore`.
     #[convert("vector.load", "vector.maskedload", "vector.store", "vector.maskedstore")]
     fn load_store<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let name = String::from(&*cr.rw.body[op].name);
-        // Operands: `store` (value, base, indices...); the others (base, indices..., [mask,
-        // pass_thru | value]).
         let base_at = usize::from(name == "vector.store");
         let Some(m) = M::operand_memref(cr, op, base_at) else { return false };
         let vt = match &*name {
@@ -204,7 +191,6 @@ impl VectorToLlvm {
         true
     }
 
-    /// `getIndexedPtrs`: a vector of element pointers.
     fn indexed_ptrs<'a>(cr: &mut Cr<'_, 'a, '_>, o: VectorOptions<'_>, m: &Shaped<'a>, vs: &Shaped<'a>, base: ValueId, index: ValueId) -> Option<ValueId> {
         let d = vs.shape.as_ref()?.first()?.clone();
         let ptrs = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Vector, shape: Some(vec![d]), elem: Type::from(LlvmType::Ptr(o.llvm.address_space(m)?)).into(), extras: Vec::new() }));
@@ -212,7 +198,6 @@ impl VectorToLlvm {
         Some(M::gep(cr, ptrs, elem, base, &[Gep::V(index)], 0))
     }
 
-    /// `vector.gather` / `vector.scatter`.
     #[convert("vector.gather", "vector.scatter")]
     fn gather_scatter<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let scatter = cr.rw.body[op].name == "vector.scatter";
@@ -242,8 +227,6 @@ impl VectorToLlvm {
         true
     }
 
-    /// `vector.expandload` / `vector.compressstore`: (base, indices..., mask, pass_thru |
-    /// value); an alignment other than 1 goes on the pointer's argument attributes.
     #[convert("vector.expandload", "vector.compressstore")]
     fn expand_compress<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let compress = cr.rw.body[op].name == "vector.compressstore";
@@ -271,7 +254,6 @@ impl VectorToLlvm {
         true
     }
 
-    /// The combining kind of a `#vector.kind<...>` attribute.
     fn kind<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Option<String> {
         match cr.rw.body[op].get("kind")? {
             Attribute::Extended { ext, .. } => Some(String::from(ext.body.as_deref()?.trim_matches(|c| c == '<' || c == '>'))),
@@ -298,7 +280,6 @@ impl VectorToLlvm {
         Attribute::dialect("llvm.fastmath", &format!("<{text}>"))
     }
 
-    /// The neutral element of a reduction `what` on `ty` (`createReductionNeutralValue`).
     fn neutral<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>, what: &str) -> ValueId {
         let w = ty.bit_width().unwrap_or(64);
         let value = match what {
@@ -310,7 +291,6 @@ impl VectorToLlvm {
             "sintmin" => Attribute::Int { lit: format!("{}", -(1i128 << (w - 1))).into(), ty: Some(ty.clone()) },
             "sintmax" => Attribute::Int { lit: format!("{}", (1i128 << (w - 1)) - 1).into(), ty: Some(ty.clone()) },
             "uintmin" => Attribute::Int { lit: "0".into(), ty: Some(ty.clone()) },
-            // fpmin / fpmax: a quiet NaN, positive or negative.
             n => {
                 let neg = n == "fpmax";
                 let hex = match w {
@@ -396,7 +376,6 @@ impl VectorToLlvm {
         true
     }
 
-    /// `MaskedReductionOpConversion`: a `vector.mask` around a `vector.reduction`.
     #[convert("vector.mask")]
     fn masked_reduction<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let region = cr.rw.body[op].regions[0];
@@ -408,7 +387,6 @@ impl VectorToLlvm {
         let Some(kind) = Self::kind(cr, red) else { return false };
         let elt = Self::result_type(cr, red);
         let Some(lt) = Self::convert(cr, &elt) else { return false };
-        // The reduction's own (unconverted) operands, as the C++ pattern uses them.
         let v = cr.rw.body[red].operands[0];
         let acc = cr.rw.body[red].operands.get(1).copied();
         let mask = operands[0][0];
@@ -446,7 +424,6 @@ impl VectorToLlvm {
             ("minnumf", _) => vp(cr, "fmin", "fpmax"),
             ("maxnumf", _) => vp(cr, "fmax", "fpmin"),
             (k @ ("maximumf" | "minimumf"), _) => {
-                // `lowerMaskedReductionWithRegular`: masked-off lanes get a neutral value.
                 let vt = cr.rw.body[v].ty.clone();
                 let (bits, lit) = match (k, lt.bit_width()) {
                     ("maximumf", Some(16)) => (16, "-5.960460e-08"),
@@ -514,13 +491,11 @@ impl VectorToLlvm {
         true
     }
 
-    /// The `static_position` of an extract / insert, with dynamic entries from `dynamic`.
     fn positions<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, dynamic: &[ValueId]) -> Vec<Result<i64, ValueId>> {
         let mut d = dynamic.iter();
         Self::mask_list(cr, op, "static_position").into_iter().map(|p| if p == Dim::DYNAMIC { Err(*d.next().expect("dynamic position")) } else { Ok(p) }).collect()
     }
 
-    /// `getAsLLVMValue`: a constant position becomes an `i64` constant.
     fn position_value<'a>(cr: &mut Cr<'_, 'a, '_>, p: Result<i64, ValueId>) -> ValueId {
         match p {
             Ok(c) => Self::i_const(cr, c, Type::int(64), Type::int(64)),
@@ -625,7 +600,6 @@ impl VectorToLlvm {
         true
     }
 
-    /// `computeContiguousStrides`.
     fn contiguous_strides(s: &Shaped<'_>) -> Option<Vec<i64>> {
         let (strides, _) = s.strides_and_offset()?;
         if strides.last().is_some_and(|l| *l != 1) {
@@ -691,7 +665,6 @@ impl VectorToLlvm {
         let vt = Type::Shaped(alloc::boxed::Box::new(Shaped { kind: ShapedKind::Vector, shape: Some(vec![d]), elem: it.clone().into(), extras: Vec::new() }));
         let indices = cr.build(OpData::build("llvm.intr.stepvector"), vt.clone());
         let bound = operands[0][0];
-        // (capped at INT32_MAX before the cast to 32 bits)
         let bound = if o.force_32bit_indices {
             let max = cr.build(OpData::build("arith.constant").with("value", Attribute::integer(i128::from(i32::MAX), Type::Index)), Type::Index);
             let bt = cr.rw.body[bound].ty.clone();
@@ -757,7 +730,6 @@ impl VectorToLlvm {
         true
     }
 
-    /// `emitScalarPrint`.
     fn print_scalar<'a>(cr: &mut Cr<'_, 'a, '_>, module: OpId, pt: &Type<'_>, value: ValueId) -> Option<()> {
         Self::convert(cr, &Type::owned(pt))?;
         let i64t = Type::int(64);
@@ -796,7 +768,6 @@ impl VectorToLlvm {
         Some(())
     }
 
-    /// `VectorBroadcastScalarToLowRankLowering` and `...ToNdLowering`.
     #[convert("vector.broadcast")]
     fn broadcast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: VectorOptions<'_>) -> bool {
         let st = Self::operand_type(cr, op, 0);
@@ -818,7 +789,6 @@ impl VectorToLlvm {
                 return true;
             }
             let width = Self::dim(&shape[0]);
-            // `createOrFold`: a one-lane shuffle of lane 0 is its first operand.
             let r = if width == 1 { v } else { cr.build(OpData::build("llvm.shufflevector").operands(&[v, poison]).with("mask", Self::i32_array(&vec![0; width as usize])), lt.clone()) };
             cr.replace(op, vec![vec![r]]);
             return true;
@@ -946,5 +916,4 @@ impl VectorToLlvm {
         cr.replace_new(op, OpData::build("llvm.intr.vscale"), &[o.llvm.index()]);
         true
     }
-
 }

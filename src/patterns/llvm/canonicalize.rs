@@ -1,5 +1,3 @@
-//! `llvm`: folds, as `LLVMDialect.cpp`.
-
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Type};
@@ -15,7 +13,6 @@ fn set_positions(b: &mut Body<'_>, op: OpId, p: &[i64]) {
     b[op].set("position", Attribute::dense_i64(&p));
 }
 
-/// `ExtractValueOp::fold`.
 fn extract_value<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let container = b[op].operands[0];
     if let Some(prev) = b.def_named(container, "llvm.extractvalue") {
@@ -26,7 +23,6 @@ fn extract_value<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         b.set_operand(op, 0, c);
         return Fold::InPlace;
     }
-    // A constant container: the element at each position.
     if let Some(mut attr) = b.constant_of(container) {
         for p in positions(b, op) {
             match element_at(attr, p) {
@@ -43,19 +39,16 @@ fn extract_value<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
         if extract == ip {
             return Folded::Value(b[ins].operands[1]).into();
         }
-        // The insert position a prefix: into the inserted value.
         if extract.len() > ip.len() && extract[..ip.len()] == ip[..] {
             cur = b[ins].operands[1];
             extract.drain(..ip.len());
             continue;
         }
-        // The extract position a prefix: the insert overlaps it.
         if ip.len() > extract.len() && ip[..extract.len()] == extract[..] {
             break;
         }
         cur = b[ins].operands[0];
     }
-    // Read from where the traversal stopped.
     if cur == container {
         return Fold::Failed;
     }
@@ -64,8 +57,6 @@ fn extract_value<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     Fold::InPlace
 }
 
-/// `extractElementAt`: element `i` of a rank-1 elements attribute or an array; a zero, undef
-/// or poison is its own element.
 fn element_at(attr: Attribute<'_>, i: i64) -> Option<Attribute<'_>> {
     let i = usize::try_from(i).ok()?;
     match attr {
@@ -82,7 +73,6 @@ fn element_at(attr: Attribute<'_>, i: i64) -> Option<Attribute<'_>> {
     }
 }
 
-/// `ICmpOp::fold`.
 fn icmp<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let pred = b[op].get("predicate").and_then(|a| if let Attribute::Int { lit, .. } = a { lit.parse::<i64>().ok() } else { None });
     let Some(pred @ (0 | 1)) = pred else { return Fold::Failed };
@@ -106,7 +96,6 @@ fn icmp<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     Fold::Failed
 }
 
-/// `foldChainableCast`.
 fn chainable_cast<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     let arg = b[op].operands[0];
     let rt = b[b[op].results[0]].ty.clone();
@@ -125,7 +114,6 @@ fn chainable_cast<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     Fold::Failed
 }
 
-/// `GEPOp::fold`: a lone zero index is the base; constant dynamic indices become static.
 fn gep<'a>(b: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold<'a> {
     const DYN: i64 = i32::MIN as i64;
     let raw: Vec<i64> = match b[op].get("rawConstantIndices") {
@@ -173,14 +161,11 @@ fn gep<'a>(b: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold
     Fold::InPlace
 }
 
-/// `llvm` canonicalization: folds and constant materialization.
 pub struct LlvmCanon;
 
-/// The metadata attributes `llvm.mlir.metadata_as_value` materializes.
 const METADATA_ATTRS: [&str; 4] = ["llvm.md_string", "llvm.md_constant", "llvm.md_func", "llvm.md_node"];
 
 impl LlvmCanon {
-    /// `LLVMDialect::materializeConstant`.
     pub fn materialize<'a>(value: &Attribute<'a>, ty: &Type<'a>) -> Option<OpData<'a>> {
         match value {
             Attribute::SymbolRef(_) if matches!(LlvmType::try_from(ty), Ok(LlvmType::Ptr(_))) => Some(OpData::build("llvm.mlir.addressof").with("global_name", value.clone())),
@@ -190,13 +175,11 @@ impl LlvmCanon {
             Attribute::Extended { ext, .. } if METADATA_ATTRS.contains(&&*ext.name) && matches!(LlvmType::try_from(ty), Ok(LlvmType::Metadata)) => {
                 Some(OpData::build("llvm.mlir.metadata_as_value").with("metadata", value.clone()))
             }
-            // `LLVM::ConstantOp::materialize`: integers, floats and elements of the type.
             Attribute::Int { .. } | Attribute::Float { .. } | Attribute::Bool(_) | Attribute::Builtin { .. } => Some(OpData::build("llvm.mlir.constant").with("value", value.clone())),
             _ => None,
         }
     }
 
-    /// The fold of an `llvm` op.
     pub fn fold<'a>(b: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold<'a> {
         let name = b[op].name.clone();
         match &*name {
@@ -248,7 +231,6 @@ impl LlvmCanon {
                 Folded::Attr(Const::int(v, ty).into()).into()
             }
             "llvm.getelementptr" => gep(b, op, consts),
-            // A one-element vector shuffled by `[0]` is itself.
             "llvm.shufflevector" => {
                 let v1 = b[op].operands[0];
                 let single = matches!(&b[v1].ty, Type::Shaped(s) if s.shape.as_deref() == Some(&[mlirformat::Dim::Static(1)][..]));

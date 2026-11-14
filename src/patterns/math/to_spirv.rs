@@ -1,6 +1,3 @@
-//! `math` ⇒ `spirv`, as `MathToSPIRV.cpp`: the core ops, then the GLSL and the OpenCL
-//! extended instructions (the target's capabilities decide which are legal).
-
 use alloc::vec::Vec;
 
 use mlirformat::{ApFloat, ApInt, Dim, Scalar, ShapedKind, Type};
@@ -11,18 +8,14 @@ use crate::{ArithSpirvOptions, ArithToSpirv, ConversionRewriter, OpData, OpId, V
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The math ⇒ spirv patterns (`populateMathToSPIRVPatterns`).
 pub struct MathToSpirv;
 
-/// What the patterns need of the target: whether it has the `Shader` capability (GL's
-/// `FindUMsb` count-leading-zeros fallback).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MathSpirvOptions {
     pub shader: bool,
 }
 
 impl MathToSpirv {
-    /// `isSupportedSourceType`: an int, index or float, or a 1-D fixed vector of them.
     fn supported(t: &Type<'_>) -> bool {
         let scalar = |t: &Type<'_>| matches!(t, Type::Integer { .. } | Type::Index | Type::Float(_));
         match t {
@@ -31,7 +24,6 @@ impl MathToSpirv {
         }
     }
 
-    /// `checkSourceOpTypes`.
     fn checked(cr: &Cr<'_, '_, '_>, op: OpId) -> bool {
         let b = &cr.rw.body;
         b[op].operands.iter().chain(&b[op].results).all(|v| Self::supported(&b[*v].ty))
@@ -46,7 +38,6 @@ impl MathToSpirv {
         cr.build(OpData::build(name).operands(ops), ty.clone())
     }
 
-    /// A float `spirv.Constant` of `ty` (splat over a vector).
     fn float<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>, f: impl Fn(mlirformat::FloatKind) -> ApFloat) -> ValueId {
         let attr = ArithToSpirv::splat(ty, |e| match e {
             Type::Float(k) => Scalar::Float(f(*k)),
@@ -55,12 +46,10 @@ impl MathToSpirv {
         cr.spirv_const(ty.clone(), attr)
     }
 
-    /// `CheckedElementwiseOpPattern`.
     fn elementwise(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], spirv: &str) -> bool {
         Self::checked(cr, op) && ArithToSpirv::elementwise(cr, op, operands, spirv, ArithSpirvOptions { no_wrap: false, emulate_floats: true })
     }
 
-    /// `ExpM1OpPattern`: `exp(x) - 1`.
     fn expm1(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], exp: &str) -> bool {
         let Some([x]) = Cr::one_to_one(operands).map(|o| <[ValueId; 1]>::try_from(o).ok()).flatten() else { return false };
         if !Self::checked(cr, op) {
@@ -73,7 +62,6 @@ impl MathToSpirv {
         true
     }
 
-    /// `Log1pOpPattern`: `log(1 + x)`.
     fn log1p(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], log: &str) -> bool {
         let Some([x]) = Cr::one_to_one(operands).map(|o| <[ValueId; 1]>::try_from(o).ok()).flatten() else { return false };
         if !Self::checked(cr, op) {
@@ -86,7 +74,6 @@ impl MathToSpirv {
         true
     }
 
-    /// `SincosOpPattern`: separate sin and cos of the operand.
     fn sincos(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], sin: &str, cos: &str) -> bool {
         let Some([x]) = Cr::one_to_one(operands).map(|o| <[ValueId; 1]>::try_from(o).ok()).flatten() else { return false };
         if !Self::checked(cr, op) {
@@ -99,7 +86,6 @@ impl MathToSpirv {
         true
     }
 
-    /// The parity of each element of a constant integral exponent (`None`: not one).
     fn odd_mask(cr: &Cr<'_, '_, '_>, v: ValueId) -> Option<Vec<bool>> {
         let b = &cr.rw.body;
         let d = b.def_op(v).filter(|d| b.has(*d, crate::Trait::ConstantLike))?;
@@ -113,7 +99,6 @@ impl MathToSpirv {
         }).collect()
     }
 
-    /// `Log10OpPattern`: `log(x) * (1 / ln 10)`.
     fn log10(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], log: &str) -> bool {
         const LOG10_RECIPROCAL: f64 = 0.4342944819032518276511289189166050822943970058036665661144537832;
         let Some([x]) = Cr::one_to_one(operands).map(|o| <[ValueId; 1]>::try_from(o).ok()).flatten() else { return false };
@@ -130,7 +115,6 @@ impl MathToSpirv {
 
 #[patterns(converter, options = MathSpirvOptions)]
 impl MathToSpirv {
-    /// `CopySignPattern`: the magnitude bits of the lhs, the sign bit of the rhs.
     #[convert("math.copysign")]
     fn copysign(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MathSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -160,7 +144,6 @@ impl MathToSpirv {
         true
     }
 
-    /// The core ops.
     #[convert("math.ctpop", "math.isinf", "math.isnan", "math.isfinite", "math.isnormal")]
     fn classify(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MathSpirvOptions) -> bool {
         let spirv = match &*cr.rw.body[op].name {
@@ -173,8 +156,6 @@ impl MathToSpirv {
         Self::elementwise(cr, op, operands, spirv)
     }
 
-    /// `CountLeadingZerosPattern` (Shader targets): `x <= 1 ? 32 - x : 31 - findUMsb(x)`, for 32
-    /// bits.
     #[convert("math.ctlz")]
     fn ctlz(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: MathSpirvOptions) -> bool {
         if !o.shader {
@@ -207,7 +188,6 @@ impl MathToSpirv {
         Self::log10(cr, op, operands, "spirv.GL.Log")
     }
 
-    /// `CountTrailingZerosPattern`: `x == 0 ? 32 : findILsb(x)`, for 32 bits.
     #[convert("math.cttz")]
     fn cttz(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MathSpirvOptions) -> bool {
         let Some([x]) = Cr::one_to_one(operands).map(|o| <[ValueId; 1]>::try_from(o).ok()).flatten() else { return false };
@@ -225,7 +205,6 @@ impl MathToSpirv {
         true
     }
 
-    /// `PowIOpGLPattern`: `pow(|x|, float(n))`, negated for a negative `x` and an odd `n`.
     #[convert("math.fpowi")]
     fn fpowi_gl(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MathSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -260,8 +239,6 @@ impl MathToSpirv {
         Self::expm1(cr, op, operands, "spirv.GL.Exp")
     }
 
-    /// `PowFOpPattern`: a constant integral exponent ⇒ `pow(|x|, y)`, negated where `x < 0` and
-    /// the exponent is odd; otherwise `exp(y * log(x))` (NaN for a negative `x`).
     #[convert("math.powf")]
     fn powf(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MathSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -298,8 +275,6 @@ impl MathToSpirv {
         true
     }
 
-    /// `RoundOpPattern`: `copysign(floor(|x|) + (|x| - floor(|x|) >= 0.5), x)`, the copysign
-    /// lowered in turn.
     #[convert("math.round")]
     fn round_gl(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MathSpirvOptions) -> bool {
         if !Self::checked(cr, op) {
@@ -320,7 +295,6 @@ impl MathToSpirv {
         true
     }
 
-    /// The GLSL extended instructions.
     #[convert("math.absf", "math.absi", "math.atan", "math.atan2", "math.ceil", "math.clampf", "math.cos", "math.exp", "math.exp2", "math.floor", "math.fma", "math.log", "math.log2", "math.roundeven", "math.rsqrt", "math.sin", "math.sqrt", "math.tanh", "math.tan", "math.trunc", "math.asin", "math.acos", "math.sinh", "math.cosh", "math.asinh", "math.acosh", "math.atanh")]
     fn gl(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MathSpirvOptions) -> bool {
         let spirv = match &*cr.rw.body[op].name {
@@ -370,7 +344,6 @@ impl MathToSpirv {
         Self::sincos(cr, op, operands, "spirv.CL.sin", "spirv.CL.cos")
     }
 
-    /// `PowIOpPattern`: `pown`.
     #[convert("math.fpowi")]
     fn fpowi_cl(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MathSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -382,7 +355,6 @@ impl MathToSpirv {
         true
     }
 
-    /// The OpenCL extended instructions.
     #[convert("math.absf", "math.absi", "math.ctlz", "math.atan", "math.atan2", "math.cbrt", "math.ceil", "math.cos", "math.erf", "math.erfc", "math.exp", "math.exp2", "math.floor", "math.fma", "math.log", "math.log2", "math.log10", "math.powf", "math.roundeven", "math.round", "math.rsqrt", "math.sin", "math.sqrt", "math.tanh", "math.tan", "math.trunc", "math.asin", "math.acos", "math.sinh", "math.cosh", "math.asinh", "math.acosh", "math.atanh")]
     fn cl(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: MathSpirvOptions) -> bool {
         let spirv = match &*cr.rw.body[op].name {

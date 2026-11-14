@@ -1,5 +1,3 @@
-//! `tensor` rule sets.
-
 mod canonicalize;
 #[cfg(feature = "dialect.linalg")]
 mod to_linalg;

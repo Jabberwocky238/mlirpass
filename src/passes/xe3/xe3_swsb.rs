@@ -1,15 +1,3 @@
-//! ⭐ `xe3-swsb`: the software scoreboard of every kernel (after `xe3-regalloc`).
-//!
-//! In-order instructions run on a pipe (float, int, long, math, by their destination type); one that reads or writes
-//! a register an earlier in-order one writes, or writes one an earlier one on another pipe reads, waits for it
-//! (Mesa brw_lower_scoreboard tracks reads too): `<pipe>@<distance>`, the distance counted on that pipe
-//! (7 at most: waiting for a later one of the same pipe waits for it too). Dependencies on several pipes wait on all
-//! (`A@<the smallest distance>`). A send runs out of order: one that does not end the thread takes an SBID (`$n`,
-//! Mesa brw_lower_scoreboard: every unordered instruction but EOT), and a later instruction that writes what it reads
-//! waits for `$n.src`, one that touches what it writes for `$n.dst`. An instruction waits on one token itself; more
-//! tokens, or any for a send (which sets its own), are waited for by `sync.nop`s just before it; a send taking a
-//! token still in flight (32 sends ago) waits for it first (Mesa brw_lower_scoreboard).
-
 #[allow(unused_imports, reason = "the alloc prelude")]
 use alloc::{borrow::ToOwned, boxed::Box, format, string::{String, ToString}, vec, vec::Vec};
 
@@ -21,8 +9,6 @@ use mlirformat::Error;
 use crate::{DO, is_control};
 use crate::{Body, EuFormat as Format, EuOpcode as Opcode, EuOperand as Operand, File, Inst, Kernels, OpData, OpId, Pipe, Quiet, Rewriter, SbidMode, Swsb, SyncFn, Xe3Kernel, pass};
 
-/// What the scoreboard needs of an instruction: the registers it reads and writes, and its pipe (`None`: out of
-/// order).
 struct Footprint {
     reads: Vec<Range<u32>>,
     writes: Range<u32>,
@@ -49,9 +35,6 @@ impl Footprint {
         Footprint { reads, writes: Self::regs(&i.dst, i.exec_size, None, true), pipe: Some(pipe) }
     }
 
-    /// The registers an operand covers (none for an immediate, the null register or an ARF): from its sub-register
-    /// to its last element's end, by its region (a destination's horizontal stride, 0 meaning 1; a source's
-    /// `<vstride;width,hstride>`): a 32-bit side a qword apart spans two registers at SIMD16.
     fn regs(o: &Operand, exec: u8, count: Option<u32>, dst: bool) -> Range<u32> {
         if o.file != File::Grf {
             return 0..0;
@@ -70,7 +53,6 @@ impl Footprint {
         u32::from(o.nr)..u32::from(o.nr) + n
     }
 
-    /// The sources an in-order instruction reads.
     fn sources(i: &Inst) -> &[Operand] {
         let n = match i.op.format() {
             Format::One => 1,
@@ -80,8 +62,6 @@ impl Footprint {
         &i.src[..n]
     }
 
-    /// The pipe the hardware syncs an in-order instruction's RegDist with when its SWSB names none (a RegDist and an
-    /// SBID together): its sources' type, a 64-bit one long, an integer one int, else float (Mesa `inferred_sync_pipe`).
     fn inferred(i: &Inst) -> Pipe {
         let src = Self::sources(i);
         if src.iter().any(|s| s.ty.size() >= 8) {
@@ -94,22 +74,16 @@ impl Footprint {
     }
 }
 
-/// The scoreboard of one kernel.
 #[derive(Default)]
 struct Board {
-    /// in-order instructions issued so far, per pipe
     issued: BTreeMap<Pipe, u32>,
-    /// the last in-order writer of each register: (pipe, its number on that pipe)
     writer: BTreeMap<u32, (Pipe, u32)>,
-    /// the last in-order reader of each register on each pipe (its number on that pipe)
     readers: BTreeMap<u32, BTreeMap<Pipe, u32>>,
-    /// out-of-order sends in flight: token, registers read, registers written
     pending: Vec<(u8, Vec<u32>, Vec<u32>)>,
     next_token: u8,
 }
 
 impl Board {
-    /// The SBID waits `i` needs (`$n.src` / `$n.dst`).
     fn token_waits(&self, reads: &[Range<u32>], writes: &Range<u32>) -> Vec<(u8, SbidMode)> {
         let mut waits = Vec::new();
         for (t, r, w) in &self.pending {
@@ -128,7 +102,6 @@ impl Board {
         waits
     }
 
-    /// `i`'s dependencies, and the `sync.nop`s' before it.
     fn swsb(&mut self, i: &Inst) -> (Swsb, Vec<Swsb>) {
         let Footprint { reads, writes, pipe } = Footprint::of(i);
         let mut deps: BTreeMap<Pipe, u32> = BTreeMap::new();
@@ -142,7 +115,6 @@ impl Board {
                 depend(*p, *n, &self.issued);
             }
         }
-        // write after read: a reader on another pipe may not have read yet (one on the same pipe has: in order)
         for r in writes.clone() {
             for (p, n) in self.readers.get(&r).into_iter().flatten() {
                 if Some(*p) != pipe {
@@ -159,7 +131,6 @@ impl Board {
             _ => Swsb::regdist(Pipe::All, deps.values().min().copied().unwrap().min(7) as u8),
         };
         let mut waits = self.token_waits(&reads, &writes);
-        // waited for: `.dst` the whole send, `.src` only its reads (what it writes may still be coming)
         self.pending.retain(|(p, _, _)| !waits.iter().any(|(t, m)| t == p && *m == SbidMode::Dst));
         for (p, r, _) in &mut self.pending {
             if waits.iter().any(|(t, m)| t == p && *m == SbidMode::Src) {
@@ -167,11 +138,8 @@ impl Board {
             }
         }
         let unordered = pipe.is_none() && !i.send.eot;
-        // the instruction keeps one wait, unless it sets a token of its own
         let own = if unordered { None } else { waits.pop() };
         let mut syncs: Vec<Swsb> = waits.into_iter().map(|(sbid, mode)| Swsb { sbid, mode, ..Swsb::NONE }).collect();
-        // a RegDist and an SBID in one SWSB: the RegDist on the inferred pipe (float or int), or on all of them with
-        // `.dst`; else the token goes to a sync.nop (Mesa `baked_ordered_dependency_mode`, Xe2+)
         if let Some((t, m)) = own {
             let p = swsb.pipe;
             let baked = swsb.regdist == 0 || (p == Footprint::inferred(i) && matches!(p, Pipe::Float | Pipe::Int)) || (p == Pipe::All && m == SbidMode::Dst);
@@ -182,14 +150,12 @@ impl Board {
                 syncs.push(Swsb { sbid: t, mode: m, ..Swsb::NONE });
             }
         }
-        // a send setting its token takes a RegDist on float, int or all pipes only
         if unordered && swsb.regdist != 0 && !matches!(swsb.pipe, Pipe::Float | Pipe::Int | Pipe::All) {
             swsb.pipe = Pipe::All;
         }
         if unordered {
             let t = self.next_token;
             self.next_token = (t + 1) % 32;
-            // the token still in flight (32 sends ago): wait for it before setting it again (Mesa brw_lower_scoreboard)
             if let Some(k) = self.pending.iter().position(|(p, _, _)| *p == t) {
                 self.pending.remove(k);
                 syncs.push(Swsb { sbid: t, mode: SbidMode::Dst, ..Swsb::NONE });
@@ -212,7 +178,6 @@ impl Board {
     }
 }
 
-/// `xe3-swsb`: every `image.kernel` of the module.
 #[pass("xe3-swsb", on = "builtin.module")]
 pub fn xe3_swsb<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let mut quiet = Quiet;
@@ -221,7 +186,6 @@ pub fn xe3_swsb<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         let mut board = Board::default();
         let block = rw.body.top_block(k);
         for i in rw.body.block_ops(block) {
-            // a branch, a loop header: everything before done first (the board does not follow jumps), the board anew
             if is_control(&rw.body[i].name) {
                 for sync in [SyncFn::AllWr, SyncFn::AllRd] {
                     let (name, attrs) = Inst { sync, ..Inst::new(Opcode::Sync, 1) }.op();
@@ -242,7 +206,6 @@ pub fn xe3_swsb<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
             }
             let attrs = rw.body[i].all_attrs();
             let mut inst = Inst::try_from((&*rw.body[i].name, &attrs[..]))?;
-            // a dependency set by hand (the cr0 prologue's sync) unless the board finds one
             let (found, syncs) = board.swsb(&inst);
             if found != Swsb::NONE {
                 inst.swsb = found;

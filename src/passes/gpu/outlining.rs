@@ -1,7 +1,3 @@
-//! `gpu.launch` out into kernels, as `KernelOutlining.cpp`: `gpu-launch-sink-index-computations`
-//! (cheap index computations cloned into the launch) and `gpu-kernel-outlining` (each launch's
-//! body a `gpu.func` in a `gpu.module`, the launch a `gpu.launch_func`).
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -11,7 +7,6 @@ use mlirformat::{Attribute, FunctionType, Type};
 
 use crate::{Body, Mapping, OpData, OpId, RegionId, ValueId};
 
-/// `gpu.launch`'s operand groups: their first segment (`operandSegmentSizes`) and how many.
 const ASYNC: (usize, usize) = (0, 1);
 const GRID: (usize, usize) = (1, 3);
 const BLOCK: (usize, usize) = (4, 3);
@@ -19,7 +14,6 @@ const CLUSTER: (usize, usize) = (7, 3);
 const SHMEM: (usize, usize) = (10, 1);
 
 impl<'a> Body<'a> {
-    /// Whether region `r` is `of` or nested in it.
     fn region_within(&self, mut r: RegionId, of: RegionId) -> bool {
         loop {
             if r == of {
@@ -32,8 +26,6 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `getUsedValuesDefinedAbove`: operands of the ops in `region` (post-order) defined
-    /// outside it, each once, in first-use order.
     pub fn used_values_defined_above(&self, region: RegionId) -> Vec<ValueId> {
         let mut out = Vec::new();
         for b in &self[region].blocks {
@@ -51,7 +43,6 @@ impl<'a> Body<'a> {
         out
     }
 
-    /// An operand group of a launch.
     fn launch_group(&self, launch: OpId, (first, n): (usize, usize)) -> Vec<ValueId> {
         let sizes = self.segments(launch, "operandSegmentSizes").unwrap_or_default();
         let start: usize = sizes[..first].iter().sum();
@@ -59,12 +50,10 @@ impl<'a> Body<'a> {
         self[launch].operands[start..start + len].to_vec()
     }
 
-    /// `isLikelyAnIndexComputation`.
     fn index_computation(&self, op: OpId) -> bool {
         self.constant_value(op).is_some() || matches!(&*self[op].name, "memref.dim" | "arith.select" | "arith.cmpi")
     }
 
-    /// `extractBeneficiaryOps`: whether `op` (and what it needs) can be sunk.
     fn beneficiary(&self, op: OpId, deps: &[ValueId], sunk: &mut Vec<OpId>, available: &mut Vec<ValueId>) -> bool {
         if sunk.contains(&op) {
             return true;
@@ -86,7 +75,6 @@ impl<'a> Body<'a> {
         true
     }
 
-    /// `sinkOperationsIntoLaunchOp` with `isLikelyAnIndexComputation`.
     pub(crate) fn sink_into_launch(&mut self, launch: OpId) {
         let region = self[launch].regions[0];
         let candidates = self.used_values_defined_above(region);
@@ -115,13 +103,11 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// `maybeConstantDimsAttr`: the three sizes as a `DenseI32ArrayAttr`, when constant.
     fn constant_dims(&self, vals: &[ValueId]) -> Option<Attribute<'a>> {
         let ints = vals.iter().map(|v| self.int_constant(*v).filter(|i| (0..=i128::from(u32::MAX)).contains(i)).map(|i| i as u32 as i32)).collect::<Option<Vec<_>>>()?;
         (ints.len() == 3).then(|| Attribute::dense_i32(&ints))
     }
 
-    /// `injectGpuIndexOperations`: the ids and dims the launch's leading arguments stood for.
     fn index_ops(&mut self, block: crate::BlockId, cluster: bool) -> Vec<ValueId> {
         let mut kinds = vec!["gpu.block_id", "gpu.thread_id", "gpu.grid_dim", "gpu.block_dim"];
         if cluster {
@@ -136,8 +122,6 @@ impl<'a> Body<'a> {
         out
     }
 
-    /// `outlineKernelFuncImpl`: the launch body as a detached kernel `gpu.func` named `name`,
-    /// and the values it takes.
     pub(crate) fn outline_kernel(&mut self, launch: OpId, name: &str) -> (OpId, Vec<ValueId>) {
         let region = self[launch].regions[0];
         let operands = self.used_values_defined_above(region);
@@ -194,7 +178,6 @@ impl<'a> Body<'a> {
         (func, operands)
     }
 
-    /// A name for `name` unused in `table` (`SymbolTable::insert`'s `name_<n>`).
     pub(crate) fn unique_symbol(&self, table: OpId, name: &str, taken: Option<OpId>) -> String {
         if self.lookup(table, name).is_none_or(|o| Some(o) == taken) {
             return String::from(name);
@@ -202,7 +185,6 @@ impl<'a> Body<'a> {
         (0..).map(|i| format!("{name}_{i}")).find(|n| self.lookup(table, n).is_none()).expect("a free name")
     }
 
-    /// `convertToLaunchFuncOp`.
     pub(crate) fn launch_func(&mut self, launch: OpId, module: &str, func: &str, operands: &[ValueId]) {
         let g = |i| self.launch_group(launch, i);
         let groups = [g(ASYNC), g(GRID), g(BLOCK), g(CLUSTER), g(SHMEM)];
@@ -234,5 +216,3 @@ impl<'a> Body<'a> {
         self.erase(launch);
     }
 }
-
-

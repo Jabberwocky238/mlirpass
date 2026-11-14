@@ -1,5 +1,3 @@
-//! `complex` passes.
-
 mod convert_complex_to_libm;
 mod convert_complex_to_standard;
 

@@ -1,6 +1,3 @@
-//! `convert-scf-to-cf`, as `SCFToControlFlow.cpp`: structured control flow as blocks and
-//! branches.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -11,7 +8,6 @@ use crate::{BlockId, ConversionRewriter, OpData, OpId, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The scf ⇒ cf patterns.
 pub struct ScfToCf;
 
 #[patterns]
@@ -27,7 +23,6 @@ impl ScfToCf {
         cr.rw.create(OpData::build("cf.cond_br").operands(&ops).successors(&[t, f]).segments(&[1, ta.len(), fa.len()]), &[])
     }
 
-    /// `propagateLoopAttrs`: the llvm-dialect discardable attributes go to the branch.
     fn loop_attrs(cr: &mut Cr<'_, '_, '_>, from: OpId, to: OpId) {
         let attrs: Vec<NamedAttr> = cr.rw.body[from].attributes.iter().filter(|a| a.value.as_ref().is_some_and(|v| matches!(v, Attribute::Extended { ext, .. } if ext.name.starts_with("llvm.")))).cloned().collect();
         cr.rw.body[to].attributes = attrs;
@@ -37,7 +32,6 @@ impl ScfToCf {
         cr.rw.body[op].parent.and_then(|b| cr.rw.body[b].parent).expect("placed")
     }
 
-    /// Splits the block of `op` before it: (the block, the rest).
     fn split(cr: &mut Cr<'_, '_, '_>, op: OpId) -> (BlockId, BlockId) {
         let block = cr.rw.body[op].parent.expect("placed");
         (block, cr.rw.split_block(block, op))
@@ -76,7 +70,6 @@ impl ScfToCf {
         true
     }
 
-    /// The region's last block ends in a branch to `to` with what its terminator yielded.
     fn yield_to(cr: &mut Cr<'_, '_, '_>, block: BlockId, to: BlockId) {
         let term = cr.rw.body.last_op(block).expect("terminator");
         let ops = cr.rw.body[term].operands.clone();
@@ -224,7 +217,6 @@ impl ScfToCf {
         let default = convert(cr, regions[0]);
         cr.rw.set_end(cond_block);
         let arg = cr.rw.body[op].operands[0];
-        // (i64: large case values are not truncated)
         let v = cr.op1("arith.index_cast", &[arg], Type::int(64));
         let mut all = vec![default];
         all.extend(&succs);
@@ -239,8 +231,6 @@ impl ScfToCf {
         true
     }
 
-    /// `scf::ForOp::create` without a body builder: the block, and its `scf.yield` when there
-    /// is nothing to carry.
     fn bare_for(cr: &mut Cr<'_, '_, '_>, lb: ValueId, ub: ValueId, step: ValueId, inits: &[ValueId]) -> OpId {
         let types: Vec<Type> = inits.iter().map(|v| cr.rw.body[*v].ty.clone()).collect();
         let mut ops = vec![lb, ub, step];
@@ -258,7 +248,6 @@ impl ScfToCf {
         f
     }
 
-    /// `ParallelLowering`: nested `scf.for`s, the reductions inlined into the innermost.
     #[convert("scf.parallel")]
     fn parallel(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let body = cr.rw.body.top_block(op);
@@ -311,7 +300,6 @@ impl ScfToCf {
         true
     }
 
-    /// `ForallLowering` (`forallToParallelLoop`).
     #[convert("scf.forall")]
     fn forall(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let seg = cr.rw.body.segments(op, "operandSegmentSizes").unwrap_or_default();
@@ -349,5 +337,4 @@ impl ScfToCf {
         cr.replace_values(op, &[]);
         true
     }
-
 }

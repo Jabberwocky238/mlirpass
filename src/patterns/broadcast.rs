@@ -1,15 +1,10 @@
-//! `OpTrait::util` broadcasting (`mlir/Dialect/Traits.cpp`) over static shapes, dynamic dims as
-//! [`Dim::DYNAMIC`].
-
 use alloc::vec::Vec;
 
 use mlirformat::Dim;
 
-/// Broadcasting of shapes.
 pub struct Broadcast;
 
 impl Broadcast {
-    /// `OpTrait::util::getBroadcastedShape`.
     pub fn shape(a: &[i64], b: &[i64]) -> Option<Vec<i64>> {
         let mut r = if a.len() > b.len() { a.to_vec() } else { b.to_vec() };
         let n = r.len();
@@ -38,7 +33,6 @@ impl Broadcast {
         Some(r)
     }
 
-    /// `OpTrait::util::staticallyKnownBroadcastable`.
     pub fn known(shapes: &[Vec<i64>]) -> bool {
         let rank = shapes.iter().map(Vec::len).max().unwrap_or(0);
         for i in 0..rank {

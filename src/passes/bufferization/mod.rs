@@ -1,5 +1,3 @@
-//! `bufferization` passes.
-
 mod convert_bufferization_to_memref;
 
 mod buffer_results_to_out_params;

@@ -1,12 +1,9 @@
-//! `arith::FastMathFlags`, shared by the lowerings that read an op's `fastmath`.
-
 use alloc::vec::Vec;
 
 use mlirformat::Attribute;
 
 use crate::{ConversionRewriter, OpId};
 
-/// `arith::FastMathFlags`, as bits in their enum order.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Fmf(u8);
 
@@ -22,17 +19,14 @@ impl Fmf {
         cr.rw.body[op].get("fastmath").into()
     }
 
-    /// `bitEnumContainsAll(fmf, nnan)`.
     pub fn nnan(self) -> bool {
         self.0 & Self::NNAN != 0
     }
 
-    /// `bitEnumClear(fmf, nnan | ninf)`.
     pub fn without_nan_inf(self) -> Self {
         Self(self.0 & !Self::NNAN_NINF)
     }
 
-    /// `bitEnumContainsAll(fmf, nnan | ninf)`.
     pub fn finite(self) -> bool {
         self.0 & Self::NNAN_NINF == Self::NNAN_NINF
     }
@@ -46,19 +40,16 @@ impl Fmf {
         Attribute::dialect("arith.fastmath", &body)
     }
 
-    /// `bitEnumContainsAll(fmf, contract)`.
     pub fn contract(self) -> bool {
         self.0 & Self::CONTRACT != 0
     }
 
-    /// `bitEnumContainsAll(fmf, afn)`.
     pub fn afn(self) -> bool {
         self.0 & Self::AFN != 0
     }
 }
 
 impl From<Option<&Attribute<'_>>> for Fmf {
-    /// An op's `fastmath` attribute (none: no flags).
     fn from(a: Option<&Attribute<'_>>) -> Self {
         let Some(Attribute::Extended { ext, .. }) = a else { return Self::NONE };
         let body = ext.body.as_deref().unwrap_or("<none>");

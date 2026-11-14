@@ -1,5 +1,3 @@
-//! `tosa` rule sets.
-
 mod canonicalize;
 mod to_arith;
 mod to_linalg;

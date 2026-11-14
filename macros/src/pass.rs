@@ -1,19 +1,15 @@
-//! `#[pass]`: a pass's `mlir-opt` name, anchor and options.
-
 use proc_macro2::{Span, TokenStream as Tokens};
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{Expr, Fields, Ident, Item, ItemFn, ItemStruct, LitStr, Token, bracketed};
 
-/// `#[pass(..)]`'s arguments.
 pub struct PassArgs {
     name: LitStr,
     on: Option<LitStr>,
     extra: Vec<LitStr>,
     ty: Option<Ident>,
     check: Option<Expr>,
-    /// `local`: run on a module, the pass is the pass on each op of its block (`Body::run_local`).
     local: bool,
 }
 
@@ -44,7 +40,6 @@ impl Parse for PassArgs {
     }
 }
 
-/// A field's `#[opt("key", default = expr, from_str)]`.
 struct OptArgs {
     key: LitStr,
     default: Option<Expr>,
@@ -71,7 +66,6 @@ impl Parse for OptArgs {
 }
 
 impl PassArgs {
-    /// `#[pass("name", on = "op", extra = [..])]` on a struct or a fn: see the crate docs.
     pub fn expand(attr: Tokens, item: Tokens) -> syn::Result<Tokens> {
         let args: PassArgs = syn::parse2(attr)?;
         match syn::parse2(item)? {
@@ -81,7 +75,6 @@ impl PassArgs {
         }
     }
 
-    /// The fn pass's struct: `ty`, or `convert-scf-to-cf` ⇒ `ConvertScfToCf`.
     fn ty(&self) -> Ident {
         self.ty.clone().unwrap_or_else(|| {
             let s: String = self.name.value().split(['-', '_']).map(|w| {
@@ -92,7 +85,6 @@ impl PassArgs {
         })
     }
 
-    /// `PassDecl` for `ty`.
     fn decl(&self, ty: &Ident) -> Tokens {
         let name = &self.name;
         let on = match &self.on {

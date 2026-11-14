@@ -1,19 +1,13 @@
-//! `convert-elementwise-to-linalg`, as `ElementwiseToLinalg.cpp`: an elementwise-mappable op on
-//! ranked tensors becomes a `linalg.generic` running the op on the elements.
-
 use alloc::vec::Vec;
 
 use mlirformat::{AffineMap, ShapedKind, Type};
 
 use crate::{patterns, Body, ConversionRewriter as Cr, OpData, OpId, Trait, ValueId};
 
-/// The pattern of `populateElementwiseToLinalgConversionPatterns`.
 pub struct ElementwiseToLinalg;
 
 #[patterns]
 impl ElementwiseToLinalg {
-    /// `ConvertAnyElementwiseMappableOpOnRankedTensors`: a `RewritePattern` on any op upstream,
-    /// so it reads the op's own operands, not the converted ones.
     #[convert(_)]
     fn any(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         if !Self::applies(cr.rw.body, op) {
@@ -26,7 +20,6 @@ impl ElementwiseToLinalg {
         let scalar = AffineMap { dims: rank, syms: 0, results: Vec::new() };
         let mut maps: Vec<AffineMap> = d.operands.iter().map(|v| if Self::scalar_like(&cr.rw.body[*v].ty) { scalar.clone() } else { id.clone() }).collect();
         maps.extend(core::iter::repeat_n(id, rts.len()));
-        // `getOrCreateOperandsMatchingResultTypes`
         let mut outs = Vec::new();
         for t in &rts {
             if let Some(v) = d.operands.iter().find(|v| cr.rw.body[**v].ty == *t) {
@@ -60,7 +53,6 @@ impl ElementwiseToLinalg {
         matches!(t, Type::Shaped(s) if s.kind == ShapedKind::Tensor && s.shape.is_some())
     }
 
-    /// `isElementwiseMappableOpOnRankedTensors`.
     pub fn applies(b: &Body<'_>, op: OpId) -> bool {
         if ![Trait::Elementwise, Trait::Scalarizable, Trait::Vectorizable, Trait::Tensorizable].iter().all(|t| b.has(op, *t)) {
             return false;
@@ -69,4 +61,3 @@ impl ElementwiseToLinalg {
         tys.clone().any(Self::ranked_tensor) && tys.into_iter().all(|t| Self::ranked_tensor(t) || Self::scalar_like(t))
     }
 }
-

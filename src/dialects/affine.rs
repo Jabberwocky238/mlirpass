@@ -1,5 +1,3 @@
-//! The `affine` dialect's op interfaces.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -7,11 +5,9 @@ use mlirformat::Attribute;
 
 use crate::{Body, OpId, OpInterfaces, Operand, Point, Succ, ValueId};
 
-/// The `affine` dialect.
 pub struct AffineDialect;
 
 impl AffineDialect {
-    /// `getTrivialConstantTripCount` of an `affine.for`.
     fn trip_count(b: &Body<'_>, op: OpId) -> Option<i64> {
         let step = b.for_step(op);
         let (lb, ub) = (b.for_constant_bound(op, true)?, b.for_constant_bound(op, false)?);

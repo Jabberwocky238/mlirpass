@@ -1,6 +1,3 @@
-//! Loops onto the GPU: `gpu-map-parallel-loops` (`ParallelLoopMapper.cpp`),
-//! `convert-parallel-loops-to-gpu` and `convert-affine-for-to-gpu` (`SCFToGPU.cpp`).
-
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -12,12 +9,9 @@ use crate::{Body, ConversionPattern, ConversionPatterns, ConversionRewriter, Map
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `gpu::Processor`, in `getLaunchOpArgumentNum` order, then sequential.
 const PROCESSORS: [&str; 7] = ["block_x", "block_y", "block_z", "thread_x", "thread_y", "thread_z", "sequential"];
 
-/// One `#gpu.loop_dim_map<processor = .., map = .., bound = ..>`.
 struct DimMapping {
-    /// Index into [`PROCESSORS`].
     processor: usize,
     map: AffineMap,
     bound: AffineMap,
@@ -46,8 +40,6 @@ impl DimMapping {
 }
 
 impl Body<'_> {
-    /// `mapParallelOp`: the hardware ids for a parallel loop at `level` (grid, block,
-    /// sequential), its nested loops at the next level.
     pub(crate) fn map_parallel(&mut self, op: OpId, level: usize, innermost: bool) {
         if self[op].get("mapping").is_some() || (level == 0 && self.parent_of_named(op, "scf.parallel")) {
             return;
@@ -80,9 +72,6 @@ impl Body<'_> {
         false
     }
 
-    /// `LocalAliasAnalysis::alias` as far as the lowering asks: through views to the
-    /// underlying value; distinct allocations, or an allocation and a function argument, do not
-    /// alias.
     fn may_alias(&self, a: ValueId, b: ValueId) -> bool {
         let base = |mut v: ValueId| {
             while let Some(d) = self.def_op(v).filter(|d| matches!(&*self[*d].name, "memref.subview" | "memref.cast" | "memref.view" | "memref.reinterpret_cast" | "memref.collapse_shape" | "memref.expand_shape")) {
@@ -99,22 +88,16 @@ impl Body<'_> {
         !((alloc(a) && alloc(b)) || (alloc(a) && arg(b)) || (arg(a) && alloc(b)))
     }
 
-    /// `getConstantIntValue`.
     fn int_value(&self, v: ValueId) -> Option<i64> {
         self.int_constant(v).map(|i| i as i64)
     }
 }
 
-
-/// What is left to do while lowering a loop nest into a launch.
 enum Work {
     Op(OpId),
-    /// Leave the `scf.if` / `scf.for` the insertion point is in.
     Leave,
 }
 
-/// `ParallelToGpuLaunchLowering`.
-/// The scf ⇒ gpu rule set (`populateParallelLoopToGPUPatterns`).
 pub struct ScfToGpu;
 
 impl ScfToGpu {
@@ -126,12 +109,10 @@ impl ScfToGpu {
 struct ParallelToLaunch;
 
 impl ParallelToLaunch {
-    /// A constant index at the insertion point.
     fn index(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
         cr.index_constant(v)
     }
 
-    /// `ensureLaunchIndependent`: a value usable outside the launch (a constant rebuilt).
     fn independent(cr: &mut Cr<'_, '_, '_>, launch: OpId, v: ValueId) -> Option<ValueId> {
         if Self::launch_independent(&cr.rw.body, launch, v) {
             return Some(v);
@@ -140,7 +121,6 @@ impl ParallelToLaunch {
         Some(Self::index(cr, c))
     }
 
-    /// The value's region holds the launch.
     fn launch_independent(b: &Body<'_>, launch: OpId, v: ValueId) -> bool {
         let Some(vr) = b.value_block(v).and_then(|blk| b[blk].parent) else { return false };
         let mut r = b[launch].parent.and_then(|blk| b[blk].parent);
@@ -153,7 +133,6 @@ impl ParallelToLaunch {
         false
     }
 
-    /// `deriveStaticUpperBound`.
     fn static_upper_bound(cr: &mut Cr<'_, '_, '_>, ub: ValueId) -> Option<ValueId> {
         let b = &cr.rw.body;
         let def = b.def_op(ub)?;
@@ -181,7 +160,6 @@ impl ParallelToLaunch {
         }
     }
 
-    /// `processParallelLoop`.
     fn process(cr: &mut Cr<'_, '_, '_>, par: OpId, launch: OpId, map: &mut Mapping, work: &mut Vec<Work>, bounds: &mut Vec<(usize, ValueId)>) -> bool {
         let Some(Attribute::Array(mapping)) = cr.rw.body[par].get("mapping").cloned() else { return false };
         if cr.rw.body[par].results.len() > 1 {
@@ -284,7 +262,6 @@ impl ParallelToLaunch {
         true
     }
 
-    /// The read / write effects of a nested loop touch nothing written so far.
     fn independent_of(b: &Body<'_>, par: OpId, written: &[ValueId]) -> bool {
         b.ops_in(par).into_iter().all(|o| {
             if b.is_memory_effect_free(o) {
@@ -411,5 +388,3 @@ impl ConversionPattern for ParallelToLaunch {
         Self::lower(cr, op)
     }
 }
-
-

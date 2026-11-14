@@ -1,15 +1,11 @@
-//! `spirv.module` ⇒ SPIR-V binary, as `Serializer.cpp` / `SerializeOps.cpp`: the words
-//! `mlir-translate --serialize-spirv` writes, in the same order with the same <id>s.
-
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-/// `spirv::kGeneratorNumber`: MLIR's SPIR-V generator id (the header's upper half).
 const GENERATOR_NUMBER: u32 = 22;
-/// `LLVM_VERSION_MAJOR` of the MLIR this serializes as (the header's lower half).
+
 const LLVM_MAJOR: u32 = 23;
 
 use mlirformat::spirv_types::{SpirvDecoration, SpirvType};
@@ -18,10 +14,8 @@ use mlirformat::{Attribute, Const, Error, FloatKind, NamedAttr, Scalar, ShapedKi
 use super::{Arg, AttrKind, Code, EnumSpec, Group, OpSpec};
 use crate::{Body, BlockId, Emit, OpId, ValueId};
 
-/// `SerializationOptions`: `emitSymbolName` (debug info is not emitted).
 #[derive(Debug, Clone, Copy)]
 pub struct SpirvBinary {
-    /// `OpName` for functions, globals, spec constants and identified structs.
     pub symbol_names: bool,
 }
 
@@ -32,7 +26,6 @@ impl Default for SpirvBinary {
 }
 
 impl SpirvBinary {
-    /// The words as the bytes of a `.spv` file (little endian).
     pub fn bytes(words: &[u32]) -> Vec<u8> {
         words.iter().flat_map(|w| w.to_le_bytes()).collect()
     }
@@ -41,7 +34,6 @@ impl SpirvBinary {
 impl Emit for SpirvBinary {
     type Output = Vec<u32>;
 
-    /// `spirv::serialize`: `op` is a `spirv.module`.
     fn emit(&self, body: &Body<'_>, op: OpId) -> Result<Vec<u32>, Error> {
         let mut s = Serializer::new(body, op, *self);
         s.serialize()?;
@@ -49,17 +41,13 @@ impl Emit for SpirvBinary {
     }
 }
 
-/// A constant as `constIDMap` tells constants apart: the attribute (value and type).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum ConstKey {
-    /// An integer (`BoolAttr` is the `i1` one): its type and bits.
     Int(String, u128),
     Float(String, u64),
-    /// Anything else, by its text.
     Text(String),
 }
 
-/// The merge instruction a header block emits (`emitSelectionMerge` / `emitLoopMerge`).
 #[derive(Clone, Copy)]
 enum Merge {
     Selection { merge: u32, control: u32 },
@@ -86,10 +74,7 @@ struct Serializer<'b, 'a> {
     types_globals: Vec<u32>,
     functions: Vec<u32>,
     graphs: Vec<u32>,
-    /// Forward-declared pointers to an identified struct, by struct name.
     recursive_structs: BTreeMap<String, Vec<(u32, u32)>>,
-    /// The decorations of the identified structs met so far: a name-only reference inside
-    /// one is the same type as its definition.
     struct_decorations: BTreeMap<String, Vec<SpirvDecoration>>,
     function_header: Vec<u32>,
     function_body: Vec<u32>,
@@ -103,10 +88,8 @@ struct Serializer<'b, 'a> {
     block_ids: BTreeMap<BlockId, u32>,
     undef_ids: BTreeMap<String, u32>,
     value_ids: BTreeMap<ValueId, u32>,
-    /// `replaceAllUsesWith` of a selection's / loop's results by its merge's operands.
     aliases: BTreeMap<ValueId, ValueId>,
     ext_sets: BTreeMap<String, u32>,
-    /// Phi operands defined later in the function: where their <id> goes.
     deferred_phis: BTreeMap<ValueId, Vec<usize>>,
 }
 
@@ -154,7 +137,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         id
     }
 
-    /// `encodeInstructionInto`.
     fn encode(out: &mut Vec<u32>, opcode: &str, operands: &[u32]) {
         out.push(((1 + operands.len() as u32) << 16) | EnumSpec::opcode(opcode));
         out.extend_from_slice(operands);
@@ -165,7 +147,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         out.extend_from_slice(operands);
     }
 
-    /// `encodeStringLiteralInto`: the bytes, nul-terminated, padded to words.
     fn string(out: &mut Vec<u32>, s: &str) {
         let mut bytes = s.as_bytes().to_vec();
         bytes.resize((s.len() / 4 + 1) * 4, 0);
@@ -192,15 +173,11 @@ impl<'b, 'a> Serializer<'b, 'a> {
         self.attr(op, name).and_then(EnumSpec::attr_value).ok_or_else(|| Error(format!("'{}' has no enum `{name}`", self.body[op].name)))
     }
 
-    /// An integer attribute's value, zero-extended.
     fn int_attr(a: &Attribute<'_>) -> Option<u64> {
         let c = Const::try_from(a).ok()?;
         Some(c.as_int()?.bits() as u64)
     }
 
-    // ---- module ------------------------------------------------------------------------
-
-    /// The `#spirv.vce<vX.Y, [caps], [exts]>` triple: version, capabilities, extensions.
     fn vce(&self) -> Result<(u32, Vec<String>, Vec<String>), Error> {
         let Some(Attribute::Extended { ext, .. }) = self.attr(self.module, "vce_triple") else { return err("spirv.module without vce_triple") };
         let body = ext.body.as_deref().unwrap_or("").trim_start_matches('<').trim_end_matches('>');
@@ -221,7 +198,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
             let v = Self::enum_value("Capability", c)?;
             Self::encode(&mut self.capabilities, "OpCapability", &[v]);
         }
-        // `SmallSet<Extension, 4>`: insertion order while small, by value once it grows.
         let mut seen: Vec<&String> = Vec::new();
         for e in &exts {
             if !seen.contains(&e) {
@@ -239,7 +215,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         let mm = self.enum_attr(self.module, "memory_model")?;
         let am = self.enum_attr(self.module, "addressing_model")?;
         Self::encode(&mut self.memory_model, "OpMemoryModel", &[am, mm]);
-        // `moveFuncDeclarationsToTop`.
         let ops = self.body.block_ops(self.body.top_block(self.module));
         let order = Self::declarations_first(self.body, &ops);
         for op in order {
@@ -248,7 +223,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(())
     }
 
-    /// The module's ops with the function declarations after the first op moved before it.
     fn declarations_first(body: &Body<'_>, ops: &[OpId]) -> Vec<OpId> {
         let decl = |o: &OpId| body[*o].name == "spirv.func" && body[body[*o].regions[0]].blocks.is_empty();
         let Some((first, rest)) = ops.split_first() else { return Vec::new() };
@@ -285,9 +259,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Self::encode(&mut self.names, "OpName", &ops);
     }
 
-    // ---- decorations -------------------------------------------------------------------
-
-    /// `getDecorationName`: the decoration an attribute name stands for.
     fn decoration_name(attr: &str) -> String {
         match attr {
             "fp_fast_math_mode" => String::from("FPFastMathMode"),
@@ -298,7 +269,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         }
     }
 
-    /// `convertToCamelFromSnakeCase(s, /*capitalizeFirst=*/true)`.
     fn camel(s: &str) -> String {
         let mut out = String::new();
         let mut up = true;
@@ -321,7 +291,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Self::encode(&mut self.decorations, "OpDecorate", &ops);
     }
 
-    /// `processDecoration`: a non-argument attribute as the decoration it names.
     fn decoration(&mut self, id: u32, attr: &NamedAttr<'_>) -> Result<(), Error> {
         let name = Self::decoration_name(&attr.name);
         let Some(deco) = EnumSpec::of("Decoration").and_then(|e| e.value(&name)) else {
@@ -331,7 +300,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         self.decoration_attr(id, &name, deco, &value)
     }
 
-    /// `processDecorationAttr`.
     fn decoration_attr(&mut self, id: u32, name: &str, deco: u32, attr: &Attribute<'_>) -> Result<(), Error> {
         let mut args = Vec::new();
         match name {
@@ -380,9 +348,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Self::encode(&mut self.decorations, "OpMemberDecorate", &ops);
     }
 
-    // ---- types -------------------------------------------------------------------------
-
-    /// A type as `typeIDMap` tells types apart: identified structs by name.
     fn key(t: &Type<'_>) -> String {
         match SpirvType::try_from(t) {
             Ok(s) => format!("{}", Type::from(Self::named_structs(s))),
@@ -396,7 +361,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         }
     }
 
-    /// `t` with every identified struct (at any depth) by name only.
     fn named_structs(t: SpirvType<'_>) -> SpirvType<'static> {
         let inner = |t: &Type<'_>| -> Type<'static> {
             match SpirvType::try_from(t) {
@@ -431,7 +395,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         self.type_in(t, &mut Vec::new())
     }
 
-    /// `processTypeImpl`: `ctx` holds the identified structs being serialized around `t`.
     fn type_in(&mut self, t: &Type<'_>, ctx: &mut Vec<String>) -> Result<u32, Error> {
         let t = match t {
             Type::Integer { signedness: Signedness::Unsigned, width } => Type::int(*width),
@@ -456,8 +419,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(id)
     }
 
-    /// `prepareFunctionType` / `prepareBasicType`: the opcode and operands of type `t` with
-    /// result `id`; `None`: serialization deferred (a forward pointer).
     fn prepare_type(&mut self, t: &Type<'_>, id: u32, ops: &mut Vec<u32>, ctx: &mut Vec<String>) -> Result<Option<&'static str>, Error> {
         let op = match t {
             Type::Function(f) => {
@@ -527,7 +488,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
                     _ => pointee_id = self.type_in(&pointee, ctx)?,
                 }
                 ops.extend([sc, pointee_id]);
-                // `isInterfaceStructPtrType`: such a struct gets `Block` if it lacks it.
                 let block = |decos: &[SpirvDecoration]| decos.iter().any(|d| d.name == "Block");
                 if let Some((name, members, decos)) = &pointee_struct
                     && matches!(&*storage, "PhysicalStorageBuffer" | "PushConstant" | "StorageBuffer" | "Uniform")
@@ -630,8 +590,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(Some(op))
     }
 
-    // ---- constants ---------------------------------------------------------------------
-
     fn const_key(a: &Attribute<'_>) -> ConstKey {
         match (a, Const::try_from(a)) {
             (Attribute::Bool(b), _) => ConstKey::Int(String::from("i1"), u128::from(*b)),
@@ -644,7 +602,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         }
     }
 
-    /// `prepareConstant`.
     fn constant(&mut self, ty: &Type<'_>, value: &Attribute<'_>) -> Result<u32, Error> {
         if let Some(id) = self.scalar_const(value, false)? {
             return Ok(id);
@@ -666,8 +623,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(id)
     }
 
-    /// A dense attribute's elements; one typed by a shaped SPIR-V type (`!spirv.arm.tensor`,
-    /// `!spirv.coopmatrix`) reads as the builtin tensor of its shape.
     fn dense<'x>(a: &Attribute<'x>) -> Option<Const<'x>> {
         if let Ok(c) = Const::try_from(a) {
             return Some(c);
@@ -682,7 +637,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Const::try_from(&Attribute::Builtin { name: name.clone(), body: body.clone(), ty: Some(tensor) }).ok()
     }
 
-    /// `prepareArrayConstant`.
     fn array_const(&mut self, ty: &Type<'_>, elems: &[Attribute<'_>]) -> Result<u32, Error> {
         let tid = self.type_id(ty)?;
         let id = self.next();
@@ -695,7 +649,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(id)
     }
 
-    /// `CompositeType::getElementType(0)`.
     fn composite_element(ty: &Type<'_>) -> Result<Type<'static>, Error> {
         match ty {
             Type::Shaped(s) => Ok(s.elem.owned()),
@@ -703,7 +656,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         }
     }
 
-    /// `prepareDenseElementsConstant`: the element at `index` once `dim` reaches the rank.
     fn dense_const(&mut self, ty: &Type<'_>, c: &Const<'_>, dim: usize, index: &mut Vec<usize>) -> Result<u32, Error> {
         let shape: Vec<i64> = c.ty.shape().map(|s| s.iter().map(|d| i64::from(d)).collect()).unwrap_or_default();
         if dim == shape.len() {
@@ -753,7 +705,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         }
     }
 
-    /// `prepareConstantScalar`: `None` when `value` is no scalar.
     fn scalar_const(&mut self, value: &Attribute<'_>, spec: bool) -> Result<Option<u32>, Error> {
         if let Attribute::Bool(b) = value {
             return self.bool_const(*b, spec).map(Some);
@@ -790,7 +741,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(id)
     }
 
-    /// `prepareConstantInt`: `bits` of an integer of type `ty`.
     fn const_int(&mut self, ty: Type<'_>, bits: u128, spec: bool) -> Result<u32, Error> {
         let key = ConstKey::Int(format!("{ty}"), bits);
         if !spec && let Some(id) = self.const_ids.get(&key) {
@@ -819,7 +769,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(id)
     }
 
-    /// `prepareConstantFp`.
     fn const_float(&mut self, ty: Type<'_>, bits: u64, spec: bool) -> Result<u32, Error> {
         let key = ConstKey::Float(format!("{ty}"), bits);
         if !spec && let Some(id) = self.const_ids.get(&key) {
@@ -839,7 +788,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(id)
     }
 
-    /// `prepareConstantCompositeReplicate`.
     fn replicate_const(&mut self, ty: &Type<'_>, value: &Attribute<'_>) -> Result<u32, Error> {
         let key = (format!("{value}"), Self::key(ty));
         if let Some(id) = self.replicate_ids.get(&key) {
@@ -860,7 +808,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(id)
     }
 
-    /// `getValueType`: a typed attribute's type; an array's as `!spirv.array`.
     fn value_type(a: &Attribute<'_>) -> Option<Type<'static>> {
         match a {
             Attribute::Array(es) => Some(SpirvType::array(es.len() as u32, Self::value_type(es.first()?)?, 0)),
@@ -869,8 +816,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         }
     }
 
-    // ---- values ------------------------------------------------------------------------
-
     fn resolve(&self, mut v: ValueId) -> ValueId {
         while let Some(t) = self.aliases.get(&v) {
             v = *t;
@@ -878,7 +823,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         v
     }
 
-    /// `getValueID`: 0 when not yet defined.
     fn value_id(&self, v: ValueId) -> u32 {
         self.value_ids.get(&self.resolve(v)).copied().unwrap_or(0)
     }
@@ -892,9 +836,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         id
     }
 
-    // ---- operations --------------------------------------------------------------------
-
-    /// `processOperation`.
     fn operation(&mut self, op: OpId) -> Result<(), Error> {
         let name = self.body[op].name.clone();
         match &*name {
@@ -1026,7 +967,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(())
     }
 
-    /// `dispatchToAutogenSerialization`, and the `processOp` written by hand.
     fn autogen(&mut self, op: OpId) -> Result<(), Error> {
         let name = self.body[op].name.clone();
         let spec = OpSpec::of(&name).ok_or_else(|| Error(format!("'{name}' unhandled operation serialization")))?;
@@ -1100,7 +1040,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(())
     }
 
-    /// The operand range of each ODS group (`getODSOperands`).
     fn groups(&self, op: OpId, groups: &[Group]) -> Vec<core::ops::Range<usize>> {
         let n = self.body[op].operands.len();
         let sizes: Vec<usize> = match self.body.segments(op, "operandSegmentSizes") {
@@ -1123,7 +1062,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
             .collect()
     }
 
-    /// `processOpWithoutGrammarAttr`.
     fn without_grammar_attr(&mut self, op: OpId, code: &Code<'_>) -> Result<(), Error> {
         let mut ops = Vec::new();
         let mut result = 0;
@@ -1151,7 +1089,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(())
     }
 
-    /// `encodeExtensionInstruction`.
     fn ext_inst(&mut self, set: &str, code: u32, ops: &[u32]) -> Result<(), Error> {
         let set_id = match self.ext_sets.get(set) {
             Some(id) => *id,
@@ -1298,9 +1235,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(())
     }
 
-    // ---- functions and control flow ----------------------------------------------------
-
-    /// `prepareGraphType`: a graph's type is not a function's, though both print alike.
     fn graph_type_id(&mut self, f: &mlirformat::FunctionType<'_>) -> Result<u32, Error> {
         let key = format!("graph {}", Self::key(&Type::Function(alloc::boxed::Box::new(f.clone()))));
         if let Some(id) = self.type_ids.get(&key) {
@@ -1316,7 +1250,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(id)
     }
 
-    /// `prepareGraphConstantId`.
     fn graph_constant(&mut self, ty: &Type<'_>, op: OpId) -> Result<u32, Error> {
         let attr = self.attr(op, "graph_constant_id").cloned().ok_or_else(|| Error(String::from("no graph_constant_id")))?;
         let key = Self::const_key(&attr);
@@ -1334,7 +1267,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(id)
     }
 
-    /// `processGraphARMOp`.
     fn graph(&mut self, op: OpId) -> Result<(), Error> {
         let Some(Attribute::Type(Type::Function(f))) = self.attr(op, "function_type").cloned() else { return err("spirv.ARM.Graph without function_type") };
         if f.results.is_empty() {
@@ -1418,7 +1350,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(())
     }
 
-    /// `processFuncParameter`; `args`: the entry block's (none for a declaration).
     fn parameters(&mut self, op: OpId, inputs: &[Type<'_>], args: Option<&[ValueId]>) -> Result<(), Error> {
         let arg_attrs = match self.attr(op, "arg_attrs") {
             Some(Attribute::Array(a)) => a.clone(),
@@ -1445,8 +1376,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         Ok(())
     }
 
-    /// `visitInPrettyBlockOrder`: depth first from `header` over successors, preorder, not
-    /// entering `skip`.
     fn pretty_order(&self, header: BlockId, skip: &[BlockId]) -> Vec<BlockId> {
         let mut seen: BTreeSet<BlockId> = skip.iter().copied().collect();
         let mut out = Vec::new();
@@ -1475,7 +1404,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         self.body.last_op(b).map(|t| self.body[t].successors.clone()).unwrap_or_default().to_vec()
     }
 
-    /// `processBlock`.
     fn block(&mut self, b: BlockId, omit_label: bool, mut merge: Option<Merge>) -> Result<(), Error> {
         if !omit_label {
             let id = self.block_id(b);
@@ -1509,12 +1437,10 @@ impl<'b, 'a> Serializer<'b, 'a> {
         }
     }
 
-    /// `getStructuredControlFlowOpMergeBlock`.
     fn merge_block(&self, op: OpId) -> Option<BlockId> {
         matches!(&*self.body[op].name, "spirv.mlir.loop" | "spirv.mlir.selection").then(|| *self.body[self.body[op].regions[0]].blocks.last().expect("merge block"))
     }
 
-    /// `getPhiIncomingBlock`.
     fn phi_incoming(&self, b: BlockId) -> BlockId {
         let region = self.body[b].parent.expect("in a region");
         if self.body[region].blocks[0] == b {
@@ -1529,7 +1455,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         self.body.block_ops(b).iter().rev().find_map(|o| self.merge_block(*o)).unwrap_or(b)
     }
 
-    /// The branches to `b`, as its use list has them (the latest use first).
     fn predecessors(&self, b: BlockId) -> Vec<OpId> {
         let region = self.body[b].parent.expect("in a region");
         let mut uses = Vec::new();
@@ -1542,7 +1467,6 @@ impl<'b, 'a> Serializer<'b, 'a> {
         uses
     }
 
-    /// `emitPhiForBlockArguments`.
     fn phis(&mut self, b: BlockId) -> Result<(), Error> {
         let region = self.body[b].parent.expect("in a region");
         if self.body[b].args.is_empty() || self.body[region].blocks[0] == b {

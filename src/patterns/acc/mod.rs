@@ -1,23 +1,16 @@
-//! `acc` (OpenACC) canonicalization (`OpenACC.cpp`, `OpenACCCG.cpp`).
-
 use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::{OpData, OpId, Rewriter};
 
-/// The operand group of the `if` condition of `enter_data` / `exit_data` / `update` /
-/// `host_data`.
 const IF_COND: usize = 0;
 
-/// `acc.kernel_environment`'s operand groups (data, async, wait device, waits).
 const KE_WAIT_DEVNUM: usize = 2;
 const KE_WAITS: usize = 3;
 
-/// `acc`'s rewrite patterns.
 pub struct AccCanon;
 
 impl AccCanon {
-    /// The constant `if` condition of `op`, when it has one.
     fn constant_if(rw: &Rewriter<'_, '_>, op: OpId) -> Option<bool> {
         let b = &*rw.body;
         let segs = b.segments(op, "operandSegmentSizes")?;
@@ -27,7 +20,6 @@ impl AccCanon {
         b.int_constant(b[op].operands[0]).map(|v| v != 0)
     }
 
-    /// `if(true)`: the condition goes, its operand group emptied.
     fn drop_if(rw: &mut Rewriter<'_, '_>, op: OpId) {
         rw.modify(op, |body| {
             let mut segs = body.segments(op, "operandSegmentSizes").unwrap_or_default();
@@ -37,7 +29,6 @@ impl AccCanon {
         });
     }
 
-    /// `RemoveConstantIfCondition`: `if(false)` drops the op.
     fn constant_if_condition(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let Some(c) = Self::constant_if(rw, op) else { return false };
         if c {
@@ -66,7 +57,6 @@ impl AccCanon {
         Self::constant_if_condition(rw, op)
     }
 
-    /// `RemoveConstantIfConditionWithRegion`: `if(false)` keeps the body, inlined in place.
     #[rewrite("acc.host_data", name = "RemoveConstantIfConditionWithRegionHostData")]
     fn remove_constant_if_host_data(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let Some(c) = Self::constant_if(rw, op) else { return false };
@@ -74,8 +64,6 @@ impl AccCanon {
             Self::drop_if(rw, op);
             return true;
         }
-        // `replaceOpWithRegion`: the block inlined before the op, its terminator's operands
-        // the results.
         let block = rw.body[rw.body[op].regions[0]].blocks[0];
         let term = rw.body.last_op(block).expect("a terminator");
         let parent = rw.body[op].parent.expect("placed");
@@ -86,8 +74,6 @@ impl AccCanon {
         true
     }
 
-    /// `AtomicUpdateOp::canonicalize`: a body yielding its argument does nothing; one yielding
-    /// another value first thing is an `acc.atomic.write` of it (the `if` condition kept).
     #[rewrite("acc.atomic.update", name = "AccAtomicUpdate")]
     fn atomic_update(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;
@@ -107,7 +93,6 @@ impl AccCanon {
         true
     }
 
-    /// `RemoveEmptyKernelEnvironment`: an empty one goes, an `acc.wait` kept for its waits.
     #[rewrite("acc.kernel_environment")]
     fn remove_empty_kernel_environment(rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let b = &*rw.body;

@@ -1,5 +1,3 @@
-//! `cf` ⇒ `spirv`, as `ControlFlowToSPIRV.cpp`.
-
 use alloc::vec::Vec;
 
 use crate::patterns;
@@ -8,14 +6,10 @@ use crate::{BlockId, ConversionRewriter, OpData, OpId, Quiet, Rewriter, ValueId}
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The cf ⇒ spirv patterns (`populateControlFlowToSPIRVPatterns`).
 pub struct CfToSpirv;
 
 #[patterns(converter)]
 impl CfToSpirv {
-    /// `legalizeBlockArguments`: each argument of an illegal type gets the converted type, its
-    /// uses a source materialization back (built at the start of the block, outside the
-    /// rewriter's bookkeeping, as the C++ `OpBuilder` is).
     fn legalize_args(cr: &mut Cr<'_, '_, '_>, block: BlockId) -> bool {
         let Some(tc) = cr.type_converter() else { return false };
         let Some(first) = cr.rw.body.first_op(block) else { return false };
@@ -36,7 +30,6 @@ impl CfToSpirv {
         true
     }
 
-    /// `BranchOpPattern`.
     #[convert("cf.br")]
     fn br(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(args) = ConversionRewriter::one_to_one(operands) else { return false };
@@ -48,7 +41,6 @@ impl CfToSpirv {
         true
     }
 
-    /// `CondBranchOpPattern`.
     #[convert("cf.cond_br")]
     fn cond_br(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(ops) = ConversionRewriter::one_to_one(operands) else { return false };

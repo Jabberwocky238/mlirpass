@@ -1,6 +1,3 @@
-//! `tosa-to-linalg-named`, as `TosaToLinalgNamed.cpp`: convolutions, matmul, pooling and
-//! transposes as linalg named ops.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -13,7 +10,6 @@ use crate::{AffineExpr, AffineMap, ApFloat, Const, ConversionRewriter, Mapping, 
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// The tosa ⇒ linalg named-op patterns.
 pub struct TosaToLinalgNamed;
 
 #[patterns(converter, hwcf: bool)]
@@ -30,7 +26,6 @@ impl TosaToLinalgNamed {
         t.element_type().clone()
     }
 
-    /// `getZeroPoint`: the first element of a constant zero-point tensor.
     fn zero_point(cr: &Cr<'_, '_, '_>, v: ValueId) -> Option<i64> {
         let c = Const::try_from(&cr.rw.body.constant_of(v)?).ok()?;
         match c.at(0) {
@@ -40,12 +35,10 @@ impl TosaToLinalgNamed {
         }
     }
 
-    /// `verifyZeroPoint`: only i8 zero points may be nonzero.
     fn zp_ok(cr: &Cr<'_, '_, '_>, v: ValueId, zp: i64) -> bool {
         zp == 0 || Self::elem(&Self::ty(cr, v)) == Type::int(8)
     }
 
-    /// `getZeroAttr`.
     fn zero<'a>(t: &Type<'a>) -> Attribute<'a> {
         match t {
             Type::Float(k) => Const::scalar(Scalar::Float(ApFloat::from_f64(*k, 0.0).expect("a float")), t.clone()).into(),
@@ -53,7 +46,6 @@ impl TosaToLinalgNamed {
         }
     }
 
-    /// `applyPad`.
     fn apply_pad<'a>(cr: &mut Cr<'_, 'a, '_>, input: ValueId, pad: &[i64], value: Attribute<'a>) -> ValueId {
         if pad.iter().all(|p| *p == 0) {
             return input;
@@ -68,14 +60,12 @@ impl TosaToLinalgNamed {
         cr.pad_static(input, &low, &high, pv, Type::tensor(&padded, et))
     }
 
-    /// `getBroadcastingMap`.
     fn broadcasting_map(cr: &Cr<'_, '_, '_>, source: ValueId, result: ValueId) -> AffineMap {
         let (rr, sd) = ((Self::ty(cr, result)).dims().unwrap_or_default().len() as u32, (Self::ty(cr, source)).dims().unwrap_or_default());
         let results = if sd.len() == 1 && sd[0] == 1 { vec![AffineExpr::Const(0)] } else { (0..sd.len() as u32).map(|d| AffineExpr::Dim(d + rr - sd.len() as u32)).collect() };
         AffineMap { dims: rr, syms: 0, results }
     }
 
-    /// `linalgBroadcastAndMaybeExt`.
     fn broadcast_ext(cr: &mut Cr<'_, '_, '_>, source: ValueId, result: ValueId) -> ValueId {
         let rt = Self::ty(cr, result);
         let rank = rt.dims().unwrap_or_default().len();
@@ -89,7 +79,6 @@ impl TosaToLinalgNamed {
         cr.rw.body[g].results[0]
     }
 
-    /// `getConvOrPoolOutputDim`.
     fn output_dim(cr: &mut Cr<'_, '_, '_>, input: ValueId, before: i64, after: i64, kernel: ValueId, stride: i64, dilation: i64) -> ValueId {
         let one = cr.constant(Attribute::integer(1, (Type::Index).clone()), Type::Index);
         let pb = cr.cidx(before);
@@ -106,7 +95,6 @@ impl TosaToLinalgNamed {
         cr.bin("arith.addi", q, one)
     }
 
-    /// `inferDynamicDimsForConv`.
     fn conv_dyn_dims(cr: &mut Cr<'_, '_, '_>, input: ValueId, weight: ValueId, rdims: &[i64], pad: &[i64], stride: &[i64], dil: &[i64], in_dims: &[i64], k_dims: &[i64]) -> Vec<ValueId> {
         let mut dims: Vec<Option<ValueId>> = vec![None; rdims.len()];
         for i in 0..in_dims.len() {
@@ -126,7 +114,6 @@ impl TosaToLinalgNamed {
         dims.into_iter().flatten().collect()
     }
 
-    /// `tosa.transpose` moving the leading dim of the weight last.
     fn transpose_weight<'a>(cr: &mut Cr<'_, 'a, '_>, weight: ValueId, rank: usize) -> ValueId {
         let wt = Self::ty(cr, weight);
         let shape = wt.dims().unwrap_or_default();
@@ -143,7 +130,6 @@ impl TosaToLinalgNamed {
         }
     }
 
-    /// `ConvConverter`.
     fn conv(cr: &mut Cr<'_, '_, '_>, op: OpId, names: (&str, &str)) -> bool {
         let b = &*cr.rw.body;
         let (mut input, mut weight, bias) = (b[op].operands[0], b[op].operands[1], b[op].operands[2]);
@@ -222,7 +208,6 @@ impl TosaToLinalgNamed {
         Self::conv(cr, op, ("linalg.conv_3d_ndhwc_dhwcf", "linalg.conv_3d_ndhwc_dhwcf_q"))
     }
 
-    /// `DepthwiseConvConverter`.
     #[convert("tosa.depthwise_conv2d", untyped)]
     fn depthwise(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -284,7 +269,6 @@ impl TosaToLinalgNamed {
             let c = Self::yaml_named(cr, "linalg.depthwise_conv_2d_nhwc_hwcm_q", Named::MulAddZp, &[input, weight, i, k], &[zt], &conv_ty, props, &stride, &dil);
             let v = cr.rw.body[c].results[0];
             let r = cr.collapse(v, &reassoc, rt.clone());
-            // `linalgIntBroadcastExtSIAdd`.
             let g = cr.generic(core::slice::from_ref(&rt), &[bias, r], &[bias_empty], &maps, &vec![true; rank], &mut |cr, a| {
                 let rt = Self::ty(cr, a[1]);
                 let bv = if Self::ty(cr, a[0]) != rt { cr.op1("arith.extsi", &[a[0]], rt) } else { a[0] };
@@ -296,13 +280,11 @@ impl TosaToLinalgNamed {
         true
     }
 
-    /// The default `indexing_maps` of `linalg.batch_matmul`.
     fn batch_matmul_maps<'a>() -> Attribute<'a> {
         let m = |r: [u32; 3]| Attribute::from(&AffineMap { dims: 4, syms: 0, results: r.iter().map(|d| AffineExpr::Dim(*d)).collect() });
         Attribute::Array(vec![m([0, 1, 3]), m([0, 3, 2]), m([0, 1, 2])])
     }
 
-    /// `MatMulConverter`.
     #[convert("tosa.matmul", untyped)]
     fn matmul(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -337,8 +319,6 @@ impl TosaToLinalgNamed {
         true
     }
 
-    /// `linalg.memoized_indexing_maps` of the OpDSL named ops, which compute their maps from
-    /// `strides` / `dilations` (scalar operands, such as zero points, take `() -> ()`).
     fn memoized<'a>(name: &str, stride: &[i64], dil: &[i64]) -> Option<Attribute<'a>> {
         let d = AffineExpr::Dim;
         let at = |o: u32, k: u32, i: usize| d(o).mul_const(stride[i]).add(d(k).mul_const(dil[i]));
@@ -361,7 +341,6 @@ impl TosaToLinalgNamed {
         Some(Attribute::Array(maps.iter().map(Attribute::from).collect()))
     }
 
-    /// A named op with its OpDSL body, memoized maps attached as verification leaves them.
     fn yaml_named<'a>(cr: &mut Cr<'_, 'a, '_>, name: &str, kind: Named, inputs: &[ValueId], outputs: &[ValueId], rt: &Type<'a>, props: Vec<(&str, Attribute<'a>)>, stride: &[i64], dil: &[i64]) -> OpId {
         let p = cr.named(name, kind, inputs, outputs, core::slice::from_ref(rt), props);
         if let Some(m) = Self::memoized(name, stride, dil) {
@@ -375,7 +354,6 @@ impl TosaToLinalgNamed {
         Self::yaml_named(cr, name, kind, inputs, &[init], rt, props, stride, &[1, 1])
     }
 
-    /// `MaxPool2dConverter`.
     #[convert("tosa.max_pool2d")]
     fn max_pool(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let input = o[0][0];
@@ -385,7 +363,6 @@ impl TosaToLinalgNamed {
         let Some(rt) = cr.type_converter().and_then(|tc| tc.convert(&ot)) else { return false };
         let re = Self::elem(&it);
         let (kernel, pad_a, stride) = (Self::ints(cr, op, "kernel"), Self::ints(cr, op, "pad"), Self::ints(cr, op, "stride"));
-        // `computeDynamicOutputSizes`.
         let rd = ot.dims().unwrap_or_default();
         let mut dyn_dims = Vec::new();
         if rd[0] == Dim::DYNAMIC {
@@ -455,7 +432,6 @@ impl TosaToLinalgNamed {
         true
     }
 
-    /// `checkHasDynamicBatchDims`.
     pub fn dynamic_batch(cr: &mut Cr<'_, '_, '_>, params: &[ValueId]) -> Option<Vec<ValueId>> {
         let dynamic: Vec<Vec<i64>> = params.iter().map(|p| (Self::ty(cr, *p)).dims().unwrap_or_default()).filter(|d| d.contains(&Dim::DYNAMIC)).collect();
         if dynamic.is_empty() {
@@ -467,7 +443,6 @@ impl TosaToLinalgNamed {
         Some(vec![cr.tdim(params[0], 0)])
     }
 
-    /// `AvgPool2dConverter`.
     #[convert("tosa.avg_pool2d", untyped)]
     fn avg_pool(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -578,7 +553,6 @@ impl TosaToLinalgNamed {
         true
     }
 
-    /// `TransposeConverter`.
     #[convert("tosa.transpose", untyped)]
     fn transpose(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
@@ -596,10 +570,8 @@ impl TosaToLinalgNamed {
         cr.replace_values(op, &[v]);
         true
     }
-
 }
 
-/// An integer attribute re-typed.
 trait WithTy<'a> {
     fn with_ty(self, ty: &Type<'a>) -> Self;
 }

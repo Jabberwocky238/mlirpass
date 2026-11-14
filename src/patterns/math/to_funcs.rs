@@ -1,6 +1,3 @@
-//! `convert-math-to-funcs`, as `MathToFuncs.cpp`: `math.ipowi`, `math.fpowi` and `math.ctlz`
-//! as calls to functions generated into the module (vectors scalarized first).
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -13,12 +10,10 @@ use crate::{ApFloat, BlockId, Body, Const, ConversionRewriter, OpData, OpId, Reg
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `arith::CmpIPredicate`s.
 const EQ: i64 = 0;
 const NE: i64 = 1;
 const SLE: i64 = 3;
 
-/// An `ImplicitLocOpBuilder` inside one generated function: ops go to the end of `at`.
 struct Fb<'b, 'a> {
     b: &'b mut Body<'a>,
     region: RegionId,
@@ -42,7 +37,6 @@ impl<'a> Fb<'_, 'a> {
         self.v(name, &[a, b], ty)
     }
 
-    /// An arith op, its float or integer form by the operands' type.
     fn arith(&mut self, float: &str, int: &str, a: ValueId, b: ValueId) -> ValueId {
         let name = if matches!(self.b[a].ty, Type::Float(_)) { float } else { int };
         self.bin(name, a, b)
@@ -64,7 +58,6 @@ impl<'a> Fb<'_, 'a> {
         self.bin("arith.andi", a, b)
     }
 
-    /// `>>`: the logical shift.
     fn shr(&mut self, a: ValueId, b: ValueId) -> ValueId {
         self.bin("arith.shrui", a, b)
     }
@@ -89,7 +82,6 @@ impl<'a> Fb<'_, 'a> {
         self.b[o].results[0]
     }
 
-    /// `createBlock(region)`: a new last block, where ops now go.
     fn block(&mut self, types: &[Type<'a>]) -> BlockId {
         let args: Vec<_> = types.iter().map(|t| (t.clone(), None)).collect();
         self.at = self.b.add_block(self.region, &args);
@@ -115,7 +107,6 @@ impl<'a> Fb<'_, 'a> {
         self.op(OpData::build("cf.cond_br").operands(&ops).successors(&[t, f]).segments(&[1, ta.len(), fa.len()]), &[]);
     }
 
-    /// Ends `block` with `f` (ops then go back to where they were).
     fn at_end(&mut self, block: BlockId, f: impl FnOnce(&mut Self)) {
         let saved = self.at;
         self.at = block;
@@ -124,7 +115,6 @@ impl<'a> Fb<'_, 'a> {
     }
 }
 
-/// The math ⇒ func patterns and generated functions.
 pub struct MathToFuncs;
 
 impl MathToFuncs {
@@ -136,7 +126,6 @@ impl MathToFuncs {
         t.bit_width().unwrap_or(0)
     }
 
-    /// A private `linkonce_odr` function `name : ty` at the end of `module`, with its entry block.
     fn function<'b, 'a>(b: &'b mut Body<'a>, module: OpId, name: &str, ty: FunctionType<'a>) -> Fb<'b, 'a> {
         let inputs = ty.inputs.clone();
         let data = OpData::build("func.func")
@@ -153,7 +142,6 @@ impl MathToFuncs {
         Fb { b, region, at }
     }
 
-    /// `createElementIPowIFunc`: the blocks in their order (C++ creates them out of it).
     pub(crate) fn ipowi<'a>(b: &mut Body<'a>, module: OpId, t: Type<'a>) {
         let mut f = Self::function(b, module, &format!("__mlir_math_ipowi_{t}"), FunctionType { inputs: vec![t.clone(), t.clone()], results: vec![t.clone()] });
         blocks!(f;
@@ -223,7 +211,6 @@ impl MathToFuncs {
         );
     }
 
-    /// `createElementFPowIFunc`: the blocks in their order.
     pub(crate) fn fpowi<'a>(b: &mut Body<'a>, module: OpId, ft: FunctionType<'a>) {
         let (bt, pt) = (ft.inputs[0].clone(), ft.inputs[1].clone());
         let Type::Float(k) = bt else { return };
@@ -285,7 +272,6 @@ impl MathToFuncs {
         );
     }
 
-    /// `createCtlzFunc`.
     pub(crate) fn ctlz<'a>(b: &mut Body<'a>, module: OpId, t: Type<'a>) {
         let w = Self::width(&t);
         let mut f = Self::function(b, module, &format!("__mlir_math_ctlz_{t}"), FunctionType { inputs: vec![t.clone()], results: vec![t.clone()] });
@@ -334,7 +320,6 @@ impl MathToFuncs {
         f.ret(&[r]);
     }
 
-    /// The function a call replaces `op` with, by name.
     fn callee<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, name: &str) -> Option<(OpId, Vec<Type<'a>>)> {
         let b = &*cr.rw.body;
         let mut t = b.parent_op(op);
@@ -364,7 +349,6 @@ impl MathToFuncs {
 
 #[patterns(convert_ctlz: bool)]
 impl MathToFuncs {
-    /// `VecOpToScalarOp`: one scalar op per element.
     #[convert("math.ipowi", "math.fpowi", "math.ctlz")]
     fn scalarize(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         if !Self::is_vector(cr, op) {
@@ -402,7 +386,6 @@ impl MathToFuncs {
         true
     }
 
-    /// `IPowIOpLowering`.
     #[convert("math.ipowi")]
     fn ipowi_call(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let t = cr.rw.body[cr.rw.body[op].operands[0]].ty.clone();
@@ -412,7 +395,6 @@ impl MathToFuncs {
         Self::call(cr, op, &format!("__mlir_math_ipowi_{t}"))
     }
 
-    /// `FPowIOpLowering`.
     #[convert("math.fpowi")]
     fn fpowi_call(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         if Self::is_vector(cr, op) {
@@ -423,7 +405,6 @@ impl MathToFuncs {
         Self::call(cr, op, &format!("__mlir_math_fpowi_{bt}_{pt}"))
     }
 
-    /// `CtlzOpLowering`.
     #[convert("math.ctlz", when = convert_ctlz)]
     fn ctlz_call(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         if Self::is_vector(cr, op) {
@@ -433,4 +414,3 @@ impl MathToFuncs {
         Self::call(cr, op, &format!("__mlir_math_ctlz_{t}"))
     }
 }
-

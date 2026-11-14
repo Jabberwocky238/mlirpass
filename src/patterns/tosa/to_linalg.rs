@@ -1,6 +1,3 @@
-//! `tosa-to-linalg`, as `TosaToLinalg.cpp`: elementwise ops as `linalg.generic` (with dynamic
-//! broadcasting), reductions as `linalg.reduce`, and the data-movement ops.
-
 use alloc::collections::BTreeMap;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -15,7 +12,6 @@ use crate::{AffineExpr, AffineMap, ApFloat, Const, ConversionRewriter, OpData, O
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// `IndexPool`: index constants by value, created once.
 type Pool = BTreeMap<i64, ValueId>;
 
 fn elem<'a>(t: &Type<'a>) -> Type<'a> {
@@ -43,7 +39,6 @@ fn smax(w: u32) -> i128 {
     (1i128 << (w - 1)) - 1
 }
 
-/// `arith.cmpf` / `arith.cmpi` predicates by name.
 fn cmpf(cr: &mut Cr<'_, '_, '_>, pred: i64, a: ValueId, b: ValueId) -> ValueId {
     cr.build(OpData::build("arith.cmpf").operands(&[a, b]).with("predicate", Attribute::i64(pred)), Type::int(1))
 }
@@ -54,7 +49,6 @@ fn cmpi(cr: &mut Cr<'_, '_, '_>, pred: i64, a: ValueId, b: ValueId) -> ValueId {
 
 const UNO: i64 = 14;
 
-/// The tosa ⇒ linalg patterns.
 pub struct TosaToLinalg;
 
 #[patterns(converter)]
@@ -63,7 +57,6 @@ impl TosaToLinalg {
         cr.rw.body[v].ty.clone()
     }
 
-    /// `getZeroPoint` of operand `i` of `op` (`None` when not constant).
     fn zp(cr: &Cr<'_, '_, '_>, op: OpId, i: usize) -> Option<i64> {
         let v = *cr.rw.body[op].operands.get(i)?;
         let c = Const::try_from(&cr.rw.body.constant_of(v)?).ok()?;
@@ -78,7 +71,6 @@ impl TosaToLinalg {
         matches!(cr.rw.body[op].get("nan_mode"), Some(Attribute::Extended { ext, .. }) if ext.body.as_deref().is_some_and(|b| b.contains("IGNORE")))
     }
 
-    /// `materializeBinaryNanCheckIfRequired`.
     fn nan_check(cr: &mut Cr<'_, '_, '_>, op: OpId, l: ValueId, r: ValueId, res: ValueId) -> ValueId {
         if !matches!(Self::ty(cr, l), Type::Float(_)) || !Self::nan_ignore(cr, op) {
             return res;
@@ -90,20 +82,17 @@ impl TosaToLinalg {
         cr.op1("arith.select", &[rn, l, x], ty)
     }
 
-    /// `clampIntHelper`.
     fn clamp_int(cr: &mut Cr<'_, '_, '_>, v: ValueId, min: ValueId, max: ValueId, unsigned: bool) -> ValueId {
         let (mx, mn) = if unsigned { ("arith.maxui", "arith.minui") } else { ("arith.maxsi", "arith.minsi") };
         let a = cr.bin(mx, min, v);
         cr.bin(mn, max, a)
     }
 
-    /// `clampFloatHelper`.
     fn clamp_float(cr: &mut Cr<'_, '_, '_>, v: ValueId, min: ValueId, max: ValueId) -> ValueId {
         let a = cr.bin("arith.minimumf", v, max);
         cr.bin("arith.maximumf", a, min)
     }
 
-    /// The scalar attribute `name` of `op` as `f64` / integer.
     fn attr_f64(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> Option<ApFloat> {
         match Const::try_from(cr.rw.body[op].get(name)?).ok()?.values[0] {
             Scalar::Float(f) => Some(f),
@@ -115,7 +104,6 @@ impl TosaToLinalg {
         Const::try_from(cr.rw.body[op].get(name)?).ok()?.as_int().map(|i| i.signed())
     }
 
-    /// `createLinalgBodyCalculationForElementwiseOp`.
     fn elementwise_body<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, args: &[ValueId], rt: &Type<'a>) -> Option<ValueId> {
         let b = &*cr.rw.body;
         let name = b[op].name.clone();
@@ -319,7 +307,6 @@ impl TosaToLinalg {
                     (i128::from(i64::MIN), i128::from(i64::MAX))
                 };
                 if unsigned {
-                    // The attribute holds the unsigned value as written.
                     lo = lo.rem_euclid(1i128 << w);
                     hi = hi.rem_euclid(1i128 << w);
                 }
@@ -342,7 +329,6 @@ impl TosaToLinalg {
         })
     }
 
-    /// The `tosa.cast` body.
     fn cast_body<'a>(cr: &mut Cr<'_, 'a, '_>, arg: ValueId, src: &Type<'a>, dst: &Type<'a>) -> Option<ValueId> {
         let (sf, df) = (matches!(src, Type::Float(_)), matches!(dst, Type::Float(_)));
         let (si, di) = (matches!(src, Type::Integer { .. }), matches!(dst, Type::Integer { .. }));
@@ -435,7 +421,6 @@ impl TosaToLinalg {
         cr.op1("tensor.dim", &[t, k], Type::Index)
     }
 
-    /// `computeTargetSize`.
     fn target_size(cr: &mut Cr<'_, '_, '_>, pool: &mut Pool, ops: &[ValueId], d: usize) -> (Ofr, Option<ValueId>) {
         for o in ops {
             let s = (Self::ty(cr, *o)).dims().unwrap_or_default()[d];
@@ -458,7 +443,6 @@ impl TosaToLinalg {
         (Ofr::V(t), None)
     }
 
-    /// `broadcastDynamicDimension`.
     fn broadcast_dim(cr: &mut Cr<'_, '_, '_>, pool: &mut Pool, operand: ValueId, d: usize, target: Ofr, master: Option<ValueId>) -> ValueId {
         let ot = Self::ty(cr, operand);
         let dims = ot.dims().unwrap_or_default();
@@ -507,7 +491,6 @@ impl TosaToLinalg {
         cr.rw.body[op].results[0]
     }
 
-    /// `elementwiseMatchAndRewriteHelper`.
     #[convert("tosa.add", "tosa.sub", "tosa.mul", "tosa.intdiv", "tosa.negate", "tosa.pow", "tosa.reciprocal", "tosa.rsqrt", "tosa.log", "tosa.exp", "tosa.abs", "tosa.sin", "tosa.cos", "tosa.tanh", "tosa.erf", "tosa.bitwise_and", "tosa.bitwise_or", "tosa.bitwise_not", "tosa.bitwise_xor", "tosa.logical_and", "tosa.logical_not", "tosa.logical_or", "tosa.logical_xor", "tosa.cast", "tosa.logical_left_shift", "tosa.logical_right_shift", "tosa.arithmetic_right_shift", "tosa.clz", "tosa.select", "tosa.greater", "tosa.greater_equal", "tosa.equal", "tosa.maximum", "tosa.minimum", "tosa.ceil", "tosa.floor", "tosa.clamp", "tosa.sigmoid")]
     fn pointwise(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -517,7 +500,6 @@ impl TosaToLinalg {
         }
         let operands: Vec<ValueId> = o.iter().map(|v| v[0]).collect();
         let name = b[op].name.clone();
-        // `getBroadcastableOperands`.
         let take = match &*name {
             "tosa.mul" => {
                 if b.constant_of(b[op].operands[2]).is_some() { 2 } else { 3 }
@@ -545,7 +527,6 @@ impl TosaToLinalg {
                 }
             }
         }
-        // `emitElementwiseComputation`.
         let re = elem(&rt);
         let out = cr.empty_mixed(&target, re.clone());
         let out_ty = Self::ty(cr, out);
@@ -579,7 +560,6 @@ impl TosaToLinalg {
         true
     }
 
-    /// `createInitialValueForReduceOp`.
     fn reduce_init<'a>(name: &str, et: &Type<'a>) -> Option<Attribute<'a>> {
         let f = matches!(et, Type::Float(_));
         let w = width(et);
@@ -598,7 +578,6 @@ impl TosaToLinalg {
         })
     }
 
-    /// `createLinalgBodyCalculationForReduceOp`.
     fn reduce_body(cr: &mut Cr<'_, '_, '_>, name: &str, a: ValueId, b: ValueId, et: &Type<'_>) -> Option<ValueId> {
         let f = matches!(et, Type::Float(_));
         let n = match (name, f) {
@@ -617,7 +596,6 @@ impl TosaToLinalg {
         Some(cr.bin(n, a, b))
     }
 
-    /// `reduceMatchAndRewriteHelper`.
     #[convert("tosa.reduce_all", "tosa.reduce_any", "tosa.reduce_min", "tosa.reduce_max", "tosa.reduce_sum", "tosa.reduce_product", untyped)]
     fn reduce(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -722,23 +700,19 @@ impl TosaToLinalg {
         true
     }
 
-    /// The integer attribute `name` of `op` (`axis`).
     fn axis(cr: &Cr<'_, '_, '_>, op: OpId) -> usize {
         Self::attr_int(cr, op, "axis").map_or(0, |a| a as usize)
     }
 
-    /// A rank-`n` map of the given dims.
     fn dims_map(n: usize, dims: &[usize]) -> AffineMap {
         AffineMap { dims: n as u32, syms: 0, results: dims.iter().map(|d| AffineExpr::Dim(*d as u32)).collect() }
     }
 
-    /// `tensor.dim`s of the dynamic dimensions of `v` (those `keep` accepts).
     fn dyn_dims(cr: &mut Cr<'_, '_, '_>, v: ValueId, keep: impl Fn(usize, i64) -> bool) -> Vec<ValueId> {
         let dims = (Self::ty(cr, v)).dims().unwrap_or_default();
         dims.iter().enumerate().filter(|(i, d)| keep(*i, **d)).map(|(i, _)| cr.tdim(v, i as i64)).collect()
     }
 
-    /// `ReverseConverter`.
     #[convert("tosa.reverse", untyped)]
     fn reverse(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
@@ -769,12 +743,10 @@ impl TosaToLinalg {
         true
     }
 
-    /// `!tosa.shape<n>`.
     fn shape_type<'a>(n: usize) -> Type<'a> {
         Type::Extended(alloc::boxed::Box::new(mlirformat::Extended { name: "tosa.shape".into(), body: Some(alloc::format!("<{n}>").into()), params: Vec::new() }))
     }
 
-    /// `TileConverter`.
     #[convert("tosa.tile", untyped)]
     fn tile(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (input, mv) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
@@ -802,7 +774,6 @@ impl TosaToLinalg {
         true
     }
 
-    /// `ArgMaxConverter`.
     #[convert("tosa.argmax", untyped)]
     fn argmax(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
@@ -854,7 +825,6 @@ impl TosaToLinalg {
         true
     }
 
-    /// `GatherConverter`.
     #[convert("tosa.gather")]
     fn gather(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let (values, indices) = (o[0][0], o[1][0]);
@@ -882,7 +852,6 @@ impl TosaToLinalg {
         true
     }
 
-    /// `TableConverter`.
     #[convert("tosa.table", untyped)]
     fn table(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let (input, table) = (cr.rw.body[op].operands[0], cr.rw.body[op].operands[1]);
@@ -932,7 +901,6 @@ impl TosaToLinalg {
         true
     }
 
-    /// `RescaleConverter`.
     #[convert("tosa.rescale", untyped)]
     fn rescale(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -1075,7 +1043,6 @@ impl TosaToLinalg {
             v = cr.build(OpData::build("tosa.apply_scale").operands(&[v, m, s]).with("rounding_mode", rmode.clone()), i32t.clone());
             v = cr.bin("arith.addi", v, ozv);
             let (lo, hi) = if out_unsigned { (0, (1i128 << ow) - 1) } else { (smin(ow), smax(ow)) };
-            // `int32_t` truncation of the bounds.
             let (lo, hi) = (i128::from(lo as i32), i128::from(hi as i32));
             let mn = cr.constant(Attribute::integer(lo, i32t.clone()), i32t.clone());
             let mx = cr.constant(Attribute::integer(hi, i32t.clone()), i32t.clone());
@@ -1093,14 +1060,12 @@ impl TosaToLinalg {
         true
     }
 
-    /// `RFFT2dConverter::castIndexToFloat`.
     fn index_to_float<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>, v: ValueId) -> ValueId {
         let it = Type::int(if width(ty) > 32 { 64 } else { 32 });
         let i = cr.op1("arith.index_castui", &[v], it);
         cr.op1("arith.uitofp", &[i], ty.clone())
     }
 
-    /// `RFFT2dConverter::createZeroTensor`.
     fn zero_tensor<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>, dynamic: &[ValueId]) -> ValueId {
         let e = cr.op1("tensor.empty", dynamic, ty.clone());
         let et = elem(ty);
@@ -1109,7 +1074,6 @@ impl TosaToLinalg {
         cr.rw.body[f].results[0]
     }
 
-    /// `RFFT2dConverter` and `FFT2dConverter`.
     #[convert("tosa.rfft2d", "tosa.fft2d", untyped)]
     fn fft(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let b = &*cr.rw.body;
@@ -1195,7 +1159,6 @@ impl TosaToLinalg {
         true
     }
 
-    /// The `tosa.resize` mode (`Some(true)` for bilinear, `Some(false)` nearest).
     fn bilinear(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<bool> {
         let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("mode") else { return None };
         match ext.body.as_deref()? {
@@ -1205,7 +1168,6 @@ impl TosaToLinalg {
         }
     }
 
-    /// `ResizeUnaryConverter`.
     #[convert("tosa.resize", benefit = 200, untyped)]
     fn resize_unary(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
@@ -1247,7 +1209,6 @@ impl TosaToLinalg {
         true
     }
 
-    /// `MaterializeResizeBroadcast`.
     #[convert("tosa.resize", benefit = 300, untyped)]
     fn resize_broadcast(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
@@ -1296,7 +1257,6 @@ impl TosaToLinalg {
         true
     }
 
-    /// `GenericResizeConverter`.
     #[convert("tosa.resize", benefit = 100, untyped)]
     fn resize<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let ops = cr.rw.body[op].operands.clone();
@@ -1332,7 +1292,6 @@ impl TosaToLinalg {
                 let val = cr.bin("arith.addi", m, off);
                 let index = cr.bin("arith.floordivsi", val, sn);
                 if fp {
-                    // (x - ix * scale_n: x % scale_n for positive x)
                     let scaled = cr.bin("arith.muli", index, sn);
                     let r = cr.bin("arith.subi", val, scaled);
                     let rf = cr.op1("arith.sitofp", &[r], re.clone());
@@ -1424,12 +1383,10 @@ impl TosaToLinalg {
         true
     }
 
-    /// `IdentityNConverter`.
     #[convert("tosa.identity", untyped)]
     fn identity(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let ops = cr.rw.body[op].operands.clone();
         cr.replace_values(op, &ops);
         true
     }
-
 }

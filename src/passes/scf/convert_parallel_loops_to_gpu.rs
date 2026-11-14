@@ -1,10 +1,7 @@
-//! `convert-parallel-loops-to-gpu`.
-
 use alloc::vec::Vec;
 use mlirformat::Error;
 use crate::{Action, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpId, ScfToGpu};
 
-/// `convert-parallel-loops-to-gpu`.
 #[crate::pass("convert-parallel-loops-to-gpu")]
 pub fn convert_parallel_loops_to_gpu<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let mut patterns = ConversionPatterns::default();

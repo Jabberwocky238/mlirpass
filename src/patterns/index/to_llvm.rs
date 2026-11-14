@@ -1,5 +1,3 @@
-//! `index` ⇒ `llvm`, as `IndexToLLVM.cpp`.
-
 use alloc::format;
 use alloc::vec::Vec;
 
@@ -8,20 +6,17 @@ use mlirformat::{Attribute, Type};
 
 use crate::{ConversionRewriter, OpData, OpId, ValueId};
 
-/// `LLVM::ICmpPredicate`s.
 const EQ: i64 = 0;
 const NE: i64 = 1;
 const SLT: i64 = 2;
 const SGT: i64 = 4;
 
-/// Builds llvm integer arithmetic over values of type `ty`.
 struct Ll<'c, 'r, 'a, 'p> {
     cr: &'c mut ConversionRewriter<'r, 'a, 'p>,
     ty: Type<'a>,
 }
 
 impl Ll<'_, '_, '_, '_> {
-    /// `LLVM::ConstantOp::create(type, int)`.
     fn int(&mut self, v: i64) -> ValueId {
         let ty = self.ty.clone();
         self.cr.llvm_constant(Attribute::Int { lit: mlirformat::Str::Owned(format!("{v}")), ty: Some(ty.clone()) }, ty)
@@ -62,7 +57,6 @@ impl Ll<'_, '_, '_, '_> {
     }
 }
 
-/// The index ⇒ llvm patterns.
 pub struct IndexToLlvm;
 
 #[patterns(converter, builder = Self::ll)]
@@ -85,14 +79,12 @@ pub struct IndexToLlvm;
 #[map("index.xor" => "llvm.xor", scalar)]
 #[map("index.bool.constant" => "llvm.mlir.constant", scalar)]
 impl IndexToLlvm {
-    /// The expansion builder over the converted operand type.
     fn ll<'c, 'r, 'a, 'p>(cr: &'c mut ConversionRewriter<'r, 'a, 'p>, op: OpId) -> Ll<'c, 'r, 'a, 'p> {
         let t = cr.rw.body[op].operands.first().map_or(Type::Index, |v| cr.rw.body[*v].ty.clone());
         let ty = cr.type_converter().and_then(|tc| tc.convert(&t)).unwrap_or(t);
         Ll { cr, ty }
     }
 
-    /// `ConvertIndexCeilDivS`.
     #[convert("index.ceildivs")]
     #[ops(b)]
     fn ceildivs(b: &mut Ll<'_, '_, '_, '_>, n: ValueId, m: ValueId) -> ValueId {
@@ -108,7 +100,6 @@ impl IndexToLlvm {
         b.select(cmp, pos_res, neg_res)
     }
 
-    /// `ConvertIndexCeilDivU`.
     #[convert("index.ceildivu")]
     #[ops(b)]
     fn ceildivu(b: &mut Ll<'_, '_, '_, '_>, n: ValueId, m: ValueId) -> ValueId {
@@ -119,7 +110,6 @@ impl IndexToLlvm {
         b.select(cmp, zero, plus)
     }
 
-    /// `ConvertIndexFloorDivS`.
     #[convert("index.floordivs")]
     #[ops(b)]
     fn floordivs(b: &mut Ll<'_, '_, '_, '_>, n: ValueId, m: ValueId) -> ValueId {
@@ -158,15 +148,11 @@ impl IndexToLlvm {
         Self::cast(cr, op, operands, "llvm.zext")
     }
 
-    /// `index.cmp`: the predicates share their case values with `llvm.icmp`.
     #[convert("index.cmp")]
     fn cmp(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some([l, r]) = ConversionRewriter::one_to_one(operands).and_then(|v| <[ValueId; 2]>::try_from(v).ok()) else { return false };
-        // `IndexCmpPredicate` cases are printed as their names; their order is eq, ne, slt,
-        // sle, sgt, sge, ult, ule, ugt, uge, as `ICmpPredicate`.
         let pred = match cr.rw.body[op].get("pred") {
             Some(Attribute::Extended { ext, .. }) => {
-                // `#index<cmp_predicate eq>`.
                 let body = ext.body.as_deref().unwrap_or("").trim_matches(|c| c == '<' || c == '>');
                 let name = body.rsplit(' ').next().unwrap_or(body);
                 ["eq", "ne", "slt", "sle", "sgt", "sge", "ult", "ule", "ugt", "uge"].iter().position(|p| *p == name).unwrap_or(0) as i64
@@ -193,5 +179,4 @@ impl IndexToLlvm {
         cr.replace_new(op, OpData::build("llvm.mlir.constant").with("value", value), &[ty]);
         true
     }
-
 }

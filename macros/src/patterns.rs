@@ -1,6 +1,3 @@
-//! `#[patterns]`: a rule set's `patterns` / `populate`, from its `#[rewrite]` (rewrite pattern)
-//! and `#[convert]` (conversion pattern) methods and `#[map]` rows.
-
 use proc_macro2::TokenStream as Tokens;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
@@ -12,8 +9,6 @@ mod rule;
 use map::MapArgs;
 pub use rule::RuleArgs;
 
-/// `#[patterns(..)]`'s arguments: `converter`, `options = Type`, `extra = path`,
-/// `builder = ctor`, and `flag: Type` populate parameters.
 pub struct PatternsArgs {
     converter: bool,
     options: Option<Type>,
@@ -49,21 +44,15 @@ impl Parse for PatternsArgs {
     }
 }
 
-/// What the rows of a `#[patterns]` impl add: items inside the impl, items beside it (the
-/// rewrite-pattern structs), the roots lowered, and the statements of `patterns` / `populate`.
 pub struct Populate {
     items: Vec<ImplItem>,
     beside: Vec<Tokens>,
     roots: Vec<LitStr>,
-    /// `populate`'s statements (conversion patterns, and rewrite patterns through `Plain`).
     adds: Vec<Tokens>,
-    /// `patterns`' statements (rewrite patterns).
     plain: Vec<Tokens>,
 }
 
 impl Populate {
-    /// A conversion rule: `f` lowering `root`, added when `when` holds; `opts` when it takes
-    /// the options, `typed` when it goes through the type converter.
     fn add(&mut self, root: &LitStr, benefit: Tokens, when: Tokens, f: &Ident, opts: bool, typed: bool) {
         self.root(root);
         let make = if opts {
@@ -80,7 +69,6 @@ impl Populate {
         });
     }
 
-    /// A rewrite rule `s` (its struct), added to `patterns` and, through `Plain`, to `populate`.
     fn add_plain(&mut self, root: Option<&LitStr>, s: &Ident, when: Tokens) {
         if let Some(r) = root {
             self.root(r);
@@ -97,7 +85,6 @@ impl Populate {
 }
 
 impl PatternsArgs {
-    /// `#[patterns(..)]`: see the crate docs.
     pub fn expand(attr: Tokens, item: Tokens) -> syn::Result<Tokens> {
         let args: PatternsArgs = syn::parse2(attr)?;
         let mut imp: ItemImpl = syn::parse2(item)?;
@@ -127,7 +114,6 @@ impl PatternsArgs {
         let Populate { items, beside, roots, adds, plain } = out;
         imp.items.extend(items);
         imp.items.push(syn::parse_quote! {
-            /// Every root the rules above rewrite.
             pub const ROOTS: &'static [&'static str] = &[#(#roots),*];
         });
         let tc = args.converter.then(|| quote!(tc: usize,));
@@ -142,7 +128,6 @@ impl PatternsArgs {
         let unused = [args.converter.then(|| quote!(let _ = tc;)), args.options.as_ref().map(|_| quote!(let _ = &opts;))];
         let populate = format_ident!("populate");
         imp.items.push(syn::parse_quote! {
-            /// The rules above as conversion patterns (rewrite patterns through `Plain`), in order.
             pub fn #populate<'p>(patterns: &mut crate::ConversionPatterns<'p>, #tc #opts #(#params),*) {
                 #(#unused)*
                 #(let _ = &#names;)*
@@ -152,7 +137,6 @@ impl PatternsArgs {
         });
         if !plain.is_empty() {
             imp.items.push(syn::parse_quote! {
-                /// The rewrite patterns above, for the greedy and walk drivers.
                 pub fn patterns(set: &mut crate::PatternSet, #(#params),*) {
                     #(let _ = &#names;)*
                     #(#plain)*

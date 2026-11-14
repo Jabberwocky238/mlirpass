@@ -1,6 +1,3 @@
-//! `one-shot-bufferize`, as `Bufferize.cpp`'s `OneShotBufferizePass`: the options, then
-//! [`one_shot_bufferize`] of the module.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -9,7 +6,6 @@ use mlirformat::Error;
 
 use crate::{one_shot_bufferize, one_shot_module_bufferize, pass, AnalysisHeuristic, Body, BufferizationOptions, LayoutMapOption, MemorySpaceOption, OpId, Run};
 
-/// `one-shot-bufferize`.
 #[pass("one-shot-bufferize", on = "builtin.module")]
 pub struct OneShotBufferize {
     #[opt("allow-return-allocs-from-loops")]
@@ -49,7 +45,6 @@ pub struct OneShotBufferize {
 }
 
 impl OneShotBufferize {
-    /// The options the pass runs with, checked as upstream does.
     fn options(&self) -> Result<BufferizationOptions, Error> {
         let heuristic = match &*self.heuristic {
             "bottom-up" => AnalysisHeuristic::BottomUp,

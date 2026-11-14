@@ -1,9 +1,3 @@
-//! SPIR-V serialization against `mlir-translate --serialize-spirv` 22.1.8: every chunk of
-//! `mlir/test/Target/SPIRV` (see `scripts/spirv_fixtures.py`), byte for byte.
-//!
-//! `FILTER=<substring>` narrows the chunks; `SHOW=1` prints where each mismatch starts and
-//! writes what mlirpass serialized to `target/spirv-got/`.
-
 mod common;
 
 use std::fs;

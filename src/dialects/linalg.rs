@@ -1,5 +1,3 @@
-//! The `linalg` dialect's op interfaces.
-
 use alloc::vec::Vec;
 
 use mlirformat::{AffineExpr, AffineMap, Attribute, Dim};
@@ -10,18 +8,13 @@ use crate::{Body, EffectInstance, EffectKind, OpId, OpInterfaces};
 mod named;
 pub use named::OPDSL;
 
-/// An OpDSL op (`LinalgNamedStructuredOps.yaml`), as mlir-linalg-ods-yaml-gen reads it for
-/// `getIndexingMaps` / `getIteratorTypesArray`.
 pub struct OpDsl<'s> {
     pub name: &'s str,
-    /// Each loop's iterator type, `true` for a reduction; none when the op is rank polymorphic.
     pub reductions: &'s [bool],
-    /// `static_indexing_maps` as written.
     pub maps: &'s [&'s str],
     pub attrs: &'s [IndexAttr<'s>],
 }
 
-/// An index attribute (`strides`, `dilations`): the symbol each element binds, its defaults.
 pub struct IndexAttr<'s> {
     pub name: &'s str,
     pub syms: &'s [u32],
@@ -29,18 +22,14 @@ pub struct IndexAttr<'s> {
 }
 
 impl OpDsl<'_> {
-    /// The OpDSL op named `name`.
     pub fn of(name: &str) -> Option<&OpDsl<'_>> {
         OPDSL.iter().find(|o| o.name == name)
     }
 
-    /// The iteration domain has rank zero: the maps follow the operands' ranks.
     pub fn rank_polymorphic(&self) -> bool {
         self.reductions.is_empty()
     }
 
-    /// `getIndexingMaps` of a static-rank op: the symbols an index attribute binds become its
-    /// values (`attr(name)`, or the defaults), the others are dropped, and each map is simplified.
     pub fn indexing_maps(&self, attr: impl Fn(&str) -> Option<Vec<i64>>) -> Option<Vec<AffineMap>> {
         let maps: Vec<AffineMap> = self.maps.iter().map(|m| AffineMap::parse(m.strip_prefix("affine_map")?)).collect::<Option<_>>()?;
         let first = maps.first()?;
@@ -55,12 +44,9 @@ impl OpDsl<'_> {
     }
 }
 
-/// The `linalg` dialect.
 pub struct LinalgDialect;
 
 impl LinalgDialect {
-    /// `linalg.pack` / `linalg.unpack`: speculatable when every tiled dimension is static and
-    /// every tile size a constant.
     fn pack_speculatability(b: &Body<'_>, op: OpId) -> Option<bool> {
         let pack = b[op].name == "linalg.pack";
         let segs = b.segments(op, "operandSegmentSizes");
@@ -91,7 +77,6 @@ impl OpInterfaces for LinalgDialect {
         "linalg"
     }
 
-    /// `OpAsmOpInterface::getAsmResultNames`.
     fn asm_result_names(&self, b: &crate::Body<'_>, op: crate::OpId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
         let name = match &*b[op].name {
             "linalg.map" => "mapped",
@@ -105,8 +90,6 @@ impl OpInterfaces for LinalgDialect {
         b.result_named(op, name)
     }
 
-    /// `getAsmBlockArgumentNames`: `%in` for the inputs' arguments, `%out` (`linalg.generic`)
-    /// or `%init` for the inits'.
     fn asm_block_arg_names(&self, b: &crate::Body<'_>, op: crate::OpId, r: crate::RegionId) -> alloc::vec::Vec<(crate::ValueId, alloc::borrow::Cow<'static, str>)> {
         let n = b[op].operands.len();
         let (inputs, inits, out) = match &*b[op].name {
@@ -130,17 +113,13 @@ impl OpInterfaces for LinalgDialect {
     fn reify<'a>(&self, rw: &mut crate::Rewriter<'_, 'a>, op: OpId) -> Option<Vec<Vec<crate::MemrefOfr>>> {
         match &*rw.body[op].name {
             "linalg.softmax" => Self::reify_softmax(rw, op),
-            // Their own `reifyResultShapes`, not ported.
             "linalg.pack" | "linalg.unpack" => None,
             _ => Self::reify_structured(rw, op),
         }
     }
 
-    /// `getGenericEffectsImpl` of a structured op: memref inputs are read, memref inits
-    /// written (and read when the payload uses them).
     fn effects(&self, b: &Body<'_>, op: OpId) -> Option<Vec<EffectInstance>> {
         use EffectKind::{Read, Write};
-        // The inits by `DestinationStyleOpInterface` (`linalg.map` has no segment sizes).
         let n = b[op].operands.len();
         let inits = b.dps_inits(op).unwrap_or(n..n);
         let (ins, outs) = (&b[op].operands[..inits.start], &b[op].operands[inits]);
@@ -165,8 +144,6 @@ impl OpInterfaces for LinalgDialect {
 }
 
 impl LinalgDialect {
-    /// `SoftmaxOp::reifyResultShapes`, as upstream writes it: a static size of the output is the
-    /// input's (static or not), a dynamic one the input's dim.
     fn reify_softmax(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> Option<Vec<Vec<crate::MemrefOfr>>> {
         use crate::MemrefOfr as Ofr;
         let (input, output) = (rw.body[op].operands[0], *rw.body[op].operands.get(1)?);
@@ -183,20 +160,15 @@ impl LinalgDialect {
         Some(alloc::vec![sizes])
     }
 
-    /// `LinalgOp::reifyResultShapes`: each init's sizes from the operands' (all of them built
-    /// first, `createFlatListOfOperandDims`) through `loopsToShapes ∘ shapesToLoops`, composed and
-    /// folded result by result; a size depending on the inits' own is the init's dim.
     fn reify_structured(rw: &mut crate::Rewriter<'_, '_>, op: OpId) -> Option<Vec<Vec<crate::MemrefOfr>>> {
         use crate::MemrefOfr as Ofr;
         let maps = rw.body.indexing_maps(op)?;
         let inits = rw.body.dps_inits(op)?;
         let operands = rw.body[op].operands.to_vec();
         let ranks: Vec<usize> = operands.iter().map(|v| rw.body[*v].ty.dims().map_or(0, |d| d.len())).collect();
-        // `getLoopsToShapesMap`: every operand's map, concatenated.
         let loops = maps.first()?.dims;
         let all: Vec<AffineExpr> = maps.iter().flat_map(|m| m.results.iter().cloned()).collect();
         let flat = all.len() as u32;
-        // `inversePermutation`: each loop at the first shape position that is just it.
         let mut inv: Vec<Option<AffineExpr>> = alloc::vec![None; loops as usize];
         for (i, e) in all.iter().enumerate() {
             if let AffineExpr::Dim(d) = e
@@ -206,7 +178,6 @@ impl LinalgDialect {
             }
         }
         let shapes_to_loops = AffineMap { dims: flat, syms: 0, results: inv.into_iter().collect::<Option<Vec<_>>>()? };
-        // `getResultsPositionInLoopsToShapeMap`: the inits' positions.
         let first: usize = ranks[..inits.start].iter().sum();
         let last = first + ranks[inits.clone()].iter().sum::<usize>();
         let results = AffineMap { dims: loops, syms: 0, results: all[first..last].to_vec() }.compose(&shapes_to_loops);
@@ -216,7 +187,6 @@ impl LinalgDialect {
             hit
         };
         let dims: Vec<Ofr> = operands.iter().zip(&ranks).flat_map(|(v, r)| (0..*r).map(move |i| (*v, i))).collect::<Vec<_>>().into_iter().map(|(v, i)| rw.mixed_size(v, i)).collect();
-        // `makeComposedFoldedMultiResultAffineApply`.
         let values: Vec<Ofr> = results.results.iter().map(|e| rw.composed_folded_apply(AffineMap { dims: flat, syms: 0, results: alloc::vec![e.clone()] }, &dims)).collect();
         let mut pos = 0;
         let mut out = Vec::new();
@@ -248,10 +218,8 @@ mod bufferizable {
     use super::LinalgDialect;
     use crate::{buffer_of, replace_with_buffers, AliasingValue, AnalysisState, Body, Bufferizable, BufferizationOptions, OpData, OpId, Operand, Rewriter};
 
-    /// A structured op (`LinalgOpInterface`), and `linalg.softmax`.
     struct Structured;
     struct Softmax;
-    /// `linalg.pack` / `linalg.unpack` (`PackOpInterface` / `UnPackOpInterface`).
     struct Relayout;
 
     impl LinalgDialect {
@@ -265,13 +233,11 @@ mod bufferizable {
         }
     }
 
-    /// The init operands of destination-style `op`.
     fn inits(b: &Body<'_>, op: OpId) -> core::ops::Range<usize> {
         b.dps_inits(op).unwrap_or(b[op].operands.len()..b[op].operands.len())
     }
 
     impl Bufferizable for Structured {
-        /// `payloadUsesValueFromOperand`.
         fn reads(&self, _: &AnalysisState<'_>, b: &Body<'_>, (op, i): Operand) -> bool {
             let Some(blk) = b[op].regions.first().and_then(|r| b[*r].blocks.first()) else { return true };
             b[*blk].args.get(i).is_some_and(|a| !b[*a].uses.is_empty())
@@ -286,7 +252,6 @@ mod bufferizable {
             if r.contains(&i) { b[op].results.get(i - r.start).map(|v| vec![AliasingValue::equivalent(*v)]).unwrap_or_default() } else { Vec::new() }
         }
 
-        /// All loops parallel, and the operands asked indexed by the identity.
         fn elementwise(&self, _: &AnalysisState<'_>, b: &Body<'_>, operands: &[Operand]) -> bool {
             let Some(&(op, _)) = operands.first() else { return false };
             let parallel = match b[op].get("iterator_types") {
@@ -300,8 +265,6 @@ mod bufferizable {
             operands.iter().all(|(_, i)| !matches!(&b[b[op].operands[*i]].ty, mlirformat::Type::Shaped(s) if s.shape.is_some()) || maps.get(*i).is_some_and(AffineMap::is_identity))
         }
 
-        /// `bufferizeDestinationStyleOpInterface`: the same op on the buffers, results
-        /// replaced by the inits' buffers.
         fn bufferize(&self, rw: &mut Rewriter<'_, '_>, o: &BufferizationOptions, op: OpId) -> Result<(), Error> {
             let operands = rw.body[op].operands.to_vec();
             let tensor = |b: &Body<'_>, v: crate::ValueId| crate::is_tensor(&b[v].ty);
@@ -362,7 +325,6 @@ mod bufferizable {
         }
     }
 
-    /// The destination is operand 1; the source (and a pack's padding and tiles) are read.
     const RELAYOUT_DEST: usize = 1;
 
     impl Bufferizable for Relayout {

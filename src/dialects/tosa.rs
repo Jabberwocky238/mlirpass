@@ -1,10 +1,7 @@
-//! The `tosa` dialect's op interfaces.
-
 use mlirformat::Attribute;
 
 use crate::{Body, OpId, OpInterfaces};
 
-/// The `tosa` dialect.
 pub struct TosaDialect;
 
 impl OpInterfaces for TosaDialect {
@@ -20,8 +17,6 @@ impl OpInterfaces for TosaDialect {
         }
     }
 
-    /// `TransposeOp::reifyResultShapes`, as upstream writes it: for each `dim` of `perms`, size
-    /// `dim` is the input's size `perms[dim]` (a `tensor.dim` built, not folded, when dynamic).
     fn reify<'a>(&self, rw: &mut crate::Rewriter<'_, 'a>, op: OpId) -> Option<alloc::vec::Vec<alloc::vec::Vec<crate::MemrefOfr>>> {
         use crate::MemrefOfr as Ofr;
         if rw.body[op].name != "tosa.transpose" {

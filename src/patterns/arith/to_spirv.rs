@@ -1,5 +1,3 @@
-//! `arith` ⇒ `spirv`, as `ArithToSPIRV.cpp`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -10,20 +8,15 @@ use crate::{ConversionRewriter, OpData, OpId, OpSpec, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
-/// What the arith patterns need of the target and the type converter.
 #[derive(Debug, Clone, Copy)]
 pub struct ArithSpirvOptions {
-    /// `SPV_KHR_no_integer_wrap_decoration`: overflow flags become decorations.
     pub no_wrap: bool,
-    /// `emulateUnsupportedFloatTypes`.
     pub emulate_floats: bool,
 }
 
-/// The arith ⇒ spirv patterns (`populateArithToSPIRVPatterns`).
 pub struct ArithToSpirv;
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {
-    /// `spirv::ConstantOp::getZero` / `getOne` (`v`: 0 or 1) of a scalar or vector type.
     pub fn spirv_int_like(&mut self, ty: &Type<'a>, v: i64) -> ValueId {
         let attr = ArithToSpirv::splat(ty, |e| match e {
             Type::Float(k) => Scalar::Float(ApFloat::from_f64(*k, v as f64).expect("a float")),
@@ -34,12 +27,10 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
 }
 
 impl ArithToSpirv {
-    /// `isBoolScalarOrVector`.
     fn is_bool(t: &Type<'_>) -> bool {
         *t == Type::I1 || matches!(t, Type::Shaped(s) if s.kind == ShapedKind::Vector && *s.elem == Type::I1)
     }
 
-    /// A scalar of type `ty`'s element, splat over `ty` when it is a vector.
     pub(crate) fn splat<'a>(ty: &Type<'a>, f: impl Fn(&Type<'a>) -> Scalar) -> Attribute<'a> {
         match ty {
             Type::Shaped(s) => {
@@ -54,8 +45,6 @@ impl ArithToSpirv {
         }
     }
 
-    /// `getScalarOrVectorConstInt`.
-    /// `getScalarOrVectorConstInt`: an integer or a vector of integers only.
     fn const_int<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>, v: u64) -> Option<ValueId> {
         let int_or_vector = match ty {
             Type::Shaped(s) => s.kind == ShapedKind::Vector,
@@ -78,15 +67,12 @@ impl ArithToSpirv {
         cr.rw.body[v].ty.clone()
     }
 
-    /// `hasTrait<UnsignedOp>` of the spirv op, on a type the converter changed (not `index`).
     fn unsigned_emulated<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, spirv: &str, dst: &Type<'a>) -> bool {
         let r = cr.rw.body[op].results[0];
         let src = cr.rw.body[r].ty.clone();
         OpSpec::of(spirv).is_some_and(|s| s.unsigned) && *src.element_type() != Type::Index && src != *dst
     }
 
-    /// `spirv::ElementwiseOpPattern` (and `ElementwiseArithOpPattern`, which adds the
-    /// overflow decorations).
     pub(crate) fn elementwise<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], spirv: &str, o: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(dst) = Self::result_ty(cr, op) else { return false };
@@ -114,8 +100,6 @@ impl ArithToSpirv {
         matches!(cr.rw.body[op].get("fastmath"), Some(Attribute::Extended { ext, .. }) if ext.body.as_deref().is_some_and(|b| b.contains("nnan") || b.contains("fast")))
     }
 
-    /// `convertIntegerAttr`: `v` as an integer of `width` bits, when it fits (unsigned or
-    /// signed).
     fn fit_int(v: ApInt, width: u32) -> Option<ApInt> {
         let s = v.signed();
         let unsigned_fits = v.bits() >> width.min(127) == 0 || width >= v.width;
@@ -123,7 +107,6 @@ impl ArithToSpirv {
         (unsigned_fits || signed_fits).then(|| ApInt::new(width, s))
     }
 
-    /// `convertFloatAttr`: to `f32` without losing anything.
     fn fit_f32(f: ApFloat) -> Option<ApFloat> {
         let g = f.convert(FloatKind::F32)?;
         (g.to_f64() == f.to_f64() || f.to_f64().is_nan()).then_some(g)
@@ -132,11 +115,8 @@ impl ArithToSpirv {
 
 #[patterns(converter, options = ArithSpirvOptions)]
 impl ArithToSpirv {
-    /// The one-to-one lowerings (`spirv::ElementwiseOpPattern` and, adding overflow
-    /// decorations, `ElementwiseArithOpPattern`).
     #[convert("arith.addi", "arith.subi", "arith.muli", "arith.shli", "arith.divui", "arith.divsi", "arith.remui", "arith.shrui", "arith.shrsi", "arith.negf", "arith.addf", "arith.subf", "arith.mulf", "arith.divf", "arith.remf")]
     fn one_to_one_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: ArithSpirvOptions) -> bool {
-        // (`i1` integer ops are the boolean patterns')
         if operands.first().and_then(|v| v.first()).is_some_and(|v| Self::is_bool(&cr.rw.body[*v].ty)) {
             return false;
         }
@@ -160,8 +140,6 @@ impl ArithToSpirv {
         Self::elementwise(cr, op, operands, target, ArithSpirvOptions { no_wrap: o.no_wrap && wrap, ..o })
     }
 
-    /// `BoolIOpPattern`: integer ops on `i1` by their truth tables (add / sub: xor, mul / div
-    /// / maxsi / minui: and, maxui / minsi: or).
     #[convert("arith.addi", "arith.subi", "arith.muli", "arith.divui", "arith.divsi", "arith.maxsi", "arith.maxui", "arith.minsi", "arith.minui", benefit = 2)]
     fn bool_op<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -179,7 +157,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `BoolIOpAndNotPattern`: shli / shrui / remui / remsi on `i1` are `a & !b`.
     #[convert("arith.shli", "arith.shrui", "arith.remui", "arith.remsi", benefit = 2)]
     fn bool_and_not<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -193,7 +170,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `ShRSIBoolPattern`: an arithmetic shift of an `i1` is the value.
     #[convert("arith.shrsi", benefit = 2)]
     fn bool_shrsi<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -204,7 +180,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// Integer min / max: the GLSL extended instruction, else the OpenCL one.
     #[convert("arith.maxsi", "arith.maxui", "arith.minsi", "arith.minui")]
     fn int_min_max_gl<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: ArithSpirvOptions) -> bool {
         let t = match &*cr.rw.body[op].name {
@@ -227,7 +202,6 @@ impl ArithToSpirv {
         Self::elementwise(cr, op, operands, t, ArithSpirvOptions { no_wrap: false, ..o })
     }
 
-    /// `ConstantCompositeOpPattern`.
     #[convert("arith.constant")]
     fn constant_composite<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: ArithSpirvOptions) -> bool {
         let r = cr.rw.body[op].results[0];
@@ -288,7 +262,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `ConstantScalarOpPattern`.
     #[convert("arith.constant")]
     fn constant_scalar<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, _: &[Vec<ValueId>], o: ArithSpirvOptions) -> bool {
         let r = cr.rw.body[op].results[0];
@@ -332,8 +305,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `emulateSignedRemainder`: `RemSIOpGLPattern` (with `spirv.GL.SAbs`) and
-    /// `RemSIOpCLPattern` (with `spirv.CL.s_abs`), whichever the target allows.
     fn remsi<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], abs: &str) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let (lhs, rhs) = (ops[0], ops[1]);
@@ -349,7 +320,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `i1` of `t`'s shape.
     fn bool_like<'a>(t: &Type<'a>) -> Type<'a> {
         match t {
             Type::Shaped(s) => Type::Shaped(alloc::boxed::Box::new(mlirformat::Shaped { elem: Type::I1.into(), ..*s.clone() })),
@@ -367,7 +337,6 @@ impl ArithToSpirv {
         Self::remsi(cr, op, operands, "spirv.CL.s_abs")
     }
 
-    /// `BitwiseOpPattern`.
     #[convert("arith.andi", "arith.ori")]
     fn bitwise<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -385,7 +354,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `XOrIOpLogicalPattern` / `XOrIOpBooleanPattern`.
     #[convert("arith.xori")]
     fn xori<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -396,8 +364,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `select(c, one, zero)` of type `dst`: `UIToFPI1Pattern`, `IndexCastI1IndexPattern`,
-    /// `ExtUII1Pattern`.
     fn select_one_zero<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, cond: ValueId, dst: Type<'a>) -> bool {
         let zero = cr.spirv_int_like(&dst, 0);
         let one = cr.spirv_int_like(&dst, 1);
@@ -416,7 +382,6 @@ impl ArithToSpirv {
         Self::select_one_zero(cr, op, ops[0], dst)
     }
 
-    /// `IndexCastIndexI1Pattern`.
     #[convert("arith.index_cast")]
     fn index_to_i1<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -432,7 +397,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `IndexCastI1IndexPattern`.
     #[convert("arith.index_cast")]
     fn i1_to_index<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -443,7 +407,6 @@ impl ArithToSpirv {
         Self::select_one_zero(cr, op, ops[0], dst)
     }
 
-    /// `ExtSII1Pattern`.
     #[convert("arith.extsi")]
     fn extsi_i1<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -458,7 +421,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `ExtSIPattern`.
     #[convert("arith.extsi")]
     fn extsi<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -481,7 +443,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `ExtUIPattern` / `TruncIPattern`: an emulated width masked, else converted.
     #[convert("arith.extui", "arith.trunci")]
     fn ext_trunc<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -502,7 +463,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `TruncII1Pattern`.
     #[convert("arith.trunci")]
     fn trunci_i1<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -517,7 +477,6 @@ impl ArithToSpirv {
         Self::select_one_zero(cr, op, is_one, dst)
     }
 
-    /// `TypeCastingOpPattern`.
     #[convert("arith.extf", "arith.truncf", "arith.uitofp", "arith.sitofp", "arith.fptoui", "arith.fptosi", "arith.index_cast", "arith.index_castui", "arith.bitcast")]
     fn cast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -540,8 +499,6 @@ impl ArithToSpirv {
             "arith.index_castui" => "spirv.UConvert",
             _ => "spirv.Bitcast",
         };
-        // `IntToFPPattern`: an integer source widened by the conversion has its upper bits
-        // cleaned first (masked for unsigned, shifted out and back for signed).
         let mut ops = ops;
         if matches!(target, "spirv.ConvertUToF" | "spirv.ConvertSToF") {
             let orig = cr.rw.body[cr.rw.body[op].operands[0]].ty.element_type().bit_width().unwrap_or(0);
@@ -558,7 +515,6 @@ impl ArithToSpirv {
             }
         }
         let mut data = OpData::build(target).operands(&ops);
-        // `arith::RoundingMode`: to_nearest_even, downward, upward, toward_zero, to_nearest_away.
         if let Some(m) = cr.rw.body[op].get("roundingmode").and_then(|a| Const::try_from(a).ok()).and_then(|c| c.as_int()) {
             let mode = match m.signed() {
                 0 => "RTE",
@@ -574,7 +530,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// The `arith.cmpi` / `arith.cmpf` predicate's name.
     fn predicate(cr: &Cr<'_, '_, '_>, op: OpId, names: &[&'static str]) -> Option<&'static str> {
         let v = Const::try_from(cr.rw.body[op].get("predicate")?).ok()?.as_int()?.signed();
         names.get(v as usize).copied()
@@ -583,7 +538,6 @@ impl ArithToSpirv {
     const CMPI: [&'static str; 10] = ["eq", "ne", "slt", "sle", "sgt", "sge", "ult", "ule", "ugt", "uge"];
     const CMPF: [&'static str; 16] = ["false", "oeq", "ogt", "oge", "olt", "ole", "one", "ord", "ueq", "ugt", "uge", "ult", "ule", "une", "uno", "true"];
 
-    /// `CmpIOpBooleanPattern`.
     #[convert("arith.cmpi")]
     fn cmpi_bool<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -615,7 +569,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `CmpIOpPattern`.
     #[convert("arith.cmpi")]
     fn cmpi<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -646,9 +599,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `CmpFOpNanKernelPattern` (benefit 2: registered before the others, it is tried first
-    /// and kept where the target has `spirv.Ordered`), then `CmpFOpNanNonePattern` and
-    /// `CmpFOpPattern`.
     #[convert("arith.cmpf")]
     fn cmpf_kernel<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -708,7 +658,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `BinaryExtendedOpPattern`: `IAddCarry` / `ISubBorrow`, the flag as a bool.
     #[convert("arith.addui_extended", "arith.subui_extended")]
     fn addui_extended<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -724,7 +673,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `!spirv.struct<(T, T)>`.
     fn pair_struct<'a>(t: &Type<'a>) -> Type<'a> {
         let m = |ty: &Type<'a>| mlirformat::spirv_types::SpirvMember { ty: ty.clone(), offset: None, decorations: Vec::new() };
         mlirformat::spirv_types::SpirvType::Struct { name: None, members: Some(vec![m(t), m(t)]), decorations: Vec::new() }.into()
@@ -734,7 +682,6 @@ impl ArithToSpirv {
         cr.build(OpData::build("spirv.CompositeExtract").operands(&[v]).with("indices", Attribute::Array(vec![Attribute::integer(i128::from(i), Type::int(32))])), ty)
     }
 
-    /// `MulIExtendedOpPattern`.
     #[convert("arith.mulsi_extended", "arith.mului_extended")]
     fn mul_extended<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -747,7 +694,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `SelectOpPattern`.
     #[convert("arith.select")]
     fn select<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
@@ -757,8 +703,6 @@ impl ArithToSpirv {
         true
     }
 
-    /// `MinimumMaximumFOpPattern` / `MinNumMaxNumFOpPattern` into `target`; `guard`: NaN
-    /// guards (`nan_first`: a NaN operand wins, as `minimumf` / `maximumf` want).
     fn min_max<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], target: &str, guard: bool, nan_first: bool) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(dst) = Self::result_ty(cr, op) else { return false };
@@ -785,7 +729,6 @@ impl ArithToSpirv {
 
     #[convert("arith.maxnumf", "arith.minnumf")]
     fn minnum_maxnum_gl<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
-        // (`GL.NMax` / `NMin` treat a NaN as missing: no guards)
         let t = if cr.rw.body[op].name == "arith.maxnumf" { "spirv.GL.NMax" } else { "spirv.GL.NMin" };
         Self::min_max(cr, op, operands, t, false, false)
     }

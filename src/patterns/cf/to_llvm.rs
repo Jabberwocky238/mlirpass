@@ -1,5 +1,3 @@
-//! `cf` ⇒ `llvm`, as `ControlFlowToLLVM.cpp`.
-
 use alloc::vec;
 use alloc::vec::Vec;
 use core::sync::atomic::AtomicU32;
@@ -11,13 +9,10 @@ use crate::unescape;
 use crate::{BlockId, ConversionRewriter, OpData, OpId, ValueId};
 use mlirformat::llvm_types::LlvmType;
 
-/// The cf ⇒ llvm patterns.
 pub struct CfToLlvm;
 
 #[patterns(converter)]
 impl CfToLlvm {
-    /// `getConvertedBlock`: `block` with argument types `expected`, converting its signature
-    /// when needed.
     fn converted_block(cr: &mut ConversionRewriter<'_, '_, '_>, block: BlockId, expected: &[mlirformat::Type<'_>]) -> Option<BlockId> {
         if cr.rw.body.types(&cr.rw.body[block].args) == expected {
             return Some(block);
@@ -59,7 +54,6 @@ impl CfToLlvm {
         let weights = b[op].get("branch_weights").cloned();
         let discardable = b.discardable(op);
         let (tt, ft) = (cr.rw.body.types(&t), cr.rw.body.types(&f));
-        // Each successor read after the previous conversion: they may be the same block.
         let td = cr.rw.body[op].successors[0];
         let Some(td) = Self::converted_block(cr, td, &tt) else { return false };
         let fd = cr.rw.body[op].successors[1];
@@ -103,8 +97,6 @@ impl CfToLlvm {
         true
     }
 
-    /// `AssertOpLowering` (aborting): the op's block splits; a new block prints the message
-    /// with `puts` and calls `abort`.
     pub fn assert(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], counter: &AtomicU32) -> bool {
         let [arg] = operands[0][..] else { return false };
         let Some(module) = cr.module_of(op) else { return false };
@@ -133,10 +125,8 @@ impl CfToLlvm {
         cr.erase(op);
         true
     }
-
 }
 
-/// `AssertOpLowering`, with the counter `ensureSymbolNameIsUnique` keeps across chunks.
 pub struct AssertLowering<'c>(pub &'c AtomicU32);
 
 impl crate::ConversionPattern for AssertLowering<'_> {

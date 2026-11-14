@@ -1,6 +1,3 @@
-//! `math` (and `arith.divf`) ⇒ OpenCL native builtins, as `MathToXeVM.cpp`: `afn` ops on SPIR-V
-//! compatible floats become calls of `__spirv_ocl_native_*`.
-
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -10,14 +7,11 @@ use mlirformat::{FloatKind, ShapedKind, Type};
 use crate::patterns;
 use crate::{llvm_fastmath, ConversionRewriter, Fmf, OpId, ValueId};
 
-/// What `ConvertNativeFuncPattern`s there are.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MathXevmOptions {
-    /// `convert-arith`: `arith.divf` too.
     pub convert_arith: bool,
 }
 
-/// The native builtin each op calls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Native {
     Exp,
@@ -35,7 +29,6 @@ enum Native {
 }
 
 impl Native {
-    /// `populateMathToXeVMConversionPatterns`: op, builtin, its name.
     const TABLE: [(&'static str, Self, &'static str); 12] = [
         ("math.exp", Self::Exp, "__spirv_ocl_native_exp"),
         ("math.cos", Self::Cos, "__spirv_ocl_native_cos"),
@@ -55,7 +48,6 @@ impl Native {
         Self::TABLE.iter().find(|(_, n, _)| *n == self).map_or("", |(_, _, s)| s)
     }
 
-    /// `getMangledNativeFuncName`.
     fn mangled(self, types: &[Type<'_>]) -> String {
         let base = self.name();
         let mut out = format!("_Z{}{base}", base.len());
@@ -80,7 +72,6 @@ impl Native {
         out
     }
 
-    /// `isSPIRVCompatibleFloatOrVec`: a float, or a 1-D float vector of 2, 3, 4, 8 or 16.
     fn compatible(t: &Type<'_>) -> bool {
         match t {
             Type::Float(_) => true,
@@ -97,12 +88,10 @@ impl TryFrom<&str> for Native {
     }
 }
 
-/// The math ⇒ native builtin patterns (`populateMathToXeVMConversionPatterns`).
 pub struct MathToXevm;
 
 #[patterns(options = MathXevmOptions)]
 impl MathToXevm {
-    /// `ConvertNativeFuncPattern`.
     #[convert("math.exp", "math.cos", "math.exp2", "math.log", "math.log2", "math.log10", "math.powf", "math.rsqrt", "math.sin", "math.sqrt", "math.tan", "arith.divf")]
     fn native(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], o: MathXevmOptions) -> bool {
         let Ok(f) = Native::try_from(&*cr.rw.body[op].name) else { return false };

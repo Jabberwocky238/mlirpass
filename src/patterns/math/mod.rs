@@ -1,5 +1,3 @@
-//! `math` rule sets.
-
 mod canonicalize;
 mod to_funcs;
 mod to_libm;

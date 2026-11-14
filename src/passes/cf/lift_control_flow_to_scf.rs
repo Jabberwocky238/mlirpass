@@ -1,13 +1,9 @@
-//! `lift-cf-to-scf` (`LiftControlFlowToSCFPass`, `Conversion/ControlFlowToSCF`): every region of every op
-//! in each `func.func`, inner ops first, lifted from `cf` to `scf` by [`crate::transform_cfg_to_scf`].
-
 use alloc::vec::Vec;
 
 use mlirformat::Error;
 
 use crate::{pass, transform_cfg_to_scf, Body, ControlFlowToScf, OpId};
 
-/// `lift-cf-to-scf`.
 #[pass("lift-cf-to-scf")]
 pub fn lift_cf_to_scf<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
     let mut funcs = Vec::new();
