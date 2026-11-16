@@ -50,7 +50,7 @@ The default build has every upstream dialect and the three upstream backends (`a
 - `target.<backend>`: a backend. Its rules and passes sit in `patterns/` / `passes/` like any other
   (`arith/to_llvm.rs` needs `dialect.arith` and `target.llvm`); `src/targets` keeps what they share.
 - The GPU instruction sets (`dialect.rdna2`, `dialect.agx`, `dialect.apple9`, `dialect.xe3`,
-  `dialect.image`) and their `target.*` are mlirpass's own, in neither `all-*`.
+  `dialect.image`) and their `target.*`, and the GLSL source dialect (`dialect.glsl`), are mlirpass's own, in neither `all-*`.
 
 A pass is listed under the feature that compiles it in, with the others it needs too
 (`scripts/features.py` writes the table from `Cargo.toml` and `src/registry.gen.rs`):
@@ -98,6 +98,7 @@ A pass is listed under the feature that compiles it in, with the others it needs
 | `dialect.xevm` | yes | `xevm`: its op interfaces, folds and patterns; passes: `convert-xevm-to-llvm` (with `target.llvm`) |
 | `dialect.agx` | no | Apple AGX (G13)'s instruction set and CDM command stream (not an upstream dialect); turns on `dialect.image` |
 | `dialect.apple9` | no | Apple9 (M3 / M4)'s instruction set (not an upstream dialect) |
+| `dialect.glsl` | no | GLSL (ES 1.00 / 3.00) as written: `glsl.shader`, its globals (`in` / `out` / `uniform`, locations, interpolation, built-in variables), `glsl.load` / `store`, constructors, built-in functions, derivatives, texture sampling, `discard`; the rest of a shader is `func` / `arith` / `math` / `vector` / `scf`, aggregates and samplers are `!spirv.*` types (not an upstream dialect) |
 | `dialect.image` | no | the images of the GPU instruction sets below (not an upstream dialect) |
 | `dialect.rdna2` | no | AMD RDNA2's instruction set and PM4 command stream, as mlirpass encodes them (not an upstream dialect); turns on `dialect.image` |
 | `dialect.xe3` | no | Intel Xe3's instruction set and genxml batches (not an upstream dialect); turns on `dialect.image` |

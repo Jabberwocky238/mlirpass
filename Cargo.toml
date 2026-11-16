@@ -79,6 +79,8 @@ all-dialects = ["dialect.acc", "dialect.affine", "dialect.amdgpu", "dialect.arit
 "dialect.apple9" = []
 "dialect.rdna2" = ["dialect.image"]
 "dialect.xe3" = ["dialect.image"]
+# GLSL (ES 1.00 / 3.00) as written: what a GL shader declares and calls, over the upstream dialects and SPIR-V types.
+"dialect.glsl" = []
 # What a GPU runs, for every GPU target: memories, command streams, data; table-driven packing; the layout.
 "dialect.image" = []
 # One feature per backend (`src/targets`): its type converter, `convert-to-*`, the lowerings
@@ -141,6 +143,10 @@ required-features = ["dialect.rdna2"]
 [[test]]
 name = "xe3"
 required-features = ["dialect.xe3"]
+
+[[test]]
+name = "glsl"
+required-features = ["dialect.glsl"]
 
 [[test]]
 name = "vulkan"

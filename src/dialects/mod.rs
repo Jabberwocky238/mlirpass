@@ -14,6 +14,8 @@ mod cf;
 mod complex;
 #[cfg(feature = "dialect.func")]
 mod func;
+#[cfg(feature = "dialect.glsl")]
+mod glsl;
 #[cfg(feature = "dialect.gpu")]
 mod gpu;
 #[cfg(feature = "dialect.image")]
@@ -71,6 +73,8 @@ pub use cf::CfDialect;
 pub use complex::ComplexDialect;
 #[cfg(feature = "dialect.func")]
 pub use func::FuncDialect;
+#[cfg(feature = "dialect.glsl")]
+pub use glsl::*;
 #[cfg(feature = "dialect.gpu")]
 pub use gpu::GpuDialect;
 #[cfg(feature = "dialect.image")]
