@@ -369,14 +369,19 @@ impl<'b, 'a> Serializer<'b, 'a> {
         }
     }
 
+    fn signless(t: &Type<'_>) -> Type<'static> {
+        match t {
+            Type::Integer { signedness: Signedness::Unsigned, width } => Type::int(*width),
+            Type::Shaped(s) => t.owned().with_element(Self::signless(&s.elem)),
+            t => t.owned(),
+        }
+    }
+
     fn named_structs(t: SpirvType<'_>) -> SpirvType<'static> {
         let inner = |t: &Type<'_>| -> Type<'static> {
             match SpirvType::try_from(t) {
                 Ok(s) => Self::named_structs(s).into(),
-                Err(()) => {
-                    let text = format!("{t}");
-                    mlirformat::Parser::read(&text, |p| p.ty()).ok().map(|t| t.owned()).unwrap_or(Type::NoneType)
-                }
+                Err(()) => Self::signless(t),
             }
         };
         match t {
@@ -404,10 +409,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
     }
 
     fn type_in(&mut self, t: &Type<'_>, ctx: &mut Vec<String>) -> Result<u32, Error> {
-        let t = match t {
-            Type::Integer { signedness: Signedness::Unsigned, width } => Type::int(*width),
-            t => t.clone(),
-        };
+        let t = Self::signless(t);
         let key = Self::key(&t);
         if let Some(id) = self.type_ids.get(&key) {
             return Ok(*id);

@@ -47,7 +47,7 @@ impl ArithDialect {
         let ty = b[op].results.first().map(|r| &b[*r].ty);
         let value = b[op].get("value");
         let int = match value.and_then(|a| crate::Const::try_from(a).ok()).filter(|c| !c.elements).and_then(|c| c.as_int()) {
-            Some(i) => Some(Cow::Owned(format!("{}", i.signed()))),
+            Some(i) => Some(Cow::Owned(i.to_decimal(true))),
             None => match value {
                 Some(Attribute::Int { lit, .. }) if lit.trim_start_matches('-').bytes().all(|c| c.is_ascii_digit()) => Some(Cow::Owned(String::from(&**lit))),
                 _ => None,
