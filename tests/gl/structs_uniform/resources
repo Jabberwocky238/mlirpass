@@ -1,0 +1,4 @@
+uniform u_light.dir 2 f 0.3 -0.6 0.9
+uniform u_light.k 3 f 1.75
+uniform u_light.pad[0] 4 f 0.25 -0.5
+uniform u_light.pad[1] 5 f 1.5 0.125

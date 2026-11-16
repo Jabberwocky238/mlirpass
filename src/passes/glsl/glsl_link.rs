@@ -56,10 +56,11 @@ struct Linker {
 }
 
 impl Linker {
-    fn size(t: &Type<'_>) -> u32 {
+    fn size(t: &Type<'_>, uniform: bool) -> u32 {
         match SpirvType::try_from(t) {
-            Ok(SpirvType::Matrix { cols, .. }) => cols,
-            Ok(SpirvType::Array { len, elem, .. }) => len * Linker::size(&elem),
+            Ok(SpirvType::Matrix { cols, .. }) if !uniform => cols,
+            Ok(SpirvType::Array { len, elem, .. }) => len * Linker::size(&elem, uniform),
+            Ok(SpirvType::Struct { members: Some(m), .. }) => m.iter().map(|x| Linker::size(&x.ty, uniform)).sum(),
             _ => 1,
         }
     }
@@ -73,6 +74,7 @@ impl Linker {
             (Storage::In, GlslStage::Vertex) => (&mut self.attributes, Slot::Location),
             (Storage::Out, GlslStage::Vertex) | (Storage::In, GlslStage::Fragment) => (&mut self.varyings, Slot::Location),
             (Storage::Out, GlslStage::Fragment) => (&mut self.outputs, Slot::Location),
+            (Storage::Private, _) => return None,
             (Storage::Uniform, _) => match spirv {
                 Ok(SpirvType::SampledImage(_) | SpirvType::Image { .. } | SpirvType::Sampler) => (&mut self.samplers, Slot::Binding),
                 Ok(SpirvType::Struct { .. }) => (&mut self.blocks, Slot::Binding),
@@ -109,7 +111,7 @@ pub fn glsl_link<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         if let Some((space, slot)) = linker.space(*stage, g)
             && let Some(at) = Linker::given(g, slot)
         {
-            space.take(at, Linker::size(&g.ty));
+            space.take(at, Linker::size(&g.ty, g.storage == Storage::Uniform));
             space.named.insert(String::from(Symbol::defined(&g.sym_name)?), at);
         }
     }
@@ -124,7 +126,7 @@ pub fn glsl_link<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
         if (*stage, g.storage) == (GlslStage::Fragment, Storage::In) && !space.named.contains_key(name) {
             return Err(Error(format!("glsl-link: the fragment shader reads {name}, which the vertex shader does not write")));
         }
-        let at = space.assign(name, Linker::size(&g.ty));
+        let at = space.assign(name, Linker::size(&g.ty, g.storage == Storage::Uniform));
         rw.modify(*op, |b| b[*op].set(slot.attr(), Attribute::of_int(i128::from(at), Type::int(32))));
     }
     Ok(())

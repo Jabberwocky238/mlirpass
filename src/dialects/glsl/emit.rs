@@ -10,7 +10,7 @@ use mlirformat::spirv_types::{SpirvDecoration, SpirvMember, SpirvType};
 use mlirformat::{ApFloat, ApInt, Attribute, Const, Error, FloatKind, FunctionType, Op, Scalar as Lit, Signedness, Type};
 
 use super::lex::{Lexed, Version};
-use super::syntax::{BinOp, BlockLayout, Decl, Expr, Item, ParamQual, Parser, Qual, SamplerDim, Scalar, Stmt, StorageQual, Ty, UnOp};
+use super::syntax::{BinOp, BlockLayout, Decl, Expr, Item, ParamQual, Parser, Qual, SamplerDim, Scalar, Stmt, StorageQual, StructDef, Ty, UnOp};
 use crate::{A, BlockId, OpHead, Body, Builtin, BuiltinVar, Derivative, GlslStage, Lod, OpData, OpId, Quiet, Rewriter, Storage, ValueId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,6 +200,10 @@ impl Ty {
             Ty::Vec(s, n) => Type::vector(&[i64::from(*n)], &[], s.mlir(global)),
             Ty::Mat(c, r) => SpirvType::Matrix { cols: *c, column: Box::new(Ty::Vec(Scalar::Float, *r).mlir(global)?) }.into(),
             Ty::Array(e, n) => SpirvType::Array { len: *n, elem: Box::new(e.mlir(global)?), stride: 0 }.into(),
+            Ty::Struct(d) => {
+                let members = d.members.iter().map(|(t, _)| Ok(SpirvMember { ty: t.mlir(global)?, offset: None, decorations: Vec::new() })).collect::<Result<Vec<_>, Error>>()?;
+                SpirvType::Struct { name: None, members: Some(members), decorations: Vec::new() }.into()
+            }
             Ty::Sampler(s, dim, shadow) => {
                 let (d, arrayed) = match dim {
                     SamplerDim::D2 => ("Dim2D", "NonArrayed"),
@@ -214,34 +218,69 @@ impl Ty {
         })
     }
 
+    fn round(x: u32, a: u32) -> u32 {
+        x.div_ceil(a) * a
+    }
+
     fn std140(&self) -> Result<(u32, u32), Error> {
-        let round = |x: u32, a: u32| x.div_ceil(a) * a;
         Ok(match self {
             Ty::Scalar(_) => (Ty::SCALAR_BYTES, Ty::SCALAR_BYTES),
             Ty::Vec(_, 2) => (2 * Ty::SCALAR_BYTES, 2 * Ty::SCALAR_BYTES),
             Ty::Vec(_, n) => (Ty::STD140_VEC4, n * Ty::SCALAR_BYTES),
             Ty::Mat(c, _) => (Ty::STD140_VEC4, c * Ty::STD140_VEC4),
-            Ty::Array(e, n) => {
-                let (a, size) = e.std140()?;
-                let stride = round(size.max(a), Ty::STD140_VEC4);
-                (Ty::STD140_VEC4, stride * n)
+            Ty::Array(e, n) => (Ty::STD140_VEC4, e.stride140()? * n),
+            Ty::Struct(d) => {
+                let (_, align, size) = Ty::struct140(d)?;
+                (align, size)
             }
             _ => return Err(Error(format!("glsl: {self:?} cannot be a block member"))),
         })
     }
 
-    fn block_member<'a>(&self, offset: u32) -> Result<SpirvMember<'a>, Error> {
-        let stride = |n: u32| SpirvDecoration { name: String::from("MatrixStride"), value: Some(format!("{n}")) };
+    fn stride140(&self) -> Result<u32, Error> {
+        let (a, size) = self.std140()?;
+        Ok(Ty::round(size.max(a), Ty::STD140_VEC4))
+    }
+
+    fn struct140(d: &StructDef) -> Result<(Vec<u32>, u32, u32), Error> {
+        let mut offsets = Vec::new();
+        let (mut at, mut align) = (0, Ty::STD140_VEC4);
+        for (t, _) in &d.members {
+            let (a, size) = t.std140()?;
+            at = Ty::round(at, a);
+            offsets.push(at);
+            at += size;
+            align = align.max(a);
+        }
+        let align = Ty::round(align, Ty::STD140_VEC4);
+        Ok((offsets, align, Ty::round(at, align)))
+    }
+
+    fn laid_type<'a>(&self) -> Result<Type<'a>, Error> {
         Ok(match self {
-            Ty::Mat(..) => SpirvMember { ty: self.mlir(true)?, offset: Some(offset), decorations: vec![SpirvDecoration { name: String::from("ColMajor"), value: None }, stride(Ty::STD140_VEC4)] },
-            Ty::Array(e, n) if !matches!(**e, Ty::Mat(..) | Ty::Array(..)) => {
-                let (a, size) = e.std140()?;
-                let elem = Box::new(e.mlir(true)?);
-                SpirvMember { ty: SpirvType::Array { len: *n, elem, stride: size.max(a).div_ceil(Ty::STD140_VEC4) * Ty::STD140_VEC4 }.into(), offset: Some(offset), decorations: Vec::new() }
+            Ty::Array(e, n) => SpirvType::Array { len: *n, elem: Box::new(e.laid_type()?), stride: e.stride140()? }.into(),
+            Ty::Struct(d) => {
+                let (offsets, _, _) = Ty::struct140(d)?;
+                let members = d.members.iter().zip(offsets).map(|((t, _), o)| t.block_member(o)).collect::<Result<Vec<_>, _>>()?;
+                SpirvType::Struct { name: None, members: Some(members), decorations: Vec::new() }.into()
             }
-            Ty::Array(..) => return Err(Error(String::from("glsl: arrays of matrices or arrays in blocks are not supported yet"))),
-            _ => SpirvMember { ty: self.mlir(true)?, offset: Some(offset), decorations: Vec::new() },
+            t => t.mlir(true)?,
         })
+    }
+
+    fn innermost(&self) -> &Ty {
+        match self {
+            Ty::Array(e, _) => e.innermost(),
+            t => t,
+        }
+    }
+
+    fn block_member<'a>(&self, offset: u32) -> Result<SpirvMember<'a>, Error> {
+        let decorations = match self.innermost() {
+            Ty::Mat(..) => vec![SpirvDecoration { name: String::from("ColMajor"), value: None }, SpirvDecoration { name: String::from("MatrixStride"), value: Some(format!("{}", Ty::STD140_VEC4)) }],
+            _ => Vec::new(),
+        };
+        Ok(SpirvMember { ty: self.laid_type()?, offset: Some(offset), decorations })
     }
 
     fn element(&self) -> Option<Ty> {
@@ -342,6 +381,7 @@ struct Emitter<'r, 'a, 's> {
     funcs: BTreeMap<&'s str, Vec<Signature>>,
     scopes: Vec<BTreeMap<&'s str, Name<'s>>>,
     entry: Option<BlockId>,
+    inits: Vec<(&'s str, Expr<'s>, Ty)>,
     loops: Vec<Exit>,
     tests: Vec<Option<Expr<'s>>>,
     merges: Vec<(OpId, BlockId)>,
@@ -357,6 +397,7 @@ struct Exit {
 
 impl GlslReader {
     const LOOP_BLOCKS: usize = 5;
+    const MAIN: &'static str = "main";
 
     pub fn read<'a>(body: &mut Body<'a>, src: &str, stage: GlslStage) -> Result<OpId, Error> {
         let text = Lexed::text(src)?;
@@ -373,8 +414,9 @@ impl GlslReader {
             b.add_block(r, &[]);
         });
         let block = rw.body.top_block(op);
-        let mut e = Emitter { rw, stage, shader: block, first_func: None, globals: BTreeMap::new(), builtins: BTreeMap::new(), funcs: BTreeMap::new(), scopes: Vec::new(), entry: None, loops: Vec::new(), tests: Vec::new(), merges: Vec::new(), ret: Ty::Void, dead: false };
-        for item in &items {
+        let mut e = Emitter { rw, stage, shader: block, first_func: None, globals: BTreeMap::new(), builtins: BTreeMap::new(), funcs: BTreeMap::new(), scopes: Vec::new(), entry: None, inits: Vec::new(), loops: Vec::new(), tests: Vec::new(), merges: Vec::new(), ret: Ty::Void, dead: false };
+        let (funcs, decls): (Vec<&Item<'_>>, Vec<&Item<'_>>) = items.iter().partition(|i| matches!(i, Item::Func { .. }));
+        for item in decls.into_iter().chain(funcs) {
             e.item(item)?;
         }
         Ok(op)
@@ -512,7 +554,14 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
             (Some(StorageQual::In), _) | (Some(StorageQual::Varying), GlslStage::Fragment) => Storage::In,
             (Some(StorageQual::Out), _) | (Some(StorageQual::Varying), GlslStage::Vertex) => Storage::Out,
             (Some(StorageQual::Uniform), _) => Storage::Uniform,
-            (None, _) => return Self::err(format!("{}: global variables without in / out / uniform are not supported yet", decl.name)),
+            (None, _) => {
+                self.global(decl.name, decl.ty.mlir(false)?, Storage::Private, Vec::new())?;
+                self.globals.insert(decl.name, Name::Global(String::from(decl.name), decl.ty.clone()));
+                if let Some(init) = &decl.init {
+                    self.inits.push((decl.name, init.clone(), decl.ty.clone()));
+                }
+                return Ok(());
+            }
         };
         if decl.init.is_some() {
             return Self::err(format!("{}: initializers on in / out / uniform", decl.name));
@@ -650,6 +699,12 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
             scope.insert(p.name, Name::Local(slot, p.ty.clone()));
         }
         self.scopes = vec![scope];
+        if name == GlslReader::MAIN {
+            for (g, init, ty) in self.inits.clone() {
+                let v = self.rvalue_of(&init, &ty)?;
+                self.create(OpData::build(crate::GlslStore::NAME).operands(&[v]).with("var", Attribute::SymbolRef(vec![String::from(g).into()])), None);
+            }
+        }
         self.stmts(body)?;
         if !self.dead {
             if *ret != Ty::Void {
@@ -925,10 +980,16 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
                     return Ok(Some((Place::Global(g, vec![i], members[k].0.clone()), None)));
                 }
                 let Some((p, None)) = self.place(base)? else { return Ok(None) };
-                let Ty::Vec(s, n) = p.ty().clone() else { return Self::err(format!("line {line}: .{f} on {:?}", p.ty())) };
-                let lanes = Self::swizzle(f, n)?;
-                let _ = s;
-                (p, Some(lanes))
+                match p.ty().clone() {
+                    Ty::Struct(d) => {
+                        let Some((k, t)) = d.member(f) else { return Self::err(format!("line {line}: no member {f} in struct {}", d.name)) };
+                        let t = t.clone();
+                        let i = self.i32(i64::from(k));
+                        (p.indexed(i, t), None)
+                    }
+                    Ty::Vec(_, n) => (p, Some(Self::swizzle(f, n)?)),
+                    t => return Self::err(format!("line {line}: .{f} on {t:?}")),
+                }
             }
             _ => return Ok(None),
         }))
@@ -1114,10 +1175,19 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
             }
             Expr::Field(base, f, _) => {
                 let (v, t) = self.expr(base)?;
-                let Ty::Vec(s, n) = t else { return Self::err(format!(".{f} on {t:?}")) };
-                let lanes = Self::swizzle(f, n)?;
-                let v = self.shuffle(v, &lanes, s)?;
-                Ok((v, Ty::of(s, u32::try_from(lanes.len()).unwrap_or(u32::MAX))))
+                match t {
+                    Ty::Struct(d) => {
+                        let Some((k, mt)) = d.member(f) else { return Self::err(format!("no member {f} in struct {}", d.name)) };
+                        let mt = mt.clone();
+                        Ok((self.part(v, k, &mt)?, mt))
+                    }
+                    Ty::Vec(s, n) => {
+                        let lanes = Self::swizzle(f, n)?;
+                        let v = self.shuffle(v, &lanes, s)?;
+                        Ok((v, Ty::of(s, u32::try_from(lanes.len()).unwrap_or(u32::MAX))))
+                    }
+                    t => Self::err(format!(".{f} on {t:?}")),
+                }
             }
             Expr::Var(name, _) => Self::err(format!("{name} is not a value")),
             _ => self.expr(e),
@@ -1263,6 +1333,39 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
         Ok((v, bty))
     }
 
+    fn not(&mut self, v: ValueId) -> ValueId {
+        let one = self.constant(Scalar::Bool, 1);
+        self.op("arith.xori", &[v, one], Type::I1)
+    }
+
+    fn part(&mut self, v: ValueId, k: u32, ty: &Ty) -> Result<ValueId, Error> {
+        let data = OpData::build("spirv.CompositeExtract").operands(&[v]).with("indices", Attribute::Array(vec![Emitter::word(k)]));
+        Ok(self.create(data, Some(ty.mlir(false)?)).unwrap_or_else(|| unreachable!()))
+    }
+
+    fn equal(&mut self, a: ValueId, b: ValueId, ty: &Ty) -> Result<ValueId, Error> {
+        let parts: Vec<Ty> = match ty {
+            Ty::Struct(d) => d.members.iter().map(|(t, _)| t.clone()).collect(),
+            Ty::Array(e, n) => (0..*n).map(|_| (**e).clone()).collect(),
+            Ty::Mat(c, r) => (0..*c).map(|_| Ty::Vec(Scalar::Float, *r)).collect(),
+            t => {
+                let (v, bt) = self.compare(BinOp::Eq, (a, t.clone()), (b, t.clone()))?;
+                return Ok(if bt.lanes() > 1 { self.reduce(v, bt.lanes(), true) } else { v });
+            }
+        };
+        let mut acc = None;
+        for (k, t) in parts.iter().enumerate() {
+            let k = u32::try_from(k).unwrap_or(u32::MAX);
+            let (x, y) = (self.part(a, k, t)?, self.part(b, k, t)?);
+            let e = self.equal(x, y, t)?;
+            acc = Some(match acc {
+                None => e,
+                Some(prev) => self.op("arith.andi", &[prev, e], Type::I1),
+            });
+        }
+        acc.ok_or_else(|| Error(String::from("glsl: comparing an empty aggregate")))
+    }
+
     fn reduce(&mut self, v: ValueId, n: u32, all: bool) -> ValueId {
         let mut acc = self.extract(v, 0, Scalar::Bool);
         for l in 1..n {
@@ -1281,6 +1384,13 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
         let x = self.expr(a)?;
         let y = self.expr(b)?;
         match op {
+            BinOp::Eq | BinOp::Ne if matches!(x.1, Ty::Struct(_) | Ty::Array(..) | Ty::Mat(..)) => {
+                if x.1 != y.1 {
+                    return Self::err(format!("comparing {:?} with {:?}", x.1, y.1));
+                }
+                let v = self.equal(x.0, y.0, &x.1)?;
+                Ok((if op == BinOp::Eq { v } else { self.not(v) }, Ty::BOOL))
+            }
             BinOp::Eq | BinOp::Ne if x.1.lanes() > 1 => {
                 let (v, t) = self.compare(op, x, y)?;
                 Ok((self.reduce(v, t.lanes(), op == BinOp::Eq), Ty::BOOL))
@@ -1492,6 +1602,24 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
                 };
                 Ok((self.matrix(&cols, c, r)?, ty.clone()))
             }
+            Ty::Array(e, n) => {
+                let vals = args.iter().map(|a| self.expr(a)).collect::<Result<Vec<_>, _>>()?;
+                if vals.len() != *n as usize || vals.iter().any(|(_, t)| t != &**e) {
+                    return Self::err(format!("{ty:?} takes {n} values of {e:?}"));
+                }
+                let parts: Vec<ValueId> = vals.iter().map(|v| v.0).collect();
+                let aty = ty.mlir(false)?;
+                Ok((self.create(OpData::build("spirv.CompositeConstruct").operands(&parts), Some(aty)).unwrap_or_else(|| unreachable!()), ty.clone()))
+            }
+            Ty::Struct(d) => {
+                let vals = args.iter().map(|a| self.expr(a)).collect::<Result<Vec<_>, _>>()?;
+                if vals.len() != d.members.len() || vals.iter().zip(&d.members).any(|((_, t), (m, _))| t != m) {
+                    return Self::err(format!("{}(...) takes {:?}", d.name, d.members.iter().map(|m| &m.0).collect::<Vec<_>>()));
+                }
+                let parts: Vec<ValueId> = vals.iter().map(|v| v.0).collect();
+                let sty = ty.mlir(false)?;
+                Ok((self.create(OpData::build("spirv.CompositeConstruct").operands(&parts), Some(sty)).unwrap_or_else(|| unreachable!()), ty.clone()))
+            }
             t => Self::err(format!("constructing {t:?} is not supported yet")),
         }
     }
@@ -1638,6 +1766,7 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
                 (self.builtin_call(if f == Func::IsNan { Builtin::IsNan } else { Builtin::IsInf }, &[*v], ty), bt)
             }
             (Func::Length, [(v, t)]) if float => (self.builtin_call(Builtin::Length, &[*v], Type::Float(FloatKind::F32)), scalar_of(t)),
+            (Func::Dot, [(a, Ty::Scalar(Scalar::Float)), (b, Ty::Scalar(Scalar::Float))]) => (self.op("arith.mulf", &[*a, *b], Type::Float(FloatKind::F32)), Ty::FLOAT),
             (Func::Distance | Func::Dot, [(a, ta), (b, tb)]) if float && ta == tb => {
                 let b_ = if f == Func::Dot { Builtin::Dot } else { Builtin::Distance };
                 (self.builtin_call(b_, &[*a, *b], Type::Float(FloatKind::F32)), Ty::FLOAT)

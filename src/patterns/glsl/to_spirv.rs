@@ -75,6 +75,7 @@ impl Storage {
         match (self, client) {
             (Storage::In, _) => Ok("Input"),
             (Storage::Out, _) => Ok("Output"),
+            (Storage::Private, _) => Ok("Private"),
             (Storage::Uniform, _) if block => Ok("Uniform"),
             (Storage::Uniform, _) if opaque => Ok("UniformConstant"),
             (Storage::Uniform, GlslClient::Opengl) => Ok("UniformConstant"),
@@ -410,6 +411,38 @@ impl GlslToSpirv {
         Some((cr.build(OpData::build("spirv.AccessChain").operands(&operands), Self::ptr(elem.clone(), &class)), elem))
     }
 
+    const UNIFORM: &str = "Uniform";
+
+    fn holds_struct(t: &Type<'_>) -> bool {
+        match SpirvType::try_from(t) {
+            Ok(SpirvType::Struct { .. }) => true,
+            Ok(SpirvType::Array { elem, .. }) => Self::holds_struct(&elem),
+            _ => false,
+        }
+    }
+
+    fn gather<'a>(cr: &mut Cr<'_, 'a, '_>, (base, class): (ValueId, &str), at: &mut Vec<ValueId>, ty: &Type<'a>) -> ValueId {
+        let parts: Option<Vec<Type<'a>>> = match SpirvType::try_from(ty) {
+            Ok(SpirvType::Struct { members: Some(m), .. }) => Some(m.into_iter().map(|x| x.ty).collect()),
+            Ok(SpirvType::Array { len, elem, .. }) if Self::holds_struct(&elem) => Some((0..len).map(|_| (*elem).clone()).collect()),
+            _ => None,
+        };
+        let Some(parts) = parts else {
+            let mut operands = vec![base];
+            operands.extend_from_slice(at);
+            let ptr = cr.build(OpData::build("spirv.AccessChain").operands(&operands), Self::ptr(ty.clone(), class));
+            return cr.build(OpData::build("spirv.Load").operands(&[ptr]), ty.clone());
+        };
+        let mut pieces = Vec::new();
+        for (k, t) in parts.iter().enumerate() {
+            let i = cr.spirv_const(Type::int(32), Attribute::of_int(k as i128, Type::int(32)));
+            at.push(i);
+            pieces.push(Self::gather(cr, (base, class), at, t));
+            at.pop();
+        }
+        cr.build(OpData::build("spirv.CompositeConstruct").operands(&pieces), ty.clone())
+    }
+
     fn extract<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, i: usize, ty: &Type<'a>) -> ValueId {
         cr.build(OpData::build("spirv.CompositeExtract").operands(&[v]).with("indices", Attribute::int_array_of(32, &[i as i64])), ty.clone())
     }
@@ -467,7 +500,33 @@ impl GlslToSpirv {
     }
 
     fn cast<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, to: &Type<'a>) -> ValueId {
-        if Self::ty_of(cr, v) == *to { v } else { cr.build(OpData::build("spirv.Bitcast").operands(&[v]), to.clone()) }
+        let from = Self::ty_of(cr, v);
+        if from == *to {
+            return v;
+        }
+        let parts: Option<Vec<Type<'a>>> = match (SpirvType::try_from(&from), SpirvType::try_from(to)) {
+            (Ok(SpirvType::Struct { members: Some(_), .. }), Ok(SpirvType::Struct { members: Some(m), .. })) => Some(m.into_iter().map(|x| x.ty).collect()),
+            (Ok(SpirvType::Array { .. }), Ok(SpirvType::Array { len, elem, .. })) => Some((0..len).map(|_| (*elem).clone()).collect()),
+            (Ok(SpirvType::Matrix { .. }), Ok(SpirvType::Matrix { cols, column })) => Some((0..cols).map(|_| (*column).clone()).collect()),
+            _ => None,
+        };
+        let Some(parts) = parts else { return cr.build(OpData::build("spirv.Bitcast").operands(&[v]), to.clone()) };
+        let src: Vec<Type<'a>> = match SpirvType::try_from(&from) {
+            Ok(SpirvType::Struct { members: Some(m), .. }) => m.into_iter().map(|x| x.ty).collect(),
+            Ok(SpirvType::Array { elem, .. }) => (0..parts.len()).map(|_| (*elem).clone()).collect(),
+            Ok(SpirvType::Matrix { column, .. }) => (0..parts.len()).map(|_| (*column).clone()).collect(),
+            _ => return v,
+        };
+        let pieces: Vec<ValueId> = parts
+            .iter()
+            .zip(src)
+            .enumerate()
+            .map(|(k, (t, s))| {
+                let x = Self::extract(cr, v, k, &s);
+                Self::cast(cr, x, t)
+            })
+            .collect();
+        cr.build(OpData::build("spirv.CompositeConstruct").operands(&pieces), to.clone())
     }
 
     fn lanes(t: &Type<'_>) -> Option<usize> {
@@ -508,8 +567,16 @@ impl GlslToSpirv {
         let Some(indices) = Cr::one_to_one(operands) else { return false };
         let r = cr.rw.body[op].results[0];
         let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
-        let Some((ptr, declared)) = Self::pointer(cr, op, &l.var, &indices) else { return false };
-        let loaded = cr.build(OpData::build("spirv.Load").operands(&[ptr]), declared);
+        let Some(name) = Self::var_name(&l.var).map(str::to_owned) else { return false };
+        let Some((pointee, class)) = Self::global(&cr.rw.body, op, &name) else { return false };
+        let Some(elem) = indices.iter().try_fold(pointee.clone(), |t, &i| Self::element(&cr.rw.body, &t, i)) else { return false };
+        let loaded = if class == Self::UNIFORM && !indices.is_empty() && Self::holds_struct(&elem) {
+            let base = cr.build(OpData::build("spirv.mlir.addressof").with("variable", Self::sym(&name)), Self::ptr(pointee, &class));
+            Self::gather(cr, (base, &class), &mut indices.clone(), &elem)
+        } else {
+            let Some((ptr, declared)) = Self::pointer(cr, op, &l.var, &indices) else { return false };
+            cr.build(OpData::build("spirv.Load").operands(&[ptr]), declared)
+        };
         let v = Self::cast(cr, loaded, &ty);
         cr.replace_values(op, &[v]);
         true

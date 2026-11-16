@@ -57,6 +57,7 @@ pub enum Storage {
     In,
     Out,
     Uniform,
+    Private,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

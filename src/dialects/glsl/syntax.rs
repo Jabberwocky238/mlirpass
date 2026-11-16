@@ -1,4 +1,6 @@
 use alloc::boxed::Box;
+use alloc::rc::Rc;
+use alloc::string::String;
 use alloc::format;
 use alloc::vec::Vec;
 
@@ -24,6 +26,18 @@ pub enum SamplerDim {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructDef {
+    pub name: String,
+    pub members: Vec<(Ty, String)>,
+}
+
+impl StructDef {
+    pub fn member(&self, name: &str) -> Option<(u32, &Ty)> {
+        self.members.iter().position(|(_, n)| n == name).map(|k| (u32::try_from(k).unwrap_or(u32::MAX), &self.members[k].0))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ty {
     Void,
     Scalar(Scalar),
@@ -31,6 +45,7 @@ pub enum Ty {
     Mat(u32, u32),
     Sampler(Scalar, SamplerDim, bool),
     Array(Box<Ty>, u32),
+    Struct(Rc<StructDef>),
 }
 
 impl Ty {
@@ -314,13 +329,15 @@ pub enum Item<'s> {
 pub struct Parser<'t, 's> {
     toks: &'t [Token<'s>],
     pos: usize,
+    structs: Vec<Rc<StructDef>>,
 }
 
 impl<'t, 's> Parser<'t, 's> {
     const TERNARY_PREC: u8 = 0;
+    const STRUCT: &'static str = "struct";
 
     pub fn new(toks: &'t [Token<'s>]) -> Self {
-        Parser { toks, pos: 0 }
+        Parser { toks, pos: 0, structs: Vec::new() }
     }
 
     fn line(&self) -> u32 {
@@ -375,11 +392,47 @@ impl<'t, 's> Parser<'t, 's> {
         }
     }
 
+    fn named(&self, name: &str) -> Option<Ty> {
+        Ty::named(name).or_else(|| self.structs.iter().find(|d| d.name == name).map(|d| Ty::Struct(d.clone())))
+    }
+
     fn ty_name(&self) -> Option<Ty> {
         match self.peek() {
-            Some(Tok::Ident(x)) => Ty::named(x),
+            Some(Tok::Ident(x)) => self.named(x),
             _ => None,
         }
+    }
+
+    fn struct_def(&mut self) -> Result<Ty, Error> {
+        if !self.eat_word(Parser::STRUCT) {
+            return self.err("expected struct");
+        }
+        let name = self.ident()?;
+        if self.named(name).is_some() {
+            return self.err(&format!("{name} is already a type"));
+        }
+        self.expect(Punct::LBrace)?;
+        let mut members = Vec::new();
+        while !self.eat(Punct::RBrace) {
+            while matches!(self.peek(), Some(Tok::Ident(w)) if Self::precision(w).is_some()) {
+                self.pos += 1;
+            }
+            let ty = if self.peek() == Some(Tok::Ident(Parser::STRUCT)) { self.struct_def()? } else { self.ty()? };
+            loop {
+                let n = self.ident()?;
+                members.push((self.array_suffix(ty.clone())?, String::from(n)));
+                if !self.eat(Punct::Comma) {
+                    break;
+                }
+            }
+            self.expect(Punct::Semi)?;
+        }
+        if members.is_empty() {
+            return self.err(&format!("struct {name} has no members"));
+        }
+        let def = Rc::new(StructDef { name: String::from(name), members });
+        self.structs.push(def.clone());
+        Ok(Ty::Struct(def))
     }
 
     fn precision(w: &str) -> Option<Precision> {
@@ -469,7 +522,7 @@ impl<'t, 's> Parser<'t, 's> {
                 self.expect(Punct::Semi)?;
                 continue;
             }
-            if self.peek() == Some(Tok::Ident("invariant")) && matches!(self.peek_at(1), Some(Tok::Ident(x)) if Ty::named(x).is_none() && Self::precision(x).is_none() && !matches!(x, "out" | "varying")) {
+            if self.peek() == Some(Tok::Ident("invariant")) && matches!(self.peek_at(1), Some(Tok::Ident(x)) if self.named(x).is_none() && Self::precision(x).is_none() && !matches!(x, "out" | "varying")) {
                 self.pos += 1;
                 out.push(Item::Invariant(self.ident()?));
                 self.expect(Punct::Semi)?;
@@ -513,7 +566,18 @@ impl<'t, 's> Parser<'t, 's> {
                 out.push(Item::Block { qual, name, members, instance });
                 continue;
             }
-            let ty = self.ty()?;
+            let ty = if self.peek() == Some(Tok::Ident(Parser::STRUCT)) {
+                let ty = self.struct_def()?;
+                if self.eat(Punct::Semi) {
+                    if qual != Qual::default() {
+                        return self.err("qualifiers on a struct declaration without a variable");
+                    }
+                    continue;
+                }
+                ty
+            } else {
+                self.ty()?
+            };
             let name = self.ident()?;
             if self.eat(Punct::LParen) {
                 let mut params = Vec::new();
@@ -579,7 +643,7 @@ impl<'t, 's> Parser<'t, 's> {
         match self.peek() {
             Some(Tok::Ident("const")) => true,
             Some(Tok::Ident(w)) if Self::precision(w).is_some() => true,
-            Some(Tok::Ident(w)) => Ty::named(w).is_some() && matches!(self.peek_at(1), Some(Tok::Ident(_))),
+            Some(Tok::Ident(w)) => self.named(w).is_some() && matches!(self.peek_at(1), Some(Tok::Ident(_))),
             _ => false,
         }
     }
@@ -772,7 +836,7 @@ impl<'t, 's> Parser<'t, 's> {
             Some(Tok::Int(v, unsigned)) => Expr::Int(v, if unsigned { Scalar::Uint } else { Scalar::Int }),
             Some(Tok::Ident("true")) => Expr::Bool(true),
             Some(Tok::Ident("false")) => Expr::Bool(false),
-            Some(Tok::Ident(x)) => match (Ty::named(x), self.peek()) {
+            Some(Tok::Ident(x)) => match (self.named(x), self.peek()) {
                 (Some(ty), Some(Tok::Punct(Punct::LParen))) => {
                     self.pos += 1;
                     Expr::Ctor(ty, self.args()?, line)

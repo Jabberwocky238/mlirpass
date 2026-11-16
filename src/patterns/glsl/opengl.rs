@@ -1,7 +1,8 @@
+use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::spirv_types::SpirvType;
-use mlirformat::{ApFloat, Attribute, FloatKind, Scalar, Type};
+use mlirformat::{ApFloat, Attribute, Const, FloatKind, Scalar, Type};
 
 use crate::{ArithToSpirv, Builtin, ConversionRewriter, GlslToSpirv, OpData, ValueId};
 
@@ -101,6 +102,9 @@ struct Ops<'c, 'r, 'a, 'p> {
 
 impl<'a> Ops<'_, '_, 'a, '_> {
     const WORD: u32 = 32;
+    const CONSTANT: &'static str = "spirv.Constant";
+    const ARITH_CONSTANT: &'static str = "arith.constant";
+    const CONSTRUCT: &'static str = "spirv.CompositeConstruct";
 
     fn shape(t: &Type<'a>) -> Option<(usize, Type<'a>)> {
         match SpirvType::try_from(t) {
@@ -204,6 +208,64 @@ impl<'a> Ops<'_, '_, 'a, '_> {
         self.mul(sign, t, ty)
     }
 
+    fn floats(&self, v: ValueId) -> Option<Vec<f32>> {
+        let body = &self.cr.rw.body;
+        let d = body.def_op(v)?;
+        match &*body[d].name {
+            Ops::CONSTANT | Ops::ARITH_CONSTANT => {
+                let c = Const::try_from(body[d].get("value")?).ok()?;
+                let n = Ops::lanes(&body[v].ty)? as usize;
+                let one = |s: &Scalar| match s {
+                    Scalar::Float(f) if f.kind == FloatKind::F32 => u32::try_from(f.bits).ok().map(f32::from_bits),
+                    _ => None,
+                };
+                match &c.values[..] {
+                    [s] => Some(vec![one(s)?; n]),
+                    many => many.iter().map(one).collect(),
+                }
+            }
+            Ops::CONSTRUCT => {
+                let mut out = Vec::new();
+                for &o in &body[d].operands {
+                    out.extend(self.floats(o)?);
+                }
+                Some(out)
+            }
+            _ => None,
+        }
+    }
+
+    fn folded(&mut self, values: &[f32], ty: &Type<'a>) -> ValueId {
+        let scalar = |f: f32| Scalar::Float(ApFloat { kind: FloatKind::F32, bits: u64::from(f.to_bits()) });
+        let attr: Attribute<'a> = match values {
+            [one] => Const::scalar(scalar(*one), ty.clone()).into(),
+            many => Const { ty: ty.clone(), values: many.iter().map(|&f| scalar(f)).collect(), elements: true }.into(),
+        };
+        self.cr.spirv_const(ty.clone(), attr)
+    }
+
+    fn dot_f(a: &[f32], b: &[f32]) -> f32 {
+        a.iter().zip(b).fold(0.0, |acc, (x, y)| acc + x * y)
+    }
+
+    fn fold(&mut self, func: Builtin, args: &[ValueId], ty: &Type<'a>) -> Option<ValueId> {
+        let vals = args.iter().map(|&a| self.floats(a)).collect::<Option<Vec<_>>>()?;
+        let out = match (func, &vals[..]) {
+            (Builtin::Dot, [a, b]) => vec![Ops::dot_f(a, b)],
+            (Builtin::Length, [a]) => vec![libm::sqrtf(Ops::dot_f(a, a))],
+            (Builtin::Distance, [a, b]) => {
+                let p: Vec<f32> = a.iter().zip(b).map(|(x, y)| x - y).collect();
+                vec![libm::sqrtf(Ops::dot_f(&p, &p))]
+            }
+            (Builtin::Normalize, [a]) => {
+                let r = 1.0 / libm::sqrtf(Ops::dot_f(a, a));
+                a.iter().map(|x| x * r).collect()
+            }
+            _ => return None,
+        };
+        Some(self.folded(&out, ty))
+    }
+
     fn refract(&mut self, i: ValueId, n: ValueId, eta: ValueId, (lanes, ty): (u32, &Type<'a>)) -> ValueId {
         let f = self.float.clone();
         let ndi = self.op("spirv.Dot", &[n, i], &f);
@@ -292,7 +354,23 @@ impl GlslToSpirv {
         let arg_ty = |cr: &Cr<'_, 'a, '_>, i: usize| args.get(i).map(|&v| cr.rw.body[v].ty.clone());
         let shape = arg_ty(cr, 0).and_then(|t| Ops::shape(&t));
         let mut o = Ops { cr, float };
+        let scalar = Ops::lanes(ty) == Some(1) && arg_ty(o.cr, 0).as_ref().and_then(Ops::lanes) == Some(1);
+        if matches!(func, Builtin::Dot | Builtin::Length | Builtin::Distance | Builtin::Normalize)
+            && !scalar
+            && let Some(v) = o.fold(func, args, ty)
+        {
+            return Some(v);
+        }
         match (func, args, shape) {
+            (Builtin::Normalize, [x], _) if scalar => Some(o.op("spirv.GL.FSign", &[*x], ty)),
+            (Builtin::Length, [x], _) if scalar => {
+                let sq = o.mul(*x, *x, ty);
+                Some(o.op("spirv.GL.Sqrt", &[sq], ty))
+            }
+            (Builtin::Distance, [a, b], _) if scalar => {
+                let d = o.sub(*a, *b, ty);
+                Some(o.op("spirv.GL.FAbs", &[d], ty))
+            }
             (Builtin::Asin, [x], _) => Some(o.asin(*x, ty)),
             (Builtin::Refract, [i, n, eta], _) => Some(o.refract(*i, *n, *eta, (Ops::lanes(ty)?, ty))),
             (Builtin::Determinant, [m], Some((4, column))) => Some(o.det4(*m, &column)),
