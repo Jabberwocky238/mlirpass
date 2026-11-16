@@ -33,30 +33,97 @@ impl Gl {
     }
 }
 
-fn lower(vert: &str, frag: &str) -> Result<(Vec<u8>, Vec<u8>, String), String> {
-    let mut opt = MlirOpt::upstream();
-    opt.load(GlslDialect);
-    let interfaces = Interfaces::upstream();
-    let passes = Passes::upstream();
-    let pm = PassManager::parse(&passes, "builtin.module(glsl-link, convert-glsl-to-spirv{client=opengl})").map_err(|e| e.to_string())?;
-    let mut body = Body::new(Ctx::new(&opt, &interfaces));
-    GlslReader::read(&mut body, vert, GlslStage::Vertex).map_err(|e| format!("vertex {e}"))?;
-    GlslReader::read(&mut body, frag, GlslStage::Fragment).map_err(|e| format!("fragment {e}"))?;
-    let root = body.root;
-    pm.run(&mut body, root).map_err(|e| e.to_string())?;
-    let shown = body.show(&opt, false, |_| true);
-    let mut modules = Vec::new();
-    body.walk(root, &mut |o| modules.push(o));
-    modules.retain(|&o| &*body[o].name == "spirv.module");
-    let mut stages = Vec::new();
-    for m in modules {
-        let words = SpirvBinary::default().emit(&body, m).map_err(|e| format!("{e}\n{shown}"))?;
-        stages.push(SpirvBinary::bytes(&words));
+struct Lowered {
+    vert: Vec<u8>,
+    frag: Vec<u8>,
+    shown: String,
+    offsets: Vec<(i128, i128)>,
+}
+
+impl Lowered {
+    const BLOCK: &str = "gl_DefaultUniformBlock";
+
+    fn offsets(body: &Body<'_>) -> Result<Vec<(i128, i128)>, String> {
+        let mut found = Vec::new();
+        body.walk(body.root, &mut |o| found.push(o));
+        let Some(pairs) = found.into_iter().find_map(|o| body[o].get("offsets").filter(|_| body[o].get("sym_name").is_some_and(|n| n.to_string().contains(Lowered::BLOCK)))) else { return Ok(Vec::new()) };
+        let mlirpass::mlirformat::Attribute::Array(pairs) = pairs else { return Err(format!("offsets: {pairs}")) };
+        pairs
+            .iter()
+            .map(|p| match p {
+                mlirpass::mlirformat::Attribute::Array(lo) if lo.len() == 2 => Ok((lo[0].int().map_err(|e| e.to_string())?, lo[1].int().map_err(|e| e.to_string())?)),
+                p => Err(format!("offsets: {p}")),
+            })
+            .collect()
     }
-    match <[Vec<u8>; 2]>::try_from(stages) {
-        Ok([v, f]) => Ok((v, f, shown)),
-        Err(s) => Err(format!("{} spirv modules, not a vertex and a fragment shader\n{shown}", s.len())),
+
+    fn new(vert: &str, frag: &str, block: Option<u32>) -> Result<Lowered, String> {
+        let mut opt = MlirOpt::upstream();
+        opt.load(GlslDialect);
+        let interfaces = Interfaces::upstream();
+        let passes = Passes::upstream();
+        let pipeline = |p: &str| PassManager::parse(&passes, &format!("builtin.module({p})")).map_err(|e| e.to_string());
+        let link = pipeline(&block.map_or_else(|| String::from("glsl-link"), |b| format!("glsl-link, glsl-default-block{{binding={b}}}")))?;
+        let spirv = pipeline("convert-glsl-to-spirv{client=opengl}")?;
+        let mut body = Body::new(Ctx::new(&opt, &interfaces));
+        GlslReader::read(&mut body, vert, GlslStage::Vertex).map_err(|e| format!("vertex {e}"))?;
+        GlslReader::read(&mut body, frag, GlslStage::Fragment).map_err(|e| format!("fragment {e}"))?;
+        let root = body.root;
+        link.run(&mut body, root).map_err(|e| e.to_string())?;
+        let offsets = Lowered::offsets(&body)?;
+        spirv.run(&mut body, root).map_err(|e| e.to_string())?;
+        let shown = body.show(&opt, false, |_| true);
+        let mut modules = Vec::new();
+        body.walk(root, &mut |o| modules.push(o));
+        modules.retain(|&o| &*body[o].name == "spirv.module");
+        let mut stages = Vec::new();
+        for m in modules {
+            let words = SpirvBinary::default().emit(&body, m).map_err(|e| format!("{e}\n{shown}"))?;
+            stages.push(SpirvBinary::bytes(&words));
+        }
+        match <[Vec<u8>; 2]>::try_from(stages) {
+            Ok([vert, frag]) => Ok(Lowered { vert, frag, shown, offsets }),
+            Err(s) => Err(format!("{} spirv modules, not a vertex and a fragment shader\n{shown}", s.len())),
+        }
     }
+
+    fn write(&self, gl: &Gl, name: &str) -> Result<(PathBuf, PathBuf), String> {
+        let (vs, fs_) = (gl.out.join(format!("{name}.vert.spv")), gl.out.join(format!("{name}.frag.spv")));
+        fs::write(&vs, &self.vert).map_err(|e| e.to_string())?;
+        fs::write(&fs_, &self.frag).map_err(|e| e.to_string())?;
+        valid(&vs)?;
+        valid(&fs_)?;
+        Ok((vs, fs_))
+    }
+
+    /// Rewrites the `uniform` lines of `res` as one `words` buffer laid out as the default block says.
+    fn words(&self, res: &str, binding: u32) -> Result<String, String> {
+        let mut words: Vec<i32> = Vec::new();
+        let mut kept = Vec::new();
+        for line in res.lines() {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            let ["uniform", _, at, ty, values @ ..] = f.as_slice() else {
+                kept.push(line);
+                continue;
+            };
+            let at: i128 = at.parse().map_err(|_| format!("location in `{line}`"))?;
+            let off = self.offsets.iter().find(|(l, _)| *l == at).ok_or_else(|| format!("location {at} is not in the default block"))?.1;
+            let first = usize::try_from(off).map_err(|e| e.to_string())? / FLOAT;
+            for (i, v) in values.iter().enumerate() {
+                let word = if *ty == "i" { v.parse::<i32>().map_err(|e| e.to_string())? } else { v.parse::<f32>().map_err(|e| e.to_string())?.to_bits().cast_signed() };
+                if words.len() <= first + i {
+                    words.resize(first + i + 1, 0);
+                }
+                words[first + i] = word;
+            }
+        }
+        words.resize(words.len().next_multiple_of(Lowered::VEC4_WORDS) + Lowered::VEC4_WORDS * Lowered::VEC4_WORDS, 0);
+        let mut out: Vec<String> = kept.into_iter().map(String::from).collect();
+        out.push(format!("words {binding} {}", words.iter().map(i32::to_string).collect::<Vec<_>>().join(" ")));
+        Ok(out.join("\n") + "\n")
+    }
+
+    const VEC4_WORDS: usize = 4;
 }
 
 fn valid(spv: &Path) -> Result<(), String> {
@@ -92,6 +159,8 @@ struct Case {
 }
 
 impl Case {
+    const DEFAULT_BLOCK: u32 = 7;
+
     fn all(root: &Path) -> Vec<Case> {
         let mut dirs: Vec<PathBuf> = fs::read_dir(root).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_dir()).collect();
         dirs.sort();
@@ -112,20 +181,36 @@ impl Case {
         out
     }
 
+    /// Loose uniforms packed by `glsl-default-block` must draw exactly what they drew as loose uniforms.
+    fn default_block(&self, gl: &Gl, res: Option<&Path>, ours: &[u8]) -> Result<(), String> {
+        let Some(text) = res.map(fs::read_to_string).transpose().map_err(|e| e.to_string())? else { return Ok(()) };
+        if !text.lines().any(|l| l.starts_with("uniform ")) {
+            return Ok(());
+        }
+        let name = format!("{}.default_block", self.name);
+        let read = |f: &Path| fs::read_to_string(f).map_err(|e| e.to_string());
+        let lowered = Lowered::new(&read(&self.vert)?, &read(&self.frag)?, Some(Case::DEFAULT_BLOCK)).map_err(|e| format!("default block: {e}"))?;
+        let (vs, fs_) = lowered.write(gl, &name)?;
+        let words = gl.out.join(format!("{name}.resources"));
+        fs::write(&words, lowered.words(&text, Case::DEFAULT_BLOCK)?).map_err(|e| e.to_string())?;
+        let drawn = gl.draw("spirv", &vs, &fs_, &format!("{name}.bin"), Some(&words))?;
+        match differing(ours, &drawn) {
+            0 => Ok(()),
+            n => Err(format!("default block: {n} floats differ from loose uniforms")),
+        }
+    }
+
     fn run(&self, gl: &Gl, show: bool) -> Result<String, String> {
         let (name, res) = (&self.name, self.res.as_deref());
         let reference = gl.draw("glsl", &self.vert, &self.frag, &format!("{name}.glsl.bin"), res)?;
         let read = |f: &Path| fs::read_to_string(f).map_err(|e| e.to_string());
-        let (v, f, shown) = lower(&read(&self.vert)?, &read(&self.frag)?)?;
+        let lowered = Lowered::new(&read(&self.vert)?, &read(&self.frag)?, None)?;
         if show {
-            println!("{name}:\n{shown}");
+            println!("{name}:\n{}", lowered.shown);
         }
-        let (vs, fs_) = (gl.out.join(format!("{name}.vert.spv")), gl.out.join(format!("{name}.frag.spv")));
-        fs::write(&vs, v).map_err(|e| e.to_string())?;
-        fs::write(&fs_, f).map_err(|e| e.to_string())?;
-        valid(&vs)?;
-        valid(&fs_)?;
+        let (vs, fs_) = lowered.write(gl, name)?;
         let ours = gl.draw("spirv", &vs, &fs_, &format!("{name}.spirv.bin"), res)?;
+        self.default_block(gl, res, &ours)?;
         let n = differing(&reference, &ours);
         let Some(max) = self.allowed else {
             return if n == 0 { Ok(String::from("bit for bit")) } else { Err(format!("{n} of {} floats differ", reference.len() / FLOAT)) };

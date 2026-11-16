@@ -11,6 +11,7 @@
 //   uniform NAME LOCATION f V...     glUniform{1,2,3,4}fv, or glUniformMatrix4fv for 16 values
 //   uniform NAME LOCATION i V...     glUniform{1,2,3,4}iv
 //   block BINDING V...               a uniform buffer of these floats at that binding
+//   words BINDING V...               a uniform buffer of these 32-bit words (signed decimal) at that binding
 //   texture TARGET FORMAT UNIT W H D LEVELS
 //                                    a texture of a fixed pattern, every level, layer and face filled. TARGET is 2d, 3d,
 //                                    cube or array (D: depth or layers, 1 otherwise); FORMAT is rgba8 (trilinear),
@@ -27,7 +28,7 @@
 
 #define VERTICES 3
 #define CHANNELS 4
-#define MAX_VALUES 64
+#define MAX_VALUES 256
 #define MAT4 16
 #define BYTE 255
 #define TARGET_UNIT 15
@@ -199,15 +200,16 @@ static void resources(const char *path, GLuint prog, int spirv, int linked) {
             glEnableVertexAttribArray(at);
             continue;
         }
-        if (strcmp(kind, "block") == 0) {
+        if (strcmp(kind, "block") == 0 || strcmp(kind, "words") == 0) {
             int at;
-            if (fscanf(f, "%d", &at) != 1) die("block BINDING V...");
-            int n = values(f, 0, fv, iv);
+            const int raw = strcmp(kind, "words") == 0;
+            if (fscanf(f, "%d", &at) != 1) die("block / words BINDING V...");
+            int n = values(f, raw, fv, iv);
             if (!linked) continue;
             GLuint b;
             glGenBuffers(1, &b);
             glBindBuffer(GL_UNIFORM_BUFFER, b);
-            glBufferData(GL_UNIFORM_BUFFER, n * sizeof(float), fv, GL_STATIC_DRAW);
+            glBufferData(GL_UNIFORM_BUFFER, n * sizeof(float), raw ? (const void *)iv : (const void *)fv, GL_STATIC_DRAW);
             glBindBufferBase(GL_UNIFORM_BUFFER, at, b);
             continue;
         }

@@ -200,6 +200,10 @@ impl GpuToXe3 {
                     at += i64::from(m.get(k)?.offset?);
                     ty = m[k].ty.clone();
                 }
+                SpirvType::Array { elem, stride, .. } if stride != 0 => {
+                    at += i64::from(stride) * i64::try_from(k).ok()?;
+                    ty = *elem;
+                }
                 _ => return None,
             }
         }

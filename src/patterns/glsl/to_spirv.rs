@@ -510,6 +510,12 @@ impl GlslToSpirv {
             (Ok(SpirvType::Matrix { .. }), Ok(SpirvType::Matrix { cols, column })) => Some((0..cols).map(|_| (*column).clone()).collect()),
             _ => None,
         };
+        let bool_of = |t: &Type<'_>| *t.element_type() == Type::I1;
+        if bool_of(to) && !bool_of(&from) {
+            let zero = crate::ArithToSpirv::splat(&from, |_| mlirformat::Scalar::Int(mlirformat::ApInt::from_bits(32, 0)));
+            let zero = cr.spirv_const(from.clone(), zero);
+            return cr.build(OpData::build("spirv.INotEqual").operands(&[v, zero]), to.clone());
+        }
         let Some(parts) = parts else { return cr.build(OpData::build("spirv.Bitcast").operands(&[v]), to.clone()) };
         let src: Vec<Type<'a>> = match SpirvType::try_from(&from) {
             Ok(SpirvType::Struct { members: Some(m), .. }) => m.into_iter().map(|x| x.ty).collect(),
