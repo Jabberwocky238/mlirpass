@@ -1005,8 +1005,8 @@ impl Rounded {
                             let bb = r - x;
                             (x - (r - bb)) + (y - bb)
                         }
-                        Rounded::Mul => x.mul_add(y, -r),
-                        Rounded::Div => (-r).mul_add(y, x) * y.signum(),
+                        Rounded::Mul => libm::fma(x, y, -r),
+                        Rounded::Div => libm::fma(-r, y, x) * y.signum(),
                     }
                 }
             }
@@ -1021,8 +1021,8 @@ impl Rounded {
                             let bb = r - x;
                             (x - (r - bb)) + (y - bb)
                         }
-                        Rounded::Mul => x.mul_add(y, -r),
-                        Rounded::Div => (-r).mul_add(y, x) * y.signum(),
+                        Rounded::Mul => libm::fmaf(x, y, -r),
+                        Rounded::Div => libm::fmaf(-r, y, x) * y.signum(),
                     }
                 };
                 f64::from(e)

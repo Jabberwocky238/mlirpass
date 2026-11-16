@@ -161,8 +161,8 @@ impl<'x, 'a> Folder<'x, 'a> {
             "ipowi" => self.binary(None, |a, b| Some(Scalar::Int(a.int().filter(|a| a.width != 1)?.ipowi(b.int()?)?))).map(Folded::Attr).into(),
             "rsqrt" => self.float_unary(|a| match a.kind {
                 _ if a.is_negative() => None,
-                FloatKind::F64 => ApFloat::from_bits(FloatKind::F64, (1.0 / f64::from_bits(a.bits).sqrt()).to_bits()),
-                FloatKind::F32 => ApFloat::from_bits(FloatKind::F32, (1.0 / f32::from_bits(a.bits as u32).sqrt()).to_bits().into()),
+                FloatKind::F64 => ApFloat::from_bits(FloatKind::F64, (1.0 / libm::sqrt(f64::from_bits(a.bits))).to_bits()),
+                FloatKind::F32 => ApFloat::from_bits(FloatKind::F32, (1.0 / libm::sqrtf(f32::from_bits(a.bits as u32))).to_bits().into()),
                 _ => None,
             }),
             "fpowi" => {

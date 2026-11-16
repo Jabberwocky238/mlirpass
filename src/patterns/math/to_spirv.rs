@@ -93,7 +93,7 @@ impl MathToSpirv {
         c.values.iter().map(|x| match x {
             Scalar::Float(f) => {
                 let f = f.to_f64();
-                (f.fract() == 0.0 && f.is_finite()).then(|| (f as i64) & 1 == 1)
+                (f.is_finite() && libm::trunc(f) == f).then(|| (f as i64) & 1 == 1)
             }
             _ => None,
         }).collect()
