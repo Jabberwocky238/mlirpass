@@ -38,7 +38,7 @@ fn lower(vert: &str, frag: &str) -> Result<(Vec<u8>, Vec<u8>, String), String> {
     opt.load(GlslDialect);
     let interfaces = Interfaces::upstream();
     let passes = Passes::upstream();
-    let pm = PassManager::parse(&passes, "builtin.module(convert-glsl-to-spirv{client=opengl})").map_err(|e| e.to_string())?;
+    let pm = PassManager::parse(&passes, "builtin.module(glsl-link, convert-glsl-to-spirv{client=opengl})").map_err(|e| e.to_string())?;
     let mut body = Body::new(Ctx::new(&opt, &interfaces));
     GlslReader::read(&mut body, vert, GlslStage::Vertex).map_err(|e| format!("vertex {e}"))?;
     GlslReader::read(&mut body, frag, GlslStage::Fragment).map_err(|e| format!("fragment {e}"))?;

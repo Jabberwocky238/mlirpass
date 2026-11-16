@@ -4,12 +4,14 @@
 //   glrun glsl  VERT FRAG W H OUT [RES]    shaders as GLSL source (any #version the driver takes)
 //   glrun spirv VERT FRAG W H OUT [RES]    shaders as SPIR-V binaries (ARB_gl_spirv), entry point "main"
 //
-// The vertex shader gets no attributes; it is run for vertices 0, 1, 2 (gl_VertexID / VertexIndex).
-// RES sets what the shaders read, one per line, the same way for both kinds of shader:
-//   uniform LOCATION f V...         glUniform{1,2,3,4}fv, or glUniformMatrix4fv for 16 values
-//   uniform LOCATION i V...         glUniform{1,2,3,4}iv
-//   block BINDING V...              a uniform buffer of these floats at that binding
-//   texture UNIT W H LEVELS         an RGBA8 texture of a fixed pattern, every level filled, trilinear, repeat
+// The vertex shader is run for vertices 0, 1, 2 (gl_VertexID / VertexIndex).
+// RES sets what the shaders read, one per line, the same way for both kinds of shader. A name is what the GLSL
+// declares: GLSL source is looked up by it, SPIR-V (which carries no names) by the LOCATION given next to it.
+//   attribute NAME LOCATION N V...   a vertex attribute of N floats a vertex, three vertices
+//   uniform NAME LOCATION f V...     glUniform{1,2,3,4}fv, or glUniformMatrix4fv for 16 values
+//   uniform NAME LOCATION i V...     glUniform{1,2,3,4}iv
+//   block BINDING V...               a uniform buffer of these floats at that binding
+//   texture UNIT W H LEVELS          an RGBA8 texture of a fixed pattern, every level filled, trilinear, repeat
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #define GL_GLEXT_PROTOTYPES
@@ -94,39 +96,72 @@ static void texture(int unit, int w, int h, int levels) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 }
 
-static void resources(const char *path) {
+static int values(FILE *f, int ints, float *fv, int *iv) {
+    int n = 0;
+    for (;;) {
+        int c = fgetc(f);
+        while (c == ' ' || c == '\t') c = fgetc(f);
+        if (c == '\n' || c == EOF) return n;
+        ungetc(c, f);
+        if (n == MAX_VALUES) die("too many values");
+        if (ints ? fscanf(f, "%d", &iv[n]) != 1 : fscanf(f, "%f", &fv[n]) != 1) die("a value");
+        n++;
+    }
+}
+
+static void resources(const char *path, GLuint prog, int spirv, int linked) {
     FILE *f = fopen(path, "r");
     if (!f) die(path);
-    char kind[16];
+    char kind[16], name[64];
+    float fv[MAX_VALUES];
+    int iv[MAX_VALUES];
     while (fscanf(f, "%15s", kind) == 1) {
         if (strcmp(kind, "texture") == 0) {
             int unit, w, h, levels;
             if (fscanf(f, "%d %d %d %d", &unit, &w, &h, &levels) != 4) die("texture UNIT W H LEVELS");
-            texture(unit, w, h, levels);
+            if (linked) texture(unit, w, h, levels);
             continue;
         }
-        int at, n = 0;
-        char ty[2] = "f";
-        if (fscanf(f, "%d", &at) != 1) die(kind);
-        if (strcmp(kind, "uniform") == 0 && fscanf(f, "%1s", ty) != 1) die("uniform LOCATION f|i V...");
-        float fv[MAX_VALUES];
-        int iv[MAX_VALUES];
-        for (;;) {
-            int c = fgetc(f);
-            while (c == ' ' || c == '\t') c = fgetc(f);
-            if (c == '\n' || c == EOF) break;
-            ungetc(c, f);
-            if (n == MAX_VALUES) die("too many values");
-            if (ty[0] == 'i' ? fscanf(f, "%d", &iv[n]) != 1 : fscanf(f, "%f", &fv[n]) != 1) die("a value");
-            n++;
+        if (strcmp(kind, "attribute") == 0) {
+            int at, size;
+            if (fscanf(f, "%63s %d %d", name, &at, &size) != 3) die("attribute NAME LOCATION N V...");
+            int n = values(f, 0, fv, iv);
+            if (n != size * VERTICES) die("an attribute needs N values for each of the three vertices");
+            if (!linked) {
+                glBindAttribLocation(prog, at, name);
+                continue;
+            }
+            GLuint b;
+            glGenBuffers(1, &b);
+            glBindBuffer(GL_ARRAY_BUFFER, b);
+            glBufferData(GL_ARRAY_BUFFER, n * sizeof(float), fv, GL_STATIC_DRAW);
+            glVertexAttribPointer(at, size, GL_FLOAT, GL_FALSE, 0, 0);
+            glEnableVertexAttribArray(at);
+            continue;
         }
         if (strcmp(kind, "block") == 0) {
+            int at;
+            if (fscanf(f, "%d", &at) != 1) die("block BINDING V...");
+            int n = values(f, 0, fv, iv);
+            if (!linked) continue;
             GLuint b;
             glGenBuffers(1, &b);
             glBindBuffer(GL_UNIFORM_BUFFER, b);
             glBufferData(GL_UNIFORM_BUFFER, n * sizeof(float), fv, GL_STATIC_DRAW);
             glBindBufferBase(GL_UNIFORM_BUFFER, at, b);
-        } else if (ty[0] == 'i') {
+            continue;
+        }
+        if (strcmp(kind, "uniform") != 0) die(kind);
+        int at;
+        char ty[2];
+        if (fscanf(f, "%63s %d %1s", name, &at, ty) != 3) die("uniform NAME LOCATION f|i V...");
+        int n = values(f, ty[0] == 'i', fv, iv);
+        if (!linked) continue;
+        if (!spirv) {
+            at = glGetUniformLocation(prog, name);
+            if (at < 0) die(name);
+        }
+        if (ty[0] == 'i') {
             void (*set[])(GLint, GLsizei, const GLint *) = {glUniform1iv, glUniform2iv, glUniform3iv, glUniform4iv};
             if (n < 1 || n > CHANNELS) die("1 to 4 ints");
             set[n - 1](at, 1, iv);
@@ -157,6 +192,7 @@ int main(int argc, char **argv) {
     GLuint prog = glCreateProgram();
     glAttachShader(prog, shader(GL_VERTEX_SHADER, argv[2], spirv));
     glAttachShader(prog, shader(GL_FRAGMENT_SHADER, argv[3], spirv));
+    if (argc == 8) resources(argv[7], prog, spirv, 0);
     glLinkProgram(prog);
     GLint ok;
     glGetProgramiv(prog, GL_LINK_STATUS, &ok);
@@ -167,11 +203,13 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    GLuint tex, fbo, vao;
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
     glUseProgram(prog);
-    if (argc == 8) resources(argv[7]);
+    if (argc == 8) resources(argv[7], prog, spirv, 1);
     glActiveTexture(GL_TEXTURE0 + TARGET_UNIT);
 
-    GLuint tex, fbo, vao;
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, w, h);
@@ -179,8 +217,6 @@ int main(int argc, char **argv) {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) die("framebuffer");
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
 
     glViewport(0, 0, w, h);
     glClearColor(0, 0, 0, 0);
