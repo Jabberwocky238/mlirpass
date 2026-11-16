@@ -64,6 +64,21 @@ fn valid(spv: &Path) -> Result<(), String> {
     if o.status.success() { Ok(()) } else { Err(format!("spirv-val: {}", String::from_utf8_lossy(&o.stderr).trim())) }
 }
 
+fn glslang(src: &Path, out: &Path) -> Result<(), String> {
+    let o = Command::new("glslangValidator").arg("-G").arg(src).arg("-o").arg(out).output().map_err(|e| format!("glslangValidator: {e}"))?;
+    if o.status.success() { Ok(()) } else { Err(format!("glslangValidator: {}", String::from_utf8_lossy(&o.stdout).trim())) }
+}
+
+fn ulps(a: &[u8], b: &[u8]) -> u32 {
+    let bits = |c: &[u8]| i32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+    a.chunks(FLOAT).zip(b.chunks(FLOAT)).map(|(x, y)| (bits(x), bits(y))).map(|(x, y)| if (x < 0) == (y < 0) { x.abs_diff(y) } else { u32::MAX }).max().unwrap_or(0)
+}
+
+fn reassociated(dir: &Path) -> Vec<(String, u32)> {
+    let Ok(text) = fs::read_to_string(dir.join("reassociated")) else { return Vec::new() };
+    text.lines().filter_map(|l| l.split_once(' ')).filter_map(|(n, u)| Some((String::from(n), u.trim().parse().ok()?))).collect()
+}
+
 fn differing(a: &[u8], b: &[u8]) -> usize {
     a.chunks(FLOAT).zip(b.chunks(FLOAT)).filter(|(x, y)| x != y).count()
 }
@@ -85,6 +100,7 @@ fn glsl_draws_as_opengl() {
         let res = dir.join("resources");
         let res = res.exists().then_some(res.as_path());
         let vert = dir.join("shader.vert");
+        let allowed = reassociated(&dir);
         for frag in frags {
             let stem = frag.file_stem().unwrap().to_string_lossy().into_owned();
             let dir_name = dir.file_name().unwrap().to_string_lossy().into_owned();
@@ -102,12 +118,24 @@ fn glsl_draws_as_opengl() {
                 valid(&vs)?;
                 valid(&fs_)?;
                 let ours = gl.draw("spirv", &vs, &fs_, &format!("{name}.spirv.bin"), res)?;
-                match differing(&reference, &ours) {
-                    0 => Ok(()),
-                    n => Err(format!("{n} of {} floats differ", reference.len() / FLOAT)),
+                let n = differing(&reference, &ours);
+                let Some(&(_, max)) = allowed.iter().find(|(s, _)| *s == stem) else {
+                    return if n == 0 { Ok(String::from("bit for bit")) } else { Err(format!("{n} of {} floats differ", reference.len() / FLOAT)) };
+                };
+                if n == 0 {
+                    return Ok(String::from("bit for bit"));
+                }
+                let (gv, gf) = (gl.out.join(format!("{name}.glslang.vert.spv")), gl.out.join(format!("{name}.glslang.frag.spv")));
+                glslang(&vert, &gv)?;
+                glslang(&frag, &gf)?;
+                let theirs = gl.draw("spirv", &gv, &gf, &format!("{name}.glslang.bin"), res)?;
+                match (differing(&theirs, &ours), ulps(&reference, &ours)) {
+                    (0, u) if u <= max => Ok(format!("bit for bit with glslang; {n} floats within {u} ulp of OpenGL (Mesa reassociates)")),
+                    (0, u) => Err(format!("bit for bit with glslang, but {u} ulp from OpenGL (allowed {max})")),
+                    (k, _) => Err(format!("{k} floats differ from glslang, {n} from OpenGL")),
                 }
             })();
-            println!("{name}: {}", result.as_ref().map_or_else(|e| e.as_str(), |_| "bit for bit"));
+            println!("{name}: {}", result.as_ref().map_or_else(|e| e.as_str(), |m| m.as_str()));
             if let Err(e) = result {
                 bad.push(format!("{name}: {e}"));
             }

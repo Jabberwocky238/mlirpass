@@ -1,4 +1,3 @@
-use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -269,9 +268,25 @@ impl Place {
     }
 }
 
+#[derive(Clone)]
 struct Signature {
     params: Vec<(ParamQual, Ty)>,
     ret: Ty,
+    symbol: String,
+    defined: bool,
+}
+
+enum Arg {
+    Value(ValueId, Ty),
+    Place(Place, Option<Vec<u32>>, Ty),
+}
+
+impl Arg {
+    fn ty(&self) -> &Ty {
+        match self {
+            Arg::Value(_, t) | Arg::Place(_, _, t) => t,
+        }
+    }
 }
 
 pub struct GlslReader;
@@ -283,7 +298,7 @@ struct Emitter<'r, 'a, 's> {
     first_func: Option<OpId>,
     globals: BTreeMap<&'s str, Name<'s>>,
     builtins: BTreeMap<&'s str, ()>,
-    funcs: BTreeMap<&'s str, Signature>,
+    funcs: BTreeMap<&'s str, Vec<Signature>>,
     scopes: Vec<BTreeMap<&'s str, Name<'s>>>,
     entry: Option<BlockId>,
     loops: Vec<Exit>,
@@ -422,17 +437,24 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
             Item::Global { qual, decl } => self.global_decl(qual, decl),
             Item::Block { qual, name, members, instance } => self.block(qual, name, members, *instance),
             Item::Func { ret, name, params, body, .. } => {
-                let sig = Signature { params: params.iter().map(|p| (p.qual, p.ty.clone())).collect(), ret: ret.clone() };
-                if params.iter().any(|p| p.qual != ParamQual::In) {
-                    return Self::err(format!("{name}: out / inout parameters are not supported yet"));
-                }
-                match self.funcs.get(name) {
-                    Some(s) if s.params.iter().map(|p| &p.1).ne(sig.params.iter().map(|p| &p.1)) => return Self::err(format!("{name}: overloads are not supported yet")),
-                    _ => {}
-                }
-                self.funcs.insert(name, sig);
+                let quals: Vec<(ParamQual, Ty)> = params.iter().map(|p| (p.qual, p.ty.clone())).collect();
+                let list = self.funcs.entry(name).or_default();
+                let at = list.iter().position(|s| s.params.iter().map(|p| &p.1).eq(quals.iter().map(|p| &p.1)));
+                let symbol = match at {
+                    Some(k) if list[k].ret != *ret || list[k].params != quals => return Self::err(format!("{name}: redeclared with another return type or qualifiers")),
+                    Some(k) if list[k].defined && body.is_some() => return Self::err(format!("{name}: defined twice")),
+                    Some(k) => {
+                        list[k].defined |= body.is_some();
+                        list[k].symbol.clone()
+                    }
+                    None => {
+                        let symbol = if list.is_empty() { String::from(*name) } else { format!("{name}.{}", list.len()) };
+                        list.push(Signature { params: quals, ret: ret.clone(), symbol: symbol.clone(), defined: body.is_some() });
+                        symbol
+                    }
+                };
                 match body {
-                    Some(b) => self.function(ret, name, params, b),
+                    Some(b) => self.function(ret, &symbol, params, b),
                     None => Ok(()),
                 }
             }
@@ -551,8 +573,12 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
         (!self.loops.is_empty() && s.leaves_loop()) || s.returns()
     }
 
-    fn function(&mut self, ret: &Ty, name: &'s str, params: &[super::syntax::Param<'s>], body: &[Stmt<'s>]) -> Result<(), Error> {
-        let inputs = params.iter().map(|p| p.ty.mlir(false)).collect::<Result<Vec<_>, _>>()?;
+    fn pointer(ty: &Ty) -> Result<Type<'a>, Error> {
+        Ok(SpirvType::Ptr { pointee: Box::new(ty.mlir(false)?), storage: String::from("Function") }.into())
+    }
+
+    fn function(&mut self, ret: &Ty, name: &str, params: &[super::syntax::Param<'s>], body: &[Stmt<'s>]) -> Result<(), Error> {
+        let inputs = params.iter().map(|p| if p.qual == ParamQual::In { p.ty.mlir(false) } else { Self::pointer(&p.ty) }).collect::<Result<Vec<_>, _>>()?;
         let results = if *ret == Ty::Void { Vec::new() } else { vec![ret.mlir(false)?] };
         let fty = Type::Function(Box::new(FunctionType { inputs: inputs.clone(), results }));
         let data = OpData::build("func.func").with("sym_name", Attribute::str(name)).with("function_type", Attribute::Type(fty));
@@ -571,9 +597,15 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
         self.enter(entry);
         let mut scope = BTreeMap::new();
         for (k, p) in params.iter().enumerate() {
-            let slot = self.variable(&p.ty)?;
             let arg = self.rw.body[entry].args[k];
-            self.put(slot, arg);
+            let slot = match p.qual {
+                ParamQual::In => {
+                    let slot = self.variable(&p.ty)?;
+                    self.put(slot, arg);
+                    slot
+                }
+                ParamQual::Out | ParamQual::InOut => arg,
+            };
             scope.insert(p.name, Name::Local(slot, p.ty.clone()));
         }
         self.scopes = vec![scope];
@@ -1424,17 +1456,58 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
     }
 
     fn call(&mut self, name: &'s str, args: &[Expr<'s>], line: u32) -> Result<(ValueId, Ty), Error> {
-        if let Some(sig) = self.funcs.get(name) {
-            let (params, ret): (Vec<Ty>, Ty) = (sig.params.iter().map(|p| p.1.clone()).collect(), sig.ret.clone());
-            if params.len() != args.len() {
-                return Self::err(format!("line {line}: {name} takes {} arguments", params.len()));
+        if let Some(list) = self.funcs.get(name) {
+            let cands: Vec<Signature> = list.iter().filter(|s| s.params.len() == args.len()).cloned().collect();
+            let mut vals = Vec::new();
+            for (i, a) in args.iter().enumerate() {
+                let by_ref = cands.iter().any(|c| c.params[i].0 != ParamQual::In);
+                vals.push(match (by_ref, self.place(a)?) {
+                    (true, Some((p, lanes))) => {
+                        let ty = lanes.as_ref().map_or_else(|| p.ty().clone(), |l| Ty::of(p.ty().scalar().unwrap_or(Scalar::Float), u32::try_from(l.len()).unwrap_or(u32::MAX)));
+                        Arg::Place(p, lanes, ty)
+                    }
+                    (_, Some((p, lanes))) => {
+                        let (v, t) = self.read(&p, lanes.as_deref())?;
+                        Arg::Value(v, t)
+                    }
+                    (_, None) => {
+                        let (v, t) = self.expr(a)?;
+                        Arg::Value(v, t)
+                    }
+                });
             }
-            let vals = args.iter().zip(&params).map(|(a, t)| self.rvalue_of(a, t)).collect::<Result<Vec<_>, _>>()?;
-            let results = if ret == Ty::Void { Vec::new() } else { vec![ret.mlir(false)?] };
-            let op = self.rw.create(OpData::build("func.call").operands(&vals).with("callee", Attribute::SymbolRef(vec![name.to_owned().into()])), &results);
+            let fits = |c: &Signature| c.params.iter().zip(&vals).all(|((q, t), a)| t == a.ty() && (*q == ParamQual::In || matches!(a, Arg::Place(..))));
+            let Some(sig) = cands.iter().find(|c| fits(c)).cloned() else {
+                return Self::err(format!("line {line}: no {name} takes {:?}", vals.iter().map(Arg::ty).collect::<Vec<_>>()));
+            };
+            let mut operands = Vec::new();
+            let mut back = Vec::new();
+            for ((q, t), a) in sig.params.iter().zip(&vals) {
+                match (q, a) {
+                    (ParamQual::In, Arg::Value(v, _)) => operands.push(*v),
+                    (ParamQual::In, Arg::Place(p, lanes, _)) => operands.push(self.read(p, lanes.as_deref())?.0),
+                    (_, Arg::Place(p, lanes, _)) => {
+                        let tmp = self.variable(t)?;
+                        if *q == ParamQual::InOut {
+                            let (v, _) = self.read(p, lanes.as_deref())?;
+                            self.put(tmp, v);
+                        }
+                        operands.push(tmp);
+                        back.push((tmp, p.clone(), lanes.clone(), t.clone()));
+                    }
+                    (_, Arg::Value(..)) => return Self::err(format!("line {line}: an out argument of {name} must be assignable")),
+                }
+            }
+            let results = if sig.ret == Ty::Void { Vec::new() } else { vec![sig.ret.mlir(false)?] };
+            let op = self.rw.create(OpData::build("func.call").operands(&operands).with("callee", Attribute::SymbolRef(vec![sig.symbol.clone().into()])), &results);
             let v = self.rw.body[op].results.first().copied();
+            for (tmp, p, lanes, t) in back {
+                let ty = t.mlir(false)?;
+                let v = self.op("spirv.Load", &[tmp], ty);
+                self.write(&p, lanes.as_deref(), v)?;
+            }
             return match v {
-                Some(v) => Ok((v, ret)),
+                Some(v) => Ok((v, sig.ret)),
                 None => Ok((self.constant(Scalar::Bool, 0), Ty::Void)),
             };
         }
