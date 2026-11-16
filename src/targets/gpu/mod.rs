@@ -1,17 +1,17 @@
 //! What the GPU machine-code targets share: the `GpuTarget` trait, kernels and stages, register
 //! allocation, a draw described without the GPU, and the lane-by-lane lowering helpers.
 
-#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
+#[cfg(feature = "target.gpu")]
 mod draw;
-#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
+#[cfg(feature = "target.gpu")]
 mod lanes;
-#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
+#[cfg(feature = "target.gpu")]
 mod regalloc;
 mod shader;
 
-#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
+#[cfg(feature = "target.gpu")]
 pub use draw::*;
-#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
+#[cfg(feature = "target.gpu")]
 pub use regalloc::*;
 pub use shader::*;
 

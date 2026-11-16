@@ -124,7 +124,7 @@ impl GpuModuleToBinary {
         Attribute::Extended { ext: alloc::boxed::Box::new(Extended { name: String::from("gpu.object").into(), body: Some(body.into()), params: Vec::new() }), ty: None }
     }
 
-    #[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
+    #[cfg(any(feature = "target.rdna2", feature = "target.agx", feature = "target.apple9", feature = "target.xe3"))]
     fn native<'a>(&self, t: &Attribute<'a>, kernels: Vec<crate::KernelCode>) -> Result<Attribute<'a>, Error> {
         if !matches!(self.format, CompilationFormat::Fatbin | CompilationFormat::Binary) {
             return Err(Error("gpu-module-to-binary: a GPU's machine code is binary only".to_owned()));

@@ -30,9 +30,9 @@ mod convert_gpu_to_rocdl;
 #[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 pub use convert_gpu_to_rocdl::{AmdRuntime, ConvertGpuToRocdl};
 
-#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
+#[cfg(feature = "target.gpu")]
 mod gpu_inline_calls;
-#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
+#[cfg(feature = "target.gpu")]
 pub use gpu_inline_calls::*;
 
 

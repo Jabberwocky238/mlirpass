@@ -8,7 +8,7 @@ mod agx;
 mod agx_dispatch;
 #[cfg(feature = "target.apple9")]
 mod apple9;
-#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3"))]
+#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3", feature = "target.gpu"))]
 mod gpu;
 #[cfg(feature = "dialect.rdna2")]
 mod rdna2;
@@ -37,7 +37,7 @@ pub use agx::*;
 pub use agx_dispatch::*;
 #[cfg(feature = "target.apple9")]
 pub use apple9::*;
-#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3"))]
+#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3", feature = "target.gpu"))]
 pub use gpu::*;
 #[cfg(feature = "dialect.rdna2")]
 pub use rdna2::*;

@@ -36,7 +36,7 @@ mod memref;
 mod scf;
 #[cfg(feature = "dialect.shape")]
 mod shape;
-#[cfg(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
+#[cfg(any(feature = "target.spirv", feature = "target.gpu"))]
 mod spirv;
 #[cfg(all(feature = "dialect.tensor", any(feature = "dialect.linalg", all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func"))))]
 mod tensor;
@@ -96,7 +96,7 @@ pub use memref::*;
 pub use scf::*;
 #[cfg(feature = "dialect.shape")]
 pub use shape::*;
-#[cfg(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
+#[cfg(any(feature = "target.spirv", feature = "target.gpu"))]
 pub use spirv::*;
 #[cfg(all(feature = "dialect.tensor", any(feature = "dialect.linalg", all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func"))))]
 pub use tensor::*;

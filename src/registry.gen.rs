@@ -93,7 +93,7 @@ impl crate::Passes {
         p.register::<crate::ConvertGpuToSpirv>(); // convert-gpu-to-spirv
         #[cfg(all(feature = "dialect.gpu", feature = "target.xe3"))]
         p.register::<crate::ConvertGpuToXe3>(); // convert-gpu-to-xe3
-        #[cfg(all(feature = "dialect.gpu", any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3")))]
+        #[cfg(all(feature = "dialect.gpu", feature = "target.gpu"))]
         p.register::<crate::GpuInlineCalls>(); // gpu-inline-calls
         #[cfg(feature = "dialect.gpu")]
         p.register::<crate::GpuKernelOutlining>(); // gpu-kernel-outlining
@@ -169,27 +169,27 @@ impl crate::Passes {
         p.register::<crate::GpuMapParallelLoops>(); // gpu-map-parallel-loops
         #[cfg(feature = "dialect.shape")]
         p.register::<crate::ConvertShapeToStd>(); // convert-shape-to-std
-        #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3")))]
+        #[cfg(all(any(feature = "target.spirv", feature = "target.gpu"), any(feature = "target.spirv", feature = "target.gpu")))]
         p.register::<crate::ConvertSpirvCfToCf>(); // convert-spirv-cf-to-cf
-        #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3")))]
+        #[cfg(all(any(feature = "target.spirv", feature = "target.gpu"), any(feature = "target.spirv", feature = "target.gpu")))]
         p.register::<crate::ConvertSpirvEntryPoints>(); // convert-spirv-entry-points
-        #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), feature = "target.spirv"))]
+        #[cfg(all(any(feature = "target.spirv", feature = "target.gpu"), feature = "target.spirv"))]
         p.register::<crate::DecorateSpirvCompositeTypeLayout>(); // decorate-spirv-composite-type-layout
-        #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), feature = "target.spirv"))]
+        #[cfg(all(any(feature = "target.spirv", feature = "target.gpu"), feature = "target.spirv"))]
         p.register::<crate::SpirvAttachTarget>(); // spirv-attach-target
-        #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), feature = "target.spirv"))]
+        #[cfg(all(any(feature = "target.spirv", feature = "target.gpu"), feature = "target.spirv"))]
         p.register::<crate::SpirvCanonicalizeGl>(); // spirv-canonicalize-gl
-        #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), feature = "target.spirv"))]
+        #[cfg(all(any(feature = "target.spirv", feature = "target.gpu"), feature = "target.spirv"))]
         p.register::<crate::SpirvLowerAbiAttrs>(); // spirv-lower-abi-attrs
-        #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), feature = "target.spirv"))]
+        #[cfg(all(any(feature = "target.spirv", feature = "target.gpu"), feature = "target.spirv"))]
         p.register::<crate::SpirvPromoteToReplicatedConstants>(); // spirv-promote-to-replicated-constants
-        #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), feature = "target.spirv"))]
+        #[cfg(all(any(feature = "target.spirv", feature = "target.gpu"), feature = "target.spirv"))]
         p.register::<crate::SpirvRewriteInserts>(); // spirv-rewrite-inserts
-        #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), feature = "target.spirv"))]
+        #[cfg(all(any(feature = "target.spirv", feature = "target.gpu"), feature = "target.spirv"))]
         p.register::<crate::SpirvUnifyAliasedResource>(); // spirv-unify-aliased-resource
-        #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), feature = "target.spirv"))]
+        #[cfg(all(any(feature = "target.spirv", feature = "target.gpu"), feature = "target.spirv"))]
         p.register::<crate::SpirvUpdateVce>(); // spirv-update-vce
-        #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), feature = "target.spirv"))]
+        #[cfg(all(any(feature = "target.spirv", feature = "target.gpu"), feature = "target.spirv"))]
         p.register::<crate::SpirvWebgpuPrepare>(); // spirv-webgpu-prepare
         #[cfg(all(all(feature = "dialect.tensor", any(feature = "dialect.linalg", all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func"))), feature = "dialect.linalg"))]
         p.register::<crate::ConvertTensorToLinalg>(); // convert-tensor-to-linalg
