@@ -71,19 +71,21 @@ impl GpuModuleToBinary {
     fn object<'a>(&self, body: &Body<'a>, m: OpId, t: &Attribute<'a>) -> Result<Attribute<'a>, Error> {
         let inner: Vec<OpId> = body.ops(body.top_block(m)).collect();
         #[cfg(feature = "target.rdna2")]
-        if inner.iter().any(|o| body[*o].name == <crate::Rdna2Kernel as mlirformat::Op>::NAME) {
-            let codes = crate::Emit::emit(&crate::Rdna2Emit, body, m)?;
-            return self.native(t, codes.into_iter().map(|k| (k.name, k.align, k.pad, k.bytes, alloc::vec![("params", u64::from(k.params)), ("sgprs", u64::from(k.sgprs)), ("vgprs", u64::from(k.vgprs))])));
+        {
+            let gpus: &[&dyn crate::GpuTarget] = &[#[cfg(feature = "target.rdna2")] &crate::Rdna2Target];
+            if let Some(g) = gpus.iter().find(|g| g.holds(body, m)) {
+                return self.native(t, g.kernels(body, m)?);
+            }
         }
         #[cfg(feature = "target.agx")]
         if inner.iter().any(|o| body[*o].name == <crate::AgxKernel as mlirformat::Op>::NAME) {
             let codes = crate::Emit::emit(&crate::AgxEmit, body, m)?;
-            return self.native(t, codes.into_iter().map(|k| (k.name, k.align, 0, k.bytes, alloc::vec![("params", u64::from(k.params)), ("gprs", u64::from(k.gprs))])));
+            return self.native(t, codes.into_iter().map(|k| crate::KernelCode { name: k.name, align: k.align, pad: 0, bytes: k.bytes, info: alloc::vec![("params", u64::from(k.params)), ("gprs", u64::from(k.gprs))] }).collect());
         }
         #[cfg(feature = "target.apple9")]
         if inner.iter().any(|o| body[*o].name == <crate::Apple9Kernel as mlirformat::Op>::NAME) {
             let codes = crate::Emit::emit(&crate::Apple9Emit, body, m)?;
-            return self.native(t, codes.into_iter().map(|k| (k.name, 4, 0, k.bytes, alloc::vec![("params", u64::from(k.params)), ("gprs", u64::from(k.gprs)), ("shared", u64::from(k.shared)), ("workgroup", u64::from(k.workgroup))])));
+            return self.native(t, codes.into_iter().map(|k| crate::KernelCode { name: k.name, align: 4, pad: 0, bytes: k.bytes, info: alloc::vec![("params", u64::from(k.params)), ("gprs", u64::from(k.gprs)), ("shared", u64::from(k.shared)), ("workgroup", u64::from(k.workgroup))] }).collect());
         }
         #[cfg(feature = "target.xe3")]
         if inner.iter().any(|o| body[*o].name == <crate::Xe3Kernel as mlirformat::Op>::NAME) {
@@ -93,9 +95,9 @@ impl GpuModuleToBinary {
                 let h = body.head::<crate::Xe3Kernel>(k)?;
                 let code = crate::Xe3Code::of(body, k)?;
                 let info = alloc::vec![("simd", u64::from(h.simd.unwrap_or(0))), ("inputs", u64::from(h.inputs.unwrap_or(0))), ("threads", u64::from(h.threads.unwrap_or(1))), ("shared", u64::from(h.shared.unwrap_or(0)))];
-                kernels.push((code.name, h.align.unwrap_or(64), h.pad.unwrap_or(0), code.bytes, info));
+                kernels.push(crate::KernelCode { name: code.name, align: h.align.unwrap_or(64), pad: h.pad.unwrap_or(0), bytes: code.bytes, info });
             }
-            return self.native(t, kernels.into_iter());
+            return self.native(t, kernels);
         }
         #[cfg(feature = "target.spirv")]
         if matches!(t, Attribute::Extended { ext, .. } if ext.name == "spirv.target_env") {
@@ -123,14 +125,14 @@ impl GpuModuleToBinary {
     }
 
     #[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
-    fn native<'a>(&self, t: &Attribute<'a>, kernels: impl Iterator<Item = (String, u64, u64, Vec<u8>, Vec<(&'static str, u64)>)>) -> Result<Attribute<'a>, Error> {
+    fn native<'a>(&self, t: &Attribute<'a>, kernels: Vec<crate::KernelCode>) -> Result<Attribute<'a>, Error> {
         if !matches!(self.format, CompilationFormat::Fatbin | CompilationFormat::Binary) {
             return Err(Error("gpu-module-to-binary: a GPU's machine code is binary only".to_owned()));
         }
         let mut bytes: Vec<u8> = Vec::new();
         let mut props = Vec::new();
         let int = |n: u64| Attribute::Int { lit: format!("{n}").into(), ty: Some(mlirformat::Type::int(64)) };
-        for (name, align, pad, code, info) in kernels {
+        for crate::KernelCode { name, align, pad, bytes: code, info } in kernels {
             let at = bytes.len().next_multiple_of(align.max(1) as usize);
             bytes.resize(at, 0);
             bytes.extend(&code);

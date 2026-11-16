@@ -35,10 +35,6 @@ mod gpu_inline_calls;
 #[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
 pub use gpu_inline_calls::*;
 
-#[cfg(feature = "target.rdna2")]
-mod convert_gpu_to_rdna2;
-#[cfg(feature = "target.rdna2")]
-pub use convert_gpu_to_rdna2::*;
 
 #[cfg(feature = "target.agx")]
 mod convert_gpu_to_agx;

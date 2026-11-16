@@ -5,7 +5,7 @@ use mlirformat::arith::{CmpF, CmpFPredicate, CmpI, CmpIPredicate};
 use mlirformat::llvm_types::LlvmType;
 use mlirformat::{Attribute, Const, FloatKind, Scalar, ShapedKind, Type};
 
-use super::Dimension;
+use crate::Dimension;
 use crate::{ConversionRewriter, Heads, OpData, OpHead, OpId, Rdna2Build as Build, Rdna2Flag as Flag, Rdna2Flat as Flat, Rdna2Input, Rdna2Kernel, Rdna2Opcode as Opcode, Rdna2Operand as Operand, Rdna2Salu as Salu, Rdna2Slot as Slot, Rdna2Type, Rdna2Valu as Valu, ShaderStage, SignatureConversion, TypeConverter, ValueId, patterns};
 use Slot::{Addr, Data, Src0, Src1, Src2};
 

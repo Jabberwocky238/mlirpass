@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """data/amd/gfx10-opcodes.json (Mesa ACO's GFX10 instructions, dumped by rdna2_opcodes_dump.py) ⇒
-src/dialects/rdna2/opcodes.gen.rs: `Opcode` (every instruction, its format, GFX10 opcode and mnemonic) and `HASHES`
+src/targets/rdna2/dialect/opcodes.gen.rs: `Opcode` (every instruction, its format, GFX10 opcode and mnemonic) and `HASHES`
 (the mnemonics' FNV-1a hashes, sorted: `Opcode::try_from(&str)` searches integers, then compares one name).
 `--check`: fail when the file is stale."""
 import json, os, sys
@@ -46,7 +46,7 @@ assert all(a[0] != b[0] for a, b in zip(hashed, hashed[1:])), 'two mnemonics wit
 out += [f'    ({h:#018x}, Opcode::{camel(n)}),\n' for h, n in hashed]
 out.append('];\n')
 text = ''.join(out)
-path = os.path.join(root, 'src/dialects/rdna2/opcodes.gen.rs')
+path = os.path.join(root, 'src/targets/rdna2/dialect/opcodes.gen.rs')
 if '--check' in sys.argv:
     sys.exit(0 if open(path).read() == text else 'stale: ' + path)
 open(path, 'w').write(text)

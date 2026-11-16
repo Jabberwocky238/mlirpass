@@ -32,8 +32,6 @@ mod math;
 mod memref;
 #[cfg(feature = "dialect.ml_program")]
 mod ml_program;
-#[cfg(feature = "dialect.rdna2")]
-mod rdna2;
 #[cfg(feature = "dialect.scf")]
 mod scf;
 #[cfg(feature = "dialect.shape")]
@@ -94,8 +92,6 @@ pub use math::MathDialect;
 pub use memref::MemrefDialect;
 #[cfg(feature = "dialect.ml_program")]
 pub use ml_program::MlProgramDialect;
-#[cfg(feature = "dialect.rdna2")]
-pub use rdna2::*;
 #[cfg(feature = "dialect.scf")]
 pub use scf::ScfDialect;
 #[cfg(feature = "dialect.shape")]

@@ -52,13 +52,7 @@ mod to_rocdl;
 #[cfg(all(feature = "target.llvm", feature = "dialect.amdgpu", feature = "dialect.math"))]
 pub use to_rocdl::{GpuRocdlOptions, GpuToRocdl};
 
-#[cfg(any(feature = "target.rdna2", feature = "target.agx", feature = "target.apple9", feature = "target.xe3"))]
-mod lanes;
 
-#[cfg(feature = "target.rdna2")]
-mod to_rdna2;
-#[cfg(feature = "target.rdna2")]
-pub use to_rdna2::*;
 
 #[cfg(feature = "target.agx")]
 mod to_agx;

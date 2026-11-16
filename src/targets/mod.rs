@@ -8,22 +8,16 @@ mod agx;
 mod agx_dispatch;
 #[cfg(feature = "target.apple9")]
 mod apple9;
-#[cfg(feature = "target.rdna2")]
+#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3"))]
+mod gpu;
+#[cfg(feature = "dialect.rdna2")]
 mod rdna2;
-#[cfg(feature = "target.rdna2")]
-mod rdna2_dispatch;
-#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
-mod regalloc;
 #[cfg(feature = "target.xe3")]
 mod xe3;
 #[cfg(feature = "target.xe3")]
 mod xe3_draw;
-#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
-mod draw;
 #[cfg(feature = "target.x86_64")]
 mod x86_64;
-#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3"))]
-mod shader;
 #[cfg(feature = "target.spirv")]
 mod spirv;
 
@@ -43,24 +37,27 @@ pub use agx::*;
 pub use agx_dispatch::*;
 #[cfg(feature = "target.apple9")]
 pub use apple9::*;
-#[cfg(feature = "target.rdna2")]
+#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3"))]
+pub use gpu::*;
+#[cfg(feature = "dialect.rdna2")]
 pub use rdna2::*;
-#[cfg(feature = "target.rdna2")]
-pub use rdna2_dispatch::*;
-#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
-pub use regalloc::*;
 #[cfg(feature = "target.xe3")]
 pub use xe3::*;
 #[cfg(feature = "target.xe3")]
 pub use xe3_draw::*;
-#[cfg(any(feature = "target.agx", feature = "target.apple9", feature = "target.rdna2", feature = "target.xe3"))]
-pub use draw::*;
 #[cfg(feature = "target.x86_64")]
 pub use x86_64::*;
-#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3"))]
-pub use shader::*;
 #[cfg(feature = "target.spirv")]
 pub use spirv::*;
+
+/// A backend, one folder under `src/targets`: its name (also its `target.<name>` feature) and the
+/// passes that lower its input to what it emits.
+pub trait Target {
+    fn name(&self) -> &'static str;
+
+    /// A `builtin.module(..)` pipeline
+    fn pipeline(&self) -> &'static str;
+}
 
 pub trait Emit {
     type Output;

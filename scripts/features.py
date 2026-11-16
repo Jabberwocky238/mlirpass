@@ -25,6 +25,7 @@ WHAT = {
     "cli": "the `mlirpass` command line: `mlir-opt`'s, for the passes this crate has",
     "all-dialects": "every upstream `dialect.*` below (not the GPU instruction sets)",
     "all-targets": "`target.llvm`, `target.emitc` and `target.spirv`",
+    "dialect.glsl": "GLSL (ES 1.00 / 3.00) as written: `glsl.shader`, its globals (`in` / `out` / `uniform`, locations, interpolation, built-in variables), `glsl.load` / `store`, constructors, built-in functions, derivatives, texture sampling, `discard`; the rest of a shader is `func` / `arith` / `math` / `vector` / `scf`, aggregates and samplers are `!spirv.*` types; `convert-glsl-to-spirv{client=opengl}` keeps what Mesa's GLSL compiler computes, checked pixel for pixel against the local OpenGL (`tests/gl.rs`) (not an upstream dialect)",
     "dialect.image": "the images of the GPU instruction sets below (not an upstream dialect)",
     "dialect.rdna2": "AMD RDNA2's instruction set and PM4 command stream, as mlirpass encodes them (not an upstream dialect)",
     "dialect.agx": "Apple AGX (G13)'s instruction set and CDM command stream (not an upstream dialect)",

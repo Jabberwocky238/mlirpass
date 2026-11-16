@@ -48,7 +48,7 @@ mod convert_spirv_entry_points;
 #[cfg(any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
 pub use convert_spirv_entry_points::*;
 
-#[cfg(all(feature = "target.spirv", feature = "dialect.cf"))]
+#[cfg(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
 mod convert_spirv_cf_to_cf;
-#[cfg(all(feature = "target.spirv", feature = "dialect.cf"))]
+#[cfg(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
 pub use convert_spirv_cf_to_cf::*;
