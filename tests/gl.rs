@@ -83,6 +83,68 @@ fn differing(a: &[u8], b: &[u8]) -> usize {
     a.chunks(FLOAT).zip(b.chunks(FLOAT)).filter(|(x, y)| x != y).count()
 }
 
+struct Case {
+    name: String,
+    vert: PathBuf,
+    frag: PathBuf,
+    res: Option<PathBuf>,
+    allowed: Option<u32>,
+}
+
+impl Case {
+    fn all(root: &Path) -> Vec<Case> {
+        let mut dirs: Vec<PathBuf> = fs::read_dir(root).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_dir()).collect();
+        dirs.sort();
+        let mut out = Vec::new();
+        for dir in dirs {
+            let mut frags: Vec<PathBuf> = fs::read_dir(&dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "frag")).collect();
+            frags.sort();
+            let res = Some(dir.join("resources")).filter(|r| r.exists());
+            let allowed = reassociated(&dir);
+            let dir_name = dir.file_name().unwrap().to_string_lossy().into_owned();
+            for frag in frags {
+                let stem = frag.file_stem().unwrap().to_string_lossy().into_owned();
+                let name = if stem == "shader" { dir_name.clone() } else { format!("{dir_name}.{stem}") };
+                let allowed = allowed.iter().find(|(s, _)| *s == stem).map(|(_, u)| *u);
+                out.push(Case { name, vert: dir.join("shader.vert"), frag, res: res.clone(), allowed });
+            }
+        }
+        out
+    }
+
+    fn run(&self, gl: &Gl, show: bool) -> Result<String, String> {
+        let (name, res) = (&self.name, self.res.as_deref());
+        let reference = gl.draw("glsl", &self.vert, &self.frag, &format!("{name}.glsl.bin"), res)?;
+        let read = |f: &Path| fs::read_to_string(f).map_err(|e| e.to_string());
+        let (v, f, shown) = lower(&read(&self.vert)?, &read(&self.frag)?)?;
+        if show {
+            println!("{name}:\n{shown}");
+        }
+        let (vs, fs_) = (gl.out.join(format!("{name}.vert.spv")), gl.out.join(format!("{name}.frag.spv")));
+        fs::write(&vs, v).map_err(|e| e.to_string())?;
+        fs::write(&fs_, f).map_err(|e| e.to_string())?;
+        valid(&vs)?;
+        valid(&fs_)?;
+        let ours = gl.draw("spirv", &vs, &fs_, &format!("{name}.spirv.bin"), res)?;
+        let n = differing(&reference, &ours);
+        let Some(max) = self.allowed else {
+            return if n == 0 { Ok(String::from("bit for bit")) } else { Err(format!("{n} of {} floats differ", reference.len() / FLOAT)) };
+        };
+        if n == 0 {
+            return Ok(String::from("bit for bit"));
+        }
+        let (gv, gf) = (gl.out.join(format!("{name}.glslang.vert.spv")), gl.out.join(format!("{name}.glslang.frag.spv")));
+        glslang(&self.vert, &gv)?;
+        glslang(&self.frag, &gf)?;
+        let theirs = gl.draw("spirv", &gv, &gf, &format!("{name}.glslang.bin"), res)?;
+        match (differing(&theirs, &ours), ulps(&reference, &ours)) {
+            (0, u) if u <= max => Ok(format!("bit for bit with glslang; {n} floats within {u} ulp of OpenGL (Mesa reassociates)")),
+            (0, u) => Err(format!("bit for bit with glslang, but {u} ulp from OpenGL (allowed {max})")),
+            (k, _) => Err(format!("{k} floats differ from glslang, {n} from OpenGL")),
+        }
+    }
+}
+
 #[test]
 fn glsl_draws_as_opengl() {
     let Some(gl) = Gl::new() else {
@@ -90,55 +152,31 @@ fn glsl_draws_as_opengl() {
         return;
     };
     let show = std::env::var_os("SHOW").is_some();
-    let cases = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/gl");
-    let mut dirs: Vec<PathBuf> = fs::read_dir(&cases).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_dir()).collect();
-    dirs.sort();
+    let cases = Case::all(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/gl"));
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let mut results: Vec<(usize, Result<String, String>)> = std::thread::scope(|s| {
+        let workers: Vec<_> = (0..threads)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut done = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(c) = cases.get(i) else { return done };
+                        done.push((i, c.run(&gl, show)));
+                    }
+                })
+            })
+            .collect();
+        workers.into_iter().flat_map(|w| w.join().unwrap()).collect()
+    });
+    results.sort_by_key(|r| r.0);
     let mut bad = Vec::new();
-    for dir in dirs {
-        let mut frags: Vec<PathBuf> = fs::read_dir(&dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "frag")).collect();
-        frags.sort();
-        let res = dir.join("resources");
-        let res = res.exists().then_some(res.as_path());
-        let vert = dir.join("shader.vert");
-        let allowed = reassociated(&dir);
-        for frag in frags {
-            let stem = frag.file_stem().unwrap().to_string_lossy().into_owned();
-            let dir_name = dir.file_name().unwrap().to_string_lossy().into_owned();
-            let name = if stem == "shader" { dir_name } else { format!("{dir_name}.{stem}") };
-            let result = (|| {
-                let reference = gl.draw("glsl", &vert, &frag, &format!("{name}.glsl.bin"), res)?;
-                let read = |f: &Path| fs::read_to_string(f).map_err(|e| e.to_string());
-                let (v, f, shown) = lower(&read(&vert)?, &read(&frag)?)?;
-                if show {
-                    println!("{name}:\n{shown}");
-                }
-                let (vs, fs_) = (gl.out.join(format!("{name}.vert.spv")), gl.out.join(format!("{name}.frag.spv")));
-                fs::write(&vs, v).map_err(|e| e.to_string())?;
-                fs::write(&fs_, f).map_err(|e| e.to_string())?;
-                valid(&vs)?;
-                valid(&fs_)?;
-                let ours = gl.draw("spirv", &vs, &fs_, &format!("{name}.spirv.bin"), res)?;
-                let n = differing(&reference, &ours);
-                let Some(&(_, max)) = allowed.iter().find(|(s, _)| *s == stem) else {
-                    return if n == 0 { Ok(String::from("bit for bit")) } else { Err(format!("{n} of {} floats differ", reference.len() / FLOAT)) };
-                };
-                if n == 0 {
-                    return Ok(String::from("bit for bit"));
-                }
-                let (gv, gf) = (gl.out.join(format!("{name}.glslang.vert.spv")), gl.out.join(format!("{name}.glslang.frag.spv")));
-                glslang(&vert, &gv)?;
-                glslang(&frag, &gf)?;
-                let theirs = gl.draw("spirv", &gv, &gf, &format!("{name}.glslang.bin"), res)?;
-                match (differing(&theirs, &ours), ulps(&reference, &ours)) {
-                    (0, u) if u <= max => Ok(format!("bit for bit with glslang; {n} floats within {u} ulp of OpenGL (Mesa reassociates)")),
-                    (0, u) => Err(format!("bit for bit with glslang, but {u} ulp from OpenGL (allowed {max})")),
-                    (k, _) => Err(format!("{k} floats differ from glslang, {n} from OpenGL")),
-                }
-            })();
-            println!("{name}: {}", result.as_ref().map_or_else(|e| e.as_str(), |m| m.as_str()));
-            if let Err(e) = result {
-                bad.push(format!("{name}: {e}"));
-            }
+    for (i, r) in results {
+        let name = &cases[i].name;
+        println!("{name}: {}", r.as_ref().map_or_else(|e| e.as_str(), |m| m.as_str()));
+        if let Err(e) = r {
+            bad.push(format!("{name}: {e}"));
         }
     }
     assert!(bad.is_empty(), "{}", bad.join("\n"));

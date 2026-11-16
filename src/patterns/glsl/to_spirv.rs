@@ -98,12 +98,21 @@ impl Derivative {
 }
 
 impl Lod {
-    const fn spirv(self) -> (&'static str, Option<&'static str>) {
+    const fn spirv(self, proj: bool) -> &'static str {
+        match (self, proj) {
+            (Lod::Implicit | Lod::Bias, false) => "spirv.ImageSampleImplicitLod",
+            (Lod::Explicit | Lod::Grad, false) => "spirv.ImageSampleExplicitLod",
+            (Lod::Implicit | Lod::Bias, true) => "spirv.ImageSampleProjImplicitLod",
+            (Lod::Explicit | Lod::Grad, true) => "spirv.ImageSampleProjExplicitLod",
+        }
+    }
+
+    const fn operand(self) -> Option<&'static str> {
         match self {
-            Lod::Implicit => ("spirv.ImageSampleImplicitLod", None),
-            Lod::Bias => ("spirv.ImageSampleImplicitLod", Some("Bias")),
-            Lod::Explicit => ("spirv.ImageSampleExplicitLod", Some("Lod")),
-            Lod::Grad => ("spirv.ImageSampleExplicitLod", Some("Grad")),
+            Lod::Implicit => None,
+            Lod::Bias => Some("Bias"),
+            Lod::Explicit => Some("Lod"),
+            Lod::Grad => Some("Grad"),
         }
     }
 }
@@ -196,6 +205,19 @@ impl GlslToSpirv {
     const BLOCK: &str = "Block";
     const SAMPLE_BASE: usize = 2;
     const KILL: &str = "spirv.Kill";
+
+    const FETCH_OPERANDS: usize = 2;
+    const CONST_OFFSET: &str = "ConstOffset";
+
+    fn mask(lod: Option<&str>, offset: bool) -> Option<String> {
+        let parts: Vec<&str> = lod.into_iter().chain(offset.then_some(Self::CONST_OFFSET)).collect();
+        (!parts.is_empty()).then(|| parts.join("|"))
+    }
+
+    fn image_of<'a>(cr: &mut Cr<'_, 'a, '_>, sampled: ValueId) -> Option<ValueId> {
+        let Ok(SpirvType::SampledImage(image)) = SpirvType::try_from(&Self::ty_of(cr, sampled)) else { return None };
+        Some(cr.build(OpData::build("spirv.Image").operands(&[sampled]), *image))
+    }
 
     fn image_operands<'a>(o: &str) -> Attribute<'a> {
         Attribute::dialect_with("spirv.image_operands", o)
@@ -550,19 +572,15 @@ impl GlslToSpirv {
     #[convert("glsl.texture")]
     fn texture(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
         let Ok(t) = cr.rw.body.head::<GlslTexture>(op) else { return false };
-        if t.offset || t.proj {
-            return false;
-        }
         let Some(ops) = Cr::one_to_one(operands) else { return false };
-        if ops.len() != Self::SAMPLE_BASE + t.lod.operands() {
+        if ops.len() != Self::SAMPLE_BASE + t.lod.operands() + usize::from(t.offset) {
             return false;
         }
         let r = cr.rw.body[op].results[0];
         let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
-        let (name, image_operands) = t.lod.spirv();
-        let mut data = OpData::build(name).operands(&ops);
-        if let Some(o) = image_operands {
-            data = data.with("image_operands", Self::image_operands(o));
+        let mut data = OpData::build(t.lod.spirv(t.proj)).operands(&ops);
+        if let Some(o) = Self::mask(t.lod.operand(), t.offset) {
+            data = data.with("image_operands", Self::image_operands(&o));
         }
         cr.replace_new(op, data, &[ty]);
         true
@@ -572,16 +590,28 @@ impl GlslToSpirv {
     fn texel_fetch(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
         let Ok(t) = cr.rw.body.head::<GlslTexelFetch>(op) else { return false };
         let Some(ops) = Cr::one_to_one(operands) else { return false };
-        let Ok([sampled, coord, level]) = <[ValueId; 3]>::try_from(ops) else { return false };
-        if t.offset {
+        let Some((&sampled, rest)) = ops.split_first() else { return false };
+        if rest.len() != Self::FETCH_OPERANDS + usize::from(t.offset) {
             return false;
         }
-        let Ok(SpirvType::SampledImage(image)) = SpirvType::try_from(&Self::ty_of(cr, sampled)) else { return false };
+        let Some(image) = Self::image_of(cr, sampled) else { return false };
         let r = cr.rw.body[op].results[0];
         let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
-        let image = cr.build(OpData::build("spirv.Image").operands(&[sampled]), *image);
-        let data = OpData::build("spirv.ImageFetch").operands(&[image, coord, level]).with("image_operands", Self::image_operands("Lod"));
-        cr.replace_new(op, data, &[ty]);
+        let mut args = vec![image];
+        args.extend_from_slice(rest);
+        let Some(mask) = Self::mask(Lod::Explicit.operand(), t.offset) else { return false };
+        cr.replace_new(op, OpData::build("spirv.ImageFetch").operands(&args).with("image_operands", Self::image_operands(&mask)), &[ty]);
+        true
+    }
+
+    #[convert("glsl.texture_size")]
+    fn texture_size(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let Ok([sampled, level]) = <[ValueId; 2]>::try_from(ops) else { return false };
+        let Some(image) = Self::image_of(cr, sampled) else { return false };
+        let r = cr.rw.body[op].results[0];
+        let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
+        cr.replace_new(op, OpData::build("spirv.ImageQuerySizeLod").operands(&[image, level]), &[ty]);
         true
     }
 

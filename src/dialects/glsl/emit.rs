@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use mlirformat::arith::{CmpFPredicate, CmpIPredicate};
 use mlirformat::spirv_types::{SpirvDecoration, SpirvMember, SpirvType};
-use mlirformat::{ApFloat, Attribute, Const, Error, FloatKind, FunctionType, Op, Scalar as Lit, Signedness, Type};
+use mlirformat::{ApFloat, ApInt, Attribute, Const, Error, FloatKind, FunctionType, Op, Scalar as Lit, Signedness, Type};
 
 use super::lex::{Lexed, Version};
 use super::syntax::{BinOp, BlockLayout, Decl, Expr, Item, ParamQual, Parser, Qual, SamplerDim, Scalar, Stmt, StorageQual, Ty, UnOp};
@@ -46,13 +46,43 @@ enum Func {
     Any,
     All,
     Not,
-    Texture,
-    TextureLod,
-    TexelFetch,
-    TextureSize,
+    Sample { lod: Lod, offset: bool, proj: bool },
+    Fetch { offset: bool },
+    Size,
     Derivative(Derivative),
     BitsToFloat,
     FloatBitsTo(Scalar),
+}
+
+impl Func {
+    const SAMPLE_BASE: usize = 2;
+    const FETCH_OFFSET_AT: usize = 3;
+    const PROJ_VEC4: u32 = 4;
+
+    fn offset_at(self) -> Option<usize> {
+        match self {
+            Func::Sample { lod: Lod::Implicit, offset: true, .. } => Some(Func::SAMPLE_BASE),
+            Func::Sample { lod, offset: true, .. } => Some(Func::SAMPLE_BASE + lod.operands()),
+            Func::Fetch { offset: true } => Some(Func::FETCH_OFFSET_AT),
+            _ => None,
+        }
+    }
+}
+
+impl SamplerDim {
+    const fn coordinates(self) -> u32 {
+        match self {
+            SamplerDim::D2 => 2,
+            SamplerDim::D3 | SamplerDim::Cube | SamplerDim::D2Array => 3,
+        }
+    }
+
+    const fn size_lanes(self) -> u32 {
+        match self {
+            SamplerDim::D2 | SamplerDim::Cube => 2,
+            SamplerDim::D3 | SamplerDim::D2Array => 3,
+        }
+    }
 }
 
 impl TryFrom<&str> for Func {
@@ -121,10 +151,21 @@ impl TryFrom<&str> for Func {
             "any" => Func::Any,
             "all" => Func::All,
             "not" => Func::Not,
-            "texture" | "texture2D" | "textureCube" => Func::Texture,
-            "textureLod" | "texture2DLod" | "textureCubeLod" => Func::TextureLod,
-            "texelFetch" => Func::TexelFetch,
-            "textureSize" => Func::TextureSize,
+            "texture" | "texture2D" | "textureCube" => Func::Sample { lod: Lod::Implicit, offset: false, proj: false },
+            "textureOffset" => Func::Sample { lod: Lod::Implicit, offset: true, proj: false },
+            "textureProj" | "texture2DProj" => Func::Sample { lod: Lod::Implicit, offset: false, proj: true },
+            "textureProjOffset" => Func::Sample { lod: Lod::Implicit, offset: true, proj: true },
+            "textureLod" | "texture2DLod" | "textureCubeLod" => Func::Sample { lod: Lod::Explicit, offset: false, proj: false },
+            "textureLodOffset" => Func::Sample { lod: Lod::Explicit, offset: true, proj: false },
+            "textureProjLod" | "texture2DProjLod" => Func::Sample { lod: Lod::Explicit, offset: false, proj: true },
+            "textureProjLodOffset" => Func::Sample { lod: Lod::Explicit, offset: true, proj: true },
+            "textureGrad" => Func::Sample { lod: Lod::Grad, offset: false, proj: false },
+            "textureGradOffset" => Func::Sample { lod: Lod::Grad, offset: true, proj: false },
+            "textureProjGrad" => Func::Sample { lod: Lod::Grad, offset: false, proj: true },
+            "textureProjGradOffset" => Func::Sample { lod: Lod::Grad, offset: true, proj: true },
+            "texelFetch" => Func::Fetch { offset: false },
+            "texelFetchOffset" => Func::Fetch { offset: true },
+            "textureSize" => Func::Size,
             "dFdx" => Func::Derivative(Derivative::Dfdx),
             "dFdy" => Func::Derivative(Derivative::Dfdy),
             "fwidth" => Func::Derivative(Derivative::Fwidth),
@@ -1455,6 +1496,40 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
         }
     }
 
+    fn const_ints(&self, e: &Expr<'s>) -> Option<Vec<i64>> {
+        match e {
+            Expr::Int(v, Scalar::Int) => Some(vec![i64::from(*v as i32)]),
+            Expr::Unary(UnOp::Neg, x) => Some(self.const_ints(x)?.into_iter().map(|v| -v).collect()),
+            Expr::Unary(UnOp::Plus, x) => self.const_ints(x),
+            Expr::Var(name, _) => match self.lookup(name)? {
+                Name::Const(init, _) => self.const_ints(&init),
+                _ => None,
+            },
+            Expr::Ctor(ty @ (Ty::Vec(Scalar::Int, _) | Ty::Scalar(Scalar::Int)), args, _) => {
+                let parts = args.iter().map(|a| self.const_ints(a)).collect::<Option<Vec<_>>>()?;
+                let n = ty.lanes() as usize;
+                Some(match &parts[..] {
+                    [one] if one.len() == 1 => vec![one[0]; n],
+                    _ => parts.into_iter().flatten().take(n).collect(),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn const_offset(&mut self, e: &Expr<'s>, line: u32) -> Result<(ValueId, Ty), Error> {
+        let Some(vals) = self.const_ints(e) else { return Self::err(format!("line {line}: a texture offset must be a constant integer expression")) };
+        let n = u32::try_from(vals.len()).unwrap_or(u32::MAX);
+        let t = Ty::of(Scalar::Int, n);
+        if let [v] = vals[..] {
+            return Ok((self.i32(v), t));
+        }
+        let ty = t.mlir(false)?;
+        let values = vals.iter().map(|&v| Lit::Int(ApInt::from_bits(Ty::WORD, u128::from(v as i32 as u32)))).collect();
+        let value: Attribute<'a> = Const { ty: ty.clone(), values, elements: true }.into();
+        Ok((self.create(OpData::build("arith.constant").with("value", value), Some(ty)).unwrap_or_else(|| unreachable!()), t))
+    }
+
     fn call(&mut self, name: &'s str, args: &[Expr<'s>], line: u32) -> Result<(ValueId, Ty), Error> {
         if let Some(list) = self.funcs.get(name) {
             let cands: Vec<Signature> = list.iter().filter(|s| s.params.len() == args.len()).cloned().collect();
@@ -1512,9 +1587,10 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
             };
         }
         let Ok(f) = Func::try_from(name) else { return Self::err(format!("line {line}: unknown function {name}")) };
+        let offset_at = f.offset_at();
         let mut vals = Vec::new();
-        for a in args {
-            vals.push(self.expr(a)?);
+        for (i, a) in args.iter().enumerate() {
+            vals.push(if Some(i) == offset_at { self.const_offset(a, line)? } else { self.expr(a)? });
         }
         self.intrinsic(f, vals, line)
     }
@@ -1608,24 +1684,57 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
                 let ty = t.mlir(false)?;
                 (self.op("arith.xori", &[*v, ones], ty), t.clone())
             }
-            (Func::Texture | Func::TextureLod, [(sm, Ty::Sampler(s, _)), (p, _), rest @ ..]) => {
-                let lod = match (f, rest) {
-                    (Func::Texture, []) => Lod::Implicit,
-                    (Func::Texture, [_]) if self.stage == GlslStage::Fragment => Lod::Bias,
-                    (Func::TextureLod, [_]) => Lod::Explicit,
-                    _ => return Self::err(format!("line {line}: unsupported texture call")),
+            (Func::Sample { lod, offset, proj }, [(sm, Ty::Sampler(s, dim)), (p, pt), rest @ ..]) => {
+                let p = &match (proj, dim.coordinates(), pt) {
+                    (true, n, Ty::Vec(Scalar::Float, Func::PROJ_VEC4)) if n + 1 < Func::PROJ_VEC4 => {
+                        let lanes: Vec<u32> = (0..n).chain([Func::PROJ_VEC4 - 1]).collect();
+                        self.shuffle(*p, &lanes, Scalar::Float)?
+                    }
+                    _ => *p,
+                };
+                let (lod_args, off) = match (lod, offset, rest) {
+                    (Lod::Implicit, true, [o, tail @ ..]) => (tail, Some(o)),
+                    (Lod::Implicit, false, tail) => (tail, None),
+                    (_, true, [args @ .., o]) => (args, Some(o)),
+                    (_, false, args) => (args, None),
+                    (_, true, []) => return Self::err(format!("line {line}: a texture offset is missing")),
+                };
+                let lod = match (lod, lod_args.len()) {
+                    (Lod::Implicit, 0) => Lod::Implicit,
+                    (Lod::Implicit, 1) if self.stage == GlslStage::Fragment => Lod::Bias,
+                    (Lod::Explicit, 1) => Lod::Explicit,
+                    (Lod::Grad, 2) => Lod::Grad,
+                    _ => return Self::err(format!("line {line}: a texture call with {} level arguments", lod_args.len())),
                 };
                 let t = Ty::Vec(*s, 4);
                 let ty = t.mlir(false)?;
                 let mut ops = vec![*sm, *p];
-                ops.extend(rest.iter().map(|r| r.0));
-                let data = OpData::build(crate::GlslTexture::NAME).operands(&ops).with("lod", A::from(lod as i64).into());
+                ops.extend(lod_args.iter().map(|r| r.0));
+                ops.extend(off.map(|o| o.0));
+                let mut data = OpData::build(crate::GlslTexture::NAME).operands(&ops).with("lod", A::from(lod as i64).into());
+                if offset {
+                    data = data.with("offset", Attribute::Unit);
+                }
+                if proj {
+                    data = data.with("proj", Attribute::Unit);
+                }
                 (self.create(data, Some(ty)).unwrap_or_else(|| unreachable!()), t)
             }
-            (Func::TexelFetch, [(sm, Ty::Sampler(s, _)), (p, _), (l, Ty::Scalar(Scalar::Int))]) => {
+            (Func::Fetch { offset }, [(sm, Ty::Sampler(s, _)), (p, _), (l, Ty::Scalar(Scalar::Int)), rest @ ..]) if rest.len() == usize::from(offset) => {
                 let t = Ty::Vec(*s, 4);
                 let ty = t.mlir(false)?;
-                (self.create(OpData::build(crate::GlslTexelFetch::NAME).operands(&[*sm, *p, *l]), Some(ty)).unwrap_or_else(|| unreachable!()), t)
+                let mut ops = vec![*sm, *p, *l];
+                ops.extend(rest.iter().map(|r| r.0));
+                let mut data = OpData::build(crate::GlslTexelFetch::NAME).operands(&ops);
+                if offset {
+                    data = data.with("offset", Attribute::Unit);
+                }
+                (self.create(data, Some(ty)).unwrap_or_else(|| unreachable!()), t)
+            }
+            (Func::Size, [(sm, Ty::Sampler(_, dim)), (l, Ty::Scalar(Scalar::Int))]) => {
+                let t = Ty::Vec(Scalar::Int, dim.size_lanes());
+                let ty = t.mlir(false)?;
+                (self.create(OpData::build(crate::GlslTextureSize::NAME).operands(&[*sm, *l]), Some(ty)).unwrap_or_else(|| unreachable!()), t)
             }
             (Func::Derivative(d), [(v, t)]) if float => {
                 let ty = t.mlir(false)?;

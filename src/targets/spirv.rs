@@ -132,11 +132,46 @@ impl OpSpec<'static> {
     }
 
     const STD450: &'static str = "GLSL.std.450";
+    const IMAGE_OPERANDS: Arg<'static> = Arg::Attr("image_operands", Some(AttrKind::Enum), Some("ImageOperands"));
+    const QUERY: &'static [&'static [&'static str]] = &[&["ImageQuery", "Kernel"]];
+
+    const fn sample(name: &'static str, code: u32) -> OpSpec<'static> {
+        OpSpec {
+            name,
+            code: Code::Op(code),
+            autogen: true,
+            plain: false,
+            results: 1,
+            groups: &[Group::One, Group::One, Group::Variadic],
+            args: &[Arg::Operands(0), Arg::Operands(1), OpSpec::IMAGE_OPERANDS, Arg::Operands(2)],
+            avail: Avail { min: Some(0), max: Some(6), exts: &[], caps: &[&["Shader"]] },
+            unsigned: false,
+        }
+    }
+
+    const fn compare(name: &'static str, code: u32) -> OpSpec<'static> {
+        OpSpec {
+            groups: &[Group::One, Group::One, Group::One, Group::Variadic],
+            args: &[Arg::Operands(0), Arg::Operands(1), Arg::Operands(2), OpSpec::IMAGE_OPERANDS, Arg::Operands(3)],
+            ..OpSpec::sample(name, code)
+        }
+    }
+
+    const fn query(name: &'static str, code: u32, groups: &'static [Group], args: &'static [Arg<'static>]) -> OpSpec<'static> {
+        OpSpec { name, code: Code::Op(code), autogen: true, plain: true, results: 1, groups, args, avail: Avail { min: Some(0), max: Some(6), exts: &[], caps: OpSpec::QUERY }, unsigned: false }
+    }
 
     pub const GRAPHICS: &'static [OpSpec<'static>] = &[
         OpSpec::shader("spirv.DPdx", Code::Op(207)),
         OpSpec::shader("spirv.DPdy", Code::Op(208)),
         OpSpec::shader("spirv.Fwidth", Code::Op(209)),
+        OpSpec::compare("spirv.ImageSampleDrefImplicitLod", 89),
+        OpSpec::compare("spirv.ImageSampleDrefExplicitLod", 90),
+        OpSpec::sample("spirv.ImageSampleProjImplicitLod", 91),
+        OpSpec::sample("spirv.ImageSampleProjExplicitLod", 92),
+        OpSpec::compare("spirv.ImageSampleProjDrefExplicitLod", 94),
+        OpSpec::query("spirv.ImageQuerySizeLod", 103, &[Group::One, Group::One], &[Arg::Operands(0), Arg::Operands(1)]),
+        OpSpec::query("spirv.ImageQueryLevels", 106, &[Group::One], &[Arg::Operands(0)]),
         OpSpec::shader("spirv.GL.Determinant", Code::Ext(OpSpec::STD450, 33)),
         OpSpec::shader("spirv.GL.MatrixInverse", Code::Ext(OpSpec::STD450, 34)),
         OpSpec::shader("spirv.GL.PackSnorm2x16", Code::Ext(OpSpec::STD450, 56)),
