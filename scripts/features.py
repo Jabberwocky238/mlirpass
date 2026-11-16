@@ -34,7 +34,7 @@ WHAT = {
     "dialect.apple9": "Apple9 (M3 / M4)'s instruction set (not an upstream dialect)",
     "target.llvm": "the type converter, dialect → `llvm` (the CPU dialect `x86` too: `convert-vector-to-llvm=enable-x86`), the llvm folds and memory-slot interfaces",
     "target.emitc": "dialect → `emitc`: the EmitC type converter",
-    "target.spirv": "target env, type converter, dialect → `spirv`, the spirv dialect's own transforms; `SpirvBinary` (the serializer) and `SpirvGlsl` (GLSL 4.50) emit",
+    "target.spirv": "target env, type converter, dialect → `spirv`, the spirv dialect's own transforms; `SpirvBinary` (SPIR-V written and read through [mlirbinary](https://github.com/Jabberwocky238/mlirbinary), as `mlir-translate` does) and `SpirvGlsl` (GLSL 4.50) emit",
     "target.rdna2": "AMD RDNA2 (gfx1036) machine code without LLVM: `gpu.func` kernels, register allocation, waits, encoding, PM4, the image; checked against llvm-mc and Mesa radv (`tests/rdna2.rs`)",
     "target.agx": "Apple AGX (G13) machine code without LLVM, CDM command streams; checked against Mesa asahi (`tests/agx.rs`)",
     "target.apple9": "Apple9 (M3 / M4) compute kernels without LLVM; checked by running on an M4 through Metal (`scripts/apple9_check.py`, `tests/apple9.rs`)",

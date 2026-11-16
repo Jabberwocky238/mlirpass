@@ -19,6 +19,8 @@ exclude = ["fuzz"]
 [dependencies]
 mlirpass-macros = { path = "macros", version = "0.5.0" }
 mlirformat = { git = "https://github.com/Jabberwocky238/mlirformat.git", tag = "0.8.7", version = "0.8.7", default-features = false }
+# SPIR-V binaries, written and read (`target.spirv`).
+mlirbinary = { git = "https://github.com/Jabberwocky238/mlirbinary.git", tag = "0.1.1", version = "0.1.1", default-features = false, features = ["spirv"], optional = true }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }
 # f64 trunc / ldexp / rint without std (all exact).
@@ -32,7 +34,7 @@ moremath = { version = "0.2.1", default-features = false, features = ["alloc"] }
 
 [features]
 default = ["std", "cli", "all-dialects", "all-targets"]
-std = ["mlirformat/std", "moremath/std", "serde/std", "thiserror/std"]
+std = ["mlirformat/std", "mlirbinary?/std", "moremath/std", "serde/std", "thiserror/std"]
 # The `mlirpass` command line (`cargo install mlirpass`).
 cli = ["std"]
 # One feature per dialect: its op interfaces, folds, canonicalization patterns, its own
@@ -89,7 +91,7 @@ all-dialects = ["dialect.acc", "dialect.affine", "dialect.amdgpu", "dialect.arit
 all-targets = ["target.llvm", "target.emitc", "target.spirv"]
 "target.llvm" = ["dialect.llvm"]
 "target.emitc" = ["dialect.emitc"]
-"target.spirv" = ["dialect.spirv"]
+"target.spirv" = ["dialect.spirv", "dep:mlirbinary"]
 # The GPUs' own machine code, one feature each (not in `all-targets`): SPIR-V and the upstream dialects ⇒ the
 # instruction set ⇒ registers ⇒ bytes (`gpu-module-to-binary`). Apple AGX (G13), Apple9 (M3 / M4), AMD RDNA2 (GFX10.3).
 "target.apple9" = ["dialect.apple9", "target.gpu"]

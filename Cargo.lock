@@ -52,6 +52,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
+name = "mlirbinary"
+version = "0.1.1"
+source = "git+https://github.com/Jabberwocky238/mlirbinary.git?tag=0.1.1#64c88db44cef1a41d00d63a5c19ac2e1111cd969"
+dependencies = [
+ "mlirformat",
+]
+
+[[package]]
 name = "mlirformat"
 version = "0.8.7"
 source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.8.7#363e38fb42205236972c713f906dbae4276fde19"
@@ -80,6 +88,7 @@ version = "0.11.0"
 dependencies = [
  "libc",
  "libm",
+ "mlirbinary",
  "mlirformat",
  "mlirpass-macros",
  "moremath",

@@ -57,7 +57,7 @@ impl Lowered {
             .collect()
     }
 
-    fn new(vert: &str, frag: &str, block: Option<u32>) -> Result<Lowered, String> {
+    fn new(vert: &str, frag: &str, block: Option<u32>, unreadable: bool) -> Result<Lowered, String> {
         let mut opt = MlirOpt::upstream();
         opt.load(GlslDialect);
         let interfaces = Interfaces::upstream();
@@ -77,9 +77,19 @@ impl Lowered {
         body.walk(root, &mut |o| modules.push(o));
         modules.retain(|&o| &*body[o].name == "spirv.module");
         let mut stages = Vec::new();
+        let mut unread: Vec<String> = Vec::new();
         for m in modules {
             let words = SpirvBinary::default().emit(&body, m).map_err(|e| format!("{e}\n{shown}"))?;
-            stages.push(SpirvBinary::bytes(&words));
+            let bytes = SpirvBinary::bytes(&words);
+            if let Err(e) = SpirvBinary::read(Ctx::new(&opt, &interfaces), &bytes) {
+                unread.push(e.0);
+            }
+            stages.push(bytes);
+        }
+        match (unread.first(), unreadable) {
+            (Some(e), false) => return Err(format!("reading the SPIR-V back: {e}")),
+            (None, true) => return Err(String::from("reads back now: drop its `unreadable` file")),
+            _ => {}
         }
         match <[Vec<u8>; 2]>::try_from(stages) {
             Ok([vert, frag]) => Ok(Lowered { vert, frag, shown, offsets }),
@@ -156,6 +166,9 @@ struct Case {
     frag: PathBuf,
     res: Option<PathBuf>,
     allowed: Option<u32>,
+    /// `mlir-translate --deserialize-spirv` cannot read its SPIR-V back either (the case dir's
+    /// `unreadable` file says why)
+    unreadable: bool,
 }
 
 impl Case {
@@ -170,12 +183,13 @@ impl Case {
             frags.sort();
             let res = Some(dir.join("resources")).filter(|r| r.exists());
             let allowed = reassociated(&dir);
+            let unreadable = dir.join("unreadable").exists();
             let dir_name = dir.file_name().unwrap().to_string_lossy().into_owned();
             for frag in frags {
                 let stem = frag.file_stem().unwrap().to_string_lossy().into_owned();
                 let name = if stem == "shader" { dir_name.clone() } else { format!("{dir_name}.{stem}") };
                 let allowed = allowed.iter().find(|(s, _)| *s == stem).map(|(_, u)| *u);
-                out.push(Case { name, vert: dir.join("shader.vert"), frag, res: res.clone(), allowed });
+                out.push(Case { name, vert: dir.join("shader.vert"), frag, res: res.clone(), allowed, unreadable });
             }
         }
         out
@@ -189,7 +203,7 @@ impl Case {
         }
         let name = format!("{}.default_block", self.name);
         let read = |f: &Path| fs::read_to_string(f).map_err(|e| e.to_string());
-        let lowered = Lowered::new(&read(&self.vert)?, &read(&self.frag)?, Some(Case::DEFAULT_BLOCK)).map_err(|e| format!("default block: {e}"))?;
+        let lowered = Lowered::new(&read(&self.vert)?, &read(&self.frag)?, Some(Case::DEFAULT_BLOCK), self.unreadable).map_err(|e| format!("default block: {e}"))?;
         let (vs, fs_) = lowered.write(gl, &name)?;
         let words = gl.out.join(format!("{name}.resources"));
         fs::write(&words, lowered.words(&text, Case::DEFAULT_BLOCK)?).map_err(|e| e.to_string())?;
@@ -204,7 +218,7 @@ impl Case {
         let (name, res) = (&self.name, self.res.as_deref());
         let reference = gl.draw("glsl", &self.vert, &self.frag, &format!("{name}.glsl.bin"), res)?;
         let read = |f: &Path| fs::read_to_string(f).map_err(|e| e.to_string());
-        let lowered = Lowered::new(&read(&self.vert)?, &read(&self.frag)?, None)?;
+        let lowered = Lowered::new(&read(&self.vert)?, &read(&self.frag)?, None, self.unreadable)?;
         if show {
             println!("{name}:\n{}", lowered.shown);
         }

@@ -1,0 +1,1 @@
+Early exits from loops (break / continue / return inside a loop): mlir-translate 23.1.5's --deserialize-spirv fails to structurize them ("block has uses outside of the enclosing selection/loop construct"), and mlirbinary reads SPIR-V as it does.
