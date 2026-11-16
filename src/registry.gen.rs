@@ -69,6 +69,8 @@ impl crate::Passes {
         p.register::<crate::ConvertFuncToLlvm>();
         #[cfg(all(all(feature = "dialect.func", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")), feature = "target.spirv"))]
         p.register::<crate::ConvertFuncToSpirv>();
+        #[cfg(all(feature = "dialect.glsl", feature = "target.spirv", feature = "dialect.arith", feature = "dialect.math", feature = "dialect.vector", feature = "dialect.scf", feature = "dialect.func"))]
+        p.register::<crate::ConvertGlslToSpirv>();
         #[cfg(all(feature = "dialect.gpu", feature = "target.agx"))]
         p.register::<crate::ConvertGpuToAgx>();
         #[cfg(all(feature = "dialect.gpu", feature = "target.apple9"))]

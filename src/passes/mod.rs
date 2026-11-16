@@ -18,6 +18,8 @@ mod complex;
 mod emitc;
 #[cfg(all(feature = "dialect.func", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")))]
 mod func;
+#[cfg(all(feature = "dialect.glsl", feature = "target.spirv", feature = "dialect.arith", feature = "dialect.math", feature = "dialect.vector", feature = "dialect.scf", feature = "dialect.func"))]
+mod glsl;
 #[cfg(feature = "dialect.gpu")]
 mod gpu;
 #[cfg(all(feature = "dialect.index", any(feature = "target.llvm", feature = "target.spirv")))]
@@ -78,6 +80,8 @@ pub use complex::*;
 pub use emitc::*;
 #[cfg(all(feature = "dialect.func", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")))]
 pub use func::*;
+#[cfg(all(feature = "dialect.glsl", feature = "target.spirv", feature = "dialect.arith", feature = "dialect.math", feature = "dialect.vector", feature = "dialect.scf", feature = "dialect.func"))]
+pub use glsl::*;
 #[cfg(feature = "dialect.gpu")]
 pub use gpu::*;
 #[cfg(all(feature = "dialect.index", any(feature = "target.llvm", feature = "target.spirv")))]

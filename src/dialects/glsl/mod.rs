@@ -124,6 +124,7 @@ impl TryFrom<&str> for BuiltinVar {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Builtin {
+    Pow,
     Sign,
     Fract,
     Mod,

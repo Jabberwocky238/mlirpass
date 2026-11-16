@@ -148,6 +148,11 @@ required-features = ["dialect.xe3"]
 name = "glsl"
 required-features = ["dialect.glsl"]
 
+# The same shaders through the local OpenGL: as GLSL source, and as the SPIR-V convert-glsl-to-spirv makes (ARB_gl_spirv).
+[[test]]
+name = "gl"
+required-features = ["dialect.glsl", "target.spirv"]
+
 [[test]]
 name = "vulkan"
 required-features = ["all-dialects", "target.spirv"]
