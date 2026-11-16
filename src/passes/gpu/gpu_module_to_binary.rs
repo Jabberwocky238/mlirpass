@@ -35,7 +35,7 @@ impl core::str::FromStr for CompilationFormat {
 #[crate::pass("gpu-module-to-binary", extra = ["toolkit", "l", "opts", "section"])]
 pub struct GpuModuleToBinary {
     #[opt("format", default = CompilationFormat::Fatbin, from_str)]
-    #[cfg_attr(not(any(feature = "target.spirv", feature = "target.rdna2", feature = "target.agx", feature = "target.apple9", feature = "target.xe3")), allow(dead_code, reason = "no target that emits here"))]
+    #[cfg_attr(not(any(feature = "target.spirv", feature = "target.rdna2", feature = "target.agx", feature = "target.apple9")), allow(dead_code, reason = "no target that emits here"))]
     format: CompilationFormat,
 }
 
@@ -87,18 +87,6 @@ impl GpuModuleToBinary {
             let codes = crate::Emit::emit(&crate::Apple9Emit, body, m)?;
             return self.native(t, codes.into_iter().map(|k| crate::KernelCode { name: k.name, align: 4, pad: 0, bytes: k.bytes, info: alloc::vec![("params", u64::from(k.params)), ("gprs", u64::from(k.gprs)), ("shared", u64::from(k.shared)), ("workgroup", u64::from(k.workgroup))] }).collect());
         }
-        #[cfg(feature = "target.xe3")]
-        if inner.iter().any(|o| body[*o].name == <crate::Xe3Kernel as mlirformat::Op>::NAME) {
-            use crate::Heads;
-            let mut kernels = Vec::new();
-            for k in crate::Kernels::all(body, m, <crate::Xe3Kernel as mlirformat::Op>::NAME) {
-                let h = body.head::<crate::Xe3Kernel>(k)?;
-                let code = crate::Xe3Code::of(body, k)?;
-                let info = alloc::vec![("simd", u64::from(h.simd.unwrap_or(0))), ("inputs", u64::from(h.inputs.unwrap_or(0))), ("threads", u64::from(h.threads.unwrap_or(1))), ("shared", u64::from(h.shared.unwrap_or(0)))];
-                kernels.push(crate::KernelCode { name: code.name, align: h.align.unwrap_or(64), pad: h.pad.unwrap_or(0), bytes: code.bytes, info });
-            }
-            return self.native(t, kernels);
-        }
         #[cfg(feature = "target.spirv")]
         if matches!(t, Attribute::Extended { ext, .. } if ext.name == "spirv.target_env") {
             let spirv = inner.iter().copied().find(|o| body[*o].name == "spirv.module").ok_or_else(|| Error("gpu.module without a spirv.module".to_owned()))?;
@@ -110,7 +98,7 @@ impl GpuModuleToBinary {
         Err(Error(format!("gpu-module-to-binary: {t} needs LLVM")))
     }
 
-    #[cfg_attr(not(any(feature = "target.spirv", feature = "target.rdna2", feature = "target.agx", feature = "target.apple9", feature = "target.xe3")), allow(dead_code, reason = "no target that emits here"))]
+    #[cfg_attr(not(any(feature = "target.spirv", feature = "target.rdna2", feature = "target.agx", feature = "target.apple9")), allow(dead_code, reason = "no target that emits here"))]
     fn make<'a>(t: &Attribute<'_>, properties: Option<Attribute<'_>>, format: CompilationFormat, bytes: &[u8]) -> Attribute<'a> {
         let key = match format {
             CompilationFormat::Fatbin => "",
@@ -124,7 +112,7 @@ impl GpuModuleToBinary {
         Attribute::Extended { ext: alloc::boxed::Box::new(Extended { name: String::from("gpu.object").into(), body: Some(body.into()), params: Vec::new() }), ty: None }
     }
 
-    #[cfg(any(feature = "target.rdna2", feature = "target.agx", feature = "target.apple9", feature = "target.xe3"))]
+    #[cfg(any(feature = "target.rdna2", feature = "target.agx", feature = "target.apple9"))]
     fn native<'a>(&self, t: &Attribute<'a>, kernels: Vec<crate::KernelCode>) -> Result<Attribute<'a>, Error> {
         if !matches!(self.format, CompilationFormat::Fatbin | CompilationFormat::Binary) {
             return Err(Error("gpu-module-to-binary: a GPU's machine code is binary only".to_owned()));

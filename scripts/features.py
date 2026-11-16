@@ -31,7 +31,6 @@ WHAT = {
     "dialect.rdna2": "AMD RDNA2's instruction set and PM4 command stream, as mlirpass encodes them (not an upstream dialect)",
     "dialect.agx": "Apple AGX (G13)'s instruction set and CDM command stream (not an upstream dialect)",
     "dialect.apple9": "Apple9 (M3 / M4)'s instruction set (not an upstream dialect)",
-    "dialect.xe3": "Intel Xe3's instruction set and genxml batches (not an upstream dialect)",
     "target.llvm": "the type converter, dialect → `llvm` (the CPU dialect `x86` too: `convert-vector-to-llvm=enable-x86`), the llvm folds and memory-slot interfaces",
     "target.emitc": "dialect → `emitc`: the EmitC type converter",
     "target.spirv": "target env, type converter, dialect → `spirv`, the spirv dialect's own transforms; `SpirvBinary` (the serializer) and `SpirvGlsl` (GLSL 4.50) emit",
@@ -39,7 +38,6 @@ WHAT = {
     "target.agx": "Apple AGX (G13) machine code without LLVM, CDM command streams; checked against Mesa asahi (`tests/agx.rs`)",
     "target.apple9": "Apple9 (M3 / M4) compute kernels without LLVM; checked by running on an M4 through Metal (`scripts/apple9_check.py`, `tests/apple9.rs`)",
     "target.x86_64": "x86-64 machine code without LLVM: each `llvm.func` (integers, `!llvm.ptr`, `f64`; arithmetic, compares, casts, memory, calls of symbols, branches) ⇒ System V code and the absolute addresses its calls need (`X86_64Emit`); first tier: a stack slot per value, no register allocation yet; run in-process (`tests/x86_64.rs`)",
-    "target.xe3": "Intel Xe3 machine code without LLVM: compute kernels, vertex and fragment shaders through `convert-spirv-entry-points`, genxml batches; checked against Mesa anv and gentool (`tests/xe3.rs`)",
 }
 
 FEATURE = re.compile(r'feature = "([^"]+)"')

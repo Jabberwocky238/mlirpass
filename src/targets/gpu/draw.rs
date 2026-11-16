@@ -99,7 +99,7 @@ impl ColorTarget<'_> {
     }
 }
 
-/// One draw, described without the GPU: a target's constructor (`Xe3Draw`) lowers it, with the program's kernels,
+/// One draw, described without the GPU: a target's constructor (detour's `Xe3Draw`, say) lowers it, with the program's kernels,
 /// into the image the GPU runs
 #[derive(Clone, Debug)]
 pub struct Draw<'d> {

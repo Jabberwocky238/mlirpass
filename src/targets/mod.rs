@@ -8,14 +8,10 @@ mod agx;
 mod agx_dispatch;
 #[cfg(feature = "target.apple9")]
 mod apple9;
-#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3", feature = "target.gpu"))]
+#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "target.gpu"))]
 mod gpu;
 #[cfg(feature = "dialect.rdna2")]
 mod rdna2;
-#[cfg(feature = "target.xe3")]
-mod xe3;
-#[cfg(feature = "target.xe3")]
-mod xe3_draw;
 #[cfg(feature = "target.x86_64")]
 mod x86_64;
 #[cfg(feature = "target.spirv")]
@@ -37,14 +33,10 @@ pub use agx::*;
 pub use agx_dispatch::*;
 #[cfg(feature = "target.apple9")]
 pub use apple9::*;
-#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "dialect.xe3", feature = "target.gpu"))]
+#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "target.gpu"))]
 pub use gpu::*;
 #[cfg(feature = "dialect.rdna2")]
 pub use rdna2::*;
-#[cfg(feature = "target.xe3")]
-pub use xe3::*;
-#[cfg(feature = "target.xe3")]
-pub use xe3_draw::*;
 #[cfg(feature = "target.x86_64")]
 pub use x86_64::*;
 #[cfg(feature = "target.spirv")]

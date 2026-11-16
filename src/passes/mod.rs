@@ -53,8 +53,6 @@ mod nvgpu;
 mod nvvm;
 #[cfg(all(feature = "dialect.xegpu", feature = "target.llvm"))]
 mod xegpu;
-#[cfg(feature = "target.xe3")]
-mod xe3;
 #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
 mod xevm;
 
@@ -115,5 +113,3 @@ pub use nvvm::*;
 pub use xegpu::*;
 #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
 pub use xevm::*;
-#[cfg(feature = "target.xe3")]
-pub use xe3::*;

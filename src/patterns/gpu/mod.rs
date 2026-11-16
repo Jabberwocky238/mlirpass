@@ -64,7 +64,3 @@ mod to_apple9;
 #[cfg(feature = "target.apple9")]
 pub use to_apple9::*;
 
-#[cfg(feature = "target.xe3")]
-mod to_xe3;
-#[cfg(feature = "target.xe3")]
-pub use to_xe3::*;

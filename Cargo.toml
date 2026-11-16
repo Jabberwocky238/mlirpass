@@ -1,6 +1,6 @@
 [package]
 name = "mlirpass"
-version = "0.10.7"
+version = "0.11.0"
 edition = "2024"
 description = "MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion and the upstream lowerings, on top of mlirformat"
 license = "MIT"
@@ -78,7 +78,6 @@ all-dialects = ["dialect.acc", "dialect.affine", "dialect.amdgpu", "dialect.arit
 "dialect.agx" = ["dialect.image"]
 "dialect.apple9" = []
 "dialect.rdna2" = ["dialect.image"]
-"dialect.xe3" = ["dialect.image"]
 # GLSL (ES 1.00 / 3.00) as written: what a GL shader declares and calls, over the upstream dialects and SPIR-V types.
 "dialect.glsl" = ["target.spirv"]
 # What a GPU runs, for every GPU target: memories, command streams, data; table-driven packing; the layout.
@@ -90,13 +89,12 @@ all-targets = ["target.llvm", "target.emitc", "target.spirv"]
 "target.emitc" = ["dialect.emitc"]
 "target.spirv" = ["dialect.spirv"]
 # The GPUs' own machine code, one feature each (not in `all-targets`): SPIR-V and the upstream dialects ⇒ the
-# instruction set ⇒ registers ⇒ bytes (`gpu-module-to-binary`). Apple AGX (G13), Apple9 (M3 / M4), AMD RDNA2 (GFX10.3), Intel Xe3.
+# instruction set ⇒ registers ⇒ bytes (`gpu-module-to-binary`). Apple AGX (G13), Apple9 (M3 / M4), AMD RDNA2 (GFX10.3).
 "target.apple9" = ["dialect.apple9", "target.gpu"]
 "target.agx" = ["dialect.agx", "target.gpu"]
 "target.rdna2" = ["dialect.rdna2", "target.gpu"]
 "target.gpu" = ["dialect.image", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf", "dialect.cf"]
 "target.x86_64" = ["dialect.llvm"]
-"target.xe3" = ["dialect.xe3", "target.gpu"]
 
 [[bin]]
 name = "mlirpass"
@@ -140,10 +138,6 @@ required-features = ["dialect.apple9"]
 [[test]]
 name = "rdna2"
 required-features = ["dialect.rdna2"]
-
-[[test]]
-name = "xe3"
-required-features = ["dialect.xe3"]
 
 [[test]]
 name = "glsl"

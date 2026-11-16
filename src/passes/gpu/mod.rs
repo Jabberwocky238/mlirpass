@@ -46,7 +46,3 @@ mod convert_gpu_to_apple9;
 #[cfg(feature = "target.apple9")]
 pub use convert_gpu_to_apple9::*;
 
-#[cfg(feature = "target.xe3")]
-mod convert_gpu_to_xe3;
-#[cfg(feature = "target.xe3")]
-pub use convert_gpu_to_xe3::*;

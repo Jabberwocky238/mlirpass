@@ -91,8 +91,6 @@ impl crate::Passes {
         p.register::<crate::ConvertGpuToRocdl>(); // convert-gpu-to-rocdl
         #[cfg(all(feature = "dialect.gpu", all(feature = "target.spirv", feature = "dialect.func", feature = "dialect.scf", feature = "dialect.vector")))]
         p.register::<crate::ConvertGpuToSpirv>(); // convert-gpu-to-spirv
-        #[cfg(all(feature = "dialect.gpu", feature = "target.xe3"))]
-        p.register::<crate::ConvertGpuToXe3>(); // convert-gpu-to-xe3
         #[cfg(all(feature = "dialect.gpu", feature = "target.gpu"))]
         p.register::<crate::GpuInlineCalls>(); // gpu-inline-calls
         #[cfg(feature = "dialect.gpu")]
@@ -229,20 +227,6 @@ impl crate::Passes {
         p.register::<crate::ConvertVectorToSpirv>(); // convert-vector-to-spirv
         #[cfg(all(feature = "dialect.vector", feature = "dialect.xegpu"))]
         p.register::<crate::ConvertVectorToXegpu>(); // convert-vector-to-xegpu
-        #[cfg(feature = "target.xe3")]
-        p.register::<crate::Xe3Branches>(); // xe3-branches
-        #[cfg(feature = "target.xe3")]
-        p.register::<crate::Xe3Control>(); // xe3-control
-        #[cfg(feature = "target.xe3")]
-        p.register::<crate::Xe3End>(); // xe3-end
-        #[cfg(feature = "target.xe3")]
-        p.register::<crate::Xe3Layout>(); // xe3-layout
-        #[cfg(feature = "target.xe3")]
-        p.register::<crate::Xe3Pad>(); // xe3-pad
-        #[cfg(feature = "target.xe3")]
-        p.register::<crate::Xe3Regalloc>(); // xe3-regalloc
-        #[cfg(feature = "target.xe3")]
-        p.register::<crate::Xe3Swsb>(); // xe3-swsb
         #[cfg(all(feature = "dialect.xegpu", feature = "target.llvm"))]
         p.register::<crate::ConvertXegpuToXevm>(); // convert-xegpu-to-xevm
         #[cfg(all(feature = "dialect.xevm", feature = "target.llvm"))]
