@@ -53,8 +53,8 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mlirbinary"
-version = "0.1.1"
-source = "git+https://github.com/Jabberwocky238/mlirbinary.git?tag=0.1.1#64c88db44cef1a41d00d63a5c19ac2e1111cd969"
+version = "0.2.0"
+source = "git+https://github.com/Jabberwocky238/mlirbinary.git?tag=0.2.0#78144c73a0d267ac3bb02baab50589a3de661ac7"
 dependencies = [
  "mlirformat",
 ]

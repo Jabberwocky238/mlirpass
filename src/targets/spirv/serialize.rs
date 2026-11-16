@@ -12,11 +12,14 @@ use crate::{Body, Ctx, Emit, OpId};
 pub struct SpirvBinary {
     /// `OpName`s for the module's symbols
     pub symbol_names: bool,
+    /// Read selections and loops back into `spirv.mlir.selection` / `spirv.mlir.loop`; without
+    /// it blocks stay a plain graph, which also reads a loop left early
+    pub structurize: bool,
 }
 
 impl Default for SpirvBinary {
     fn default() -> Self {
-        Self { symbol_names: true }
+        Self { symbol_names: true, structurize: true }
     }
 }
 
@@ -29,8 +32,8 @@ impl SpirvBinary {
     }
 
     /// The `spirv.module` SPIR-V `bytes` hold, as a body of its own
-    pub fn read<'a>(ctx: Ctx<'a>, bytes: &[u8]) -> Result<Body<'a>, Error> {
-        let op = SpirvReader::read(bytes)?;
+    pub fn read<'a>(&self, ctx: Ctx<'a>, bytes: &[u8]) -> Result<Body<'a>, Error> {
+        let op = SpirvReader { structurize: self.structurize }.read(bytes)?;
         Body::import(ctx, Module { items: vec![Item::Op(op)] })
     }
 }

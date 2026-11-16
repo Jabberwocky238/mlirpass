@@ -81,8 +81,9 @@ impl Lowered {
         for m in modules {
             let words = SpirvBinary::default().emit(&body, m).map_err(|e| format!("{e}\n{shown}"))?;
             let bytes = SpirvBinary::bytes(&words);
-            if let Err(e) = SpirvBinary::read(Ctx::new(&opt, &interfaces), &bytes) {
+            if let Err(e) = SpirvBinary::default().read(Ctx::new(&opt, &interfaces), &bytes) {
                 unread.push(e.0);
+                SpirvBinary { structurize: false, ..SpirvBinary::default() }.read(Ctx::new(&opt, &interfaces), &bytes).map_err(|e| format!("reading the SPIR-V back unstructured: {e}"))?;
             }
             stages.push(bytes);
         }
@@ -166,8 +167,8 @@ struct Case {
     frag: PathBuf,
     res: Option<PathBuf>,
     allowed: Option<u32>,
-    /// `mlir-translate --deserialize-spirv` cannot read its SPIR-V back either (the case dir's
-    /// `unreadable` file says why)
+    /// Its SPIR-V reads back only unstructured, as with `mlir-translate --deserialize-spirv`
+    /// (the case dir's `unreadable` file says why)
     unreadable: bool,
 }
 

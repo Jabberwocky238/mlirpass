@@ -20,7 +20,7 @@ exclude = ["fuzz"]
 mlirpass-macros = { path = "macros", version = "0.5.0" }
 mlirformat = { git = "https://github.com/Jabberwocky238/mlirformat.git", tag = "0.8.7", version = "0.8.7", default-features = false }
 # SPIR-V binaries, written and read (`target.spirv`).
-mlirbinary = { git = "https://github.com/Jabberwocky238/mlirbinary.git", tag = "0.1.1", version = "0.1.1", default-features = false, features = ["spirv"], optional = true }
+mlirbinary = { git = "https://github.com/Jabberwocky238/mlirbinary.git", tag = "0.2.0", version = "0.2.0", default-features = false, features = ["spirv"], optional = true }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }
 # f64 trunc / ldexp / rint without std (all exact).

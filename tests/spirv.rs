@@ -41,4 +41,5 @@ fn serialize_spirv() {
     for f in failed.iter().take(if show { usize::MAX } else { 20 }) {
         eprintln!("  {f}");
     }
+    assert!(failed.is_empty() || filter.is_some(), "{} of {} chunks differ from mlir-translate", failed.len(), exact + failed.len());
 }
