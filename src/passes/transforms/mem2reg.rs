@@ -10,7 +10,7 @@ use crate::{BlockId, Body, DomTree, OpId, Quiet, RegionId, Rewriter, Use, ValueI
 
 #[pass("mem2reg", ty = Mem2Reg, extra = ["region-simplify"])]
 pub fn mem2reg<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-    let dialects: &[&dyn Promotable] = &[#[cfg(feature = "dialect.llvm")] &crate::LlvmSlots, #[cfg(feature = "dialect.memref")] &crate::MemrefSlots, #[cfg(feature = "dialect.scf")] &crate::ScfSlots, #[cfg(all(feature = "dialect.memref", feature = "dialect.test"))] &crate::TestSlots];
+    let dialects: &[&dyn Promotable] = &[#[cfg(feature = "dialect.llvm")] &crate::LlvmSlots, #[cfg(feature = "dialect.memref")] &crate::MemrefSlots, #[cfg(feature = "dialect.scf")] &crate::ScfSlots, #[cfg(feature = "dialect.spirv")] &crate::SpirvSlots, #[cfg(all(feature = "dialect.memref", feature = "dialect.test"))] &crate::TestSlots];
     let promotion = Promotion { dialects };
     for r in body[op].regions.clone() {
         if body[r].blocks.is_empty() {

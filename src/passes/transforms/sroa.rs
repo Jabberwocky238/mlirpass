@@ -135,8 +135,8 @@ impl<'s> Destructurer<'s> {
 
 #[pass("sroa", ty = Sroa)]
 pub fn sroa<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
-    let dialects: &[&dyn Destructurable] = &[#[cfg(feature = "dialect.llvm")] &crate::LlvmSlots, #[cfg(feature = "dialect.memref")] &crate::MemrefSlots, #[cfg(all(feature = "dialect.memref", feature = "dialect.test"))] &crate::TestSlots];
-    let promotable: &[&dyn Promotable] = &[#[cfg(feature = "dialect.llvm")] &crate::LlvmSlots, #[cfg(feature = "dialect.memref")] &crate::MemrefSlots, #[cfg(all(feature = "dialect.memref", feature = "dialect.test"))] &crate::TestSlots];
+    let dialects: &[&dyn Destructurable] = &[#[cfg(feature = "dialect.llvm")] &crate::LlvmSlots, #[cfg(feature = "dialect.memref")] &crate::MemrefSlots, #[cfg(feature = "dialect.spirv")] &crate::SpirvSlots, #[cfg(all(feature = "dialect.memref", feature = "dialect.test"))] &crate::TestSlots];
+    let promotable: &[&dyn Promotable] = &[#[cfg(feature = "dialect.llvm")] &crate::LlvmSlots, #[cfg(feature = "dialect.memref")] &crate::MemrefSlots, #[cfg(feature = "dialect.spirv")] &crate::SpirvSlots, #[cfg(all(feature = "dialect.memref", feature = "dialect.test"))] &crate::TestSlots];
     let layout = DataLayout::closest(body, op);
     let sroa = Destructurer { cx: Slots { dialects, layout: &layout }, promotable };
     for region in body[op].regions.clone() {

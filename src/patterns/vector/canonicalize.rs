@@ -1677,7 +1677,7 @@ impl VectorCanon {
                 return false;
             }
             let pos = b.static_position(ex);
-            let (shape, _) = vshape(&b[src].ty).unwrap_or_default();
+            let Some((shape, _)) = vshape(&b[src].ty).filter(|(shape, _)| shape.len() == pos.len()) else { return false };
             if i == 0 {
                 let mut suffix = 1;
                 let mut index = pos.len();

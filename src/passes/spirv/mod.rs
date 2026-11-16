@@ -47,3 +47,8 @@ pub use spirv_unify_aliased_resource::*;
 mod convert_spirv_entry_points;
 #[cfg(any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"))]
 pub use convert_spirv_entry_points::*;
+
+#[cfg(all(feature = "target.spirv", feature = "dialect.cf"))]
+mod convert_spirv_cf_to_cf;
+#[cfg(all(feature = "target.spirv", feature = "dialect.cf"))]
+pub use convert_spirv_cf_to_cf::*;

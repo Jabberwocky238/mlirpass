@@ -76,6 +76,10 @@ impl Xe3Types {
     }
 
     pub fn of(t: &Type<'_>) -> Option<(usize, &'static str)> {
+        if let Ok(SpirvType::Matrix { cols, column }) = SpirvType::try_from(t) {
+            let (rows, elem) = Self::of(&column)?;
+            return Some((rows * usize::try_from(cols).ok()?, elem));
+        }
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::Vector => match t.dims()?[..] {
                 [n] if n > 0 => Some((n as usize, Self::elem(&s.elem)?)),
@@ -105,6 +109,8 @@ impl GpuToXe3 {
     const BINDING: &str = "xe3.binding";
     const OFFSET: &str = "xe3.offset";
     const PUSH_AT: &str = "xe3.push_offset";
+    const STRIDE: &str = "xe3.matrix_stride";
+    const MATRIX_STRIDE: &str = "MatrixStride";
     const DUAL_SOURCE: &str = "xe3.dual_source";
 
     fn ieee_prologue<'a>() -> [OpData<'a>; 2] {
@@ -156,7 +162,10 @@ impl GpuToXe3 {
                     }
                     let base = body[chain].operands[0];
                     let Some((class, b)) = res.get(&base).cloned() else { continue };
-                    let offset = Self::member_offset(body, base, &body[chain].operands[1..]).ok_or_else(|| Error("a resource access chain: not constant struct members".into()))?;
+                    let (offset, stride) = Self::member_offset(body, base, &body[chain].operands[1..]).ok_or_else(|| Error("a resource access chain: not constant struct members".into()))?;
+                    if let Some(stride) = stride {
+                        body[o].set(Self::STRIDE, A::from(stride).into());
+                    }
                     let ty = body[body[o].results[0]].ty.clone();
                     let bytes = Xe3Types::of(&ty).map_or(4, |(n, _)| 4 * n as i64);
                     if class == "PushConstant" {
@@ -188,16 +197,19 @@ impl GpuToXe3 {
         Ok(())
     }
 
-    fn member_offset(body: &Body<'_>, base: ValueId, indices: &[ValueId]) -> Option<i64> {
+    /// The byte offset of a constant access chain and, when it ends at a matrix, the matrix's column stride.
+    fn member_offset(body: &Body<'_>, base: ValueId, indices: &[ValueId]) -> Option<(i64, Option<i64>)> {
         let Ok(SpirvType::Ptr { pointee, .. }) = SpirvType::try_from(&body[base].ty) else { return None };
         let mut ty = (*pointee).clone();
         let mut at = 0i64;
+        let mut stride = None;
         for i in indices {
             let crate::Def::Result(c, _) = body[*i].def else { return None };
             let k = Attrs::as_int(body[c].get("value")?).ok()? as usize;
             match SpirvType::try_from(&ty).ok()? {
                 SpirvType::Struct { members: Some(m), .. } => {
                     at += i64::from(m.get(k)?.offset?);
+                    stride = m[k].decorations.iter().find(|d| d.name == Self::MATRIX_STRIDE).and_then(|d| d.value.as_deref()?.parse().ok());
                     ty = m[k].ty.clone();
                 }
                 SpirvType::Array { elem, stride, .. } if stride != 0 => {
@@ -207,7 +219,7 @@ impl GpuToXe3 {
                 _ => return None,
             }
         }
-        Some(at)
+        Some((at, stride))
     }
 
     pub fn place_arguments<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Error> {
@@ -767,16 +779,25 @@ impl GpuToXe3 {
             (None, Some(b), Some(o)) => (o, XE3_BUFFER_BTI + b as u8),
             _ => return false,
         };
-        let Some(vect_size) = Self::vect_size(n).filter(|_| offset % 4 == 0) else { return false };
-        let addr = Self::imm(cr, op, offset as u32, "i32");
+        let (cols, stride) = match (SpirvType::try_from(&cr.rw.body[r].ty), int(cr, Self::STRIDE)) {
+            (Ok(SpirvType::Matrix { cols, .. }), Some(stride)) => (cols as usize, stride),
+            (Ok(SpirvType::Matrix { .. }), None) => return false,
+            _ => (1, 0),
+        };
+        let rows = n / cols;
+        let Some(vect_size) = Self::vect_size(rows).filter(|_| offset % 4 == 0 && stride % 4 == 0) else { return false };
         let lsc = Lsc { op: LscOp::Load, surface: AddrSurface::Bti, addr_size: AddrSize::A32, data_size: DataSize::D32, cache: 0, vect_size, transpose: false, cmask: 0 };
-        let attrs = vec![
-            ("sfid", A::str(<&str>::from(Sfid::Ugm))),
-            ("desc", A::from(SendInfo::lengths(lsc.desc(), 1, n as u32))),
-            ("ex_desc", A::from(u32::from(bti) << 24)),
-            ("src0_len", A::from(1u8)),
-        ];
-        let values = Self::create(cr, op, "xe3.eu.send", &[addr], attrs, &vec![Type::from(Grf(elem)); n]);
+        let mut values = Vec::with_capacity(n);
+        for c in 0..cols {
+            let addr = Self::imm(cr, op, (offset + c as i64 * stride) as u32, "i32");
+            let attrs = vec![
+                ("sfid", A::str(<&str>::from(Sfid::Ugm))),
+                ("desc", A::from(SendInfo::lengths(lsc.desc(), 1, rows as u32))),
+                ("ex_desc", A::from(u32::from(bti) << 24)),
+                ("src0_len", A::from(1u8)),
+            ];
+            values.extend(Self::create(cr, op, "xe3.eu.send", &[addr], attrs, &vec![Type::from(Grf(elem)); rows]));
+        }
         cr.replace(op, vec![values]);
         true
     }
@@ -1108,7 +1129,35 @@ impl GpuToXe3 {
 
     #[convert("vector.extract")]
     fn extract(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        cr.lanes_extract(op, o)
+        let r = cr.rw.body[op].results[0];
+        match Xe3Types::lanes(&cr.rw.body[r].ty) {
+            Some(1) => cr.lanes_extract(op, o),
+            Some(k) => {
+                let Some(column) = cr.lane_position(op).and_then(|at| o[0].get(at * k..at * k + k)).map(<[ValueId]>::to_vec) else { return false };
+                cr.replace(op, vec![column]);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// An undefined value: any bits do, zero is as good as any.
+    #[convert("ub.poison", "spirv.Undef")]
+    fn undef(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
+        let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
+        let Some((n, elem)) = Xe3Types::of(&ty) else { return false };
+        let values = (0..n).map(|_| Self::imm(cr, op, 0, elem)).collect();
+        cr.replace(op, vec![values]);
+        true
+    }
+
+    #[convert("spirv.VectorTimesScalar")]
+    fn vector_times_scalar(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
+        let ([v, s], Some(elem)) = (o, Self::result_elem(cr, op)) else { return false };
+        let [s] = s[..] else { return false };
+        let values = v.iter().map(|x| Self::eu(cr, op, "xe3.eu.mul", &[*x, s], vec![], elem)).collect();
+        cr.replace(op, vec![values]);
+        true
     }
 
     #[convert("vector.insert")]

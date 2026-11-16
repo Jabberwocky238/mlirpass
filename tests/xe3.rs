@@ -113,3 +113,38 @@ fn kernels_as_acgpu() {
     }
     assert!(bad.is_empty(), "differ from acgpu's kernels: {bad:?}");
 }
+
+/// GLSL shaders from tests/gl that the Xe3 backend takes whole: control flow and locals are
+/// flattened, promoted and lifted back to scf before convert-gpu-to-xe3.
+#[cfg(all(feature = "target.xe3", feature = "dialect.glsl"))]
+#[test]
+fn glsl_reaches_xe3() {
+    use mlirpass::{GlslDialect, GlslReader, GlslStage, PassManager, Passes};
+    let mut opt = MlirOpt::upstream();
+    opt.load(GlslDialect);
+    opt.load(Xe3Dialect);
+    let interfaces = Interfaces::upstream();
+    let passes = Passes::upstream();
+    let glsl = PassManager::parse(&passes, "builtin.module(glsl-link, glsl-default-block{binding=7}, convert-glsl-to-spirv)").unwrap();
+    let xe3 = PassManager::parse(&passes, "builtin.module(convert-spirv-entry-points, gpu-inline-calls, convert-spirv-cf-to-cf, sroa, mem2reg, lift-cf-to-scf, canonicalize, cse, convert-gpu-to-xe3, xe3-regalloc, xe3-control, xe3-swsb, xe3-branches, xe3-pad)").unwrap();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/gl");
+    let cases = [("uniforms", "shader.frag"), ("builtins", "bits.frag"), ("builtins", "const_cnorm.frag"), ("sampling", "offset.frag"), ("sampling", "offset_bias.frag")];
+    let mut bad = Vec::new();
+    for (dir, frag) in cases {
+        let read = |f: &str| std::fs::read_to_string(root.join(dir).join(f)).unwrap();
+        let mut body = Body::new(Ctx::new(&opt, &interfaces));
+        GlslReader::read(&mut body, &read("shader.vert"), GlslStage::Vertex).unwrap();
+        GlslReader::read(&mut body, &read(frag), GlslStage::Fragment).unwrap();
+        let r = body.root;
+        glsl.run(&mut body, r).unwrap();
+        let shown = body.show(&opt, false, |_| true);
+        let (_, modules) = shown.split_once('\n').unwrap();
+        let text = format!("module attributes {{gpu.container_module}} {{\ngpu.module @shaders [#xevm.target<chip = \"ptl\">] {{\n{modules}\n}}\n");
+        let mut gpu = Body::parse(Ctx::new(&opt, &interfaces), &text).unwrap();
+        let r = gpu.root;
+        if let Err(e) = xe3.run(&mut gpu, r) {
+            bad.push(format!("{dir}/{frag}: {e}"));
+        }
+    }
+    assert!(bad.is_empty(), "{}", bad.join("\n"));
+}

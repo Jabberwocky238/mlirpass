@@ -95,7 +95,7 @@ all-targets = ["target.llvm", "target.emitc", "target.spirv"]
 "target.agx" = ["dialect.agx", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
 "target.rdna2" = ["dialect.rdna2", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
 "target.x86_64" = ["dialect.llvm"]
-"target.xe3" = ["dialect.xe3", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf"]
+"target.xe3" = ["dialect.xe3", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf", "dialect.cf"]
 
 [[bin]]
 name = "mlirpass"

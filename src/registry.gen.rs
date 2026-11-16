@@ -179,6 +179,8 @@ impl crate::Passes {
         p.register::<crate::ConvertShapeToStd>();
         #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), any(feature = "target.agx", feature = "target.rdna2", feature = "target.xe3")))]
         p.register::<crate::ConvertSpirvEntryPoints>();
+        #[cfg(all(feature = "target.spirv", feature = "dialect.cf"))]
+        p.register::<crate::ConvertSpirvCfToCf>();
         #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), feature = "target.spirv"))]
         p.register::<crate::DecorateSpirvCompositeTypeLayout>();
         #[cfg(all(any(feature = "target.spirv", feature = "target.agx", feature = "target.rdna2", feature = "target.xe3"), feature = "target.spirv"))]

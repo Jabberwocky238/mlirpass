@@ -149,7 +149,8 @@ impl GlslDefaultBlock {
         }
     }
 
-    fn shader<'a>(&self, body: &mut Body<'a>, shader: OpId) -> Result<(), Error> {
+    /// The loose uniforms of one shader: (location, name, type, the global).
+    fn loose_in<'a>(body: &Body<'a>, shader: OpId) -> Result<Vec<(u32, String, Type<'a>, OpId)>, Error> {
         let mut found = Vec::new();
         for g in body.ops(body.top_block(shader)) {
             if *body[g].name == *GlslGlobal::NAME {
@@ -161,23 +162,40 @@ impl GlslDefaultBlock {
                 }
             }
         }
+        Ok(found)
+    }
+
+    /// One layout for every stage: the union of their loose uniforms, by location.
+    fn union<'a>(body: &Body<'a>, shaders: &[OpId]) -> Result<Vec<(u32, String, Type<'a>)>, Error> {
+        let mut all: Vec<(u32, String, Type<'a>)> = Vec::new();
+        for &s in shaders {
+            for (location, name, ty, _) in GlslDefaultBlock::loose_in(body, s)? {
+                match all.iter().find(|u| u.1 == name) {
+                    Some(u) if u.0 != location || u.2 != ty => return Err(Error(format!("glsl-default-block: uniform {name} differs between stages"))),
+                    Some(_) => {}
+                    None => all.push((location, name, ty)),
+                }
+            }
+        }
+        all.sort_by_key(|u| u.0);
+        Ok(all)
+    }
+
+    fn shader<'a>(&self, body: &mut Body<'a>, shader: OpId, all: &[(u32, String, Type<'a>)]) -> Result<(), Error> {
+        let found = GlslDefaultBlock::loose_in(body, shader)?;
         if found.is_empty() {
             return Ok(());
         }
-        if self.binding == GlslDefaultBlock::UNSET {
-            return Err(Error(String::from("glsl-default-block: give the block a binding (binding=N)")));
-        }
-        found.sort_by_key(|f| f.0);
-        let tys: Vec<Type<'a>> = found.iter().map(|f| f.2.clone()).collect();
+        let tys: Vec<Type<'a>> = all.iter().map(|f| f.2.clone()).collect();
         let ty = Std140::block(&tys, vec![SpirvDecoration { name: String::from("Block"), value: None }])?;
         let mut loads = Vec::new();
         body.walk(shader, &mut |o| loads.push(o));
         loads.retain(|&o| *body[o].name == *GlslLoad::NAME);
         let word = |v: u32| Attribute::of_int(i128::from(v), Type::int(32));
-        let locations = Attribute::Array(found.iter().map(|f| word(f.0)).collect());
+        let locations = Attribute::Array(all.iter().map(|f| word(f.0)).collect());
         let (starts, _, _) = Std140::members(&tys)?;
         let mut offsets = Vec::new();
-        for (f, start) in found.iter().zip(starts) {
+        for (f, start) in all.iter().zip(starts) {
             let mut leaves = Vec::new();
             Std140::leaves(&f.2, start, &mut leaves)?;
             offsets.extend(leaves.into_iter().zip(f.0..).map(|(o, l)| Attribute::Array(vec![word(l), word(o)])));
@@ -200,7 +218,10 @@ impl GlslDefaultBlock {
             }) else {
                 continue;
             };
-            let Some(k) = found.iter().position(|f| f.1 == var) else { continue };
+            if !found.iter().any(|f| f.1 == var) {
+                continue;
+            }
+            let Some(k) = all.iter().position(|f| f.1 == var) else { continue };
             rw.set_before(load);
             let at = rw.create(OpData::build("arith.constant").with("value", word(u32::try_from(k).unwrap_or(u32::MAX))), &[Type::int(32)]);
             let mut operands = vec![rw.body[at].results[0]];
@@ -224,8 +245,15 @@ impl Run for GlslDefaultBlock {
         let mut shaders = Vec::new();
         body.walk(op, &mut |o| shaders.push(o));
         shaders.retain(|&o| *body[o].name == *GlslShader::NAME);
-        for s in shaders {
-            self.shader(body, s)?;
+        let all = GlslDefaultBlock::union(body, &shaders)?;
+        if all.is_empty() {
+            return Ok(());
+        }
+        if self.binding == GlslDefaultBlock::UNSET {
+            return Err(Error(String::from("glsl-default-block: give the block a binding (binding=N)")));
+        }
+        for &s in &shaders {
+            self.shader(body, s, &all)?;
         }
         Ok(())
     }
