@@ -234,9 +234,9 @@ impl GpuToXe3 {
                 let v = match bary {
                     Some((bx, by)) => {
                         let k = g as usize;
-                        let a = OpData::build("xe3.eu.mad").operands(&[bx]).with_attrs(vec![("src0", A::str(Interpolate::plane(setup, k, 0))), ("src2", A::str(Interpolate::plane(setup, k, 1)))]);
+                        let a = OpData::build("xe3.eu.mad").operands(&[by]).with_attrs(vec![("src0", A::str(Interpolate::plane(setup, k, 0))), ("src2", A::str(Interpolate::plane(setup, k, 2)))]);
                         let v = put(&mut rw, a, f32.clone());
-                        put(&mut rw, OpData::build("xe3.eu.mad").operands(&[v, by]).with_attrs(vec![("src2", A::str(Interpolate::plane(setup, k, 2)))]), f32.clone())
+                        put(&mut rw, OpData::build("xe3.eu.mad").operands(&[v, bx]).with_attrs(vec![("src2", A::str(Interpolate::plane(setup, k, 1)))]), f32.clone())
                     }
                     None if compute => put(&mut rw, OpData::build("xe3.eu.mov").with_attrs(vec![("src0", A::str(format!("r{XE3_COMPUTE_INLINE_GRF}.{}<0;1,0>:ud", 4 * g)))]), ty),
                     None => put(&mut rw, OpData::of(&EuPayload::new(g, ty.clone()))?.0, ty),
