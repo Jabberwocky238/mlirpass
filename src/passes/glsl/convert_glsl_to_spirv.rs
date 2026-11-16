@@ -19,7 +19,7 @@ impl Run for ConvertGlslToSpirv {
         let tc = types.converter();
         let mut patterns = ConversionPatterns::default();
         let i = patterns.converter(&tc);
-        GlslToSpirv::populate(&mut patterns, i);
+        GlslToSpirv::populate(&mut patterns, i, self.client);
         ArithToSpirv::populate(&mut patterns, i, ArithSpirvOptions { no_wrap: false, emulate_floats: true });
         MathToSpirv::populate(&mut patterns, i, MathSpirvOptions { shader: true });
         VectorToSpirv::populate(&mut patterns, i, VectorSpirvOptions { index64: false, kernel: false });

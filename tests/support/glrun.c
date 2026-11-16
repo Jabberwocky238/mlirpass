@@ -1,10 +1,15 @@
 // Draws one full-screen triangle with a vertex and a fragment shader on the local OpenGL (EGL, no window) into an
 // RGBA32F target and writes its pixels, row 0 at the bottom, as raw little-endian floats.
 //
-//   glrun glsl  VERT FRAG W H OUT    shaders as GLSL source (any #version the driver takes)
-//   glrun spirv VERT FRAG W H OUT    shaders as SPIR-V binaries (ARB_gl_spirv), entry point "main"
+//   glrun glsl  VERT FRAG W H OUT [RES]    shaders as GLSL source (any #version the driver takes)
+//   glrun spirv VERT FRAG W H OUT [RES]    shaders as SPIR-V binaries (ARB_gl_spirv), entry point "main"
 //
 // The vertex shader gets no attributes; it is run for vertices 0, 1, 2 (gl_VertexID / VertexIndex).
+// RES sets what the shaders read, one per line, the same way for both kinds of shader:
+//   uniform LOCATION f V...         glUniform{1,2,3,4}fv, or glUniformMatrix4fv for 16 values
+//   uniform LOCATION i V...         glUniform{1,2,3,4}iv
+//   block BINDING V...              a uniform buffer of these floats at that binding
+//   texture UNIT W H LEVELS         an RGBA8 texture of a fixed pattern, every level filled, trilinear, repeat
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #define GL_GLEXT_PROTOTYPES
@@ -16,6 +21,10 @@
 
 #define VERTICES 3
 #define CHANNELS 4
+#define MAX_VALUES 64
+#define MAT4 16
+#define BYTE 255
+#define TARGET_UNIT 15
 
 static void die(const char *what) {
     fprintf(stderr, "glrun: %s\n", what);
@@ -59,8 +68,81 @@ static GLuint shader(GLenum kind, const char *path, int spirv) {
     return s;
 }
 
+static unsigned char texel(int x, int y, int level, int channel) {
+    static const int mul[CHANNELS][3] = {{37, 101, 53}, {59, 17, 97}, {13, 71, 29}, {83, 41, 7}};
+    return (unsigned char)((x * mul[channel][0] + y * mul[channel][1] + level * mul[channel][2] + channel * 11) & BYTE);
+}
+
+static void texture(int unit, int w, int h, int levels) {
+    GLuint t;
+    glActiveTexture(GL_TEXTURE0 + unit);
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glTexStorage2D(GL_TEXTURE_2D, levels, GL_RGBA8, w, h);
+    for (int l = 0; l < levels; l++) {
+        int lw = w >> l > 0 ? w >> l : 1, lh = h >> l > 0 ? h >> l : 1;
+        unsigned char *px = malloc((size_t)lw * lh * CHANNELS);
+        for (int y = 0; y < lh; y++)
+            for (int x = 0; x < lw; x++)
+                for (int c = 0; c < CHANNELS; c++) px[(y * lw + x) * CHANNELS + c] = texel(x, y, l, c);
+        glTexSubImage2D(GL_TEXTURE_2D, l, 0, 0, lw, lh, GL_RGBA, GL_UNSIGNED_BYTE, px);
+        free(px);
+    }
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+}
+
+static void resources(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) die(path);
+    char kind[16];
+    while (fscanf(f, "%15s", kind) == 1) {
+        if (strcmp(kind, "texture") == 0) {
+            int unit, w, h, levels;
+            if (fscanf(f, "%d %d %d %d", &unit, &w, &h, &levels) != 4) die("texture UNIT W H LEVELS");
+            texture(unit, w, h, levels);
+            continue;
+        }
+        int at, n = 0;
+        char ty[2] = "f";
+        if (fscanf(f, "%d", &at) != 1) die(kind);
+        if (strcmp(kind, "uniform") == 0 && fscanf(f, "%1s", ty) != 1) die("uniform LOCATION f|i V...");
+        float fv[MAX_VALUES];
+        int iv[MAX_VALUES];
+        for (;;) {
+            int c = fgetc(f);
+            while (c == ' ' || c == '\t') c = fgetc(f);
+            if (c == '\n' || c == EOF) break;
+            ungetc(c, f);
+            if (n == MAX_VALUES) die("too many values");
+            if (ty[0] == 'i' ? fscanf(f, "%d", &iv[n]) != 1 : fscanf(f, "%f", &fv[n]) != 1) die("a value");
+            n++;
+        }
+        if (strcmp(kind, "block") == 0) {
+            GLuint b;
+            glGenBuffers(1, &b);
+            glBindBuffer(GL_UNIFORM_BUFFER, b);
+            glBufferData(GL_UNIFORM_BUFFER, n * sizeof(float), fv, GL_STATIC_DRAW);
+            glBindBufferBase(GL_UNIFORM_BUFFER, at, b);
+        } else if (ty[0] == 'i') {
+            void (*set[])(GLint, GLsizei, const GLint *) = {glUniform1iv, glUniform2iv, glUniform3iv, glUniform4iv};
+            if (n < 1 || n > CHANNELS) die("1 to 4 ints");
+            set[n - 1](at, 1, iv);
+        } else if (n == MAT4) {
+            glUniformMatrix4fv(at, 1, GL_FALSE, fv);
+        } else {
+            void (*set[])(GLint, GLsizei, const GLfloat *) = {glUniform1fv, glUniform2fv, glUniform3fv, glUniform4fv};
+            if (n < 1 || n > CHANNELS) die("1 to 4 floats, or 16");
+            set[n - 1](at, 1, fv);
+        }
+    }
+    fclose(f);
+}
+
 int main(int argc, char **argv) {
-    if (argc != 7) die("usage: glrun glsl|spirv VERT FRAG W H OUT");
+    if (argc != 7 && argc != 8) die("usage: glrun glsl|spirv VERT FRAG W H OUT [RES]");
     int spirv = strcmp(argv[1], "spirv") == 0;
     int w = atoi(argv[4]), h = atoi(argv[5]);
 
@@ -85,6 +167,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    glUseProgram(prog);
+    if (argc == 8) resources(argv[7]);
+    glActiveTexture(GL_TEXTURE0 + TARGET_UNIT);
+
     GLuint tex, fbo, vao;
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -99,7 +185,6 @@ int main(int argc, char **argv) {
     glViewport(0, 0, w, h);
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
-    glUseProgram(prog);
     glDrawArrays(GL_TRIANGLES, 0, VERTICES);
 
     size_t bytes = (size_t)w * h * CHANNELS * sizeof(float);

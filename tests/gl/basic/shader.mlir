@@ -1,5 +1,5 @@
 glsl.shader vertex attributes {es, version = 310 : i32} {
-  glsl.global in @gl_VertexID : i32 {builtin = 2 : i64}
+  glsl.global in @gl_VertexID : si32 {builtin = 2 : i64}
   glsl.global out @v_uv : vector<2xf32> {location = 0 : i32}
   glsl.global out @gl_Position : vector<4xf32> {builtin = 0 : i64}
   func.func @main() {

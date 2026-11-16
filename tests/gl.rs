@@ -23,9 +23,9 @@ impl Gl {
         built.success().then_some(Gl { run, out })
     }
 
-    fn draw(&self, mode: &str, vert: &Path, frag: &Path, name: &str) -> Result<Vec<u8>, String> {
+    fn draw(&self, mode: &str, vert: &Path, frag: &Path, name: &str, resources: Option<&Path>) -> Result<Vec<u8>, String> {
         let px = self.out.join(name);
-        let o = Command::new(&self.run).arg(mode).arg(vert).arg(frag).args([SIZE.to_string(), SIZE.to_string()]).arg(&px).output().map_err(|e| e.to_string())?;
+        let o = Command::new(&self.run).arg(mode).arg(vert).arg(frag).args([SIZE.to_string(), SIZE.to_string()]).arg(&px).args(resources).output().map_err(|e| e.to_string())?;
         if !o.status.success() {
             return Err(String::from_utf8_lossy(&o.stderr).trim().to_owned());
         }
@@ -74,8 +74,10 @@ fn glsl_draws_as_opengl() {
     let mut bad = Vec::new();
     for dir in dirs {
         let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        let res = dir.join("resources");
+        let res = res.exists().then_some(res.as_path());
         let result = (|| {
-            let reference = gl.draw("glsl", &dir.join("shader.vert"), &dir.join("shader.frag"), &format!("{name}.glsl.bin"))?;
+            let reference = gl.draw("glsl", &dir.join("shader.vert"), &dir.join("shader.frag"), &format!("{name}.glsl.bin"), res)?;
             let (v, f, shown) = lower(&fs::read_to_string(dir.join("shader.mlir")).map_err(|e| e.to_string())?)?;
             if show {
                 println!("{name}:\n{shown}");
@@ -83,7 +85,7 @@ fn glsl_draws_as_opengl() {
             let (vs, fs_) = (gl.out.join(format!("{name}.vert.spv")), gl.out.join(format!("{name}.frag.spv")));
             fs::write(&vs, v).map_err(|e| e.to_string())?;
             fs::write(&fs_, f).map_err(|e| e.to_string())?;
-            let ours = gl.draw("spirv", &vs, &fs_, &format!("{name}.spirv.bin"))?;
+            let ours = gl.draw("spirv", &vs, &fs_, &format!("{name}.spirv.bin"), res)?;
             match differing(&reference, &ours) {
                 0 => Ok(()),
                 n => Err(format!("{n} of {} floats differ", reference.len() / FLOAT)),
