@@ -53,8 +53,8 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mlirformat"
-version = "0.8.5"
-source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.8.5#b80a0358a9753dbf24cea38bb8aca31e20f35194"
+version = "0.8.7"
+source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.8.7#363e38fb42205236972c713f906dbae4276fde19"
 dependencies = [
  "mlirformat-macros",
  "moremath",
@@ -66,8 +66,8 @@ dependencies = [
 
 [[package]]
 name = "mlirformat-macros"
-version = "0.8.5"
-source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.8.5#b80a0358a9753dbf24cea38bb8aca31e20f35194"
+version = "0.8.7"
+source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.8.7#363e38fb42205236972c713f906dbae4276fde19"
 dependencies = [
  "proc-macro2",
  "quote",

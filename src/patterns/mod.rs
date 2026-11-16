@@ -15,6 +15,8 @@ mod complex;
 mod func;
 #[cfg(all(feature = "dialect.glsl", feature = "target.spirv", feature = "dialect.arith", feature = "dialect.math", feature = "dialect.vector", feature = "dialect.scf", feature = "dialect.func"))]
 mod glsl;
+#[cfg(feature = "dialect.nir")]
+mod nir;
 #[cfg(feature = "dialect.gpu")]
 mod gpu;
 #[cfg(feature = "dialect.index")]
@@ -89,6 +91,8 @@ pub use reshape::{Ofr as MemrefOfr, Reshape, ComposeCollapseOfExpand, ComposeExp
 pub use affine::*;
 #[cfg(all(feature = "dialect.glsl", feature = "target.spirv", feature = "dialect.arith", feature = "dialect.math", feature = "dialect.vector", feature = "dialect.scf", feature = "dialect.func"))]
 pub use glsl::*;
+#[cfg(feature = "dialect.nir")]
+pub use nir::*;
 #[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
 pub use amdgpu::*;
 #[cfg(all(feature = "dialect.amdgpu", not(feature = "target.llvm")))]
