@@ -1,3 +1,9 @@
+mod emit;
+mod lex;
+mod syntax;
+
+pub use emit::GlslReader;
+
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Region, Type, Value};
@@ -124,6 +130,38 @@ impl TryFrom<&str> for BuiltinVar {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Builtin {
+    Radians,
+    Degrees,
+    Sin,
+    Cos,
+    Tan,
+    Asin,
+    Acos,
+    Atan,
+    Atan2,
+    Sinh,
+    Cosh,
+    Tanh,
+    Asinh,
+    Acosh,
+    Atanh,
+    Exp,
+    Log,
+    Exp2,
+    Log2,
+    Sqrt,
+    InverseSqrt,
+    Abs,
+    Floor,
+    Trunc,
+    Round,
+    RoundEven,
+    Ceil,
+    Min,
+    Max,
+    UMin,
+    UMax,
+    UClamp,
     Pow,
     Sign,
     Fract,
@@ -187,7 +225,7 @@ impl Lod {
 }
 
 #[mlirformat::mlir::op("glsl.shader", format = "$stage attr-dict-with-keyword $body")]
-pub struct Shader<'a> {
+pub struct GlslShader<'a> {
     pub stage: GlslStage,
     pub version: u32,
     pub es: bool,
@@ -195,7 +233,7 @@ pub struct Shader<'a> {
 }
 
 #[mlirformat::mlir::op("glsl.global", format = "$storage $sym_name `:` $ty attr-dict")]
-pub struct Global<'a> {
+pub struct GlslGlobal<'a> {
     #[attr(symbol)]
     pub sym_name: Attribute<'a>,
     #[attr]
@@ -211,7 +249,7 @@ pub struct Global<'a> {
 }
 
 #[mlirformat::mlir::op("glsl.load", format = "$var (`[` $indices^ `:` type($indices) `]`)? attr-dict `:` type($result)", results(result))]
-pub struct Load<'a> {
+pub struct GlslLoad<'a> {
     pub var: Attribute<'a>,
     #[slot(index_types)]
     pub indices: Vec<Value<'a>>,
@@ -220,7 +258,7 @@ pub struct Load<'a> {
 }
 
 #[mlirformat::mlir::op("glsl.store", format = "$value `,` $var (`[` $indices^ `:` type($indices) `]`)? attr-dict `:` type($value)")]
-pub struct Store<'a> {
+pub struct GlslStore<'a> {
     #[slot(ty)]
     pub value: Value<'a>,
     pub var: Attribute<'a>,
@@ -231,7 +269,7 @@ pub struct Store<'a> {
 }
 
 #[mlirformat::mlir::op("glsl.construct", format = "`(` $parts `:` type($parts) `)` attr-dict `->` type($result)", results(result))]
-pub struct Construct<'a> {
+pub struct GlslConstruct<'a> {
     #[slot(part_types)]
     pub parts: Vec<Value<'a>>,
     pub part_types: Vec<Type<'a>>,
@@ -239,7 +277,7 @@ pub struct Construct<'a> {
 }
 
 #[mlirformat::mlir::op("glsl.builtin", format = "$func $args attr-dict `:` type($args) `->` type($result)", results(result))]
-pub struct Call<'a> {
+pub struct GlslCall<'a> {
     pub func: Builtin,
     #[slot(arg_types)]
     pub args: Vec<Value<'a>>,
@@ -248,7 +286,7 @@ pub struct Call<'a> {
 }
 
 #[mlirformat::mlir::op("glsl.derivative", format = "$kind $value attr-dict `:` type($value)", results(result))]
-pub struct Deriv<'a> {
+pub struct GlslDeriv<'a> {
     pub kind: Derivative,
     #[slot(result)]
     pub value: Value<'a>,
@@ -260,7 +298,7 @@ pub struct Deriv<'a> {
     format = "$lod $sampler `,` $coord (`,` $extras^ `:` type($extras))? attr-dict `:` type($sampler) `,` type($coord) `->` type($result)",
     results(result)
 )]
-pub struct Texture<'a> {
+pub struct GlslTexture<'a> {
     pub lod: Lod,
     pub offset: bool,
     pub proj: bool,
@@ -281,7 +319,7 @@ pub struct Texture<'a> {
     format = "$sampler `,` $coord `,` $level (`,` $extras^ `:` type($extras))? attr-dict `:` type($sampler) `,` type($coord) `,` type($level) `->` type($result)",
     results(result)
 )]
-pub struct TexelFetch<'a> {
+pub struct GlslTexelFetch<'a> {
     pub offset: bool,
     #[slot(sampler_ty)]
     pub sampler: Value<'a>,
@@ -299,7 +337,7 @@ pub struct TexelFetch<'a> {
 }
 
 #[mlirformat::mlir::op("glsl.texture_size", format = "$sampler `,` $level attr-dict `:` type($sampler) `,` type($level) `->` type($result)", results(result))]
-pub struct TextureSize<'a> {
+pub struct GlslTextureSize<'a> {
     #[slot(sampler_ty)]
     pub sampler: Value<'a>,
     #[slot(level_ty)]
@@ -310,7 +348,7 @@ pub struct TextureSize<'a> {
 }
 
 #[mlirformat::mlir::op("glsl.discard", format = "attr-dict")]
-pub struct Discard {}
+pub struct GlslDiscard {}
 
-#[mlirformat::mlir::dialect("glsl", ops = [Shader, Global, Load, Store, Construct, Call, Deriv, Texture, TexelFetch, TextureSize, Discard])]
+#[mlirformat::mlir::dialect("glsl", ops = [GlslShader, GlslGlobal, GlslLoad, GlslStore, GlslConstruct, GlslCall, GlslDeriv, GlslTexture, GlslTexelFetch, GlslTextureSize, GlslDiscard])]
 struct GlslOps;

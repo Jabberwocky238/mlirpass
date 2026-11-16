@@ -10,7 +10,7 @@ use mlirformat::spirv_types::SpirvType;
 use mlirformat::{Attribute, Dim, Error, Op, ShapedKind, Type};
 
 use crate::patterns;
-use crate::{Attrs, Body, Builtin, BuiltinVar, Call, Construct, ConversionRewriter, Deriv, Derivative, Global, GlslStage, Heads, Interpolation, Load, Lod, OpData, OpId, Quiet, Rewriter, Shader, Storage, Store, Symbol, TexelFetch, Texture, ValueId};
+use crate::{Attrs, Body, Builtin, BuiltinVar, GlslCall, GlslConstruct, ConversionRewriter, GlslDeriv, Derivative, GlslGlobal, GlslStage, Heads, Interpolation, GlslLoad, Lod, OpData, OpId, Quiet, Rewriter, GlslShader, Storage, GlslStore, Symbol, GlslTexelFetch, GlslTexture, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -111,6 +111,49 @@ impl Lod {
 impl Builtin {
     const fn spirv(self, float: bool) -> Option<&'static str> {
         Some(match (self, float) {
+            (Builtin::Radians, true) => "spirv.GL.Radians",
+            (Builtin::Degrees, true) => "spirv.GL.Degrees",
+            (Builtin::Sin, true) => "spirv.GL.Sin",
+            (Builtin::Cos, true) => "spirv.GL.Cos",
+            (Builtin::Tan, true) => "spirv.GL.Tan",
+            (Builtin::Asin, true) => "spirv.GL.Asin",
+            (Builtin::Acos, true) => "spirv.GL.Acos",
+            (Builtin::Atan, true) => "spirv.GL.Atan",
+            (Builtin::Atan2, true) => "spirv.GL.Atan2",
+            (Builtin::Sinh, true) => "spirv.GL.Sinh",
+            (Builtin::Cosh, true) => "spirv.GL.Cosh",
+            (Builtin::Tanh, true) => "spirv.GL.Tanh",
+            (Builtin::Asinh, true) => "spirv.GL.Asinh",
+            (Builtin::Acosh, true) => "spirv.GL.Acosh",
+            (Builtin::Atanh, true) => "spirv.GL.Atanh",
+            (Builtin::Exp, true) => "spirv.GL.Exp",
+            (Builtin::Log, true) => "spirv.GL.Log",
+            (Builtin::Exp2, true) => "spirv.GL.Exp2",
+            (Builtin::Log2, true) => "spirv.GL.Log2",
+            (Builtin::Sqrt, true) => "spirv.GL.Sqrt",
+            (Builtin::InverseSqrt, true) => "spirv.GL.InverseSqrt",
+            (Builtin::Abs, true) => "spirv.GL.FAbs",
+            (Builtin::Abs, false) => "spirv.GL.SAbs",
+            (Builtin::Floor, true) => "spirv.GL.Floor",
+            (Builtin::Trunc, true) => "spirv.GL.Trunc",
+            (Builtin::Round, true) => "spirv.GL.Round",
+            (Builtin::RoundEven, true) => "spirv.GL.RoundEven",
+            (Builtin::Ceil, true) => "spirv.GL.Ceil",
+            (Builtin::Min, true) => "spirv.GL.FMin",
+            (Builtin::Min, false) => "spirv.GL.SMin",
+            (Builtin::Max, true) => "spirv.GL.FMax",
+            (Builtin::Max, false) => "spirv.GL.SMax",
+            (Builtin::UMin, false) => "spirv.GL.UMin",
+            (Builtin::UMax, false) => "spirv.GL.UMax",
+            (Builtin::UClamp, false) => "spirv.GL.UClamp",
+            (Builtin::Faceforward, true) => "spirv.GL.FaceForward",
+            (Builtin::Refract, true) => "spirv.GL.Refract",
+            (Builtin::Determinant, true) => "spirv.GL.Determinant",
+            (Builtin::Inverse, true) => "spirv.GL.MatrixInverse",
+            (Builtin::PackSnorm2x16, _) => "spirv.GL.PackSnorm2x16",
+            (Builtin::UnpackSnorm2x16, _) => "spirv.GL.UnpackSnorm2x16",
+            (Builtin::PackUnorm2x16, _) => "spirv.GL.PackUnorm2x16",
+            (Builtin::UnpackUnorm2x16, _) => "spirv.GL.UnpackUnorm2x16",
             (Builtin::Pow, true) => "spirv.GL.Pow",
             (Builtin::Sign, true) => "spirv.GL.FSign",
             (Builtin::Sign, false) => "spirv.GL.SSign",
@@ -173,11 +216,11 @@ impl GlslToSpirv {
     pub fn modules(body: &mut Body<'_>, root: OpId, client: GlslClient) -> Result<Vec<OpId>, Error> {
         let mut shaders = Vec::new();
         body.walk(root, &mut |o| shaders.push(o));
-        shaders.retain(|&o| &*body[o].name == Shader::NAME);
+        shaders.retain(|&o| &*body[o].name == GlslShader::NAME);
         shaders.into_iter().map(|s| Self::module(body, s, client)).collect()
     }
 
-    fn variable<'a>(g: &Global<'a>, name: &str, client: GlslClient) -> Result<OpData<'a>, Error> {
+    fn variable<'a>(g: &GlslGlobal<'a>, name: &str, client: GlslClient) -> Result<OpData<'a>, Error> {
         let class = g.storage.class(&g.ty, client)?;
         let mut data = OpData::build("spirv.GlobalVariable").with("sym_name", Attribute::str(name)).with("type", Attribute::Type(Self::ptr(g.ty.clone(), class)));
         match g.builtin.map(|b| (b, client.built_in(b))) {
@@ -205,7 +248,7 @@ impl GlslToSpirv {
     }
 
     fn module(body: &mut Body<'_>, shader: OpId, client: GlslClient) -> Result<OpId, Error> {
-        let head = body.head::<Shader>(shader)?;
+        let head = body.head::<GlslShader>(shader)?;
         let inner: Vec<OpId> = body.ops(body.top_block(shader)).collect();
         let mut quiet = Quiet;
         let mut rw = Rewriter::new(body, &mut quiet);
@@ -221,8 +264,8 @@ impl GlslToSpirv {
         let block = rw.body.top_block(m);
         let mut interface = Vec::new();
         for o in inner {
-            if &*rw.body[o].name == Global::NAME {
-                let g = rw.body.head::<Global>(o)?;
+            if &*rw.body[o].name == GlslGlobal::NAME {
+                let g = rw.body.head::<GlslGlobal>(o)?;
                 let name = Symbol::defined(&g.sym_name)?.to_owned();
                 let var = Self::variable(&g, &name, client)?;
                 if g.storage.interface() {
@@ -424,7 +467,7 @@ impl GlslToSpirv {
 impl GlslToSpirv {
     #[convert("glsl.load")]
     fn load(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
-        let Ok(l) = cr.rw.body.head::<Load>(op) else { return false };
+        let Ok(l) = cr.rw.body.head::<GlslLoad>(op) else { return false };
         let Some(indices) = Cr::one_to_one(operands) else { return false };
         let r = cr.rw.body[op].results[0];
         let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
@@ -437,7 +480,7 @@ impl GlslToSpirv {
 
     #[convert("glsl.store")]
     fn store(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
-        let Ok(s) = cr.rw.body.head::<Store>(op) else { return false };
+        let Ok(s) = cr.rw.body.head::<GlslStore>(op) else { return false };
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some((&value, indices)) = ops.split_first() else { return false };
         let Some((ptr, declared)) = Self::pointer(cr, op, &s.var, indices) else { return false };
@@ -448,12 +491,19 @@ impl GlslToSpirv {
 
     #[convert("glsl.construct")]
     fn construct(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
-        if cr.rw.body.head::<Construct>(op).is_err() {
+        if cr.rw.body.head::<GlslConstruct>(op).is_err() {
             return false;
         }
         let Some(parts) = Cr::one_to_one(operands) else { return false };
         let r = cr.rw.body[op].results[0];
         let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
+        if let Some((cols, column)) = Self::columns(&ty) {
+            if parts.len() != cols || parts.iter().any(|&p| Self::ty_of(cr, p) != column) {
+                return false;
+            }
+            cr.replace_new(op, OpData::build("spirv.CompositeConstruct").operands(&parts), &[ty]);
+            return true;
+        }
         let Some(n) = Self::lanes(&ty) else { return false };
         let elem = ty.element_type().clone();
         let types: Vec<Type<'_>> = parts.iter().map(|&p| Self::ty_of(cr, p)).collect();
@@ -463,7 +513,7 @@ impl GlslToSpirv {
         let Some(counts) = types.iter().map(Self::lanes).collect::<Option<Vec<usize>>>() else { return false };
         let data = match (&parts[..], &counts[..]) {
             ([p], [1]) if n > 1 => OpData::build("spirv.CompositeConstruct").operands(&vec![*p; n]),
-            ([p], [1]) => {
+            ([p], [1]) | ([p], _) if Self::ty_of(cr, *p) == ty => {
                 cr.replace_values(op, &[*p]);
                 return true;
             }
@@ -478,7 +528,7 @@ impl GlslToSpirv {
 
     #[convert("glsl.builtin")]
     fn builtin(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], client: GlslClient) -> bool {
-        let Ok(c) = cr.rw.body.head::<Call>(op) else { return false };
+        let Ok(c) = cr.rw.body.head::<GlslCall>(op) else { return false };
         let Some(mut args) = Cr::one_to_one(operands) else { return false };
         let r = cr.rw.body[op].results[0];
         let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
@@ -503,7 +553,7 @@ impl GlslToSpirv {
 
     #[convert("glsl.texture")]
     fn texture(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
-        let Ok(t) = cr.rw.body.head::<Texture>(op) else { return false };
+        let Ok(t) = cr.rw.body.head::<GlslTexture>(op) else { return false };
         if t.offset || t.proj {
             return false;
         }
@@ -524,7 +574,7 @@ impl GlslToSpirv {
 
     #[convert("glsl.texel_fetch")]
     fn texel_fetch(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
-        let Ok(t) = cr.rw.body.head::<TexelFetch>(op) else { return false };
+        let Ok(t) = cr.rw.body.head::<GlslTexelFetch>(op) else { return false };
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Ok([sampled, coord, level]) = <[ValueId; 3]>::try_from(ops) else { return false };
         if t.offset {
@@ -541,7 +591,7 @@ impl GlslToSpirv {
 
     #[convert("glsl.derivative")]
     fn derivative(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
-        let Ok(d) = cr.rw.body.head::<Deriv>(op) else { return false };
+        let Ok(d) = cr.rw.body.head::<GlslDeriv>(op) else { return false };
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let r = cr.rw.body[op].results[0];
         let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };

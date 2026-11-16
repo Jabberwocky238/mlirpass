@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use mlirpass::mlirformat::MlirOpt;
-use mlirpass::{Body, Ctx, Emit, GlslDialect, Interfaces, PassManager, Passes, SpirvBinary};
+use mlirpass::{Body, Ctx, Emit, GlslDialect, GlslReader, GlslStage, Interfaces, PassManager, Passes, SpirvBinary};
 
 const SIZE: u32 = 64;
 const FLOAT: usize = 4;
@@ -33,13 +33,15 @@ impl Gl {
     }
 }
 
-fn lower(src: &str) -> Result<(Vec<u8>, Vec<u8>, String), String> {
+fn lower(vert: &str, frag: &str) -> Result<(Vec<u8>, Vec<u8>, String), String> {
     let mut opt = MlirOpt::upstream();
     opt.load(GlslDialect);
     let interfaces = Interfaces::upstream();
     let passes = Passes::upstream();
     let pm = PassManager::parse(&passes, "builtin.module(convert-glsl-to-spirv{client=opengl})").map_err(|e| e.to_string())?;
-    let mut body = Body::parse(Ctx::new(&opt, &interfaces), src).map_err(|e| e.to_string())?;
+    let mut body = Body::new(Ctx::new(&opt, &interfaces));
+    GlslReader::read(&mut body, vert, GlslStage::Vertex).map_err(|e| format!("vertex {e}"))?;
+    GlslReader::read(&mut body, frag, GlslStage::Fragment).map_err(|e| format!("fragment {e}"))?;
     let root = body.root;
     pm.run(&mut body, root).map_err(|e| e.to_string())?;
     let shown = body.show(&opt, false, |_| true);
@@ -83,7 +85,8 @@ fn glsl_draws_as_opengl() {
         let res = res.exists().then_some(res.as_path());
         let result = (|| {
             let reference = gl.draw("glsl", &dir.join("shader.vert"), &dir.join("shader.frag"), &format!("{name}.glsl.bin"), res)?;
-            let (v, f, shown) = lower(&fs::read_to_string(dir.join("shader.mlir")).map_err(|e| e.to_string())?)?;
+            let read = |f: &str| fs::read_to_string(dir.join(f)).map_err(|e| e.to_string());
+            let (v, f, shown) = lower(&read("shader.vert")?, &read("shader.frag")?)?;
             if show {
                 println!("{name}:\n{shown}");
             }

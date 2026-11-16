@@ -1,5 +1,5 @@
 use mlirformat::{MlirOpt, Op};
-use mlirpass::{Body, Builtin, BuiltinVar, Call, Ctx, GlslDialect, GlslStage, Global, Heads, Interfaces, Lod, Shader, Storage, Texture};
+use mlirpass::{Body, Builtin, BuiltinVar, Ctx, GlslCall, GlslDialect, GlslGlobal, GlslShader, GlslStage, GlslTexture, Heads, Interfaces, Lod, Storage};
 
 #[test]
 fn glsl_prints_and_reads_back() {
@@ -19,14 +19,14 @@ fn glsl_prints_and_reads_back() {
     body.walk(body.root, &mut |o| ops.push(o));
     let body = &body;
     let named = |name: &'static str| ops.iter().copied().filter(move |&o| &*body[o].name == name);
-    let shader = body.head::<Shader>(named(Shader::NAME).next().unwrap()).unwrap();
+    let shader = body.head::<GlslShader>(named(GlslShader::NAME).next().unwrap()).unwrap();
     assert_eq!((shader.stage, shader.version, shader.es), (GlslStage::Vertex, 300, true));
-    let globals: Vec<Global> = named(Global::NAME).map(|o| body.head::<Global>(o).unwrap()).collect();
+    let globals: Vec<GlslGlobal> = named(GlslGlobal::NAME).map(|o| body.head::<GlslGlobal>(o).unwrap()).collect();
     assert_eq!(globals.len(), 7);
     assert_eq!(globals[0].storage, Storage::In);
     assert_eq!(globals[6].builtin, Some(BuiltinVar::Position));
-    let call = body.head::<Call>(named(Call::NAME).next().unwrap()).unwrap();
+    let call = body.head::<GlslCall>(named(GlslCall::NAME).next().unwrap()).unwrap();
     assert_eq!(call.func, Builtin::MatrixTimesVector);
-    let tex = body.head::<Texture>(named(Texture::NAME).next().unwrap()).unwrap();
+    let tex = body.head::<GlslTexture>(named(GlslTexture::NAME).next().unwrap()).unwrap();
     assert_eq!((tex.lod, tex.extras.len()), (Lod::Explicit, Lod::Explicit.operands()));
 }
