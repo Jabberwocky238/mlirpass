@@ -57,6 +57,11 @@ fn lower(src: &str) -> Result<(Vec<u8>, Vec<u8>, String), String> {
     }
 }
 
+fn valid(spv: &Path) -> Result<(), String> {
+    let Ok(o) = Command::new("spirv-val").args(["--target-env", "opengl4.5"]).arg(spv).output() else { return Ok(()) };
+    if o.status.success() { Ok(()) } else { Err(format!("spirv-val: {}", String::from_utf8_lossy(&o.stderr).trim())) }
+}
+
 fn differing(a: &[u8], b: &[u8]) -> usize {
     a.chunks(FLOAT).zip(b.chunks(FLOAT)).filter(|(x, y)| x != y).count()
 }
@@ -85,6 +90,8 @@ fn glsl_draws_as_opengl() {
             let (vs, fs_) = (gl.out.join(format!("{name}.vert.spv")), gl.out.join(format!("{name}.frag.spv")));
             fs::write(&vs, v).map_err(|e| e.to_string())?;
             fs::write(&fs_, f).map_err(|e| e.to_string())?;
+            valid(&vs)?;
+            valid(&fs_)?;
             let ours = gl.draw("spirv", &vs, &fs_, &format!("{name}.spirv.bin"), res)?;
             match differing(&reference, &ours) {
                 0 => Ok(()),

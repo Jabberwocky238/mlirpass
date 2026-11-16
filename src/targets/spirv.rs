@@ -122,8 +122,30 @@ pub struct OpSpec<'t> {
 
 impl OpSpec<'_> {
     pub fn of(name: &str) -> Option<&OpSpec<'_>> {
-        tables::OPS.binary_search_by(|o| o.name.cmp(name)).ok().map(|i| &tables::OPS[i])
+        tables::OPS.binary_search_by(|o| o.name.cmp(name)).ok().map(|i| &tables::OPS[i]).or_else(|| OpSpec::GRAPHICS.iter().find(|o| o.name == name))
     }
+}
+
+impl OpSpec<'static> {
+    const fn shader(name: &'static str, code: Code<'static>) -> OpSpec<'static> {
+        OpSpec { name, code, autogen: true, plain: true, results: 1, groups: &[Group::One], args: &[Arg::Operands(0)], avail: Avail { min: Some(0), max: Some(6), exts: &[], caps: &[&["Shader"]] }, unsigned: false }
+    }
+
+    const STD450: &'static str = "GLSL.std.450";
+
+    pub const GRAPHICS: &'static [OpSpec<'static>] = &[
+        OpSpec::shader("spirv.DPdx", Code::Op(207)),
+        OpSpec::shader("spirv.DPdy", Code::Op(208)),
+        OpSpec::shader("spirv.Fwidth", Code::Op(209)),
+        OpSpec::shader("spirv.GL.Determinant", Code::Ext(OpSpec::STD450, 33)),
+        OpSpec::shader("spirv.GL.MatrixInverse", Code::Ext(OpSpec::STD450, 34)),
+        OpSpec::shader("spirv.GL.PackSnorm2x16", Code::Ext(OpSpec::STD450, 56)),
+        OpSpec::shader("spirv.GL.PackUnorm2x16", Code::Ext(OpSpec::STD450, 57)),
+        OpSpec::shader("spirv.GL.UnpackSnorm2x16", Code::Ext(OpSpec::STD450, 60)),
+        OpSpec::shader("spirv.GL.UnpackUnorm2x16", Code::Ext(OpSpec::STD450, 61)),
+        OpSpec::shader("spirv.GL.FaceForward", Code::Ext(OpSpec::STD450, 70)),
+        OpSpec::shader("spirv.GL.Refract", Code::Ext(OpSpec::STD450, 72)),
+    ];
 }
 
 impl TargetEnv {

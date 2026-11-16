@@ -26,6 +26,8 @@ impl Run for ConvertGlslToSpirv {
         ScfToSpirv::populate(&mut patterns, i);
         FuncToSpirv::populate(&mut patterns, i);
         let target = env.conversion_target();
-        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &modules, Mode::Full)
+        Converter::new(&target, &patterns, ConversionConfig::default()).apply(body, &modules, Mode::Full)?;
+        GlslToSpirv::seal_kills(body, &modules);
+        Ok(())
     }
 }

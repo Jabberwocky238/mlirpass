@@ -10,7 +10,7 @@ use mlirformat::spirv_types::SpirvType;
 use mlirformat::{Attribute, Dim, Error, Op, ShapedKind, Type};
 
 use crate::patterns;
-use crate::{Attrs, Body, Builtin, BuiltinVar, Call, Construct, ConversionRewriter, Global, GlslStage, Heads, Interpolation, Load, Lod, OpData, OpId, Quiet, Rewriter, Shader, Storage, Store, Symbol, TexelFetch, Texture, ValueId};
+use crate::{Attrs, Body, Builtin, BuiltinVar, Call, Construct, ConversionRewriter, Deriv, Derivative, Global, GlslStage, Heads, Interpolation, Load, Lod, OpData, OpId, Quiet, Rewriter, Shader, Storage, Store, Symbol, TexelFetch, Texture, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -87,6 +87,16 @@ impl Storage {
     }
 }
 
+impl Derivative {
+    const fn spirv(self) -> &'static str {
+        match self {
+            Derivative::Dfdx => "spirv.DPdx",
+            Derivative::Dfdy => "spirv.DPdy",
+            Derivative::Fwidth => "spirv.Fwidth",
+        }
+    }
+}
+
 impl Lod {
     const fn spirv(self) -> (&'static str, Option<&'static str>) {
         match self {
@@ -142,6 +152,7 @@ impl GlslToSpirv {
     const ENTRY: &str = "main";
     const BLOCK: &str = "Block";
     const SAMPLE_BASE: usize = 2;
+    const KILL: &str = "spirv.Kill";
 
     fn image_operands<'a>(o: &str) -> Attribute<'a> {
         Attribute::dialect("spirv.image_operands", &format!("<{o}>"))
@@ -241,6 +252,27 @@ impl GlslToSpirv {
         Ok(m)
     }
 
+    pub fn seal_kills(body: &mut Body<'_>, modules: &[OpId]) {
+        let mut kills = Vec::new();
+        for &m in modules {
+            body.walk(m, &mut |o| kills.push(o));
+        }
+        kills.retain(|&o| &*body[o].name == Self::KILL);
+        let mut quiet = Quiet;
+        let mut rw = Rewriter::new(body, &mut quiet);
+        for k in kills {
+            let mut dead = Vec::new();
+            let mut at = rw.body.next_op(k);
+            while let Some(o) = at {
+                dead.push(o);
+                at = rw.body.next_op(o);
+            }
+            for o in dead.into_iter().rev() {
+                rw.erase_op(o);
+            }
+        }
+    }
+
     fn var_name<'s>(a: &'s Attribute<'_>) -> Option<&'s str> {
         match a {
             Attribute::SymbolRef(p) if p.len() == 1 => Some(p[0].trim_matches('"')),
@@ -312,7 +344,7 @@ impl GlslToSpirv {
     fn sum_columns<'a>(cr: &mut Cr<'_, 'a, '_>, m: ValueId, (cols, column): &(usize, Type<'a>), scale: ValueId) -> ValueId {
         let scalar = Self::scalar(column);
         let mut terms = (0..*cols).map(|i| (i, Self::extract(cr, m, i, column), Self::extract(cr, scale, i, &scalar))).collect::<Vec<_>>().into_iter();
-        let mut term = |cr: &mut Cr<'_, 'a, '_>, (_, c, k): (usize, ValueId, ValueId)| cr.build(OpData::build("spirv.VectorTimesScalar").operands(&[c, k]), column.clone());
+        let term = |cr: &mut Cr<'_, 'a, '_>, (_, c, k): (usize, ValueId, ValueId)| cr.build(OpData::build("spirv.VectorTimesScalar").operands(&[c, k]), column.clone());
         let Some(first) = terms.next() else { return m };
         let first = term(cr, first);
         terms.fold(first, |acc, t| {
@@ -504,6 +536,22 @@ impl GlslToSpirv {
         let image = cr.build(OpData::build("spirv.Image").operands(&[sampled]), *image);
         let data = OpData::build("spirv.ImageFetch").operands(&[image, coord, level]).with("image_operands", Self::image_operands("Lod"));
         cr.replace_new(op, data, &[ty]);
+        true
+    }
+
+    #[convert("glsl.derivative")]
+    fn derivative(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
+        let Ok(d) = cr.rw.body.head::<Deriv>(op) else { return false };
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let r = cr.rw.body[op].results[0];
+        let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
+        cr.replace_new(op, OpData::build(d.kind.spirv()).operands(&ops), &[ty]);
+        true
+    }
+
+    #[convert("glsl.discard")]
+    fn discard(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: GlslClient) -> bool {
+        cr.replace_new(op, OpData::build(Self::KILL), &[]);
         true
     }
 }
