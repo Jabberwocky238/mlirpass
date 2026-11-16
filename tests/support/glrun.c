@@ -76,24 +76,31 @@ static GLuint shader(GLenum kind, const char *path, int spirv) {
 
 #define CUBE_FACES 6
 
-static const struct {
-    const char *name;
-    GLenum target;
-} TARGETS[] = {{"2d", GL_TEXTURE_2D}, {"3d", GL_TEXTURE_3D}, {"cube", GL_TEXTURE_CUBE_MAP}, {"array", GL_TEXTURE_2D_ARRAY}};
-
-static const struct {
-    const char *name;
+struct format {
     GLenum internal, format, type;
     int filterable, depth;
-} FORMATS[] = {
-    {"rgba8", GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, 1, 0},
-    {"rgba8i", GL_RGBA8I, GL_RGBA_INTEGER, GL_BYTE, 0, 0},
-    {"rgba8ui", GL_RGBA8UI, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE, 0, 0},
-    {"depth", GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, 1, 1},
 };
 
+static GLenum target_of(const char *name) {
+    if (strcmp(name, "2d") == 0) return GL_TEXTURE_2D;
+    if (strcmp(name, "3d") == 0) return GL_TEXTURE_3D;
+    if (strcmp(name, "cube") == 0) return GL_TEXTURE_CUBE_MAP;
+    if (strcmp(name, "array") == 0) return GL_TEXTURE_2D_ARRAY;
+    die(name);
+    return 0;
+}
+
+static struct format format_of(const char *name) {
+    if (strcmp(name, "rgba8") == 0) return (struct format){GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, 1, 0};
+    if (strcmp(name, "rgba8i") == 0) return (struct format){GL_RGBA8I, GL_RGBA_INTEGER, GL_BYTE, 0, 0};
+    if (strcmp(name, "rgba8ui") == 0) return (struct format){GL_RGBA8UI, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE, 0, 0};
+    if (strcmp(name, "depth") == 0) return (struct format){GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, 1, 1};
+    die(name);
+    return (struct format){0};
+}
+
 static unsigned char texel(int x, int y, int z, int level, int channel) {
-    static const int mul[CHANNELS][4] = {{37, 101, 53, 23}, {59, 17, 97, 67}, {13, 71, 29, 89}, {83, 41, 7, 31}};
+    const int mul[CHANNELS][4] = {{37, 101, 53, 23}, {59, 17, 97, 67}, {13, 71, 29, 89}, {83, 41, 7, 31}};
     return (unsigned char)((x * mul[channel][0] + y * mul[channel][1] + level * mul[channel][2] + z * mul[channel][3] + channel * 11) & BYTE);
 }
 
@@ -112,52 +119,37 @@ static void *pixels(int w, int h, int z, int level, int depth) {
     return px;
 }
 
-static int target_index(const char *name) {
-    for (size_t i = 0; i < sizeof TARGETS / sizeof TARGETS[0]; i++)
-        if (strcmp(TARGETS[i].name, name) == 0) return (int)i;
-    die(name);
-    return 0;
-}
-
-static int format_index(const char *name) {
-    for (size_t i = 0; i < sizeof FORMATS / sizeof FORMATS[0]; i++)
-        if (strcmp(FORMATS[i].name, name) == 0) return (int)i;
-    die(name);
-    return 0;
-}
-
 static void texture(const char *target_name, const char *format_name, int unit, int w, int h, int d, int levels) {
-    const int ti = target_index(target_name);
-    const int fi = format_index(format_name);
-    const GLenum target = TARGETS[ti].target;
+    const GLenum target = target_of(target_name);
+    const struct format fmt = format_of(format_name);
     GLuint t;
     glActiveTexture(GL_TEXTURE0 + unit);
     glGenTextures(1, &t);
     glBindTexture(target, t);
     if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY)
-        glTexStorage3D(target, levels, FORMATS[fi].internal, w, h, d);
+        glTexStorage3D(target, levels, fmt.internal, w, h, d);
     else
-        glTexStorage2D(target, levels, FORMATS[fi].internal, w, h);
+        glTexStorage2D(target, levels, fmt.internal, w, h);
     for (int l = 0; l < levels; l++) {
         int lw = w >> l > 0 ? w >> l : 1, lh = h >> l > 0 ? h >> l : 1;
         int ld = target == GL_TEXTURE_3D ? (d >> l > 0 ? d >> l : 1) : target == GL_TEXTURE_2D_ARRAY ? d : target == GL_TEXTURE_CUBE_MAP ? CUBE_FACES : 1;
         for (int z = 0; z < ld; z++) {
-            void *px = pixels(lw, lh, z, l, FORMATS[fi].depth);
+            void *px = pixels(lw, lh, z, l, fmt.depth);
             if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY)
-                glTexSubImage3D(target, l, 0, 0, z, lw, lh, 1, FORMATS[fi].format, FORMATS[fi].type, px);
+                glTexSubImage3D(target, l, 0, 0, z, lw, lh, 1, fmt.format, fmt.type, px);
             else
-                glTexSubImage2D(target == GL_TEXTURE_CUBE_MAP ? (GLenum)(GL_TEXTURE_CUBE_MAP_POSITIVE_X + z) : target, l, 0, 0, lw, lh, FORMATS[fi].format, FORMATS[fi].type, px);
+                glTexSubImage2D(target == GL_TEXTURE_CUBE_MAP ? (GLenum)(GL_TEXTURE_CUBE_MAP_POSITIVE_X + z) : target, l, 0, 0, lw, lh, fmt.format, fmt.type, px);
             free(px);
         }
     }
-    GLint min = !FORMATS[fi].filterable ? GL_NEAREST : levels > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR;
+    GLint min = !fmt.filterable ? GL_NEAREST : levels > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR;
     glTexParameteri(target, GL_TEXTURE_MIN_FILTER, min);
-    glTexParameteri(target, GL_TEXTURE_MAG_FILTER, FORMATS[fi].filterable ? GL_LINEAR : GL_NEAREST);
+    glTexParameteri(target, GL_TEXTURE_MAG_FILTER, fmt.filterable ? GL_LINEAR : GL_NEAREST);
     GLint wrap = target == GL_TEXTURE_CUBE_MAP ? GL_CLAMP_TO_EDGE : GL_REPEAT;
     glTexParameteri(target, GL_TEXTURE_WRAP_S, wrap);
     glTexParameteri(target, GL_TEXTURE_WRAP_T, wrap);
     glTexParameteri(target, GL_TEXTURE_WRAP_R, wrap);
-    if (FORMATS[fi].depth) {
+    if (fmt.depth) {
         glTexParameteri(target, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
         glTexParameteri(target, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
     }
