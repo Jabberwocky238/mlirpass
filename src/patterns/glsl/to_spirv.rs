@@ -535,7 +535,7 @@ impl GlslToSpirv {
         let Some(&first) = args.first() else { return false };
         let float = matches!(Self::scalar(&Self::ty_of(cr, first)), Type::Float(_));
         if client == GlslClient::Opengl
-            && let Some(v) = Self::as_opengl(cr, c.func, &args, &ty)
+            && let Some(v) = Self::as_glsl_compiler(cr, c.func, &args, &ty).or_else(|| Self::as_opengl(cr, c.func, &args, &ty))
         {
             cr.replace_values(op, &[v]);
             return true;

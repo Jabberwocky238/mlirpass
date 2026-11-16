@@ -80,30 +80,37 @@ fn glsl_draws_as_opengl() {
     dirs.sort();
     let mut bad = Vec::new();
     for dir in dirs {
-        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        let mut frags: Vec<PathBuf> = fs::read_dir(&dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "frag")).collect();
+        frags.sort();
         let res = dir.join("resources");
         let res = res.exists().then_some(res.as_path());
-        let result = (|| {
-            let reference = gl.draw("glsl", &dir.join("shader.vert"), &dir.join("shader.frag"), &format!("{name}.glsl.bin"), res)?;
-            let read = |f: &str| fs::read_to_string(dir.join(f)).map_err(|e| e.to_string());
-            let (v, f, shown) = lower(&read("shader.vert")?, &read("shader.frag")?)?;
-            if show {
-                println!("{name}:\n{shown}");
+        let vert = dir.join("shader.vert");
+        for frag in frags {
+            let stem = frag.file_stem().unwrap().to_string_lossy().into_owned();
+            let dir_name = dir.file_name().unwrap().to_string_lossy().into_owned();
+            let name = if stem == "shader" { dir_name } else { format!("{dir_name}.{stem}") };
+            let result = (|| {
+                let reference = gl.draw("glsl", &vert, &frag, &format!("{name}.glsl.bin"), res)?;
+                let read = |f: &Path| fs::read_to_string(f).map_err(|e| e.to_string());
+                let (v, f, shown) = lower(&read(&vert)?, &read(&frag)?)?;
+                if show {
+                    println!("{name}:\n{shown}");
+                }
+                let (vs, fs_) = (gl.out.join(format!("{name}.vert.spv")), gl.out.join(format!("{name}.frag.spv")));
+                fs::write(&vs, v).map_err(|e| e.to_string())?;
+                fs::write(&fs_, f).map_err(|e| e.to_string())?;
+                valid(&vs)?;
+                valid(&fs_)?;
+                let ours = gl.draw("spirv", &vs, &fs_, &format!("{name}.spirv.bin"), res)?;
+                match differing(&reference, &ours) {
+                    0 => Ok(()),
+                    n => Err(format!("{n} of {} floats differ", reference.len() / FLOAT)),
+                }
+            })();
+            println!("{name}: {}", result.as_ref().map_or_else(|e| e.as_str(), |_| "bit for bit"));
+            if let Err(e) = result {
+                bad.push(format!("{name}: {e}"));
             }
-            let (vs, fs_) = (gl.out.join(format!("{name}.vert.spv")), gl.out.join(format!("{name}.frag.spv")));
-            fs::write(&vs, v).map_err(|e| e.to_string())?;
-            fs::write(&fs_, f).map_err(|e| e.to_string())?;
-            valid(&vs)?;
-            valid(&fs_)?;
-            let ours = gl.draw("spirv", &vs, &fs_, &format!("{name}.spirv.bin"), res)?;
-            match differing(&reference, &ours) {
-                0 => Ok(()),
-                n => Err(format!("{n} of {} floats differ", reference.len() / FLOAT)),
-            }
-        })();
-        println!("{name}: {}", result.as_ref().map_or_else(|e| e.as_str(), |_| "bit for bit"));
-        if let Err(e) = result {
-            bad.push(format!("{name}: {e}"));
         }
     }
     assert!(bad.is_empty(), "{}", bad.join("\n"));

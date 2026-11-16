@@ -1117,8 +1117,12 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
     }
 
     fn arith(&mut self, op: BinOp, a: (ValueId, Ty), b: (ValueId, Ty)) -> Result<(ValueId, Ty), Error> {
-        if op == BinOp::Mul && (matches!(a.1, Ty::Mat(..)) || matches!(b.1, Ty::Mat(..))) {
-            return self.mat_mul(a, b);
+        if matches!(a.1, Ty::Mat(..)) || matches!(b.1, Ty::Mat(..)) {
+            return match op {
+                BinOp::Mul => self.mat_mul(a, b),
+                BinOp::Add | BinOp::Sub | BinOp::Div => self.mat_columns(op, a, b),
+                _ => Self::err(format!("{op:?} on matrices")),
+            };
         }
         let shift = matches!(op, BinOp::Shl | BinOp::Shr);
         let (x, y, t) = if shift && b.1 != a.1 && matches!(b.1, Ty::Scalar(_)) {
@@ -1129,9 +1133,6 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
             self.widen(a, b)?
         };
         let s = t.scalar().ok_or_else(|| Error(format!("glsl: {op:?} on {t:?}")))?;
-        if matches!(t, Ty::Mat(..)) {
-            return Self::err(format!("{op:?} on matrices is not supported yet"));
-        }
         let ty = self.ty_of(x);
         let name = match (op, s) {
             (BinOp::Add, Scalar::Float) => "arith.addf",
@@ -1262,26 +1263,69 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
     }
 
     fn components(&mut self, args: &[Expr<'s>], s: Scalar) -> Result<Vec<(ValueId, u32)>, Error> {
+        let vals = args.iter().map(|a| self.expr(a)).collect::<Result<Vec<_>, _>>()?;
+        self.components_of(&vals, s)
+    }
+
+    fn column(&mut self, m: ValueId, k: u32, rows: u32) -> Result<ValueId, Error> {
+        let col = Ty::Vec(Scalar::Float, rows).mlir(false)?;
+        let data = OpData::build("spirv.CompositeExtract").operands(&[m]).with("indices", Attribute::Array(vec![Emitter::word(k)]));
+        Ok(self.create(data, Some(col)).unwrap_or_else(|| unreachable!()))
+    }
+
+    fn components_of(&mut self, vals: &[(ValueId, Ty)], s: Scalar) -> Result<Vec<(ValueId, u32)>, Error> {
         let mut parts = Vec::new();
-        for a in args {
-            let (v, t) = self.expr(a)?;
-            match t {
+        for (v, t) in vals {
+            match *t {
                 Ty::Scalar(from) | Ty::Vec(from, _) => {
                     let n = t.lanes();
-                    parts.push((self.convert(v, from, s, n)?, n));
+                    parts.push((self.convert(*v, from, s, n)?, n));
                 }
                 Ty::Mat(c, r) => {
-                    let col = Ty::Vec(Scalar::Float, r).mlir(false)?;
                     for k in 0..c {
-                        let data = OpData::build("spirv.CompositeExtract").operands(&[v]).with("indices", Attribute::Array(vec![Emitter::word(k)]));
-                        let cv = self.create(data, Some(col.clone())).unwrap_or_else(|| unreachable!());
+                        let cv = self.column(*v, k, r)?;
                         parts.push((self.convert(cv, Scalar::Float, s, r)?, r));
                     }
                 }
-                t => return Self::err(format!("{t:?} in a constructor")),
+                ref t => return Self::err(format!("{t:?} in a constructor")),
             }
         }
         Ok(parts)
+    }
+
+    fn matrix(&mut self, cols: &[ValueId], c: u32, r: u32) -> Result<ValueId, Error> {
+        let mty = Ty::Mat(c, r).mlir(false)?;
+        Ok(self.create(OpData::build(crate::GlslConstruct::NAME).operands(cols), Some(mty)).unwrap_or_else(|| unreachable!()))
+    }
+
+    fn vector_of(&mut self, lanes: &[ValueId], s: Scalar) -> Result<ValueId, Error> {
+        let ty = Ty::of(s, u32::try_from(lanes.len()).unwrap_or(u32::MAX)).mlir(false)?;
+        Ok(match lanes {
+            [one] => *one,
+            _ => self.create(OpData::build(crate::GlslConstruct::NAME).operands(lanes), Some(ty)).unwrap_or_else(|| unreachable!()),
+        })
+    }
+
+    fn mat_columns(&mut self, op: BinOp, a: (ValueId, Ty), b: (ValueId, Ty)) -> Result<(ValueId, Ty), Error> {
+        let (c, r) = match (&a.1, &b.1) {
+            (Ty::Mat(c, r), Ty::Mat(c2, r2)) if (c, r) == (c2, r2) => (*c, *r),
+            (Ty::Mat(c, r), Ty::Scalar(Scalar::Float)) | (Ty::Scalar(Scalar::Float), Ty::Mat(c, r)) => (*c, *r),
+            (x, y) => return Self::err(format!("{op:?} on {x:?} and {y:?}")),
+        };
+        let col = Ty::Vec(Scalar::Float, r);
+        let side = |e: &mut Self, (v, t): &(ValueId, Ty), k: u32| -> Result<(ValueId, Ty), Error> {
+            Ok(match t {
+                Ty::Mat(..) => (e.column(*v, k, r)?, col.clone()),
+                t => (*v, t.clone()),
+            })
+        };
+        let mut cols = Vec::new();
+        for k in 0..c {
+            let x = side(self, &a, k)?;
+            let y = side(self, &b, k)?;
+            cols.push(self.arith(op, x, y)?.0);
+        }
+        Ok((self.matrix(&cols, c, r)?, Ty::Mat(c, r)))
     }
 
     fn assemble(&mut self, parts: &[(ValueId, u32)], s: Scalar, n: u32) -> Result<ValueId, Error> {
@@ -1329,21 +1373,34 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
                 Ok((v, ty.clone()))
             }
             Ty::Mat(c, r) => {
-                let col_ty = Ty::Vec(Scalar::Float, *r);
-                let cols: Vec<ValueId> = match args {
-                    [a] if self.expr_ty_is_scalar(a) => {
-                        let (d, from) = self.expr(a)?;
-                        let d = self.convert(d, from.scalar().unwrap_or(Scalar::Float), Scalar::Float, 1)?;
+                let (c, r) = (*c, *r);
+                let vals = args.iter().map(|a| self.expr(a)).collect::<Result<Vec<_>, _>>()?;
+                let cols: Vec<ValueId> = match &vals[..] {
+                    [(d, Ty::Scalar(from))] => {
+                        let d = self.convert(*d, *from, Scalar::Float, 1)?;
                         let z = self.float(0.0);
-                        (0..*c)
-                            .map(|k| {
-                                let lanes: Vec<ValueId> = (0..*r).map(|l| if l == k { d } else { z }).collect();
-                                self.create(OpData::build(crate::GlslConstruct::NAME).operands(&lanes), Some(col_ty.mlir(false)?)).ok_or_else(|| Error(String::from("glsl: column")))
-                            })
-                            .collect::<Result<_, _>>()?
+                        (0..c).map(|k| self.vector_of(&(0..r).map(|l| if l == k { d } else { z }).collect::<Vec<_>>(), Scalar::Float)).collect::<Result<_, _>>()?
+                    }
+                    [(m, Ty::Mat(c2, r2))] => {
+                        let (m, c2, r2) = (*m, *c2, *r2);
+                        let (one, zero) = (self.float(1.0), self.float(0.0));
+                        let mut cols = Vec::new();
+                        for k in 0..c {
+                            let src = if k < c2 { Some(self.column(m, k, r2)?) } else { None };
+                            let mut lanes = Vec::new();
+                            for l in 0..r {
+                                lanes.push(match src {
+                                    Some(v) if l < r2 => self.extract(v, l, Scalar::Float),
+                                    _ if l == k => one,
+                                    _ => zero,
+                                });
+                            }
+                            cols.push(self.vector_of(&lanes, Scalar::Float)?);
+                        }
+                        cols
                     }
                     _ => {
-                        let parts = self.components(args, Scalar::Float)?;
+                        let parts = self.components_of(&vals, Scalar::Float)?;
                         let mut scalars = Vec::new();
                         for (v, k) in parts {
                             if k == 1 {
@@ -1357,18 +1414,13 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
                         if scalars.len() != (c * r) as usize {
                             return Self::err(format!("mat{c}x{r} takes {} components, got {}", c * r, scalars.len()));
                         }
-                        scalars.chunks(*r as usize).map(|ch| self.create(OpData::build(crate::GlslConstruct::NAME).operands(ch), Some(col_ty.mlir(false)?)).ok_or_else(|| Error(String::from("glsl: column")))).collect::<Result<_, _>>()?
+                        scalars.chunks(r as usize).map(|ch| self.vector_of(ch, Scalar::Float)).collect::<Result<_, _>>()?
                     }
                 };
-                let mty = ty.mlir(false)?;
-                Ok((self.create(OpData::build(crate::GlslConstruct::NAME).operands(&cols), Some(mty)).unwrap_or_else(|| unreachable!()), ty.clone()))
+                Ok((self.matrix(&cols, c, r)?, ty.clone()))
             }
             t => Self::err(format!("constructing {t:?} is not supported yet")),
         }
-    }
-
-    fn expr_ty_is_scalar(&self, e: &Expr<'s>) -> bool {
-        matches!(e, Expr::Float(_) | Expr::Int(..))
     }
 
     fn call(&mut self, name: &'s str, args: &[Expr<'s>], line: u32) -> Result<(ValueId, Ty), Error> {
@@ -1448,6 +1500,17 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
             (Func::Refract, [(i, t), (n, _), (eta, Ty::Scalar(Scalar::Float))]) => {
                 let ty = t.mlir(false)?;
                 (self.builtin_call(Builtin::Refract, &[*i, *n, *eta], ty), t.clone())
+            }
+            (Func::MatrixCompMult, [a @ (_, Ty::Mat(..)), b]) if a.1 == b.1 => {
+                let Ty::Mat(c, r) = a.1 else { unreachable!() };
+                let mut cols = Vec::new();
+                for k in 0..c {
+                    let x = self.column(a.0, k, r)?;
+                    let y = self.column(b.0, k, r)?;
+                    let col = Ty::Vec(Scalar::Float, r);
+                    cols.push(self.arith(BinOp::Mul, (x, col.clone()), (y, col))?.0);
+                }
+                (self.matrix(&cols, c, r)?, a.1.clone())
             }
             (Func::Transpose, [(m, Ty::Mat(c, r))]) => {
                 let t = Ty::Mat(*r, *c);
