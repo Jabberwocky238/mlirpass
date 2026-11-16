@@ -229,7 +229,7 @@ impl Unify<'_> {
             return false;
         }
         let Some(ac) = cr.rw.body.def_op(ops[0]).filter(|d| cr.rw.body[*d].name == "spirv.AccessChain") else { return false };
-        let one = cr.spirv_const(Type::int(32), Attribute::integer(1, Type::int(32)));
+        let one = cr.spirv_const(Type::int(32), Attribute::i32(1));
         let base = cr.rw.body[ac].operands[0];
         let mut indices = cr.rw.body[ac].operands[1..].to_vec();
         let mut parts = alloc::vec![first];

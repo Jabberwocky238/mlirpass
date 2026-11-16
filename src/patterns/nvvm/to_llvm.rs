@@ -91,13 +91,13 @@ fn nv_case<T: Copy>(a: Option<&Attribute<'_>>, attr: &str, names: &[(&'static st
     if ext.name != attr {
         return None;
     }
-    let b = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?.trim();
+    let b = ext.inner()?.trim();
     names.iter().find(|(n, _)| *n == b).map(|(_, v)| *v)
 }
 
 fn shape(a: Option<&Attribute<'_>>) -> Option<[i64; 3]> {
     let Some(Attribute::Extended { ext, .. }) = a else { return None };
-    let b = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?;
+    let b = ext.inner()?;
     let mut out = [0i64; 3];
     for part in b.split(',') {
         let (k, v) = part.split_once('=')?;
@@ -440,7 +440,7 @@ impl NvvmToLlvm {
     }
 
     fn const_i32(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
-        cr.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(32))
+        cr.llvm_constant(Attribute::i32(v), Type::int(32))
     }
 
     fn asm_values(cr: &mut Cr<'_, '_, '_>, op: OpId, kind: PtxOp) -> Option<(Vec<(ValueId, Mod)>, bool)> {

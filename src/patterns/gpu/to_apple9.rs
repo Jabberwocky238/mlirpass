@@ -26,6 +26,10 @@ const SR_THREAD_IN_GROUP_X: u32 = 0xa4;
 pub struct Apple9Types;
 
 impl Apple9Types {
+    pub fn lanes(t: &Type<'_>) -> Option<usize> {
+        Some(Self::of(t)?.len())
+    }
+
     fn elem(t: &Type<'_>) -> Option<Type<'static>> {
         match t {
             Type::Float(FloatKind::F32) => Some(Type::from(Apple9Type("f32"))),
@@ -97,24 +101,14 @@ impl GpuToApple9 {
         Apple9Types::of(&cr.rw.body[r].ty).and_then(|t| t.into_iter().next())
     }
 
-    fn each(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], mut f: impl FnMut(&mut Cr<'_, '_, '_>, &[ValueId]) -> ValueId) -> bool {
-        let n = o[0].len();
-        if o.iter().any(|v| v.len() != n) {
-            return false;
-        }
-        let values: Vec<ValueId> = (0..n).map(|i| f(cr, &o.iter().map(|v| v[i]).collect::<Vec<_>>())).collect();
-        cr.replace(op, vec![values]);
-        true
-    }
-
     fn lanes(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], _: &str, inst: Apple9Op) -> bool {
         let Some(ty) = Self::result_type(cr, op) else { return false };
-        Self::each(cr, op, o, |cr, x| Self::one(cr, op, inst, x, Vec::new(), ty.clone()))
+        cr.lanes_each(op, o, |cr, x| Self::one(cr, op, inst, x, Vec::new(), ty.clone()))
     }
 
     fn convert(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], _: &str, inst: Apple9Op, signed: bool) -> bool {
         let Some(ty) = Self::result_type(cr, op) else { return false };
-        Self::each(cr, op, o, |cr, x| Self::one(cr, op, inst, x, if signed { vec![("signed", A::Bool(true))] } else { Vec::new() }, ty.clone()))
+        cr.lanes_each(op, o, |cr, x| Self::one(cr, op, inst, x, if signed { vec![("signed", A::Bool(true))] } else { Vec::new() }, ty.clone()))
     }
 
     fn select(cr: &mut Cr<'_, '_, '_>, op: OpId, cond: &str, ab: [ValueId; 2], tf: [ValueId; 2], ty: Type<'static>) -> ValueId {
@@ -185,17 +179,6 @@ impl GpuToApple9 {
             Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => None,
         };
         (0..n).map(|i| bits(c.at(i))).collect()
-    }
-
-    fn positions(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> Option<Vec<usize>> {
-        cr.rw.body[op].get(name)?.dense_values().map(|v| v.into_iter().map(|i| i as usize).collect())
-    }
-
-    fn position(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<usize> {
-        match Self::positions(cr, op, "static_position")?[..] {
-            [at] => Some(at),
-            _ => None,
-        }
     }
 
     fn structured(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
@@ -522,7 +505,7 @@ impl GpuToApple9 {
 
     #[convert("arith.muli")]
     fn muli(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        Self::each(cr, op, o, |cr, x| {
+        cr.lanes_each(op, o, |cr, x| {
             let zero = Self::imm(cr, op, 0, Self::i32());
             Self::one(cr, op, Apple9Op::Imad, &[x[0], x[1], zero], Vec::new(), Self::i32())
         })
@@ -531,7 +514,7 @@ impl GpuToApple9 {
     #[convert("arith.cmpi")]
     fn cmpi(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let Ok(c) = cr.rw.body.head::<CmpI>(op) else { return false };
-        Self::each(cr, op, o, |cr, x| Self::compare(cr, op, c.predicate, x[0], x[1]))
+        cr.lanes_each(op, o, |cr, x| Self::compare(cr, op, c.predicate, x[0], x[1]))
     }
 
     #[convert("arith.select")]
@@ -539,7 +522,7 @@ impl GpuToApple9 {
         let [c, x, y] = o else { return false };
         let Some(ty) = Self::result_type(cr, op) else { return false };
         let c = if c.len() == 1 { vec![c[0]; x.len()] } else { c.clone() };
-        Self::each(cr, op, &[c, x.clone(), y.clone()], |cr, v| {
+        cr.lanes_each(op, &[c, x.clone(), y.clone()], |cr, v| {
             let zero = Self::imm(cr, op, 0, Self::i32());
             Self::select(cr, op, "ugt", [v[0], zero], [v[1], v[2]], ty.clone())
         })
@@ -561,7 +544,7 @@ impl GpuToApple9 {
         if !matches!(from, Type::Integer { width: 1, .. }) {
             return false;
         }
-        Self::each(cr, op, o, |cr, x| {
+        cr.lanes_each(op, o, |cr, x| {
             let zero = Self::imm(cr, op, 0, Self::i32());
             Self::one(cr, op, Apple9Op::Isub, &[zero, x[0]], Vec::new(), Self::i32())
         })
@@ -569,7 +552,7 @@ impl GpuToApple9 {
 
     #[convert("math.absf")]
     fn absf(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        Self::each(cr, op, o, |cr, x| {
+        cr.lanes_each(op, o, |cr, x| {
             let m = Self::imm(cr, op, 0x7fff_ffff, Self::i32());
             Self::one(cr, op, Apple9Op::And, &[x[0], m], Vec::new(), Self::f32())
         })
@@ -577,7 +560,7 @@ impl GpuToApple9 {
 
     #[convert("arith.negf")]
     fn negf(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        Self::each(cr, op, o, |cr, x| {
+        cr.lanes_each(op, o, |cr, x| {
             let m = Self::imm(cr, op, 0x8000_0000, Self::i32());
             Self::one(cr, op, Apple9Op::Xor, &[x[0], m], Vec::new(), Self::f32())
         })
@@ -586,33 +569,28 @@ impl GpuToApple9 {
     #[convert("arith.cmpf")]
     fn cmpf(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let Ok(c) = cr.rw.body.head::<CmpF>(op) else { return false };
-        Self::each(cr, op, o, |cr, x| Self::fcompare(cr, op, c.predicate, x[0], x[1]))
+        cr.lanes_each(op, o, |cr, x| Self::fcompare(cr, op, c.predicate, x[0], x[1]))
     }
 
     #[convert("arith.divf")]
     fn divf(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        Self::each(cr, op, o, |cr, x| Exact { cr, at: op }.div(x[0], x[1]))
+        cr.lanes_each(op, o, |cr, x| Exact { cr, at: op }.div(x[0], x[1]))
     }
 
     #[convert("math.sqrt")]
     fn sqrt(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        Self::each(cr, op, o, |cr, x| Exact { cr, at: op }.sqrt(x[0]))
+        cr.lanes_each(op, o, |cr, x| Exact { cr, at: op }.sqrt(x[0]))
     }
 
     #[convert("arith.bitcast")]
     fn bitcast(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let Some(ty) = Self::result_type(cr, op) else { return false };
-        Self::each(cr, op, o, |cr, x| Self::one(cr, op, Apple9Op::Or, &[x[0], x[0]], Vec::new(), ty.clone()))
+        cr.lanes_each(op, o, |cr, x| Self::one(cr, op, Apple9Op::Or, &[x[0], x[0]], Vec::new(), ty.clone()))
     }
 
     #[convert("arith.index_cast", "arith.index_castui", "llvm.inttoptr")]
     fn same(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let r = cr.rw.body[op].results[0];
-        if Apple9Types::of(&cr.rw.body[r].ty).is_none_or(|t| t.len() != o[0].len()) {
-            return false;
-        }
-        cr.replace(op, vec![o[0].clone()]);
-        true
+        cr.lanes_same(op, o, Apple9Types::lanes)
     }
 
     fn dimension(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<u32> {
@@ -760,7 +738,7 @@ impl GpuToApple9 {
 
     #[convert("llvm.extractvalue")]
     fn extractvalue(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let Some(at) = Self::positions(cr, op, "position").and_then(|p| (p.len() == 1).then(|| p[0])) else { return false };
+        let Some(at) = cr.lane_positions(op, "position").and_then(|p| (p.len() == 1).then(|| p[0])) else { return false };
         let Some(v) = o[0].get(at).copied() else { return false };
         cr.replace(op, vec![vec![v]]);
         true
@@ -775,48 +753,29 @@ impl GpuToApple9 {
 
     #[convert("vector.extract")]
     fn extract(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let Some(at) = Self::position(cr, op) else { return false };
-        let Some(v) = o[0].get(at).copied() else { return false };
-        cr.replace(op, vec![vec![v]]);
-        true
+        cr.lanes_extract(op, o)
     }
 
     #[convert("vector.insert")]
     fn insert(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let Some(at) = Self::position(cr, op) else { return false };
-        let ([v], Some(dest)) = (&o[0][..], o.get(1)) else { return false };
-        let mut dest = dest.clone();
-        if at >= dest.len() {
-            return false;
-        }
-        dest[at] = *v;
-        cr.replace(op, vec![dest]);
-        true
+        cr.lanes_insert(op, o)
     }
 
     #[convert("vector.from_elements")]
     fn from_elements(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let values = o.concat();
-        cr.replace(op, vec![values]);
-        true
+        cr.lanes_from_elements(op, o)
     }
 
     #[convert("vector.broadcast")]
     fn broadcast(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
-        let (Some(types), [v]) = (Apple9Types::of(&ty), &o[0][..]) else { return false };
-        cr.replace(op, vec![vec![*v; types.len()]]);
-        true
+        cr.lanes_broadcast(op, o, Apple9Types::lanes)
     }
 
     #[convert("vector.shuffle")]
     fn shuffle(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let Some(mask) = Self::positions(cr, op, "mask") else { return false };
-        let all = o.concat();
-        let Some(values) = mask.iter().map(|i| all.get(*i).copied()).collect::<Option<Vec<_>>>() else { return false };
-        cr.replace(op, vec![values]);
-        true
+        cr.lanes_shuffle(op, o)
     }
+
 }
 
 struct Exact<'c, 'r, 'a, 'p> {

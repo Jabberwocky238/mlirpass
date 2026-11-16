@@ -68,7 +68,7 @@ impl MmaType {
 
 impl From<MmaType> for Attribute<'static> {
     fn from(t: MmaType) -> Self {
-        Attribute::dialect("nvvm.mma_type", &format!("<{}>", t.name()))
+        Attribute::dialect_with("nvvm.mma_type", t.name())
     }
 }
 
@@ -137,7 +137,7 @@ impl NvgpuToNvvm {
     }
 
     fn c64(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
-        cr.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(64))
+        cr.llvm_constant(Attribute::i32(v), Type::int(64))
     }
 
     fn op1<'a>(cr: &mut Cr<'_, 'a, '_>, name: &str, a: ValueId, t: Type<'a>) -> ValueId {
@@ -151,13 +151,13 @@ impl NvgpuToNvvm {
 
     fn arith(cr: &mut Cr<'_, '_, '_>, name: &str, a: ValueId, b: ValueId) -> ValueId {
         let t = Self::ty(cr, a);
-        cr.build(OpData::build(name).operands(&[a, b]).with("overflowFlags", Attribute::of_int(0, Type::int(32))), t)
+        cr.build(OpData::build(name).operands(&[a, b]).with("overflowFlags", Attribute::i32(0)), t)
     }
 
     fn trunc32(cr: &mut Cr<'_, '_, '_>, v: ValueId) -> ValueId {
         match Self::ty(cr, v).int_width() {
             Some((w, _)) if w <= 32 => v,
-            _ => cr.build(OpData::build("llvm.trunc").operands(&[v]).with("overflowFlags", Attribute::of_int(0, Type::int(32))), Type::int(32)),
+            _ => cr.build(OpData::build("llvm.trunc").operands(&[v]).with("overflowFlags", Attribute::i32(0)), Type::int(32)),
         }
     }
 
@@ -194,7 +194,7 @@ impl NvgpuToNvvm {
     }
 
     fn mem_scope(scope: &str) -> Attribute<'static> {
-        Attribute::dialect("nvvm.mem_scope", &format!("<{scope}>"))
+        Attribute::dialect_with("nvvm.mem_scope", scope)
     }
 
     fn unpack(cr: &mut Cr<'_, '_, '_>, v: ValueId, ptx: MmaType) -> Vec<ValueId> {
@@ -301,7 +301,7 @@ impl NvgpuToNvvm {
         let Some(ptr) = Self::element_ptr(cr, o, src, operands[0][0], &indices) else { return false };
         let data = OpData::build("nvvm.ldmatrix")
             .operands(&[ptr])
-            .with("num", Attribute::of_int(tiles.into(), Type::int(32)))
+            .with("num", Attribute::i32(tiles))
             .with("layout", Attribute::dialect("nvvm.mma_layout", if transpose { "<col>" } else { "<row>" }))
             .with("shape", Attribute::dialect("nvvm.ld_st_matrix_shape", "<m = 8, n = 8>"))
             .with("eltType", Attribute::dialect("nvvm.ld_st_matrix_elt_type", "<b16>"));
@@ -317,9 +317,7 @@ impl NvgpuToNvvm {
     }
 
     fn mma_shape(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<[i64; 3]> {
-        let Some(Attribute::Array(a)) = cr.rw.body[op].get("mmaShape") else { return None };
-        let v: Vec<i64> = a.iter().filter_map(|x| if let Attribute::Int { lit, .. } = x { lit.parse().ok() } else { None }).collect();
-        v.try_into().ok()
+        cr.rw.body[op].get("mmaShape")?.int_values()?.try_into().ok()
     }
 
     fn mma_types(cr: &Cr<'_, '_, '_>, op: OpId, b_from_a: bool) -> Option<(MmaType, MmaType, MmaType, bool)> {
@@ -347,7 +345,7 @@ impl NvgpuToNvvm {
         args.extend(&c);
         let mut data = OpData::build("nvvm.mma.sync")
             .operands(&args)
-            .with("shape", Attribute::dialect("nvvm.shape", &format!("<m = {m}, n = {n}, k = {k}>")))
+            .with("shape", Attribute::dialect_with("nvvm.shape", format_args!("m = {m}, n = {n}, k = {k}")))
             .with("layoutA", Attribute::dialect("nvvm.mma_layout", "<row>"))
             .with("layoutB", Attribute::dialect("nvvm.mma_layout", "<col>"))
             .with("multiplicandAPtxType", pa.into())
@@ -446,12 +444,12 @@ impl NvgpuToNvvm {
         if let Some(n) = g.get(4).and_then(|e| e.first()).and_then(|v| v.first()).copied() {
             let c3 = Self::c(cr, 3, 32);
             let bits = Self::c(cr, i64::from(src_bits), 32);
-            let n = cr.build(OpData::build("llvm.trunc").operands(&[n]).with("overflowFlags", Attribute::of_int(0, Type::int(32))), Type::int(32));
+            let n = cr.build(OpData::build("llvm.trunc").operands(&[n]).with("overflowFlags", Attribute::i32(0)), Type::int(32));
             let mul = Self::arith(cr, "llvm.mul", bits, n);
             args.push(Self::op2(cr, "llvm.lshr", mul, c3));
         }
         let modifier = if bypass && size == 16 { "<load_cache_modifier cg>" } else { "<load_cache_modifier ca>" };
-        let data = OpData::build("nvvm.cp.async.shared.global").operands(&args).with("size", Attribute::of_int(size.into(), Type::int(32))).with("modifier", Attribute::dialect("nvvm", modifier));
+        let data = OpData::build("nvvm.cp.async.shared.global").operands(&args).with("size", Attribute::i32(size)).with("modifier", Attribute::dialect("nvvm", modifier));
         cr.rw.create(data, &[]);
         let zero = Self::c(cr, 0, 32);
         cr.replace(op, vec![vec![zero]]);
@@ -471,7 +469,7 @@ impl NvgpuToNvvm {
     fn async_wait(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: LlvmOptions) -> bool {
         let n = Self::int(cr, op, "numGroups").unwrap_or(0);
         cr.rw.set_before(op);
-        cr.rw.create(OpData::build("nvvm.cp.async.wait.group").with("n", Attribute::of_int(n.into(), Type::int(32))), &[]);
+        cr.rw.create(OpData::build("nvvm.cp.async.wait.group").with("n", Attribute::i32(n)), &[]);
         cr.erase(op);
         true
     }
@@ -509,7 +507,7 @@ impl NvgpuToNvvm {
             .with("sym_name", Attribute::str(&name))
             .with("sym_visibility", Attribute::str("private"))
             .with("type", Attribute::Type(ty.clone()))
-            .with("alignment", Attribute::of_int(8, Type::int(64)));
+            .with("alignment", Attribute::i64(8));
         let loc = cr.rw.body[func].loc.clone();
         let g = cr.rw.create(data, &[]);
         cr.rw.body[g].loc = loc;
@@ -727,7 +725,7 @@ impl NvgpuToNvvm {
         };
         let Some(size_n) = mt.dims().and_then(|d| d.first().copied()) else { return false };
         cr.rw.set_before(op);
-        let k = |cr: &mut Cr<'_, '_, '_>, v: i64| cr.llvm_constant(Attribute::of_int(v.into(), Type::int(64)), Type::int(64));
+        let k = |cr: &mut Cr<'_, '_, '_>, v: i64| cr.llvm_constant(Attribute::i64(v), Type::int(64));
         let stride = k(cr, (layout << 3) >> EXCLUDE_4LSB);
         let lead = k(cr, (size_n * layout) >> EXCLUDE_4LSB);
         let Some(base) = Self::element_ptr(cr, o, tensor, operands[0][0], &[]) else { return false };
@@ -810,10 +808,10 @@ impl NvgpuToNvvm {
                     let t = Self::ty(cr, c);
                     let data = OpData::build("nvvm.wgmma.mma_async")
                         .operands(&[c, a, b])
-                        .with("shape", Attribute::dialect("nvvm.shape", &format!("<m = {wm}, n = {wn}, k = {wk}>")))
-                        .with("typeA", Attribute::dialect("nvvm.wgmma_type", &format!("<{type_a}>")))
-                        .with("typeB", Attribute::dialect("nvvm.wgmma_type", &format!("<{type_b}>")))
-                        .with("typeD", Attribute::dialect("nvvm.wgmma_type", &format!("<{type_d}>")))
+                        .with("shape", Attribute::dialect_with("nvvm.shape", format_args!("m = {wm}, n = {wn}, k = {wk}")))
+                        .with("typeA", Attribute::dialect_with("nvvm.wgmma_type", type_a))
+                        .with("typeB", Attribute::dialect_with("nvvm.wgmma_type", type_b))
+                        .with("typeD", Attribute::dialect_with("nvvm.wgmma_type", type_d))
                         .with("scaleD", Attribute::dialect("nvvm.wgmma_scale_out", "<one>"))
                         .with("scaleA", Attribute::dialect("nvvm.wgmma_scale_in", "<one>"))
                         .with("scaleB", Attribute::dialect("nvvm.wgmma_scale_in", "<one>"))
@@ -829,7 +827,7 @@ impl NvgpuToNvvm {
             result = cr.insert_value(result, r, &[i as i64]);
         }
         cr.rw.create(OpData::build("nvvm.wgmma.commit.group.sync.aligned"), &[]);
-        cr.rw.create(OpData::build("nvvm.wgmma.wait.group.sync.aligned").with("group", Attribute::of_int(wait.into(), Type::int(64))), &[]);
+        cr.rw.create(OpData::build("nvvm.wgmma.wait.group.sync.aligned").with("group", Attribute::i64(wait)), &[]);
         cr.replace(op, vec![vec![result]]);
         true
     }

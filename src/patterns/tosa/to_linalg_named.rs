@@ -26,15 +26,6 @@ impl TosaToLinalgNamed {
         t.element_type().clone()
     }
 
-    fn zero_point(cr: &Cr<'_, '_, '_>, v: ValueId) -> Option<i64> {
-        let c = Const::try_from(&cr.rw.body.constant_of(v)?).ok()?;
-        match c.at(0) {
-            Scalar::Float(f) => Some(if f.is_zero() { 0 } else { -1 }),
-            Scalar::Int(i) => Some(i.signed() as i64),
-            Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => None,
-        }
-    }
-
     fn zp_ok(cr: &Cr<'_, '_, '_>, v: ValueId, zp: i64) -> bool {
         zp == 0 || Self::elem(&Self::ty(cr, v)) == Type::int(8)
     }
@@ -141,7 +132,7 @@ impl TosaToLinalgNamed {
         let Some(acc) = Self::acc_type(cr, op) else { return false };
         let rdims = rt.dims().unwrap_or_default();
         let acc_ty = Type::tensor(&rdims, acc.clone());
-        let (Some(izp), Some(wzp)) = (Self::zero_point(cr, izv), Self::zero_point(cr, wzv)) else { return false };
+        let (Some(izp), Some(wzp)) = (cr.rw.body.zp_value(izv), cr.rw.body.zp_value(wzv)) else { return false };
         if !Self::zp_ok(cr, izv, izp) || !Self::zp_ok(cr, wzv, wzp) {
             return false;
         }
@@ -225,7 +216,7 @@ impl TosaToLinalgNamed {
             return false;
         }
         let dyn_dims = Self::conv_dyn_dims(cr, input, weight, &rdims, &pad_a, &stride, &dil, &[1, 2], &[0, 1]);
-        let (Some(izp), Some(wzp)) = (Self::zero_point(cr, izv), Self::zero_point(cr, wzv)) else { return false };
+        let (Some(izp), Some(wzp)) = (cr.rw.body.zp_value(izv), cr.rw.body.zp_value(wzv)) else { return false };
         if !Self::zp_ok(cr, izv, izp) || !Self::zp_ok(cr, wzv, wzp) {
             return false;
         }
@@ -302,7 +293,7 @@ impl TosaToLinalgNamed {
         let empty = cr.empty(&od, oe, &dyn_dims);
         let fill = cr.named("linalg.fill", Named::Fill, &[zero], &[empty], core::slice::from_ref(&ot), Vec::new());
         let zt = cr.rw.body[fill].results[0];
-        let (Some(az), Some(bz)) = (Self::zero_point(cr, azv), Self::zero_point(cr, bzv)) else { return false };
+        let (Some(az), Some(bz)) = (cr.rw.body.zp_value(azv), cr.rw.body.zp_value(bzv)) else { return false };
         if !Self::zp_ok(cr, azv, az) || !Self::zp_ok(cr, bzv, bz) {
             return false;
         }
@@ -454,7 +445,7 @@ impl TosaToLinalgNamed {
         let Some(acc) = Self::acc_type(cr, op) else { return false };
         let acc_ty = Type::tensor(&rt.dims().unwrap_or_default(), acc.clone());
         let Some(dyn_dims) = Self::dynamic_batch(cr, &[input, out]) else { return false };
-        let (Some(izp), Some(ozp)) = (Self::zero_point(cr, izv), Self::zero_point(cr, ozv)) else { return false };
+        let (Some(izp), Some(ozp)) = (cr.rw.body.zp_value(izv), cr.rw.body.zp_value(ozv)) else { return false };
         let (pad_a, kernel, stride) = (Self::ints(cr, op, "pad"), Self::ints(cr, op, "kernel"), Self::ints(cr, op, "stride"));
         let mut pad = vec![0, 0];
         pad.extend(&pad_a);
@@ -556,10 +547,7 @@ impl TosaToLinalgNamed {
     #[convert("tosa.transpose", untyped)]
     fn transpose(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>]) -> bool {
         let input = cr.rw.body[op].operands[0];
-        let perms: Vec<i64> = match cr.rw.body[op].get("perms") {
-            Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
-            _ => return false,
-        };
+        let Some(perms) = cr.rw.body[op].get("perms").and_then(Attribute::dense_values) else { return false };
         let sizes = cr.mixed_sizes(input);
         let permuted: Vec<Ofr> = perms.iter().map(|p| sizes[*p as usize]).collect();
         let e = Self::elem(&Self::ty(cr, input));

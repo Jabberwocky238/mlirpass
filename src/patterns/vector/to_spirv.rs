@@ -22,7 +22,7 @@ const POISON: i64 = -1;
 
 impl VectorToSpirv {
     fn i32_array<'a>(xs: &[i64]) -> Attribute<'a> {
-        Attribute::Array(xs.iter().map(|x| Attribute::integer(i128::from(*x), Type::int(32))).collect())
+        Attribute::int_array_of(32, xs)
     }
 
     fn ints(a: Option<&Attribute<'_>>) -> Vec<i64> {
@@ -134,7 +134,7 @@ impl VectorToSpirv {
 
     fn alignment<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Option<Vec<(&'static str, Attribute<'a>)>> {
         let a = Const::try_from(cr.rw.body[op].get("alignment")?).ok()?.as_int()?.bits();
-        Some(vec![("memory_access", Cr::spirv_enum("memory_access", "Aligned")), ("alignment", Attribute::integer(a as i128, Type::int(32)))])
+        Some(vec![("memory_access", Cr::spirv_enum("memory_access", "Aligned")), ("alignment", Attribute::i32(a as i64))])
     }
 }
 

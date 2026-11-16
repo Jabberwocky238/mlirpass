@@ -25,6 +25,10 @@ const SR_THREAD_IN_GROUP_X: u32 = 48;
 pub struct AgxTypes;
 
 impl AgxTypes {
+    pub fn lanes(t: &Type<'_>) -> Option<usize> {
+        Some(Self::of(t)?.len())
+    }
+
     fn elem(t: &Type<'_>) -> Option<Type<'static>> {
         match t {
             Type::Float(FloatKind::F32) => Some(Type::from(AgxType::R("f32"))),
@@ -97,27 +101,17 @@ impl GpuToAgx {
         AgxTypes::of(&cr.rw.body[r].ty).and_then(|t| t.into_iter().next())
     }
 
-    fn each(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], mut f: impl FnMut(&mut Cr<'_, '_, '_>, &[ValueId]) -> ValueId) -> bool {
-        let n = o[0].len();
-        if o.iter().any(|v| v.len() != n) {
-            return false;
-        }
-        let values: Vec<ValueId> = (0..n).map(|i| f(cr, &o.iter().map(|v| v[i]).collect::<Vec<_>>())).collect();
-        cr.replace(op, vec![values]);
-        true
-    }
-
     fn lanes(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], _: &str, inst: UscOp, slots: &[Slot], with: fn(UscBuild<'_>) -> UscBuild<'_>) -> bool {
         let Some(ty) = Self::result_type(cr, op) else { return false };
-        Self::each(cr, op, o, |cr, x| Self::usc(cr, op, inst, x, slots, with, ty.clone()))
+        cr.lanes_each(op, o, |cr, x| Self::usc(cr, op, inst, x, slots, with, ty.clone()))
     }
 
     fn minmax(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], _: &str, cond: i64) -> bool {
-        Self::each(cr, op, o, |cr, x| Self::icsel(cr, op, x[0], x[1], [Pick::Value(x[0]), Pick::Value(x[1])], cond, UscOp::Icsel))
+        cr.lanes_each(op, o, |cr, x| Self::icsel(cr, op, x[0], x[1], [Pick::Value(x[0]), Pick::Value(x[1])], cond, UscOp::Icsel))
     }
 
     fn bits(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], _: &str, inst: UscOp, mask: u32) -> bool {
-        Self::each(cr, op, o, |cr, x| {
+        cr.lanes_each(op, o, |cr, x| {
             let m = Self::imm32(cr, op, mask, Self::i32());
             Self::usc(cr, op, inst, &[x[0], m], &[S0, S1], |b| b, Type::from(AgxType::R("f32")))
         })
@@ -153,7 +147,7 @@ impl GpuToAgx {
 
     fn compare(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], inst: UscOp, cond: i64, invert: bool) -> bool {
         let picks = if invert { [Pick::Imm(0), Pick::Imm(1)] } else { [Pick::Imm(1), Pick::Imm(0)] };
-        Self::each(cr, op, o, |cr, x| Self::icsel(cr, op, x[0], x[1], picks, cond, inst))
+        cr.lanes_each(op, o, |cr, x| Self::icsel(cr, op, x[0], x[1], picks, cond, inst))
     }
 
     fn constant_bits(value: &Attribute<'_>, n: usize) -> Option<Vec<u32>> {
@@ -164,17 +158,6 @@ impl GpuToAgx {
             Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => None,
         };
         (0..n).map(|i| bits(c.at(i))).collect()
-    }
-
-    fn positions(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> Option<Vec<usize>> {
-        cr.rw.body[op].get(name)?.dense_values().map(|v| v.into_iter().map(|i| i as usize).collect())
-    }
-
-    fn position(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<usize> {
-        match Self::positions(cr, op, "static_position")?[..] {
-            [at] => Some(at),
-            _ => None,
-        }
     }
 
     fn index(cr: &mut Cr<'_, '_, '_>, op: OpId, addr: ValueId) -> ValueId {
@@ -335,12 +318,7 @@ impl GpuToAgx {
 
     #[convert("arith.index_cast", "arith.index_castui", "llvm.inttoptr")]
     fn same(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let r = cr.rw.body[op].results[0];
-        if AgxTypes::of(&cr.rw.body[r].ty).is_none_or(|t| t.len() != o[0].len()) {
-            return false;
-        }
-        cr.replace(op, vec![o[0].clone()]);
-        true
+        cr.lanes_same(op, o, AgxTypes::lanes)
     }
 
     #[convert("gpu.block_id")]
@@ -396,46 +374,27 @@ impl GpuToAgx {
 
     #[convert("vector.extract")]
     fn extract(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let Some(at) = Self::position(cr, op) else { return false };
-        let Some(v) = o[0].get(at).copied() else { return false };
-        cr.replace(op, vec![vec![v]]);
-        true
+        cr.lanes_extract(op, o)
     }
 
     #[convert("vector.insert")]
     fn insert(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let Some(at) = Self::position(cr, op) else { return false };
-        let ([v], Some(dest)) = (&o[0][..], o.get(1)) else { return false };
-        let mut dest = dest.clone();
-        if at >= dest.len() {
-            return false;
-        }
-        dest[at] = *v;
-        cr.replace(op, vec![dest]);
-        true
+        cr.lanes_insert(op, o)
     }
 
     #[convert("vector.from_elements")]
     fn from_elements(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let values = o.concat();
-        cr.replace(op, vec![values]);
-        true
+        cr.lanes_from_elements(op, o)
     }
 
     #[convert("vector.broadcast")]
     fn broadcast(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
-        let (Some(types), [v]) = (AgxTypes::of(&ty), &o[0][..]) else { return false };
-        cr.replace(op, vec![vec![*v; types.len()]]);
-        true
+        cr.lanes_broadcast(op, o, AgxTypes::lanes)
     }
 
     #[convert("vector.shuffle")]
     fn shuffle(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let Some(mask) = Self::positions(cr, op, "mask") else { return false };
-        let all = o.concat();
-        let Some(values) = mask.iter().map(|i| all.get(*i).copied()).collect::<Option<Vec<_>>>() else { return false };
-        cr.replace(op, vec![values]);
-        true
+        cr.lanes_shuffle(op, o)
     }
+
 }

@@ -383,7 +383,7 @@ impl Unit {
                 if dropped == 0 {
                     continue;
                 }
-                rw.create(OpData::build("linalg.index").with("dim", Attribute::of_int((dim - dropped) as i128, Type::int(64))), &[Type::Index])
+                rw.create(OpData::build("linalg.index").with("dim", Attribute::i64((dim - dropped) as i64)), &[Type::Index])
             };
             let v = rw.body[n].results[0];
             rw.replace_op(o, &[v]);

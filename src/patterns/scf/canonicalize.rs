@@ -16,10 +16,6 @@ impl<'a> Body<'a> {
         self[self[op].regions[r]].blocks.first().copied()
     }
 
-    fn const_int(&self, v: ValueId) -> Option<ApInt> {
-        Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int()
-    }
-
     fn region_encloses(&self, region: RegionId, mut inner: RegionId) -> bool {
         loop {
             if inner == region {

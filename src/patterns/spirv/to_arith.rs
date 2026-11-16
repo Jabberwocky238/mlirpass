@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
 use mlirformat::arith::{CmpFPredicate, CmpIPredicate};
-use mlirformat::{Attribute, Type};
+use mlirformat::Attribute;
 
 use crate::{Attrs, ConversionRewriter, OpData, OpId, ValueId, patterns};
 
@@ -69,7 +69,7 @@ impl SpirvToArith {
     fn cmp(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], to: &str, pred: i64) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
-        let p = Attribute::Int { lit: alloc::format!("{pred}").into(), ty: Some(Type::int(64)) };
+        let p = Attribute::i64(pred);
         cr.replace_new(op, OpData::build(to).operands(&ops).with("predicate", p), &[ty]);
         true
     }

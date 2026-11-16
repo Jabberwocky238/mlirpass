@@ -37,7 +37,7 @@ impl ClientApi {
                 }
                 let sc = self.storage_class(s.memory_space())?;
                 let mut extras: Vec<Attribute<'a>> = s.extras.iter().filter(|a| a.is_layout()).cloned().collect();
-                extras.push(Attribute::dialect("spirv.storage_class", &format!("<{sc}>")));
+                extras.push(Attribute::dialect_with("spirv.storage_class", sc));
                 Type::Shaped(alloc::boxed::Box::new(Shaped { extras, elem: self.map_type(&s.elem)?.into(), ..*s.clone() }))
             }
             Type::Shaped(s) => Type::Shaped(alloc::boxed::Box::new(Shaped { elem: self.map_type(&s.elem)?.into(), ..*s.clone() })),
@@ -152,7 +152,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     }
 
     pub fn spirv_enum(mnemonic: &str, case: &str) -> Attribute<'a> {
-        Attribute::dialect(&format!("spirv.{mnemonic}"), &format!("<{case}>"))
+        Attribute::dialect_with(&format!("spirv.{mnemonic}"), case)
     }
 }
 

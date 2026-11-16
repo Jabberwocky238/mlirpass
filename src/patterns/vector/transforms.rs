@@ -1,4 +1,3 @@
-use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -239,7 +238,7 @@ fn vector_comparison<'a>(rw: &mut Rewriter<'_, 'a>, dim: i64, bound: ValueId, of
 
 fn min_i32_max<'a>(rw: &mut Rewriter<'_, 'a>, v: ValueId) -> ValueId {
     let ty = rw.body[v].ty.clone();
-    let max = rw.constant(Attribute::integer(i128::from(i32::MAX), Type::Index), Type::Index);
+    let max = rw.constant(Attribute::index((i32::MAX).into()), Type::Index);
     rw.make1(OpData::build("arith.minsi").operands(&[v, max]), ty)
 }
 
@@ -253,17 +252,6 @@ fn cast_index_like<'a>(rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, v: ValueId) -> 
     }
     let (a, b) = (ty.bit_width().unwrap_or(64), vt.bit_width().unwrap_or(64));
     rw.make1(OpData::build(if a > b { "arith.extsi" } else { "arith.trunci" }).operands(&[v]), ty.clone())
-}
-
-fn i64s(b: &Body<'_>, op: OpId, name: &str) -> Vec<i64> {
-    match b[op].get(name) {
-        Some(Attribute::Array(a)) => a.iter().filter_map(|x| if let Attribute::Int { lit, .. } = x { lit.parse().ok() } else { None }).collect(),
-        _ => Vec::new(),
-    }
-}
-
-fn arr<'a>(v: &[i64]) -> Attribute<'a> {
-    Attribute::Array(v.iter().map(|x| Attribute::Int { lit: format!("{x}").into(), ty: None }).collect())
 }
 
 fn unroll_positions(shape: &[i64], scal: &[bool]) -> Option<Vec<Vec<i64>>> {
@@ -528,7 +516,7 @@ impl Rules {
         let dt = b[b[op].results[0]].ty.clone();
         let src = b[op].operands[0];
         let scalable = vshape(&dt).is_some_and(|s| s.1.contains(&true)) || vshape(&b[src].ty).is_some_and(|s| s.1.contains(&true));
-        let (offs, sizes, strides) = (i64s(b, op, "offsets"), i64s(b, op, "sizes"), i64s(b, op, "strides"));
+        let (offs, sizes, strides) = (b.ints(op, "offsets"), b.ints(op, "sizes"), b.ints(op, "strides"));
         if !scalable || offs.len() != 1 {
             return false;
         }
@@ -652,7 +640,7 @@ impl Rules {
         let et = elem(&rt).clone();
         let is_int = matches!(et, Type::Integer { .. } | Type::Index);
         let kind = match b[op].get("kind") {
-            Some(Attribute::Extended { ext, .. }) => alloc::string::String::from(ext.body.as_deref().unwrap_or("<add>").trim_matches(|c| c == '<' || c == '>')),
+            Some(Attribute::Extended { ext, .. }) => alloc::string::String::from(ext.inner().unwrap_or("add")),
             _ => "add".into(),
         };
         let mask_op = b.parent_op(op).filter(|p| b[*p].name == "vector.mask");
@@ -684,8 +672,8 @@ impl Rules {
     fn decompose_different_rank_insert_strided_slice(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
         let (src, dst) = (b[op].operands[0], b[op].operands[1]);
-        let offsets = i64s(b, op, "offsets");
-        let strides = i64s(b, op, "strides");
+        let offsets = b.ints(op, "offsets");
+        let strides = b.ints(op, "strides");
         if offsets.is_empty() {
             return false;
         }
@@ -699,7 +687,7 @@ impl Rules {
         rw.set_before(op);
         let x = rw.vextract_(dst, lead);
         let xt = rw.body[x].ty.clone();
-        let inner = rw.make1(OpData::build("vector.insert_strided_slice").operands(&[src, x]).with("offsets", arr(&offsets[diff..])).with("strides", arr(&strides)), xt);
+        let inner = rw.make1(OpData::build("vector.insert_strided_slice").operands(&[src, x]).with("offsets", Attribute::int_array(&offsets[diff..])).with("strides", Attribute::int_array(&strides)), xt);
         let dt = rw.body[dst].ty.clone();
         rw.replace_with(op, OpData::build("vector.insert").operands(&[inner, dst]).with("static_position", Attribute::dense_i64(lead)), &[dt]);
         true
@@ -771,12 +759,12 @@ impl Rules {
             }
             eoff[0] = ep * gcd;
             let at = Type::vector(&atomic, &vec![false; rank], et.clone());
-            let strided = rw.make1(OpData::build("vector.extract_strided_slice").operands(&[extracted]).with("offsets", arr(&eoff)).with("sizes", arr(&atomic)).with("strides", arr(&ones)), at);
+            let strided = rw.make1(OpData::build("vector.extract_strided_slice").operands(&[extracted]).with("offsets", Attribute::int_array(&eoff)).with("sizes", Attribute::int_array(&atomic)).with("strides", Attribute::int_array(&ones)), at);
             if ip == 0 {
                 inserted = part;
             }
             ioff[0] = ip * gcd;
-            inserted = rw.make1(OpData::build("vector.insert_strided_slice").operands(&[strided, inserted]).with("offsets", arr(&ioff)).with("strides", arr(&ones)), part_ty.clone());
+            inserted = rw.make1(OpData::build("vector.insert_strided_slice").operands(&[strided, inserted]).with("offsets", Attribute::int_array(&ioff)).with("strides", Attribute::int_array(&ones)), part_ty.clone());
             if ip + 1 == insert_period {
                 result = rw.vinsert(inserted, result, &ii);
                 Self::mixed_add(&rs[..rd], &mut ii);
@@ -789,7 +777,7 @@ impl Rules {
     #[rewrite("vector.extract_strided_slice", name = "DecomposeNDExtractStridedSlice")]
     fn decompose_nd_extract_strided_slice(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
-        let (offs, sizes, strides) = (i64s(b, op, "offsets"), i64s(b, op, "sizes"), i64s(b, op, "strides"));
+        let (offs, sizes, strides) = (b.ints(op, "offsets"), b.ints(op, "sizes"), b.ints(op, "strides"));
         if offs.len() == 1 {
             return false;
         }
@@ -814,7 +802,7 @@ impl Rules {
                 shape[i] = *s;
             }
             let t = Type::vector(&shape, &osc, elem(&rw.body[one].ty).clone());
-            let x = rw.make1(OpData::build("vector.extract_strided_slice").operands(&[one]).with("offsets", arr(&offs[1..])).with("sizes", arr(&sizes[1..])).with("strides", arr(&strides[1..])), t);
+            let x = rw.make1(OpData::build("vector.extract_strided_slice").operands(&[one]).with("offsets", Attribute::int_array(&offs[1..])).with("sizes", Attribute::int_array(&sizes[1..])).with("strides", Attribute::int_array(&strides[1..])), t);
             res = rw.vinsert(x, res, &[idx]);
             off += stride;
             idx += 1;
@@ -832,8 +820,8 @@ impl Rules {
         if (ssc.contains(&true) || dsc.contains(&true)) && ss.len() == 1 {
             return false;
         }
-        let offsets = i64s(b, op, "offsets");
-        let strides = i64s(b, op, "strides");
+        let offsets = b.ints(op, "offsets");
+        let strides = b.ints(op, "strides");
         if offsets.is_empty() || ds.len() != ss.len() {
             return false;
         }
@@ -864,7 +852,7 @@ impl Rules {
             if vshape(&rw.body[x].ty).is_some() {
                 let xd = rw.vextract_(dst, &[off]);
                 let t = rw.body[xd].ty.clone();
-                x = rw.make1(OpData::build("vector.insert_strided_slice").operands(&[x, xd]).with("offsets", arr(&offsets[1..])).with("strides", arr(&strides[1..])), t);
+                x = rw.make1(OpData::build("vector.insert_strided_slice").operands(&[x, xd]).with("offsets", Attribute::int_array(&offsets[1..])).with("strides", Attribute::int_array(&strides[1..])), t);
             }
             res = rw.vinsert(x, res, &[off]);
             off += stride;
@@ -883,7 +871,7 @@ impl Rules {
         if dsc.contains(&true) || ssc.contains(&true) {
             return false;
         }
-        let (offs, sizes, strides) = (i64s(b, op, "offsets"), i64s(b, op, "sizes"), i64s(b, op, "strides"));
+        let (offs, sizes, strides) = (b.ints(op, "offsets"), b.ints(op, "sizes"), b.ints(op, "strides"));
         if offs.len() != 1 {
             return false;
         }

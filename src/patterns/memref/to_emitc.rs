@@ -39,7 +39,7 @@ impl MemrefToEmitc {
     fn pointee<'a>(t: &Type<'a>) -> Option<Type<'a>> {
         let Type::Extended(e) = t else { return None };
         (e.name == "emitc.ptr").then_some(())?;
-        let inner = e.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?;
+        let inner = e.inner()?;
         mlirformat::Parser::read(inner, |p| p.ty()).ok().map(|t| t.owned())
     }
 

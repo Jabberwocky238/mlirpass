@@ -91,7 +91,7 @@ impl<'b, 'a> Glsl<'b, 'a> {
 
     fn enum_case(a: Option<&Attribute<'_>>) -> Option<String> {
         let Some(Attribute::Extended { ext, .. }) = a else { return None };
-        Some(String::from(ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?))
+        Some(String::from(ext.inner()?))
     }
 
     fn int_attr(a: Option<&Attribute<'_>>) -> Option<i64> {

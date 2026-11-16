@@ -160,7 +160,7 @@ impl<'a> Cr<'_, 'a, '_> {
         let out = if rty == orig {
             r
         } else if boolean {
-            let zero = self.llvm_constant(Attribute::of_int(0, Type::int(32)), Type::int(32));
+            let zero = self.llvm_constant(Attribute::i32(0), Type::int(32));
             self.build(OpData::build("llvm.icmp").operands(&[r, zero]).with("predicate", Attribute::i64(1)), Type::int(1))
         } else {
             self.build(OpData::build("llvm.fptrunc").operands(&[r]), orig)

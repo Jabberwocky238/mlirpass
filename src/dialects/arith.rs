@@ -163,7 +163,7 @@ mod bufferizable {
                         .with("initial_value", value)
                         .flag("constant");
                     if alignment > 0 {
-                        data.set("alignment", Attribute::integer(alignment as i128, Type::int(64)));
+                        data.set("alignment", Attribute::i64(alignment as i64));
                     }
                     data.loc.clone_from(&rw.body[op].loc);
                     let saved = rw.ip;

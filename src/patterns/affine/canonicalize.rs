@@ -386,7 +386,7 @@ impl<'a> Body<'a> {
         }
         let Some(res) = res.into_iter().collect::<Option<Vec<AffineExpr>>>() else { return false };
         let is_dim = res.iter().all(|e| matches!(e, AffineExpr::Dim(_)));
-        let basis = self.static_basis(d);
+        let basis = self.dense_i64(d, "static_basis");
         let mut stride = 1i64;
         let mut expected = Vec::new();
         for (bnd, size) in res.iter().rev().zip(basis.iter().rev()) {
@@ -1007,13 +1007,6 @@ enum Ofr {
 }
 
 impl<'a> Body<'a> {
-    fn static_basis(&self, op: OpId) -> Vec<i64> {
-        match self[op].get("static_basis") {
-            Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
-            _ => Vec::new(),
-        }
-    }
-
     fn dynamic_basis(&self, op: OpId) -> Vec<ValueId> {
         if self[op].name == "affine.delinearize_index" {
             return self[op].operands[1..].to_vec();
@@ -1029,7 +1022,7 @@ impl<'a> Body<'a> {
 
     fn mixed_basis(&self, op: OpId) -> Vec<Ofr> {
         let mut d = self.dynamic_basis(op).into_iter();
-        self.static_basis(op).into_iter().map(|b| if b == i64::MIN { Ofr::V(d.next().expect("dynamic basis")) } else { Ofr::C(b) }).collect()
+        self.dense_i64(op, "static_basis").into_iter().map(|b| if b == i64::MIN { Ofr::V(d.next().expect("dynamic basis")) } else { Ofr::C(b) }).collect()
     }
 
     fn disjoint(&self, op: OpId) -> bool {
@@ -1038,7 +1031,7 @@ impl<'a> Body<'a> {
 
     fn has_outer_bound(&self, op: OpId) -> bool {
         let n = if self[op].name == "affine.delinearize_index" { self[op].results.len() } else { self.multi_index(op).len() };
-        n == self.static_basis(op).len()
+        n == self.dense_i64(op, "static_basis").len()
     }
 
     fn padded_basis(&self, op: OpId) -> Vec<Ofr> {
@@ -1052,14 +1045,9 @@ impl<'a> Body<'a> {
     fn ofr_const(&self, o: Ofr) -> Option<i64> {
         match o {
             Ofr::C(c) => Some(c),
-            Ofr::V(v) => self.const_int_or_splat(v),
+            Ofr::V(v) => self.splat_int(v).map(|i| i.signed() as i64),
             Ofr::None => None,
         }
-    }
-
-    fn const_int_or_splat(&self, v: ValueId) -> Option<i64> {
-        let c = crate::Const::try_from(&self.constant_of(v)?).ok()?;
-        Some(c.as_int()?.signed() as i64)
     }
 
     fn fold_constant_basis(&mut self, op: OpId) -> bool {
@@ -1094,7 +1082,7 @@ fn fold_delinearize<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     if !b.dynamic_basis(op).is_empty() {
         return Fold::Failed;
     }
-    let mut basis = b.static_basis(op);
+    let mut basis = b.dense_i64(op, "static_basis");
     if b.has_outer_bound(op) {
         basis.remove(0);
     }
@@ -1126,7 +1114,7 @@ fn fold_linearize<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
     if !b.dynamic_basis(op).is_empty() {
         return Fold::Failed;
     }
-    let basis = b.static_basis(op);
+    let basis = b.dense_i64(op, "static_basis");
     let (mut result, mut stride) = (0i64, 1i64);
     for (len, i) in basis.iter().rev().zip(idx.iter().rev()) {
         result += i * stride;
@@ -1333,12 +1321,12 @@ impl AffineCanon {
         if !b.disjoint(lin) {
             return false;
         }
-        let lsb = b.static_basis(lin);
+        let lsb = b.dense_i64(lin, "static_basis");
         let Some(&target) = lsb.last() else { return false };
         if target == i64::MIN {
             return false;
         }
-        let basis = b.static_basis(op);
+        let basis = b.dense_i64(op, "static_basis");
         let (mut size, mut elems) = (1i64, 0usize);
         for e in basis.iter().rev() {
             if *e == i64::MIN {
@@ -1466,7 +1454,7 @@ impl AffineCanon {
         let b = &*rw.body;
         let multi = b.multi_index(op);
         let Some(&lead) = multi.first() else { return false };
-        if b.const_int_or_splat(lead) != Some(0) {
+        if b.splat_int(lead).map(|i| i.signed() as i64) != Some(0) {
             return false;
         }
         if multi.len() == 1 {
@@ -1502,7 +1490,7 @@ impl AffineCanon {
                 basis.push(e);
                 continue;
             }
-            if !disjoint && b.const_int_or_splat(*i) != Some(0) {
+            if !disjoint && b.splat_int(*i).map(|i| i.signed() as i64) != Some(0) {
                 idx.push(*i);
                 basis.push(e);
             }

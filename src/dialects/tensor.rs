@@ -569,7 +569,7 @@ mod bufferizable {
             self.set_start(blk);
             let indices: Vec<ValueId> = (0..rank)
                 .map(|d| {
-                    let i = self.create(OpData::build("linalg.index").with("dim", mlirformat::Attribute::integer(d as i128, Type::int(64))), &[Type::Index]);
+                    let i = self.create(OpData::build("linalg.index").with("dim", mlirformat::Attribute::i64(d as i64)), &[Type::Index]);
                     self.body[i].results[0]
                 })
                 .collect();

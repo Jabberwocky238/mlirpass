@@ -132,7 +132,7 @@ impl AmdgpuMemToRocdl {
         let seg = AmdgpuOperands::new(cr, op, operands);
         cr.rw.set_before(op);
         let Some(ptr) = Self::element_ptr(cr, op, &seg, 0, 0, if speculative { 0 } else { INBOUNDS_NUW }, o) else { return false };
-        let data = OpData::build("rocdl.global.prefetch").operands(&[ptr]).with("cachePolicy", Attribute::dialect("rocdl", &alloc::format!("<gfx12_cache_policy {policy}>")));
+        let data = OpData::build("rocdl.global.prefetch").operands(&[ptr]).with("cachePolicy", Attribute::dialect_with("rocdl", format_args!("gfx12_cache_policy {policy}")));
         cr.replace_new(op, data, &[]);
         true
     }
@@ -151,7 +151,7 @@ impl AmdgpuMemToRocdl {
         let dst = seg.groups.first().map_or(0, |g| g.len()) + seg.groups.get(1).map_or(0, |g| g.len());
         cr.rw.set_before(op);
         let (Some(src), Some(dst)) = (Self::element_ptr(cr, op, &seg, 0, 0, 0, o), Self::element_ptr(cr, op, &seg, dst, 2, 0, o)) else { return false };
-        let i32a = |v: u32| Attribute::of_int(v.into(), Type::int(32));
+        let i32a = |v: u32| Attribute::i32(v.into());
         let name = if cr.rw.body[op].get("async").is_some() { "rocdl.load.async.to.lds" } else { "rocdl.load.to.lds" };
         let data = OpData::build(name).operands(&[src, dst]).with("size", i32a(width)).with("offset", i32a(0)).with("aux", i32a(0));
         cr.replace_new(op, data, &[]);

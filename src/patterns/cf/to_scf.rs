@@ -26,9 +26,6 @@ impl ControlFlowToScf {
         r
     }
 
-    fn i32_attr<'a>(v: i64) -> Attribute<'a> {
-        Attribute::Int { lit: format!("{v}").into(), ty: Some(Type::int(32)) }
-    }
 }
 
 impl<'a> CfgToScfInterface<'a> for ControlFlowToScf {
@@ -94,7 +91,7 @@ impl<'a> CfgToScfInterface<'a> for ControlFlowToScf {
     }
 
     fn switch_value(&mut self, body: &mut Body<'a>, at: At, loc: Option<Str<'a>>, value: u32) -> ValueId {
-        let op = Self::make(body, at, OpData::build("arith.constant").with("value", Self::i32_attr(i64::from(value))), loc, &[Type::int(32)]);
+        let op = Self::make(body, at, OpData::build("arith.constant").with("value", Attribute::i32(i64::from(value))), loc, &[Type::int(32)]);
         body[op].results[0]
     }
 

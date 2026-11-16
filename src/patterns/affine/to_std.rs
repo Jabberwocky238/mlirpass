@@ -273,10 +273,7 @@ impl AffineToStd {
         let (Some(lbm), Some(ubm)) = (Self::map_of(cr, op, "lowerBoundsMap"), Self::map_of(cr, op, "upperBoundsMap")) else { return false };
         let b = &*cr.rw.body;
         let groups = |n: &str| b[op].get(n).and_then(|a| mlirformat::Const::try_from(a).ok()).and_then(|c| c.ints());
-        let ints = |n: &str| match b[op].get(n) {
-            Some(Attribute::Array(xs)) => xs.iter().map(|x| if let Attribute::Int { lit, .. } = x { lit.parse::<i64>().ok() } else { None }).collect::<Option<Vec<_>>>(),
-            _ => None,
-        };
+        let ints = |n: &str| b[op].get(n).and_then(Attribute::int_values);
         let (Some(lg), Some(ug), Some(steps), Some(reductions)) = (groups("lowerBoundsGroups"), groups("upperBoundsGroups"), ints("steps"), ints("reductions")) else { return false };
         let Some(kinds) = reductions.iter().map(|k| Reduction::of(*k)).collect::<Option<Vec<_>>>() else { return false };
         let ops = b[op].operands.clone();

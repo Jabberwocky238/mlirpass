@@ -32,7 +32,7 @@ impl FuncToLlvm {
     }
 
     fn llvm_func_data<'a>(name: &str, ty: Type<'a>, linkage: &str, attrs: Vec<NamedAttr<'a>>, loc: Option<mlirformat::Str<'a>>) -> OpData<'a> {
-        let mut d = OpData::build("llvm.func").with("sym_name", Attribute::str(name)).with("function_type", Attribute::Type(ty)).with("linkage", Attribute::dialect("llvm.linkage", &format!("<{linkage}>")));
+        let mut d = OpData::build("llvm.func").with("sym_name", Attribute::str(name)).with("function_type", Attribute::Type(ty)).with("linkage", Attribute::dialect_with("llvm.linkage", linkage));
         for a in attrs {
             d.set(&a.name, a.value.unwrap_or(Attribute::Unit));
         }
@@ -44,7 +44,7 @@ impl FuncToLlvm {
     fn func(cr: &mut ConversionRewriter<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], opts: LlvmOptions) -> bool {
         let Some(fty) = Self::function_type(cr, op) else { return false };
         let b = &*cr.rw.body;
-        let vararg = matches!(b[op].get("func.varargs"), Some(Attribute::Bool(true)));
+        let vararg = b[op].has_flag("func.varargs");
         let bare = opts.bare_ptr || b[op].get("llvm.bareptr").is_some();
         let Some(sig) = cr.llvm_signature(opts, &fty.inputs, &fty.results, vararg, bare) else { return false };
         let b = &*cr.rw.body;
@@ -53,7 +53,7 @@ impl FuncToLlvm {
             return false;
         }
         let linkage = match b[op].get("llvm.linkage") {
-            Some(Attribute::Extended { ext, .. }) => String::from(ext.body.as_deref().unwrap_or("<external>").trim_matches(|c| c == '<' || c == '>')),
+            Some(Attribute::Extended { ext, .. }) => String::from(ext.inner().unwrap_or("external")),
             Some(_) => return false,
             None => String::from("external"),
         };

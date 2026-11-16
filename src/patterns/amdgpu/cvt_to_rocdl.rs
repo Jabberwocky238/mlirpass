@@ -52,7 +52,7 @@ impl Small {
 
     fn selector(self, half: &'static str, index: &'static str, i: i64) -> (&'static str, Attribute<'static>) {
         match self {
-            Small::Fp4 => (index, Attribute::of_int(i.into(), Type::int(32))),
+            Small::Fp4 => (index, Attribute::i32(i)),
             _ => (half, Attribute::Bool(i != 0)),
         }
     }
@@ -72,7 +72,7 @@ pub struct AmdgpuCvtToRocdl;
 #[patterns(converter, options = AmdgpuRocdlOptions)]
 impl AmdgpuCvtToRocdl {
     fn c32(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
-        cr.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(32))
+        cr.llvm_constant(Attribute::i32(v), Type::int(32))
     }
 
     fn bitcast<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, t: Type<'a>) -> ValueId {
@@ -123,7 +123,7 @@ impl AmdgpuCvtToRocdl {
         let data = if Self::vec_len(&res_ty).is_some() {
             OpData::build(&format!("rocdl.cvt.pk.f32.{}", kind.name())).with("wordSel", Attribute::Bool(index != 0))
         } else {
-            OpData::build(&format!("rocdl.cvt.f32.{}", kind.name())).with("byteSel", Attribute::of_int(index.into(), Type::int(32)))
+            OpData::build(&format!("rocdl.cvt.f32.{}", kind.name())).with("byteSel", Attribute::i32(index))
         };
         let r = cr.build(data.operands(&[i32src]), f32t);
         cr.replace(op, vec![vec![r]]);
@@ -244,7 +244,7 @@ impl AmdgpuCvtToRocdl {
         let existing = Self::existing_i32(cr, operands.get(2).and_then(|e| e.first()).copied());
         let data = OpData::build(&format!("rocdl.cvt.sr.{}.f32", kind.name()))
             .operands(&[operands[0][0], operands[1][0], existing])
-            .with("byteSel", Attribute::of_int(store.into(), Type::int(32)));
+            .with("byteSel", Attribute::i32(store));
         let r = cr.build(data, Type::int(32));
         let r = Self::bitcast(cr, r, res);
         cr.replace(op, vec![vec![r]]);

@@ -153,7 +153,7 @@ impl IndexToLlvm {
         let Some([l, r]) = ConversionRewriter::one_to_one(operands).and_then(|v| <[ValueId; 2]>::try_from(v).ok()) else { return false };
         let pred = match cr.rw.body[op].get("pred") {
             Some(Attribute::Extended { ext, .. }) => {
-                let body = ext.body.as_deref().unwrap_or("").trim_matches(|c| c == '<' || c == '>');
+                let body = ext.inner().unwrap_or("");
                 let name = body.rsplit(' ').next().unwrap_or(body);
                 ["eq", "ne", "slt", "sle", "sgt", "sge", "ult", "ule", "ugt", "uge"].iter().position(|p| *p == name).unwrap_or(0) as i64
             }

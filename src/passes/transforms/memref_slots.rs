@@ -34,7 +34,7 @@ impl<'a> Body<'a> {
         let a = self.memref_access(op)?;
         let dims = self[a.memref].ty.dims()?;
         let coord = |(v, d): (&ValueId, &i64)| {
-            let n = Const::try_from(&self.constant_of(*v)?).ok().filter(|c| !c.elements)?.as_int()?.unsigned();
+            let n = self.const_int(*v)?.unsigned();
             (n < *d as u128).then(|| Attribute::index(n as i64))
         };
         a.indices.iter().zip(&dims).map(coord).collect::<Option<_>>().map(Attribute::Array)
@@ -316,7 +316,7 @@ impl Promotable for TestSlots {
     }
 
     fn default_value<'a>(&self, rw: &mut Rewriter<'_, 'a>, alloc: OpId, slot: &MemorySlot<'a>) -> ValueId {
-        let data = OpData { loc: rw.body[alloc].loc.clone(), ..OpData::build("test.constant").with("value", Attribute::integer(42, Type::int(32))) };
+        let data = OpData { loc: rw.body[alloc].loc.clone(), ..OpData::build("test.constant").with("value", Attribute::i32(42)) };
         let c = rw.create(data, core::slice::from_ref(&slot.elem));
         rw.body[c].results[0]
     }

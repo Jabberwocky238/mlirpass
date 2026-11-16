@@ -235,7 +235,7 @@ impl<'a> Rw<'_, 'a> {
     }
 
     fn print(&mut self, v: Option<ValueId>, punct: &str) -> OpId {
-        let data = OpData::build("vector.print").operands(&v.into_iter().collect::<Vec<_>>()).with("punctuation", Attribute::dialect("vector.punctuation", &alloc::format!("<{punct}>")));
+        let data = OpData::build("vector.print").operands(&v.into_iter().collect::<Vec<_>>()).with("punctuation", Attribute::dialect_with("vector.punctuation", punct));
         self.make(data, &[])
     }
 
@@ -267,7 +267,7 @@ impl<'a> Rw<'_, 'a> {
         if let (false, Some(d)) = (x.in_bounds0(), dim) {
             let size = self.dim_of(x.base, d);
             let idx = self.add_apply(x.indices[d], iv);
-            cond = Some(self.make1(OpData::build("arith.cmpi").operands(&[size, idx]).with("predicate", Attribute::Int { lit: "4".into(), ty: Some(Type::int(64)) }), Type::int(1)));
+            cond = Some(self.make1(OpData::build("arith.cmpi").operands(&[size, idx]).with("predicate", Attribute::i64(4)), Type::int(1)));
         }
         if let Some(m) = x.mask.filter(|_| x.mask_rank(self.body) == 1 && !x.broadcast0()) {
             let mc = self.extract_dyn(m, iv);
@@ -853,7 +853,7 @@ fn decompose_print(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         return false;
     }
     let punct = match b[op].get("punctuation") {
-        Some(Attribute::Extended { ext, .. }) => ext.body.as_deref().unwrap_or("<newline>").trim_matches(|c| c == '<' || c == '>').into(),
+        Some(Attribute::Extended { ext, .. }) => ext.inner().unwrap_or("newline").into(),
         _ => alloc::string::String::from("newline"),
     };
     let mut vt = b[src].ty.clone();
@@ -898,7 +898,7 @@ fn decompose_print(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let iv = rw.body[blk].args[0];
         ivs.push(iv);
         rw.set_start(blk);
-        let not_last = rw.make1(OpData::build("arith.cmpi").operands(&[iv, last]).with("predicate", Attribute::Int { lit: "6".into(), ty: Some(Type::int(64)) }), Type::int(1));
+        let not_last = rw.make1(OpData::build("arith.cmpi").operands(&[iv, last]).with("predicate", Attribute::i64(6)), Type::int(1));
         rw.build_if_then(not_last, &mut |rw| {
             rw.print(None, "comma");
         });

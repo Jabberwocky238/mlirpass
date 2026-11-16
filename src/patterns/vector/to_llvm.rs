@@ -162,7 +162,7 @@ impl VectorToLlvm {
         let flags = if plain && o.gep_inbounds_nuw { M::NO_WRAP } else { 0 };
         let Some(ptr) = M::strided_ptr(cr, o.llvm, &m, operands[base_at][0], &indices, flags) else { return false };
         let rest: Vec<ValueId> = operands[base_at + 1 + rank..].iter().flatten().copied().collect();
-        let nontemporal = matches!(cr.rw.body[op].get("nontemporal"), Some(Attribute::Bool(true)));
+        let nontemporal = cr.rw.body[op].has_flag("nontemporal");
         let mem = |mut d: OpData<'a>| -> OpData<'a> {
             if align != 0 {
                 d.set("alignment", Attribute::i64(align));
@@ -180,11 +180,11 @@ impl VectorToLlvm {
                 cr.replace_new(op, mem(OpData::build("llvm.store").operands(&[operands[0][0], ptr])), &[]);
             }
             "vector.maskedload" => {
-                let d = OpData::build("llvm.intr.masked.load").operands(&[ptr, rest[0], rest[1]]).with("alignment", Attribute::integer(i128::from(align), Type::int(32)));
+                let d = OpData::build("llvm.intr.masked.load").operands(&[ptr, rest[0], rest[1]]).with("alignment", Attribute::i32(align));
                 cr.replace_new(op, d, &[lt]);
             }
             _ => {
-                let d = OpData::build("llvm.intr.masked.store").operands(&[rest[1], ptr, rest[0]]).with("alignment", Attribute::integer(i128::from(align), Type::int(32)));
+                let d = OpData::build("llvm.intr.masked.store").operands(&[rest[1], ptr, rest[0]]).with("alignment", Attribute::i32(align));
                 cr.replace_new(op, d, &[]);
             }
         }
@@ -217,11 +217,11 @@ impl VectorToLlvm {
         let rest: Vec<ValueId> = operands[1 + rank..].iter().flatten().copied().collect();
         let Some(ptrs) = Self::indexed_ptrs(cr, o, &m, &vs, ptr, rest[0]) else { return false };
         if scatter {
-            let d = OpData::build("llvm.intr.masked.scatter").operands(&[rest[2], ptrs, rest[1]]).with("alignment", Attribute::integer(i128::from(align), Type::int(32)));
+            let d = OpData::build("llvm.intr.masked.scatter").operands(&[rest[2], ptrs, rest[1]]).with("alignment", Attribute::i32(align));
             cr.replace_new(op, d, &[]);
         } else {
             let Some(lt) = Self::convert(cr, &vt) else { return false };
-            let d = OpData::build("llvm.intr.masked.gather").operands(&[ptrs, rest[1], rest[2]]).with("alignment", Attribute::integer(i128::from(align), Type::int(32)));
+            let d = OpData::build("llvm.intr.masked.gather").operands(&[ptrs, rest[1], rest[2]]).with("alignment", Attribute::i32(align));
             cr.replace_new(op, d, &[lt]);
         }
         true
@@ -256,7 +256,7 @@ impl VectorToLlvm {
 
     fn kind<'a>(cr: &Cr<'_, 'a, '_>, op: OpId) -> Option<String> {
         match cr.rw.body[op].get("kind")? {
-            Attribute::Extended { ext, .. } => Some(String::from(ext.body.as_deref()?.trim_matches(|c| c == '<' || c == '>'))),
+            Attribute::Extended { ext, .. } => Some(String::from(ext.inner()?)),
             _ => None,
         }
     }
@@ -266,18 +266,14 @@ impl VectorToLlvm {
         if !reassoc {
             return a;
         }
-        let body = match &a {
-            Attribute::Extended { ext, .. } => String::from(ext.body.as_deref().unwrap_or("<none>")),
-            _ => String::from("<none>"),
-        };
-        let mut flags: Vec<&str> = body.trim_matches(|c| c == '<' || c == '>').split(',').map(str::trim).filter(|f| !f.is_empty() && *f != "none").collect();
+        let mut flags: Vec<&str> = a.inner().unwrap_or("none").split(',').map(str::trim).filter(|f| !f.is_empty() && *f != "none").collect();
         if !flags.contains(&"reassoc") {
             flags.push("reassoc");
         }
         let order = ["nnan", "ninf", "nsz", "arcp", "contract", "afn", "reassoc"];
         flags.sort_by_key(|f| order.iter().position(|o| o == f));
         let text = if flags.len() == 7 { String::from("fast") } else { flags.join(", ") };
-        Attribute::dialect("llvm.fastmath", &format!("<{text}>"))
+        Attribute::dialect_with("llvm.fastmath", text)
     }
 
     fn neutral<'a>(cr: &mut Cr<'_, 'a, '_>, ty: &Type<'a>, what: &str) -> ValueId {
@@ -451,26 +447,15 @@ impl VectorToLlvm {
         true
     }
 
-    fn mask_list<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, name: &str) -> Vec<i64> {
-        match cr.rw.body[op].get(name) {
-            Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
-            _ => Vec::new(),
-        }
-    }
-
-    fn i32_array<'a>(v: &[i64]) -> Attribute<'a> {
-        Attribute::dense_i32(&v)
-    }
-
     #[convert("vector.shuffle")]
     fn shuffle<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: VectorOptions<'_>) -> bool {
         let (t1, t2, rt) = (Self::operand_type(cr, op, 0), Self::operand_type(cr, op, 1), Self::result_type(cr, op));
         let Some(lt) = Self::convert(cr, &rt) else { return false };
-        let mask = Self::mask_list(cr, op, "mask");
+        let mask = cr.rw.body.dense_i64(op, "mask");
         let rank = Self::vector(&rt).map_or(0, Self::vrank);
         let (v1, v2) = (operands[0][0], operands[1][0]);
         if rank <= 1 && t1 == t2 {
-            cr.replace_new(op, OpData::build("llvm.shufflevector").operands(&[v1, v2]).with("mask", Self::i32_array(&mask)), &[lt]);
+            cr.replace_new(op, OpData::build("llvm.shufflevector").operands(&[v1, v2]).with("mask", Attribute::dense_i32(&mask)), &[lt]);
             return true;
         }
         let v1_dim = Self::vector(&t1).and_then(|s| s.shape.as_ref()?.first().map(Self::dim)).unwrap_or(1);
@@ -493,7 +478,7 @@ impl VectorToLlvm {
 
     fn positions<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, dynamic: &[ValueId]) -> Vec<Result<i64, ValueId>> {
         let mut d = dynamic.iter();
-        Self::mask_list(cr, op, "static_position").into_iter().map(|p| if p == Dim::DYNAMIC { Err(*d.next().expect("dynamic position")) } else { Ok(p) }).collect()
+        cr.rw.body.dense_i64(op, "static_position").into_iter().map(|p| if p == Dim::DYNAMIC { Err(*d.next().expect("dynamic position")) } else { Ok(p) }).collect()
     }
 
     fn position_value<'a>(cr: &mut Cr<'_, 'a, '_>, p: Result<i64, ValueId>) -> ValueId {
@@ -666,7 +651,7 @@ impl VectorToLlvm {
         let indices = cr.build(OpData::build("llvm.intr.stepvector"), vt.clone());
         let bound = operands[0][0];
         let bound = if o.force_32bit_indices {
-            let max = cr.build(OpData::build("arith.constant").with("value", Attribute::integer(i128::from(i32::MAX), Type::Index)), Type::Index);
+            let max = cr.build(OpData::build("arith.constant").with("value", Attribute::index((i32::MAX).into())), Type::Index);
             let bt = cr.rw.body[bound].ty.clone();
             cr.build(OpData::build("arith.minsi").operands(&[bound, max]), bt)
         } else {
@@ -707,7 +692,7 @@ impl VectorToLlvm {
             }
         }
         let punct = match cr.rw.body[op].get("punctuation") {
-            Some(Attribute::Extended { ext, .. }) => String::from(ext.body.as_deref().unwrap_or("").trim_matches(|c| c == '<' || c == '>')),
+            Some(Attribute::Extended { ext, .. }) => String::from(ext.inner().unwrap_or("")),
             _ => String::from("newline"),
         };
         if let Some(Attribute::Str { lit, .. }) = cr.rw.body[op].get("stringLiteral").cloned() {
@@ -789,7 +774,7 @@ impl VectorToLlvm {
                 return true;
             }
             let width = Self::dim(&shape[0]);
-            let r = if width == 1 { v } else { cr.build(OpData::build("llvm.shufflevector").operands(&[v, poison]).with("mask", Self::i32_array(&vec![0; width as usize])), lt.clone()) };
+            let r = if width == 1 { v } else { cr.build(OpData::build("llvm.shufflevector").operands(&[v, poison]).with("mask", Attribute::dense_i32(&vec![0; width as usize])), lt.clone()) };
             cr.replace(op, vec![vec![r]]);
             return true;
         }
@@ -805,7 +790,7 @@ impl VectorToLlvm {
         let zero = zero_i32(cr);
         let mut v = cr.build(OpData::build("llvm.insertelement").operands(&[vdesc, src, zero]), one_d.clone());
         let width = Self::dim(shape.last().expect("rank > 1"));
-        v = cr.build(OpData::build("llvm.shufflevector").operands(&[v, v]).with("mask", Self::i32_array(&vec![0; width as usize])), one_d);
+        v = cr.build(OpData::build("llvm.shufflevector").operands(&[v, v]).with("mask", Attribute::dense_i32(&vec![0; width as usize])), one_d);
         let mut pos = vec![0i64; sizes.len()];
         'outer: loop {
             desc = cr.insert_value(desc, v, &pos);
@@ -837,7 +822,7 @@ impl VectorToLlvm {
         }
         let n = Self::dim(&rs.shape.as_ref().expect("rank 1")[0]);
         let mask: Vec<i64> = (0..n / 2).flat_map(|i| [i, n / 2 + i]).collect();
-        cr.replace_new(op, OpData::build("llvm.shufflevector").operands(&[l, r]).with("mask", Self::i32_array(&mask)), &[lt]);
+        cr.replace_new(op, OpData::build("llvm.shufflevector").operands(&[l, r]).with("mask", Attribute::dense_i32(&mask)), &[lt]);
         true
     }
 
@@ -863,8 +848,8 @@ impl VectorToLlvm {
         let even: Vec<i64> = (0..n).filter(|i| i % 2 == 0).collect();
         let odd: Vec<i64> = (0..n).filter(|i| i % 2 == 1).collect();
         let poison = cr.poison(st);
-        let e = cr.build(OpData::build("llvm.shufflevector").operands(&[src, poison]).with("mask", Self::i32_array(&even)), lt.clone());
-        let o = cr.build(OpData::build("llvm.shufflevector").operands(&[src, poison]).with("mask", Self::i32_array(&odd)), lt);
+        let e = cr.build(OpData::build("llvm.shufflevector").operands(&[src, poison]).with("mask", Attribute::dense_i32(&even)), lt.clone());
+        let o = cr.build(OpData::build("llvm.shufflevector").operands(&[src, poison]).with("mask", Attribute::dense_i32(&odd)), lt);
         cr.replace(op, vec![vec![e], vec![o]]);
         true
     }

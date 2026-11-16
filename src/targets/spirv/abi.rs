@@ -81,17 +81,13 @@ impl EntryAbi {
         }
         parts.extend(self.subgroup_size.map(|s| format!("subgroup_size = {s}")));
         parts.extend(self.target_width.map(|s| format!("target_width = {s}")));
-        (!parts.is_empty()).then(|| Attribute::dialect("spirv.entry_point_abi", &format!("<{}>", parts.join(", "))))
+        (!parts.is_empty()).then(|| Attribute::dialect_with("spirv.entry_point_abi", format_args!("{}", parts.join(", "))))
     }
 }
 
 pub(crate) struct Abi;
 
 impl Abi {
-    fn int_attr<'a>(v: i64) -> Attribute<'a> {
-        Attribute::integer(i128::from(v), Type::int(32))
-    }
-
     fn interface_var(a: &Attribute<'_>) -> Option<(i64, i64, Option<String>)> {
         let text = format!("{a}");
         let (nums, rest) = text.split_once('(')?.1.split_once(')')?;
@@ -121,7 +117,7 @@ impl Abi {
         };
         let Ok(SpirvType::Ptr { pointee, storage }) = SpirvType::try_from(&ptr) else { return None };
         let ty = if matches!(SpirvType::try_from(&*pointee), Ok(SpirvType::SampledImage(_))) { ptr } else { SpirvType::ptr(VulkanLayout::decorate(&pointee)?.0, &storage) };
-        let data = OpData::build("spirv.GlobalVariable").with("binding", Self::int_attr(binding)).with("descriptor_set", Self::int_attr(set)).with("sym_name", Attribute::str(&name)).with("type", Attribute::Type(ty));
+        let data = OpData::build("spirv.GlobalVariable").with("binding", Attribute::i32(binding)).with("descriptor_set", Attribute::i32(set)).with("sym_name", Attribute::str(&name)).with("type", Attribute::Type(ty));
         let g = body.create(data, &[]);
         body.insert_before(g, f);
         Some(g)
@@ -147,7 +143,7 @@ impl Abi {
             place(body, addr, at);
             let mut repl = body[addr].results[0];
             if Self::scalar_or_vector(t) {
-                let zero = body.create(OpData::build("spirv.Constant").with("value", Self::int_attr(0)), &[Type::int(32)]);
+                let zero = body.create(OpData::build("spirv.Constant").with("value", Attribute::i32(0)), &[Type::int(32)]);
                 place(body, zero, at);
                 let Ok(SpirvType::Ptr { storage, .. }) = SpirvType::try_from(&gt) else { unreachable!() };
                 let ac = body.create(OpData::build("spirv.AccessChain").operands(&[repl, body[zero].results[0]]), &[SpirvType::ptr(t.clone(), &storage)]);
@@ -191,7 +187,7 @@ impl Abi {
         if args.iter().chain(&results).all(Option::is_none) {
             return Ok(());
         }
-        if !matches!(body[g].get("entry_point"), Some(Attribute::Bool(true))) {
+        if !body[g].has_flag("entry_point") {
             return Err(failed());
         }
         let name = body[g].get("sym_name").and_then(super::lower::symbol_text).ok_or_else(failed)?;
@@ -202,7 +198,7 @@ impl Abi {
                 let (set, binding, sc) = Self::interface_var(&abi).ok_or_else(failed)?;
                 let var = format!("{name}_{kind}_{i}");
                 let ty = SpirvType::ptr(t.clone(), sc.as_deref().unwrap_or("UniformConstant"));
-                let data = OpData::build("spirv.GlobalVariable").with("binding", Self::int_attr(binding)).with("descriptor_set", Self::int_attr(set)).with("sym_name", Attribute::str(&var)).with("type", Attribute::Type(ty));
+                let data = OpData::build("spirv.GlobalVariable").with("binding", Attribute::i32(binding)).with("descriptor_set", Attribute::i32(set)).with("sym_name", Attribute::str(&var)).with("type", Attribute::Type(ty));
                 let o = body.create(data, &[]);
                 body.insert_before(o, g);
                 vars.push(Attribute::SymbolRef(vec![var.into()]));
@@ -244,12 +240,12 @@ impl Abi {
         });
         let Some(model) = model else { return Err(Error(String::from("lower entry point failure: could not select execution model based on 'spirv.target_env'"))) };
         let sym = |n: &str| Attribute::SymbolRef(vec![String::from(n).into()]);
-        let ep = OpData::build("spirv.EntryPoint").with("execution_model", Attribute::dialect("spirv.execution_model", &format!("<{model}>"))).with("fn", sym(&name)).with("interface", Attribute::Array(vars.iter().map(|v| sym(v)).collect()));
+        let ep = OpData::build("spirv.EntryPoint").with("execution_model", Attribute::dialect_with("spirv.execution_model", model)).with("fn", sym(&name)).with("interface", Attribute::Array(vars.iter().map(|v| sym(v)).collect()));
         let o = body.create(ep, &[]);
         body.insert(o, block, None);
         let mode_allowed = |m: &str| EnumSpec::of("ExecutionMode").and_then(|e| e.case(m)).is_none_or(|c| c.avail.caps.iter().all(|ors| ors.iter().any(|x| env.allows_cap(x))));
         let mode = |body: &mut Body<'_>, m: &str, values: Vec<i64>| {
-            let d = OpData::build("spirv.ExecutionMode").with("execution_mode", Attribute::dialect("spirv.execution_mode", &format!("<{m}>"))).with("fn", sym(&name)).with("values", Attribute::Array(values.into_iter().map(Self::int_attr).collect()));
+            let d = OpData::build("spirv.ExecutionMode").with("execution_mode", Attribute::dialect_with("spirv.execution_mode", m)).with("fn", sym(&name)).with("values", Attribute::Array(values.into_iter().map(Attribute::i32).collect()));
             let o = body.create(d, &[]);
             body.insert(o, block, None);
         };

@@ -17,13 +17,14 @@ impl<'a> Body<'a> {
         self[op].get(name).and_then(Attribute::dense_values).unwrap_or_default()
     }
 
+    pub fn ints(&self, op: OpId, name: &str) -> Vec<i64> {
+        self[op].get(name).and_then(Attribute::int_values).unwrap_or_default()
+    }
+
     pub fn ofr_int(&self, o: Ofr) -> Option<i64> {
         match o {
             Ofr::C(c) => Some(c),
-            Ofr::V(v) => {
-                let c = Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?;
-                Some(c.as_int()?.signed() as i64)
-            }
+            Ofr::V(v) => self.const_index(v),
         }
     }
 }

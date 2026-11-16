@@ -811,7 +811,7 @@ impl<'o> AnalysisState<'o> {
                                 _ => vec![-1; b[*r].operands.len()],
                             };
                             marks[k] = arg as i64;
-                            b[*r].set("__equivalent_func_args__", Attribute::Array(marks.iter().map(|m| Attribute::Int { lit: format!("{m}").into(), ty: None }).collect()));
+                            b[*r].set("__equivalent_func_args__", Attribute::int_array(&marks));
                             if n == 0 && returns.len() == 1 {
                                 break;
                             }

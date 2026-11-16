@@ -3,7 +3,7 @@ use alloc::{borrow::ToOwned, boxed::Box, format, string::{String, ToString}, vec
 
 use mlirformat::Op;
 use mlirformat::{Attribute, Error};
-use crate::{A, BlockId, Body, Kernels, OpData, OpId, Quiet, Rewriter, Xe3Kernel, pass};
+use crate::{A, Body, Kernels, OpData, OpId, Quiet, Rewriter, Xe3Kernel, pass};
 
 pub const DO: &str = "xe3.ctl.do";
 
@@ -29,15 +29,6 @@ impl<'a> Control<'_, 'a> {
         self.rw.body[op].get_str(name).map(str::to_owned).ok_or_else(|| Error(format!("{}: no {name} (run xe3-regalloc)", self.rw.body[op].name)))
     }
 
-    fn inline(&mut self, b: BlockId, before: OpId) {
-        let parent = self.rw.body[before].parent.expect("placed");
-        let yields: Vec<OpId> = self.rw.body.ops(b).filter(|o| matches!(&*self.rw.body[*o].name, "scf.yield" | "scf.condition")).collect();
-        self.rw.inline_block_before(b, parent, Some(before), &[]);
-        for y in yields {
-            self.rw.erase_op(y);
-        }
-    }
-
     fn lower(&mut self, op: OpId) -> Result<(), Error> {
         let flag = ("flag", A::str("f0.0"));
         let null = ("dst", A::str("null<1;1,0>:d"));
@@ -52,7 +43,7 @@ impl<'a> Control<'_, 'a> {
                 self.put(op, "xe3.eu.cmp", &[null.clone(), ("src0", A::str(iv.clone())), ("src1", A::str(ub)), ("cond", A::str("ge")), flag.clone()]);
                 self.put(op, "xe3.eu.break", &[("pred", A::str("normal")), flag.clone()]);
                 if let Some(b) = entry(&self.rw, 0) {
-                    self.inline(b, op);
+                    self.rw.inline_body_before(b, op);
                 }
                 self.put(op, "xe3.eu.add", &[("dst", A::str(iv_dst)), ("src0", A::str(iv)), ("src1", A::str(step))]);
                 self.put(op, "xe3.eu.while", &[]);
@@ -62,12 +53,12 @@ impl<'a> Control<'_, 'a> {
                 self.rw.set_before(op);
                 self.rw.create(OpData::build(DO), &[]);
                 if let Some(b) = entry(&self.rw, 0) {
-                    self.inline(b, op);
+                    self.rw.inline_body_before(b, op);
                 }
                 self.put(op, "xe3.eu.cmp", &[null.clone(), ("src0", A::str(cond)), ("src1", A::str("0x0:d")), ("cond", A::str("z")), flag.clone()]);
                 self.put(op, "xe3.eu.break", &[("pred", A::str("normal")), flag]);
                 if let Some(b) = entry(&self.rw, 1) {
-                    self.inline(b, op);
+                    self.rw.inline_body_before(b, op);
                 }
                 self.put(op, "xe3.eu.while", &[]);
             }
@@ -76,11 +67,11 @@ impl<'a> Control<'_, 'a> {
                 self.put(op, "xe3.eu.cmp", &[null.clone(), ("src0", A::str(cond)), ("src1", A::str("0x0:d")), ("cond", A::str("nz")), flag.clone()]);
                 self.put(op, "xe3.eu.if", &[("pred", A::str("normal")), flag]);
                 if let Some(b) = entry(&self.rw, 0) {
-                    self.inline(b, op);
+                    self.rw.inline_body_before(b, op);
                 }
                 if let Some(b) = entry(&self.rw, 1).filter(|b| self.rw.body.ops(*b).any(|o| self.rw.body[o].name != "scf.yield")) {
                     self.put(op, "xe3.eu.else", &[]);
-                    self.inline(b, op);
+                    self.rw.inline_body_before(b, op);
                 }
                 self.put(op, "xe3.eu.endif", &[]);
             }

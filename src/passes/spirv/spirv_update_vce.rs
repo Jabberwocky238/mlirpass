@@ -88,7 +88,7 @@ pub fn spirv_update_vce<'a>(body: &mut Body<'a>, module: OpId) -> Result<(), Err
             }
         }
     }
-    let vce = Attribute::dialect("spirv.vce", &format!("<v1.{version}, [{}], [{}]>", caps.join(", "), exts.join(", ")));
+    let vce = Attribute::dialect_with("spirv.vce", format_args!("v1.{version}, [{}], [{}]", caps.join(", "), exts.join(", ")));
     body[module].set("vce_triple", vce);
     Ok(())
 }

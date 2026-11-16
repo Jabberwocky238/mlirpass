@@ -96,7 +96,7 @@ impl MemrefToSpirv {
     }
 
     fn requirements<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, ptr: ValueId) -> Option<Vec<(&'static str, Attribute<'a>)>> {
-        let nontemporal = matches!(cr.rw.body[op].get("nontemporal"), Some(Attribute::Bool(true)));
+        let nontemporal = cr.rw.body[op].has_flag("nontemporal");
         let preferred = cr.rw.body[op].get("alignment").and_then(|a| mlirformat::Const::try_from(a).ok()).and_then(|c| c.as_int()).map_or(0, |i| i.bits() as u64);
         if preferred >= u64::from(u32::MAX) {
             return None;
@@ -112,7 +112,7 @@ impl MemrefToSpirv {
         };
         let access = if nontemporal { "Aligned|Nontemporal" } else { "Aligned" };
         let align = if preferred != 0 { preferred } else { size };
-        Some(vec![("memory_access", Cr::spirv_enum("memory_access", access)), ("alignment", Attribute::integer(i128::from(align), Type::int(32)))])
+        Some(vec![("memory_access", Cr::spirv_enum("memory_access", access)), ("alignment", Attribute::of_int(align.into(), Type::int(32)))])
     }
 
     fn allocation_supported(cr: &Cr<'_, '_, '_>, op: OpId, t: &Type<'_>) -> bool {
@@ -366,7 +366,7 @@ impl MemrefToSpirv {
         };
         let elem = (*s.elem).clone();
         let texel = cr.build(OpData::build("spirv.ImageFetch").operands(&[img, coords]), Type::vector(&[4], &[], elem.clone()));
-        let v = cr.build(OpData::build("spirv.CompositeExtract").operands(&[texel]).with("indices", Attribute::Array(vec![Attribute::integer(0, Type::int(32))])), elem);
+        let v = cr.build(OpData::build("spirv.CompositeExtract").operands(&[texel]).with("indices", Attribute::int_array_of(32, &[0])), elem);
         cr.replace_values(op, &[v]);
         true
     }

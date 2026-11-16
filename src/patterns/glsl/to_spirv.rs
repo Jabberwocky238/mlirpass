@@ -198,15 +198,11 @@ impl GlslToSpirv {
     const KILL: &str = "spirv.Kill";
 
     fn image_operands<'a>(o: &str) -> Attribute<'a> {
-        Attribute::dialect("spirv.image_operands", &format!("<{o}>"))
+        Attribute::dialect_with("spirv.image_operands", o)
     }
 
     fn sym<'a>(name: &str) -> Attribute<'a> {
         Attribute::SymbolRef(vec![String::from(name).into()])
-    }
-
-    fn i32_attr<'a>(v: u32) -> Attribute<'a> {
-        Attribute::of_int(i128::from(v), Type::int(32))
     }
 
     fn ptr<'a>(pointee: Type<'a>, class: &str) -> Type<'a> {
@@ -225,15 +221,15 @@ impl GlslToSpirv {
         let mut data = OpData::build("spirv.GlobalVariable").with("sym_name", Attribute::str(name)).with("type", Attribute::Type(Self::ptr(g.ty.clone(), class)));
         match g.builtin.map(|b| (b, client.built_in(b))) {
             Some((_, Some(spirv))) => data = data.with("built_in", Attribute::str(spirv)),
-            Some((BuiltinVar::FragColor, None)) => data = data.with("location", Self::i32_attr(0)),
+            Some((BuiltinVar::FragColor, None)) => data = data.with("location", Attribute::i32(0)),
             Some((b, None)) => return Err(Error(format!("{} is not lowered yet", b.glsl()))),
             None => {}
         }
         if let Some(l) = g.location {
-            data = data.with("location", Self::i32_attr(l));
+            data = data.with("location", Attribute::i32(l.into()));
         }
         if let Some(b) = g.binding {
-            data = data.with("binding", Self::i32_attr(b)).with("descriptor_set", Self::i32_attr(0));
+            data = data.with("binding", Attribute::i32(b.into())).with("descriptor_set", Attribute::i32(0));
         }
         if g.interpolation == Some(Interpolation::Flat) {
             data = data.with("flat", Attribute::Unit);
@@ -280,13 +276,13 @@ impl GlslToSpirv {
         }
         rw.set_end(block);
         let ep = OpData::build("spirv.EntryPoint")
-            .with("execution_model", Attribute::dialect("spirv.execution_model", &format!("<{}>", head.stage.execution_model())))
+            .with("execution_model", Attribute::dialect_with("spirv.execution_model", head.stage.execution_model()))
             .with("fn", Self::sym(Self::ENTRY))
             .with("interface", Attribute::Array(interface));
         rw.create(ep, &[]);
         if head.stage == GlslStage::Fragment {
             let mode = OpData::build("spirv.ExecutionMode")
-                .with("execution_mode", Attribute::dialect("spirv.execution_mode", &format!("<{}>", client.origin())))
+                .with("execution_mode", Attribute::dialect_with("spirv.execution_mode", client.origin()))
                 .with("fn", Self::sym(Self::ENTRY))
                 .with("values", Attribute::Array(Vec::new()));
             rw.create(mode, &[]);
@@ -374,7 +370,7 @@ impl GlslToSpirv {
     }
 
     fn extract<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, i: usize, ty: &Type<'a>) -> ValueId {
-        cr.build(OpData::build("spirv.CompositeExtract").operands(&[v]).with("indices", Attribute::Array(vec![Self::i32_attr(i as u32)])), ty.clone())
+        cr.build(OpData::build("spirv.CompositeExtract").operands(&[v]).with("indices", Attribute::int_array_of(32, &[i as i64])), ty.clone())
     }
 
     fn columns<'a>(t: &Type<'a>) -> Option<(usize, Type<'a>)> {
@@ -517,8 +513,8 @@ impl GlslToSpirv {
                 cr.replace_values(op, &[*p]);
                 return true;
             }
-            ([p], [_]) if n == 1 => OpData::build("spirv.CompositeExtract").operands(&[*p]).with("indices", Attribute::Array(vec![Self::i32_attr(0)])),
-            ([p], [m]) if *m > n => OpData::build("spirv.VectorShuffle").operands(&[*p, *p]).with("components", Attribute::Array((0..n).map(|i| Self::i32_attr(i as u32)).collect())),
+            ([p], [_]) if n == 1 => OpData::build("spirv.CompositeExtract").operands(&[*p]).with("indices", Attribute::int_array_of(32, &[0])),
+            ([p], [m]) if *m > n => OpData::build("spirv.VectorShuffle").operands(&[*p, *p]).with("components", Attribute::Array((0..n).map(|i| Attribute::i32(i as i64)).collect())),
             _ if counts.iter().sum::<usize>() == n => OpData::build("spirv.CompositeConstruct").operands(&parts),
             _ => return false,
         };

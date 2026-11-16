@@ -498,7 +498,7 @@ impl<'a> Body<'a> {
 
 impl<'a> From<u64> for Subslot<'a> {
     fn from(i: u64) -> Self {
-        Subslot(Attribute::integer(i128::from(i), Type::int(32)))
+        Subslot(Attribute::of_int(i.into(), Type::int(32)))
     }
 }
 
@@ -717,7 +717,7 @@ impl Destructurable for LlvmSlots {
                 let access = rw.body.subslot_access(dl, &slot.slot, op).expect("checked by can_rewire");
                 let new = Subslot::from(access.index).find(subslots).expect("subslot").ptr;
                 let res = rw.body[op].results[0];
-                let flags = rw.body[op].get("noWrapFlags").cloned().unwrap_or(Attribute::integer(0, Type::int(32)));
+                let flags = rw.body[op].get("noWrapFlags").cloned().unwrap_or(Attribute::i32(0));
                 let gep = GEPOp::new(Value::from(new), Vec::new(), Attribute::dense_i32(&[access.offset]), Attribute::Type(Type::int(8)), Some(flags), rw.body[new].ty.clone(), Vec::new(), rw.body[res].ty.clone());
                 let (data, types) = OpData::of(&gep).expect("a gep has no regions");
                 let to = rw.create_or_fold(data, &types)[0];

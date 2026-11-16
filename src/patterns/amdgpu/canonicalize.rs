@@ -1,4 +1,3 @@
-use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Const, Dim, Type};
@@ -31,8 +30,7 @@ impl Body<'_> {
         if self[v].ty != Type::int(32) {
             return None;
         }
-        let c = Const::try_from(&self.constant_of(v)?).ok()?;
-        Some(c.as_int()?.unsigned() as i64)
+        Some(self.const_int(v)?.unsigned() as i64)
     }
 
     fn raw_buffer_out_of_bounds(&self, op: OpId, memref_group: usize) -> bool {
@@ -123,7 +121,7 @@ impl AmdgpuCanon {
         rw.modify(op, |b| {
             for (c, v) in merged {
                 if let Some(v) = v {
-                    b[op].set(c, Attribute::of_int(v.into(), Type::int(32)));
+                    b[op].set(c, Attribute::i32(v));
                 }
             }
         });
@@ -215,16 +213,16 @@ impl AmdgpuCanon {
             let slice_ty = Type::vector(&[PACKED_SCALES], &[false], elem);
             let data = OpData::build("vector.extract_strided_slice")
                 .operands(&[flat_v])
-                .with("offsets", Self::i64_array(offset))
-                .with("sizes", Self::i64_array(PACKED_SCALES))
-                .with("strides", Self::i64_array(1));
+                .with("offsets", Attribute::int_array(&[offset]))
+                .with("sizes", Attribute::int_array(&[PACKED_SCALES]))
+                .with("strides", Attribute::int_array(&[1]));
             let slice = rw.create(data, &[slice_ty]);
             news.push((at, rw.body[slice].results[0], opsel));
         }
         rw.modify(op, |b| {
             for (at, v, opsel) in news {
                 b.set_operand(op, at, v);
-                b[op].set(if at == 3 { "scalesIdxA" } else { "scalesIdxB" }, Attribute::of_int(opsel.into(), Type::int(32)));
+                b[op].set(if at == 3 { "scalesIdxA" } else { "scalesIdxB" }, Attribute::i32(opsel));
             }
         });
         true
@@ -232,10 +230,6 @@ impl AmdgpuCanon {
 }
 
 impl AmdgpuCanon {
-    fn i64_array(v: i64) -> Attribute<'static> {
-        Attribute::Array(vec![Attribute::Int { lit: alloc::format!("{v}").into(), ty: None }])
-    }
-
     fn zero<'a>(ty: &Type<'a>) -> Option<Attribute<'a>> {
         let elem = ty.element_type();
         let s = match elem {

@@ -35,7 +35,7 @@ impl PtrToLlvm {
         if e.name != "ptr.ptr_metadata" {
             return None;
         }
-        let inner = e.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?;
+        let inner = e.inner()?;
         match Parser::new(inner, opt).ty().ok()?.owned() {
             Type::Shaped(s) if s.kind == ShapedKind::MemRef && s.shape.is_some() => Some(*s),
             _ => None,
@@ -79,7 +79,7 @@ impl PtrToLlvm {
         let raw = if dynamic.is_some() { GEP_DYNAMIC } else { constant };
         let raw = Attribute::DenseArray { ty: Type::int(32), values: vec![alloc::format!("{raw}").into()].into() };
         let ty = cr.rw.body[base].ty.clone();
-        let data = OpData::build("llvm.getelementptr").operands(&operands).with("elem_type", Attribute::Type(elem)).with("rawConstantIndices", raw).with("noWrapFlags", Attribute::Int { lit: alloc::format!("{flags}").into(), ty: Some(Type::int(32)) });
+        let data = OpData::build("llvm.getelementptr").operands(&operands).with("elem_type", Attribute::Type(elem)).with("rawConstantIndices", raw).with("noWrapFlags", Attribute::i32(flags));
         cr.build(data, ty)
     }
 }
@@ -210,7 +210,7 @@ impl PtrToLlvm {
             "ptr.null" => cr.build(OpData::build("llvm.mlir.zero"), rt),
             "ptr.address" => {
                 const ADDRESS_BITS: u32 = 64;
-                let Some(n) = ext.body.as_deref().and_then(|b| b.strip_prefix('<')?.strip_suffix('>')?.trim().parse::<i64>().ok()) else { return false };
+                let Some(n) = ext.inner().and_then(|b| b.trim().parse::<i64>().ok()) else { return false };
                 let ty = Type::int(ADDRESS_BITS);
                 let c = cr.llvm_constant(Attribute::of_int(n.into(), ty.clone()), ty);
                 cr.build(OpData::build("llvm.inttoptr").operands(&[c]), rt)

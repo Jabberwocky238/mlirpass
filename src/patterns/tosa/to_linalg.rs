@@ -8,7 +8,7 @@ use mlirformat::{Attribute, Dim, FloatKind, Signedness, Type};
 use crate::patterns::Named;
 use crate::TosaToTensor;
 use crate::MemrefOfr as Ofr;
-use crate::{AffineExpr, AffineMap, ApFloat, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
+use crate::{AffineExpr, AffineMap, ApFloat, Body, Const, ConversionRewriter, OpData, OpId, Scalar, ValueId};
 
 type Cr<'r, 'a, 'p> = ConversionRewriter<'r, 'a, 'p>;
 
@@ -51,6 +51,16 @@ const UNO: i64 = 14;
 
 pub struct TosaToLinalg;
 
+impl Body<'_> {
+    pub(super) fn zp_value(&self, v: ValueId) -> Option<i64> {
+        match Const::try_from(&self.constant_of(v)?).ok()?.at(0) {
+            Scalar::Float(f) => Some(if f.is_zero() { 0 } else { -1 }),
+            Scalar::Int(i) => Some(i.signed() as i64),
+            Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => None,
+        }
+    }
+}
+
 #[patterns(converter)]
 impl TosaToLinalg {
     fn ty<'a>(cr: &Cr<'_, 'a, '_>, v: ValueId) -> Type<'a> {
@@ -58,13 +68,7 @@ impl TosaToLinalg {
     }
 
     fn zp(cr: &Cr<'_, '_, '_>, op: OpId, i: usize) -> Option<i64> {
-        let v = *cr.rw.body[op].operands.get(i)?;
-        let c = Const::try_from(&cr.rw.body.constant_of(v)?).ok()?;
-        match c.at(0) {
-            Scalar::Float(f) => Some(if f.is_zero() { 0 } else { -1 }),
-            Scalar::Int(i) => Some(i.signed() as i64),
-            Scalar::Complex(..) | Scalar::ComplexFloat(..) | Scalar::Wide(_) => None,
-        }
+        cr.rw.body.zp_value(*cr.rw.body[op].operands.get(i)?)
     }
 
     fn nan_ignore(cr: &Cr<'_, '_, '_>, op: OpId) -> bool {
@@ -112,7 +116,7 @@ impl TosaToLinalg {
         let is_i = matches!(et, Type::Integer { .. });
         let signless = matches!(et, Type::Integer { signedness: Signedness::Signless, .. });
         let i1 = et == Type::int(1);
-        let round = matches!(b[op].get("round"), Some(Attribute::Bool(true) | Attribute::Unit));
+        let round = b[op].has_flag("round");
         let unary_math = |n: &str| -> Option<&'static str> {
             Some(match n {
                 "tosa.pow" => "math.powf",
@@ -908,7 +912,7 @@ impl TosaToLinalg {
             Some(Attribute::Extended { ext, .. }) => alloc::string::String::from(ext.body.as_deref().unwrap_or("")),
             _ => return false,
         };
-        let flag = |n: &str| matches!(b[op].get(n), Some(Attribute::Bool(true) | Attribute::Unit));
+        let flag = |n: &str| b[op].has_flag(n);
         let (scale32, in_unsigned, out_unsigned) = (flag("scale32"), flag("input_unsigned"), flag("output_unsigned"));
         if mode.contains("INEXACT_ROUND") || (mode.contains("DOUBLE_ROUND") && !scale32) {
             return false;
@@ -1082,7 +1086,7 @@ impl TosaToLinalg {
             return false;
         }
         let real = b[op].name == "tosa.rfft2d";
-        let inverse = matches!(b[op].get("inverse"), Some(Attribute::Bool(true)));
+        let inverse = b[op].has_flag("inverse");
         let inputs = b[op].operands.clone();
         let results: Vec<Type> = b[op].results.iter().map(|r| b[*r].ty.clone()).collect();
         let input = inputs[0];

@@ -28,7 +28,7 @@ impl<'t> TryFrom<&'t Type<'_>> for RegType<'t> {
     fn try_from(t: &'t Type<'_>) -> Result<RegType<'t>, Error> {
         let not = || Error(format!("{t} is not a register type"));
         let Type::Extended(e) = t else { return Err(not()) };
-        let elem = e.body.as_deref().and_then(|b| b.strip_prefix('<')?.strip_suffix('>')).ok_or_else(not)?;
+        let elem = e.inner().ok_or_else(not)?;
         Ok(RegType { name: &e.name, elem })
     }
 }

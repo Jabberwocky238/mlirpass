@@ -231,7 +231,7 @@ pub struct AmdgpuMmaToRocdl;
 #[patterns(converter, options = AmdgpuRocdlOptions)]
 impl AmdgpuMmaToRocdl {
     fn c32(cr: &mut Cr<'_, '_, '_>, v: i64) -> ValueId {
-        cr.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(32))
+        cr.llvm_constant(Attribute::i32(v), Type::int(32))
     }
 
     fn bitcast<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, t: Type<'a>) -> ValueId {
@@ -318,13 +318,13 @@ impl AmdgpuMmaToRocdl {
     }
 
     fn matrix_format_attr(f: &str) -> Attribute<'static> {
-        Attribute::dialect("rocdl", &alloc::format!("<matrix_format {f}>"))
+        Attribute::dialect_with("rocdl", format_args!("matrix_format {f}"))
     }
 
     fn neg_modifier(bits: i64) -> Attribute<'static> {
         let names: Vec<&str> = ["neg_a", "neg_b", "neg_c"].iter().enumerate().filter(|(i, _)| bits >> i & 1 == 1).map(|(_, n)| *n).collect();
         let body = if names.is_empty() { alloc::string::String::from("none") } else { names.join("|") };
-        Attribute::dialect("rocdl", &alloc::format!("<mfma_neg_modifier {body}>"))
+        Attribute::dialect_with("rocdl", format_args!("mfma_neg_modifier {body}"))
     }
 
     fn scaled_intrinsic(cr: &Cr<'_, '_, '_>, op: OpId, chipset: AmdChipset, [m, n, k, b]: [u32; 4]) -> Option<(&'static str, &'static str, &'static str)> {
@@ -347,7 +347,7 @@ impl AmdgpuMmaToRocdl {
 
     fn blgp(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<i64> {
         let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("blgp") else { return Some(0) };
-        let body = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?.trim();
+        let body = ext.inner()?.trim();
         let name = body.strip_prefix("mfma_perm_b").map_or(body, str::trim);
         MFMA_PERM_B.iter().position(|p| *p == name).map(|p| p as i64)
     }
@@ -394,15 +394,15 @@ impl AmdgpuMmaToRocdl {
                 data = data.operands(&[a, b, operands[2][0], zero, zero]);
                 data.set("cbsz", Self::matrix_format_attr(ac));
                 data.set("blgp", Self::matrix_format_attr(bc));
-                data.set("opselA", Attribute::of_int(0, Type::int(32)));
-                data.set("opselB", Attribute::of_int(0, Type::int(32)));
+                data.set("opselA", Attribute::i32(0));
+                data.set("opselB", Attribute::i32(0));
             }
             _ => {
                 let f64_dest = matches!(d_ty.element_type(), Type::Float(FloatKind::F64));
-                data.set("cbsz", Attribute::of_int(cbsz.into(), Type::int(32)));
-                data.set("abid", Attribute::of_int(abid.into(), Type::int(32)));
+                data.set("cbsz", Attribute::i32(cbsz));
+                data.set("abid", Attribute::i32(abid));
                 let perm = MFMA_PERM_B.get(blgp as usize).copied().unwrap_or("none");
-                data.set("blgp", if f64_dest { Self::neg_modifier(blgp) } else { Attribute::dialect("rocdl", &alloc::format!("<mfma_perm_b {perm}>")) });
+                data.set("blgp", if f64_dest { Self::neg_modifier(blgp) } else { Attribute::dialect_with("rocdl", format_args!("mfma_perm_b {perm}")) });
             }
         }
         let mut r = cr.build(data, raw_out.clone());
@@ -440,8 +440,8 @@ impl AmdgpuMmaToRocdl {
             .operands(&[a, b, operands[2][0], sa, sb])
             .with("cbsz", Self::matrix_format_attr(ac))
             .with("blgp", Self::matrix_format_attr(bc))
-            .with("opselA", Attribute::of_int(ia.into(), Type::int(32)))
-            .with("opselB", Attribute::of_int(ib.into(), Type::int(32)));
+            .with("opselA", Attribute::i32(ia))
+            .with("opselB", Attribute::i32(ib));
         let r = cr.build(data, out);
         cr.replace(op, vec![vec![r]]);
         true
@@ -470,7 +470,7 @@ impl AmdgpuMmaToRocdl {
             idx = Self::bitcast(cr, idx, Type::int(32));
         }
         let (cbsz, abid) = (Self::int(cr, op, "cbsz"), Self::int(cr, op, "abid"));
-        let data = OpData::build(name).operands(&[av, bv, operands[2][0], idx]).with("cbsz", Attribute::of_int(cbsz.into(), Type::int(32))).with("abid", Attribute::of_int(abid.into(), Type::int(32)));
+        let data = OpData::build(name).operands(&[av, bv, operands[2][0], idx]).with("cbsz", Attribute::i32(cbsz)).with("abid", Attribute::i32(abid));
         let r = cr.build(data, out);
         cr.replace(op, vec![vec![r]]);
         true

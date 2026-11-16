@@ -76,7 +76,7 @@ impl EnumSpec<'_> {
         let Attribute::Extended { ext, .. } = a else { return None };
         let mnemonic = ext.name.strip_prefix("spirv.")?;
         let class = tables::ENUM_ATTRS.iter().find(|(m, _)| *m == mnemonic)?.1;
-        let body = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?;
+        let body = ext.inner()?;
         Self::of(class)?.value(body)
     }
 }

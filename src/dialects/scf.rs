@@ -121,7 +121,7 @@ impl ScfDialect {
 impl Body<'_> {
     pub fn const_trip_count(&self, lb: Ofr, ub: Ofr, step: Ofr, signed: bool) -> Option<mlirformat::ApInt> {
         use core::cmp::Ordering;
-        use mlirformat::{ApInt, Const, Type};
+        use mlirformat::{ApInt, Type};
         const INDEX_BITS: u32 = 64;
         let shape = |o: Ofr| match o {
             Ofr::V(v) if !matches!(self[v].ty, Type::Index) => self[v].ty.int_width().map_or((INDEX_BITS, true), |w| (w.0, false)),
@@ -133,7 +133,7 @@ impl Body<'_> {
         }
         let cst = |o: Ofr| match o {
             Ofr::C(c) => Some(ApInt::new(INDEX_BITS, c.into())),
-            Ofr::V(v) => Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int(),
+            Ofr::V(v) => self.const_int(v),
         };
         if lb == ub {
             return Some(ApInt::zero(width));

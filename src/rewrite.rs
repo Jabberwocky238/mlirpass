@@ -314,6 +314,15 @@ impl<'r, 'a, L: Listener<'a> + ?Sized> Rewriter<'r, 'a, L> {
         self.listener.moved(self.body, op);
     }
 
+    pub fn inline_body_before(&mut self, b: BlockId, before: OpId) {
+        let parent = self.body[before].parent.expect("placed");
+        let ends: Vec<OpId> = self.body.ops(b).filter(|o| matches!(&*self.body[*o].name, "scf.yield" | "scf.condition")).collect();
+        self.inline_block_before(b, parent, Some(before), &[]);
+        for e in ends {
+            self.erase_op(e);
+        }
+    }
+
     pub fn inline_block_before(&mut self, source: BlockId, dest: BlockId, before: Option<OpId>, args: &[ValueId]) {
         for (a, v) in self.body[source].args.clone().into_iter().zip(args) {
             self.replace_all_uses(a, *v);

@@ -174,7 +174,7 @@ impl FuncToEmitc {
             None => {
                 let saved = cr.rw.ip;
                 cr.rw.set_before(child);
-                let class = cr.rw.create_with(OpData::build("emitc.class").with("sym_name", Attribute::str(&name)).with("class_type", Attribute::integer(1, Type::int(32))), &[], |b, c| {
+                let class = cr.rw.create_with(OpData::build("emitc.class").with("sym_name", Attribute::str(&name)).with("class_type", Attribute::i32(1)), &[], |b, c| {
                     let r = b.add_region(c);
                     b.add_block(r, &[]);
                 });

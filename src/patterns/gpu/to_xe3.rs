@@ -58,6 +58,10 @@ impl Interpolate {
 pub struct Xe3Types;
 
 impl Xe3Types {
+    pub fn lanes(t: &Type<'_>) -> Option<usize> {
+        Some(Self::of(t)?.0)
+    }
+
     fn elem(t: &Type<'_>) -> Option<&'static str> {
         match t {
             Type::Float(FloatKind::F32) | Type::Integer { width: 1, .. } => Some("f32"),
@@ -327,10 +331,6 @@ impl GpuToXe3 {
         (0..n).map(|i| bits(c.at(i))).collect()
     }
 
-    fn positions(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> Option<Vec<usize>> {
-        cr.rw.body[op].get(name)?.dense_values().map(|v| v.into_iter().map(|i| i as usize).collect())
-    }
-
     fn targets(body: &Body<'_>, op: OpId) -> Option<u8> {
         let mut at = body.parent_op(op);
         while let Some(p) = at {
@@ -399,7 +399,7 @@ impl GpuToXe3 {
 
     fn lanes(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], to: &str, attrs: &[(&str, A)]) -> bool {
         let Some(elem) = Self::result_elem(cr, op) else { return false };
-        Self::each(cr, op, o, |cr, x| Self::eu(cr, op, to, x, attrs.to_vec(), elem))
+        cr.lanes_each(op, o, |cr, x| Self::eu(cr, op, to, x, attrs.to_vec(), elem))
     }
 
     fn convert(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], to: &str, attrs: &[(&str, A)]) -> bool {
@@ -415,7 +415,7 @@ impl GpuToXe3 {
         match (wide(re), wide(oe)) {
             (true, false) => {
                 let t = narrow(oe);
-                Self::each(cr, op, o, |cr, x| {
+                cr.lanes_each(op, o, |cr, x| {
                     let spread = Self::eu(cr, op, "xe3.eu.mov", x, vec![("as", A::str("ud")), ("dst_wide", A::str("ud"))], "i64");
                     let mut a = attrs.to_vec();
                     a.push(("wide0", A::str(t)));
@@ -424,7 +424,7 @@ impl GpuToXe3 {
             }
             (false, true) => {
                 let t = narrow(re);
-                Self::each(cr, op, o, |cr, x| {
+                cr.lanes_each(op, o, |cr, x| {
                     let mut a = attrs.to_vec();
                     a.push(("dst_wide", A::str(t)));
                     let spread = Self::eu(cr, op, to, x, a, "i64");
@@ -444,7 +444,7 @@ impl GpuToXe3 {
             "xe3.eu.rndz" => Rounding::Zero,
             _ => Rounding::Even,
         };
-        Self::each(cr, op, o, |cr, x| Exact64::round(cr, op, x[0], kind))
+        cr.lanes_each(op, o, |cr, x| Exact64::round(cr, op, x[0], kind))
     }
 
     fn result_elem(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<&'static str> {
@@ -452,15 +452,6 @@ impl GpuToXe3 {
         Xe3Types::of(&cr.rw.body[r].ty).map(|(_, e)| e)
     }
 
-    fn each(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>], mut f: impl FnMut(&mut Cr<'_, '_, '_>, &[ValueId]) -> ValueId) -> bool {
-        let n = o[0].len();
-        if o.iter().any(|v| v.len() != n) {
-            return false;
-        }
-        let values: Vec<ValueId> = (0..n).map(|i| f(cr, &o.iter().map(|v| v[i]).collect::<Vec<_>>())).collect();
-        cr.replace(op, vec![values]);
-        true
-    }
 }
 
 #[patterns(converter)]
@@ -533,7 +524,7 @@ impl GpuToXe3 {
         if varyings > XE3_MAX_VARYINGS || (stage == Stage::Fragment && inputs > XE3_MAX_VARYINGS) || (stage == Stage::Compute && !fty.results.is_empty()) {
             return false;
         }
-        let flag = |attr: &str| matches!(cr.rw.body[op].get(attr), Some(Attribute::Bool(true) | Attribute::Unit));
+        let flag = |attr: &str| cr.rw.body[op].has_flag(attr);
         let omask = stage == Stage::Fragment && flag(Self::SAMPLE_MASK) && !fty.results.is_empty();
         let dual = stage == Stage::Fragment && flag(Self::DUAL_SOURCE) && fty.results.len() == 2;
         let count = |attr: &str| cr.rw.body[op].get(attr).map(Attrs::as_int).transpose().map(|n| n.unwrap_or(0) as u32);
@@ -840,7 +831,7 @@ impl GpuToXe3 {
     #[convert("math.fma")]
     fn fma(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let Some(elem) = Self::result_elem(cr, op) else { return false };
-        Self::each(cr, op, o, |cr, x| Self::eu(cr, op, "xe3.eu.mad", &[x[2], x[0], x[1]], vec![], elem))
+        cr.lanes_each(op, o, |cr, x| Self::eu(cr, op, "xe3.eu.mad", &[x[2], x[0], x[1]], vec![], elem))
     }
 
     #[convert("arith.cmpf")]
@@ -859,7 +850,7 @@ impl GpuToXe3 {
         if !f64s {
             return Self::lanes(cr, op, o, "xe3.eu.cmp", &[("cond", A::str(cond))]);
         }
-        Self::each(cr, op, o, |cr, x| {
+        cr.lanes_each(op, o, |cr, x| {
             let wide = Self::eu(cr, op, "xe3.eu.cmp", x, vec![("cond", A::str(cond))], "f64");
             Self::eu(cr, op, "xe3.eu.mov", &[wide], vec![("wide0", A::str("ud")), ("as", A::str("ud"))], "f32")
         })
@@ -870,7 +861,7 @@ impl GpuToXe3 {
         let [c, x, y] = o else { return false };
         let Some(elem) = Self::result_elem(cr, op) else { return false };
         let c = if c.len() == 1 { vec![c[0]; x.len()] } else { c.clone() };
-        Self::each(cr, op, &[c, x.clone(), y.clone()], |cr, v| {
+        cr.lanes_each(op, &[c, x.clone(), y.clone()], |cr, v| {
             if elem == "f32" {
                 return Self::eu(cr, op, "xe3.eu.csel", &[v[2], v[1], v[0]], vec![("cond", A::str("z"))], "f32");
             }
@@ -889,7 +880,7 @@ impl GpuToXe3 {
 
     #[convert("arith.muli")]
     fn muli(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        Self::each(cr, op, o, |cr, x| {
+        cr.lanes_each(op, o, |cr, x| {
             let lo = Self::eu(cr, op, "xe3.eu.mul", &[x[0], x[1]], vec![("half1", A::str("lo"))], "i32");
             let hi = Self::eu(cr, op, "xe3.eu.mul", &[x[0], x[1]], vec![("half1", A::str("hi"))], "i32");
             let sixteen = Self::imm(cr, op, 16, "i32");
@@ -915,7 +906,7 @@ impl GpuToXe3 {
 
     #[convert("arith.extui")]
     fn extui(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        Self::each(cr, op, o, |cr, x| {
+        cr.lanes_each(op, o, |cr, x| {
             let one = Self::imm(cr, op, 1, "i32");
             Self::eu(cr, op, "xe3.eu.and", &[x[0], one], vec![("as", A::str("ud"))], "i32")
         })
@@ -1087,9 +1078,9 @@ impl GpuToXe3 {
     fn ceil(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         let Some(elem) = Self::result_elem(cr, op) else { return false };
         if elem == "f64" {
-            return Self::each(cr, op, o, |cr, x| Exact64::round(cr, op, x[0], Rounding::Up));
+            return cr.lanes_each(op, o, |cr, x| Exact64::round(cr, op, x[0], Rounding::Up));
         }
-        Self::each(cr, op, o, |cr, x| {
+        cr.lanes_each(op, o, |cr, x| {
             let down = Self::eu(cr, op, "xe3.eu.rndd", x, vec![("neg0", A::Bool(true))], elem);
             Self::eu(cr, op, "xe3.eu.mov", &[down], vec![("neg0", A::Bool(true))], elem)
         })
@@ -1098,63 +1089,44 @@ impl GpuToXe3 {
     #[convert("arith.divf")]
     fn div(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         if Self::result_elem(cr, op) == Some("f64") {
-            return Self::each(cr, op, o, |cr, x| Exact64::div(cr, op, x[0], x[1]));
+            return cr.lanes_each(op, o, |cr, x| Exact64::div(cr, op, x[0], x[1]));
         }
-        Self::each(cr, op, o, |cr, x| Exact::div(cr, op, x[0], x[1]))
+        cr.lanes_each(op, o, |cr, x| Exact::div(cr, op, x[0], x[1]))
     }
 
     #[convert("math.sqrt")]
     fn sqrt(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
         if Self::result_elem(cr, op) == Some("f64") {
-            return Self::each(cr, op, o, |cr, x| Exact64::sqrt(cr, op, x[0]));
+            return cr.lanes_each(op, o, |cr, x| Exact64::sqrt(cr, op, x[0]));
         }
-        Self::each(cr, op, o, |cr, x| Exact::sqrt(cr, op, x[0]))
+        cr.lanes_each(op, o, |cr, x| Exact::sqrt(cr, op, x[0]))
     }
 
     #[convert("vector.extract")]
     fn extract(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let Some([at]) = Self::positions(cr, op, "static_position").and_then(|p| <[usize; 1]>::try_from(p).ok()) else { return false };
-        let Some(v) = o[0].get(at).copied() else { return false };
-        cr.replace(op, vec![vec![v]]);
-        true
+        cr.lanes_extract(op, o)
     }
 
     #[convert("vector.insert")]
     fn insert(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let Some([at]) = Self::positions(cr, op, "static_position").and_then(|p| <[usize; 1]>::try_from(p).ok()) else { return false };
-        let ([v], Some(dest)) = (&o[0][..], o.get(1)) else { return false };
-        let mut dest = dest.clone();
-        if at >= dest.len() {
-            return false;
-        }
-        dest[at] = *v;
-        cr.replace(op, vec![dest]);
-        true
+        cr.lanes_insert(op, o)
     }
 
     #[convert("vector.from_elements")]
     fn from_elements(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let values = o.concat();
-        cr.replace(op, vec![values]);
-        true
+        cr.lanes_from_elements(op, o)
     }
 
     #[convert("vector.broadcast")]
     fn broadcast(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
-        let (Some((n, _)), [v]) = (Xe3Types::of(&ty), &o[0][..]) else { return false };
-        cr.replace(op, vec![vec![*v; n]]);
-        true
+        cr.lanes_broadcast(op, o, Xe3Types::lanes)
     }
 
     #[convert("vector.shuffle")]
     fn shuffle(cr: &mut Cr<'_, '_, '_>, op: OpId, o: &[Vec<ValueId>]) -> bool {
-        let Some(mask) = Self::positions(cr, op, "mask") else { return false };
-        let all = o.concat();
-        let Some(values) = mask.iter().map(|i| all.get(*i).copied()).collect::<Option<Vec<_>>>() else { return false };
-        cr.replace(op, vec![values]);
-        true
+        cr.lanes_shuffle(op, o)
     }
+
 }
 
 struct Exact;

@@ -62,7 +62,7 @@ impl GpuToSpirv {
         };
         let ty = if o.shader { Type::int(32) } else { o.index() };
         let Some(vector) = cr.builtin_value(op, builtin, ty.clone()) else { return false };
-        let mut v = cr.build(OpData::build("spirv.CompositeExtract").operands(&[vector]).with("indices", Attribute::Array(vec![Attribute::integer(i128::from(d), Type::int(32))])), ty.clone());
+        let mut v = cr.build(OpData::build("spirv.CompositeExtract").operands(&[vector]).with("indices", Attribute::int_array_of(32, &[d])), ty.clone());
         if o.shader && ty != o.index() {
             v = cr.build(OpData::build("spirv.UConvert").operands(&[v]), o.index());
         }
@@ -140,7 +140,7 @@ impl GpuToSpirv {
             "up" => {
                 let lane = Self::lane_id(cr, width);
                 let diff = cr.build(OpData::build("arith.subi").operands(&[lane, offset]), Type::Index);
-                let zero = cr.build(OpData::build("arith.constant").with("value", Attribute::integer(0, Type::int(32))), Type::int(32));
+                let zero = cr.build(OpData::build("arith.constant").with("value", Attribute::i32(0)), Type::int(32));
                 Self::cmpi(cr, 5, diff, zero)
             }
             _ => cr.spirv_int_like(&Type::I1, 1),
@@ -398,7 +398,7 @@ impl GpuToSpirv {
                     .map(|(i, t)| {
                         let scalar = matches!(t, Type::Integer { .. } | Type::Index | Type::Float(_));
                         let sc = if scalar { ", StorageBuffer" } else { "" };
-                        Some(Attribute::dialect("spirv.interface_var_abi", &format!("<(0, {i}){sc}>")))
+                        Some(Attribute::dialect_with("spirv.interface_var_abi", format_args!("(0, {i}){sc}")))
                     })
                     .collect(),
             );

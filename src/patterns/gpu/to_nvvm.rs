@@ -1,4 +1,3 @@
-use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -128,7 +127,7 @@ impl GpuToNvvm {
         let (value, offset, width) = (operands[0][0], operands[1][0], operands[2][0]);
         let vty = cr.rw.body[value].ty.clone();
         cr.rw.set_before(op);
-        let c = |cr: &mut Cr<'_, '_, '_>, v: i64| cr.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(32));
+        let c = |cr: &mut Cr<'_, '_, '_>, v: i64| cr.llvm_constant(Attribute::i32(v), Type::int(32));
         let one = c(cr, 1);
         let minus_one = c(cr, -1);
         let thirty_two = c(cr, 32);
@@ -143,7 +142,7 @@ impl GpuToNvvm {
             ShuffleMode::Down => "down",
             ShuffleMode::Idx => "idx",
         };
-        let mut data = OpData::build("nvvm.shfl.sync").operands(&[active, value, offset, clamp]).with("kind", Attribute::dialect("nvvm", &format!("<shfl_kind {kind}>")));
+        let mut data = OpData::build("nvvm.shfl.sync").operands(&[active, value, offset, clamp]).with("kind", Attribute::dialect_with("nvvm", format_args!("shfl_kind {kind}")));
         let rty = if pred_used {
             data.set("return_value_and_is_valid", Attribute::Unit);
             LlvmType::literal(vec![vty.clone(), Type::int(1)])
@@ -180,7 +179,7 @@ impl GpuToNvvm {
         let saved = cr.rw.ip;
         let entry = cr.rw.body[cr.rw.body[scope].regions[0]].blocks[0];
         cr.rw.set_start(entry);
-        let one = cr.llvm_constant(Attribute::of_int(1, Type::int(32)), Type::int(32));
+        let one = cr.llvm_constant(Attribute::i32(1), Type::int(32));
         let alloca = |cr: &mut Cr<'_, 'a, '_>| cr.build(OpData::build("llvm.alloca").operands(&[one]).with("elem_type", Attribute::Type(cty.clone())), LlvmType::ptr());
         let sin_p = alloca(cr);
         let cos_p = alloca(cr);
@@ -222,7 +221,7 @@ impl GpuToNvvm {
             .with("global_type", Attribute::Type(Type::int(32)))
             .with("linkage", Attribute::dialect("llvm.linkage", "<internal>"))
             .with("sym_name", Attribute::str(&name))
-            .with("value", Attribute::of_int(id.into(), Type::int(32)));
+            .with("value", Attribute::i32(id));
         cr.rw.create_with(data, &[], |b, g| {
             b.add_region(g);
         });
@@ -230,8 +229,8 @@ impl GpuToNvvm {
         cr.rw.set_before(op);
         let addr = cr.build(OpData::build("llvm.mlir.addressof").with("global_name", Attribute::SymbolRef(vec![name.into()])), LlvmType::ptr());
         let id = cr.build(OpData::build("llvm.load").operands(&[addr]).with("ordering", Attribute::i64(0)), Type::int(32));
-        let warp = cr.llvm_constant(Attribute::of_int(WARP.into(), Type::int(32)), Type::int(32));
-        let threads = cr.build(OpData::build("llvm.mul").operands(&[count, warp]).with("overflowFlags", Attribute::of_int(0, Type::int(32))), Type::int(32));
+        let warp = cr.llvm_constant(Attribute::i32(WARP), Type::int(32));
+        let threads = cr.build(OpData::build("llvm.mul").operands(&[count, warp]).with("overflowFlags", Attribute::i32(0)), Type::int(32));
         let ty = LlvmType::literal(vec![Type::int(32), Type::int(32)]);
         let mut r = cr.poison(ty.clone());
         for (i, v) in [id, threads].into_iter().enumerate() {
@@ -256,7 +255,7 @@ impl GpuToNvvm {
             }
             BarrierScope::Subgroup => {
                 cr.rw.set_before(op);
-                let mask = cr.llvm_constant(Attribute::of_int(FULL_WARP_MASK.into(), Type::int(32)), Type::int(32));
+                let mask = cr.llvm_constant(Attribute::i32(FULL_WARP_MASK), Type::int(32));
                 cr.replace_new(op, OpData::build("nvvm.bar.warp.sync").operands(&[mask]), &[]);
                 true
             }
@@ -272,7 +271,7 @@ impl GpuToNvvm {
             _ => return false,
         };
         cr.rw.set_before(op);
-        let mask = cr.llvm_constant(Attribute::of_int(FULL_WARP_MASK.into(), Type::int(32)), Type::int(32));
+        let mask = cr.llvm_constant(Attribute::i32(FULL_WARP_MASK), Type::int(32));
         let vote = OpData::build("nvvm.vote.sync").operands(&[mask, operands[0][0]]).with("kind", Attribute::dialect("nvvm", "<vote_sync_kind ballot>"));
         let mut r = cr.build(vote, Type::int(32));
         if w == 64 {
@@ -321,8 +320,8 @@ impl GpuReduxToNvvm {
             _ => return false,
         };
         cr.rw.set_before(op);
-        let offset = cr.llvm_constant(Attribute::of_int(-1, Type::int(32)), Type::int(32));
-        let data = OpData::build("nvvm.redux.sync").operands(&[value, offset]).with("kind", Attribute::dialect("nvvm", &format!("<reduction_kind {kind}>"))).with("abs", Attribute::Bool(false)).with("nan", Attribute::Bool(false));
+        let offset = cr.llvm_constant(Attribute::i32(-1), Type::int(32));
+        let data = OpData::build("nvvm.redux.sync").operands(&[value, offset]).with("kind", Attribute::dialect_with("nvvm", format_args!("reduction_kind {kind}"))).with("abs", Attribute::Bool(false)).with("nan", Attribute::Bool(false));
         let r = cr.build(data, Type::int(32));
         cr.replace(op, vec![vec![r]]);
         true

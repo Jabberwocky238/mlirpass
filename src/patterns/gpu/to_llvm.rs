@@ -100,7 +100,7 @@ impl GpuToLlvm {
                 let saved = cr.rw.ip;
                 cr.rw.set_start(top);
                 let mut data = OpData { loc, ..OpData::build("llvm.mlir.global") }
-                    .with("addr_space", Attribute::of_int(space.into(), Type::int(32)))
+                    .with("addr_space", Attribute::i32(space.into()))
                     .with("global_type", Attribute::Type(array))
                     .with("linkage", Attribute::dialect("llvm.linkage", "<internal>"))
                     .with("sym_name", Attribute::str(&name));
@@ -163,7 +163,7 @@ impl GpuToLlvm {
         let kernel = b[op].gpu_kernel();
         let mut arg_attrs: Vec<Vec<NamedAttr<'a>>> = (0..n_in).map(|i| Self::dict(b[op].get("arg_attrs"), i)).collect();
         for a in &wg[..n_ptr] {
-            let attribution = Attribute::dialect("llvm.mlir.workgroup_attribution", &format!("<{} : i64, {}>", a.elems, a.elem));
+            let attribution = Attribute::dialect_with("llvm.mlir.workgroup_attribution", format_args!("{} : i64, {}", a.elems, a.elem));
             arg_attrs.push(vec![NamedAttr { name: "llvm.noalias".into(), value: None }, NamedAttr { name: "llvm.workgroup_attribution".into(), value: Some(attribution) }]);
         }
         let private_align: Vec<Option<Attribute<'a>>> = (0..private.len()).map(|i| Self::dict(b[op].get("private_attrib_attrs"), i).into_iter().find(|a| a.name == "llvm.align").and_then(|a| a.value)).collect();
@@ -201,7 +201,7 @@ impl GpuToLlvm {
         if !o.workgroup_args {
             for (i, a) in wg.iter().enumerate() {
                 let g = format!("__wg_{name}_{i}");
-                let mut gd = OpData::build("llvm.mlir.global").with("global_type", Attribute::Type(LlvmType::array(a.elems as u64, a.elem.clone()))).with("linkage", Attribute::dialect("llvm.linkage", "<internal>")).with("sym_name", Attribute::str(&g)).with("addr_space", Attribute::of_int(o.workgroup_space.into(), Type::int(32)));
+                let mut gd = OpData::build("llvm.mlir.global").with("global_type", Attribute::Type(LlvmType::array(a.elems as u64, a.elem.clone()))).with("linkage", Attribute::dialect("llvm.linkage", "<internal>")).with("sym_name", Attribute::str(&g)).with("addr_space", Attribute::i32(o.workgroup_space.into()));
                 if let Some(al) = &wg_align[i] {
                     gd.set("alignment", al.clone());
                 }
@@ -237,7 +237,7 @@ impl GpuToLlvm {
             sig.conversion.remap_values(n_proper + i, vec![d]);
         }
         for (i, a) in private.iter().enumerate() {
-            let n = cr.llvm_constant(Attribute::of_int(a.elems.into(), Type::int(64)), Type::int(64));
+            let n = cr.llvm_constant(Attribute::i64(a.elems), Type::int(64));
             let mut alloca = OpData::build("llvm.alloca").operands(&[n]).with("elem_type", Attribute::Type(a.elem.clone()));
             if let Some(al) = &private_align[i] {
                 alloca.set("alignment", al.clone());
@@ -310,11 +310,11 @@ impl GpuToLlvm {
         let ty = LlvmType::array(data.len() as u64, Type::int(8));
         let value = Attribute::Str { lit: mlirformat::Str::Owned(Self::escaped(&data)), ty: None };
         let block = cr.rw.body.top_block(module);
-        let space_attr = Attribute::of_int(space.into(), Type::int(32));
+        let space_attr = Attribute::i32(space.into());
         let b = &*cr.rw.body;
         let found = b.ops(block).find(|g| {
             let g = &b[*g];
-            g.name == "llvm.mlir.global" && g.get("global_type") == Some(&Attribute::Type(ty.clone())) && g.get("constant").is_some() && g.get("value") == Some(&value) && g.get("alignment").is_none_or(|a| a == &Attribute::of_int(0, Type::int(64))) && g.get("addr_space").map_or(space == 0, |a| a == &space_attr)
+            g.name == "llvm.mlir.global" && g.get("global_type") == Some(&Attribute::Type(ty.clone())) && g.get("constant").is_some() && g.get("value") == Some(&value) && g.get("alignment").is_none_or(|a| a == &Attribute::i64(0)) && g.get("addr_space").map_or(space == 0, |a| a == &space_attr)
         });
         if let Some(g) = found {
             return (String::from(b.sym_name(g).unwrap_or("")), ty);

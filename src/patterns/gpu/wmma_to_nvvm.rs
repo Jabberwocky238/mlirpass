@@ -89,7 +89,7 @@ impl TryFrom<&Attribute<'_>> for Elementwise {
     type Error = ();
     fn try_from(a: &Attribute<'_>) -> Result<Self, ()> {
         let Attribute::Extended { ext, .. } = a else { return Err(()) };
-        let case = ext.body.as_deref().and_then(|b| b.strip_prefix('<')?.strip_suffix('>')?.trim().strip_prefix("mma_element_wise")).ok_or(())?.trim();
+        let case = ext.inner().and_then(|b| b.trim().strip_prefix("mma_element_wise")).ok_or(())?.trim();
         Self::NAMES.iter().find(|(n, _)| *n == case).map(|(_, v)| *v).ok_or(())
     }
 }
@@ -199,17 +199,17 @@ impl WmmaToNvvm {
 
     fn attrs<'a>(mut d: OpData<'a>, m: i64, n: i64, k: i64) -> OpData<'a> {
         for (name, v) in [("m", m), ("n", n), ("k", k)] {
-            d.set(name, Attribute::of_int(v.into(), Type::int(32)));
+            d.set(name, Attribute::i32(v));
         }
         d
     }
 
     fn layout<'a>(l: MmaLayout) -> Attribute<'a> {
-        Attribute::dialect("nvvm.mma_layout", &format!("<{}>", l.name()))
+        Attribute::dialect_with("nvvm.mma_layout", l.name())
     }
 
     fn mma_type<'a>(t: MmaType) -> Attribute<'a> {
-        Attribute::dialect("nvvm.mma_type", &format!("<{}>", t.name()))
+        Attribute::dialect_with("nvvm.mma_type", t.name())
     }
 
     fn ptr_and_stride(cr: &mut Cr<'_, '_, '_>, op: OpId, memref: usize, desc: ValueId, indices: &[ValueId], o: LlvmOptions) -> Option<(ValueId, ValueId)> {
@@ -242,7 +242,7 @@ impl WmmaToNvvm {
         let Some(res) = ret.llvm() else { return false };
         let indices: Vec<ValueId> = operands[1..].iter().flatten().copied().collect();
         let Some((ptr, stride)) = Self::ptr_and_stride(cr, op, 0, operands[0][0], &indices, o) else { return false };
-        let data = Self::attrs(OpData::build("nvvm.wmma.load").operands(&[ptr, stride]), m, n, k).with("layout", Self::layout(layout)).with("eltype", Self::mma_type(el)).with("frag", Attribute::dialect("nvvm.mma_frag", &format!("<{}>", ret.frag.name())));
+        let data = Self::attrs(OpData::build("nvvm.wmma.load").operands(&[ptr, stride]), m, n, k).with("layout", Self::layout(layout)).with("eltype", Self::mma_type(el)).with("frag", Attribute::dialect_with("nvvm.mma_frag", ret.frag.name()));
         cr.replace_new(op, data, &[res]);
         true
     }
@@ -318,7 +318,7 @@ impl WmmaToNvvm {
             let vt = fields[0].clone();
             let mut vec_cst = cr.poison(vt.clone());
             for i in 0..lanes {
-                let idx = cr.llvm_constant(Attribute::of_int(i.into(), Type::int(32)), Type::int(32));
+                let idx = cr.llvm_constant(Attribute::i32(i), Type::int(32));
                 vec_cst = cr.build(OpData::build("llvm.insertelement").operands(&[vec_cst, cst, idx]), vt.clone());
             }
             cst = vec_cst;

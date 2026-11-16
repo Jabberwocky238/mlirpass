@@ -155,7 +155,7 @@ impl IndexToSpirv {
     #[convert("index.cmp")]
     fn cmp(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
         let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("pred") else { return false };
-        let body = ext.body.as_deref().unwrap_or("").trim_matches(|c| c == '<' || c == '>');
+        let body = ext.inner().unwrap_or("");
         let name = match body.rsplit(' ').next().unwrap_or(body) {
             "eq" => "spirv.IEqual",
             "ne" => "spirv.INotEqual",

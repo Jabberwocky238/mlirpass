@@ -11,7 +11,7 @@ impl OpenClGlobal {
         match t {
             Type::Shaped(s) if s.kind == ShapedKind::MemRef && s.memory_space().is_none() => {
                 let mut extras = s.extras.clone();
-                extras.push(Attribute::of_int(GpuSpaces::OPENCL.global.into(), Type::int(64)).untyped());
+                extras.push(Attribute::i64(GpuSpaces::OPENCL.global.into()).untyped());
                 Type::Shaped(alloc::boxed::Box::new(Shaped { extras, ..*s.clone() }))
             }
             Type::Function(f) => Type::Function(alloc::boxed::Box::new(mlirformat::FunctionType { inputs: f.inputs.iter().map(Self::map_type).collect(), results: f.results.iter().map(Self::map_type).collect() })),

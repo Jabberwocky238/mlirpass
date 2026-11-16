@@ -52,14 +52,6 @@ impl Lg {
         if Self::is_tensor(init) { vec![init.clone()] } else { Vec::new() }
     }
 
-    fn dense<'a>(v: &[i64]) -> Attribute<'a> {
-        Attribute::DenseArray { ty: Type::int(64), values: v.iter().map(|x| Str::Owned(format!("{x}"))).collect() }
-    }
-
-    fn index<'a>(v: i64) -> Attribute<'a> {
-        Attribute::Int { lit: Str::Owned(format!("{v}")), ty: Some(Type::Index) }
-    }
-
     fn int(a: Option<&Attribute<'_>>) -> Option<i64> {
         match a? {
             Attribute::Int { lit, .. } => lit.parse().ok(),
@@ -239,14 +231,14 @@ impl<'a> Relayout<'a> {
                 }
             }
         }
-        let outer = (!self.outer.is_empty()).then(|| Lg::dense(&self.outer));
+        let outer = (!self.outer.is_empty()).then(|| Attribute::dense_i64(&self.outer));
         let (src_ty, ty) = (b[self.source].ty.clone(), b[self.dest].ty.clone());
         let (data, types) = if self.pack {
             let pad: Vec<_> = self.padding.iter().map(|v| (*v).into()).collect();
             let pad_ty = self.padding.iter().map(|v| b[*v].ty.clone()).collect();
-            linalg::PackOp::new(self.source.into(), self.dest.into(), pad, dy, outer, Lg::dense(&self.inner), Lg::dense(&st), src_ty, pad_ty, Type::Index, ty).split()
+            linalg::PackOp::new(self.source.into(), self.dest.into(), pad, dy, outer, Attribute::dense_i64(&self.inner), Attribute::dense_i64(&st), src_ty, pad_ty, Type::Index, ty).split()
         } else {
-            linalg::UnPackOp::new(self.source.into(), self.dest.into(), dy, outer, Lg::dense(&self.inner), Lg::dense(&st), src_ty, Type::Index, ty).split()
+            linalg::UnPackOp::new(self.source.into(), self.dest.into(), dy, outer, Attribute::dense_i64(&self.inner), Attribute::dense_i64(&st), src_ty, Type::Index, ty).split()
         };
         let op = rw.create(data.attrs(self.attrs.clone()), &types);
         rw.body[op].results[0]
@@ -375,15 +367,15 @@ impl<'a> Rewriter<'_, 'a> {
     }
 
     fn transpose(&mut self, input: ValueId, init: ValueId, perm: &[i64]) -> Vec<ValueId> {
-        self.structured(OpData::build("linalg.transpose").operands(&[input, init]).with("permutation", Lg::dense(perm)))
+        self.structured(OpData::build("linalg.transpose").operands(&[input, init]).with("permutation", Attribute::dense_i64(perm)))
     }
 
     fn broadcast(&mut self, input: ValueId, init: ValueId, dims: &[i64]) -> Vec<ValueId> {
-        self.structured(OpData::build("linalg.broadcast").operands(&[input, init]).with("dimensions", Lg::dense(dims)))
+        self.structured(OpData::build("linalg.broadcast").operands(&[input, init]).with("dimensions", Attribute::dense_i64(dims)))
     }
 
     fn tensor_dim(&mut self, v: ValueId, i: usize) -> ValueId {
-        let k = self.emit(&arith::Constant::new(Lg::index(i as i64), Type::Index));
+        let k = self.emit(&arith::Constant::new(Attribute::index(i as i64), Type::Index));
         let k = self.body[k].results[0];
         let d = self.create(OpData::build("tensor.dim").operands(&[v, k]), &[Type::Index]);
         self.body[d].results[0]
@@ -860,7 +852,7 @@ impl LinalgCanon {
                 sizes.push(Ofr::C(*d));
                 continue;
             }
-            let k = rw.emit(&arith::Constant::new(Lg::index(i as i64), Type::Index));
+            let k = rw.emit(&arith::Constant::new(Attribute::index(i as i64), Type::Index));
             let k = rw.body[k].results[0];
             let dim = rw.create_or_fold(OpData::build("tensor.dim").operands(&[src, k]), &[Type::Index])[0];
             sizes.push(rw.composed_folded_apply(sum.clone(), &[Ofr::V(dim), low[i], high[i]]));
@@ -1008,7 +1000,7 @@ impl LinalgCanon {
             "linalg.index" => {
                 let ranges = b.parent_op(op).filter(|p| b.has(*p, Trait::LinalgOp)).and_then(|p| b.static_loop_ranges(p));
                 match (ranges, Lg::int(b[op].get("dim"))) {
-                    (Some(r), Some(d)) if r.get(d as usize) == Some(&1) => Folded::Attr(Lg::index(0)).into(),
+                    (Some(r), Some(d)) if r.get(d as usize) == Some(&1) => Folded::Attr(Attribute::index(0)).into(),
                     _ => Fold::Failed,
                 }
             }

@@ -5,7 +5,7 @@ fn case_of<T: Copy>(a: &Attribute<'_>, kind: &str, names: &[(&'static str, T)]) 
     if ext.name != "gpu" {
         return None;
     }
-    let case = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?.trim().strip_prefix(kind)?.trim();
+    let case = ext.inner()?.trim().strip_prefix(kind)?.trim();
     names.iter().find(|(n, _)| *n == case).map(|(_, v)| *v)
 }
 
@@ -116,7 +116,7 @@ fn mnemonic_case_of<T: Copy>(a: &Attribute<'_>, name: &str, names: &[(&'static s
     if ext.name != name {
         return None;
     }
-    let case = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?.trim();
+    let case = ext.inner()?.trim();
     names.iter().find(|(n, _)| *n == case).map(|(_, v)| *v)
 }
 

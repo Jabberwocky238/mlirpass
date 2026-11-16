@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use mlirformat::{AffineExpr, AffineMap, Attribute, Dim};
+use mlirformat::{AffineExpr, AffineMap, Dim};
 
 use crate::{Body, EffectInstance, EffectKind, OpId, OpInterfaces};
 
@@ -53,10 +53,7 @@ impl LinalgDialect {
         if pack && segs.as_ref().is_some_and(|s| s.get(2) == Some(&1)) {
             return Some(false);
         }
-        let tiles: Vec<i64> = match b[op].get("static_inner_tiles") {
-            Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
-            _ => Vec::new(),
-        };
+        let tiles = b.dense_i64(op, "static_inner_tiles");
         let first_dynamic = if pack { segs.as_ref().map_or(2, |s| s[..3].iter().sum()) } else { 2 };
         let mut dynamic = b[op].operands[first_dynamic..].iter();
         let packed = &b[b[op].operands[usize::from(pack)]].ty;

@@ -136,20 +136,20 @@ impl StoreCacheControl {
 impl From<LoadCacheControl> for Attribute<'static> {
     fn from(c: LoadCacheControl) -> Self {
         let name = LoadCacheControl::NAMES.iter().find(|(_, v)| *v == c).map_or("", |(n, _)| n);
-        Attribute::dialect("xevm.load_cache_control", &format!("<{name}>"))
+        Attribute::dialect_with("xevm.load_cache_control", name)
     }
 }
 
 impl From<StoreCacheControl> for Attribute<'static> {
     fn from(c: StoreCacheControl) -> Self {
         let name = StoreCacheControl::NAMES.iter().find(|(_, v)| *v == c).map_or("", |(n, _)| n);
-        Attribute::dialect("xevm.store_cache_control", &format!("<{name}>"))
+        Attribute::dialect_with("xevm.store_cache_control", name)
     }
 }
 
 fn case_of<T: Copy>(a: &Attribute<'_>, names: &[(&'static str, T)]) -> Option<T> {
     let Attribute::Extended { ext, .. } = a else { return None };
-    let body = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?.trim();
+    let body = ext.inner()?.trim();
     names.iter().find(|(n, _)| *n == body).map(|(_, v)| *v)
 }
 
@@ -259,7 +259,7 @@ impl ElemType {
 
     fn mma(a: &Attribute<'_>) -> Option<[Self; 4]> {
         let Attribute::Extended { ext, .. } = a else { return None };
-        let body = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?;
+        let body = ext.inner()?;
         let get = |key: &str| {
             body.split(',').find_map(|kv| {
                 let (k, v) = kv.split_once('=')?;
@@ -325,7 +325,7 @@ impl From<Memory> for Attribute<'static> {
             Memory::None => "none",
             Memory::ArgRead => "read",
         };
-        Attribute::dialect("llvm.memory_effects", &format!("<other = none, argMem = {arg}, inaccessibleMem = none, errnoMem = none, targetMem0 = none, targetMem1 = none>"))
+        Attribute::dialect_with("llvm.memory_effects", format_args!("other = none, argMem = {arg}, inaccessibleMem = none, errnoMem = none, targetMem0 = none, targetMem1 = none"))
     }
 }
 
@@ -497,7 +497,7 @@ impl XevmToLlvm {
 #[patterns(options = XevmOptions<'p>)]
 impl XevmToLlvm {
     fn constant(cr: &mut Cr<'_, '_, '_>, v: i64, ty: Type<'static>) -> ValueId {
-        cr.llvm_constant(Attribute::of_int(i128::from(v).into(), ty.clone()), ty)
+        cr.llvm_constant(Attribute::of_int(i128::from(v), ty.clone()), ty)
     }
 
     fn metadata_string<'a>(cr: &mut Cr<'_, 'a, '_>, module: OpId, text: &str, hint: &str, o: XevmOptions<'_>) -> Option<ValueId> {
@@ -519,7 +519,7 @@ impl XevmToLlvm {
                 let saved = cr.rw.ip;
                 cr.rw.set_start(block);
                 let global = crate::OpData::build("llvm.mlir.global")
-                    .with("addr_space", Attribute::of_int(GLOBAL_SPACE.into(), Type::int(32)))
+                    .with("addr_space", Attribute::i32(GLOBAL_SPACE.into()))
                     .with("alignment", Attribute::i64(1))
                     .with("constant", Attribute::Unit)
                     .with("global_type", Attribute::Type(LlvmType::array(bytes.len() as u64, Type::int(8))))
@@ -957,7 +957,7 @@ impl XevmToLlvm {
         let saved = cr.rw.ip;
         cr.rw.set_start(block);
         let mut global = crate::OpData::build("llvm.mlir.global")
-            .with("addr_space", Attribute::of_int(SHARED_SPACE.into(), Type::int(32)))
+            .with("addr_space", Attribute::i32(SHARED_SPACE.into()))
             .with("global_type", Attribute::Type(LlvmType::array(count as u64, elem)))
             .with("linkage", Attribute::dialect("llvm.linkage", "<internal>"))
             .with("sym_name", Attribute::str(&name));
@@ -1045,7 +1045,7 @@ impl XevmVectorExtract {
                 let Some((elem, _)) = vector(&rw.body[src].ty) else { return false };
                 let nt = vector_of(mask.len() as i64, elem.clone());
                 let addr = if mask[0] != 0 {
-                    let gep = crate::OpData::build("llvm.getelementptr").operands(&[ptr]).with("elem_type", Attribute::Type(elem)).with("rawConstantIndices", Attribute::dense_i32(&[mask[0] as i32])).with("noWrapFlags", Attribute::of_int(0, Type::int(32)));
+                    let gep = crate::OpData::build("llvm.getelementptr").operands(&[ptr]).with("elem_type", Attribute::Type(elem)).with("rawConstantIndices", Attribute::dense_i32(&[mask[0] as i32])).with("noWrapFlags", Attribute::i32(0));
                     rw.make1(gep, LlvmType::ptr())
                 } else {
                     ptr

@@ -40,7 +40,7 @@ impl WmmaToSpirv {
         let vals = idx.iter().map(|v| {
             let d = b.def_op(*v).filter(|d| b[*d].name == "arith.constant" && b[*v].ty == Type::Index)?;
             let i = Const::try_from(b[d].get("value")?).ok()?.as_int()?.signed();
-            Some(Attribute::integer(i128::from(i as i32), Type::int(32)))
+            Some(Attribute::i32((i as i32).into()))
         });
         Some(Attribute::Array(vals.collect::<Option<Vec<_>>>()?))
     }
@@ -95,7 +95,7 @@ impl WmmaToSpirv {
         let names: Vec<&str> = ["ASigned", "BSigned", "CSigned", "ResultSigned"].into_iter().zip(&types).filter(|(_, t)| signed(t)).map(|(n, _)| n).collect();
         let mut data = OpData::build("spirv.KHR.CooperativeMatrixMulAdd").operands(&ops[..3]);
         if !names.is_empty() {
-            data.set("matrix_operands", Attribute::dialect("spirv.cooperative_matrix_operands_khr", &alloc::format!("<{}>", names.join("|"))));
+            data.set("matrix_operands", Attribute::dialect_with("spirv.cooperative_matrix_operands_khr", names.join("|")));
         }
         cr.replace_new(op, data, &[ty]);
         true

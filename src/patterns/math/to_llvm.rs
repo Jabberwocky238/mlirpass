@@ -186,7 +186,7 @@ impl MathToLlvm {
         let Some([x]) = ConversionRewriter::one_to_one(operands).and_then(|v| <[ValueId; 1]>::try_from(v).ok()) else { return false };
         let Some(tc) = cr.type_converter() else { return false };
         let Some(res) = tc.convert(&cr.rw.body[cr.rw.body[op].results[0]].ty.clone()) else { return false };
-        let b = Attribute::Int { lit: mlirformat::Str::Owned(alloc::format!("{bit}")), ty: Some(Type::int(32)) };
+        let b = Attribute::i32(bit);
         cr.replace_new(op, OpData::build("llvm.intr.is.fpclass").operands(&[x]).with("bit", b), &[res]);
         true
     }

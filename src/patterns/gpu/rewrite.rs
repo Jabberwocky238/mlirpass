@@ -29,7 +29,7 @@ fn mk<'a>(rw: &mut Rw<'_, 'a>, data: OpData<'a>, ty: Type<'a>) -> ValueId {
 }
 
 fn int<'a>(rw: &mut Rw<'_, 'a>, v: i64) -> ValueId {
-    mk(rw, OpData::build("arith.constant").with("value", Attribute::of_int(v.into(), Type::int(32))), Type::int(32))
+    mk(rw, OpData::build("arith.constant").with("value", Attribute::i32(v)), Type::int(32))
 }
 
 fn bin<'a>(rw: &mut Rw<'_, 'a>, name: &str, a: ValueId, b: ValueId) -> ValueId {
@@ -63,7 +63,7 @@ fn br<'a>(rw: &mut Rw<'_, 'a>, dest: BlockId, args: &[ValueId]) {
 
 impl<'k> AllReduce<'k> {
     fn dim<'a>(rw: &mut Rw<'_, 'a>, name: &str, d: &str) -> ValueId {
-        let v = mk(rw, OpData::build(name).with("dimension", Attribute::dialect("gpu", &alloc::format!("<dim {d}>"))), Type::Index);
+        let v = mk(rw, OpData::build(name).with("dimension", Attribute::dialect_with("gpu", format_args!("dim {d}"))), Type::Index);
         mk(rw, OpData::build("arith.index_cast").operands(&[v]), Type::int(32))
     }
 
@@ -402,7 +402,7 @@ impl GpuPromoteShuffleToSwizzle {
     fn promote_shuffle_to_swizzle_pattern(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let Some(offset) = xor64_offset(rw, op).filter(|o| (0..32).contains(o)) else { return false };
         let v = rw.body[op].operands[0];
-        let i32a = |n: i64| Attribute::of_int(n.into(), Type::int(32));
+        let i32a = |n: i64| Attribute::i32(n);
         promoted(rw, op, OpData::build("amdgpu.swizzle_bitmode").operands(&[v]).with("and_mask", i32a(31)).with("or_mask", i32a(0)).with("xor_mask", i32a(offset)));
         true
     }
@@ -414,7 +414,7 @@ impl GpuPromoteShuffleToPermlane {
     fn promote_shuffle_to_permlane_pattern(rw: &mut Rw<'_, '_>, op: OpId) -> bool {
         let Some(offset) = xor64_offset(rw, op).filter(|o| matches!(o, 16 | 32)) else { return false };
         let v = rw.body[op].operands[0];
-        promoted(rw, op, OpData::build("amdgpu.permlane_swap").operands(&[v]).with("row_length", Attribute::of_int(offset.into(), Type::int(32))));
+        promoted(rw, op, OpData::build("amdgpu.permlane_swap").operands(&[v]).with("row_length", Attribute::i32(offset)));
         true
     }
 }

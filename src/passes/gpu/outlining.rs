@@ -115,7 +115,7 @@ impl<'a> Body<'a> {
         }
         let mut out = Vec::new();
         for (i, k) in kinds.iter().flat_map(|k| ["x", "y", "z"].map(|d| (*k, d))).enumerate() {
-            let o = self.create(OpData::build(k.0).with("dimension", Attribute::dialect("gpu", &format!("<dim {}>", k.1))), &[Type::Index]);
+            let o = self.create(OpData::build(k.0).with("dimension", Attribute::dialect_with("gpu", format_args!("dim {}", k.1))), &[Type::Index]);
             self.insert(o, block, Some(i));
             out.push(self[o].results[0]);
         }
@@ -144,7 +144,7 @@ impl<'a> Body<'a> {
         }
         data.set("kernel", Attribute::Unit);
         data.set("sym_name", Attribute::str(name));
-        data.set("workgroup_attributions", Attribute::integer(workgroup as i128, Type::int(64)));
+        data.set("workgroup_attributions", Attribute::i64(workgroup as i64));
         data.loc = self[launch].loc.clone();
         let func = self.create(data, &[]);
         let body = self.add_region(func);

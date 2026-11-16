@@ -149,7 +149,7 @@ impl BufferizationOptions {
     pub fn create_alloc<'a>(&self, rw: &mut Rewriter<'_, 'a>, ty: &Type<'a>, dynamic: &[ValueId]) -> ValueId {
         let mut data = OpData::build("memref.alloc").operands(dynamic).segments(&[dynamic.len(), 0]);
         if self.buffer_alignment != 0 {
-            data.set("alignment", mlirformat::Attribute::integer(self.buffer_alignment as i128, Type::int(64)));
+            data.set("alignment", mlirformat::Attribute::i64(self.buffer_alignment as i64));
         }
         let a = rw.create(data, core::slice::from_ref(ty));
         rw.body[a].results[0]

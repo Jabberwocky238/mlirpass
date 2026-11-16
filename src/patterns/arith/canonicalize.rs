@@ -1097,10 +1097,6 @@ impl<'a> Body<'a> {
         (!c.elements).then(|| Some((c.as_int()?, c.ty)))?
     }
 
-    fn int_or_splat(&self, v: ValueId) -> Option<ApInt> {
-        Const::try_from(&self.constant_of(v)?).ok()?.as_int()
-    }
-
     fn operands2(&self, op: OpId) -> (ValueId, ValueId) {
         (self[op].operands[0], self[op].operands[1])
     }
@@ -1374,7 +1370,7 @@ impl ArithCanon {
         let (x, m) = b.operands2(op);
         let Some(mul) = b.def_named(m, "arith.muli") else { return false };
         let (y, c) = b.operands2(mul);
-        if !b.int_or_splat(c).is_some_and(ApInt::is_all_ones) {
+        if !b.splat_int(c).is_some_and(ApInt::is_all_ones) {
             return false;
         }
         let mut locs = vec![op];
@@ -1389,7 +1385,7 @@ impl ArithCanon {
         let (m, y) = b.operands2(op);
         let Some(mul) = b.def_named(m, "arith.muli") else { return false };
         let (x, c) = b.operands2(mul);
-        if !b.int_or_splat(c).is_some_and(ApInt::is_all_ones) {
+        if !b.splat_int(c).is_some_and(ApInt::is_all_ones) {
             return false;
         }
         let mut locs = vec![op];
@@ -1435,7 +1431,7 @@ impl ArithCanon {
     fn mul_si_extended_rhs_one(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
         let (x, c) = b.operands2(op);
-        if !b.int_or_splat(c).is_some_and(|v| v.is_one() && !v.is_negative() && v.width > 1) {
+        if !b.splat_int(c).is_some_and(|v| v.is_one() && !v.is_negative() && v.width > 1) {
             return false;
         }
         let ty = b[x].ty.clone();
@@ -1577,7 +1573,7 @@ impl ArithCanon {
             return false;
         }
         let (c, t, f) = (b[op].operands[0], b[op].operands[1], b[op].operands[2]);
-        let is = |v: ValueId, one: bool| b.int_or_splat(v).is_some_and(|x| if one { x.is_one() } else { x.is_zero() });
+        let is = |v: ValueId, one: bool| b.splat_int(v).is_some_and(|x| if one { x.is_one() } else { x.is_zero() });
         if is(t, true) && is(f, false) {
             return rw.replace_new(op, OpData::build("arith.extui").operands(&[c]));
         }
@@ -1607,7 +1603,7 @@ impl ArithCanon {
         let Some(shr) = b.def_named(b[op].operands[0], "arith.shrsi") else { return false };
         let (x, c) = b.operands2(shr);
         let Some(attr) = b.constant_of(c) else { return false };
-        let Some(amount) = b.int_or_splat(c) else { return false };
+        let Some(amount) = b.splat_int(c) else { return false };
         if b.elem_width(x) - b.elem_width(b[op].results[0]) != amount.signed() as i64 {
             return false;
         }

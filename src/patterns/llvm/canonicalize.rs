@@ -116,10 +116,7 @@ fn chainable_cast<'a>(b: &mut Body<'a>, op: OpId) -> Fold<'a> {
 
 fn gep<'a>(b: &mut Body<'a>, op: OpId, consts: &[Option<Attribute<'a>>]) -> Fold<'a> {
     const DYN: i64 = i32::MIN as i64;
-    let raw: Vec<i64> = match b[op].get("rawConstantIndices") {
-        Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
-        _ => return Fold::Failed,
-    };
+    let Some(raw) = b[op].get("rawConstantIndices").and_then(Attribute::dense_values) else { return Fold::Failed };
     let base = b[op].operands[0];
     let dynamic: Vec<_> = b[op].operands[1..].to_vec();
     let const_of = |k: usize| consts.get(1 + k).cloned().flatten().and_then(|a| Const::try_from(&a).ok()).filter(|c| !c.elements).and_then(|c| c.as_int()).map(|i| i.signed());

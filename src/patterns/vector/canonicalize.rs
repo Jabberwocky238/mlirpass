@@ -3,19 +3,10 @@ use alloc::vec::Vec;
 
 use mlirformat::{arith, Attribute, Dim, ShapedKind, Type};
 
+use super::vshape;
 use crate::{ApInt, Body, Const, Def, Fold, Folded, OpData, OpId, Scalar, ValueId};
 
 const POISON: i64 = -1;
-
-fn vshape(t: &Type<'_>) -> Option<(Vec<i64>, Vec<bool>)> {
-    match t {
-        Type::Shaped(s) if s.kind == ShapedKind::Vector => {
-            let dims = s.shape.as_ref()?;
-            Some((dims.iter().map(|d| if let Dim::Static(n) | Dim::Scalable(n) = d { *n } else { Dim::DYNAMIC }).collect(), dims.iter().map(|d| matches!(d, Dim::Scalable(_))).collect()))
-        }
-        _ => None,
-    }
-}
 
 fn vrank(t: &Type<'_>) -> Option<usize> {
     vshape(t).map(|s| s.0.len())
@@ -456,23 +447,16 @@ impl<'a> Folder<'_, 'a> {
         b[op].operands.iter().chain(&b[op].results).any(|v| vrank(&b[*v].ty) == Some(0))
     }
 
-    fn array_attr(&self, op: OpId, name: &str) -> Vec<i64> {
-        match self.b[op].get(name) {
-            Some(Attribute::Array(a)) => a.iter().filter_map(|x| if let Attribute::Int { lit, .. } = x { lit.parse().ok() } else { None }).collect(),
-            _ => Vec::new(),
-        }
-    }
-
     fn extract_strided(&mut self) -> Option<Fold<'a>> {
         let op = self.op;
         if self.b.has_dynamic_position(op) {
             return None;
         }
         let es = self.def(0, "vector.extract_strided_slice")?;
-        if self.has_zero_d(es) || self.array_attr(es, "strides").iter().any(|s| *s != 1) {
+        if self.has_zero_d(es) || self.b.ints(es, "strides").iter().any(|s| *s != 1) {
             return None;
         }
-        let mut offsets = self.array_attr(es, "offsets");
+        let mut offsets = self.b.ints(es, "offsets");
         let (res, _) = vshape(&self.b.result_ty(es))?;
         let (src, _) = vshape(&self.b.operand_ty(es, 0))?;
         while let Some(&last) = offsets.last() {
@@ -508,8 +492,8 @@ impl<'a> Folder<'_, 'a> {
             if dest_rank > src.len() {
                 return None;
             }
-            let ins_offsets = self.array_attr(ins, "offsets");
-            if self.array_attr(ins, "strides").iter().any(|s| *s != 1) {
+            let ins_offsets = self.b.ints(ins, "offsets");
+            if self.b.ints(ins, "strides").iter().any(|s| *s != 1) {
                 return None;
             }
             let mut disjoint = false;
@@ -921,13 +905,13 @@ impl<'a> Folder<'_, 'a> {
         if c.is_splat() {
             return Self::attr(Const::splat(c.values[0], rt).into());
         }
-        if self.array_attr(op, "strides").iter().any(|s| *s != 1) {
+        if self.b.ints(op, "strides").iter().any(|s| *s != 1) {
             return Fold::Failed;
         }
         let (Some((src, _)), Some((slice, _))) = (vshape(&c.ty), vshape(&rt)) else { return Fold::Failed };
         let st = strides(&src);
         let mut offsets = vec![0; slice.len()];
-        for (i, o) in self.array_attr(op, "offsets").into_iter().enumerate() {
+        for (i, o) in self.b.ints(op, "offsets").into_iter().enumerate() {
             offsets[i] = o;
         }
         let mut pos = offsets.clone();
@@ -955,14 +939,14 @@ impl<'a> Folder<'_, 'a> {
 
     fn strided_from_insert_chain(&mut self) -> bool {
         let op = self.op;
-        let (eo, es, esz) = (self.array_attr(op, "offsets"), self.array_attr(op, "strides"), self.array_attr(op, "sizes"));
+        let (eo, es, esz) = (self.b.ints(op, "offsets"), self.b.ints(op, "strides"), self.b.ints(op, "sizes"));
         let src_rank = vrank(&self.b.operand_ty(op, 0));
         let mut ins = self.def(0, "vector.insert_strided_slice");
         while let Some(i) = ins {
             if src_rank != vrank(&self.b.operand_ty(i, 0)) {
                 return false;
             }
-            let (io, is) = (self.array_attr(i, "offsets"), self.array_attr(i, "strides"));
+            let (io, is) = (self.b.ints(i, "offsets"), self.b.ints(i, "strides"));
             if eo.len() > io.len() {
                 return false;
             }
@@ -988,7 +972,7 @@ impl<'a> Folder<'_, 'a> {
             if !disjoint && !partial {
                 let v = self.b[i].operands[0];
                 self.b.set_operand(op, 0, v);
-                self.b[op].set("offsets", array_i64(&diffs));
+                self.b[op].set("offsets", Attribute::int_array(&diffs));
                 return true;
             }
             if !disjoint {
@@ -1020,7 +1004,7 @@ impl<'a> Folder<'_, 'a> {
         if tensor && let Some(read) = b.def_named(b[op].operands[0], "vector.transfer_read") {
             let (rp, wp) = (b.perm(read), b.perm(op));
             let minor = |p: &Option<Perm>| p.as_ref().is_some_and(Perm::minor_identity);
-            let zero = |vs: Vec<ValueId>| vs.iter().all(|v| const_int(b, *v) == Some(0));
+            let zero = |vs: Vec<ValueId>| vs.iter().all(|v| b.const_index(*v) == Some(0));
             let rshape = vshape(&b.result_ty(read)).map(|s| s.0);
             let tshape = b[base].ty.shape().map(|d| d.iter().map(|x| if let Dim::Static(n) = x { *n } else { Dim::DYNAMIC }).collect::<Vec<_>>());
             if b.transfer_rank(op) != 0
@@ -1223,7 +1207,7 @@ impl<'a> Body<'a> {
             }
             let mut ib = false;
             if let Some(Some(d)) = perm.results.get(i) {
-                ib = sshape.get(*d).is_some_and(|s| *s != Dim::DYNAMIC) && const_int(self, indices[*d]).is_some_and(|c| c + vs[i] <= sshape[*d]);
+                ib = sshape.get(*d).is_some_and(|s| *s != Dim::DYNAMIC) && self.const_index(indices[*d]).is_some_and(|c| c + vs[i] <= sshape[*d]);
                 non_bcast.push(i);
             }
             new.push(ib);
@@ -1268,7 +1252,7 @@ impl<'a> Body<'a> {
         let (vs, _) = vshape(&ta).unwrap_or_default();
         let offset = ia.len() - vs.len();
         for i in 0..ia.len() {
-            let (ca, cb) = (const_int(self, ia[i]), const_int(self, ib[i]));
+            let (ca, cb) = (self.const_index(ia[i]), self.const_index(ib[i]));
             let (Some(x), Some(y)) = (ca, cb) else { continue };
             if i < offset {
                 if x != y {
@@ -1282,11 +1266,6 @@ impl<'a> Body<'a> {
     }
 }
 
-fn const_int(b: &Body<'_>, v: ValueId) -> Option<i64> {
-    let c = Const::try_from(&b.constant_of(v)?).ok().filter(|c| !c.elements)?;
-    Some(c.as_int()?.signed() as i64)
-}
-
 fn splat_source(b: &Body<'_>, v: ValueId) -> Option<ValueId> {
     let d = b.def_named(v, "vector.broadcast")?;
     let s = b[d].operands[0];
@@ -1295,19 +1274,8 @@ fn splat_source(b: &Body<'_>, v: ValueId) -> Option<ValueId> {
 
 fn kind(b: &Body<'_>, op: OpId) -> Option<alloc::string::String> {
     match b[op].get("kind")? {
-        Attribute::Extended { ext, .. } => Some(ext.body.as_deref()?.trim_matches(|c| c == '<' || c == '>').into()),
+        Attribute::Extended { ext, .. } => Some(ext.inner()?.into()),
         _ => None,
-    }
-}
-
-fn array_i64<'a>(v: &[i64]) -> Attribute<'a> {
-    Attribute::Array(v.iter().map(|x| Attribute::Int { lit: alloc::format!("{x}").into(), ty: None }).collect())
-}
-
-fn i64_array(b: &Body<'_>, op: OpId, name: &str) -> Vec<i64> {
-    match b[op].get(name) {
-        Some(Attribute::Array(a)) => a.iter().filter_map(|x| if let Attribute::Int { lit, .. } = x { lit.parse().ok() } else { None }).collect(),
-        _ => Vec::new(),
     }
 }
 
@@ -1467,7 +1435,7 @@ impl VectorCanon {
         let mut all_false = b.mask_format(b[op].operands[0]) == Some(false);
         let mut i = 0;
         while !all_false && i < pos.len() {
-            let Some(bound) = b.def_named(operands[i], "arith.constant").and_then(|c| const_int(b, b[c].results[0])) else {
+            let Some(bound) = b.def_named(operands[i], "arith.constant").and_then(|c| b.const_index(b[c].results[0])) else {
                 unknown = true;
                 i += 1;
                 continue;
@@ -1928,13 +1896,13 @@ impl VectorCanon {
         if dn > 256 && b[dst].uses.len() != 1 {
             return false;
         }
-        if da.is_poison() || sa.is_poison() || i64_array(b, op, "strides").iter().any(|s| *s != 1) {
+        if da.is_poison() || sa.is_poison() || b.ints(op, "strides").iter().any(|s| *s != 1) {
             return false;
         }
         let (Ok(dc), Ok(sc)) = (Const::try_from(&da), Const::try_from(&sa)) else { return false };
         let Some((ss, _)) = vshape(&b[src].ty) else { return false };
         let rank_diff = ds.len() - ss.len();
-        let offsets = i64_array(b, op, "offsets");
+        let offsets = b.ints(op, "offsets");
         let dst_st = strides(&ds);
         let mut values: Vec<Scalar> = (0..dn as usize).map(|i| dc.values[if dc.is_splat() { 0 } else { i }]).collect();
         let sn: i64 = ss.iter().product();
@@ -1968,17 +1936,17 @@ impl VectorCanon {
     fn strided_slice_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
         let Some(first) = b.def_named(b[op].operands[0], "vector.extract_strided_slice") else { return false };
-        if [op, first].iter().any(|o| i64_array(b, *o, "strides").iter().any(|s| *s != 1)) {
+        if [op, first].iter().any(|o| b.ints(*o, "strides").iter().any(|s| *s != 1)) {
             return false;
         }
-        let (o1, s1, o2, s2) = (i64_array(b, first, "offsets"), i64_array(b, first, "sizes"), i64_array(b, op, "offsets"), i64_array(b, op, "sizes"));
+        let (o1, s1, o2, s2) = (b.ints(first, "offsets"), b.ints(first, "sizes"), b.ints(op, "offsets"), b.ints(op, "sizes"));
         let src = b[first].operands[0];
         let Some(shape) = b[src].ty.shape().map(|d| d.iter().map(|x| if let mlirformat::Dim::Static(n) | mlirformat::Dim::Scalable(n) = x { *n } else { 0 }).collect::<Vec<i64>>()) else { return false };
         let rank = o1.len().max(o2.len());
         let offsets: Vec<i64> = (0..rank).map(|i| o1.get(i).copied().unwrap_or(0) + o2.get(i).copied().unwrap_or(0)).collect();
         let sizes: Vec<i64> = (0..rank).map(|i| s2.get(i).or(s1.get(i)).copied().unwrap_or(shape[i])).collect();
         let rt = b.result_ty(op);
-        let data = OpData::build("vector.extract_strided_slice").operands(&[src]).with("offsets", array_i64(&offsets)).with("sizes", array_i64(&sizes)).with("strides", array_i64(&vec![1; rank]));
+        let data = OpData::build("vector.extract_strided_slice").operands(&[src]).with("offsets", Attribute::int_array(&offsets)).with("sizes", Attribute::int_array(&sizes)).with("strides", Attribute::int_array(&vec![1; rank]));
         rw.replace_with(op, data, &[rt]);
         true
     }
@@ -1987,12 +1955,12 @@ impl VectorCanon {
     fn strided_slice_create_mask_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
         let Some(cm) = b.def_named(b[op].operands[0], "vector.create_mask") else { return false };
-        if i64_array(b, op, "strides").iter().any(|s| *s != 1) {
+        if b.ints(op, "strides").iter().any(|s| *s != 1) {
             return false;
         }
         let sizes = b[cm].operands.clone();
-        let offsets = i64_array(b, op, "offsets");
-        let n = offsets.len().min(i64_array(b, op, "sizes").len()).min(sizes.len());
+        let offsets = b.ints(op, "offsets");
+        let n = offsets.len().min(b.ints(op, "sizes").len()).min(sizes.len());
         let rt = b.result_ty(op);
         rw.set_before(op);
         let mut new = Vec::new();
@@ -2012,11 +1980,11 @@ impl VectorCanon {
     fn strided_slice_constant_mask_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
         let Some(cm) = b.def_named(b[op].operands[0], "vector.constant_mask") else { return false };
-        if i64_array(b, op, "strides").iter().any(|s| *s != 1) {
+        if b.ints(op, "strides").iter().any(|s| *s != 1) {
             return false;
         }
         let dims = b.dense_array(cm, "mask_dim_sizes");
-        let (offsets, sizes) = (i64_array(b, op, "offsets"), i64_array(b, op, "sizes"));
+        let (offsets, sizes) = (b.ints(op, "offsets"), b.ints(op, "sizes"));
         let mut new: Vec<i64> = dims.iter().zip(offsets.iter().zip(&sizes)).map(|(m, (o, s))| 0.max((o + s).min(*m) - o)).collect();
         new.extend(&dims[new.len()..]);
         if new.contains(&0) {
@@ -2039,9 +2007,9 @@ impl VectorCanon {
         let needs = (0..ss.len()).any(|i| ss[i] != 1 && ss[i] != ds[i + diff]);
         let mut source = src;
         if needs {
-            let mut offsets: Vec<i64> = i64_array(b, op, "offsets").into_iter().skip(diff).collect();
-            let mut sizes: Vec<i64> = i64_array(b, op, "sizes").into_iter().skip(diff).collect();
-            let st: Vec<i64> = i64_array(b, op, "strides").into_iter().skip(diff).collect();
+            let mut offsets: Vec<i64> = b.ints(op, "offsets").into_iter().skip(diff).collect();
+            let mut sizes: Vec<i64> = b.ints(op, "sizes").into_iter().skip(diff).collect();
+            let st: Vec<i64> = b.ints(op, "strides").into_iter().skip(diff).collect();
             for i in 0..ss.len() {
                 if ss[i] == 1 {
                     offsets[i] = 0;
@@ -2052,7 +2020,7 @@ impl VectorCanon {
             shape[..sizes.len()].copy_from_slice(&sizes);
             let t = Type::vector(&shape, &ssc, elem(&b[src].ty).clone());
             rw.set_before(op);
-            let o = rw.create(OpData::build("vector.extract_strided_slice").operands(&[src]).with("offsets", array_i64(&offsets)).with("sizes", array_i64(&sizes)).with("strides", array_i64(&st)), &[t]);
+            let o = rw.create(OpData::build("vector.extract_strided_slice").operands(&[src]).with("offsets", Attribute::int_array(&offsets)).with("sizes", Attribute::int_array(&sizes)).with("strides", Attribute::int_array(&st)), &[t]);
             source = rw.body[o].results[0];
         }
         rw.replace_unary(op, "vector.broadcast", source, rt)
@@ -2069,7 +2037,7 @@ impl VectorCanon {
     #[rewrite("vector.extract_strided_slice")]
     fn contiguous_extract_strided_slice_to_extract(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
-        if i64_array(b, op, "strides").iter().any(|s| *s != 1) {
+        if b.ints(op, "strides").iter().any(|s| *s != 1) {
             return false;
         }
         let src = b[op].operands[0];
@@ -2077,7 +2045,7 @@ impl VectorCanon {
         if ssc.contains(&true) || ss.is_empty() {
             return false;
         }
-        let sizes = i64_array(b, op, "sizes");
+        let sizes = b.ints(op, "sizes");
         let mut n = sizes.len();
         while n > 0 && sizes[n - 1] == ss[n - 1] {
             n -= 1;
@@ -2088,7 +2056,7 @@ impl VectorCanon {
         while n + 1 < sizes.len() && sizes[n] == 1 {
             n += 1;
         }
-        let offsets = i64_array(b, op, "offsets");
+        let offsets = b.ints(op, "offsets");
         let rt = b.result_ty(op);
         rw.set_before(op);
         let x = rw.vextract(src, &offsets[..n]);
@@ -2114,6 +2082,11 @@ impl VectorCanon {
         true
     }
 
+    #[rewrite("vector.expandload")]
+    fn expand_load_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
+        Self::masked_load_folder(rw, op)
+    }
+
     #[rewrite("vector.maskedstore")]
     fn masked_store_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
         let b = &*rw.body;
@@ -2130,39 +2103,9 @@ impl VectorCanon {
         true
     }
 
-    #[rewrite("vector.expandload")]
-    fn expand_load_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        let b = &*rw.body;
-        let n = b[op].operands.len();
-        match b.mask_format(b[op].operands[n - 2]) {
-            Some(true) => {
-                let operands = b[op].operands[..n - 2].to_vec();
-                let rt = b.result_ty(op);
-                rw.replace_with(op, OpData::build("vector.load").operands(&operands), &[rt]);
-            }
-            Some(false) => {
-                let p = b[op].operands[n - 1];
-                rw.replace_op(op, &[p]);
-            }
-            None => return false,
-        }
-        true
-    }
-
     #[rewrite("vector.compressstore")]
     fn compress_store_folder(rw: &mut crate::Rewriter<'_, '_>, op: crate::OpId) -> bool {
-        let b = &*rw.body;
-        let n = b[op].operands.len();
-        match b.mask_format(b[op].operands[n - 2]) {
-            Some(true) => {
-                let mut operands = vec![b[op].operands[n - 1]];
-                operands.extend(&b[op].operands[..n - 2]);
-                rw.replace_with(op, OpData::build("vector.store").operands(&operands), &[]);
-            }
-            Some(false) => rw.erase_op(op),
-            None => return false,
-        }
-        true
+        Self::masked_store_folder(rw, op)
     }
 
     #[rewrite("vector.gather")]
@@ -2259,7 +2202,7 @@ impl VectorCanon {
         }
         if b[def].name == "vector.create_mask" {
             let ops = b[def].operands.clone();
-            if ops[ops.len() - drop..].iter().any(|o| b.def_named(*o, "arith.constant").is_none() || const_int(b, *o) != Some(1)) {
+            if ops[ops.len() - drop..].iter().any(|o| b.def_named(*o, "arith.constant").is_none() || b.const_index(*o) != Some(1)) {
                 return false;
             }
             rw.replace_with(op, OpData::build("vector.create_mask").operands(&ops[..ops.len() - drop]), &[rt]);
@@ -2435,7 +2378,7 @@ impl VectorCanon {
         }
         let mut dims = Vec::new();
         for (i, v) in b[op].operands.iter().enumerate() {
-            if let Some(c) = const_int(b, *v) {
+            if let Some(c) = b.const_index(*v) {
                 if scal[i] && c >= 0 {
                     return false;
                 }
@@ -2536,7 +2479,7 @@ impl VectorCanon {
         if vrank(&src_ty) != Some(b.transfer_rank(write)) && src_ty.shape().map(|s| s.len()) != Some(b.transfer_rank(write)) {
             return false;
         }
-        if !exl[0].iter().all(|x| b.ofr_int(*x) == Some(0)) || !b.transfer_indices(write).iter().all(|v| const_int(b, *v) == Some(0)) {
+        if !exl[0].iter().all(|x| b.ofr_int(*x) == Some(0)) || !b.transfer_indices(write).iter().all(|v| b.const_index(*v) == Some(0)) {
             return false;
         }
         if ins[1].len() != exl[1].len() || ins[1].iter().zip(&exl[1]).any(|(x, y)| x != y && (b.ofr_int(*x).is_none() || b.ofr_int(*x) != b.ofr_int(*y))) {
@@ -2611,7 +2554,7 @@ impl VectorCanon {
             if b[u.op].name != "arith.cmpi" || u.index != 0 {
                 continue;
             }
-            let Some(c) = const_int(b, b[u.op].operands[1]) else { continue };
+            let Some(c) = b.const_index(b[u.op].operands[1]) else { continue };
             let Some(pred) = b[u.op].get("predicate").and_then(|a| if let Attribute::Int { lit, .. } = a { lit.parse::<i64>().ok() } else { None }) else { continue };
             let splat = match pred {
                 6 | 9 if n <= c => Some(pred == 6),
@@ -2681,10 +2624,10 @@ fn vscale_multiplier(b: &Body<'_>, v: ValueId) -> Option<i64> {
     let m = b.def_named(v, "arith.muli")?;
     let (l, r) = (b[m].operands[0], b[m].operands[1]);
     if b.def_named(l, "vector.vscale").is_some() {
-        return const_int(b, r);
+        return b.const_index(r);
     }
     if b.def_named(r, "vector.vscale").is_some() {
-        return const_int(b, l);
+        return b.const_index(l);
     }
     None
 }

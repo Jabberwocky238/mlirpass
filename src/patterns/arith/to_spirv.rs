@@ -372,7 +372,7 @@ impl ArithToSpirv {
         true
     }
 
-    #[convert("arith.uitofp", "arith.extui")]
+    #[convert("arith.uitofp", "arith.extui", "arith.index_cast")]
     fn from_i1<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         if !Self::is_bool(&cr.rw.body[ops[0]].ty) {
@@ -395,16 +395,6 @@ impl ArithToSpirv {
         let v = cr.build(OpData::build("spirv.INotEqual").operands(&[zero, ops[0]]), dst);
         cr.replace_values(op, &[v]);
         true
-    }
-
-    #[convert("arith.index_cast")]
-    fn i1_to_index<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], _: ArithSpirvOptions) -> bool {
-        let Some(ops) = Cr::one_to_one(operands) else { return false };
-        if !Self::is_bool(&cr.rw.body[ops[0]].ty) {
-            return false;
-        }
-        let Some(dst) = Self::result_ty(cr, op) else { return false };
-        Self::select_one_zero(cr, op, ops[0], dst)
     }
 
     #[convert("arith.extsi")]
@@ -679,7 +669,7 @@ impl ArithToSpirv {
     }
 
     fn extract<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, i: i64, ty: Type<'a>) -> ValueId {
-        cr.build(OpData::build("spirv.CompositeExtract").operands(&[v]).with("indices", Attribute::Array(vec![Attribute::integer(i128::from(i), Type::int(32))])), ty)
+        cr.build(OpData::build("spirv.CompositeExtract").operands(&[v]).with("indices", Attribute::int_array_of(32, &[i])), ty)
     }
 
     #[convert("arith.mulsi_extended", "arith.mului_extended")]

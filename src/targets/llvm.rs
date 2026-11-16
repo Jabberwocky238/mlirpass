@@ -99,7 +99,7 @@ impl CConv {
 
 impl From<CConv> for Attribute<'static> {
     fn from(c: CConv) -> Self {
-        Attribute::dialect("llvm.cconv", &format!("<{}>", c.name()))
+        Attribute::dialect_with("llvm.cconv", c.name())
     }
 }
 
@@ -448,7 +448,7 @@ pub fn llvm_overflow<'a>(arith: Option<&Attribute<'_>>) -> Attribute<'a> {
         _ => "",
     };
     let v = i64::from(body.contains("nsw")) | (i64::from(body.contains("nuw")) << 1);
-    Attribute::Int { lit: mlirformat::Str::Owned(format!("{v}")), ty: Some(Type::int(32)) }
+    Attribute::i32(v)
 }
 
 pub fn llvm_target<'c>() -> ConversionTarget<'c> {

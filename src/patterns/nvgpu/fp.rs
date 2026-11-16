@@ -373,12 +373,11 @@ impl NvgpuToNvvm {
         if multi {
             input = make(rw, OpData::build("vector.shape_cast").operands(&[input]), vec_of(n, src_elem.clone()));
         }
-        let i64s = |xs: &[i64]| Attribute::Array(xs.iter().map(|x| Attribute::Int { lit: alloc::format!("{x}").into(), ty: None }).collect());
         if pad {
             let pty = vec_of(padded, src_elem.clone());
             let zero = Attribute::Builtin { name: "dense".into(), body: "<0.000000e+00>".into(), ty: Some(pty.clone()) };
             let z = make(rw, OpData::build("arith.constant").with("value", zero), pty.clone());
-            input = make(rw, OpData::build("vector.insert_strided_slice").operands(&[input, z]).with("offsets", i64s(&[0])).with("strides", i64s(&[1])), pty);
+            input = make(rw, OpData::build("vector.insert_strided_slice").operands(&[input, z]).with("offsets", Attribute::int_array(&[0])).with("strides", Attribute::int_array(&[1])), pty);
         }
         let b = &*rw.body;
         let cvt_ty = vec_of(if pad { padded } else { n }, dst_elem);
@@ -393,7 +392,7 @@ impl NvgpuToNvvm {
         let mut result = make(rw, data, cvt_ty);
         if pad {
             let ty = vec_of(n, out_ty.element_type().owned());
-            result = make(rw, OpData::build("vector.extract_strided_slice").operands(&[result]).with("offsets", i64s(&[0])).with("sizes", i64s(&[n])).with("strides", i64s(&[1])), ty);
+            result = make(rw, OpData::build("vector.extract_strided_slice").operands(&[result]).with("offsets", Attribute::int_array(&[0])).with("sizes", Attribute::int_array(&[n])).with("strides", Attribute::int_array(&[1])), ty);
         }
         if multi {
             result = make(rw, OpData::build("vector.shape_cast").operands(&[result]), out_ty.clone());

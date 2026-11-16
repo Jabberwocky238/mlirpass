@@ -52,9 +52,8 @@ impl Fmf {
 impl From<Option<&Attribute<'_>>> for Fmf {
     fn from(a: Option<&Attribute<'_>>) -> Self {
         let Some(Attribute::Extended { ext, .. }) = a else { return Self::NONE };
-        let body = ext.body.as_deref().unwrap_or("<none>");
         let mut bits = 0u8;
-        for f in body.trim_matches(|c| c == '<' || c == '>').split(',').map(str::trim) {
+        for f in ext.inner().unwrap_or("none").split(',').map(str::trim) {
             if f == "fast" {
                 bits = 0x7f;
             } else if let Some(i) = Self::NAMES.iter().position(|n| *n == f) {

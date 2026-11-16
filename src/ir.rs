@@ -1240,9 +1240,16 @@ impl Body<'_> {
         folded
     }
 
+    pub fn const_int(&self, v: ValueId) -> Option<crate::ApInt> {
+        crate::Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int()
+    }
+
+    pub fn splat_int(&self, v: ValueId) -> Option<crate::ApInt> {
+        crate::Const::try_from(&self.constant_of(v)?).ok()?.as_int()
+    }
+
     pub fn const_index(&self, v: ValueId) -> Option<i64> {
-        let c = crate::Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?;
-        Some(c.as_int()?.signed() as i64)
+        Some(self.const_int(v)?.signed() as i64)
     }
 }
 
@@ -1288,6 +1295,11 @@ impl<'a> OpData<'a> {
     #[inline]
     pub fn gpu_kernel(&self) -> bool {
         self.get("kernel").is_some() || self.get("gpu.kernel").is_some()
+    }
+
+    #[inline]
+    pub fn has_flag(&self, name: &str) -> bool {
+        matches!(self.get(name), Some(Attribute::Bool(true) | Attribute::Unit))
     }
 
     pub fn get<'s>(&'s self, name: &str) -> Option<&'s Attribute<'a>> {

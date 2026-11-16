@@ -144,9 +144,6 @@ impl Tn {
         Self::tensor(&shape, (*src.elem).clone(), Vec::new())
     }
 
-    fn index<'a>(v: i64) -> Attribute<'a> {
-        Attribute::index(v)
-    }
 }
 
 impl<'a> Body<'a> {
@@ -1203,7 +1200,7 @@ impl TensorCanon {
                     return Fold::Failed;
                 }
                 if dims[i as usize] != Dim::DYNAMIC {
-                    return Folded::Attr(Tn::index(dims[i as usize])).into();
+                    return Folded::Attr(Attribute::index(dims[i as usize])).into();
                 }
                 if let Some(g) = b.def_named(ops[0], "tensor.generate") {
                     let k = dims[..i as usize].iter().filter(|d| **d == Dim::DYNAMIC).count();
@@ -1277,7 +1274,7 @@ impl TensorCanon {
                 Fold::Failed
             }
             "tensor.rank" => match b[ops[0]].ty.shape() {
-                Some(d) => Folded::Attr(Tn::index(d.len() as i64)).into(),
+                Some(d) => Folded::Attr(Attribute::index(d.len() as i64)).into(),
                 None => Fold::Failed,
             },
             "tensor.reshape" => {

@@ -26,7 +26,7 @@ impl IndexKind {
 }
 
 pub fn constant_range<'a>(lo: i64, hi: i64) -> Attribute<'a> {
-    Attribute::dialect("llvm.constant_range", &format!("<i32, {lo}, {hi}>"))
+    Attribute::dialect_with("llvm.constant_range", format_args!("i32, {lo}, {hi}"))
 }
 
 impl<'a> ConversionRewriter<'_, 'a, '_> {

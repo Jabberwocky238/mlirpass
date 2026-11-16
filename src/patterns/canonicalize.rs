@@ -300,7 +300,7 @@ impl<'a> Body<'a> {
     }
 
     pub fn int_constant(&self, v: ValueId) -> Option<i128> {
-        crate::Const::try_from(&self.constant_of(v)?).ok().filter(|c| !c.elements)?.as_int().map(|i| i.signed())
+        Some(self.const_int(v)?.signed())
     }
 
     pub fn int_range(&self, v: ValueId) -> Option<IntRange> {

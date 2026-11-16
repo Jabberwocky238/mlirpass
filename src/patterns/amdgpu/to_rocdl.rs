@@ -55,14 +55,6 @@ impl AmdgpuToRocdl {
         }
     }
 
-    fn flag(cr: &Cr<'_, '_, '_>, op: OpId, name: &str) -> bool {
-        matches!(cr.rw.body[op].get(name), Some(Attribute::Bool(true) | Attribute::Unit))
-    }
-
-    fn i32(v: i64) -> Attribute<'static> {
-        Attribute::of_int(v.into(), Type::int(32))
-    }
-
     #[convert("amdgpu.sched_barrier")]
     fn sched_barrier(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: AmdgpuRocdlOptions) -> bool {
         let Some(mask) = cr.rw.body[op].get("opts").cloned() else { return false };
@@ -94,7 +86,7 @@ impl AmdgpuToRocdl {
         } else if chipset.major < 12 {
             cr.rw.create(OpData::build("rocdl.s.barrier"), &[]);
         } else {
-            cr.rw.create(OpData::build("rocdl.s.barrier.signal").with("id", Self::i32(-1)), &[]);
+            cr.rw.create(OpData::build("rocdl.s.barrier.signal").with("id", Attribute::i32(-1)), &[]);
             cr.rw.create(OpData::build("rocdl.s.barrier.wait").with("id", Attribute::of_int((-1).into(), Type::int(16))), &[]);
         }
         Self::fence(cr, Ordering::Acquire);
@@ -135,13 +127,13 @@ impl AmdgpuToRocdl {
             (l, s) => or_max(l.or(s)),
         };
         let Some(bits) = Self::waitcnt(chipset, vm, or_max(count(cr, "exp")), or_max(count(cr, "ds"))) else { return false };
-        cr.replace_new(op, OpData::build("rocdl.s.waitcnt").with("bitfield", Self::i32(bits)), &[]);
+        cr.replace_new(op, OpData::build("rocdl.s.waitcnt").with("bitfield", Attribute::i32(bits)), &[]);
         true
     }
 
     fn dpp_ctrl(cr: &Cr<'_, '_, '_>, op: OpId) -> Option<u32> {
         let Some(Attribute::Extended { ext, .. }) = cr.rw.body[op].get("kind") else { return None };
-        let body = ext.body.as_deref()?.strip_prefix('<')?.strip_suffix('>')?.trim();
+        let body = ext.inner()?.trim();
         let kind = body.strip_prefix("dpp_perm").map_or(body, str::trim);
         let &(name, base) = DPP_PERMS.iter().find(|(n, _)| *n == kind)?;
         let arg = cr.rw.body[op].get("permArgument");
@@ -166,7 +158,7 @@ impl AmdgpuToRocdl {
         }
         let vt = Type::vector(&[i64::from(32 / w)], &[false], int);
         let u = cr.build(OpData::build("llvm.mlir.undef"), vt.clone());
-        let c = cr.llvm_constant(Self::i32(0), Type::int(32));
+        let c = cr.llvm_constant(Attribute::i32(0), Type::int(32));
         let v = cr.build(OpData::build("llvm.insertelement").operands(&[u, v, c]), vt);
         cr.build(OpData::build("llvm.bitcast").operands(&[v]), wide)
     }
@@ -184,15 +176,15 @@ impl AmdgpuToRocdl {
         };
         let int = Type::int(w);
         let (Some(ctrl), Some(row), Some(bank)) = (Self::dpp_ctrl(cr, op), Self::int_attr(cr, op, "row_mask"), Self::int_attr(cr, op, "bank_mask")) else { return false };
-        let bound = Self::flag(cr, op, "bound_ctrl");
+        let bound = cr.rw.body[op].has_flag("bound_ctrl");
         cr.rw.set_before(op);
         let src = Self::dword(cr, src, w, float, wide.clone());
         let old = Self::dword(cr, old, w, float, wide.clone());
         let data = OpData::build("rocdl.update.dpp")
             .operands(&[old, src])
-            .with("dppCtrl", Self::i32(ctrl.into()))
-            .with("rowMask", Self::i32(row))
-            .with("bankMask", Self::i32(bank))
+            .with("dppCtrl", Attribute::i32(ctrl.into()))
+            .with("rowMask", Attribute::i32(row))
+            .with("bankMask", Attribute::i32(bank))
             .with("boundCtrl", Attribute::Bool(bound));
         let mut r = cr.build(data, wide.clone());
         if w < 32 {
@@ -211,7 +203,7 @@ impl AmdgpuToRocdl {
         let (Some(and), Some(or), Some(xor)) = (Self::int_attr(cr, op, "and_mask"), Self::int_attr(cr, op, "or_mask"), Self::int_attr(cr, op, "xor_mask")) else { return false };
         cr.rw.set_before(op);
         let Some(parts) = cr.decompose(src, Type::int(32), false) else { return false };
-        let mask = cr.llvm_constant(Attribute::of_int((and | (or << 5) | (xor << 10)).into(), Type::int(32)), Type::int(32));
+        let mask = cr.llvm_constant(Attribute::i32(and | (or << 5) | (xor << 10)), Type::int(32));
         let swizzled: Vec<ValueId> = parts.iter().map(|v| {
             let t = cr.rw.body[*v].ty.clone();
             cr.build(OpData::build("rocdl.ds_swizzle").operands(&[*v, mask]), t)
@@ -228,8 +220,8 @@ impl AmdgpuToRocdl {
             return false;
         }
         let (src, selector) = (operands[0][0], operands[1][0]);
-        let name = if Self::flag(cr, op, "cross") { "rocdl.permlanex16.var" } else { "rocdl.permlane16.var" };
-        let (fi, bound) = (Self::flag(cr, op, "fetch_inactive"), Self::flag(cr, op, "bound_ctrl"));
+        let name = if cr.rw.body[op].has_flag("cross") { "rocdl.permlanex16.var" } else { "rocdl.permlane16.var" };
+        let (fi, bound) = (cr.rw.body[op].has_flag("fetch_inactive"), cr.rw.body[op].has_flag("bound_ctrl"));
         cr.rw.set_before(op);
         let Some(parts) = cr.decompose(src, Type::int(32), false) else { return false };
         let permuted: Vec<ValueId> = parts.into_iter().map(|v| cr.build(OpData::build(name).operands(&[v, v, selector]).with("fi", Attribute::Bool(fi)).with("boundControl", Attribute::Bool(bound)), Type::int(32))).collect();
@@ -251,7 +243,7 @@ impl AmdgpuToRocdl {
             Some(32) => "rocdl.permlane32.swap",
             _ => return false,
         };
-        let (fi, bound) = (Self::flag(cr, op, "fetch_inactive"), Self::flag(cr, op, "bound_ctrl"));
+        let (fi, bound) = (cr.rw.body[op].has_flag("fetch_inactive"), cr.rw.body[op].has_flag("bound_ctrl"));
         cr.rw.set_before(op);
         let Some(parts) = cr.decompose(src, Type::int(32), false) else { return false };
         let mut permuted = Vec::new();

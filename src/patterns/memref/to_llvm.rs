@@ -74,7 +74,7 @@ impl MemrefToLlvm {
 
     fn arith_flags<'a>(cr: &mut Cr<'_, 'a, '_>, name: &str, a: ValueId, b: ValueId, flags: i64) -> ValueId {
         let ty = cr.rw.body[a].ty.clone();
-        cr.build(OpData::build(name).operands(&[a, b]).with("overflowFlags", Attribute::Int { lit: format!("{flags}").into(), ty: Some(Type::int(32)) }), ty)
+        cr.build(OpData::build(name).operands(&[a, b]).with("overflowFlags", Attribute::i32(flags)), ty)
     }
 
     pub fn gep<'a>(cr: &mut Cr<'_, 'a, '_>, res: Type<'a>, elem: Type<'a>, base: ValueId, idx: &[Gep], flags: i64) -> ValueId {
@@ -90,7 +90,7 @@ impl MemrefToLlvm {
             }
         }
         let raw = Attribute::DenseArray { ty: Type::int(32), values: raw.into_iter().map(|r| format!("{r}").into()).collect() };
-        let data = OpData::build("llvm.getelementptr").operands(&operands).with("elem_type", Attribute::Type(elem)).with("rawConstantIndices", raw).with("noWrapFlags", Attribute::Int { lit: format!("{flags}").into(), ty: Some(Type::int(32)) });
+        let data = OpData::build("llvm.getelementptr").operands(&operands).with("elem_type", Attribute::Type(elem)).with("rawConstantIndices", raw).with("noWrapFlags", Attribute::i32(flags));
         cr.build(data, res)
     }
 
@@ -295,7 +295,7 @@ impl MemrefToLlvm {
 
     fn aligned<'a>(cr: &mut Cr<'_, 'a, '_>, input: ValueId, alignment: ValueId) -> ValueId {
         let ty = cr.rw.body[alignment].ty.clone();
-        let one = cr.llvm_constant(Attribute::Int { lit: "1".into(), ty: Some(Type::Index) }, ty);
+        let one = cr.llvm_constant(Attribute::index(1), ty);
         let bump = Self::arith(cr, "llvm.sub", alignment, one);
         let bumped = Self::arith(cr, "llvm.add", input, bump);
         let m = Self::arith(cr, "llvm.urem", bumped, alignment);
@@ -643,7 +643,7 @@ impl MemrefToLlvm {
         let public = b.visibility(op) == Visibility::Public;
         let init = b[op].get("initial_value").cloned();
         let uninitialized = init == Some(Attribute::Unit);
-        let mut data = OpData::build("llvm.mlir.global").with("global_type", Attribute::Type(arr.clone())).with("linkage", Attribute::dialect("llvm.linkage", if public { "<external>" } else { "<private>" })).with("sym_name", b[op].get("sym_name").cloned().unwrap_or(Attribute::Unit)).with("addr_space", Attribute::Int { lit: format!("{space}").into(), ty: Some(Type::int(32)) });
+        let mut data = OpData::build("llvm.mlir.global").with("global_type", Attribute::Type(arr.clone())).with("linkage", Attribute::dialect("llvm.linkage", if public { "<external>" } else { "<private>" })).with("sym_name", b[op].get("sym_name").cloned().unwrap_or(Attribute::Unit)).with("addr_space", Attribute::i32(space.into()));
         if b[op].get("constant").is_some() {
             data.set("constant", Attribute::Unit);
         }
@@ -722,7 +722,7 @@ impl MemrefToLlvm {
             d.set("alignment", Attribute::i64(a));
         }
         for flag in ["nontemporal", "invariant"] {
-            if matches!(cr.rw.body[op].get(flag), Some(Attribute::Bool(true))) {
+            if cr.rw.body[op].has_flag(flag) {
                 d.set(flag, Attribute::Unit);
             }
         }
@@ -735,7 +735,7 @@ impl MemrefToLlvm {
         let indices: Vec<ValueId> = operands[1..].iter().flatten().copied().collect();
         let Some(ptr) = Self::strided_ptr(cr, o.llvm, &s, operands[0][0], &indices, 0) else { return false };
         let b = &cr.rw.body[op];
-        let flag = |n: &str| Attribute::Int { lit: if matches!(b.get(n), Some(Attribute::Bool(true))) { "1" } else { "0" }.into(), ty: Some(Type::int(32)) };
+        let flag = |n: &str| Attribute::i32(b.has_flag(n).into());
         let (rw, cache) = (flag("isWrite"), flag("isDataCache"));
         let hint = b.get("localityHint").cloned().unwrap_or(Attribute::Unit);
         let data = OpData::build("llvm.intr.prefetch").operands(&[ptr]).with("rw", rw).with("hint", hint).with("cache", cache);
@@ -907,13 +907,6 @@ impl MemrefToLlvm {
         (a, b, o)
     }
 
-    fn static_list<'a>(cr: &Cr<'_, 'a, '_>, op: OpId, name: &str) -> Vec<i64> {
-        match cr.rw.body[op].get(name) {
-            Some(Attribute::DenseArray { values, .. }) => values.iter().map(|v| v.parse().unwrap_or(0)).collect(),
-            _ => Vec::new(),
-        }
-    }
-
     #[convert("memref.reinterpret_cast")]
     fn reinterpret_cast<'a>(cr: &mut Cr<'_, 'a, '_>, op: OpId, operands: &[Vec<ValueId>], o: MemrefOptions) -> bool {
         let opts = o.llvm;
@@ -929,10 +922,10 @@ impl MemrefToLlvm {
         let (a, b, _) = Self::pointers(cr, opts, &src, operands[0][0], false);
         d = cr.insert_value(d, a, &[0]);
         d = cr.insert_value(d, b, &[1]);
-        let so = Self::static_list(cr, op, "static_offsets");
+        let so = cr.rw.body.dense_i64(op, "static_offsets");
         let off = if so.first() == Some(&Dim::DYNAMIC) { offs[0] } else { Self::const_index(cr, opts, so.first().copied().unwrap_or(0)) };
         d = cr.insert_value(d, off, &[2]);
-        let (ss, st) = (Self::static_list(cr, op, "static_sizes"), Self::static_list(cr, op, "static_strides"));
+        let (ss, st) = (cr.rw.body.dense_i64(op, "static_sizes"), cr.rw.body.dense_i64(op, "static_strides"));
         let (mut ds, mut dt) = (sizes.into_iter(), strides.into_iter());
         for i in 0..Self::rank(&dst) {
             let v = if ss[i] == Dim::DYNAMIC { ds.next().unwrap_or(off) } else { Self::const_index(cr, opts, ss[i]) };

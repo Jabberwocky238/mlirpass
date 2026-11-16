@@ -77,7 +77,7 @@ impl GpuToRocdl {
             cr.rw.set_before(op);
             Self::fence(cr, spaces.as_deref(), "workgroup", ORDERING_RELEASE);
             cr.rw.create(OpData::build("rocdl.s.barrier.join").operands(&[named]), &[]);
-            cr.rw.create(OpData::build("rocdl.s.barrier.signal.var").operands(&[named]).with("memberCnt", Attribute::of_int(0, Type::int(32))), &[]);
+            cr.rw.create(OpData::build("rocdl.s.barrier.signal.var").operands(&[named]).with("memberCnt", Attribute::i32(0)), &[]);
             cr.rw.create(OpData::build("rocdl.s.barrier.wait").with("id", Attribute::of_int(NAMED_BARRIER_WAIT.into(), Type::int(16))), &[]);
             Self::fence(cr, spaces.as_deref(), "workgroup", ORDERING_ACQUIRE);
             cr.erase(op);
@@ -124,7 +124,7 @@ impl GpuToRocdl {
         let block = cr.rw.body.top_block(table);
         cr.rw.set_end(block);
         let data = OpData { loc: loc.clone(), ..OpData::build("llvm.mlir.global") }
-            .with("addr_space", Attribute::of_int(LDS_ADDRESS_SPACE.into(), Type::int(32)))
+            .with("addr_space", Attribute::i32(LDS_ADDRESS_SPACE.into()))
             .with("global_type", Attribute::Type(target.clone()))
             .with("linkage", Attribute::dialect("llvm.linkage", "<internal>"))
             .with("sym_name", Attribute::str(&name));
@@ -164,7 +164,7 @@ impl GpuToRocdl {
                 }
                 tid.push(cr.build(data, i32t.clone()));
             }
-            let flags = || Attribute::of_int(LLVM_NSW_NUW.into(), Type::int(32));
+            let flags = || Attribute::i32(LLVM_NSW_NUW);
             let mut dim = Vec::new();
             for d in [Dimension::X, Dimension::Y] {
                 let v = Self::known_or_ockl(cr, op, IndexKind::Block, d, None);
@@ -272,7 +272,7 @@ impl GpuToRocdl {
         let i32t = Type::int(32);
         cr.rw.set_before(op);
         let src_lane = Self::lane(cr);
-        let c = |cr: &mut Cr<'_, '_, '_>, v: i64| cr.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(32));
+        let c = |cr: &mut Cr<'_, '_, '_>, v: i64| cr.llvm_constant(Attribute::i32(v), Type::int(32));
         let bin = |cr: &mut Cr<'_, '_, '_>, n: &str, a: ValueId, b: ValueId| cr.build(OpData::build(n).operands(&[a, b]), Type::int(32));
         let zero = c(cr, 0);
         let negw = bin(cr, "llvm.sub", zero, width);
@@ -300,7 +300,7 @@ impl GpuToRocdl {
 impl GpuToRocdl {
     fn signal_wait<'a>(id: i64) -> Vec<OpData<'a>> {
         vec![
-            OpData::build("rocdl.s.barrier.signal").with("id", Attribute::of_int(id.into(), Type::int(32))),
+            OpData::build("rocdl.s.barrier.signal").with("id", Attribute::i32(id)),
             OpData::build("rocdl.s.barrier.wait").with("id", Attribute::of_int(id.into(), Type::int(16))),
         ]
     }
@@ -336,7 +336,7 @@ impl GpuToRocdl {
                 }
             }
         }
-        let arg = cr.llvm_constant(Attribute::of_int((d as i64).into(), Type::int(32)), Type::int(32));
+        let arg = cr.llvm_constant(Attribute::i32(d as i64), Type::int(32));
         let call = cr.llvm_call(name, &[arg], &[i64t]);
         let hi = match (bound, kind) {
             (Some(b), _) => Some(b + 1),
@@ -344,7 +344,7 @@ impl GpuToRocdl {
             _ => None,
         };
         if let Some(hi) = hi {
-            let range = Attribute::dialect("llvm.constant_range", &alloc::format!("<i64, 1, {hi}>"));
+            let range = Attribute::dialect_with("llvm.constant_range", format_args!("i64, 1, {hi}"));
             cr.rw.body[call].set("res_attrs", Attribute::Array(vec![Attribute::Dict(vec![mlirformat::NamedAttr { name: "llvm.range".into(), value: Some(range) }])]));
         }
         cr.rw.body[call].results[0]

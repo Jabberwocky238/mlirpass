@@ -36,13 +36,13 @@ impl AmdgpuBufferToRocdl {
 
     fn arith<'a>(cr: &mut Cr<'_, 'a, '_>, name: &str, a: ValueId, b: ValueId) -> ValueId {
         let ty = cr.rw.body[a].ty.clone();
-        cr.build(OpData::build(name).operands(&[a, b]).with("overflowFlags", Attribute::of_int(0, Type::int(32))), ty)
+        cr.build(OpData::build(name).operands(&[a, b]).with("overflowFlags", Attribute::i32(0)), ty)
     }
 
     fn unsigned_to<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, w: u32) -> ValueId {
         match cr.rw.body[v].ty.int_width() {
             Some((have, _)) if have == w => v,
-            Some((have, _)) if have > w => cr.build(OpData::build("llvm.trunc").operands(&[v]).with("overflowFlags", Attribute::of_int(0, Type::int(32))), Type::int(w)),
+            Some((have, _)) if have > w => cr.build(OpData::build("llvm.trunc").operands(&[v]).with("overflowFlags", Attribute::i32(0)), Type::int(w)),
             _ => cr.build(OpData::build("llvm.zext").operands(&[v]), Type::int(w)),
         }
     }
@@ -242,7 +242,7 @@ impl AmdgpuBufferToRocdl {
         let sgpr = sgpr.unwrap_or_else(|| Self::constant(cr, 0, 32));
         args.push(Self::arith(cr, "llvm.mul", sgpr, width));
         let results = if cr.rw.body[op].results.is_empty() { vec![] } else { vec![buf.clone()] };
-        let lowered = cr.rw.create(OpData::build(intrinsic).operands(&args).with("aux", Attribute::of_int(0, Type::int(32))), &results);
+        let lowered = cr.rw.create(OpData::build(intrinsic).operands(&args).with("aux", Attribute::i32(0)), &results);
         match cr.rw.body[lowered].results.first().copied() {
             Some(mut r) => {
                 if buf != llvm {

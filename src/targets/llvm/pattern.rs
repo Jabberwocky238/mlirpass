@@ -93,7 +93,7 @@ impl<'a> ConversionRewriter<'_, 'a, '_> {
     }
 
     fn i32_const(&mut self, v: i64) -> ValueId {
-        self.llvm_constant(Attribute::of_int(v.into(), Type::int(32)), Type::int(32))
+        self.llvm_constant(Attribute::i32(v), Type::int(32))
     }
 
     fn sized_leaf(t: &Type<'_>) -> bool {

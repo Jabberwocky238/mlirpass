@@ -51,6 +51,12 @@ enum ConstKey {
 }
 
 #[derive(Clone, Copy)]
+enum Words {
+    One(u32),
+    Two(u64),
+}
+
+#[derive(Clone, Copy)]
 enum Merge {
     Selection { merge: u32, control: u32 },
     Loop { merge: u32, cont: u32, control: u32 },
@@ -580,7 +586,7 @@ impl<'b, 'a> Serializer<'b, 'a> {
                             Self::encode(&mut self.types_globals, "OpConstantComposite", &[tid, rid, c]);
                             rid
                         } else {
-                            let elems: Vec<Attribute<'static>> = dims.iter().map(|d| Attribute::integer(i128::from(*d), Type::int(32))).collect();
+                            let elems: Vec<Attribute<'static>> = dims.iter().map(|d| Attribute::i32(*d)).collect();
                             self.array_const(&arr, &elems)?
                         };
                         ops.push(shape_id);
@@ -744,45 +750,39 @@ impl<'b, 'a> Serializer<'b, 'a> {
     }
 
     fn const_int(&mut self, ty: Type<'_>, bits: u128, spec: bool) -> Result<u32, Error> {
-        let key = ConstKey::Int(format!("{ty}"), bits);
-        if !spec && let Some(id) = self.const_ids.get(&key) {
-            return Ok(*id);
-        }
-        let tid = self.type_id(&ty)?;
-        let id = self.next();
         let Type::Integer { signedness, width } = ty else { return err(format!("not an integer type: {ty}")) };
         let signed = signedness == Signedness::Signed;
         let ext = |w: u32| -> u64 {
             let v = bits & ((1u128 << w) - 1);
             if signed && w < 64 && v >> (w - 1) & 1 == 1 { (v as u64) | (!0u64 << w) } else { v as u64 }
         };
-        let op = if spec { "OpSpecConstant" } else { "OpConstant" };
-        match width {
-            8 | 16 | 32 => Self::encode(&mut self.types_globals, op, &[tid, id, ext(width) as u32]),
-            64 => {
-                let v = ext(64);
-                Self::encode(&mut self.types_globals, op, &[tid, id, v as u32, (v >> 32) as u32]);
-            }
+        let words = match width {
+            8 | 16 | 32 => Words::One(ext(width) as u32),
+            64 => Words::Two(ext(64)),
             w => return err(format!("cannot serialize {w}-bit integer literal")),
-        }
-        if !spec {
-            self.const_ids.insert(key, id);
-        }
-        Ok(id)
+        };
+        self.const_words(ConstKey::Int(format!("{ty}"), bits), &ty, words, spec)
     }
 
     fn const_float(&mut self, ty: Type<'_>, bits: u64, spec: bool) -> Result<u32, Error> {
-        let key = ConstKey::Float(format!("{ty}"), bits);
+        let words = match ty {
+            Type::Float(FloatKind::F32 | FloatKind::F16 | FloatKind::BF16) => Words::One(bits as u32),
+            Type::Float(FloatKind::F64) => Words::Two(bits),
+            t => return err(format!("cannot serialize {t}-typed float literal")),
+        };
+        self.const_words(ConstKey::Float(format!("{ty}"), bits), &ty, words, spec)
+    }
+
+    fn const_words(&mut self, key: ConstKey, ty: &Type<'_>, words: Words, spec: bool) -> Result<u32, Error> {
         if !spec && let Some(id) = self.const_ids.get(&key) {
             return Ok(*id);
         }
-        let tid = self.type_id(&ty)?;
+        let tid = self.type_id(ty)?;
         let id = self.next();
         let op = if spec { "OpSpecConstant" } else { "OpConstant" };
-        match ty {
-            Type::Float(FloatKind::F32 | FloatKind::F16 | FloatKind::BF16) => Self::encode(&mut self.types_globals, op, &[tid, id, bits as u32]),
-            Type::Float(FloatKind::F64) => Self::encode(&mut self.types_globals, op, &[tid, id, bits as u32, (bits >> 32) as u32]),
-            t => return err(format!("cannot serialize {t}-typed float literal")),
+        match words {
+            Words::One(w) => Self::encode(&mut self.types_globals, op, &[tid, id, w]),
+            Words::Two(w) => Self::encode(&mut self.types_globals, op, &[tid, id, w as u32, (w >> 32) as u32]),
         }
         if !spec {
             self.const_ids.insert(key, id);

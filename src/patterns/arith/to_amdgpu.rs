@@ -42,14 +42,6 @@ fn vty<'a>(shape: &[i64], elem: &Type<'_>) -> Type<'a> {
     Type::vector(shape, &[], elem.owned())
 }
 
-fn ints<'a>(v: &[i64]) -> Attribute<'a> {
-    Attribute::Array(v.iter().map(|n| Attribute::i64(*n).untyped()).collect())
-}
-
-fn i32a<'a>(v: i64) -> Attribute<'a> {
-    Attribute::of_int(v.into(), Type::int(32))
-}
-
 fn zero_attr<'a>(elem: &Type<'_>) -> Attribute<'a> {
     let Type::Float(k) = elem else { return Attribute::i64(0) };
     Attribute::Float { lit: "0.000000e+00".into(), ty: Some(Type::Float(*k)) }
@@ -90,13 +82,13 @@ impl<'a> Build<'a> for Rw<'_, 'a> {
         let mut dims = sizes.to_vec();
         dims.extend_from_slice(&shape[sizes.len()..]);
         let strides = vec![1; offsets.len()];
-        self.mk(OpData::build("vector.extract_strided_slice").operands(&[v]).with("offsets", ints(offsets)).with("sizes", ints(sizes)).with("strides", ints(&strides)), vty(&dims, &elem))
+        self.mk(OpData::build("vector.extract_strided_slice").operands(&[v]).with("offsets", Attribute::int_array(offsets)).with("sizes", Attribute::int_array(sizes)).with("strides", Attribute::int_array(&strides)), vty(&dims, &elem))
     }
 
     fn insert_slice(&mut self, v: ValueId, dest: ValueId, offsets: &[i64]) -> ValueId {
         let ty = self.body[dest].ty.clone();
         let rank = vshape(&self.body[v].ty).map_or(0, |(s, _)| s.len());
-        self.mk(OpData::build("vector.insert_strided_slice").operands(&[v, dest]).with("offsets", ints(offsets)).with("strides", ints(&vec![1; rank])), ty)
+        self.mk(OpData::build("vector.insert_strided_slice").operands(&[v, dest]).with("offsets", Attribute::int_array(offsets)).with("strides", Attribute::int_array(&vec![1; rank])), ty)
     }
 
     fn shape_cast(&mut self, v: ValueId, ty: Type<'a>) -> ValueId {
@@ -214,7 +206,7 @@ impl ArithToAmdgpuPattern {
         let f32t = Type::Float(FloatKind::F32);
         rw.set_before(op);
         let Some((in_shape, in_e)) = vec_in else {
-            let f = rw.mk(OpData::build("amdgpu.ext_packed_fp8").operands(&[input]).with("index", i32a(0)), f32t);
+            let f = rw.mk(OpData::build("amdgpu.ext_packed_fp8").operands(&[input]).with("index", Attribute::i32(0)), f32t);
             let r = rw.cast_f32_to(out_elem, f);
             rw.replace_op(op, &[r]);
             return true;
@@ -243,11 +235,11 @@ impl ArithToAmdgpuPattern {
             let mut j = 0;
             while j < this {
                 if i + j + 1 < n {
-                    let fs = rw.mk(OpData::build("amdgpu.ext_packed_fp8").operands(&[slice]).with("index", i32a(j / 2)), vty(&[2], &f32t));
+                    let fs = rw.mk(OpData::build("amdgpu.ext_packed_fp8").operands(&[slice]).with("index", Attribute::i32(j / 2)), vty(&[2], &f32t));
                     let t = rw.cast_f32_to(vty(&[2], &out_elem), fs);
                     result = rw.insert_slice(t, result, &[i + j]);
                 } else {
-                    let f = rw.mk(OpData::build("amdgpu.ext_packed_fp8").operands(&[slice]).with("index", i32a(j / 2 * 2)), f32t.clone());
+                    let f = rw.mk(OpData::build("amdgpu.ext_packed_fp8").operands(&[slice]).with("index", Attribute::i32(j / 2 * 2)), f32t.clone());
                     let t = rw.cast_f32_to(out_elem.clone(), f);
                     result = rw.vinsert(t, result, &[i + j]);
                 }
@@ -295,7 +287,7 @@ impl ArithToAmdgpuPattern {
         let mut ops = vec![a];
         ops.extend(b);
         ops.extend(existing);
-        let data = OpData::build("amdgpu.packed_trunc_2xfp8").operands(&ops).segments(&[1, usize::from(b.is_some()), usize::from(existing.is_some())]).with("wordIndex", i32a(word));
+        let data = OpData::build("amdgpu.packed_trunc_2xfp8").operands(&ops).segments(&[1, usize::from(b.is_some()), usize::from(existing.is_some())]).with("wordIndex", Attribute::i32(word));
         rw.mk(data, ty.owned())
     }
 
@@ -466,7 +458,7 @@ impl ArithToAmdgpuPattern {
             let mut ops = vec![src, s];
             ops.extend(existing);
             let name = if ext { "amdgpu.scaled_ext_packed" } else { "amdgpu.packed_scaled_trunc" };
-            rw.mk(OpData::build(name).operands(&ops).with("index", i32a(index)), res_ty.clone())
+            rw.mk(OpData::build(name).operands(&ops).with("index", Attribute::i32(index)), res_ty.clone())
         };
         let zero_of = |rw: &mut Rw<'_, '_>| rw.mk(OpData::build("arith.constant").with("value", zero_attr(&out_elem)), out_elem.clone());
         let Some((in_shape, _)) = vshape(&rw.body[input].ty) else {

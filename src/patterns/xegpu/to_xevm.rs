@@ -448,7 +448,7 @@ impl XegpuToXevm {
                 ow = shr(cr, ow);
             }
             let tile_h = td.shape[0];
-            let i32a = |v: i64| Attribute::of_int(v.into(), Type::int(32));
+            let i32a = |v: i64| Attribute::i32(v);
             let args = [base, w_bytes, h, pitch_bytes, ow, oh];
             if store {
                 let Some(src) = store_src(cr) else { return false };
@@ -810,7 +810,7 @@ impl XegpuToXevm {
             src = cr.unary("vector.bitcast", src, vector(n / 2, Type::int(8)));
         }
         let Some(rt) = cr.converted(&dst_t) else { return false };
-        let data = OpData::build("xevm.extf").operands(&[src]).with("src_etype", Attribute::dialect("xevm", &alloc::format!("<ext_src_etype src_etype = {narrow}>"))).with("dst_etype", Attribute::dialect("xevm", &alloc::format!("<ext_dst_etype dst_etype = {wide}>")));
+        let data = OpData::build("xevm.extf").operands(&[src]).with("src_etype", Attribute::dialect_with("xevm", format_args!("ext_src_etype src_etype = {narrow}"))).with("dst_etype", Attribute::dialect_with("xevm", format_args!("ext_dst_etype dst_etype = {wide}")));
         let r = cr.mk(data, rt);
         cr.replace(op, vec![vec![r]]);
         true
@@ -827,7 +827,7 @@ impl XegpuToXevm {
         let Some(narrow) = mx_name(de) else { return false };
         let wide = if *se == Type::Float(FloatKind::F16) { "f16" } else { "bf16" };
         let bits = ds.iter().product::<i64>() * i64::from(de.bit_width().unwrap_or(8));
-        let data = OpData::build("xevm.truncf").operands(&[operands[0][0]]).with("src_etype", Attribute::dialect("xevm", &alloc::format!("<src_etype src_etype = {wide}>"))).with("dst_etype", Attribute::dialect("xevm", &alloc::format!("<dst_etype dst_etype = {narrow}>")));
+        let data = OpData::build("xevm.truncf").operands(&[operands[0][0]]).with("src_etype", Attribute::dialect_with("xevm", format_args!("src_etype src_etype = {wide}"))).with("dst_etype", Attribute::dialect_with("xevm", format_args!("dst_etype dst_etype = {narrow}")));
         let mut r = cr.mk(data, vector(bits / 8, Type::int(8)));
         let Some(rt) = cr.converted(&dst_t) else { return false };
         if cr.rw.body[r].ty != rt {
@@ -874,8 +874,8 @@ impl XegpuToXevm {
         let Some((cs, ce)) = vector_of(&c_ty) else { return false };
         let Some(pc) = Self::precision(ce) else { return false };
         let m: i64 = cs.iter().product();
-        let shape = Attribute::dialect("xevm.mma_shape", &alloc::format!("<m = {m}, n = {EXECUTION_SIZE}, k = {}>", SYSTOLIC_DEPTH * pa.1));
-        let types = Attribute::dialect("xevm.mma_types", &alloc::format!("<d = {}, a = {}, b = {}, c = {}>", pd.0, pa.0, pb.0, pc.0));
+        let shape = Attribute::dialect_with("xevm.mma_shape", format_args!("m = {m}, n = {EXECUTION_SIZE}, k = {}", SYSTOLIC_DEPTH * pa.1));
+        let types = Attribute::dialect_with("xevm.mma_types", format_args!("d = {}, a = {}, b = {}, c = {}", pd.0, pa.0, pb.0, pc.0));
         let r = cr.mk(xevm("xevm.mma_mx", &[a, bv, scale_a, scale_b, c], vec![("shape", shape), ("types", types)]), res);
         cr.replace(op, vec![vec![r]]);
         true
@@ -907,8 +907,8 @@ impl XegpuToXevm {
         let n: i64 = cs.iter().product();
         let flat = vector(n, ce);
         let c = if flat != c_ty { cr.unary("vector.shape_cast", c, flat.clone()) } else { c };
-        let shape = Attribute::dialect("xevm.mma_shape", &alloc::format!("<m = {n}, n = {EXECUTION_SIZE}, k = {}>", SYSTOLIC_DEPTH * pa.1));
-        let types = Attribute::dialect("xevm.mma_types", &alloc::format!("<d = {}, a = {}, b = {}, c = {}>", pd.0, pa.0, pb.0, pc.0));
+        let shape = Attribute::dialect_with("xevm.mma_shape", format_args!("m = {n}, n = {EXECUTION_SIZE}, k = {}", SYSTOLIC_DEPTH * pa.1));
+        let types = Attribute::dialect_with("xevm.mma_types", format_args!("d = {}, a = {}, b = {}, c = {}", pd.0, pa.0, pb.0, pc.0));
         let mut r = cr.mk(xevm("xevm.mma", &[ops[0], ops[1], c], vec![("shape", shape), ("types", types)]), flat.clone());
         if flat != c_ty {
             r = cr.unary("vector.shape_cast", r, res);

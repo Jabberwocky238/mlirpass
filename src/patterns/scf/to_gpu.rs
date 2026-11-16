@@ -35,7 +35,7 @@ impl TryFrom<&Attribute<'_>> for DimMapping {
 
 impl DimMapping {
     fn attr<'a>(processor: usize) -> Attribute<'a> {
-        Attribute::dialect("gpu.loop_dim_map", &format!("<processor = {}, map = (d0) -> (d0), bound = (d0) -> (d0)>", PROCESSORS[processor]))
+        Attribute::dialect_with("gpu.loop_dim_map", format_args!("processor = {}, map = (d0) -> (d0), bound = (d0) -> (d0)", PROCESSORS[processor]))
     }
 }
 

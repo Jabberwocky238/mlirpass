@@ -18,7 +18,7 @@ impl ComplexToSpirv {
 
     fn element<'a>(cr: &mut Cr<'_, 'a, '_>, v: ValueId, i: i64) -> ValueId {
         let ty = cr.rw.body[v].ty.element_type().clone();
-        cr.build(OpData::build("spirv.CompositeExtract").operands(&[v]).with("indices", Attribute::Array(alloc::vec![Attribute::integer(i128::from(i), Type::int(32))])), ty)
+        cr.build(OpData::build("spirv.CompositeExtract").operands(&[v]).with("indices", Attribute::int_array_of(32, &[i])), ty)
     }
 
     fn parts(cr: &mut Cr<'_, '_, '_>, ops: &[ValueId]) -> Vec<ValueId> {
@@ -49,7 +49,7 @@ impl ComplexToSpirv {
     fn part(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], i: i64) -> bool {
         let Some(ops) = Cr::one_to_one(operands) else { return false };
         let Some(ty) = Self::result_ty(cr, op) else { return false };
-        cr.replace_new(op, OpData::build("spirv.CompositeExtract").operands(&ops).with("indices", Attribute::Array(alloc::vec![Attribute::integer(i128::from(i), Type::int(32))])), &[ty]);
+        cr.replace_new(op, OpData::build("spirv.CompositeExtract").operands(&ops).with("indices", Attribute::int_array_of(32, &[i])), &[ty]);
         true
     }
 }
