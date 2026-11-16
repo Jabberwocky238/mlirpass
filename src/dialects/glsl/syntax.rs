@@ -222,6 +222,28 @@ pub enum Stmt<'s> {
     Continue(u32),
 }
 
+impl Stmt<'_> {
+    pub fn leaves_loop(&self) -> bool {
+        match self {
+            Stmt::Break(_) | Stmt::Continue(_) => true,
+            Stmt::If(_, a, b) => a.leaves_loop() || b.as_ref().is_some_and(|b| b.leaves_loop()),
+            Stmt::Block(b) => b.iter().any(Stmt::leaves_loop),
+            _ => false,
+        }
+    }
+
+    pub fn returns(&self) -> bool {
+        match self {
+            Stmt::Return(..) => true,
+            Stmt::If(_, a, b) => a.returns() || b.as_ref().is_some_and(|b| b.returns()),
+            Stmt::For { init, body, .. } => init.as_ref().is_some_and(|i| i.returns()) || body.returns(),
+            Stmt::While(_, b) | Stmt::DoWhile(b, _) => b.returns(),
+            Stmt::Block(b) => b.iter().any(Stmt::returns),
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StorageQual {
     Varying,

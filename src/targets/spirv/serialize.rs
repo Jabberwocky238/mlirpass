@@ -26,6 +26,8 @@ impl Default for SpirvBinary {
 }
 
 impl SpirvBinary {
+    pub const SELECTION_MERGE: &'static str = "selection_merge";
+
     pub fn bytes(words: &[u32]) -> Vec<u8> {
         words.iter().flat_map(|w| w.to_le_bytes()).collect()
     }
@@ -1401,7 +1403,16 @@ impl<'b, 'a> Serializer<'b, 'a> {
     }
 
     fn successors(&self, b: BlockId) -> Vec<BlockId> {
-        self.body.last_op(b).map(|t| self.body[t].successors.clone()).unwrap_or_default().to_vec()
+        let Some(t) = self.body.last_op(b) else { return Vec::new() };
+        let mut out = self.body[t].successors.to_vec();
+        out.extend(self.selection_merge(t));
+        out
+    }
+
+    fn selection_merge(&self, terminator: OpId) -> Option<BlockId> {
+        let at = usize::try_from(crate::Attrs::as_int(self.body[terminator].get(SpirvBinary::SELECTION_MERGE)?).ok()?).ok()?;
+        let region = self.body[self.body[terminator].parent?].parent?;
+        self.body[region].blocks.get(at).copied()
     }
 
     fn block(&mut self, b: BlockId, omit_label: bool, mut merge: Option<Merge>) -> Result<(), Error> {
@@ -1426,6 +1437,9 @@ impl<'b, 'a> Serializer<'b, 'a> {
         }
         if let Some(m) = merge {
             self.emit_merge(m);
+        } else if let Some(join) = self.selection_merge(*last) {
+            let merge = self.block_id(join);
+            self.emit_merge(Merge::Selection { merge, control: 0 });
         }
         self.operation(*last)
     }

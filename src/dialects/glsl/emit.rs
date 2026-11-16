@@ -285,11 +285,23 @@ struct Emitter<'r, 'a, 's> {
     builtins: BTreeMap<&'s str, ()>,
     funcs: BTreeMap<&'s str, Signature>,
     scopes: Vec<BTreeMap<&'s str, Name<'s>>>,
-    slots: Vec<ValueId>,
-    next_slot: usize,
+    entry: Option<BlockId>,
+    loops: Vec<Exit>,
+    tests: Vec<Option<Expr<'s>>>,
+    merges: Vec<(OpId, BlockId)>,
+    ret: Ty,
+    dead: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Exit {
+    cont: BlockId,
+    merge: BlockId,
 }
 
 impl GlslReader {
+    const LOOP_BLOCKS: usize = 5;
+
     pub fn read<'a>(body: &mut Body<'a>, src: &str, stage: GlslStage) -> Result<OpId, Error> {
         let text = Lexed::text(src)?;
         let lexed = Lexed::read(&text)?;
@@ -305,7 +317,7 @@ impl GlslReader {
             b.add_block(r, &[]);
         });
         let block = rw.body.top_block(op);
-        let mut e = Emitter { rw, stage, shader: block, first_func: None, globals: BTreeMap::new(), builtins: BTreeMap::new(), funcs: BTreeMap::new(), scopes: Vec::new(), slots: Vec::new(), next_slot: 0 };
+        let mut e = Emitter { rw, stage, shader: block, first_func: None, globals: BTreeMap::new(), builtins: BTreeMap::new(), funcs: BTreeMap::new(), scopes: Vec::new(), entry: None, loops: Vec::new(), tests: Vec::new(), merges: Vec::new(), ret: Ty::Void, dead: false };
         for item in &items {
             e.item(item)?;
         }
@@ -495,37 +507,48 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
         Ok(())
     }
 
-    fn collect<'b>(stmts: &'b [Stmt<'s>], out: &mut Vec<&'b Ty>) {
-        for s in stmts {
-            Self::collect_one(s, out);
-        }
-    }
-
-    fn collect_one<'b>(s: &'b Stmt<'s>, out: &mut Vec<&'b Ty>) {
-        match s {
-            Stmt::Decl(ds) => out.extend(ds.iter().map(|d| &d.ty)),
-            Stmt::If(_, a, b) => {
-                Self::collect_one(a, out);
-                if let Some(b) = b {
-                    Self::collect_one(b, out);
-                }
-            }
-            Stmt::For { init, body, .. } => {
-                if let Some(i) = init {
-                    Self::collect_one(i, out);
-                }
-                Self::collect_one(body, out);
-            }
-            Stmt::While(_, b) | Stmt::DoWhile(b, _) => Self::collect_one(b, out),
-            Stmt::Block(b) => Self::collect(b, out),
-            _ => {}
-        }
-    }
-
     fn variable(&mut self, ty: &Ty) -> Result<ValueId, Error> {
         let ptr: Type<'a> = SpirvType::Ptr { pointee: Box::new(ty.mlir(false)?), storage: String::from("Function") }.into();
         let data = OpData::build("spirv.Variable").with("storage_class", Attribute::dialect("spirv.storage_class", "<Function>"));
-        Ok(self.create(data, Some(ptr)).unwrap_or_else(|| unreachable!()))
+        let entry = self.entry.ok_or_else(|| Error(String::from("glsl: a local outside a function")))?;
+        let saved = self.rw.ip;
+        self.rw.set_start(entry);
+        let v = self.create(data, Some(ptr)).unwrap_or_else(|| unreachable!());
+        self.rw.ip = saved;
+        Ok(v)
+    }
+
+    fn put(&mut self, ptr: ValueId, v: ValueId) {
+        self.create(OpData::build("spirv.Store").operands(&[ptr, v]), None);
+    }
+
+    fn here(&self) -> Result<BlockId, Error> {
+        self.rw.ip.map(|ip| ip.block).ok_or_else(|| Error(String::from("glsl: no insertion point")))
+    }
+
+    fn fresh(&mut self) -> Result<BlockId, Error> {
+        let region = self.rw.body[self.here()?].parent.ok_or_else(|| Error(String::from("glsl: a block outside a region")))?;
+        Ok(self.rw.body.add_block(region, &[]))
+    }
+
+    fn goto(&mut self, to: BlockId) {
+        if !self.dead {
+            self.create(OpData::build("spirv.Branch").successors(&[to]), None);
+        }
+        self.dead = true;
+    }
+
+    fn enter(&mut self, b: BlockId) {
+        self.rw.set_end(b);
+        self.dead = false;
+    }
+
+    fn branch_if(&mut self, c: ValueId, yes: BlockId, no: BlockId) -> OpId {
+        self.rw.create(OpData::build("spirv.BranchConditional").operands(&[c]).successors(&[yes, no]).segments(&[1, 0, 0]), &[])
+    }
+
+    fn jumpy(&self, s: &Stmt<'s>) -> bool {
+        (!self.loops.is_empty() && s.leaves_loop()) || s.returns()
     }
 
     fn function(&mut self, ret: &Ty, name: &'s str, params: &[super::syntax::Param<'s>], body: &[Stmt<'s>]) -> Result<(), Error> {
@@ -534,46 +557,52 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
         let fty = Type::Function(Box::new(FunctionType { inputs: inputs.clone(), results }));
         let data = OpData::build("func.func").with("sym_name", Attribute::str(name)).with("function_type", Attribute::Type(fty));
         let shader = self.shader;
-        let entry = self.in_block(shader, |e| {
+        let func = self.in_block(shader, |e| {
             Ok(e.rw.create_with(data, &[], |b, op| {
                 let r = b.add_region(op);
                 b.add_block(r, &inputs.iter().map(|t| (t.clone(), None)).collect::<Vec<_>>());
             }))
         })?;
-        self.first_func.get_or_insert(entry);
-        let entry = self.rw.body.top_block(entry);
-        self.in_block(entry, |e| {
-            let mut decls = Vec::new();
-            Self::collect(body, &mut decls);
-            e.slots = decls.into_iter().map(|t| e.variable(t)).collect::<Result<_, _>>()?;
-            e.next_slot = 0;
-            let mut scope = BTreeMap::new();
-            for (k, p) in params.iter().enumerate() {
-                let slot = e.variable(&p.ty)?;
-                let arg = e.rw.body[entry].args[k];
-                e.create(OpData::build("spirv.Store").operands(&[slot, arg]), None);
-                scope.insert(p.name, Name::Local(slot, p.ty.clone()));
+        self.first_func.get_or_insert(func);
+        let entry = self.rw.body.top_block(func);
+        self.entry = Some(entry);
+        self.ret = ret.clone();
+        let saved = self.rw.ip;
+        self.enter(entry);
+        let mut scope = BTreeMap::new();
+        for (k, p) in params.iter().enumerate() {
+            let slot = self.variable(&p.ty)?;
+            let arg = self.rw.body[entry].args[k];
+            self.put(slot, arg);
+            scope.insert(p.name, Name::Local(slot, p.ty.clone()));
+        }
+        self.scopes = vec![scope];
+        self.stmts(body)?;
+        if !self.dead {
+            if *ret != Ty::Void {
+                return Self::err(format!("{name}: a function returning a value must end with return"));
             }
-            e.scopes = vec![scope];
-            let (last, rest) = match body.split_last() {
-                Some((Stmt::Return(v, _), rest)) => (v.as_ref(), rest),
-                _ => (None, body),
-            };
-            e.stmts(rest)?;
-            let returned = match (last, ret) {
-                (Some(v), Ty::Void) => return Self::err(format!("{name} returns a value from a void function: {v:?}")),
-                (Some(v), _) => vec![e.rvalue_of(v, ret)?],
-                (None, Ty::Void) => Vec::new(),
-                (None, _) => return Self::err(format!("{name}: a function returning a value must end with return")),
-            };
-            e.create(OpData::build("func.return").operands(&returned), None);
-            e.scopes.clear();
-            Ok(())
-        })
+            self.create(OpData::build("func.return"), None);
+        }
+        self.scopes.clear();
+        self.rw.ip = saved;
+        self.entry = None;
+        for (br, merge) in core::mem::take(&mut self.merges) {
+            let region = self.rw.body[merge].parent.ok_or_else(|| Error(String::from("glsl: a merge outside a region")))?;
+            let at = self.rw.body[region].blocks.iter().position(|b| *b == merge).ok_or_else(|| Error(String::from("glsl: a lost merge block")))?;
+            self.rw.body[br].set(crate::SpirvBinary::SELECTION_MERGE, Attribute::i64(i64::try_from(at).unwrap_or(i64::MAX)));
+        }
+        Ok(())
     }
 
     fn stmts(&mut self, stmts: &[Stmt<'s>]) -> Result<(), Error> {
-        stmts.iter().try_for_each(|s| self.stmt(s))
+        for s in stmts {
+            if self.dead {
+                break;
+            }
+            self.stmt(s)?;
+        }
+        Ok(())
     }
 
     fn scoped(&mut self, f: impl FnOnce(&mut Self) -> Result<(), Error>) -> Result<(), Error> {
@@ -595,11 +624,10 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
         match s {
             Stmt::Decl(ds) => {
                 for d in ds {
-                    let slot = *self.slots.get(self.next_slot).ok_or_else(|| Error(String::from("glsl: local slots out of order")))?;
-                    self.next_slot += 1;
+                    let slot = self.variable(&d.ty)?;
                     if let Some(init) = &d.init {
                         let v = self.rvalue_of(init, &d.ty)?;
-                        self.create(OpData::build("spirv.Store").operands(&[slot, v]), None);
+                        self.put(slot, v);
                     }
                     self.scopes.last_mut().ok_or_else(|| Error(String::from("glsl: no scope")))?.insert(d.name, Name::Local(slot, d.ty.clone()));
                 }
@@ -607,6 +635,31 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
             }
             Stmt::Expr(e) => self.expr(e).map(|_| ()),
             Stmt::Block(b) => self.scoped(|e| e.stmts(b)),
+            Stmt::If(c, a, b) if self.jumpy(s) => {
+                let c = self.rvalue_of(c, &Ty::BOOL)?;
+                let yes = self.fresh()?;
+                let no = match b {
+                    Some(_) => Some(self.fresh()?),
+                    None => None,
+                };
+                let join = self.fresh()?;
+                let br = self.branch_if(c, yes, no.unwrap_or(join));
+                self.merges.push((br, join));
+                self.enter(yes);
+                self.scoped(|e| e.stmt(a))?;
+                self.goto(join);
+                if let (Some(no), Some(b)) = (no, b) {
+                    self.enter(no);
+                    self.scoped(|e| e.stmt(b))?;
+                    self.goto(join);
+                }
+                self.enter(join);
+                if !self.flowed_into(join) {
+                    self.create(OpData::build("spirv.Unreachable"), None);
+                    self.dead = true;
+                }
+                Ok(())
+            }
             Stmt::If(c, a, b) => {
                 let c = self.rvalue_of(c, &Ty::BOOL)?;
                 let (_, blocks) = self.with_regions(OpData::build("scf.if").operands(&[c]), &[], 2);
@@ -633,12 +686,49 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
                 self.create(OpData::build(crate::GlslDiscard::NAME), None);
                 Ok(())
             }
-            Stmt::Return(_, line) => Self::err(format!("line {line}: return before the end of a function is not supported yet")),
-            Stmt::Break(line) | Stmt::Continue(line) => Self::err(format!("line {line}: break / continue are not supported yet")),
+            Stmt::Return(v, line) => {
+                let ret = self.ret.clone();
+                match (v, &ret) {
+                    (Some(x), t) if *t != Ty::Void => {
+                        let v = self.rvalue_of(x, t)?;
+                        self.create(OpData::build("spirv.ReturnValue").operands(&[v]), None);
+                    }
+                    (None, Ty::Void) => {
+                        self.create(OpData::build("spirv.Return"), None);
+                    }
+                    _ => return Self::err(format!("line {line}: return does not match the function's type")),
+                }
+                self.dead = true;
+                Ok(())
+            }
+            Stmt::Break(line) | Stmt::Continue(line) => {
+                let Some(x) = self.loops.last().copied() else { return Self::err(format!("line {line}: break / continue outside a loop")) };
+                match (s, self.tests.last().cloned().flatten()) {
+                    (Stmt::Break(_), _) => self.goto(x.merge),
+                    (_, Some(test)) => self.test_then(&test, x)?,
+                    _ => self.goto(x.cont),
+                }
+                Ok(())
+            }
         }
     }
 
+    fn test_then(&mut self, test: &Expr<'s>, exit: Exit) -> Result<(), Error> {
+        let c = self.rvalue_of(test, &Ty::BOOL)?;
+        self.branch_if(c, exit.cont, exit.merge);
+        self.dead = true;
+        Ok(())
+    }
+
+    fn flowed_into(&self, b: BlockId) -> bool {
+        let Some(region) = self.rw.body[b].parent else { return false };
+        self.rw.body[region].blocks.iter().filter_map(|blk| self.rw.body.last_op(*blk)).any(|t| self.rw.body[t].successors.contains(&b))
+    }
+
     fn lp(&mut self, first: Option<&Stmt<'s>>, cond: Option<&Expr<'s>>, step: Option<&Expr<'s>>, body: &Stmt<'s>) -> Result<(), Error> {
+        if [first, Some(body)].into_iter().flatten().any(|b| b.leaves_loop() || b.returns()) {
+            return self.flat_loop(first, cond, step, body);
+        }
         let (_, blocks) = self.with_regions(OpData::build("scf.while"), &[], 2);
         self.in_block(blocks[0], |e| {
             if let Some(f) = first {
@@ -659,6 +749,63 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
             e.create(OpData::build("scf.yield"), None);
             Ok(())
         })
+    }
+
+    fn flat_loop(&mut self, first: Option<&Stmt<'s>>, cond: Option<&Expr<'s>>, step: Option<&Expr<'s>>, body: &Stmt<'s>) -> Result<(), Error> {
+        let data = OpData::build("spirv.mlir.loop").with("loop_control", Attribute::dialect("spirv.loop_control", "<None>"));
+        let op = self.rw.create_with(data, &[], |b, op| {
+            let r = b.add_region(op);
+            for _ in 0..GlslReader::LOOP_BLOCKS {
+                b.add_block(r, &[]);
+            }
+        });
+        let region = self.rw.body[op].regions[0];
+        let [entry, header, start, cont, merge]: [BlockId; GlslReader::LOOP_BLOCKS] = self.rw.body[region].blocks[..].try_into().map_err(|_| Error(String::from("glsl: loop blocks")))?;
+        let outer = self.rw.ip;
+        let outer_dead = self.dead;
+        self.enter(entry);
+        self.goto(header);
+        self.enter(header);
+        match (first, cond) {
+            (Some(_), _) | (None, None) => self.goto(start),
+            (None, Some(c)) => {
+                let c = self.rvalue_of(c, &Ty::BOOL)?;
+                self.branch_if(c, start, merge);
+                self.dead = true;
+            }
+        }
+        let exit = Exit { cont, merge };
+        let test = first.and(cond).cloned();
+        self.loops.push(exit);
+        self.tests.push(test.clone());
+        self.enter(start);
+        let looped = self.scoped(|e| {
+            if let Some(f) = first {
+                e.stmt(f)?;
+            }
+            e.stmt(body)?;
+            match &test {
+                Some(t) if !e.dead => e.test_then(t, exit),
+                _ => Ok(()),
+            }
+        });
+        self.loops.pop();
+        self.tests.pop();
+        looped?;
+        self.goto(cont);
+        self.enter(cont);
+        if let Some(s) = step {
+            self.expr(s)?;
+        }
+        self.goto(header);
+        self.enter(merge);
+        self.create(OpData::build("spirv.mlir.merge"), None);
+        let blocks = &mut self.rw.body[region].blocks;
+        blocks.retain(|b| *b != cont && *b != merge);
+        blocks.extend([cont, merge]);
+        self.rw.ip = outer;
+        self.dead = outer_dead;
+        Ok(())
     }
 
     fn rvalue_of(&mut self, e: &Expr<'s>, want: &Ty) -> Result<ValueId, Error> {
