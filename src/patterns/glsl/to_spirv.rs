@@ -723,6 +723,24 @@ impl GlslToSpirv {
         true
     }
 
+    /// `c ? x : y` on vectors with a scalar `c`: GLSL picks whole vectors, SPIR-V before 1.4 picks lane by lane, so
+    /// every lane gets `c`
+    #[convert("arith.select", benefit = 2)]
+    fn select_lanes(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let ty = Self::ty_of(cr, ops[1]);
+        let (Some(n), Some(1)) = (Self::lanes(&ty), Self::lanes(&Self::ty_of(cr, ops[0]))) else { return false };
+        let Type::Shaped(s) = &ty else { return false };
+        if n < 2 {
+            return false;
+        }
+        let lanes = Type::Shaped(Box::new(mlirformat::Shaped { elem: Type::I1.into(), ..*s.clone() }));
+        let c = cr.build(OpData::build("spirv.CompositeConstruct").operands(&vec![ops[0]; n]), lanes);
+        let v = cr.build(OpData::build("spirv.Select").operands(&[c, ops[1], ops[2]]), ty);
+        cr.replace_values(op, &[v]);
+        true
+    }
+
     #[convert("glsl.discard")]
     fn discard(cr: &mut Cr<'_, '_, '_>, op: OpId, _: &[Vec<ValueId>], _: GlslClient) -> bool {
         cr.replace_new(op, OpData::build(Self::KILL), &[]);

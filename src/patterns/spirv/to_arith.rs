@@ -25,6 +25,10 @@ pub struct SpirvToArith;
 #[map("spirv.ShiftRightLogical" => "arith.shrui", via = Self::plain)]
 #[map("spirv.ShiftRightArithmetic" => "arith.shrsi", via = Self::plain)]
 #[map("spirv.Select" => "arith.select", via = Self::plain)]
+#[map("spirv.LogicalAnd" => "arith.andi", via = Self::plain)]
+#[map("spirv.LogicalOr" => "arith.ori", via = Self::plain)]
+#[map("spirv.LogicalEqual" => "arith.cmpi", via = Self::cmp(CmpIPredicate::eq as i64))]
+#[map("spirv.LogicalNotEqual" => "arith.cmpi", via = Self::cmp(CmpIPredicate::ne as i64))]
 #[map("spirv.ConvertFToS" => "arith.fptosi", via = Self::plain)]
 #[map("spirv.ConvertFToU" => "arith.fptoui", via = Self::plain)]
 #[map("spirv.ConvertSToF" => "arith.sitofp", via = Self::plain)]
@@ -93,6 +97,27 @@ impl SpirvToArith {
         let (Some(ops), Some(at)) = (Cr::one_to_one(operands), Self::indices(cr, op, "indices")) else { return false };
         let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
         cr.replace_new(op, OpData::build("vector.extract").operands(&ops).with("static_position", at), &[ty]);
+        true
+    }
+
+    /// `!x` on booleans: `x == false`
+    #[convert("spirv.LogicalNot")]
+    fn not(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        let Some(ops) = Cr::one_to_one(operands) else { return false };
+        let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
+        let mut no = cr.build(OpData::build("arith.constant").with("value", Attribute::Bool(false)), mlirformat::Type::I1);
+        if ty != mlirformat::Type::I1 {
+            no = cr.build(OpData::build("vector.broadcast").operands(&[no]), ty.clone());
+        }
+        cr.replace_new(op, OpData::build("arith.cmpi").operands(&[ops[0], no]).with("predicate", Attribute::i64(CmpIPredicate::eq as i64)), &[ty]);
+        true
+    }
+
+    #[convert("spirv.CompositeInsert")]
+    fn insert(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>]) -> bool {
+        let (Some(ops), Some(at)) = (Cr::one_to_one(operands), Self::indices(cr, op, "indices")) else { return false };
+        let ty = cr.rw.body[cr.rw.body[op].results[0]].ty.clone();
+        cr.replace_new(op, OpData::build("vector.insert").operands(&ops).with("static_position", at), &[ty]);
         true
     }
 

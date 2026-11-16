@@ -156,7 +156,7 @@ pub struct Xe3Draw<'b, 'a> {
 
 impl<'a> Xe3Draw<'_, 'a> {
     /// SPIR-V vertex and fragment shaders (spirv.module ops at the top of the module) to Xe3 kernels
-    pub const SHADERS: &'static str = "builtin.module(xevm-attach-target{chip=ptl}, convert-spirv-entry-points, gpu-inline-calls, canonicalize, cse, convert-gpu-to-xe3, xe3-regalloc, xe3-control, xe3-swsb, xe3-branches, xe3-pad)";
+    pub const SHADERS: &'static str = "builtin.module(xevm-attach-target{chip=ptl}, convert-spirv-entry-points, gpu-inline-calls, convert-spirv-cf-to-cf, sroa, mem2reg, lift-cf-to-scf, canonicalize, cse, convert-gpu-to-xe3, xe3-regalloc, xe3-control, xe3-swsb, xe3-branches, xe3-pad)";
     /// The memory holding the color target after the draw
     pub const TARGET: &'static str = "target";
     const CODE: &'static str = "code";

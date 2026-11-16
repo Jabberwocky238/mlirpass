@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 use alloc::borrow::ToOwned;
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use mlirformat::spirv_types::SpirvType;
 use mlirformat::{Attribute, Error, Extended, FunctionType, NamedAttr, Type};
 
-use crate::{Attrs, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mode, OpData, OpId, Quiet, Rewriter, SpirvToArith, ValueId, pass};
+use crate::{Attrs, Body, ConversionConfig, ConversionPatterns, ConversionTarget, Converter, Mapping, Mode, OpData, OpId, Quiet, Rewriter, SpirvToArith, ValueId, pass};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Class {
@@ -64,15 +64,30 @@ impl<'a> Entry<'_, '_, 'a> {
         inputs.sort_by_key(|(_, v)| v.location);
         outputs.sort_by_key(|(_, v)| (!v.position, v.location));
         let from = self.rw.body.top_block(f);
+        let mut all = Vec::new();
+        self.rw.body.walk(f, &mut |o| all.push(o));
+        all.retain(|&o| o != f);
         let mut used: Vec<(String, Var<'a>)> = Vec::new();
-        for op in self.rw.body.block_ops(from) {
+        let mut named: BTreeMap<ValueId, String> = BTreeMap::new();
+        for &op in &all {
             if self.rw.body[op].name == "spirv.mlir.addressof" {
                 let a = self.rw.body[op].all_attrs();
                 let n = Attrs(&a).symbol("variable")?.to_owned();
                 let (n, v) = var(&n)?;
+                named.insert(self.rw.body[op].results[0], n.clone());
                 if v.class == Class::Resource && used.iter().all(|(u, _)| *u != n) {
                     used.push((n, v));
                 }
+            }
+        }
+        let output = |n: &str| outputs.iter().any(|(o, _)| o == n);
+        let mut local: BTreeSet<String> = BTreeSet::new();
+        for &op in &all {
+            let o = &self.rw.body[op];
+            let Some(n) = o.operands.first().and_then(|p| named.get(p)) else { continue };
+            let nested = o.parent != Some(from);
+            if output(n) && ((o.name == "spirv.Store" && nested) || o.name == "spirv.Load") {
+                local.insert(n.clone());
             }
         }
         used.sort_by_key(|(_, v)| (v.storage == "PushConstant", v.set, v.binding));
@@ -93,12 +108,25 @@ impl<'a> Entry<'_, '_, 'a> {
             b.add_block(region, &args.iter().map(|t| (t.clone(), None)).collect::<Vec<_>>());
         });
         let block = self.rw.body.top_block(new);
-        let ops = self.rw.body.block_ops(from);
+        let region = self.rw.body[f].regions[0];
+        let into = self.rw.body[new].regions[0];
         self.rw.inline_block_before(from, block, None, &[]);
+        self.rw.inline_region_before(region, into, None);
 
+        let first = self.rw.body.block_ops(block).first().copied();
+        let mut locals: BTreeMap<String, ValueId> = BTreeMap::new();
+        for n in &local {
+            let (_, v) = var(n)?;
+            match first {
+                Some(at) => self.rw.set_before(at),
+                None => self.rw.set_end(block),
+            }
+            let p = self.rw.create(OpData::build("spirv.Variable").with("storage_class", Attribute::dialect("spirv.storage_class", "<Function>")), &[SpirvType::ptr(v.ty.clone(), "Function")]);
+            locals.insert(n.clone(), self.rw.body[p].results[0]);
+        }
         let mut ptrs: BTreeMap<ValueId, String> = BTreeMap::new();
         let mut stored: BTreeMap<String, ValueId> = BTreeMap::new();
-        for op in ops {
+        for op in all {
             match &*self.rw.body[op].name {
                 "spirv.mlir.addressof" => {
                     let a = self.rw.body[op].all_attrs();
@@ -107,6 +135,8 @@ impl<'a> Entry<'_, '_, 'a> {
                     if let Some(k) = used.iter().position(|(n, _)| *n == v) {
                         let arg = self.rw.body[block].args[inputs.len() + k];
                         self.rw.replace_all_uses(r, arg);
+                    } else if let Some(&p) = locals.get(&v) {
+                        self.rw.replace_all_uses(r, p);
                     } else {
                         ptrs.insert(r, v);
                     }
@@ -125,8 +155,18 @@ impl<'a> Entry<'_, '_, 'a> {
                     self.rw.erase_op(op);
                 }
                 "spirv.Return" => {
-                    let values = outputs.iter().map(|(n, _)| stored.get(n).copied().ok_or_else(|| Error(format!("output @{n} never stored")))).collect::<Result<Vec<_>, _>>()?;
                     self.rw.set_before(op);
+                    let mut values = Vec::new();
+                    for (n, v) in &outputs {
+                        values.push(match (locals.get(n), stored.get(n)) {
+                            (Some(&p), _) => {
+                                let l = self.rw.create(OpData::build("spirv.Load").operands(&[p]), &[v.ty.clone()]);
+                                self.rw.body[l].results[0]
+                            }
+                            (None, Some(&s)) => s,
+                            (None, None) => return Err(Error(format!("output @{n} never stored"))),
+                        });
+                    }
                     self.rw.create(OpData::build("func.return").operands(&values), &[]);
                     self.rw.erase_op(op);
                 }
@@ -134,6 +174,75 @@ impl<'a> Entry<'_, '_, 'a> {
             }
         }
         Ok(new)
+    }
+}
+
+/// A module's function calls, inlined before its entry points are taken apart (a callee may read or write the
+/// entry point's variables). The module's control flow is plain blocks by then (convert-spirv-cf-to-cf), so a callee
+/// is its blocks: the caller's block splits at the call, the callee's blocks go in between, each return branches to
+/// the rest of the caller with the returned value.
+struct Calls;
+
+impl Calls {
+    const CALL: &'static str = "spirv.FunctionCall";
+    const BR: &'static str = "cf.br";
+    /// More rounds than this is a recursive call (GLSL has none)
+    const DEPTH: usize = 64;
+
+    fn inline(rw: &mut Rewriter<'_, '_>, module: OpId) -> Result<(), Error> {
+        for _ in 0..Calls::DEPTH {
+            let mut calls = Vec::new();
+            rw.body.walk(module, &mut |o| {
+                if rw.body[o].name == Calls::CALL {
+                    calls.push(o);
+                }
+            });
+            if calls.is_empty() {
+                return Ok(());
+            }
+            for call in calls {
+                Calls::one(rw, module, call)?;
+            }
+        }
+        Err(Error("inlining the shader's calls does not end (a recursive call?)".into()))
+    }
+
+    fn one(rw: &mut Rewriter<'_, '_>, module: OpId, call: OpId) -> Result<(), Error> {
+        let name = match rw.body[call].get("callee") {
+            Some(Attribute::SymbolRef(p)) if p.len() == 1 => p[0].trim_matches('"').to_owned(),
+            _ => return Err(Error(format!("{} without a callee", Calls::CALL))),
+        };
+        let top = rw.body.top_block(module);
+        let callee = rw.body.ops(top).find(|f| rw.body[*f].name == "spirv.func" && rw.body[*f].get_str("sym_name") == Some(&name)).ok_or_else(|| Error(format!("no spirv.func @{name}")))?;
+        let from = rw.body[callee].regions.first().copied().ok_or_else(|| Error(format!("@{name}: no body")))?;
+        let entry = *rw.body[from].blocks.first().ok_or_else(|| Error(format!("@{name}: no block")))?;
+        let block = rw.body[call].parent.ok_or_else(|| Error("a detached call".into()))?;
+        let region = rw.body[block].parent.ok_or_else(|| Error("a detached block".into()))?;
+        let mut map = Mapping::default();
+        for (a, v) in rw.body[entry].args.clone().into_iter().zip(rw.body[call].operands.clone()) {
+            map.map(a, v);
+        }
+        let rest = rw.split_block(block, call);
+        for r in rw.body[call].results.clone() {
+            let ty = rw.body[r].ty.clone();
+            let a = rw.body.add_arg(rest, ty);
+            rw.replace_all_uses(r, a);
+        }
+        let made = rw.body.clone_region_into(from, region, Some(rest), &mut map);
+        for &b in &made {
+            let Some(t) = rw.body.last_op(b) else { continue };
+            let back = match &*rw.body[t].name {
+                "spirv.ReturnValue" | "spirv.Return" => rw.body[t].operands.clone(),
+                _ => continue,
+            };
+            rw.set_before(t);
+            rw.create(OpData::build(Calls::BR).operands(&back).successors(&[rest]), &[]);
+            rw.erase_op(t);
+        }
+        rw.set_end(block);
+        rw.create(OpData::build(Calls::BR).successors(&[made[0]]), &[]);
+        rw.erase_op(call);
+        Ok(())
     }
 }
 
@@ -149,6 +258,8 @@ pub fn convert_spirv_entry_points<'a>(body: &mut Body<'a>, op: OpId) -> Result<(
     let mut quiet = Quiet;
     let mut rw = Rewriter::new(body, &mut quiet);
     for m in modules {
+        crate::ConvertSpirvCfToCf.run(rw.body, m)?;
+        Calls::inline(&mut rw, m)?;
         let inner = rw.body.top_block(m);
         let ops = rw.body.block_ops(inner);
         let vars: BTreeMap<String, Var<'a>> = ops.iter().filter(|g| rw.body[**g].name == "spirv.GlobalVariable").map(|g| Var::of(rw.body, *g)).collect::<Result<_, _>>()?;
@@ -168,7 +279,7 @@ pub fn convert_spirv_entry_points<'a>(body: &mut Body<'a>, op: OpId) -> Result<(
     let mut patterns = ConversionPatterns::default();
     SpirvToArith::populate(&mut patterns);
     let mut target = ConversionTarget::default();
-    target.legal_dialect("arith").legal_dialect("math").legal_dialect("vector").legal_dialect("func").legal_dialect("spirv");
+    target.legal_dialect("arith").legal_dialect("math").legal_dialect("vector").legal_dialect("func").legal_dialect("spirv").legal_dialect("cf");
     for o in SpirvToArith::ROOTS {
         target.illegal_op(o);
     }
