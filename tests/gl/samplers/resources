@@ -1,0 +1,11 @@
+texture 3d rgba8 0 16 16 8 4
+texture cube rgba8 1 16 16 1 5
+texture array rgba8 2 16 16 4 5
+texture 2d depth 3 32 32 1 1
+texture cube depth 4 16 16 1 1
+texture array depth 5 16 16 3 1
+texture 2d rgba8i 6 16 16 1 1
+texture 2d rgba8ui 7 16 16 1 1
+texture 3d rgba8ui 8 8 8 4 1
+texture array rgba8i 9 8 8 3 1
+texture cube rgba8ui 10 8 8 1 1

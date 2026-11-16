@@ -37,7 +37,7 @@ impl GlslDialect {
         ("glsl.construct", &[]),
         ("glsl.builtin", &["func"]),
         ("glsl.derivative", &["kind"]),
-        ("glsl.texture", &["lod", "offset", "proj"]),
+        ("glsl.texture", &["lod", "offset", "proj", "dref"]),
         ("glsl.texel_fetch", &["offset"]),
         ("glsl.texture_size", &[]),
         ("glsl.discard", &[]),
@@ -302,6 +302,7 @@ pub struct GlslTexture<'a> {
     pub lod: Lod,
     pub offset: bool,
     pub proj: bool,
+    pub dref: bool,
     #[slot(sampler_ty)]
     pub sampler: Value<'a>,
     #[slot(coord_ty)]

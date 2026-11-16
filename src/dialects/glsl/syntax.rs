@@ -29,7 +29,7 @@ pub enum Ty {
     Scalar(Scalar),
     Vec(Scalar, u32),
     Mat(u32, u32),
-    Sampler(Scalar, SamplerDim),
+    Sampler(Scalar, SamplerDim, bool),
     Array(Box<Ty>, u32),
 }
 
@@ -37,6 +37,26 @@ impl Ty {
     pub const FLOAT: Ty = Ty::Scalar(Scalar::Float);
     pub const INT: Ty = Ty::Scalar(Scalar::Int);
     pub const BOOL: Ty = Ty::Scalar(Scalar::Bool);
+
+    const SAMPLER: &'static str = "sampler";
+    const SHADOW: &'static str = "Shadow";
+    const DIMS: [(&'static str, SamplerDim); 4] = [("2DArray", SamplerDim::D2Array), ("2D", SamplerDim::D2), ("3D", SamplerDim::D3), ("Cube", SamplerDim::Cube)];
+
+    fn sampler(name: &str) -> Option<Ty> {
+        let (scalar, rest) = match name.as_bytes().first()? {
+            b'i' => (Scalar::Int, &name[1..]),
+            b'u' => (Scalar::Uint, &name[1..]),
+            _ => (Scalar::Float, name),
+        };
+        let rest = rest.strip_prefix(Ty::SAMPLER)?;
+        let (rest, shadow) = match rest.strip_suffix(Ty::SHADOW) {
+            Some(r) => (r, true),
+            None => (rest, false),
+        };
+        let dim = Ty::DIMS.iter().find(|(n, _)| *n == rest)?.1;
+        let ok = !shadow || (scalar == Scalar::Float && dim != SamplerDim::D3);
+        ok.then_some(Ty::Sampler(scalar, dim, shadow))
+    }
 
     pub fn of(scalar: Scalar, lanes: u32) -> Ty {
         if lanes == 1 { Ty::Scalar(scalar) } else { Ty::Vec(scalar, lanes) }
@@ -60,18 +80,15 @@ impl Ty {
 
     fn named(name: &str) -> Option<Ty> {
         let vec = |prefix: &str, s: Scalar| name.strip_prefix(prefix).and_then(|n| n.parse::<u32>().ok()).filter(|n| (2..=4).contains(n)).map(|n| Ty::Vec(s, n));
+        if let Some(t) = Ty::sampler(name) {
+            return Some(t);
+        }
         Some(match name {
             "void" => Ty::Void,
             "float" => Ty::FLOAT,
             "int" => Ty::INT,
             "uint" => Ty::Scalar(Scalar::Uint),
             "bool" => Ty::BOOL,
-            "sampler2D" => Ty::Sampler(Scalar::Float, SamplerDim::D2),
-            "sampler3D" => Ty::Sampler(Scalar::Float, SamplerDim::D3),
-            "samplerCube" => Ty::Sampler(Scalar::Float, SamplerDim::Cube),
-            "sampler2DArray" => Ty::Sampler(Scalar::Float, SamplerDim::D2Array),
-            "isampler2D" => Ty::Sampler(Scalar::Int, SamplerDim::D2),
-            "usampler2D" => Ty::Sampler(Scalar::Uint, SamplerDim::D2),
             _ => {
                 if let Some(t) = vec("vec", Scalar::Float).or_else(|| vec("ivec", Scalar::Int)).or_else(|| vec("uvec", Scalar::Uint)).or_else(|| vec("bvec", Scalar::Bool)) {
                     return Some(t);

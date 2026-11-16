@@ -11,7 +11,11 @@
 //   uniform NAME LOCATION f V...     glUniform{1,2,3,4}fv, or glUniformMatrix4fv for 16 values
 //   uniform NAME LOCATION i V...     glUniform{1,2,3,4}iv
 //   block BINDING V...               a uniform buffer of these floats at that binding
-//   texture UNIT W H LEVELS          an RGBA8 texture of a fixed pattern, every level filled, trilinear, repeat
+//   texture TARGET FORMAT UNIT W H D LEVELS
+//                                    a texture of a fixed pattern, every level, layer and face filled. TARGET is 2d, 3d,
+//                                    cube or array (D: depth or layers, 1 otherwise); FORMAT is rgba8 (trilinear),
+//                                    rgba8i / rgba8ui (nearest) or depth (32-bit float, compared LEQUAL, linear);
+//                                    cube maps clamp to the edge, the rest repeat
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #define GL_GLEXT_PROTOTYPES
@@ -70,30 +74,93 @@ static GLuint shader(GLenum kind, const char *path, int spirv) {
     return s;
 }
 
-static unsigned char texel(int x, int y, int level, int channel) {
-    static const int mul[CHANNELS][3] = {{37, 101, 53}, {59, 17, 97}, {13, 71, 29}, {83, 41, 7}};
-    return (unsigned char)((x * mul[channel][0] + y * mul[channel][1] + level * mul[channel][2] + channel * 11) & BYTE);
+#define CUBE_FACES 6
+
+static const struct {
+    const char *name;
+    GLenum target;
+} TARGETS[] = {{"2d", GL_TEXTURE_2D}, {"3d", GL_TEXTURE_3D}, {"cube", GL_TEXTURE_CUBE_MAP}, {"array", GL_TEXTURE_2D_ARRAY}};
+
+static const struct {
+    const char *name;
+    GLenum internal, format, type;
+    int filterable, depth;
+} FORMATS[] = {
+    {"rgba8", GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, 1, 0},
+    {"rgba8i", GL_RGBA8I, GL_RGBA_INTEGER, GL_BYTE, 0, 0},
+    {"rgba8ui", GL_RGBA8UI, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE, 0, 0},
+    {"depth", GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, 1, 1},
+};
+
+static unsigned char texel(int x, int y, int z, int level, int channel) {
+    static const int mul[CHANNELS][4] = {{37, 101, 53, 23}, {59, 17, 97, 67}, {13, 71, 29, 89}, {83, 41, 7, 31}};
+    return (unsigned char)((x * mul[channel][0] + y * mul[channel][1] + level * mul[channel][2] + z * mul[channel][3] + channel * 11) & BYTE);
 }
 
-static void texture(int unit, int w, int h, int levels) {
+static void *pixels(int w, int h, int z, int level, int depth) {
+    size_t n = (size_t)w * h;
+    if (depth) {
+        float *px = malloc(n * sizeof(float));
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) px[y * w + x] = (float)texel(x, y, z, level, 0) / BYTE;
+        return px;
+    }
+    unsigned char *px = malloc(n * CHANNELS);
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            for (int c = 0; c < CHANNELS; c++) px[(y * w + x) * CHANNELS + c] = texel(x, y, z, level, c);
+    return px;
+}
+
+static int target_index(const char *name) {
+    for (size_t i = 0; i < sizeof TARGETS / sizeof TARGETS[0]; i++)
+        if (strcmp(TARGETS[i].name, name) == 0) return (int)i;
+    die(name);
+    return 0;
+}
+
+static int format_index(const char *name) {
+    for (size_t i = 0; i < sizeof FORMATS / sizeof FORMATS[0]; i++)
+        if (strcmp(FORMATS[i].name, name) == 0) return (int)i;
+    die(name);
+    return 0;
+}
+
+static void texture(const char *target_name, const char *format_name, int unit, int w, int h, int d, int levels) {
+    const int ti = target_index(target_name);
+    const int fi = format_index(format_name);
+    const GLenum target = TARGETS[ti].target;
     GLuint t;
     glActiveTexture(GL_TEXTURE0 + unit);
     glGenTextures(1, &t);
-    glBindTexture(GL_TEXTURE_2D, t);
-    glTexStorage2D(GL_TEXTURE_2D, levels, GL_RGBA8, w, h);
+    glBindTexture(target, t);
+    if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY)
+        glTexStorage3D(target, levels, FORMATS[fi].internal, w, h, d);
+    else
+        glTexStorage2D(target, levels, FORMATS[fi].internal, w, h);
     for (int l = 0; l < levels; l++) {
         int lw = w >> l > 0 ? w >> l : 1, lh = h >> l > 0 ? h >> l : 1;
-        unsigned char *px = malloc((size_t)lw * lh * CHANNELS);
-        for (int y = 0; y < lh; y++)
-            for (int x = 0; x < lw; x++)
-                for (int c = 0; c < CHANNELS; c++) px[(y * lw + x) * CHANNELS + c] = texel(x, y, l, c);
-        glTexSubImage2D(GL_TEXTURE_2D, l, 0, 0, lw, lh, GL_RGBA, GL_UNSIGNED_BYTE, px);
-        free(px);
+        int ld = target == GL_TEXTURE_3D ? (d >> l > 0 ? d >> l : 1) : target == GL_TEXTURE_2D_ARRAY ? d : target == GL_TEXTURE_CUBE_MAP ? CUBE_FACES : 1;
+        for (int z = 0; z < ld; z++) {
+            void *px = pixels(lw, lh, z, l, FORMATS[fi].depth);
+            if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY)
+                glTexSubImage3D(target, l, 0, 0, z, lw, lh, 1, FORMATS[fi].format, FORMATS[fi].type, px);
+            else
+                glTexSubImage2D(target == GL_TEXTURE_CUBE_MAP ? (GLenum)(GL_TEXTURE_CUBE_MAP_POSITIVE_X + z) : target, l, 0, 0, lw, lh, FORMATS[fi].format, FORMATS[fi].type, px);
+            free(px);
+        }
     }
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    GLint min = !FORMATS[fi].filterable ? GL_NEAREST : levels > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR;
+    glTexParameteri(target, GL_TEXTURE_MIN_FILTER, min);
+    glTexParameteri(target, GL_TEXTURE_MAG_FILTER, FORMATS[fi].filterable ? GL_LINEAR : GL_NEAREST);
+    GLint wrap = target == GL_TEXTURE_CUBE_MAP ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+    glTexParameteri(target, GL_TEXTURE_WRAP_S, wrap);
+    glTexParameteri(target, GL_TEXTURE_WRAP_T, wrap);
+    glTexParameteri(target, GL_TEXTURE_WRAP_R, wrap);
+    if (FORMATS[fi].depth) {
+        glTexParameteri(target, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+        glTexParameteri(target, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    }
 }
 
 static int values(FILE *f, int ints, float *fv, int *iv) {
@@ -117,9 +184,10 @@ static void resources(const char *path, GLuint prog, int spirv, int linked) {
     int iv[MAX_VALUES];
     while (fscanf(f, "%15s", kind) == 1) {
         if (strcmp(kind, "texture") == 0) {
-            int unit, w, h, levels;
-            if (fscanf(f, "%d %d %d %d", &unit, &w, &h, &levels) != 4) die("texture UNIT W H LEVELS");
-            if (linked) texture(unit, w, h, levels);
+            char target[16], format[16];
+            int unit, w, h, d, levels;
+            if (fscanf(f, "%15s %15s %d %d %d %d %d", target, format, &unit, &w, &h, &d, &levels) != 7) die("texture TARGET FORMAT UNIT W H D LEVELS");
+            if (linked) texture(target, format, unit, w, h, d, levels);
             continue;
         }
         if (strcmp(kind, "attribute") == 0) {

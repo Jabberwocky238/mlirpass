@@ -183,8 +183,7 @@ impl Scalar {
             (Scalar::Float, _) => Type::Float(FloatKind::F32),
             (Scalar::Bool, _) => Type::I1,
             (Scalar::Int, true) => Type::Integer { signedness: Signedness::Signed, width: Ty::WORD },
-            (Scalar::Uint, true) => Type::Integer { signedness: Signedness::Unsigned, width: Ty::WORD },
-            (Scalar::Int | Scalar::Uint, false) => Type::int(Ty::WORD),
+            (Scalar::Int | Scalar::Uint, _) => Type::int(Ty::WORD),
         }
     }
 }
@@ -201,15 +200,16 @@ impl Ty {
             Ty::Vec(s, n) => Type::vector(&[i64::from(*n)], &[], s.mlir(global)),
             Ty::Mat(c, r) => SpirvType::Matrix { cols: *c, column: Box::new(Ty::Vec(Scalar::Float, *r).mlir(global)?) }.into(),
             Ty::Array(e, n) => SpirvType::Array { len: *n, elem: Box::new(e.mlir(global)?), stride: 0 }.into(),
-            Ty::Sampler(s, dim) => {
+            Ty::Sampler(s, dim, shadow) => {
                 let (d, arrayed) = match dim {
                     SamplerDim::D2 => ("Dim2D", "NonArrayed"),
                     SamplerDim::D3 => ("Dim3D", "NonArrayed"),
                     SamplerDim::Cube => ("Cube", "NonArrayed"),
                     SamplerDim::D2Array => ("Dim2D", "Arrayed"),
                 };
-                let params = [d, "NoDepth", arrayed, "SingleSampled", "NeedSampler", "Unknown"].map(String::from);
-                SpirvType::SampledImage(Box::new(SpirvType::Image { elem: Box::new(s.mlir(false)), params }.into())).into()
+                let depth = if *shadow { "IsDepth" } else { "NoDepth" };
+                let params = [d, depth, arrayed, "SingleSampled", "NeedSampler", "Unknown"].map(String::from);
+                SpirvType::SampledImage(Box::new(SpirvType::Image { elem: Box::new(s.mlir(true)), params }.into())).into()
             }
         })
     }
@@ -1684,13 +1684,24 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
                 let ty = t.mlir(false)?;
                 (self.op("arith.xori", &[*v, ones], ty), t.clone())
             }
-            (Func::Sample { lod, offset, proj }, [(sm, Ty::Sampler(s, dim)), (p, pt), rest @ ..]) => {
-                let p = &match (proj, dim.coordinates(), pt) {
-                    (true, n, Ty::Vec(Scalar::Float, Func::PROJ_VEC4)) if n + 1 < Func::PROJ_VEC4 => {
+            (Func::Sample { lod, offset, proj }, [(sm, Ty::Sampler(s, dim, shadow)), (p, pt), rest @ ..]) => {
+                let n = dim.coordinates();
+                let (p, dref) = &match (proj, *shadow, pt) {
+                    (false, false, _) => (*p, None),
+                    (true, false, Ty::Vec(Scalar::Float, Func::PROJ_VEC4)) if n + 1 < Func::PROJ_VEC4 => {
                         let lanes: Vec<u32> = (0..n).chain([Func::PROJ_VEC4 - 1]).collect();
-                        self.shuffle(*p, &lanes, Scalar::Float)?
+                        (self.shuffle(*p, &lanes, Scalar::Float)?, None)
                     }
-                    _ => *p,
+                    (true, false, _) => (*p, None),
+                    (false, true, Ty::Vec(Scalar::Float, m)) if *m == n + 1 => {
+                        let coord: Vec<u32> = (0..n).collect();
+                        (self.shuffle(*p, &coord, Scalar::Float)?, Some(self.extract(*p, n, Scalar::Float)))
+                    }
+                    (true, true, Ty::Vec(Scalar::Float, Func::PROJ_VEC4)) if n + 2 == Func::PROJ_VEC4 => {
+                        let lanes: Vec<u32> = (0..n).chain([Func::PROJ_VEC4 - 1]).collect();
+                        (self.shuffle(*p, &lanes, Scalar::Float)?, Some(self.extract(*p, n, Scalar::Float)))
+                    }
+                    (_, true, t) => return Self::err(format!("line {line}: a shadow lookup on {dim:?} takes vec{}, not {t:?}", n + 1 + u32::from(proj))),
                 };
                 let (lod_args, off) = match (lod, offset, rest) {
                     (Lod::Implicit, true, [o, tail @ ..]) => (tail, Some(o)),
@@ -1706,12 +1717,16 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
                     (Lod::Grad, 2) => Lod::Grad,
                     _ => return Self::err(format!("line {line}: a texture call with {} level arguments", lod_args.len())),
                 };
-                let t = Ty::Vec(*s, 4);
+                let t = if *shadow { Ty::FLOAT } else { Ty::Vec(*s, 4) };
                 let ty = t.mlir(false)?;
                 let mut ops = vec![*sm, *p];
+                ops.extend(*dref);
                 ops.extend(lod_args.iter().map(|r| r.0));
                 ops.extend(off.map(|o| o.0));
                 let mut data = OpData::build(crate::GlslTexture::NAME).operands(&ops).with("lod", A::from(lod as i64).into());
+                if dref.is_some() {
+                    data = data.with("dref", Attribute::Unit);
+                }
                 if offset {
                     data = data.with("offset", Attribute::Unit);
                 }
@@ -1720,7 +1735,7 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
                 }
                 (self.create(data, Some(ty)).unwrap_or_else(|| unreachable!()), t)
             }
-            (Func::Fetch { offset }, [(sm, Ty::Sampler(s, _)), (p, _), (l, Ty::Scalar(Scalar::Int)), rest @ ..]) if rest.len() == usize::from(offset) => {
+            (Func::Fetch { offset }, [(sm, Ty::Sampler(s, _, false)), (p, _), (l, Ty::Scalar(Scalar::Int)), rest @ ..]) if rest.len() == usize::from(offset) => {
                 let t = Ty::Vec(*s, 4);
                 let ty = t.mlir(false)?;
                 let mut ops = vec![*sm, *p, *l];
@@ -1731,7 +1746,7 @@ impl<'r, 'a, 's> Emitter<'r, 'a, 's> {
                 }
                 (self.create(data, Some(ty)).unwrap_or_else(|| unreachable!()), t)
             }
-            (Func::Size, [(sm, Ty::Sampler(_, dim)), (l, Ty::Scalar(Scalar::Int))]) => {
+            (Func::Size, [(sm, Ty::Sampler(_, dim, _)), (l, Ty::Scalar(Scalar::Int))]) => {
                 let t = Ty::Vec(Scalar::Int, dim.size_lanes());
                 let ty = t.mlir(false)?;
                 (self.create(OpData::build(crate::GlslTextureSize::NAME).operands(&[*sm, *l]), Some(ty)).unwrap_or_else(|| unreachable!()), t)

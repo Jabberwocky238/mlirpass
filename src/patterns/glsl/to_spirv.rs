@@ -98,12 +98,17 @@ impl Derivative {
 }
 
 impl Lod {
-    const fn spirv(self, proj: bool) -> &'static str {
-        match (self, proj) {
-            (Lod::Implicit | Lod::Bias, false) => "spirv.ImageSampleImplicitLod",
-            (Lod::Explicit | Lod::Grad, false) => "spirv.ImageSampleExplicitLod",
-            (Lod::Implicit | Lod::Bias, true) => "spirv.ImageSampleProjImplicitLod",
-            (Lod::Explicit | Lod::Grad, true) => "spirv.ImageSampleProjExplicitLod",
+    const fn spirv(self, proj: bool, dref: bool) -> &'static str {
+        let explicit = matches!(self, Lod::Explicit | Lod::Grad);
+        match (explicit, proj, dref) {
+            (false, false, false) => "spirv.ImageSampleImplicitLod",
+            (true, false, false) => "spirv.ImageSampleExplicitLod",
+            (false, true, false) => "spirv.ImageSampleProjImplicitLod",
+            (true, true, false) => "spirv.ImageSampleProjExplicitLod",
+            (false, false, true) => "spirv.ImageSampleDrefImplicitLod",
+            (true, false, true) => "spirv.ImageSampleDrefExplicitLod",
+            (false, true, true) => "spirv.ImageSampleProjDrefImplicitLod",
+            (true, true, true) => "spirv.ImageSampleProjDrefExplicitLod",
         }
     }
 
@@ -212,6 +217,20 @@ impl GlslToSpirv {
     fn mask(lod: Option<&str>, offset: bool) -> Option<String> {
         let parts: Vec<&str> = lod.into_iter().chain(offset.then_some(Self::CONST_OFFSET)).collect();
         (!parts.is_empty()).then(|| parts.join("|"))
+    }
+
+    fn sampled_as<'a>(cr: &Cr<'_, 'a, '_>, sampler: ValueId, result: &Type<'a>) -> Type<'a> {
+        let elem = match SpirvType::try_from(&Self::ty_of(cr, sampler)) {
+            Ok(SpirvType::SampledImage(image)) => match SpirvType::try_from(&*image) {
+                Ok(SpirvType::Image { elem, .. }) => *elem,
+                _ => return result.clone(),
+            },
+            _ => return result.clone(),
+        };
+        match result {
+            Type::Shaped(sh) if *sh.elem != elem && matches!(elem, Type::Integer { .. }) => Type::vector(&[Self::lanes(result).map_or(1, |n| n as i64)], &[], elem),
+            _ => result.clone(),
+        }
     }
 
     fn image_of<'a>(cr: &mut Cr<'_, 'a, '_>, sampled: ValueId) -> Option<ValueId> {
@@ -573,16 +592,19 @@ impl GlslToSpirv {
     fn texture(cr: &mut Cr<'_, '_, '_>, op: OpId, operands: &[Vec<ValueId>], _: GlslClient) -> bool {
         let Ok(t) = cr.rw.body.head::<GlslTexture>(op) else { return false };
         let Some(ops) = Cr::one_to_one(operands) else { return false };
-        if ops.len() != Self::SAMPLE_BASE + t.lod.operands() + usize::from(t.offset) {
+        if ops.len() != Self::SAMPLE_BASE + usize::from(t.dref) + t.lod.operands() + usize::from(t.offset) {
             return false;
         }
         let r = cr.rw.body[op].results[0];
         let Some(ty) = cr.converted(&cr.rw.body[r].ty.clone()) else { return false };
-        let mut data = OpData::build(t.lod.spirv(t.proj)).operands(&ops);
+        let mut data = OpData::build(t.lod.spirv(t.proj, t.dref)).operands(&ops);
         if let Some(o) = Self::mask(t.lod.operand(), t.offset) {
             data = data.with("image_operands", Self::image_operands(&o));
         }
-        cr.replace_new(op, data, &[ty]);
+        let sampled = Self::sampled_as(cr, ops[0], &ty);
+        let v = cr.build(data, sampled);
+        let v = Self::cast(cr, v, &ty);
+        cr.replace_values(op, &[v]);
         true
     }
 
@@ -600,7 +622,10 @@ impl GlslToSpirv {
         let mut args = vec![image];
         args.extend_from_slice(rest);
         let Some(mask) = Self::mask(Lod::Explicit.operand(), t.offset) else { return false };
-        cr.replace_new(op, OpData::build("spirv.ImageFetch").operands(&args).with("image_operands", Self::image_operands(&mask)), &[ty]);
+        let fetched = Self::sampled_as(cr, sampled, &ty);
+        let v = cr.build(OpData::build("spirv.ImageFetch").operands(&args).with("image_operands", Self::image_operands(&mask)), fetched);
+        let v = Self::cast(cr, v, &ty);
+        cr.replace_values(op, &[v]);
         true
     }
 
