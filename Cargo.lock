@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "mlirpass"
-version = "0.10.6"
+version = "0.10.7"
 dependencies = [
  "libc",
  "libm",
