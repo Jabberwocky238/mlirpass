@@ -1,5 +1,7 @@
 # mlirpass
 
+[中文](README.zh-CN.md)
+
 MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion, the pass manager, and the
 upstream lowerings and transforms — on top of [mlirformat](https://github.com/Jabberwocky238/mlirformat),
 which owns the syntax, the dialects and MLIR bytecode (MLIR text ⇄ IR ⇄ typed Rust ops).
