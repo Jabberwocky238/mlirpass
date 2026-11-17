@@ -8,7 +8,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::spirv_types::{SpirvDecoration, SpirvMember, SpirvType};
-use mlirformat::{ApFloat, ApInt, Attribute, Const, Error, FloatKind, FunctionType, OpInfos, Operation, Scalar, Signedness, Type};
+use mlirformat::{ApFloat, ApInt, Attribute, Const, Error, FloatKind, FunctionType, MlirOpt, Operation, Scalar, Signedness, Type};
 
 use super::{Arg, AttrKind, EnumSpec, Group, OpSpec};
 use crate::targets::tree::{At, B, O, Tree, V};
@@ -44,6 +44,11 @@ impl SpirvReader {
     pub const MAGIC: u32 = 0x0723_0203;
 
     pub fn read(&self, bytes: &[u8]) -> Result<Operation<'static>, Error> {
+        self.read_in(bytes, &MlirOpt::upstream())
+    }
+
+    /// `bytes` read with `opt`'s op infos (which attributes are inherent), so that none is built for each module
+    pub fn read_in(&self, bytes: &[u8], opt: &MlirOpt) -> Result<Operation<'static>, Error> {
         if !bytes.len().is_multiple_of(Reader::WORD) {
             return Err(Error(format!("{} bytes are not whole SPIR-V words", bytes.len())));
         }
@@ -52,7 +57,7 @@ impl SpirvReader {
         r.structurize = self.structurize;
         r.read()?;
         r.expand_all();
-        Ok(r.tree.operation(r.module, &OpInfos::upstream()))
+        Ok(r.tree.operation(r.module, opt))
     }
 }
 

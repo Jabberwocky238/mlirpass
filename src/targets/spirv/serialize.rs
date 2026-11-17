@@ -32,7 +32,7 @@ impl SpirvBinary {
 
     /// The `spirv.module` SPIR-V `bytes` hold, as a body of its own
     pub fn read<'a>(&self, ctx: Ctx<'a>, bytes: &[u8]) -> Result<Body<'a>, Error> {
-        let op = SpirvReader { structurize: self.structurize }.read(bytes)?;
+        let op = SpirvReader { structurize: self.structurize }.read_in(bytes, ctx.opt)?;
         Body::import(ctx, Module { items: vec![Item::Op(op)] })
     }
 }

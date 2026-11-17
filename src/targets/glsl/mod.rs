@@ -11,7 +11,7 @@ use alloc::string::String;
 use alloc::vec;
 
 use mlirformat::glsl::{GlslDialect, GlslStage};
-use mlirformat::{Dialect, Error, Item, MlirOpt, Module, OpInfos, Operation};
+use mlirformat::{Error, Item, MlirOpt, Module, Operation};
 
 use crate::{Body, Emit, OpId, Shift};
 
@@ -24,7 +24,6 @@ pub struct GlslFormat {
     /// The stage the source is; when not given, a vertex shader if it writes `gl_Position`
     pub stage: Option<GlslStage>,
     opt: MlirOpt,
-    infos: OpInfos,
 }
 
 impl GlslFormat {
@@ -34,13 +33,9 @@ impl GlslFormat {
     const VERSION: &'static str = "#version";
 
     pub fn new(stage: Option<GlslStage>) -> Self {
-        let mut infos = OpInfos::upstream();
-        for i in GlslDialect.op_infos() {
-            infos.insert(i);
-        }
         let mut opt = MlirOpt::upstream();
         opt.load(GlslDialect);
-        Self { stage, opt, infos }
+        Self { stage, opt }
     }
 
     fn stage_of(&self, src: &str) -> GlslStage {
@@ -76,8 +71,14 @@ impl GlslFormat {
 
     /// GLSL source as a `glsl.shader` op
     pub fn read(&self, src: &str) -> Result<Operation<'static>, Error> {
-        let (tree, op) = Parser::read(src, self.stage_of(src), &self.opt)?;
-        Ok(tree.operation(op, &self.infos))
+        GlslFormat::read_in(src, self.stage_of(src), &self.opt)
+    }
+
+    /// GLSL source of `stage` as a `glsl.shader` op, with `opt`'s dialects (`glsl` loaded); what a body's reader
+    /// uses, so that no context of its own is built for each shader
+    pub fn read_in(src: &str, stage: GlslStage, opt: &MlirOpt) -> Result<Operation<'static>, Error> {
+        let (tree, op) = Parser::read(src, stage, opt)?;
+        Ok(tree.operation(op, opt))
     }
 
     /// A `glsl.shader` op as GLSL source
@@ -91,7 +92,7 @@ pub struct GlslReader;
 
 impl GlslReader {
     pub fn read(body: &mut Body<'_>, src: &str, stage: GlslStage) -> Result<OpId, Error> {
-        let op = GlslFormat::new(Some(stage)).read(src)?;
+        let op = GlslFormat::read_in(src, stage, body.ctx.opt)?;
         let sub = Body::import(body.ctx, Module { items: vec![Item::Op(op)] })?;
         let shader = sub.first_op(sub.top_block(sub.root)).ok_or_else(|| Error::from("glsl: no shader was read"))?;
         let moved = shader.shift(&body.absorb(sub));
