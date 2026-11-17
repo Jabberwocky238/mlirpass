@@ -1,6 +1,6 @@
 [package]
 name = "mlirpass"
-version = "0.11.1"
+version = "0.11.2"
 edition = "2024"
 description = "MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion and the upstream lowerings, on top of mlirformat"
 license = "MIT"
@@ -20,7 +20,7 @@ exclude = ["fuzz"]
 mlirpass-macros = { path = "macros", version = "0.5.0" }
 mlirformat = { git = "https://github.com/Jabberwocky238/mlirformat.git", tag = "0.8.8", version = "0.8.8", default-features = false }
 # SPIR-V binaries, written and read (`target.spirv`).
-mlirbinary = { git = "https://github.com/Jabberwocky238/mlirbinary.git", tag = "0.5.0", version = "0.5.0", default-features = false }
+mlirbinary = { git = "https://github.com/Jabberwocky238/mlirbinary.git", tag = "0.6.0", version = "0.6.0", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }
 # f64 trunc / ldexp / rint without std (all exact).
@@ -155,3 +155,4 @@ required-features = ["dialect.glsl", "target.spirv"]
 [[test]]
 name = "vulkan"
 required-features = ["all-dialects", "target.spirv"]
+

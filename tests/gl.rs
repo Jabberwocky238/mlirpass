@@ -215,6 +215,29 @@ impl Case {
         }
     }
 
+    /// The shaders read and written back as GLSL by mlirbinary must draw what the source drew; where
+    /// Mesa reassociates the source, what our SPIR-V draws (glslang's), within the ulps allowed
+    fn written(&self, gl: &Gl, res: Option<&Path>, reference: &[u8], ours: &[u8]) -> Result<(), String> {
+        use mlirbinary::{GlslFormat, Read, Write};
+        let name = &self.name;
+        let pool = moremath::ThreadSingle;
+        let mut paths = Vec::new();
+        for (src, stage, ext) in [(&self.vert, GlslStage::Vertex, "vert"), (&self.frag, GlslStage::Fragment, "frag")] {
+            let format = GlslFormat::new(Some(stage));
+            let text = fs::read(src).map_err(|e| e.to_string())?;
+            let out = format.read(&text, &pool).and_then(|op| format.write(&op, &pool)).map_err(|e| format!("writing GLSL: {}", e.0))?;
+            let path = gl.out.join(format!("{name}.written.{ext}"));
+            fs::write(&path, out).map_err(|e| e.to_string())?;
+            paths.push(path);
+        }
+        let drawn = gl.draw("written", &paths[0], &paths[1], &format!("{name}.written.bin"), res).map_err(|e| format!("written GLSL: {e}"))?;
+        match (differing(reference, &drawn), self.allowed) {
+            (0, _) => Ok(()),
+            (_, Some(max)) if differing(ours, &drawn) == 0 && ulps(reference, &drawn) <= max => Ok(()),
+            (n, _) => Err(format!("written GLSL: {n} floats differ from the source's")),
+        }
+    }
+
     fn run(&self, gl: &Gl, show: bool) -> Result<String, String> {
         let (name, res) = (&self.name, self.res.as_deref());
         let reference = gl.draw("glsl", &self.vert, &self.frag, &format!("{name}.glsl.bin"), res)?;
@@ -225,6 +248,7 @@ impl Case {
         }
         let (vs, fs_) = lowered.write(gl, name)?;
         let ours = gl.draw("spirv", &vs, &fs_, &format!("{name}.spirv.bin"), res)?;
+        self.written(gl, res, &reference, &ours)?;
         self.default_block(gl, res, &ours)?;
         let n = differing(&reference, &ours);
         let Some(max) = self.allowed else {

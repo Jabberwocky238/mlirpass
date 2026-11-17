@@ -3,6 +3,8 @@
 //
 //   glrun glsl  VERT FRAG W H OUT [RES]    shaders as GLSL source (any #version the driver takes)
 //   glrun spirv VERT FRAG W H OUT [RES]    shaders as SPIR-V binaries (ARB_gl_spirv), entry point "main"
+//   glrun written VERT FRAG W H OUT [RES]  GLSL source written from IR: a uniform the name does not find (a
+//                                          struct's members are renamed) is set at the LOCATION given
 //
 // The vertex shader is run for vertices 0, 1, 2 (gl_VertexID / VertexIndex).
 // RES sets what the shaders read, one per line, the same way for both kinds of shader. A name is what the GLSL
@@ -169,7 +171,7 @@ static int values(FILE *f, int ints, float *fv, int *iv) {
     }
 }
 
-static void resources(const char *path, GLuint prog, int spirv, int linked) {
+static void resources(const char *path, GLuint prog, int spirv, int located, int linked) {
     FILE *f = fopen(path, "r");
     if (!f) die(path);
     char kind[16], name[64];
@@ -220,8 +222,9 @@ static void resources(const char *path, GLuint prog, int spirv, int linked) {
         int n = values(f, ty[0] == 'i', fv, iv);
         if (!linked) continue;
         if (!spirv) {
-            at = glGetUniformLocation(prog, name);
-            if (at < 0) die(name);
+            GLint named = glGetUniformLocation(prog, name);
+            if (named < 0 && !located) die(name);
+            if (named >= 0) at = named;
         }
         if (ty[0] == 'i') {
             void (*set[])(GLint, GLsizei, const GLint *) = {glUniform1iv, glUniform2iv, glUniform3iv, glUniform4iv};
@@ -239,8 +242,9 @@ static void resources(const char *path, GLuint prog, int spirv, int linked) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 7 && argc != 8) die("usage: glrun glsl|spirv VERT FRAG W H OUT [RES]");
+    if (argc != 7 && argc != 8) die("usage: glrun glsl|spirv|written VERT FRAG W H OUT [RES]");
     int spirv = strcmp(argv[1], "spirv") == 0;
+    int located = strcmp(argv[1], "written") == 0;
     int w = atoi(argv[4]), h = atoi(argv[5]);
 
     EGLDisplay dpy = eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
@@ -254,7 +258,7 @@ int main(int argc, char **argv) {
     GLuint prog = glCreateProgram();
     glAttachShader(prog, shader(GL_VERTEX_SHADER, argv[2], spirv));
     glAttachShader(prog, shader(GL_FRAGMENT_SHADER, argv[3], spirv));
-    if (argc == 8) resources(argv[7], prog, spirv, 0);
+    if (argc == 8) resources(argv[7], prog, spirv, located, 0);
     glLinkProgram(prog);
     GLint ok;
     glGetProgramiv(prog, GL_LINK_STATUS, &ok);
@@ -269,7 +273,7 @@ int main(int argc, char **argv) {
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
     glUseProgram(prog);
-    if (argc == 8) resources(argv[7], prog, spirv, 1);
+    if (argc == 8) resources(argv[7], prog, spirv, located, 1);
     glActiveTexture(GL_TEXTURE0 + TARGET_UNIT);
 
     glGenTextures(1, &tex);
