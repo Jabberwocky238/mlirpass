@@ -53,8 +53,8 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mlirbinary"
-version = "0.6.0"
-source = "git+https://github.com/Jabberwocky238/mlirbinary.git?tag=0.6.0#382059c93d646c5648c2d87e3a45c244591b1cd2"
+version = "0.6.1"
+source = "git+https://github.com/Jabberwocky238/mlirbinary.git?tag=0.6.1#a4e7c07123f2905165e0360dd86b1e95deb2362e"
 dependencies = [
  "mlirformat",
  "moremath",
@@ -85,7 +85,7 @@ dependencies = [
 
 [[package]]
 name = "mlirpass"
-version = "0.11.2"
+version = "0.11.3"
 dependencies = [
  "libc",
  "libm",

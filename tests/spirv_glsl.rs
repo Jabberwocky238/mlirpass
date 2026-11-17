@@ -46,7 +46,7 @@ fn spirv_to_glsl_compiles() {
                 continue;
             }
         };
-        let stage = SpirvGlsl::stage(&body, module).unwrap_or_else(|| {
+        let stage = SpirvGlsl::stage(&body.operation(module)).unwrap_or_else(|| {
             glsl.push_str("void main() {}\n");
             if glsl.contains("barrier()") { "comp" } else { "frag" }
         });

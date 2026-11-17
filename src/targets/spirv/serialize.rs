@@ -1,7 +1,8 @@
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirbinary::{SpirvReader, SpirvWriter};
+use mlirbinary::{SpirvGlsl, SpirvReader, SpirvWriter};
 use mlirformat::{Error, Item, Module};
 
 use crate::{Body, Ctx, Emit, OpId};
@@ -43,5 +44,13 @@ impl Emit for SpirvBinary {
 
     fn emit(&self, body: &Body<'_>, op: OpId) -> Result<Vec<u32>, Error> {
         SpirvWriter { symbol_names: self.symbol_names }.words(&body.operation(op))
+    }
+}
+
+impl Emit for SpirvGlsl {
+    type Output = String;
+
+    fn emit(&self, body: &Body<'_>, op: OpId) -> Result<String, Error> {
+        SpirvGlsl::text(&body.operation(op))
     }
 }
