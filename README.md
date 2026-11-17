@@ -2,7 +2,9 @@
 
 MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion, the pass manager, and the
 upstream lowerings and transforms — on top of [mlirformat](https://github.com/Jabberwocky238/mlirformat),
-which owns the syntax (MLIR text ⇄ IR ⇄ typed Rust ops).
+which owns the syntax and the dialects (MLIR text ⇄ IR ⇄ typed Rust ops), and
+[mlirbinary](https://github.com/Jabberwocky238/mlirbinary), which reads and writes the formats outside MLIR
+(SPIR-V, MLIR bytecode, GLSL source). Both are required dependencies.
 
 MLIR behavior follows **MLIR 23.1.5** (llvm-project `llvmorg-23.1.5`): every pass is checked against
 what `mlir-opt` 23.1.5 prints for the same input and pipeline.
@@ -98,7 +100,7 @@ A pass is listed under the feature that compiles it in, with the others it needs
 | `dialect.xevm` | yes | `xevm`: its op interfaces, folds and patterns; passes: `convert-xevm-to-llvm` (with `target.llvm`) |
 | `dialect.agx` | no | Apple AGX (G13)'s instruction set and CDM command stream (not an upstream dialect); turns on `dialect.image` |
 | `dialect.apple9` | no | Apple9 (M3 / M4)'s instruction set (not an upstream dialect) |
-| `dialect.glsl` | no | GLSL (ES 1.00 / 3.00) as written: `glsl.shader`, its globals (`in` / `out` / `uniform`, locations, interpolation, built-in variables), `glsl.load` / `store`, constructors, built-in functions, derivatives, texture sampling, `discard`; the rest of a shader is `func` / `arith` / `math` / `vector` / `scf`, aggregates and samplers are `!spirv.*` types; `convert-glsl-to-spirv{client=opengl}` keeps what Mesa's GLSL compiler computes, checked pixel for pixel against the local OpenGL (`tests/gl.rs`) (not an upstream dialect); turns on `target.spirv`; passes: `convert-glsl-to-spirv` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-default-block` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-link` (with `dialect.math`, `dialect.scf`, `dialect.func`) |
+| `dialect.glsl` | no | GLSL (ES 1.00 / 3.00) shaders: the `glsl` dialect is mlirformat's (`glsl.shader`, its globals, loads / stores, constructors, built-in functions, derivatives, texture sampling, `discard`; the rest of a shader is `func` / `arith` / `math` / `vector` / `scf`, aggregates and samplers `!spirv.*` types), GLSL source is read by mlirbinary's `GlslFormat` (`GlslReader::read` puts a shader in a body); the passes lower it: `convert-glsl-to-spirv{client=opengl}` keeps what Mesa's GLSL compiler computes, checked pixel for pixel against the local OpenGL (`tests/gl.rs`) (not an upstream dialect); turns on `target.spirv`; passes: `convert-glsl-to-spirv` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-default-block` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-link` (with `dialect.math`, `dialect.scf`, `dialect.func`) |
 | `dialect.image` | no | the images of the GPU instruction sets below (not an upstream dialect) |
 | `dialect.nir` | no | Mesa's NIR ALU opcodes (mlirformat's `nir` dialect, generated from Mesa 25.2.8's `nir_opcodes.py`) and the algebraic rules of Mesa's `nir_opt_algebraic` / `_before_ffma` / `_late` / `_distribute_src_mods`, written by `scripts/nir_algebraic.py` from `nir_opt_algebraic.py` as Mesa's own parser reads it (`NirRules`) (not an upstream dialect) |
 | `dialect.rdna2` | no | AMD RDNA2's instruction set and PM4 command stream, as mlirpass encodes them (not an upstream dialect); turns on `dialect.image` |

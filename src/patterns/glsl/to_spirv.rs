@@ -58,8 +58,13 @@ impl GlslClient {
     }
 }
 
-impl GlslStage {
-    const fn execution_model(self) -> &'static str {
+/// What a shader stage is in SPIR-V
+trait StageSpirv {
+    fn execution_model(self) -> &'static str;
+}
+
+impl StageSpirv for GlslStage {
+    fn execution_model(self) -> &'static str {
         match self {
             GlslStage::Vertex => "Vertex",
             GlslStage::Fragment => "Fragment",
@@ -67,7 +72,13 @@ impl GlslStage {
     }
 }
 
-impl Storage {
+/// Where a GLSL global lives in SPIR-V
+trait StorageSpirv {
+    fn class(self, ty: &Type<'_>, client: GlslClient) -> Result<&'static str, Error>;
+    fn interface(self) -> bool;
+}
+
+impl StorageSpirv for Storage {
     fn class(self, ty: &Type<'_>, client: GlslClient) -> Result<&'static str, Error> {
         let spirv = SpirvType::try_from(ty);
         let opaque = matches!(spirv, Ok(SpirvType::SampledImage(_) | SpirvType::Image { .. } | SpirvType::Sampler));
@@ -83,13 +94,18 @@ impl Storage {
         }
     }
 
-    const fn interface(self) -> bool {
+    fn interface(self) -> bool {
         matches!(self, Storage::In | Storage::Out)
     }
 }
 
-impl Derivative {
-    const fn spirv(self) -> &'static str {
+/// A derivative as a SPIR-V op
+trait DerivativeSpirv {
+    fn spirv(self) -> &'static str;
+}
+
+impl DerivativeSpirv for Derivative {
+    fn spirv(self) -> &'static str {
         match self {
             Derivative::Dfdx => "spirv.DPdx",
             Derivative::Dfdy => "spirv.DPdy",
@@ -98,8 +114,14 @@ impl Derivative {
     }
 }
 
-impl Lod {
-    const fn spirv(self, proj: bool, dref: bool) -> &'static str {
+/// A texture lookup as a SPIR-V op
+trait LodSpirv {
+    fn spirv(self, proj: bool, dref: bool) -> &'static str;
+    fn operand(self) -> Option<&'static str>;
+}
+
+impl LodSpirv for Lod {
+    fn spirv(self, proj: bool, dref: bool) -> &'static str {
         let explicit = matches!(self, Lod::Explicit | Lod::Grad);
         match (explicit, proj, dref) {
             (false, false, false) => "spirv.ImageSampleImplicitLod",
@@ -113,7 +135,7 @@ impl Lod {
         }
     }
 
-    const fn operand(self) -> Option<&'static str> {
+    fn operand(self) -> Option<&'static str> {
         match self {
             Lod::Implicit => None,
             Lod::Bias => Some("Bias"),
@@ -123,8 +145,14 @@ impl Lod {
     }
 }
 
-impl Builtin {
-    const fn spirv(self, float: bool) -> Option<&'static str> {
+/// A built-in function as a SPIR-V op
+trait BuiltinSpirv {
+    fn spirv(self, float: bool) -> Option<&'static str>;
+    fn splats(self) -> bool;
+}
+
+impl BuiltinSpirv for Builtin {
+    fn spirv(self, float: bool) -> Option<&'static str> {
         Some(match (self, float) {
             (Builtin::Radians, true) => "spirv.GL.Radians",
             (Builtin::Degrees, true) => "spirv.GL.Degrees",
@@ -199,7 +227,7 @@ impl Builtin {
         })
     }
 
-    const fn splats(self) -> bool {
+    fn splats(self) -> bool {
         matches!(self, Builtin::Clamp | Builtin::Mix | Builtin::Step | Builtin::Smoothstep | Builtin::Mod)
     }
 }
