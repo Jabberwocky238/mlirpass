@@ -5,37 +5,13 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-pub use mlirbinary::{Hole, Pack, Template};
+pub use mlirbinary::{Hole, Image, ImageTarget, ImageWriter, Pack, Segment, Template};
 pub use mlirformat::image::*;
 
-use mlirformat::{Attribute, Const, Error, NamedAttr, Op};
+use mlirbinary::Ir;
+use mlirformat::{Attribute, Error, NamedAttr, Op};
 
 use crate::{A, Attrs, Body, Emit, Heads, OpId, Quiet, Rewriter, Symbol, Updates};
-
-pub trait ImageTarget {
-    const BASE: u64;
-    const PAGE: u64;
-
-    fn stream(&self, body: &Body<'_>, stream: OpId) -> Result<Vec<u8>, Error>;
-    fn item(&self, body: &Body<'_>, op: OpId) -> Result<Vec<u8>, Error>;
-
-    fn contents(&self, body: &Body<'_>, op: OpId) -> Result<Vec<u8>, Error> {
-        let name = &*body[op].name;
-        if name == Stream::NAME {
-            self.stream(body, op)
-        } else if name == Data::NAME {
-            let d = body.head::<Data>(op)?;
-            let mut bytes = d.bytes.as_ref().map(Image::dense).transpose()?.unwrap_or_default();
-            bytes.resize(bytes.len().max(d.size.unwrap_or(0) as usize), 0);
-            Ok(bytes)
-        } else if name == Words::NAME {
-            let w = body.head::<Words>(op)?;
-            w.values.iter().map(|v| Attrs::as_int(v).map(|v| (v as u32).to_le_bytes())).collect::<Result<Vec<_>, _>>().map(|w| w.concat())
-        } else {
-            self.item(body, op)
-        }
-    }
-}
 
 #[derive(Clone, Copy)]
 struct Place<'s> {
@@ -96,30 +72,41 @@ impl Resolver<'_> {
     }
 }
 
+/// Lays out an image: each memory placed from the target's base, its items one after another,
+/// then symbols replaced by their addresses (and `@memory::@item` by offsets)
 pub struct Layout<'t, T: ImageTarget>(pub &'t T);
 
 impl<T: ImageTarget> Layout<'_, T> {
-    pub fn run(&self, body: &mut Body<'_>, op: OpId) -> Result<(), Error> {
+    /// Each memory's items' sizes, symbols read as zero
+    fn sizes(&self, body: &Body<'_>, op: OpId) -> Result<Vec<Vec<u64>>, Error> {
         let mut sized = body.clone();
         Resolver(BTreeMap::new()).op(&mut Rewriter::new(&mut sized, &mut Quiet), op, true)?;
+        let root = sized.operation(op);
+        let ir = Ir::new(&root)?;
+        let memories = ir.block_ops(ir.top_block(ir.root)).into_iter().filter(|m| ir[*m].name == Memory::NAME);
+        memories.map(|m| ir.block_ops(ir.top_block(m)).into_iter().map(|item| self.0.contents(&ir, item).map(|b| b.len() as u64)).collect()).collect()
+    }
+
+    pub fn run(&self, body: &mut Body<'_>, op: OpId) -> Result<(), Error> {
+        let sizes = self.sizes(body, op)?;
         let mut quiet = Quiet;
         let mut rw = Rewriter::new(body, &mut quiet);
-        let memories = Image::memories(rw.body, op);
+        let memories = Layout::<T>::memories(rw.body, op);
         let heads = memories.iter().map(|m| rw.body.head::<Memory>(*m)).collect::<Result<Vec<_>, _>>()?;
         let mut places: Vec<(String, String, u64, u64)> = Vec::new();
         let mut at = T::BASE;
-        for (&m, mut head) in memories.iter().zip(heads) {
+        for ((&m, mut head), sizes) in memories.iter().zip(heads).zip(sizes) {
             let name = Symbol::defined(&head.sym_name)?.to_owned();
             let align = head.align.unwrap_or(T::PAGE).max(T::PAGE);
             let addr = at.next_multiple_of(align);
             let mut cursor = 0u64;
-            for item in rw.body.block_ops(rw.body.top_block(m)) {
-                cursor = cursor.next_multiple_of(Image::int(rw.body, item, Placed::ALIGN)?.unwrap_or(64));
+            for (item, len) in rw.body.block_ops(rw.body.top_block(m)).into_iter().zip(sizes) {
+                cursor = cursor.next_multiple_of(Layout::<T>::int(rw.body, item, Placed::ALIGN)?.unwrap_or(64));
                 if let Some(s) = rw.body[item].get(Symbol::ATTR) {
                     places.push((Symbol::defined(s)?.to_owned(), name.clone(), addr + cursor, cursor));
                 }
                 rw.modify(item, |b| b[item].set(Placed::OFFSET, A::from(cursor).into()));
-                cursor += self.0.contents(&sized, item)?.len() as u64;
+                cursor += len;
             }
             let size = head.size.unwrap_or(0).max(cursor).next_multiple_of(4096).max(4096);
             (head.addr, head.size) = (Some(addr), Some(size));
@@ -135,31 +122,6 @@ impl<T: ImageTarget> Layout<'_, T> {
         }
         Ok(())
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Segment {
-    pub name: String,
-    pub addr: u64,
-    pub mem: MemType,
-    pub bytes: Vec<u8>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Image {
-    pub segments: Vec<Segment>,
-    pub stream: u64,
-    pub stream_end: u64,
-}
-
-impl Image {
-    pub fn region<'a>() -> mlirformat::Region<'a> {
-        mlirformat::Region { blocks: Vec::new() }
-    }
-
-    pub fn segment(&self, name: &str) -> Option<&Segment> {
-        self.segments.iter().find(|s| s.name == name)
-    }
 
     fn memories(body: &Body<'_>, op: OpId) -> Vec<OpId> {
         body.ops(body.top_block(op)).filter(|m| body[*m].name == Memory::NAME).collect()
@@ -168,54 +130,16 @@ impl Image {
     fn int(body: &Body<'_>, op: OpId, name: &str) -> Result<Option<u64>, Error> {
         Ok(body[op].get(name).map(Attrs::as_int).transpose()?.map(|v| v as u64))
     }
-
-    fn dense(a: &Attribute<'_>) -> Result<Vec<u8>, Error> {
-        let c = Const::try_from(a).map_err(|()| Error("bytes: not a dense constant".into()))?;
-        let n = c.ty.element_count().unwrap_or(1);
-        let width = c.ty.element_type().bit_width().ok_or_else(|| Error("bytes: element without a width".into()))? as usize / 8;
-        let mut out = Vec::with_capacity(n * width);
-        for i in 0..n {
-            let bits = match c.at(i) {
-                mlirformat::Scalar::Float(f) => u128::from(f.bits),
-                mlirformat::Scalar::Int(v) => v.bits(),
-                mlirformat::Scalar::Complex(..) | mlirformat::Scalar::ComplexFloat(..) | mlirformat::Scalar::Wide(_) => {
-                    return Err(Error("bytes: complex and wide float elements have no image layout".into()));
-                }
-            };
-            out.extend_from_slice(&bits.to_le_bytes()[..width]);
-        }
-        Ok(out)
-    }
 }
 
+/// An image laid out (`Layout`) written as its memories' contents, by mlirbinary
 pub struct ImageEmit<'t, T: ImageTarget>(pub &'t T);
 
 impl<T: ImageTarget> Emit for ImageEmit<'_, T> {
     type Output = Image;
 
     fn emit(&self, body: &Body<'_>, op: OpId) -> Result<Image, Error> {
-        let mut segments = Vec::new();
-        let mut stream: Option<(u64, u64)> = None;
-        for m in Image::memories(body, op) {
-            let head = body.head::<Memory>(m)?;
-            let name = Symbol::defined(&head.sym_name)?.to_owned();
-            let addr = head.addr.ok_or_else(|| Error(format!("memory @{name} without an address: run the layout")))?;
-            let size = head.size.unwrap_or(0);
-            let mem = head.mem.unwrap_or(MemType::Streaming);
-            let mut bytes = vec![0u8; size as usize];
-            for item in body.block_ops(body.top_block(m)) {
-                let offset = Image::int(body, item, Placed::OFFSET)?.unwrap_or(0) as usize;
-                let b = self.0.contents(body, item)?;
-                bytes[offset..offset + b.len()].copy_from_slice(&b);
-                if body[item].name == Stream::NAME && stream.is_none() {
-                    let at = addr + offset as u64;
-                    stream = Some((at, at + b.len() as u64));
-                }
-            }
-            segments.push(Segment { name, addr, mem, bytes });
-        }
-        let (stream, stream_end) = stream.ok_or_else(|| Error("no image.stream".into()))?;
-        Ok(Image { segments, stream, stream_end })
+        ImageWriter(self.0).image(&body.operation(op))
     }
 }
 
