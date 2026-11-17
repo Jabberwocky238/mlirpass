@@ -215,17 +215,16 @@ impl Case {
         }
     }
 
-    /// The shaders read and written back as GLSL by mlirbinary must draw what the source drew; where
+    /// The shaders read and written back as GLSL (`GlslFormat`) must draw what the source drew; where
     /// Mesa reassociates the source, what our SPIR-V draws (glslang's), within the ulps allowed
     fn written(&self, gl: &Gl, res: Option<&Path>, reference: &[u8], ours: &[u8]) -> Result<(), String> {
-        use mlirbinary::{GlslFormat, Read, Write};
+        use mlirpass::GlslFormat;
         let name = &self.name;
-        let pool = moremath::ThreadSingle;
         let mut paths = Vec::new();
         for (src, stage, ext) in [(&self.vert, GlslStage::Vertex, "vert"), (&self.frag, GlslStage::Fragment, "frag")] {
             let format = GlslFormat::new(Some(stage));
-            let text = fs::read(src).map_err(|e| e.to_string())?;
-            let out = format.read(&text, &pool).and_then(|op| format.write(&op, &pool)).map_err(|e| format!("writing GLSL: {}", e.0))?;
+            let text = fs::read_to_string(src).map_err(|e| e.to_string())?;
+            let out = format.read(&text).and_then(|op| GlslFormat::write(&op)).map_err(|e| format!("writing GLSL: {}", e.0))?;
             let path = gl.out.join(format!("{name}.written.{ext}"));
             fs::write(&path, out).map_err(|e| e.to_string())?;
             paths.push(path);

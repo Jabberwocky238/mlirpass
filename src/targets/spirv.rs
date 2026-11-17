@@ -1,4 +1,5 @@
 mod abi;
+mod binary;
 mod lower;
 mod serialize;
 mod target;
@@ -10,7 +11,7 @@ pub use lower::ClientApi;
 pub(crate) use lower::symbol_text as spirv_symbol_text;
 pub(crate) use transforms::{insertion_chain, is_composite, splat};
 pub(crate) use abi::Abi;
-pub use mlirbinary::{Arg, AttrKind, Avail, Case, Code, EnumSpec, Group, OpSpec, SpirvGlsl};
+pub use binary::{Arg, AttrKind, Avail, Case, Code, EnumSpec, Group, OpSpec, SpirvReader, SpirvWriter};
 pub use serialize::SpirvBinary;
 pub use target::{Needs, TargetEnv};
 pub use types::{SpirvOptions, SpirvTypes, explicit_layout};

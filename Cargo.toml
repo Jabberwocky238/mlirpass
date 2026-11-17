@@ -20,7 +20,6 @@ exclude = ["fuzz"]
 mlirpass-macros = { path = "macros", version = "0.5.0" }
 mlirformat = { git = "https://github.com/Jabberwocky238/mlirformat.git", tag = "0.8.9", version = "0.8.9", default-features = false }
 # SPIR-V binaries, written and read (`target.spirv`).
-mlirbinary = { git = "https://github.com/Jabberwocky238/mlirbinary.git", tag = "0.7.0", version = "0.7.0", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }
 # f64 trunc / ldexp / rint without std (all exact).
@@ -34,7 +33,7 @@ moremath = { version = "0.2.1", default-features = false, features = ["alloc"] }
 
 [features]
 default = ["std", "cli", "all-dialects", "all-targets"]
-std = ["mlirformat/std", "mlirbinary/std", "moremath/std", "serde/std", "thiserror/std"]
+std = ["mlirformat/std", "moremath/std", "serde/std", "thiserror/std"]
 # The `mlirpass` command line (`cargo install mlirpass`).
 cli = ["std"]
 # One feature per dialect: its op interfaces, folds, canonicalization patterns, its own
@@ -75,29 +74,17 @@ all-dialects = ["dialect.acc", "dialect.affine", "dialect.amdgpu", "dialect.arit
 "dialect.x86" = ["dialect.memref"]
 "dialect.xegpu" = ["dialect.xevm", "dialect.vector", "dialect.memref", "dialect.arith", "dialect.index", "dialect.scf", "dialect.gpu"]
 "dialect.xevm" = []
-# The GPU instruction sets mlirpass encodes itself (not upstream dialects; not in `all-dialects`): their ops, types
-# and encodings. `target.<isa>` lowers into one and emits its machine code.
-"dialect.agx" = ["dialect.image"]
-"dialect.apple9" = []
-"dialect.rdna2" = ["dialect.image"]
-# GLSL (ES 1.00 / 3.00) shaders: mlirformat's glsl dialect read from source by mlirbinary, lowered by the passes here.
+# GLSL (ES 1.00 / 3.00) shaders: mlirformat's glsl dialect, lowered by the passes here.
 "dialect.glsl" = ["target.spirv"]
 # Mesa's NIR ALU opcodes (mlirformat's nir dialect): the algebraic rules of nir_opt_algebraic, as Mesa's drivers apply them.
 "dialect.nir" = []
-# What a GPU runs, for every GPU target: memories, command streams, data; table-driven packing; the layout.
-"dialect.image" = []
 # One feature per backend (`src/targets`): its type converter, `convert-to-*`, the lowerings
 # into it, and what it emits.
-all-targets = ["target.llvm", "target.emitc", "target.spirv"]
+all-targets = ["target.llvm", "target.emitc", "target.spirv", "target.glsl"]
 "target.llvm" = ["dialect.llvm"]
 "target.emitc" = ["dialect.emitc"]
 "target.spirv" = ["dialect.spirv"]
-# The GPUs' own machine code, one feature each (not in `all-targets`): SPIR-V and the upstream dialects ⇒ the
-# instruction set ⇒ registers ⇒ bytes (`gpu-module-to-binary`). Apple AGX (G13), Apple9 (M3 / M4), AMD RDNA2 (GFX10.3).
-"target.apple9" = ["dialect.apple9", "target.gpu"]
-"target.agx" = ["dialect.agx", "target.gpu"]
-"target.rdna2" = ["dialect.rdna2", "target.gpu"]
-"target.gpu" = ["dialect.image", "dialect.spirv", "dialect.gpu", "dialect.arith", "dialect.math", "dialect.vector", "dialect.func", "dialect.scf", "dialect.cf"]
+"target.glsl" = ["dialect.glsl", "target.spirv"]
 "target.x86_64" = ["dialect.llvm"]
 
 [[bin]]
@@ -123,25 +110,16 @@ name = "asm_names"
 required-features = ["all-dialects"]
 
 [[test]]
-name = "spirv"
-required-features = ["all-dialects", "target.spirv"]
+name = "spirv_binary"
+required-features = ["target.glsl"]
+
+[[test]]
+name = "glsl_source"
+required-features = ["target.glsl"]
 
 [[test]]
 name = "spirv_glsl"
-required-features = ["all-dialects", "target.spirv"]
-
-# Each GPU target's lowering and images (encoders are mlirbinary's tests).
-[[test]]
-name = "agx"
-required-features = ["target.agx"]
-
-[[test]]
-name = "apple9"
-required-features = ["target.apple9"]
-
-[[test]]
-name = "rdna2"
-required-features = ["target.rdna2"]
+required-features = ["all-dialects", "target.glsl"]
 
 [[test]]
 name = "glsl"
@@ -150,8 +128,11 @@ required-features = ["dialect.glsl"]
 # The same shaders through the local OpenGL: as GLSL source, and as the SPIR-V convert-glsl-to-spirv makes (ARB_gl_spirv).
 [[test]]
 name = "gl"
-required-features = ["dialect.glsl", "target.spirv"]
+required-features = ["target.glsl"]
 
 [[test]]
 name = "vulkan"
 required-features = ["all-dialects", "target.spirv"]
+
+[patch."https://github.com/Jabberwocky238/mlirformat.git"]
+mlirformat = { path = "../mlirformat" }

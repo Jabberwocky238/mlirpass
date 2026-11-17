@@ -1,13 +1,11 @@
-use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use mlirbinary::{SpirvGlsl, SpirvReader, SpirvWriter};
 use mlirformat::{Error, Item, Module};
 
-use crate::{Body, Ctx, Emit, OpId};
+use crate::{Body, Ctx, Emit, OpId, SpirvReader, SpirvWriter};
 
-/// A `spirv.module` as SPIR-V words and back, through mlirbinary (as `mlir-translate
+/// A `spirv.module` as SPIR-V words and back (as `mlir-translate
 /// --serialize-spirv` / `--deserialize-spirv`)
 #[derive(Debug, Clone, Copy)]
 pub struct SpirvBinary {
@@ -44,13 +42,5 @@ impl Emit for SpirvBinary {
 
     fn emit(&self, body: &Body<'_>, op: OpId) -> Result<Vec<u32>, Error> {
         SpirvWriter { symbol_names: self.symbol_names }.words(&body.operation(op))
-    }
-}
-
-impl Emit for SpirvGlsl {
-    type Output = String;
-
-    fn emit(&self, body: &Body<'_>, op: OpId) -> Result<String, Error> {
-        SpirvGlsl::text(&body.operation(op))
     }
 }

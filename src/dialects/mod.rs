@@ -1,9 +1,5 @@
 #[cfg(feature = "dialect.affine")]
 mod affine;
-#[cfg(feature = "dialect.agx")]
-mod agx;
-#[cfg(feature = "dialect.apple9")]
-mod apple9;
 #[cfg(feature = "dialect.arith")]
 mod arith;
 #[cfg(feature = "dialect.bufferization")]
@@ -18,8 +14,6 @@ mod func;
 mod glsl;
 #[cfg(feature = "dialect.gpu")]
 mod gpu;
-#[cfg(feature = "dialect.image")]
-mod image;
 #[cfg(feature = "dialect.index")]
 mod index;
 #[cfg(feature = "dialect.linalg")]
@@ -55,10 +49,6 @@ mod vector;
 
 #[cfg(feature = "dialect.affine")]
 pub use affine::AffineDialect;
-#[cfg(feature = "dialect.agx")]
-pub use agx::*;
-#[cfg(feature = "dialect.apple9")]
-pub use apple9::*;
 #[cfg(feature = "dialect.arith")]
 pub use arith::ArithDialect;
 #[cfg(feature = "dialect.bufferization")]
@@ -73,11 +63,6 @@ pub use func::FuncDialect;
 pub use glsl::*;
 #[cfg(feature = "dialect.gpu")]
 pub use gpu::GpuDialect;
-#[cfg(feature = "dialect.image")]
-pub use image::{
-    Data as ImageData, Field as PackField, Fill, Fields, Group as PackGroup, Hole, Image, ImageDialect, ImageEmit, ImageTarget, Item as PackItem, Layout as ImageLayout, Layouts, MemType, Pack, Memory as ImageMemory, Placed as ImagePlaced, Real,
-    Segment as ImageSegment, Stream as ImageStream, Template, Ty as PackTy, Words as ImageWords, attribute_of,
-};
 #[cfg(feature = "dialect.index")]
 pub use index::IndexDialect;
 #[cfg(feature = "dialect.linalg")]

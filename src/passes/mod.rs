@@ -1,9 +1,5 @@
 #[cfg(feature = "dialect.affine")]
 mod affine;
-#[cfg(feature = "target.agx")]
-mod agx;
-#[cfg(feature = "target.apple9")]
-mod apple9;
 #[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
 mod amdgpu;
 #[cfg(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")))]
@@ -36,7 +32,7 @@ mod memref;
 mod scf;
 #[cfg(feature = "dialect.shape")]
 mod shape;
-#[cfg(any(feature = "target.spirv", feature = "target.gpu"))]
+#[cfg(feature = "target.spirv")]
 mod spirv;
 #[cfg(all(feature = "dialect.tensor", any(feature = "dialect.linalg", all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func"))))]
 mod tensor;
@@ -58,10 +54,6 @@ mod xevm;
 
 #[cfg(feature = "dialect.affine")]
 pub use affine::*;
-#[cfg(feature = "target.agx")]
-pub use agx::*;
-#[cfg(feature = "target.apple9")]
-pub use apple9::*;
 #[cfg(all(feature = "dialect.amdgpu", feature = "target.llvm"))]
 pub use amdgpu::*;
 #[cfg(all(feature = "dialect.arith", any(feature = "target.emitc", feature = "target.llvm", feature = "target.spirv")))]
@@ -94,7 +86,7 @@ pub use memref::*;
 pub use scf::*;
 #[cfg(feature = "dialect.shape")]
 pub use shape::*;
-#[cfg(any(feature = "target.spirv", feature = "target.gpu"))]
+#[cfg(feature = "target.spirv")]
 pub use spirv::*;
 #[cfg(all(feature = "dialect.tensor", any(feature = "dialect.linalg", all(feature = "target.spirv", feature = "dialect.memref", feature = "dialect.func"))))]
 pub use tensor::*;

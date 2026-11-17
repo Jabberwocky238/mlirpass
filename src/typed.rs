@@ -9,7 +9,6 @@ use mlirformat::{Attribute, Error, FunctionType, NamedAttr, Op, Operation, Regio
 
 use crate::{BlockId, Body, OpData, OpId, Quiet, Rewriter, ValueId};
 
-pub use mlirformat::isa::{OpRows, RegType, ShaderStage};
 
 #[derive(Clone, Copy, Debug)]
 pub struct RegSlots<'s>(pub &'s [&'s str]);

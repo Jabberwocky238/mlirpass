@@ -54,13 +54,5 @@ pub use to_rocdl::{GpuRocdlOptions, GpuToRocdl};
 
 
 
-#[cfg(feature = "target.agx")]
-mod to_agx;
-#[cfg(feature = "target.agx")]
-pub use to_agx::*;
 
-#[cfg(feature = "target.apple9")]
-mod to_apple9;
-#[cfg(feature = "target.apple9")]
-pub use to_apple9::*;
 

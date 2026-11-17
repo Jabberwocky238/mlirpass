@@ -43,12 +43,12 @@ mod spirv_unify_aliased_resource;
 #[cfg(feature = "target.spirv")]
 pub use spirv_unify_aliased_resource::*;
 
-#[cfg(any(feature = "target.spirv", feature = "target.gpu"))]
+#[cfg(feature = "target.spirv")]
 mod convert_spirv_entry_points;
-#[cfg(any(feature = "target.spirv", feature = "target.gpu"))]
+#[cfg(feature = "target.spirv")]
 pub use convert_spirv_entry_points::*;
 
-#[cfg(any(feature = "target.spirv", feature = "target.gpu"))]
+#[cfg(feature = "target.spirv")]
 mod convert_spirv_cf_to_cf;
-#[cfg(any(feature = "target.spirv", feature = "target.gpu"))]
+#[cfg(feature = "target.spirv")]
 pub use convert_spirv_cf_to_cf::*;

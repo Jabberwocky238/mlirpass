@@ -7,7 +7,7 @@ mod webgpu_prepare;
 #[cfg(feature = "target.spirv")]
 pub use webgpu_prepare::WebgpuPrepare;
 
-#[cfg(any(feature = "target.spirv", feature = "target.gpu"))]
+#[cfg(feature = "target.spirv")]
 mod to_arith;
-#[cfg(any(feature = "target.spirv", feature = "target.gpu"))]
+#[cfg(feature = "target.spirv")]
 pub use to_arith::SpirvToArith;

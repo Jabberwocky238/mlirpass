@@ -2,20 +2,14 @@
 mod emitc;
 #[cfg(feature = "target.llvm")]
 mod llvm;
-#[cfg(feature = "target.agx")]
-mod agx;
-#[cfg(feature = "target.agx")]
-mod agx_dispatch;
-#[cfg(feature = "target.apple9")]
-mod apple9;
-#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "target.gpu"))]
-mod gpu;
-#[cfg(feature = "dialect.rdna2")]
-mod rdna2;
 #[cfg(feature = "target.x86_64")]
 mod x86_64;
 #[cfg(feature = "target.spirv")]
 mod spirv;
+#[cfg(feature = "target.glsl")]
+mod glsl;
+#[cfg(any(feature = "target.spirv", feature = "target.glsl"))]
+mod tree;
 
 use alloc::vec::Vec;
 
@@ -27,20 +21,12 @@ use crate::{Body, OpId};
 pub use emitc::*;
 #[cfg(feature = "target.llvm")]
 pub use llvm::*;
-#[cfg(feature = "target.agx")]
-pub use agx::*;
-#[cfg(feature = "target.agx")]
-pub use agx_dispatch::*;
-#[cfg(feature = "target.apple9")]
-pub use apple9::*;
-#[cfg(any(feature = "dialect.agx", feature = "dialect.apple9", feature = "dialect.rdna2", feature = "target.gpu"))]
-pub use gpu::*;
-#[cfg(feature = "dialect.rdna2")]
-pub use rdna2::*;
 #[cfg(feature = "target.x86_64")]
 pub use x86_64::*;
 #[cfg(feature = "target.spirv")]
 pub use spirv::*;
+#[cfg(feature = "target.glsl")]
+pub use glsl::*;
 
 /// A backend, one folder under `src/targets`: its name (also its `target.<name>` feature) and the
 /// passes that lower its input to what it emits.
