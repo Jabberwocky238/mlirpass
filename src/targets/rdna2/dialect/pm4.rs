@@ -101,7 +101,7 @@ impl Pm4 {
             let first = Pm4::addr(body, Pm4::regs(body, op).next().ok_or_else(|| Error(format!("{name} without registers")))?)?;
             let mut dw = vec![Pm4::header(Pm4::opcode(name)?, regs.len() as u32, false, false), (first - space.start) >> 2];
             for r in regs {
-                dw.extend(RDNA2.pack(&body[r].name, &body[r].all_attrs())?);
+                dw.extend(crate::Pack(RDNA2).pack(&body[r].name, &body[r].all_attrs())?);
             }
             return Ok(dw);
         }

@@ -130,14 +130,14 @@ required-features = ["all-dialects", "target.spirv"]
 name = "spirv_glsl"
 required-features = ["all-dialects", "target.spirv"]
 
-# Each GPU target's encoder against its oracle (llvm-mc, Mesa, gentool).
+# Each GPU target's lowering and images (encoders are mlirbinary's tests).
 [[test]]
 name = "agx"
-required-features = ["dialect.agx"]
+required-features = ["target.agx"]
 
 [[test]]
 name = "apple9"
-required-features = ["dialect.apple9"]
+required-features = ["target.apple9"]
 
 [[test]]
 name = "rdna2"
@@ -157,3 +157,9 @@ name = "vulkan"
 required-features = ["all-dialects", "target.spirv"]
 
 
+
+[patch."https://github.com/Jabberwocky238/mlirformat.git"]
+mlirformat = { path = "../mlirformat" }
+
+[patch."https://github.com/Jabberwocky238/mlirbinary.git"]
+mlirbinary = { path = "../mlirbinary" }

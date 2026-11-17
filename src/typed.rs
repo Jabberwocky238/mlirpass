@@ -1,4 +1,3 @@
-use alloc::borrow::ToOwned;
 use alloc::collections::BTreeSet;
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -6,32 +5,11 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use mlirformat::arith::Constant;
-use mlirformat::{Attribute, Error, Extended, FunctionType, NamedAttr, Op, Operation, Region, ResultDef, Role, Type, Value};
+use mlirformat::{Attribute, Error, FunctionType, NamedAttr, Op, Operation, Region, ResultDef, Role, Type, Value};
 
 use crate::{BlockId, Body, OpData, OpId, Quiet, Rewriter, ValueId};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RegType<'t> {
-    pub name: &'t str,
-    pub elem: &'t str,
-}
-
-impl<'a> From<RegType<'_>> for Type<'a> {
-    fn from(r: RegType<'_>) -> Self {
-        Type::Extended(alloc::boxed::Box::new(Extended { name: r.name.to_owned().into(), body: Some(format!("<{}>", r.elem).into()), params: Vec::new() }))
-    }
-}
-
-impl<'t> TryFrom<&'t Type<'_>> for RegType<'t> {
-    type Error = Error;
-
-    fn try_from(t: &'t Type<'_>) -> Result<RegType<'t>, Error> {
-        let not = || Error(format!("{t} is not a register type"));
-        let Type::Extended(e) = t else { return Err(not()) };
-        let elem = e.inner().ok_or_else(not)?;
-        Ok(RegType { name: &e.name, elem })
-    }
-}
+pub use mlirformat::isa::{OpRows, RegType, ShaderStage};
 
 #[derive(Clone, Copy, Debug)]
 pub struct RegSlots<'s>(pub &'s [&'s str]);
@@ -362,39 +340,6 @@ impl Rewrites {
         let region = body[op].regions[0];
         body.apply_greedily(region, patterns, &config);
     }
-}
-
-pub struct OpRows;
-
-impl OpRows {
-    pub fn of(ops: &[mlirformat::Template], inherent: &[(&'static str, &'static [&'static str])]) -> Vec<mlirformat::OpInfo> {
-        let inherent: alloc::collections::BTreeMap<&str, &'static [&'static str]> = inherent.iter().rev().copied().collect();
-        ops.iter()
-            .map(|t| {
-                let inherent = inherent.get(t.name).copied().unwrap_or_default();
-                mlirformat::OpInfo { name: t.name, traits: &[], effects: mlirformat::Effects::Unknown, inherent }
-            })
-            .collect()
-    }
-}
-
-#[macro_export]
-macro_rules! attr_ops {
-    ($ns:tt $set:ident; $($ty:ident $op:literal,)*) => {
-        $(
-            #[doc = concat!("`", $op, "`")]
-            #[mlirformat::mlir::op($op, format = "(`(` $operands^ `:` type($operands) `)`)? attr-dict (`->` type($results)^)?", results(results))]
-            pub struct $ty<'a> {
-                #[slot(types)]
-                pub operands: Vec<mlirformat::Value<'a>>,
-                pub types: Vec<mlirformat::Type<'a>>,
-                pub results: Vec<mlirformat::Type<'a>>,
-            }
-        )*
-
-        #[mlirformat::mlir::dialect($ns, ops = [$($ty),*])]
-        pub(crate) struct $set;
-    };
 }
 
 pub trait SinkConstants {

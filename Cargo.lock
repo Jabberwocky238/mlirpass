@@ -3,15 +3,6 @@
 version = 4
 
 [[package]]
-name = "agxgen"
-version = "0.0.0"
-dependencies = [
- "roxmltree",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "cc"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -54,8 +45,8 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 [[package]]
 name = "mlirbinary"
 version = "0.6.1"
-source = "git+https://github.com/Jabberwocky238/mlirbinary.git?tag=0.6.1#a4e7c07123f2905165e0360dd86b1e95deb2362e"
 dependencies = [
+ "libm",
  "mlirformat",
  "moremath",
 ]
@@ -63,7 +54,6 @@ dependencies = [
 [[package]]
 name = "mlirformat"
 version = "0.8.8"
-source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.8.8#93b912fe3738017a7b27933ba4f102f8d900c906"
 dependencies = [
  "mlirformat-macros",
  "moremath",
@@ -76,7 +66,6 @@ dependencies = [
 [[package]]
 name = "mlirformat-macros"
 version = "0.8.8"
-source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.8.8#93b912fe3738017a7b27933ba4f102f8d900c906"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -152,12 +141,6 @@ dependencies = [
  "serde",
  "serde_json",
 ]
-
-[[package]]
-name = "roxmltree"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 
 [[package]]
 name = "serde"

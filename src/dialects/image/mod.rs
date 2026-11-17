@@ -5,134 +5,12 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-mod pack;
+pub use mlirbinary::{Hole, Pack, Template};
+pub use mlirformat::image::*;
 
-pub use pack::*;
-
-use mlirformat::{Attribute, Const, Error, NamedAttr, Op, Region};
-use serde::{Deserialize, Serialize};
+use mlirformat::{Attribute, Const, Error, NamedAttr, Op};
 
 use crate::{A, Attrs, Body, Emit, Heads, OpId, Quiet, Rewriter, Symbol, Updates};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ImageDialect;
-
-impl mlirformat::Dialect for ImageDialect {
-    fn namespace(&self) -> &'static str {
-        "image"
-    }
-
-    fn ops(&self) -> Vec<mlirformat::Template> {
-        Containers.ops()
-    }
-
-    fn op_infos(&self) -> Vec<mlirformat::OpInfo> {
-        ImageDialect::INHERENT.iter().map(|(name, inherent)| mlirformat::OpInfo { name, traits: &[], effects: mlirformat::Effects::Unknown, inherent }).collect()
-    }
-}
-
-impl ImageDialect {
-    pub const INHERENT: &[(&str, &[&str])] = &[
-        ("image.memory", &["sym_name", "mem", "align", "size", "addr"]),
-        ("image.stream", &["sym_name", "align", "offset", "cdm", "vdm"]),
-        ("image.data", &["sym_name", "bytes", "size", "align", "offset"]),
-        ("image.words", &["sym_name", "values", "align", "offset"]),
-    ];
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum MemType {
-    Coherent,
-    Streaming,
-    Scanout,
-    Compressed,
-}
-
-#[mlirformat::mlir::op("image.memory", format = "$sym_name attr-dict-with-keyword $body")]
-pub struct Memory<'a> {
-    #[attr(symbol)]
-    pub sym_name: Attribute<'a>,
-    pub mem: Option<MemType>,
-    pub align: Option<u64>,
-    pub size: Option<u64>,
-    pub addr: Option<u64>,
-    pub body: Region<'a>,
-}
-
-#[mlirformat::mlir::op("image.stream", format = "$sym_name attr-dict-with-keyword $body")]
-pub struct Stream<'a> {
-    #[attr(symbol)]
-    pub sym_name: Attribute<'a>,
-    pub align: Option<u64>,
-    pub offset: Option<u64>,
-    pub cdm: bool,
-    pub vdm: bool,
-    pub body: Region<'a>,
-}
-
-#[mlirformat::mlir::op("image.data", format = "$sym_name attr-dict")]
-pub struct Data<'a> {
-    #[attr(symbol)]
-    pub sym_name: Attribute<'a>,
-    pub bytes: Option<Attribute<'a>>,
-    pub size: Option<u64>,
-    pub align: Option<u64>,
-    pub offset: Option<u64>,
-}
-
-#[mlirformat::mlir::op("image.words", format = "$sym_name attr-dict")]
-pub struct Words<'a> {
-    #[attr(symbol)]
-    pub sym_name: Attribute<'a>,
-    pub values: Vec<Attribute<'a>>,
-    pub align: Option<u64>,
-    pub offset: Option<u64>,
-}
-
-#[mlirformat::mlir::dialect("image", ops = [Memory, Stream, Data, Words])]
-struct Containers;
-
-impl<'a> Memory<'a> {
-    pub fn named(name: impl Into<String>, mem: MemType) -> Self {
-        Memory::new(A::str(name.into()).into(), Some(mem), None, None, None, Region { blocks: Vec::new() })
-    }
-}
-
-impl<'a> Stream<'a> {
-    pub fn named(name: impl Into<String>) -> Self {
-        Stream::new(A::str(name.into()).into(), None, None, false, false, Region { blocks: Vec::new() })
-    }
-}
-
-impl<'a> Data<'a> {
-    pub fn zeros(name: impl Into<String>, size: u64) -> Self {
-        Data::new(A::str(name.into()).into(), None, Some(size), None, None)
-    }
-
-    pub fn bytes(name: impl Into<String>, bytes: Attribute<'a>) -> Self {
-        Data::new(A::str(name.into()).into(), Some(bytes), None, None, None)
-    }
-
-    fn contents(&self) -> Result<Vec<u8>, Error> {
-        let mut bytes = self.bytes.as_ref().map(Image::dense).transpose()?.unwrap_or_default();
-        bytes.resize(bytes.len().max(self.size.unwrap_or(0) as usize), 0);
-        Ok(bytes)
-    }
-}
-
-impl Words<'_> {
-    fn contents(&self) -> Result<Vec<u8>, Error> {
-        self.values.iter().map(|v| Attrs::as_int(v).map(|v| (v as u32).to_le_bytes())).collect::<Result<Vec<_>, _>>().map(|w| w.concat())
-    }
-}
-
-pub struct Placed;
-
-impl Placed {
-    pub const ALIGN: &str = "align";
-    pub const OFFSET: &str = "offset";
-}
 
 pub trait ImageTarget {
     const BASE: u64;
@@ -146,9 +24,13 @@ pub trait ImageTarget {
         if name == Stream::NAME {
             self.stream(body, op)
         } else if name == Data::NAME {
-            body.head::<Data>(op)?.contents()
+            let d = body.head::<Data>(op)?;
+            let mut bytes = d.bytes.as_ref().map(Image::dense).transpose()?.unwrap_or_default();
+            bytes.resize(bytes.len().max(d.size.unwrap_or(0) as usize), 0);
+            Ok(bytes)
         } else if name == Words::NAME {
-            body.head::<Words>(op)?.contents()
+            let w = body.head::<Words>(op)?;
+            w.values.iter().map(|v| Attrs::as_int(v).map(|v| (v as u32).to_le_bytes())).collect::<Result<Vec<_>, _>>().map(|w| w.concat())
         } else {
             self.item(body, op)
         }
@@ -271,8 +153,8 @@ pub struct Image {
 }
 
 impl Image {
-    pub fn region<'a>() -> Region<'a> {
-        Region { blocks: Vec::new() }
+    pub fn region<'a>() -> mlirformat::Region<'a> {
+        mlirformat::Region { blocks: Vec::new() }
     }
 
     pub fn segment(&self, name: &str) -> Option<&Segment> {
@@ -334,5 +216,25 @@ impl<T: ImageTarget> Emit for ImageEmit<'_, T> {
         }
         let (stream, stream_end) = stream.ok_or_else(|| Error("no image.stream".into()))?;
         Ok(Image { segments, stream, stream_end })
+    }
+}
+
+impl From<A> for Fill {
+    fn from(a: A) -> Self {
+        Fill::try_from(&a).unwrap_or_else(|e| panic!("{e}"))
+    }
+}
+
+impl TryFrom<&A> for Fill {
+    type Error = Error;
+
+    fn try_from(a: &A) -> Result<Fill, Error> {
+        match a {
+            A::Int(v) => Ok(Fill::Int(*v)),
+            A::Bool(b) => Ok(Fill::Bool(*b)),
+            A::Sym(s) => Ok(Fill::at(s.clone(), 0)),
+            A::In(m, s) => Ok(Fill::Place { path: vec![m.clone(), s.clone()], add: 0 }),
+            other => Err(Error(format!("{other:?} is not a field's value"))),
+        }
     }
 }

@@ -54,7 +54,7 @@ impl<'a> Alloc<'_, 'a> {
         let mut groups = Groups::new();
         let stores: Vec<OpId> = self.ops().into_iter().filter(|o| Usc::op(&self.rw.body[*o].name) == Some(UscOp::Store)).collect();
         for op in stores {
-            let slots = Usc::slots(&self.rw.body[op])?;
+            let slots = Slot::list(self.rw.body[op].get("slots"))?;
             let data: Vec<usize> = slots.iter().enumerate().filter(|(_, s)| **s == Slot::S0).map(|(k, _)| k).collect();
             if data.len() < 2 {
                 continue;
@@ -123,7 +123,7 @@ impl<'a> Alloc<'_, 'a> {
                 })
                 .ok_or_else(|| Error(format!("{inst:?} has no {slot:?}")))
             };
-            let slots = Usc::slots(&self.rw.body[op])?;
+            let slots = Slot::list(self.rw.body[op].get("slots"))?;
             let operands = self.rw.body[op].operands.clone();
             let mut attrs: Vec<(&str, Attribute<'a>)> = Vec::new();
             let mut k = 0;

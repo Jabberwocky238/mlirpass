@@ -34,7 +34,7 @@ impl Rdna2Dispatch {
     where
         for<'o> mlirformat::Operation<'static>: TryFrom<&'o O, Error = Error>,
     {
-        Ok(RDNA2.pack(O::NAME, &Rdna2Dispatch::reg(r).all_attrs())?[0])
+        Ok(crate::Pack(RDNA2).pack(O::NAME, &Rdna2Dispatch::reg(r).all_attrs())?[0])
     }
 
     pub fn ops<'a>(&self) -> Result<Vec<OpData<'a>>, Error> {

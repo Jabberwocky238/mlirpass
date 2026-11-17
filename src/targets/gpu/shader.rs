@@ -2,17 +2,8 @@ use alloc::borrow::ToOwned;
 use alloc::vec::Vec;
 
 use mlirformat::{Attribute, Error};
-use serde::{Deserialize, Serialize};
 
 use crate::{Body, Mapping, OpId};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ShaderStage {
-    Vertex,
-    Fragment,
-    Compute,
-}
 
 pub struct Kernels;
 

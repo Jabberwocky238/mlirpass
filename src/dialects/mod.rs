@@ -75,7 +75,7 @@ pub use glsl::*;
 pub use gpu::GpuDialect;
 #[cfg(feature = "dialect.image")]
 pub use image::{
-    Data as ImageData, Field as PackField, Fill, Fields, Group as PackGroup, Hole, Image, ImageDialect, ImageEmit, ImageTarget, Item as PackItem, Layout as ImageLayout, Layouts, MemType, Memory as ImageMemory, Placed as ImagePlaced, Real,
+    Data as ImageData, Field as PackField, Fill, Fields, Group as PackGroup, Hole, Image, ImageDialect, ImageEmit, ImageTarget, Item as PackItem, Layout as ImageLayout, Layouts, MemType, Pack, Memory as ImageMemory, Placed as ImagePlaced, Real,
     Segment as ImageSegment, Stream as ImageStream, Template, Ty as PackTy, Words as ImageWords, attribute_of,
 };
 #[cfg(feature = "dialect.index")]

@@ -81,7 +81,7 @@ fn registers_pack_as_mesa() {
     let pack = |b: &Body<'_>, o: OpId| {
         let name = &b[o].name;
         let item = RDNA2.get(name).unwrap();
-        let dw = RDNA2.pack(name, &b[o].all_attrs()).unwrap_or_else(|e| panic!("{e}"));
+        let dw = mlirpass::Pack(RDNA2).pack(name, &b[o].all_attrs()).unwrap_or_else(|e| panic!("{e}"));
         format!("{} {:08x}", item.name, dw[0])
     };
     let mut bad = Vec::new();
