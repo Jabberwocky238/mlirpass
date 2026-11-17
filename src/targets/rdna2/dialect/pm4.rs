@@ -1,91 +1,21 @@
+//! PM4 command streams: registers gathered into `SET_*_REG` packets, streams padded.
+
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use mlirformat::rdna2::{Pm4Nop, Pm4Space, RDNA2, Rdna2Word as Word};
 use mlirformat::{Attribute, Error, Op};
 
-use super::{RDNA2, RDNA2_PM4_OPCODES};
-use crate::{Attrs, BlockOps, Body, Fill, ImageStream, OpData, OpId, Pattern, PatternSet, Rewriter, Rewrites};
+use crate::{Attrs, BlockOps, Body, ImageStream, OpData, OpId, Pattern, PatternSet, Rewriter, Rewrites};
 
-struct Space {
-    start: u32,
-    end: u32,
-    op: &'static str,
-}
-
-const SPACES: &[Space] = &[
-    Space { start: 0x8000, end: 0xb000, op: "rdna2.pm4.set_config_reg" },
-    Space { start: 0xb000, end: 0xc000, op: "rdna2.pm4.set_sh_reg" },
-    Space { start: 0x28000, end: 0x30000, op: "rdna2.pm4.set_context_reg" },
-    Space { start: 0x30000, end: 0x40000, op: "rdna2.pm4.set_uconfig_reg" },
-];
-
-const REG: &str = "rdna2.reg.";
-const NOP: &str = <super::Pm4Nop as mlirformat::Op>::NAME;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Word {
-    Dword(u32),
-    Qword(Fill),
-}
-
-impl<'a> From<&Word> for Attribute<'a> {
-    fn from(w: &Word) -> Self {
-        match w {
-            Word::Dword(v) => Attribute::Int { lit: format!("{v:#x}").into(), ty: None },
-            Word::Qword(f) => Attribute::Array(vec![f.into()]),
-        }
-    }
-}
-
-impl TryFrom<&Attribute<'_>> for Word {
-    type Error = Error;
-
-    fn try_from(a: &Attribute<'_>) -> Result<Word, Error> {
-        match a {
-            Attribute::Array(q) if q.len() == 1 => Fill::try_from(&q[0]).map(Word::Qword),
-            _ => u32::try_from(Attrs::as_int(a)?).map(Word::Dword).map_err(|_| Error(format!("{a} is not a dword (a qword is [v])"))),
-        }
-    }
-}
-
-impl serde::Serialize for Word {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        serde::Serialize::serialize(&Attribute::from(self), s)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Word {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        Word::try_from(&crate::attribute_of(d)?).map_err(serde::de::Error::custom)
-    }
-}
-
-const NOP_PAD: u32 = 0xffff_1000;
+const REG: &str = Pm4Space::REG;
 
 const PAD_MASK: usize = 7;
-
-impl Space {
-    fn of(addr: u32) -> Option<&'static Space> {
-        SPACES.iter().find(|s| (s.start..s.end).contains(&addr))
-    }
-
-    fn named(op: &str) -> Option<&'static Space> {
-        SPACES.iter().find(|s| s.op == op)
-    }
-}
 
 pub struct Pm4;
 
 impl Pm4 {
-    fn header(opcode: u32, count: u32, predicate: bool, compute: bool) -> u32 {
-        (3 << 30) | ((count & 0x3fff) << 16) | ((opcode & 0xff) << 8) | (u32::from(compute) << 1) | u32::from(predicate)
-    }
-
-    fn opcode(name: &str) -> Result<u32, Error> {
-        RDNA2_PM4_OPCODES.binary_search_by(|(o, _)| o.cmp(&name)).map(|i| RDNA2_PM4_OPCODES[i].1).map_err(|_| Error(format!("{name} is not a PM4 packet")))
-    }
-
     fn addr(body: &Body<'_>, op: OpId) -> Result<u32, Error> {
         RDNA2.get(&body[op].name).map(|i| i.num).ok_or_else(|| Error(format!("{}: no such register", body[op].name)))
     }
@@ -94,45 +24,9 @@ impl Pm4 {
         body.ops(body.top_block(op))
     }
 
-    pub fn pack(body: &Body<'_>, op: OpId) -> Result<Vec<u32>, Error> {
-        let name = &*body[op].name;
-        if let Some(space) = Space::named(name) {
-            let regs = Pm4::regs(body, op);
-            let first = Pm4::addr(body, Pm4::regs(body, op).next().ok_or_else(|| Error(format!("{name} without registers")))?)?;
-            let mut dw = vec![Pm4::header(Pm4::opcode(name)?, regs.len() as u32, false, false), (first - space.start) >> 2];
-            for r in regs {
-                dw.extend(crate::Pack(RDNA2).pack(&body[r].name, &body[r].all_attrs())?);
-            }
-            return Ok(dw);
-        }
-        if name.starts_with(REG) {
-            return Err(Error(format!("{name} outside a SET_*_REG packet: run rdna2-pm4")));
-        }
-        let attrs = body[op].all_attrs();
-        let a = Attrs(&attrs);
-        let flag = |n: &str| attrs.iter().any(|x| x.name == n && x.value.as_ref().is_none_or(|v| matches!(v, Attribute::Bool(true) | Attribute::Unit)));
-        let mut words = Vec::new();
-        for e in a.array("body")? {
-            match e {
-                Attribute::Array(q) if q.len() == 1 => {
-                    let v = Attrs::as_int(&q[0])? as u64;
-                    words.extend([v as u32, (v >> 32) as u32]);
-                }
-                _ => words.push(u32::try_from(Attrs::as_int(e)?).map_err(|_| Error(format!("{name}: {e} is not a dword (a qword is [v])")))?),
-            }
-        }
-        let opcode = Pm4::opcode(name)?;
-        let head = match words.len() {
-            0 if name == NOP => return Ok(vec![NOP_PAD]),
-            0 => return Err(Error(format!("{name}: a packet has a body"))),
-            n => Pm4::header(opcode, n as u32 - 1, flag("predicate"), flag("compute")),
-        };
-        Ok([vec![head], words].concat())
-    }
-
     fn len(body: &Body<'_>, op: OpId) -> Result<usize, Error> {
         let name = &*body[op].name;
-        if Space::named(name).is_some() {
+        if Pm4Space::named(name).is_some() {
             return Ok(2 + Pm4::regs(body, op).len());
         }
         let attrs = body[op].all_attrs();
@@ -166,7 +60,7 @@ impl Pattern for WrapRegister {
         if !rw.body[op].name.starts_with(REG) || Pm4::stream_of(rw.body, op).is_none() {
             return false;
         }
-        let Some(space) = Pm4::addr(rw.body, op).ok().and_then(Space::of) else { return false };
+        let Some(space) = Pm4::addr(rw.body, op).ok().and_then(Pm4Space::of) else { return false };
         rw.set_before(op);
         let set = rw.create_with(OpData::build(space.op), &[], |b, set| {
             let r = b.add_region(set);
@@ -191,7 +85,7 @@ impl Pattern for MergeSets {
 
     fn rewrite(&self, rw: &mut Rewriter<'_, '_>, op: OpId) -> bool {
         let body = &*rw.body;
-        if Space::named(&body[op].name).is_none() {
+        if Pm4Space::named(&body[op].name).is_none() {
             return false;
         }
         let Some(next) = Pm4::next(body, op).filter(|n| body[*n].name == body[op].name) else { return false };
@@ -244,7 +138,7 @@ crate::rewrites! {
         };
         let zeros = vec![Word::Dword(0); n - 1];
         rw.set_end(block);
-        rw.emit(&super::Pm4Nop { body: zeros, ..Default::default() });
+        rw.emit(&Pm4Nop { body: zeros, ..Default::default() });
         true
     }
 }

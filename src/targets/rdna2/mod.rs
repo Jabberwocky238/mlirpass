@@ -43,7 +43,7 @@ impl crate::GpuTarget for Rdna2Target {
     }
 
     fn code(&self, body: &crate::Body<'_>, kernel: crate::OpId) -> Result<crate::KernelCode, mlirformat::Error> {
-        let k = Rdna2Code::of(body, kernel)?;
+        let k = Rdna2Code::of(&body.operation(kernel))?;
         Ok(crate::KernelCode { name: k.name, align: k.align, pad: k.pad, bytes: k.bytes, info: alloc::vec![("params", u64::from(k.params)), ("sgprs", u64::from(k.sgprs)), ("vgprs", u64::from(k.vgprs))] })
     }
 

@@ -9,10 +9,10 @@ readme = "README.md"
 keywords = ["mlir", "compiler", "ir", "pass", "lowering"]
 categories = ["compilers", "no-std"]
 # The mlir-opt fixtures stay in the repository.
-exclude = ["tests", "fuzz", "data", "tools"]
+exclude = ["tests", "fuzz"]
 
 [workspace]
-members = ["macros", "tools/*"]
+members = ["macros"]
 # Random IR against mlir-opt, and timings: a crate of its own (`fuzz/README.md`).
 exclude = ["fuzz"]
 
@@ -141,7 +141,7 @@ required-features = ["target.apple9"]
 
 [[test]]
 name = "rdna2"
-required-features = ["dialect.rdna2"]
+required-features = ["target.rdna2"]
 
 [[test]]
 name = "glsl"

@@ -1,6 +1,6 @@
 #!/usr/bin/env dash
 # Regenerate tests/rdna2/pm4.expected: the IB Mesa writes for tests/rdna2/pm4.mlir, with
-# Mesa's own macros: the register values with amdgfxregs.h's S_* (made by makeregheader.py from data/amd/*.json),
+# Mesa's own macros: the register values with amdgfxregs.h's S_* (made by makeregheader.py from mlirformat's data/amd/*.json),
 # the packets with sid.h's PKT3 and ac_cmdbuf.h's ac_cmdbuf_set_*_reg_seq, both cut out of the Mesa tree as they
 # are; the padding as radv_amdgpu_cs_pad (vulkan/winsys/amdgpu/radv_amdgpu_cs.c, a static function: written out
 # below with sid.h's PKT3 / PKT3_NOP_PAD). The C below states pm4.mlir's values again: change both together.
@@ -8,10 +8,11 @@
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 mesa=${MESA:-$HOME/coding/mesa}
+format=${MLIRFORMAT:-$root/../mlirformat}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 cd "$root"
-python3 "$mesa/src/amd/registers/makeregheader.py" data/amd/gfx103.json data/amd/pkt3.json --sort address --guard REGS > "$tmp/regs.h"
+python3 "$mesa/src/amd/registers/makeregheader.py" "$format/data/amd/gfx103.json" "$format/data/amd/pkt3.json" --sort address --guard REGS > "$tmp/regs.h"
 # sid.h: the register spaces and the type-3 packet macros (multi-line ones with their continuations)
 awk '/^#define (SI|CIK)_[A-Z]+_REG_(OFFSET|END)/ || /^#define PKT/ { print; while ($0 ~ /\\$/ && (getline) > 0) print }' \
   "$mesa/src/amd/common/sid.h" > "$tmp/pkt.h"
