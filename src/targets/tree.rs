@@ -3,7 +3,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use mlirformat::{Attribute, Block, BlockArg, FunctionType, NamedAttr, OpInfos, Operation, Region, ResultDef, Str, Type, Value};
+use mlirformat::{Attribute, Block, BlockArg, FunctionType, MlirOpt, NamedAttr, Operation, Region, ResultDef, Str, Type, Value};
 
 /// A value the reader made: an op's result or a block's argument
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -365,9 +365,9 @@ impl Tree {
     }
 
     /// `o` as an mlirformat op; ODS's inherent attributes (`infos`) are its properties
-    pub fn operation(&self, o: O, infos: &OpInfos) -> Operation<'static> {
+    pub fn operation(&self, o: O, opt: &MlirOpt) -> Operation<'static> {
         let n = self.node(o);
-        let inherent = |name: &str| name == Tree::SEGMENTS || infos.op_info(&n.name).is_some_and(|i| i.inherent.contains(&name));
+        let inherent = |name: &str| name == Tree::SEGMENTS || opt.op_info(&n.name).is_some_and(|i| i.inherent.contains(&name));
         let mut attrs = n.attrs.clone();
         attrs.sort_by(|a, b| a.0.cmp(&b.0));
         let named = |(k, v): (String, Attribute<'static>)| NamedAttr { name: Str::Owned(k), value: (!matches!(v, Attribute::Unit)).then_some(v) };
@@ -378,7 +378,7 @@ impl Tree {
             operands: n.operands.iter().map(|v| Value { name: Str::Owned(Tree::name(*v)), index: None }).collect(),
             successors: n.succ.iter().map(|b| Str::Owned(self.label(*b))).collect(),
             properties: (!props.is_empty()).then(|| Attribute::Dict(props.into_iter().map(named).collect())),
-            regions: n.regions.iter().map(|r| self.region_op(*r, infos)).collect(),
+            regions: n.regions.iter().map(|r| self.region_op(*r, opt)).collect(),
             attributes: rest.into_iter().map(named).collect(),
             ty: FunctionType { inputs: n.operands.iter().map(|v| self.ty(*v).clone()).collect(), results: n.results.iter().map(|v| self.ty(*v).clone()).collect() },
             loc: None,
@@ -386,7 +386,7 @@ impl Tree {
         }
     }
 
-    fn region_op(&self, r: R, infos: &OpInfos) -> Region<'static> {
+    fn region_op(&self, r: R, opt: &MlirOpt) -> Region<'static> {
         Region {
             blocks: self
                 .reg(r)
@@ -396,7 +396,7 @@ impl Tree {
                 .map(|(i, b)| Block {
                     label: (i > 0 || !self.blk(*b).args.is_empty() || self.blk(*b).ops.is_empty()).then(|| Str::Owned(self.label(*b))),
                     args: self.blk(*b).args.iter().map(|a| BlockArg { name: Str::Owned(Tree::name(*a)), ty: self.ty(*a).clone(), loc: None }).collect(),
-                    ops: self.blk(*b).ops.iter().map(|x| self.operation(*x, infos)).collect(),
+                    ops: self.blk(*b).ops.iter().map(|x| self.operation(*x, opt)).collect(),
                 })
                 .collect(),
         }
