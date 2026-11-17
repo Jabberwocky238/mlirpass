@@ -1,6 +1,6 @@
 [package]
 name = "mlirpass"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2024"
 description = "MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion and the upstream lowerings, on top of mlirformat"
 license = "MIT"
@@ -18,7 +18,7 @@ exclude = ["fuzz"]
 
 [dependencies]
 mlirpass-macros = { path = "macros", version = "0.5.0" }
-mlirformat = { git = "https://github.com/Jabberwocky238/mlirformat.git", tag = "0.8.9", version = "0.8.9", default-features = false }
+mlirformat = { path = "../mlirformat", version = "0.9.0", default-features = false }
 # SPIR-V binaries, written and read (`target.spirv`).
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 thiserror = { version = "2", default-features = false }
@@ -85,7 +85,6 @@ all-targets = ["target.llvm", "target.emitc", "target.spirv", "target.glsl"]
 "target.emitc" = ["dialect.emitc"]
 "target.spirv" = ["dialect.spirv"]
 "target.glsl" = ["dialect.glsl", "target.spirv"]
-"target.x86_64" = ["dialect.llvm"]
 
 [[bin]]
 name = "mlirpass"
@@ -94,12 +93,6 @@ required-features = ["cli"]
 
 # The fixtures run every dialect's and backend's passes.
 [dev-dependencies]
-# tests/x86_64.rs maps the machine code executable to run it
-libc = "0.2"
-
-[[test]]
-name = "x86_64"
-required-features = ["target.x86_64"]
 
 [[test]]
 name = "passes"
@@ -133,6 +126,3 @@ required-features = ["target.glsl"]
 [[test]]
 name = "vulkan"
 required-features = ["all-dialects", "target.spirv"]
-
-[patch."https://github.com/Jabberwocky238/mlirformat.git"]
-mlirformat = { path = "../mlirformat" }

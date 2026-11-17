@@ -2,9 +2,12 @@
 
 MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion, the pass manager, and the
 upstream lowerings and transforms — on top of [mlirformat](https://github.com/Jabberwocky238/mlirformat),
-which owns the syntax and the dialects (MLIR text ⇄ IR ⇄ typed Rust ops), and
-[mlirbinary](https://github.com/Jabberwocky238/mlirbinary), which reads and writes the formats outside MLIR
-(SPIR-V, MLIR bytecode, GLSL source). Both are required dependencies.
+which owns the syntax, the dialects and MLIR bytecode (MLIR text ⇄ IR ⇄ typed Rust ops).
+
+Four targets, as upstream MLIR's `mlir/lib/Target`: `llvm`, `emitc`, `spirv` (SPIR-V binaries written
+and read as `mlir-translate` does) and `glsl` (GLSL source read and written). GPUs' own machine code
+is not here: [detour](https://github.com/0x00-Community/detour) adds its GPU dialects and lowerings as
+plugins (`MlirOpt::load`, `Passes::with`).
 
 MLIR behavior follows **MLIR 23.1.5** (llvm-project `llvmorg-23.1.5`): every pass is checked against
 what `mlir-opt` 23.1.5 prints for the same input and pipeline.
@@ -36,7 +39,7 @@ own target env (`tests/support/vkinfo.c`) is checked against the host's product 
 | `patterns` | ⭐ rule sets, one directory per source dialect: `<d>/canonicalize.rs` (its folds, constant materialization and canonicalization patterns, `<D>Canon`), `<d>/to_<target>.rs` (`scf/to_cf.rs`, `arith/to_llvm.rs`), and its own transforms' rules | `*Ops.cpp`, `mlir/lib/Conversion`, `Dialect/*/Transforms` |
 | `passes` | ⭐ pipeline units, one directory per source dialect, one file per pass (`scf/convert_scf_to_cf.rs`, `linalg/linalg_fold_unit_extent_dims.rs`); `transforms/` the dialect-independent ones | `mlir/lib/Conversion`, `Dialect/*/Transforms`, `mlir/lib/Transforms` |
 | `dialects` | each upstream dialect's `OpInterfaces`, one unit struct each (`ScfDialect`, ...) | `mlir/lib/Dialect/*/IR` |
-| `targets` | the `Emit` trait, and what each backend below shares (type converters, `convert-to-*` interfaces; binaries are mlirbinary's) | `mlir-translate` |
+| `targets` | the `Emit` trait, and what each backend below shares (type converters, `convert-to-*` interfaces, SPIR-V binaries, GLSL source) | `mlir-translate` |
 
 ## Features
 
@@ -51,9 +54,7 @@ The default build has every upstream dialect and the three upstream backends (`a
   and patterns.
 - `target.<backend>`: a backend. Its rules and passes sit in `patterns/` / `passes/` like any other
   (`arith/to_llvm.rs` needs `dialect.arith` and `target.llvm`); `src/targets` keeps what they share.
-- The GPU instruction sets (`dialect.rdna2`, `dialect.agx`, `dialect.apple9`, `dialect.xe3`,
-  `dialect.image`) and their `target.*`, and the GLSL source dialect (`dialect.glsl`), are in neither `all-*`. Their
-  dialects are mlirformat's, their machine code and images are encoded by mlirbinary; mlirpass lowers to them.
+- The GLSL source dialect (`dialect.glsl`) is not in `all-dialects`; `target.glsl` turns it on.
 
 A pass is listed under the feature that compiles it in, with the others it needs too
 (`scripts/features.py` writes the table from `Cargo.toml` and `src/registry.gen.rs`):
@@ -64,7 +65,7 @@ A pass is listed under the feature that compiles it in, with the others it needs
 | `std` | yes | the standard library (without it the crate is `no_std` and needs `alloc`), threads (moremath's `ThreadMulti`, the default `Exec`), mlirformat's `std` |
 | `cli` | yes | the `mlirpass` command line: `mlir-opt`'s, for the passes this crate has; turns on `std` |
 | `all-dialects` | yes | every upstream `dialect.*` below (not the GPU instruction sets) |
-| `all-targets` | yes | `target.llvm`, `target.emitc` and `target.spirv` |
+| `all-targets` | yes | `target.llvm`, `target.emitc`, `target.spirv` and `target.glsl` |
 | `dialect.acc` | yes | `acc`: its op interfaces, folds and patterns |
 | `dialect.affine` | yes | `affine`: its op interfaces, folds and patterns; turns on `dialect.arith`; passes: `convert-affine-for-to-gpu`, `lower-affine` |
 | `dialect.amdgpu` | yes | `amdgpu`: its op interfaces, folds and patterns; turns on `dialect.memref`; passes: `convert-amdgpu-to-rocdl` (with `target.llvm`), `convert-arith-to-amdgpu` (with `dialect.vector`, one of `target.emitc` / `target.llvm` / `target.spirv`) |
@@ -99,27 +100,16 @@ A pass is listed under the feature that compiles it in, with the others it needs
 | `dialect.x86` | yes | `x86`: its op interfaces, folds and patterns; turns on `dialect.memref` |
 | `dialect.xegpu` | yes | `xegpu`: its op interfaces, folds and patterns; turns on `dialect.xevm`, `dialect.vector`, `dialect.memref`, `dialect.arith`, `dialect.index`, `dialect.scf`, `dialect.gpu`; passes: `convert-vector-to-xegpu`, `convert-xegpu-to-xevm` (with `target.llvm`) |
 | `dialect.xevm` | yes | `xevm`: its op interfaces, folds and patterns; passes: `convert-xevm-to-llvm` (with `target.llvm`) |
-| `dialect.agx` | no | Apple AGX (G13)'s instruction set and CDM command stream: the dialect is mlirformat's `agx`; building USC ops and ending streams are here (not an upstream dialect); turns on `dialect.image` |
-| `dialect.apple9` | no | Apple9 (M3 / M4)'s instruction set: the dialect is mlirformat's `apple9` (not an upstream dialect) |
-| `dialect.glsl` | no | GLSL (ES 1.00 / 3.00) shaders: the `glsl` dialect is mlirformat's (`glsl.shader`, its globals, loads / stores, constructors, built-in functions, derivatives, texture sampling, `discard`; the rest of a shader is `func` / `arith` / `math` / `vector` / `scf`, aggregates and samplers `!spirv.*` types), GLSL source is read by mlirbinary's `GlslFormat` (`GlslReader::read` puts a shader in a body); the passes lower it: `convert-glsl-to-spirv{client=opengl}` keeps what Mesa's GLSL compiler computes, checked pixel for pixel against the local OpenGL (`tests/gl.rs`) (not an upstream dialect); turns on `target.spirv`; passes: `convert-glsl-to-spirv` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-default-block` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-link` (with `dialect.math`, `dialect.scf`, `dialect.func`) |
-| `dialect.image` | no | the images of the GPU instruction sets below: the dialect is mlirformat's `image`, written by mlirbinary's `ImageWriter`; the layout (`ImageLayout`) is here (not an upstream dialect) |
+| `dialect.glsl` | yes | GLSL (ES 1.00 / 3.00) shaders: the `glsl` dialect is mlirformat's (`glsl.shader`, its globals, loads / stores, constructors, built-in functions, derivatives, texture sampling, `discard`; the rest of a shader is `func` / `arith` / `math` / `vector` / `scf`, aggregates and samplers `!spirv.*` types), GLSL source is read and written with `target.glsl`; the passes lower it: `convert-glsl-to-spirv{client=opengl}` keeps what Mesa's GLSL compiler computes, checked pixel for pixel against the local OpenGL (`tests/gl.rs`) (not an upstream dialect); turns on `target.spirv`; passes: `convert-glsl-to-spirv` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-default-block` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-link` (with `dialect.math`, `dialect.scf`, `dialect.func`) |
 | `dialect.nir` | no | Mesa's NIR ALU opcodes (mlirformat's `nir` dialect, generated from Mesa 25.2.8's `nir_opcodes.py`) and the algebraic rules of Mesa's `nir_opt_algebraic` / `_before_ffma` / `_late` / `_distribute_src_mods`, written by `scripts/nir_algebraic.py` from `nir_opt_algebraic.py` as Mesa's own parser reads it (`NirRules`) (not an upstream dialect) |
-| `dialect.rdna2` | no | AMD RDNA2's instruction set and PM4 command stream: the dialect is mlirformat's `rdna2`; building instruction ops and gathering registers into packets are here (not an upstream dialect); turns on `dialect.image` |
-| `dialect.xe3` | no | Intel Xe3's EU instructions and genxml commands, state and registers: the dialect is mlirformat's `xe3` (not an upstream dialect); turns on `dialect.image` |
-| `target.agx` | no | Apple AGX (G13) machine code without LLVM, CDM command streams; encoded by mlirbinary (checked there against Mesa); the CDM stream checked against Mesa asahi (`tests/agx.rs`); turns on `dialect.agx`, `target.gpu`; passes: `agx-end`, `agx-layout`, `agx-regalloc`, `agx-wait`, `convert-gpu-to-agx` |
-| `target.apple9` | no | Apple9 (M3 / M4) compute kernels without LLVM, encoded by mlirbinary; checked by running on an M4 through Metal (`scripts/apple9_check.py`, `tests/apple9.rs`); turns on `dialect.apple9`, `target.gpu`; passes: `apple9-control`, `apple9-regalloc`, `apple9-wait`, `convert-gpu-to-apple9` |
 | `target.emitc` | yes | dialect → `emitc`: the EmitC type converter; turns on `dialect.emitc`; passes: `convert-to-emitc` |
-| `target.gpu` | no | what a GPU machine-code target needs, inside mlirpass or outside it: the `Target` / `GpuTarget` traits and `KernelCode`, kernels and stages, register allocation (`LinearScan`, `RegTarget`), `Draw`, the lane-by-lane lowering helpers of `ConversionRewriter`, the image dialect; turns on `dialect.image`, `dialect.spirv`, `dialect.gpu`, `dialect.arith`, `dialect.math`, `dialect.vector`, `dialect.func`, `dialect.scf`, `dialect.cf`; passes: `gpu-inline-calls` |
+| `target.glsl` | yes | GLSL (ES 1.00 / 3.00) source read into the `glsl` dialect and written back (`GlslFormat`, `GlslReader` puts a shader in a body), and a `spirv.module` written as GLSL 4.50 for Vulkan (`SpirvGlsl`); turns on `dialect.glsl`, `target.spirv` |
 | `target.llvm` | yes | the type converter, dialect → `llvm` (the CPU dialect `x86` too: `convert-vector-to-llvm=enable-x86`), the llvm folds and memory-slot interfaces; turns on `dialect.llvm`; passes: `convert-to-llvm`, `llvm-request-c-wrappers`, `set-llvm-module-datalayout` |
-| `target.rdna2` | no | AMD RDNA2 (gfx1036) machine code without LLVM: `gpu.func` kernels, register allocation, waits, PM4, the image's layout; encoded by mlirbinary (checked there against llvm-mc and Mesa); the IB checked against Mesa radv (`tests/rdna2.rs`); turns on `dialect.rdna2`, `target.gpu`; passes: `convert-gpu-to-rdna2`, `rdna2-layout`, `rdna2-pad`, `rdna2-pm4`, `rdna2-regalloc`, `rdna2-waitcnt` |
-| `target.spirv` | yes | target env, type converter, dialect → `spirv`, the spirv dialect's own transforms; `SpirvBinary` (SPIR-V written and read through [mlirbinary](https://github.com/Jabberwocky238/mlirbinary), as `mlir-translate` does) and `SpirvGlsl` (mlirbinary's GLSL 4.50 writer) emit from a body; turns on `dialect.spirv`; passes: `convert-spirv-cf-to-cf` (or with `target.gpu` instead), `convert-spirv-entry-points` (or with `target.gpu` instead), `decorate-spirv-composite-type-layout`, `spirv-attach-target`, `spirv-canonicalize-gl`, `spirv-lower-abi-attrs`, `spirv-promote-to-replicated-constants`, `spirv-rewrite-inserts`, `spirv-unify-aliased-resource`, `spirv-update-vce`, `spirv-webgpu-prepare` |
-| `target.x86_64` | no | x86-64 machine code without LLVM: each `llvm.func` (integers, `!llvm.ptr`, `f64`; arithmetic, compares, casts, memory, calls of symbols, branches) ⇒ System V code and the absolute addresses its calls need (`X86_64Emit`); first tier: a stack slot per value, no register allocation yet; run in-process (`tests/x86_64.rs`); turns on `dialect.llvm` |
-| `target.xe3` | no | Intel Xe3 machine code without LLVM: `gpu.func` kernels and SPIR-V graphics shaders (vertex, fragment), register allocation, structured control flow, SWSB, the batch and the image's layout, a whole draw's image (`Xe3Draw`); encoded by mlirbinary (checked there against Mesa's gentool and genxml); kernels checked against acgpu's (`tests/xe3.rs`); turns on `dialect.xe3`, `target.gpu`; passes: `convert-gpu-to-xe3`, `xe3-branches`, `xe3-control`, `xe3-end`, `xe3-layout`, `xe3-pad`, `xe3-regalloc`, `xe3-swsb` |
+| `target.spirv` | yes | target env, type converter, dialect → `spirv`, the spirv dialect's own transforms; SPIR-V binaries written and read as `mlir-translate --serialize-spirv` / `--deserialize-spirv` do (`SpirvWriter`, `SpirvReader`, `SpirvBinary` from a body); turns on `dialect.spirv`; passes: `convert-spirv-cf-to-cf`, `convert-spirv-entry-points`, `decorate-spirv-composite-type-layout`, `spirv-attach-target`, `spirv-canonicalize-gl`, `spirv-lower-abi-attrs`, `spirv-promote-to-replicated-constants`, `spirv-rewrite-inserts`, `spirv-unify-aliased-resource`, `spirv-update-vce`, `spirv-webgpu-prepare` |
 
 Always compiled in, whatever the features: `canonicalize`, `cse`, `inline`, `loop-invariant-code-motion`, `mem2reg`, `reconcile-unrealized-casts`, `remove-dead-values`, `sccp`, `sroa`, `strip-debuginfo`, `symbol-dce`, `symbol-privatize`.
 <!-- /features -->
 
-GPU machine code (`target.rdna2` / `target.agx` / `target.apple9` / `target.xe3`): a GPU's own machine code, without LLVM (not in `all-targets`): `convert-gpu-to-<isa>` (upstream `gpu.func` kernels: arith / math / vector / scf, `gpu.block_id` / `thread_id` / `barrier`, flat 32-bit memory as `llvm.inttoptr` + `llvm.load` / `store` / `atomicrmw`), register allocation, waits; command streams (PM4, CDM, genxml batches), the image's layout; encoding by mlirbinary; `gpu-module-to-binary` encodes a module of kernels into a `#gpu.object`. AMD RDNA2 (gfx1036), Apple AGX (G13), Intel Xe3, Apple9 (M3 / M4, compute: workgroups of 32 (or 16, two a hardware workgroup), i32 and f32 arithmetic with correctly rounded division and square root, `scf.if` / `scf.for` / `scf.while` on the execution-mask stack, threadgroup memory (`!llvm.ptr<3>`) and `gpu.barrier`, `llvm.atomicrmw` / `llvm.cmpxchg` (memory and threadgroup memory), 3-D grids of workgroups (`gpu.grid_dim` from the parameter buffer); no Mesa model, checked by running on an M4 through Metal: `scripts/apple9_check.py`). The encoders (mlirbinary's) are checked there against llvm-mc, Mesa and the M4; here the lowering and the command streams (`tests/{rdna2,agx,apple9}.rs`). Intel Xe3 (Panther Lake) compute kernels and vertex / fragment shaders, and a whole draw's image (`Xe3Draw`), which [detour](https://github.com/0x00-Community/detour) runs. A GPU target outside mlirpass builds on `target.gpu` and registers its own passes with `Passes::with`.
 
 ## Declaring passes and lowerings
 

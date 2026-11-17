@@ -2,8 +2,6 @@
 mod emitc;
 #[cfg(feature = "target.llvm")]
 mod llvm;
-#[cfg(feature = "target.x86_64")]
-mod x86_64;
 #[cfg(feature = "target.spirv")]
 mod spirv;
 #[cfg(feature = "target.glsl")]
@@ -21,8 +19,6 @@ use crate::{Body, OpId};
 pub use emitc::*;
 #[cfg(feature = "target.llvm")]
 pub use llvm::*;
-#[cfg(feature = "target.x86_64")]
-pub use x86_64::*;
 #[cfg(feature = "target.spirv")]
 pub use spirv::*;
 #[cfg(feature = "target.glsl")]
