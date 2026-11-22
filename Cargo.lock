@@ -32,21 +32,20 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "mlirformat"
-version = "0.9.0"
-source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.9.0#f7aa89884e6d2a38c863b5f82bb5df2f19520cc9"
+version = "0.9.1"
+source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.9.1#9077d99aab4529821a07b95f994508844fce5078"
 dependencies = [
  "mlirformat-macros",
  "moremath",
  "serde",
  "smallvec",
  "thiserror",
- "tikv-jemallocator",
 ]
 
 [[package]]
 name = "mlirformat-macros"
 version = "0.9.0"
-source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.9.0#f7aa89884e6d2a38c863b5f82bb5df2f19520cc9"
+source = "git+https://github.com/Jabberwocky238/mlirformat.git?tag=0.9.1#9077d99aab4529821a07b95f994508844fce5078"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -55,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "mlirpass"
-version = "0.13.1"
+version = "0.13.2"
 dependencies = [
  "libm",
  "mlirformat",
@@ -64,6 +63,7 @@ dependencies = [
  "serde",
  "smallvec",
  "thiserror",
+ "tikv-jemallocator",
 ]
 
 [[package]]

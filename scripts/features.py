@@ -22,7 +22,7 @@ BEGIN, END = "<!-- features -->", "<!-- /features -->"
 # What a feature is, for those whose name does not say it: by hand.
 WHAT = {
     "std": "the standard library (without it the crate is `no_std` and needs `alloc`), threads (moremath's `ThreadMulti`, the default `Exec`), mlirformat's `std`",
-    "cli": "the `mlirpass` command line: `mlir-opt`'s, for the passes this crate has",
+    "cli": "the `mlirpass` command line: `mlir-opt`'s, for the passes this crate has, with jemalloc as its global allocator (not on MSVC)",
     "all-dialects": "every upstream `dialect.*` below (not the GPU instruction sets)",
     "all-targets": "`target.llvm`, `target.emitc`, `target.spirv` and `target.glsl`",
     "target.glsl": "GLSL (ES 1.00 / 3.00) source read into the `glsl` dialect and written back (`GlslFormat`, `GlslReader` puts a shader in a body), and a `spirv.module` written as GLSL 4.50 for Vulkan (`SpirvGlsl`)",

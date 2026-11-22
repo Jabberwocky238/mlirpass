@@ -65,7 +65,7 @@ A pass is listed under the feature that compiles it in, with the others it needs
 | feature | default | what it is |
 |---|---|---|
 | `std` | yes | the standard library (without it the crate is `no_std` and needs `alloc`), threads (moremath's `ThreadMulti`, the default `Exec`), mlirformat's `std` |
-| `cli` | yes | the `mlirpass` command line: `mlir-opt`'s, for the passes this crate has; turns on `std` |
+| `cli` | yes | the `mlirpass` command line: `mlir-opt`'s, for the passes this crate has, with jemalloc as its global allocator (not on MSVC); turns on `std` |
 | `all-dialects` | yes | every upstream `dialect.*` below (not the GPU instruction sets) |
 | `all-targets` | yes | `target.llvm`, `target.emitc`, `target.spirv` and `target.glsl` |
 | `dialect.acc` | yes | `acc`: its op interfaces, folds and patterns |
@@ -224,7 +224,9 @@ Nested pipelines run in parallel: `PassManager::run_on(body, op, &ThreadMulti::d
 each op of a nested pipeline that is `IsolatedFromAbove` (`llvm.func(...)`, `func.func(...)`) into
 a body of its own and runs them as the pool's tasks; the result is the same as on one thread
 (`-mlir-disable-threading`: `ThreadMulti::from(1)`, starting no thread). `run_on`, `Body::parse_in` and `Body::show_in`
-take any moremath `Executor`: one pool reads, imports, runs and prints. The command line threads by default, as `mlir-opt`.
+take any moremath `Executor`: one pool reads, imports, runs and prints. `PassManager::run` starts its pool
+on the first call and keeps it, so calling it again starts no threads; a caller compiling one function at a time
+(a JIT) passes moremath's `ThreadSingle` to `run_on` instead. The command line threads by default, as `mlir-opt`.
 
 Nothing is global. Pipelines name passes through a `PassRegistry` (`Invocation::parse(&passes, args)`);
 passes are registered by functions cascaded with `Passes::with`: `Passes::new().with(Passes::add_upstream).with(my_passes)`.
@@ -256,7 +258,7 @@ python3 scripts/fixtures.py --llvm $LLVM --mlir-opt $LLVM_BUILD/bin/mlir-opt
 ## Performance
 
 Measured with 0.8.1 against `mlir-opt` 22.1.8 on a 54 MB module (`BENCHMARK.md`), 16 CPUs, both threaded, jemalloc
-(mlirformat's global allocator with `std` since 0.8.1): as whole processes every pipeline is
+(the command line's global allocator): as whole processes every pipeline is
 4.1–4.9× faster (canonicalize + cse 430 against 1,790 ms, the `-to-llvm` pipeline 1,160 against
 5,690 ms; 2.8–3.0× with custom text in); parse + passes + print in process 8.3–10.7×, the
 `-to-llvm` pipeline 4.5×. Peak memory is 2.7–3.6× `mlir-opt`'s (1.2× for sccp).

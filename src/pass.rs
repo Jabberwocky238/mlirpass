@@ -197,11 +197,19 @@ pub struct PassManager {
     pub anchor: Option<String>,
     entries: Vec<Entry>,
     pub verify_each: bool,
+    #[cfg(feature = "std")]
+    pool: std::sync::OnceLock<moremath::ThreadMulti>,
 }
 
 impl PassManager {
     pub fn on(anchor: &str) -> Self {
-        Self { anchor: (anchor != "any").then(|| anchor.into()), entries: Vec::new(), verify_each: true }
+        Self {
+            anchor: (anchor != "any").then(|| anchor.into()),
+            entries: Vec::new(),
+            verify_each: true,
+            #[cfg(feature = "std")]
+            pool: std::sync::OnceLock::new(),
+        }
     }
 
     pub fn set_verify_each(&mut self, on: bool) {
@@ -251,7 +259,7 @@ impl PassManager {
 
     pub fn run(&self, body: &mut Body<'_>, op: OpId) -> Result<(), Error> {
         #[cfg(feature = "std")]
-        return self.run_on(body, op, &moremath::ThreadMulti::default());
+        return self.run_on(body, op, self.pool.get_or_init(moremath::ThreadMulti::default));
         #[cfg(not(feature = "std"))]
         self.run_on(body, op, &moremath::ThreadSingle)
     }

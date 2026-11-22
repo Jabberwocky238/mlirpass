@@ -175,8 +175,9 @@ impl TensorCanon {
 嵌套流水线并行执行：`PassManager::run_on(body, op, &ThreadMulti::default())` 把嵌套流水线里每个
 `IsolatedFromAbove` 的 op（`llvm.func(...)`、`func.func(...)`）移进它自己的 body，作为线程池的任务运行；结果和
 单线程一样（`-mlir-disable-threading` 对应 `ThreadMulti::from(1)`，不启动线程）。`run_on`、`Body::parse_in`、
-`Body::show_in` 接收任意 moremath `Executor`：一个池负责读入、导入、运行和打印。命令行缺省开线程，和 `mlir-opt`
-一样。
+`Body::show_in` 接收任意 moremath `Executor`：一个池负责读入、导入、运行和打印。`PassManager::run` 在第一次调用时
+建好线程池并留着，之后再调不再起线程；一次只编一个函数的调用方（如 JIT）应给 `run_on` 传 moremath 的
+`ThreadSingle`。命令行缺省开线程，和 `mlir-opt` 一样。
 
 没有任何全局状态。
 - 流水线通过 `PassRegistry` 找 pass（`Invocation::parse(&passes, args)`）。pass 由函数注册，用 `Passes::with`
@@ -213,7 +214,7 @@ python3 scripts/fixtures.py --llvm $LLVM --mlir-opt $LLVM_BUILD/bin/mlir-opt
 ## 性能
 
 用 0.8.1 对比 `mlir-opt` 22.1.8 在一个 54 MB 模块上测得（见 `BENCHMARK.md`）。条件：16 个 CPU，两边都开多线程，
-jemalloc（0.8.1 起开 `std` 时 mlirformat 的全局分配器）。
+jemalloc（命令行的全局分配器）。
 - 按完整进程比，每条流水线快 4.1–4.9 倍：
   - canonicalize + cse：430 ms 对 1,790 ms；
   - `-to-llvm` 流水线：1,160 ms 对 5,690 ms；

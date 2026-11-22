@@ -4,6 +4,10 @@ use std::process::ExitCode;
 use mlirpass::{Ctx, Interfaces, Invocation, Passes};
 use mlirpass::mlirformat::MlirOpt;
 
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static JEMALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match run(&args) {
