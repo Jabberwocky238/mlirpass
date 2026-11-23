@@ -570,25 +570,64 @@ impl Default for GreedyConfig {
     }
 }
 
+use crate::Id as _;
+
+#[derive(Default)]
+struct Slots {
+    segs: Vec<Vec<u32>>,
+}
+
+impl Slots {
+    const NONE: u32 = u32::MAX;
+
+    fn get(&self, op: OpId) -> Option<usize> {
+        let i = self.segs.get(op.seg() as usize)?.get(op.index() as usize).copied()?;
+        (i != Self::NONE).then_some(i as usize)
+    }
+
+    fn set(&mut self, op: OpId, at: usize) {
+        let s = op.seg() as usize;
+        if self.segs.len() <= s {
+            self.segs.resize_with(s + 1, Vec::new);
+        }
+        let seg = &mut self.segs[s];
+        let i = op.index() as usize;
+        if seg.len() <= i {
+            seg.resize(i + 1, Self::NONE);
+        }
+        seg[i] = u32::try_from(at).unwrap_or(Self::NONE);
+    }
+
+    fn take(&mut self, op: OpId) -> Option<usize> {
+        let at = self.get(op)?;
+        self.segs[op.seg() as usize][op.index() as usize] = Self::NONE;
+        Some(at)
+    }
+
+    fn clear(&mut self) {
+        self.segs.iter_mut().for_each(|s| s.fill(Self::NONE));
+    }
+}
+
 #[derive(Default)]
 struct Worklist {
     list: Vec<Option<OpId>>,
-    at: BTreeMap<OpId, usize>,
+    at: Slots,
 }
 
 impl Worklist {
     fn push(&mut self, op: OpId) {
-        if self.at.contains_key(&op) {
+        if self.at.get(op).is_some() {
             return;
         }
-        self.at.insert(op, self.list.len());
+        self.at.set(op, self.list.len());
         self.list.push(Some(op));
     }
 
     fn pop(&mut self) -> Option<OpId> {
         while let Some(slot) = self.list.pop() {
             if let Some(op) = slot {
-                self.at.remove(&op);
+                self.at.take(op);
                 return Some(op);
             }
         }
@@ -596,20 +635,18 @@ impl Worklist {
     }
 
     fn remove(&mut self, op: OpId) {
-        if let Some(i) = self.at.remove(&op) {
+        if let Some(i) = self.at.take(op) {
             self.list[i] = None;
         }
     }
 
     fn reverse(&mut self) {
         self.list.reverse();
-        let n = self.list.len();
         for (i, slot) in self.list.iter().enumerate() {
             if let Some(op) = slot {
-                self.at.insert(*op, i);
+                self.at.set(*op, i);
             }
         }
-        debug_assert_eq!(n, self.list.len());
     }
 
     fn clear(&mut self) {

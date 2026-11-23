@@ -8,6 +8,7 @@ mod spirv;
 mod glsl;
 #[cfg(any(feature = "target.spirv", feature = "target.glsl"))]
 mod tree;
+mod stencil;
 
 use alloc::vec::Vec;
 
@@ -15,6 +16,7 @@ use mlirformat::Error;
 
 use crate::{Body, OpId};
 
+pub use stencil::*;
 #[cfg(feature = "target.emitc")]
 pub use emitc::*;
 #[cfg(feature = "target.llvm")]

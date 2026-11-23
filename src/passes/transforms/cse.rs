@@ -11,7 +11,8 @@ pub fn cse<'a>(body: &mut Body<'a>, op: OpId) -> Result<(), Error> {
 
 #[derive(Default)]
 struct Known {
-    ops: Vec<OpId>,
+    ops: Vec<(u64, OpId)>,
+    buckets: Vec<Vec<(u64, OpId)>>,
     scopes: Vec<usize>,
 }
 
@@ -22,11 +23,76 @@ impl Known {
 
     fn close(&mut self) {
         let n = self.scopes.pop().expect("no scope");
-        self.ops.truncate(n);
+        let mask = self.buckets.len().wrapping_sub(1);
+        for (key, _) in self.ops.drain(n..).rev() {
+            self.buckets[key as usize & mask].pop();
+        }
+    }
+
+    fn push(&mut self, key: u64, op: OpId) {
+        if self.ops.len() >= self.buckets.len() {
+            let size = (self.buckets.len() * 2).max(64);
+            self.buckets = (0..size).map(|_| Vec::new()).collect();
+            for &(k, o) in &self.ops {
+                self.buckets[k as usize & (size - 1)].push((k, o));
+            }
+        }
+        self.ops.push((key, op));
+        let mask = self.buckets.len() - 1;
+        self.buckets[key as usize & mask].push((key, op));
+    }
+
+    fn find(&self, body: &Body<'_>, key: u64, op: OpId) -> Option<OpId> {
+        let bucket = self.buckets.get(key as usize & self.buckets.len().wrapping_sub(1))?;
+        bucket.iter().rev().find(|(k, o)| *k == key && body.equivalent(*o, op)).map(|(_, o)| *o)
     }
 
     fn lookup(&self, body: &Body<'_>, op: OpId) -> Option<OpId> {
-        self.ops.iter().rev().copied().find(|k| body.equivalent(*k, op))
+        self.find(body, body.cse_key(op), op)
+    }
+}
+
+struct Mix(u64);
+
+impl Mix {
+    const K: u64 = 0x517c_c1b7_2722_0a95;
+
+    fn word(&mut self, w: u64) {
+        self.0 = (self.0.rotate_left(5) ^ w).wrapping_mul(Self::K);
+    }
+
+    fn bytes(&mut self, b: &[u8]) {
+        let mut chunks = b.chunks_exact(8);
+        for c in &mut chunks {
+            self.word(u64::from_le_bytes(c.try_into().expect("eight bytes")));
+        }
+        let mut tail = [0u8; 8];
+        tail[..chunks.remainder().len()].copy_from_slice(chunks.remainder());
+        self.word(u64::from_le_bytes(tail) ^ (b.len() as u64) << 56);
+    }
+}
+
+impl Body<'_> {
+    fn cse_key(&self, op: OpId) -> u64 {
+        let d = &self[op];
+        let mut h = Mix(0);
+        h.bytes(d.name.as_bytes());
+        if d.operands.len() > 1 && self.has(op, Trait::IsCommutative) {
+            let mut operands: Vec<u64> = d.operands.iter().map(|v| v.raw()).collect();
+            operands.sort_unstable();
+            operands.into_iter().for_each(|w| h.word(w));
+        } else {
+            d.operands.iter().for_each(|v| h.word(v.raw()));
+        }
+        h.word((d.results.len() as u64) << 32 | d.regions.len() as u64);
+        for a in d.properties.iter().chain(d.attributes.iter()) {
+            match &a.value {
+                Some(mlirformat::Attribute::Int { lit, .. } | mlirformat::Attribute::Float { lit, .. } | mlirformat::Attribute::Str { lit, .. }) => h.bytes(lit.as_bytes()),
+                Some(mlirformat::Attribute::Bool(b)) => h.word(u64::from(*b)),
+                _ => h.word(a.name.len() as u64),
+            }
+        }
+        h.0
     }
 }
 
@@ -85,21 +151,23 @@ impl Driver {
             if !body.has_only_effect(op, EffectKind::Read) {
                 return false;
             }
-            if let Some(existing) = known.lookup(body, op)
+            let key = body.cse_key(op);
+            if let Some(existing) = known.find(body, key, op)
                 && body[existing].parent == body[op].parent
                 && !self.write_between(body, existing, op)
             {
                 self.replace(body, known, op, existing, ssa);
                 return true;
             }
-            known.ops.push(op);
+            known.push(key, op);
             return false;
         }
-        if let Some(existing) = known.lookup(body, op) {
+        let key = body.cse_key(op);
+        if let Some(existing) = known.find(body, key, op) {
             self.replace(body, known, op, existing, ssa);
             return true;
         }
-        known.ops.push(op);
+        known.push(key, op);
         false
     }
 

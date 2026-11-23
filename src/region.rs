@@ -3,10 +3,47 @@ use alloc::collections::{BTreeSet, BTreeMap};
 use alloc::vec::Vec;
 use crate::{Body, BlockId, OpId, RegionId, Trait, ValueId};
 
+struct IdSet<T> {
+    segs: Vec<Vec<u64>>,
+    of: core::marker::PhantomData<T>,
+}
+
+impl<T> Default for IdSet<T> {
+    fn default() -> Self {
+        Self { segs: Vec::new(), of: core::marker::PhantomData }
+    }
+}
+
+impl<T: crate::Id> IdSet<T> {
+    fn at(id: T) -> (usize, usize, u64) {
+        let i = id.index() as usize;
+        (id.seg() as usize, i / 64, 1 << (i % 64))
+    }
+
+    fn insert(&mut self, id: T) -> bool {
+        let (s, w, bit) = Self::at(id);
+        if self.segs.len() <= s {
+            self.segs.resize_with(s + 1, Vec::new);
+        }
+        let seg = &mut self.segs[s];
+        if seg.len() <= w {
+            seg.resize(w + 1, 0);
+        }
+        let fresh = seg[w] & bit == 0;
+        seg[w] |= bit;
+        fresh
+    }
+
+    fn contains(&self, id: &T) -> bool {
+        let (s, w, bit) = Self::at(*id);
+        self.segs.get(s).and_then(|seg| seg.get(w)).is_some_and(|x| x & bit != 0)
+    }
+}
+
 #[derive(Default)]
 struct LiveMap {
-    ops: BTreeSet<OpId>,
-    args: BTreeSet<ValueId>,
+    ops: IdSet<OpId>,
+    args: IdSet<ValueId>,
     changed: bool,
 }
 
