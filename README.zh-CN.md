@@ -50,7 +50,7 @@ MLIR 行为对齐 **MLIR 23.1.5**（llvm-project `llvmorg-23.1.5`）：每个 pa
 | `patterns` | ⭐ 规则集，每个源方言一个目录：`<d>/canonicalize.rs`（折叠、常量物化和规范化模式，`<D>Canon`）、`<d>/to_<target>.rs`（`scf/to_cf.rs`、`arith/to_llvm.rs`），以及它自己的变换规则 | `*Ops.cpp`、`mlir/lib/Conversion`、`Dialect/*/Transforms` |
 | `passes` | ⭐ 流水线单元，每个源方言一个目录、每个 pass 一个文件（`scf/convert_scf_to_cf.rs`、`linalg/linalg_fold_unit_extent_dims.rs`）；`transforms/` 放和方言无关的 | `mlir/lib/Conversion`、`Dialect/*/Transforms`、`mlir/lib/Transforms` |
 | `dialects` | 各上游方言的 `OpInterfaces`，每个一个单元结构体（`ScfDialect`……） | `mlir/lib/Dialect/*/IR` |
-| `targets` | `Emit` trait，以及各后端共用的东西（类型转换器、`convert-to-*` 接口、SPIR-V 二进制、GLSL 源码）；`Stencils` 快路径：模板函数只走一次管线和后端的 `StencilEmit`，之后 JIT 只拷贝机器码、填空位（`Abs64` / `Disp32` / `Rel32`） | `mlir-translate` |
+| `targets` | `Emit` trait，以及各后端共用的东西（类型转换器、`convert-to-*` 接口、SPIR-V 二进制、GLSL 源码）；`Stencils` 快路径：模板函数只走一次管线和后端的 `StencilEmit`，之后 JIT 只拷贝机器码、填空位（`Abs64` / `Disp32` / `Rel32` / `Branch26`） | `mlir-translate` |
 
 ## Features
 

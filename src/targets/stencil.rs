@@ -15,6 +15,8 @@ pub enum HoleKind {
     Disp32,
     /// Four bytes, a jump: the target's position minus the end of the four bytes.
     Rel32,
+    /// An AArch64 `b`: its low 26 bits take the distance to the target in instructions.
+    Branch26,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,6 +49,13 @@ impl Stencil {
 
     pub fn disp32(out: &mut [u8], at: usize, value: i32) {
         out[at..at + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    pub fn branch26(out: &mut [u8], at: usize, target: usize) {
+        let words = (target as i64 - at as i64) / 4;
+        let mut insn = u32::from_le_bytes([out[at], out[at + 1], out[at + 2], out[at + 3]]);
+        insn = (insn & !0x03FF_FFFF) | (words as u32 & 0x03FF_FFFF);
+        out[at..at + 4].copy_from_slice(&insn.to_le_bytes());
     }
 
     pub fn rel32(out: &mut [u8], at: usize, target: usize) {
