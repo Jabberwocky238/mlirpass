@@ -95,7 +95,7 @@ fn compiled(level: mlirpass::OptLevel) -> Vec<(String, Mapped)> {
     #[cfg(target_arch = "x86_64")]
     let codes = mlirpass::X86_64Emit { level }.emit(&body, body.root).unwrap_or_else(|e| panic!("{level:?}: {}", e.0));
     #[cfg(all(target_arch = "aarch64", feature = "target.aarch64"))]
-    let codes = mlirpass::AArch64Emit.emit(&body, body.root).unwrap_or_else(|e| panic!("{level:?}: {}", e.0));
+    let codes = mlirpass::AArch64Emit { level }.emit(&body, body.root).unwrap_or_else(|e| panic!("{level:?}: {}", e.0));
     codes
         .into_iter()
         .map(|c| {
@@ -248,7 +248,7 @@ fn stitched(k: i64) -> Option<Mapped> {
     #[cfg(target_arch = "aarch64")]
     let (triple, emit, pre, small, post) = (
         "aarch64",
-        mlirpass::AArch64Emit,
+        mlirpass::AArch64Emit { level: mlirpass::OptLevel::O2 },
         "stp x29, x30, [sp, #-16]!\nmov x29, sp\nsub sp, sp, #256\nstp x19, x20, [sp]\nstp x21, x22, [sp, #16]\nstr x23, [sp, #32]\nmov x23, x0\nstur x1, [x29, #-200]\nmov x9, #1\nstur x9, [x29, #-216]\n",
         "stur xzr, [x29, #-216]\n",
         "ldur x0, [x29, #-208]\nldur x9, [x29, #-216]\nadd x0, x9, x0, lsl #1\nldp x19, x20, [sp]\nldp x21, x22, [sp, #16]\nldr x23, [sp, #32]\nmov sp, x29\nldp x29, x30, [sp], #16\nret\n",

@@ -9,7 +9,8 @@ use super::{Mvt, Sd};
 pub enum DagSrc<'t, C, R, P, K> {
     Node { op: Sd, vt: Option<Mvt>, kids: &'t [DagSrc<'t, C, R, P, K>], preds: &'t [P], name: Option<u8> },
     Class { class: C, vt: Option<Mvt>, preds: &'t [P], name: Option<u8> },
-    Complex { pat: K, name: u8 },
+    /// A complex pattern (an address, a shifted register): the names of what it gives.
+    Complex { pat: K, names: &'t [u8] },
     Phys(R),
     Int(i64),
     Bb(u8),

@@ -105,7 +105,7 @@ impl Class {
     }
 
     fn is_float(self) -> bool {
-        matches!(self, Class::FR32 | Class::FR64 | Class::VR128)
+        Class::FLOAT[self as usize]
     }
 
     /// The member of the class that is part of `unit`.
@@ -199,7 +199,7 @@ struct Lower<'b, 'a> {
     /// Each `llvm.alloca`'s frame offset.
     allocas: BTreeMap<ValueId, i32>,
     /// The SelectionDAG selection (`O1` and up).
-    selected: Option<dag::Selected>,
+    selected: Option<super::machine::Selected<Reg>>,
 }
 
 struct Stenciled {
@@ -256,7 +256,7 @@ impl<'b, 'a> Lower<'b, 'a> {
                 }
             }
         }
-        let selected = (level != OptLevel::O0).then(|| dag::Selector::select(body, &dag::Table::new(), &blocks, stencil.as_ref().map(|s| &s.slots)));
+        let selected = (level != OptLevel::O0).then(|| super::machine::Selector::<dag::X86>::select(body, &blocks, stencil.as_ref().map(|s| &s.slots)));
         let none = BTreeMap::new();
         let mut intervals = Interval::of(body, &blocks, selected.as_ref().map_or(&none, |s| &s.folded))?;
         let mut fixed = BTreeMap::new();

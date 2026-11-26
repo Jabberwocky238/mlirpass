@@ -397,9 +397,9 @@ def encodable(rec, inst):
 def generate(llvm, target, fast_text, dag_text, j):
     rec = Records(j, target)
     rows, preds = fast_isel(fast_text, target)
-    dag = isel_dag.Dag(rec, target, dag_text, lambda c: holds(c, SUBTARGETS[target]), camel, lambda i: encodable(rec, i))
+    dag = isel_dag.Dag(rec, target, dag_text, lambda c: holds(c, SUBTARGETS[target]), camel, lambda i: encodable(rec, i), expansions(llvm, target))
     insts = sorted({e[1] for *_, e in rows if e[0] == "inst"} | set(EXTRA[target]) | dag.insts)
-    expand = {p: r for p, r in expansions(llvm, target).items() if p in insts}
+    expand = {p: r for p, r in expansions(llvm, target).items() if p in insts or p in dag.insts}
     insts = sorted(set(insts) | set(expand.values()))
     pseudo = {i for i in insts if is_pseudo(rec, i)}
     descs = {i: operands(rec, i) for i in insts}
@@ -458,7 +458,13 @@ def generate(llvm, target, fast_text, dag_text, j):
               f"    /// Callee-saved (`{csr}`).", "    pub const SAVED: &[Reg] = &[" + ", ".join(f"Reg::{x}" for x in saved) + "];",
               "}", ""]
     enum("Class", "Register classes, each with its members in allocation order.", classes)
-    lines += ["impl Class {", "    pub const MEMBERS: &[&[Reg]] = &["]
+    def floating(c):
+        tys = [t["def"] for t in j[c].get("RegTypes", [])]
+        return not all(re.fullmatch(r"i\d+", t) for t in tys)
+
+    lines += ["impl Class {", "    /// Whether a class holds floats or vectors (its `RegTypes`), by `Class`.",
+              "    pub const FLOAT: &[bool] = &[" + ", ".join(str(floating(c)).lower() for c in classes) + "];",
+              "    pub const MEMBERS: &[&[Reg]] = &["]
     for c in classes:
         lines.append("        &[" + ", ".join(f"Reg::{r}" for r in members[c]) + "],")
     lines += ["    ];", "}", ""]

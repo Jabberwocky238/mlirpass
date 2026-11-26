@@ -176,6 +176,12 @@ pub enum Isd {
 /// The `SDNode`s the CPU targets' SelectionDAG patterns match, TableGen's names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Sd {
+    /// `AArch64brcond`
+    AArch64brcond,
+    /// `AArch64csel`
+    AArch64csel,
+    /// `AArch64sub_flag`
+    AArch64subFlag,
     /// `X86brcond`
     X86brcond,
     /// `X86cmov`

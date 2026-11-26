@@ -105,12 +105,12 @@ A pass is listed under the feature that compiles it in, with the others it needs
 | `dialect.xevm` | yes | `xevm`: its op interfaces, folds and patterns; passes: `convert-xevm-to-llvm` (with `target.llvm`) |
 | `dialect.glsl` | yes | GLSL (ES 1.00 / 3.00) shaders: the `glsl` dialect is mlirformat's (`glsl.shader`, its globals, loads / stores, constructors, built-in functions, derivatives, texture sampling, `discard`; the rest of a shader is `func` / `arith` / `math` / `vector` / `scf`, aggregates and samplers `!spirv.*` types), GLSL source is read and written with `target.glsl`; the passes lower it: `convert-glsl-to-spirv{client=opengl}` keeps what Mesa's GLSL compiler computes, checked pixel for pixel against the local OpenGL (`tests/gl.rs`) (not an upstream dialect); turns on `target.spirv`; passes: `convert-glsl-to-spirv` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-default-block` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-link` (with `dialect.math`, `dialect.scf`, `dialect.func`) |
 | `dialect.nir` | no | Mesa's NIR ALU opcodes (mlirformat's `nir` dialect, generated from Mesa 25.2.8's `nir_opcodes.py`) and the algebraic rules of Mesa's `nir_opt_algebraic` / `_before_ffma` / `_late` / `_distribute_src_mods`, written by `scripts/nir_algebraic.py` from `nir_opt_algebraic.py` as Mesa's own parser reads it (`NirRules`) (not an upstream dialect) |
-| `target.aarch64` | yes | AArch64 machine code from the llvm dialect, whole functions (`AArch64Emit`, AAPCS) and a JIT's stencils (`StencilEmit`); its instruction selection is LLVM's fast selector, generated from LLVM's AArch64 TableGen by `scripts/isel.py`, and every instruction it emits is checked against `llvm-mc`'s disassembler (`tests/machine_code.rs`); turns on `dialect.llvm` |
+| `target.aarch64` | yes | AArch64 machine code from the llvm dialect, whole functions (`AArch64Emit`, AAPCS) and a JIT's stencils (`StencilEmit`); at `O0` .. `O3` (`OptLevel`): LLVM's fast selector at `O0`, its SelectionDAG patterns above, both generated from LLVM's AArch64 TableGen by `scripts/isel.py`, and every instruction it emits is checked against `llvm-mc`'s disassembler (`tests/machine_code.rs`); turns on `dialect.llvm` |
 | `target.emitc` | yes | dialect → `emitc`: the EmitC type converter; turns on `dialect.emitc`; passes: `convert-to-emitc` |
 | `target.glsl` | yes | GLSL (ES 1.00 / 3.00) source read into the `glsl` dialect and written back (`GlslFormat`, `GlslReader` puts a shader in a body), and a `spirv.module` written as GLSL 4.50 for Vulkan (`SpirvGlsl`); turns on `dialect.glsl`, `target.spirv` |
 | `target.llvm` | yes | the type converter, dialect → `llvm` (the CPU dialect `x86` too: `convert-vector-to-llvm=enable-x86`), the llvm folds and memory-slot interfaces; turns on `dialect.llvm`; passes: `convert-to-llvm`, `llvm-request-c-wrappers`, `set-llvm-module-datalayout` |
 | `target.spirv` | yes | target env, type converter, dialect → `spirv`, the spirv dialect's own transforms; SPIR-V binaries written and read as `mlir-translate --serialize-spirv` / `--deserialize-spirv` do (`SpirvWriter`, `SpirvReader`, `SpirvBinary` from a body); turns on `dialect.spirv`; passes: `convert-spirv-cf-to-cf`, `convert-spirv-entry-points`, `decorate-spirv-composite-type-layout`, `spirv-attach-target`, `spirv-canonicalize-gl`, `spirv-lower-abi-attrs`, `spirv-promote-to-replicated-constants`, `spirv-rewrite-inserts`, `spirv-unify-aliased-resource`, `spirv-update-vce`, `spirv-webgpu-prepare` |
-| `target.x86_64` | yes | x86-64 machine code from the llvm dialect, whole functions (`X86_64Emit`, the C convention) and a JIT's stencils (`StencilEmit`); its instruction selection is LLVM's fast selector, generated from LLVM's X86 TableGen by `scripts/isel.py`, and every instruction it emits is checked against `llvm-mc`'s disassembler (`tests/machine_code.rs`); turns on `dialect.llvm` |
+| `target.x86_64` | yes | x86-64 machine code from the llvm dialect, whole functions (`X86_64Emit`, the C convention) and a JIT's stencils (`StencilEmit`); at `O0` .. `O3` (`OptLevel`): LLVM's fast selector at `O0`, its SelectionDAG patterns above, both generated from LLVM's X86 TableGen by `scripts/isel.py`, and every instruction it emits is checked against `llvm-mc`'s disassembler (`tests/machine_code.rs`); turns on `dialect.llvm` |
 
 Always compiled in, whatever the features: `canonicalize`, `cse`, `inline`, `loop-invariant-code-motion`, `mem2reg`, `optimize`, `reconcile-unrealized-casts`, `remove-dead-values`, `sccp`, `sroa`, `strip-debuginfo`, `symbol-dce`, `symbol-privatize`.
 <!-- /features -->
@@ -244,29 +244,42 @@ speculatability, branch and region-branch successors, calls), so core names no d
 
 ## CPU machine code
 
-`target.x86_64` and `target.aarch64` turn the llvm dialect into machine code the way LLVM's fast
-instruction selector (the one of `-O0` and LLVM's JITs) does, one op at a time:
+`target.x86_64` and `target.aarch64` turn the llvm dialect into machine code as LLVM does, at a level
+of `OptLevel` (`O0` .. `O3`, `X86_64Emit { level }`, `AArch64Emit { level }`):
 
-- `scripts/isel.py` generates `src/targets/{x86_64,aarch64}/isel.gen.rs` from llvm-project 23.1.5's
-  TableGen: the patterns `llvm-tblgen -gen-fast-isel` emits (one node over registers and immediates,
-  its value types, immediate predicate and instruction, for x86-64 v1 / Armv8-A), and from
-  `--dump-json` those instructions and the ones the hand-written part uses, with their operands, tied
-  operands, implicit registers and encodings, the register classes, the C calling convention
-  (`CallingConv.td`), callee-saved registers and the pseudo instructions `AArch64ExpandPseudo` turns
-  into real ones. `--check` fails when they are stale.
+- `OptLevel::pipeline` lists each level's IR passes in LLVM's order with this crate's passes for
+  LLVM's (`O1`: sroa, mem2reg, sccp, canonicalize, cse, loop-invariant-code-motion; `O2`: with inlining
+  and symbol-dce; `O3`: a larger inlining budget, remove-dead-values, one more round); the
+  `optimize{level=O2}` pass runs it.
+- `O0` selects as LLVM's fast instruction selector does, one op at a time; `O1` and up with LLVM's
+  SelectionDAG patterns: a block's ops seen as `X86ISelLowering` / `AArch64ISelLowering` leave them,
+  each root matched in the matcher's order, single-use operands folded in (loads, addresses,
+  immediates, shifted registers, a compare into its branch or select); what no pattern takes goes
+  to the fast selector.
+- `scripts/isel.py` (and `isel_dag.py`) generates `src/targets/{x86_64,aarch64}/isel.gen.rs` from
+  llvm-project 23.1.5's TableGen: the fast selector's patterns (`llvm-tblgen -gen-fast-isel`), the
+  SelectionDAG patterns with their inferred types, predicates and pattern predicates
+  (`-gen-dag-isel`), for x86-64 v1 / Armv8-A, and from `--dump-json` the instructions they give and
+  the hand-written parts use, with their operands, tied operands, implicit registers and encodings,
+  the register classes, the C calling convention (`CallingConv.td`), callee-saved registers and the
+  pseudo instructions `AArch64ExpandPseudo` turns into real ones. `--check` fails when they are stale.
 
   ```sh
   python3 scripts/isel.py --llvm $LLVM          # llvm-tblgen from $LLVM/build/bin, or --tblgen
   ```
 
-- What `X86FastISel.cpp` / `AArch64FastISel.cpp` write by hand is in `src/targets/{x86_64,aarch64}/mod.rs`:
-  loads and stores, compares, branches, selects, calls, divisions; the encoding is LLVM's
-  (`X86MCCodeEmitter`'s legacy path, AArch64's `Inst` bits and operand encoders) driven by the tables.
-- Values live in registers (a linear scan) or frame slots; functions with the `stencil` attribute are
-  a JIT's stencils (`Stencils`, holes for frame slots, constants and jumps).
+- What LLVM writes by hand is in `src/targets/{x86_64,aarch64}/`: the lowering and the complex
+  patterns (`selectAddr`, `SelectAddrModeIndexed`, shifted registers, add/sub and logical
+  immediates) in `dag.rs`, memory, calls, divisions and the rest of `X86FastISel.cpp` /
+  `AArch64FastISel.cpp` in `mod.rs`; the encoding is LLVM's (`X86MCCodeEmitter`'s legacy path,
+  AArch64's `Inst` bits and operand encoders) driven by the tables. `machine/select.rs` is the
+  matching both share.
+- Values live in registers (a linear scan) or frame slots, block arguments move as a parallel
+  copy; functions with the `stencil` attribute are a JIT's stencils (`Stencils`, holes for frame
+  slots, constants and jumps).
 - `tests/machine_code.rs`: every instruction a selector emits, encoded, disassembles with `llvm-mc`
-  to the same LLVM instruction; functions and stitched stencils run on the machine. The AArch64 half
-  runs on x86-64 under qemu:
+  to the same LLVM instruction; functions at every level and stitched stencils run on the machine.
+  The AArch64 half runs on x86-64 under qemu:
 
   ```sh
   CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \

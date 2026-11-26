@@ -12,7 +12,8 @@ LOWERED = {
     "X86": set("""bb add sub mul and or xor shl srl sra ld st imm timm fpimm X86cmp X86setcc X86brcond X86cmov
         trunc zext sext fadd fsub fmul fdiv fsqrt sint_to_fp fp_to_sint fpextend fpround bitconvert""".split()),
     "AArch64": set("""bb add sub mul and or xor shl srl sra ld st imm timm fpimm trunc zext sext fadd fsub fmul fdiv
-        fsqrt sint_to_fp uint_to_fp fp_to_sint fp_to_uint fpextend fpround bitconvert""".split()),
+        fsqrt sint_to_fp uint_to_fp fp_to_sint fp_to_uint fpextend fpround bitconvert AArch64brcond AArch64csel
+        AArch64sub_flag""".split()),
 }
 
 # Pseudo instructions a pattern may give, and what each is (`X86InstrInfo::expandPostRAPseudo`).
@@ -132,8 +133,8 @@ def mvt(n):
 class Dag:
     """The kept patterns of one target and the names they use, ready to write as Rust."""
 
-    def __init__(self, rec, target, text, holds, camel, encodable):
-        self.rec, self.target, self.camel = rec, target, camel
+    def __init__(self, rec, target, text, holds, camel, encodable, expand):
+        self.rec, self.target, self.camel, self.expand = rec, target, camel, expand
         self.sd, self.preds, self.complex, self.xforms, self.subregs = set(), set(), set(), set(), set()
         self.insts, self.classes, self.regs = set(), set(), set()
         self.kept = []
@@ -150,7 +151,7 @@ class Dag:
                     continue
             except SystemExit:
                 continue
-            if not all(n["op"] in LOWERED[target] for n in walk(src) if "op" in n):
+            if not all(n["op"] in LOWERED[target] or self.rec.isa(n["op"], "ComplexPattern") for n in walk(src) if "op" in n):
                 continue
             if not self.result_ok(dst, encodable):
                 continue
@@ -167,7 +168,9 @@ class Dag:
             self.kept.append((src, dst, cx))
         for src, dst, _ in self.kept:
             for n in walk(src):
-                if "op" in n:
+                if "op" in n and self.rec.isa(n["op"], "ComplexPattern"):
+                    self.complex.add(n["op"])
+                elif "op" in n:
                     self.sd.add(n["op"])
                 elif self.rec.isa(n["leaf"], "ComplexPattern"):
                     self.complex.add(n["leaf"])
@@ -180,6 +183,8 @@ class Dag:
                 op = n.get("op")
                 if op and self.rec.isa(op, "Instruction") and op not in SPECIAL:
                     self.insts.add(op)
+                    if op in self.expand:
+                        self.insts.add(self.expand[op])
                 elif op and self.rec.isa(op, "SDNodeXForm"):
                     self.xforms.add(op)
                 leaf = n.get("leaf")
@@ -197,13 +202,15 @@ class Dag:
                 continue
             if not self.rec.isa(op, "Instruction"):
                 return False
-            if op not in PSEUDO[self.target] and not encodable(op):
+            if op not in PSEUDO[self.target] and op not in self.expand and not encodable(op):
                 return False
         return True
 
     def names(self, src):
         out = []
         for n in walk(src):
+            if "op" in n and self.rec.isa(n["op"], "ComplexPattern"):
+                continue
             if "name" in n and n["name"] not in out:
                 out.append(n["name"])
         return out
@@ -211,6 +218,11 @@ class Dag:
     def src(self, n, names):
         name = f"Some({names.index(n['name'])})" if "name" in n else "None"
         preds = "&[" + ", ".join(f"Pred::{self.camel(p)}" for p in n["preds"]) + "]"
+        if "op" in n and self.rec.isa(n["op"], "ComplexPattern"):
+            subs = [k.get("name") for k in n["kids"]]
+            if None in subs or any("op" in k for k in n["kids"]):
+                raise ValueError("a complex pattern over nodes")
+            return f"DagSrc::Complex {{ pat: Complex::{self.camel(n['op'])}, names: &[{', '.join(str(names.index(x)) for x in subs)}] }}"
         if "op" in n:
             kids = ", ".join(self.src(k, names) for k in n["kids"])
             return f"DagSrc::Node {{ op: Sd::{self.camel(n['op'])}, vt: {mvt(n)}, kids: &[{kids}], preds: {preds}, name: {name} }}"
@@ -218,7 +230,7 @@ class Dag:
         if re.fullmatch(r"-?\d+", leaf):
             return f"DagSrc::Int({leaf})"
         if self.rec.isa(leaf, "ComplexPattern"):
-            return f"DagSrc::Complex {{ pat: Complex::{self.camel(leaf)}, name: {names.index(n['name'])} }}"
+            return f"DagSrc::Complex {{ pat: Complex::{self.camel(leaf)}, names: &[{names.index(n['name'])}] }}"
         if self.rec.isa(leaf, "Register"):
             return f"DagSrc::Phys(Reg::{leaf})"
         if leaf == "bb":

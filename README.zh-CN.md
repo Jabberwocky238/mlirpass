@@ -196,25 +196,33 @@ impl TensorCanon {
 
 ## CPU 机器码
 
-`target.x86_64` 和 `target.aarch64` 把 llvm 方言变成机器码，做法和 LLVM 的快速指令选择器（`-O0` 和 LLVM 的 JIT
-用的那个）一样，一次一个 op：
+`target.x86_64` 和 `target.aarch64` 照 LLVM 的做法把 llvm 方言变成机器码，分 `OptLevel` 四档（`O0` .. `O3`，
+`X86_64Emit { level }`、`AArch64Emit { level }`）：
 
-- `scripts/isel.py` 从 llvm-project 23.1.5 的 TableGen 生成 `src/targets/{x86_64,aarch64}/isel.gen.rs`：
-  `llvm-tblgen -gen-fast-isel` 给出的模式（单个节点、寄存器和立即数操作数、值类型、立即数谓词、选中的指令，
-  按 x86-64 v1 / Armv8-A 取），以及 `--dump-json` 里这些指令和手写部分用到的指令：操作数、绑定操作数、隐式寄存器、
-  编码；寄存器类、C 调用约定（`CallingConv.td`）、被调用者保存寄存器，和 `AArch64ExpandPseudo` 展开成真指令的伪指令。
-  `--check` 在生成物过期时报错。
+- `OptLevel::pipeline` 按 LLVM 的顺序列出每档的 IR pass，用本 crate 的 pass 对应 LLVM 的（`O1`：sroa、mem2reg、
+  sccp、canonicalize、cse、loop-invariant-code-motion；`O2`：再加内联和 symbol-dce；`O3`：更大的内联预算、
+  remove-dead-values、再化简一轮）；`optimize{level=O2}` pass 执行它。
+- `O0` 照 LLVM 的快速指令选择器，一次一个 op；`O1` 起用 LLVM 的 SelectionDAG 模式：把一个块的 op 看成
+  `X86ISelLowering` / `AArch64ISelLowering` 下降后的节点，每个根按匹配表的顺序匹配，单次使用的操作数折叠进去
+  （load、地址、立即数、移位寄存器、比较并进分支或 select）；没有模式接的 op 回落到快速选择器。
+- `scripts/isel.py`（和 `isel_dag.py`）从 llvm-project 23.1.5 的 TableGen 生成 `src/targets/{x86_64,aarch64}/isel.gen.rs`：
+  快速选择器的模式（`llvm-tblgen -gen-fast-isel`）、带推导类型 / 谓词 / 模式谓词的 SelectionDAG 模式
+  （`-gen-dag-isel`），按 x86-64 v1 / Armv8-A 取；以及 `--dump-json` 里这些指令和手写部分用到的指令：操作数、
+  绑定操作数、隐式寄存器、编码；寄存器类、C 调用约定（`CallingConv.td`）、被调用者保存寄存器，和
+  `AArch64ExpandPseudo` 展开成真指令的伪指令。`--check` 在生成物过期时报错。
 
   ```sh
   python3 scripts/isel.py --llvm $LLVM          # llvm-tblgen 取 $LLVM/build/bin，或 --tblgen 指定
   ```
 
-- `X86FastISel.cpp` / `AArch64FastISel.cpp` 手写的部分在 `src/targets/{x86_64,aarch64}/mod.rs`：读写内存、比较、
-  分支、select、调用、除法；编码照 LLVM（`X86MCCodeEmitter` 的传统编码路径、AArch64 的 `Inst` 位和操作数编码函数），
-  由表驱动。
-- 值放在寄存器（线性扫描）或帧槽；带 `stencil` 属性的函数是 JIT 的模板（`Stencils`，帧槽、常量、跳转三种空位）。
-- `tests/machine_code.rs`：选择器会发的每条指令编码后，用 `llvm-mc` 反汇编必须是同一条 LLVM 指令；函数和拼好的
-  模板在本机真跑。AArch64 那一半在 x86-64 上用 qemu 跑：
+- LLVM 手写的部分在 `src/targets/{x86_64,aarch64}/`：下降和复杂模式（`selectAddr`、`SelectAddrModeIndexed`、
+  移位寄存器、加减和逻辑立即数）在 `dag.rs`，读写内存、调用、除法等 `X86FastISel.cpp` / `AArch64FastISel.cpp`
+  的内容在 `mod.rs`；编码照 LLVM（`X86MCCodeEmitter` 的传统编码路径、AArch64 的 `Inst` 位和操作数编码函数），
+  由表驱动。`machine/select.rs` 是两个目标共用的匹配。
+- 值放在寄存器（线性扫描）或帧槽，块参数按并行赋值传；带 `stencil` 属性的函数是 JIT 的模板（`Stencils`，
+  帧槽、常量、跳转三种空位）。
+- `tests/machine_code.rs`：选择器会发的每条指令编码后，用 `llvm-mc` 反汇编必须是同一条 LLVM 指令；各档的函数和
+  拼好的模板在本机真跑。AArch64 那一半在 x86-64 上用 qemu 跑：
 
   ```sh
   CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
