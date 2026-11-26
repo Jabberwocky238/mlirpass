@@ -244,7 +244,7 @@ impl<'b, 'a> Lower<'b, 'a> {
                 widest_copy = widest_copy.max(body[op].operands.len());
             }
         }
-        let mut intervals = Interval::of(body, &blocks)?;
+        let mut intervals = Interval::of(body, &blocks, &BTreeMap::new())?;
         let mut fixed = BTreeMap::new();
         if let Some(st) = &stencil {
             let args = &body[blocks[0]].args;

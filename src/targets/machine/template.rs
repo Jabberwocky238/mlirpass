@@ -25,7 +25,11 @@ impl Interval {
         body[op].name == "llvm.call" && !body[op].get("callee").and_then(|a| Attrs::as_symbol(a).ok()).is_some_and(|c| Self::PSEUDO.iter().any(|p| c.starts_with(p)))
     }
 
-    pub fn of(body: &Body<'_>, blocks: &[BlockId]) -> Result<Vec<Interval>, Error> {
+    /// Live intervals of the function's values over its ops in block order. `folded` maps an op
+    /// the instruction selector folded into another (a load into an add) to that op, where its
+    /// operands are read.
+    pub fn of(body: &Body<'_>, blocks: &[BlockId], folded: &BTreeMap<OpId, OpId>) -> Result<Vec<Interval>, Error> {
+        let mut op_pos: BTreeMap<OpId, u32> = BTreeMap::new();
         let mut index: BTreeMap<ValueId, u32> = BTreeMap::new();
         let mut values: Vec<ValueId> = Vec::new();
         let mut def: Vec<u32> = Vec::new();
@@ -53,6 +57,7 @@ impl Interval {
             }
             for op in body.block_ops(b) {
                 pos += 1;
+                op_pos.insert(op, pos);
                 for &r in body[op].results.iter() {
                     let k = define(r, pos, &mut index, &mut values, &mut def, &mut used);
                     defs[bi].push(k);
@@ -73,9 +78,10 @@ impl Interval {
             }
             for op in body.block_ops(b) {
                 at += 1;
+                let read = folded.get(&op).and_then(|r| op_pos.get(r)).copied().unwrap_or(at);
                 for &v in body[op].operands.iter() {
                     let k = *index.get(&v).ok_or_else(|| Error("a value defined outside the function".into()))?;
-                    used[k as usize] = used[k as usize].max(at);
+                    used[k as usize] = used[k as usize].max(read);
                     let local = seen[k as usize] == u32::try_from(bi).unwrap_or(u32::MAX) && def[k as usize] < at;
                     if !local {
                         uses[bi].push(k);

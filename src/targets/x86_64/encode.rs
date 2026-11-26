@@ -29,21 +29,22 @@ pub enum Cc {
     G = 15,
 }
 
-/// `base + disp`; `wide` keeps a four-byte displacement (a hole patched later).
+/// `base + index * scale + disp`; `wide` keeps a four-byte displacement (a hole patched later).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Mem {
     pub base: Reg,
+    pub index: Option<(Reg, u8)>,
     pub disp: i32,
     pub wide: bool,
 }
 
 impl Mem {
     pub const fn at(base: Reg, disp: i32) -> Mem {
-        Mem { base, disp, wide: false }
+        Mem { base, index: None, disp, wide: false }
     }
 
     pub const fn wide(base: Reg, disp: i32) -> Mem {
-        Mem { base, disp, wide: true }
+        Mem { base, index: None, disp, wide: true }
     }
 }
 
@@ -83,6 +84,7 @@ impl Mod {
 const REX: u8 = 0x40;
 const REX_W: u8 = 0x08;
 const REX_R: u8 = 0x04;
+const REX_X: u8 = 0x02;
 const REX_B: u8 = 0x01;
 const OPSIZE_PREFIX: u8 = 0x66;
 /// Mandatory prefixes: `66`, `f3`, `f2`.
@@ -179,16 +181,16 @@ impl Asm {
                 c += 2;
                 (Some(r.code()), Some(rm))
             }
-            Form::MRMSrcReg | Form::MRMSrcMem | Form::MRMSrcRegCC => {
+            Form::MRMSrcReg | Form::MRMSrcMem | Form::MRMSrcRegCC | Form::MRMSrcMemCC => {
                 let (r, rm) = (reg(ops[c]), ops[c + 1]);
                 c += 2;
                 (Some(r.code()), Some(rm))
             }
-            Form::MRMXrCC => {
+            Form::MRMXrCC | Form::MRMXmCC => {
                 c += 1;
                 (Some(0), Some(ops[c - 1]))
             }
-            Form::MRM0r | Form::MRM1r | Form::MRM2r | Form::MRM4r | Form::MRM5r | Form::MRM6r | Form::MRM7r => {
+            Form::MRM0r | Form::MRM1r | Form::MRM2r | Form::MRM3r | Form::MRM4r | Form::MRM5r | Form::MRM6r | Form::MRM7r | Form::MRM0m | Form::MRM1m | Form::MRM2m | Form::MRM3m | Form::MRM4m | Form::MRM5m | Form::MRM6m | Form::MRM7m => {
                 c += 1;
                 (Some(e.form.digit()), Some(ops[c - 1]))
             }
@@ -206,7 +208,14 @@ impl Asm {
         }
         match rm {
             Some(X::R(r)) if r.high() => rex |= REX | REX_B,
-            Some(X::M(m)) if m.base.high() => rex |= REX | REX_B,
+            Some(X::M(m)) => {
+                if m.base.high() {
+                    rex |= REX | REX_B;
+                }
+                if m.index.is_some_and(|(i, _)| i.high()) {
+                    rex |= REX | REX_X;
+                }
+            }
             _ => {}
         }
         if e.form == Form::AddRegFrm && reg(ops[c - 1]).high() {
@@ -229,7 +238,7 @@ impl Asm {
         }
         let opcode = match e.form {
             Form::AddRegFrm => e.opcode | reg(ops[c - 1]).low(),
-            Form::AddCCFrm | Form::MRMXrCC | Form::MRMSrcRegCC => e.opcode | cond.unwrap_or(0),
+            Form::AddCCFrm | Form::MRMXrCC | Form::MRMSrcRegCC | Form::MRMXmCC | Form::MRMSrcMemCC => e.opcode | cond.unwrap_or(0),
             _ => e.opcode,
         };
         self.byte(opcode);
@@ -270,9 +279,18 @@ impl Asm {
         } else {
             Mod::DISP8
         };
-        self.byte(md << 6 | field | base);
-        if base == RM_SIB {
-            self.byte(SIB_NO_INDEX);
+        match m.index {
+            Some((index, scale)) => {
+                self.byte(md << 6 | field | RM_SIB);
+                let ss = u8::try_from(scale.trailing_zeros()).unwrap_or(0) & 3;
+                self.byte(ss << 6 | index.low() << 3 | base);
+            }
+            None => {
+                self.byte(md << 6 | field | base);
+                if base == RM_SIB {
+                    self.byte(SIB_NO_INDEX);
+                }
+            }
         }
         match md {
             Mod::DISP8 => {
@@ -296,16 +314,17 @@ impl Asm {
 }
 
 impl Form {
-    /// The ModRM reg field an `MRM<n>r` form fixes.
+    /// The ModRM reg field an `MRM<n>r` / `MRM<n>m` form fixes.
     const fn digit(self) -> u8 {
         match self {
-            Form::MRM0r => 0,
-            Form::MRM1r => 1,
-            Form::MRM2r => 2,
-            Form::MRM4r => 4,
-            Form::MRM5r => 5,
-            Form::MRM6r => 6,
-            Form::MRM7r => 7,
+            Form::MRM0r | Form::MRM0m => 0,
+            Form::MRM1r | Form::MRM1m => 1,
+            Form::MRM2r | Form::MRM2m => 2,
+            Form::MRM3r | Form::MRM3m => 3,
+            Form::MRM4r | Form::MRM4m => 4,
+            Form::MRM5r | Form::MRM5m => 5,
+            Form::MRM6r | Form::MRM6m => 6,
+            Form::MRM7r | Form::MRM7m => 7,
             _ => panic!("not an MRM<n>r form"),
         }
     }

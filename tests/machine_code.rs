@@ -93,9 +93,9 @@ fn compiled(level: mlirpass::OptLevel) -> Vec<(String, Mapped)> {
     level.pipeline().unwrap().run(&mut body, root).unwrap_or_else(|e| panic!("{level:?}: {}", e.0));
     let symbols = [("twice", twice as *const () as usize), ("hypot", hypot as *const () as usize)];
     #[cfg(target_arch = "x86_64")]
-    let codes = mlirpass::X86_64Emit.emit(&body, body.root).unwrap();
+    let codes = mlirpass::X86_64Emit { level }.emit(&body, body.root).unwrap_or_else(|e| panic!("{level:?}: {}", e.0));
     #[cfg(all(target_arch = "aarch64", feature = "target.aarch64"))]
-    let codes = mlirpass::AArch64Emit.emit(&body, body.root).unwrap();
+    let codes = mlirpass::AArch64Emit.emit(&body, body.root).unwrap_or_else(|e| panic!("{level:?}: {}", e.0));
     codes
         .into_iter()
         .map(|c| {
@@ -240,7 +240,7 @@ fn stitched(k: i64) -> Option<Mapped> {
     #[cfg(target_arch = "x86_64")]
     let (triple, emit, pre, small, post) = (
         "x86_64",
-        mlirpass::X86_64Emit,
+        mlirpass::X86_64Emit { level: mlirpass::OptLevel::O2 },
         "push rbp\nmov rbp, rsp\npush rbx\npush r12\npush r13\npush r14\npush r15\nsub rsp, 256\nmov r15, rdi\nmov qword ptr [rbp - 200], rsi\nmov qword ptr [rbp - 216], 1\n",
         "mov qword ptr [rbp - 216], 0\n",
         "mov rax, qword ptr [rbp - 208]\nadd rax, rax\nadd rax, qword ptr [rbp - 216]\nlea rsp, [rbp - 40]\npop r15\npop r14\npop r13\npop r12\npop rbx\npop rbp\nret\n",

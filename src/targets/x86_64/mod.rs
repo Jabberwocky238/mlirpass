@@ -6,6 +6,7 @@
 //! Every value lives in a 64-bit register or frame slot, an integer narrower than 64 bits
 //! zero-extended; `stencil` functions are a JIT's stencils (`StencilEmit`).
 
+mod dag;
 mod encode;
 #[path = "isel.gen.rs"]
 mod isel;
@@ -20,7 +21,7 @@ use mlirformat::llvm::{FCmpPredicate, ICmpPredicate};
 
 use super::machine::{Allocas, Callee, Constant, Interval, Pred, Template};
 use crate::targets::{Fast, FastEmit, Isd, Kinds, Mvt};
-use crate::{Body, BlockId, Emit, Hole, HoleKind, OpId, Stencil, StencilEmit, ValueId};
+use crate::{Body, BlockId, Emit, Hole, HoleKind, OpId, OptLevel, Stencil, StencilEmit, ValueId};
 use encode::{Asm, Cc, Mem, X};
 use isel::{Class, FAST, ImmPred, Opcode, Reg};
 
@@ -37,32 +38,37 @@ pub struct X86_64Reloc {
     pub symbol: String,
 }
 
-pub struct X86_64Emit;
+/// x86-64 code at an optimization level: `O0` is LLVM's fast selector, `O1` and up its
+/// SelectionDAG patterns (the IR passes of a level are `OptLevel::pipeline`'s, run before).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct X86_64Emit {
+    pub level: OptLevel,
+}
 
 impl Emit for X86_64Emit {
     type Output = Vec<X86_64Code>;
 
     fn emit(&self, body: &Body<'_>, op: OpId) -> Result<Vec<X86_64Code>, Error> {
         let mut out = Vec::new();
-        Self::collect(body, op, &mut out)?;
+        self.collect(body, op, &mut out)?;
         Ok(out)
     }
 }
 
 impl X86_64Emit {
-    fn collect(body: &Body<'_>, op: OpId, out: &mut Vec<X86_64Code>) -> Result<(), Error> {
+    fn collect(&self, body: &Body<'_>, op: OpId, out: &mut Vec<X86_64Code>) -> Result<(), Error> {
         if body[op].name == "llvm.func" {
             if let Some(&region) = body[op].regions.first()
                 && !body[region].blocks.is_empty()
             {
-                out.push(X86_64Code::of(body, op)?);
+                out.push(X86_64Code::of(body, op, self.level)?);
             }
             return Ok(());
         }
         for &region in body[op].regions.iter() {
             for &block in body[region].blocks.iter() {
                 for child in body.block_ops(block) {
-                    Self::collect(body, child, out)?;
+                    self.collect(body, child, out)?;
                 }
             }
         }
@@ -162,6 +168,8 @@ impl Pool {
     /// What one op computes in (never allocated): the result and two more operands.
     const TEMPS: [Reg; 3] = [Reg::RAX, Reg::RCX, Reg::RDX];
     const FTEMPS: [Reg; 3] = [Reg::XMM0, Reg::XMM1, Reg::XMM2];
+    /// Every register an op may compute in: the temporaries, the argument registers.
+    const SCRATCHES: [Reg; 7] = [Reg::RAX, Reg::RCX, Reg::RDX, Reg::RSI, Reg::RDI, Reg::R8, Reg::R9];
     /// A stencil's context and frame registers.
     const CTX: Reg = Reg::R15;
     const FRAME: Reg = Reg::RBP;
@@ -183,7 +191,6 @@ struct Lower<'b, 'a> {
     asm: Asm,
     slots: BTreeMap<ValueId, Loc>,
     saved: Vec<(Reg, i32)>,
-    scratch: i32,
     frame: i32,
     blocks: BTreeMap<BlockId, usize>,
     fixups: Vec<(usize, BlockId)>,
@@ -191,6 +198,8 @@ struct Lower<'b, 'a> {
     stencil: Option<Stenciled>,
     /// Each `llvm.alloca`'s frame offset.
     allocas: BTreeMap<ValueId, i32>,
+    /// The SelectionDAG selection (`O1` and up).
+    selected: Option<dag::Selected>,
 }
 
 struct Stenciled {
@@ -206,9 +215,9 @@ impl Stenciled {
 }
 
 impl X86_64Code {
-    pub fn of(body: &Body<'_>, f: OpId) -> Result<X86_64Code, Error> {
+    pub fn of(body: &Body<'_>, f: OpId, level: OptLevel) -> Result<X86_64Code, Error> {
         let name = body[f].get_str("sym_name").ok_or_else(|| Error("x86-64: a function without a name".into()))?.to_string();
-        let mut lower = Lower::new(body, f).map_err(|e| Error(format!("x86-64: @{name}: {}", e.0)))?;
+        let mut lower = Lower::new(body, f, level).map_err(|e| Error(format!("x86-64: @{name}: {}", e.0)))?;
         lower.function(f).map_err(|e| Error(format!("x86-64: @{name}: {}", e.0)))?;
         Ok(X86_64Code { name, bytes: lower.asm.bytes, relocs: lower.relocs })
     }
@@ -218,7 +227,7 @@ impl StencilEmit for X86_64Emit {
     fn stencils(&self, body: &Body<'_>, root: OpId) -> Result<Vec<Stencil>, Error> {
         let mut out = Vec::new();
         for (name, f) in Template::stencils(body, root) {
-            let mut lower = Lower::new(body, f).map_err(|e| Error(format!("x86-64: stencil @{name}: {}", e.0)))?;
+            let mut lower = Lower::new(body, f, self.level).map_err(|e| Error(format!("x86-64: stencil @{name}: {}", e.0)))?;
             lower.function(f).map_err(|e| Error(format!("x86-64: stencil @{name}: {}", e.0)))?;
             let holes = lower.stencil.map(|st| st.holes).unwrap_or_default();
             out.push(Stencil { name, code: lower.asm.bytes, holes });
@@ -236,20 +245,20 @@ enum Both {
 }
 
 impl<'b, 'a> Lower<'b, 'a> {
-    fn new(body: &'b Body<'a>, f: OpId) -> Result<Self, Error> {
+    fn new(body: &'b Body<'a>, f: OpId, level: OptLevel) -> Result<Self, Error> {
         let stencil = Stenciled::of(body, f);
         let region = body[f].regions[0];
         let blocks: Vec<BlockId> = body[region].blocks.iter().copied().collect();
-        let mut widest_copy = 0usize;
         for &block in &blocks {
             for op in body.block_ops(block) {
                 if !body[op].regions.is_empty() {
                     return Err(Error(format!("{} has regions", body[op].name)));
                 }
-                widest_copy = widest_copy.max(body[op].operands.len());
             }
         }
-        let mut intervals = Interval::of(body, &blocks)?;
+        let selected = (level != OptLevel::O0).then(|| dag::Selector::select(body, &dag::Table::new(), &blocks, stencil.as_ref().map(|s| &s.slots)));
+        let none = BTreeMap::new();
+        let mut intervals = Interval::of(body, &blocks, selected.as_ref().map_or(&none, |s| &s.folded))?;
         let mut fixed = BTreeMap::new();
         if let Some(st) = &stencil {
             let args = &body[blocks[0]].args;
@@ -287,9 +296,8 @@ impl<'b, 'a> Lower<'b, 'a> {
             next = (next - size) & !(align - 1);
             allocas.insert(v, next);
         }
-        let scratch = next - 8 * i32::try_from(widest_copy).unwrap_or(0);
-        let frame = (-scratch + 15) & !15;
-        Ok(Lower { body, asm: Asm::default(), slots, saved, scratch, frame, blocks: BTreeMap::new(), fixups: Vec::new(), relocs: Vec::new(), stencil, allocas })
+        let frame = (-next + 15) & !15;
+        Ok(Lower { body, asm: Asm::default(), slots, saved, frame, blocks: BTreeMap::new(), fixups: Vec::new(), relocs: Vec::new(), stencil, allocas, selected })
     }
 
     fn allocate(intervals: &[Interval], stencil: bool) -> (BTreeMap<ValueId, Loc>, Vec<Reg>) {
@@ -390,7 +398,18 @@ impl<'b, 'a> Lower<'b, 'a> {
     /// The result `v` from `src` (an integer zero-extended past its width first).
     fn write(&mut self, v: ValueId, src: Reg) -> Result<(), Error> {
         let t = self.mvt(v)?;
-        let src = if t.is_float() { src } else { self.zext(src, t.bits()) };
+        if !t.is_float() {
+            // Cleared past the width where the value goes, never in a register another value has.
+            let bits = self.int_bits(v)?;
+            let at = match self.slot(v)? {
+                Loc::Gpr(u) => u,
+                _ if Pool::SCRATCHES.contains(&src.unit()) => src.unit(),
+                _ => Reg::RAX,
+            };
+            self.copy(at, src);
+            let r = self.zext(at, bits);
+            return self.write_bits(v, r);
+        }
         match self.slot(v)? {
             Loc::Slot(d) => {
                 match t {
@@ -556,6 +575,12 @@ impl<'b, 'a> Lower<'b, 'a> {
             return Ok(());
         }
         let name: &str = &body[op].name;
+        if self.selected.as_ref().is_some_and(|s| s.folded.contains_key(&op)) {
+            return Ok(());
+        }
+        if let Some(m) = self.selected.as_mut().and_then(|s| s.roots.remove(&op)) {
+            return self.emit_match(op, &m);
+        }
         if let Some(node) = Isd::of(body, op)
             && self.fast(op, node)?
         {
@@ -1101,15 +1126,52 @@ impl<'b, 'a> Lower<'b, 'a> {
         if args.len() != values.len() {
             return Err(Error("a jump with the wrong number of block arguments".into()));
         }
-        for (i, &v) in (0i32..).zip(values) {
-            let s = self.read(v, Reg::RAX, Class::GR64)?;
-            self.inst(Opcode::MOV64mr, &[self.mem(self.scratch + 8 * i), X::R(s.unit())]);
+        // A parallel copy: each move once nothing still reads its destination; a cycle is
+        // broken through `rax`.
+        let mut moves: Vec<(Loc, Loc)> = Vec::new();
+        for (&v, &a) in values.iter().zip(&args) {
+            let (src, dst) = (self.slot(v)?, self.slot(a)?);
+            if src != dst {
+                moves.push((dst, src));
+            }
         }
-        for (i, &a) in (0i32..).zip(&args) {
-            self.inst(Opcode::MOV64rm, &[X::R(Reg::RAX), self.mem(self.scratch + 8 * i)]);
-            self.write_bits(a, Reg::RAX)?;
+        while !moves.is_empty() {
+            match moves.iter().position(|&(d, _)| !moves.iter().any(|&(_, s)| s == d)) {
+                Some(i) => {
+                    let (d, s) = moves.remove(i);
+                    self.move_loc(d, s);
+                }
+                None => {
+                    let (_, s) = moves[0];
+                    self.move_loc(Loc::Gpr(Reg::RAX), s);
+                    moves[0].1 = Loc::Gpr(Reg::RAX);
+                }
+            }
         }
         Ok(())
+    }
+
+    /// The 64 bits at `src` to `dst` (`rax` between two slots).
+    fn move_loc(&mut self, dst: Loc, src: Loc) {
+        match (dst, src) {
+            (Loc::Slot(d), Loc::Slot(s)) => {
+                self.inst(Opcode::MOV64rm, &[X::R(Reg::RAX), self.mem(s)]);
+                self.inst(Opcode::MOV64mr, &[self.mem(d), X::R(Reg::RAX)]);
+            }
+            (Loc::Slot(d), Loc::Gpr(r)) => {
+                self.inst(Opcode::MOV64mr, &[self.mem(d), X::R(r)]);
+            }
+            (Loc::Slot(d), Loc::Xmm(x)) => {
+                self.inst(Opcode::MOVSDmr, &[self.mem(d), X::R(x)]);
+            }
+            (Loc::Gpr(r), Loc::Slot(s)) => {
+                self.inst(Opcode::MOV64rm, &[X::R(r), self.mem(s)]);
+            }
+            (Loc::Xmm(x), Loc::Slot(s)) => {
+                self.inst(Opcode::MOVSDrm, &[X::R(x), self.mem(s)]);
+            }
+            (Loc::Gpr(d) | Loc::Xmm(d), Loc::Gpr(s) | Loc::Xmm(s)) => self.copy(d, s),
+        }
     }
 
     fn jump_to(&mut self, to: BlockId) {

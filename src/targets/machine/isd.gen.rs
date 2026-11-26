@@ -172,3 +172,76 @@ pub enum Isd {
     /// `ISD::ZERO_EXTEND`
     ZeroExtend,
 }
+
+/// The `SDNode`s the CPU targets' SelectionDAG patterns match, TableGen's names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Sd {
+    /// `X86brcond`
+    X86brcond,
+    /// `X86cmov`
+    X86cmov,
+    /// `X86cmp`
+    X86cmp,
+    /// `X86setcc`
+    X86setcc,
+    /// `add`
+    Add,
+    /// `and`
+    And,
+    /// `bb`
+    Bb,
+    /// `bitconvert`
+    Bitconvert,
+    /// `fadd`
+    Fadd,
+    /// `fdiv`
+    Fdiv,
+    /// `fmul`
+    Fmul,
+    /// `fp_to_sint`
+    FpToSint,
+    /// `fp_to_uint`
+    FpToUint,
+    /// `fpextend`
+    Fpextend,
+    /// `fpimm`
+    Fpimm,
+    /// `fpround`
+    Fpround,
+    /// `fsqrt`
+    Fsqrt,
+    /// `fsub`
+    Fsub,
+    /// `imm`
+    Imm,
+    /// `ld`
+    Ld,
+    /// `mul`
+    Mul,
+    /// `or`
+    Or,
+    /// `sext`
+    Sext,
+    /// `shl`
+    Shl,
+    /// `sint_to_fp`
+    SintToFp,
+    /// `sra`
+    Sra,
+    /// `srl`
+    Srl,
+    /// `st`
+    St,
+    /// `sub`
+    Sub,
+    /// `timm`
+    Timm,
+    /// `trunc`
+    Trunc,
+    /// `uint_to_fp`
+    UintToFp,
+    /// `xor`
+    Xor,
+    /// `zext`
+    Zext,
+}

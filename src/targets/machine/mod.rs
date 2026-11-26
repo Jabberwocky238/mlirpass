@@ -4,6 +4,7 @@
 
 #[path = "isd.gen.rs"]
 mod isd;
+mod dag;
 mod template;
 
 use mlirformat::llvm_types::LlvmType;
@@ -12,6 +13,7 @@ use mlirformat::{Error, FloatKind, Type};
 use crate::{Body, OpId};
 
 pub use isd::*;
+pub use dag::*;
 pub use template::*;
 
 /// LLVM's simple value types, the scalar ones.
