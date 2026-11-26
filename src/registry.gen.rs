@@ -188,6 +188,7 @@ impl crate::Passes {
         p.register::<crate::Inline>(); // inline
         p.register::<crate::LoopInvariantCodeMotion>(); // loop-invariant-code-motion
         p.register::<crate::Mem2Reg>(); // mem2reg
+        p.register::<crate::Optimize>(); // optimize
         p.register::<crate::ReconcileUnrealizedCasts>(); // reconcile-unrealized-casts
         p.register::<crate::RemoveDeadValues>(); // remove-dead-values
         p.register::<crate::Sccp>(); // sccp

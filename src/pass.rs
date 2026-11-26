@@ -252,6 +252,18 @@ impl PassManager {
         Ok(self)
     }
 
+    /// Adds the pass `T` with its options written as in a pipeline (`"max-iterations=4"`), nested
+    /// under its anchor op like a pass named in a pipeline.
+    pub fn add_pass<T>(&mut self, options: &str) -> Result<&mut Self, Error>
+    where
+        T: PassDecl + Pass + for<'o, 's> TryFrom<&'o Options<'s>, Error = Error> + 'static,
+    {
+        fn make<T: Pass + for<'o, 's> TryFrom<&'o Options<'s>, Error = Error> + 'static>(o: &Options<'_>) -> Result<Box<dyn Pass>, Error> {
+            Ok(Box::new(T::try_from(o)?))
+        }
+        self.add(&PassInfo { name: T::NAME, anchor: T::ANCHOR, make: make::<T> }, &Options::try_from(options)?)
+    }
+
     pub fn add_named(&mut self, reg: &dyn PassRegistry, name: &str, options: &str) -> Result<&mut Self, Error> {
         let info = reg.pass(name).ok_or_else(|| Error(format!("unknown pass `{name}`")))?;
         self.add(info, &Options::try_from(options)?)

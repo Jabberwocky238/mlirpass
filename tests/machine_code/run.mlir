@@ -215,4 +215,28 @@ module {
   ^done:
     llvm.return %acc : f64
   }
+  // sums 0..n through two stack cells (an O1 pipeline promotes them to registers)
+  llvm.func @locals(%n: i64) -> i64 {
+    %zero = llvm.mlir.constant(0 : i64) : i64
+    %one = llvm.mlir.constant(1 : i64) : i64
+    %acc = llvm.alloca %one x i64 : (i64) -> !llvm.ptr
+    %i = llvm.alloca %one x i64 : (i64) -> !llvm.ptr
+    llvm.store %zero, %acc : i64, !llvm.ptr
+    llvm.store %zero, %i : i64, !llvm.ptr
+    llvm.br ^head
+  ^head:
+    %iv = llvm.load %i : !llvm.ptr -> i64
+    %c = llvm.icmp "slt" %iv, %n : i64
+    llvm.cond_br %c, ^body, ^done
+  ^body:
+    %a = llvm.load %acc : !llvm.ptr -> i64
+    %a2 = llvm.add %a, %iv : i64
+    llvm.store %a2, %acc : i64, !llvm.ptr
+    %i2 = llvm.add %iv, %one : i64
+    llvm.store %i2, %i : i64, !llvm.ptr
+    llvm.br ^head
+  ^done:
+    %r = llvm.load %acc : !llvm.ptr -> i64
+    llvm.return %r : i64
+  }
 }

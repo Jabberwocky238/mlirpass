@@ -112,7 +112,7 @@ A pass is listed under the feature that compiles it in, with the others it needs
 | `target.spirv` | yes | target env, type converter, dialect → `spirv`, the spirv dialect's own transforms; SPIR-V binaries written and read as `mlir-translate --serialize-spirv` / `--deserialize-spirv` do (`SpirvWriter`, `SpirvReader`, `SpirvBinary` from a body); turns on `dialect.spirv`; passes: `convert-spirv-cf-to-cf`, `convert-spirv-entry-points`, `decorate-spirv-composite-type-layout`, `spirv-attach-target`, `spirv-canonicalize-gl`, `spirv-lower-abi-attrs`, `spirv-promote-to-replicated-constants`, `spirv-rewrite-inserts`, `spirv-unify-aliased-resource`, `spirv-update-vce`, `spirv-webgpu-prepare` |
 | `target.x86_64` | yes | x86-64 machine code from the llvm dialect, whole functions (`X86_64Emit`, the C convention) and a JIT's stencils (`StencilEmit`); its instruction selection is LLVM's fast selector, generated from LLVM's X86 TableGen by `scripts/isel.py`, and every instruction it emits is checked against `llvm-mc`'s disassembler (`tests/machine_code.rs`); turns on `dialect.llvm` |
 
-Always compiled in, whatever the features: `canonicalize`, `cse`, `inline`, `loop-invariant-code-motion`, `mem2reg`, `reconcile-unrealized-casts`, `remove-dead-values`, `sccp`, `sroa`, `strip-debuginfo`, `symbol-dce`, `symbol-privatize`.
+Always compiled in, whatever the features: `canonicalize`, `cse`, `inline`, `loop-invariant-code-motion`, `mem2reg`, `optimize`, `reconcile-unrealized-casts`, `remove-dead-values`, `sccp`, `sroa`, `strip-debuginfo`, `symbol-dce`, `symbol-privatize`.
 <!-- /features -->
 
 

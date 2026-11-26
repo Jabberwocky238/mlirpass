@@ -269,3 +269,36 @@ impl Constant {
         })
     }
 }
+
+/// The function's `llvm.alloca`s of a constant count: each one's result, size and alignment, for
+/// the frame to hold.
+pub struct Allocas;
+
+impl Allocas {
+    pub fn of(body: &Body<'_>, blocks: &[BlockId]) -> Result<Vec<(ValueId, u64, u64)>, Error> {
+        let mut out = Vec::new();
+        for &b in blocks {
+            for op in body.block_ops(b) {
+                if body[op].name != "llvm.alloca" {
+                    continue;
+                }
+                let elem = match body[op].get("elem_type") {
+                    Some(Attribute::Type(t)) => t.clone(),
+                    _ => return Err(Error("llvm.alloca without an element type".into())),
+                };
+                let count = body[op]
+                    .operands
+                    .first()
+                    .and_then(|&n| body.def_op(n))
+                    .filter(|&d| body[d].name == "llvm.mlir.constant")
+                    .map(|d| Constant::bits(body, d, crate::targets::Mvt::I64))
+                    .transpose()?
+                    .ok_or_else(|| Error("llvm.alloca of a count not constant".into()))?;
+                let dl = crate::DataLayout::closest(body, op);
+                let align = body[op].get("alignment").and_then(|a| Attrs::as_int(a).ok()).map_or(dl.abi_align(&elem), |a| a.cast_unsigned()).max(1);
+                out.push((body[op].results[0], dl.size(&elem) * count, align));
+            }
+        }
+        Ok(out)
+    }
+}

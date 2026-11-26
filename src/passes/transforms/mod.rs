@@ -5,6 +5,7 @@ mod inline;
 mod licm;
 mod reconcile_unrealized_casts;
 mod mem2reg;
+mod optimize;
 #[cfg(feature = "dialect.llvm")]
 mod llvm_slots;
 #[cfg(feature = "dialect.memref")]
@@ -27,6 +28,7 @@ pub use inline::Inline;
 pub use reconcile_unrealized_casts::ReconcileUnrealizedCasts;
 pub use licm::LoopInvariantCodeMotion;
 pub use mem2reg::Mem2Reg;
+pub use optimize::{OptLevel, Optimize};
 #[cfg(feature = "dialect.llvm")]
 pub use llvm_slots::LlvmSlots;
 #[cfg(all(feature = "dialect.memref", feature = "dialect.test"))]

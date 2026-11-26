@@ -19,7 +19,7 @@ use alloc::vec::Vec;
 use mlirformat::Error;
 use mlirformat::llvm::{FCmpPredicate, ICmpPredicate};
 
-use super::machine::{Callee, Constant, Interval, Pred, Template};
+use super::machine::{Allocas, Callee, Constant, Interval, Pred, Template};
 use crate::targets::{Fast, FastEmit, Isd, Kinds, Mvt};
 use crate::{Body, BlockId, Emit, Hole, HoleKind, OpId, Stencil, StencilEmit, ValueId};
 use encode::{A, Asm, Cond, Placed};
@@ -220,6 +220,8 @@ struct Lower<'b, 'a> {
     fixups: Vec<(Placed, BlockId)>,
     relocs: Vec<AArch64Reloc>,
     stencil: Option<Stenciled>,
+    /// Each `llvm.alloca`'s frame offset.
+    allocas: BTreeMap<ValueId, i32>,
 }
 
 struct Stenciled {
@@ -270,9 +272,19 @@ impl<'b, 'a> Lower<'b, 'a> {
         if stencil.is_some() && next < Template::SPILL_TOP - 8 * Template::SPILL_WORDS {
             return Err(Error("a stencil spills more than its words".into()));
         }
+        let mut allocas = BTreeMap::new();
+        for (v, size, align) in Allocas::of(body, &blocks)? {
+            if stencil.is_some() {
+                return Err(Error("a stencil allocates no stack".into()));
+            }
+            let size = i32::try_from(size).map_err(|_| Error("an llvm.alloca larger than a frame".into()))?;
+            let align = i32::try_from(align).unwrap_or(1);
+            next = (next - size) & !(align - 1);
+            allocas.insert(v, next);
+        }
         let scratch = next - 8 * i32::try_from(widest_copy).unwrap_or(0);
         let frame = (-scratch + 15) & !15;
-        Ok(Lower { body, asm: Asm::default(), slots, saved, scratch, frame, blocks: BTreeMap::new(), fixups: Vec::new(), relocs: Vec::new(), stencil })
+        Ok(Lower { body, asm: Asm::default(), slots, saved, scratch, frame, blocks: BTreeMap::new(), fixups: Vec::new(), relocs: Vec::new(), stencil, allocas })
     }
 
     fn allocate(intervals: &[Interval], stencil: bool) -> (BTreeMap<ValueId, Loc>, Vec<Reg>) {
@@ -586,6 +598,7 @@ impl<'b, 'a> Lower<'b, 'a> {
             "llvm.load" => self.load(op),
             "llvm.store" => self.store(op),
             "llvm.getelementptr" => self.gep(op),
+            "llvm.alloca" => self.alloca(op),
             "llvm.call" => self.call(op),
             "llvm.intr.stacksave" => {
                 let r = self.result(op)?;
@@ -942,6 +955,16 @@ impl<'b, 'a> Lower<'b, 'a> {
             }
         }
         Ok(())
+    }
+
+    /// The address of the frame area the alloca has.
+    fn alloca(&mut self, op: OpId) -> Result<(), Error> {
+        let r = self.result(op)?;
+        let at = *self.allocas.get(&r).ok_or_else(|| Error("an llvm.alloca without a frame area".into()))?;
+        let d = Pool::TEMPS[0];
+        self.materialize(d, i64::from(at).cast_unsigned());
+        self.inst(Opcode::ADDXrs, &[A::R(d), A::R(Pool::FRAME), A::R(d), A::I(0)]);
+        self.write(r, d)
     }
 
     fn gep(&mut self, op: OpId) -> Result<(), Error> {

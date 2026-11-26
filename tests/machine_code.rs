@@ -83,12 +83,14 @@ extern "C" fn hypot(x: f64, y: f64) -> f64 {
     (x * x + y * y).sqrt()
 }
 
-/// Every function of `run.mlir`, compiled for this machine and mapped.
-fn compiled() -> Vec<(String, Mapped)> {
+/// Every function of `run.mlir`, optimized at `level`, compiled for this machine and mapped.
+fn compiled(level: mlirpass::OptLevel) -> Vec<(String, Mapped)> {
     use mlirpass::{Body, Ctx, Emit, Interfaces};
     let opt = mlirpass::mlirformat::MlirOpt::upstream();
     let interfaces = Interfaces::upstream();
-    let body = Body::parse(Ctx::new(&opt, &interfaces), include_str!("machine_code/run.mlir")).unwrap();
+    let mut body = Body::parse(Ctx::new(&opt, &interfaces), include_str!("machine_code/run.mlir")).unwrap();
+    let root = body.root;
+    level.pipeline().unwrap().run(&mut body, root).unwrap_or_else(|e| panic!("{level:?}: {}", e.0));
     let symbols = [("twice", twice as *const () as usize), ("hypot", hypot as *const () as usize)];
     #[cfg(target_arch = "x86_64")]
     let codes = mlirpass::X86_64Emit.emit(&body, body.root).unwrap();
@@ -106,8 +108,15 @@ fn compiled() -> Vec<(String, Mapped)> {
 #[test]
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 fn runs() {
-    let map = compiled();
-    let f = |name: &str| map.iter().find(|(n, _)| n == name).unwrap_or_else(|| panic!("no function {name}")).1.at;
+    use mlirpass::OptLevel;
+    for level in [OptLevel::O0, OptLevel::O1, OptLevel::O2, OptLevel::O3] {
+        run_all(level);
+    }
+}
+
+fn run_all(level: mlirpass::OptLevel) {
+    let map = compiled(level);
+    let f = |name: &str| map.iter().find(|(n, _)| n == name).unwrap_or_else(|| panic!("{level:?}: no function {name}")).1.at;
     unsafe {
         let poly: extern "C" fn(i64, i64) -> i64 = std::mem::transmute(f("poly"));
         let sum: extern "C" fn(i64) -> i64 = std::mem::transmute(f("sum"));
@@ -121,6 +130,10 @@ fn runs() {
         let pressure: extern "C" fn(i64) -> i64 = std::mem::transmute(f("pressure"));
         let across: extern "C" fn(i64, f64) -> f64 = std::mem::transmute(f("across"));
         let fsum: extern "C" fn(i64, f64) -> f64 = std::mem::transmute(f("fsum"));
+        let locals: extern "C" fn(i64) -> i64 = std::mem::transmute(f("locals"));
+        for n in [0, 1, 10, 1000] {
+            assert_eq!(locals(n), (0..n).sum::<i64>(), "{level:?}: locals({n})");
+        }
         for (a, b) in [(3, 4), (-7, 5), (1 << 40, -3), (0, 0)] {
             assert_eq!(poly(a, b), a.wrapping_mul(a).wrapping_add(b.wrapping_mul(3)) ^ (a - b), "poly({a}, {b})");
         }
