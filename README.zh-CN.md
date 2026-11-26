@@ -6,11 +6,12 @@
 [mlirformat](https://github.com/Jabberwocky238/mlirformat) 之上；mlirformat 负责语法、方言和 MLIR 字节码
 （MLIR 文本 ⇄ IR ⇄ 类型化的 Rust op）。
 
-四个 target，和上游 MLIR 的 `mlir/lib/Target` 一致：
+六个 target：上游 MLIR `mlir/lib/Target` 的四个，加上从 llvm 方言出 CPU 机器码的两个（见下文「CPU 机器码」）。
 - `llvm`
 - `emitc`
 - `spirv`：SPIR-V 二进制的写出和读入，和 `mlir-translate` 一样。
 - `glsl`：GLSL 源码的读入和写出。
+- `x86_64`、`aarch64`：机器码。
 
 GPU 自家的机器码不在这里：[detour](https://github.com/0x00-Community/detour) 以插件方式加入它的 GPU 方言和下降
 （`MlirOpt::load`、`Passes::with`）。
@@ -50,7 +51,7 @@ MLIR 行为对齐 **MLIR 23.1.5**（llvm-project `llvmorg-23.1.5`）：每个 pa
 | `patterns` | ⭐ 规则集，每个源方言一个目录：`<d>/canonicalize.rs`（折叠、常量物化和规范化模式，`<D>Canon`）、`<d>/to_<target>.rs`（`scf/to_cf.rs`、`arith/to_llvm.rs`），以及它自己的变换规则 | `*Ops.cpp`、`mlir/lib/Conversion`、`Dialect/*/Transforms` |
 | `passes` | ⭐ 流水线单元，每个源方言一个目录、每个 pass 一个文件（`scf/convert_scf_to_cf.rs`、`linalg/linalg_fold_unit_extent_dims.rs`）；`transforms/` 放和方言无关的 | `mlir/lib/Conversion`、`Dialect/*/Transforms`、`mlir/lib/Transforms` |
 | `dialects` | 各上游方言的 `OpInterfaces`，每个一个单元结构体（`ScfDialect`……） | `mlir/lib/Dialect/*/IR` |
-| `targets` | `Emit` trait，以及各后端共用的东西（类型转换器、`convert-to-*` 接口、SPIR-V 二进制、GLSL 源码）；`Stencils` 快路径：模板函数只走一次管线和后端的 `StencilEmit`，之后 JIT 只拷贝机器码、填空位（`Abs64` / `Disp32` / `Rel32` / `Branch26`） | `mlir-translate` |
+| `targets` | `Emit` trait，以及各后端共用的东西（类型转换器、`convert-to-*` 接口、SPIR-V 二进制、GLSL 源码、CPU target 生成的指令选择）；`Stencils` 快路径：模板函数只走一次管线和后端的 `StencilEmit`，之后 JIT 只拷贝机器码、填空位（`Abs64` / `Disp32` / `Rel32` / `Branch26`） | `mlir-translate` |
 
 ## Features
 
@@ -192,6 +193,34 @@ impl TensorCanon {
   - 存放各方言 `OpInterfaces` 的 `Interfaces`：上游在 C++ 里算的东西，包括效应、可推测性、分支和区域分支的后继、
     调用。
 - `convert-to-llvm` / `convert-to-emitc` 询问它们持有的 `DialectInterfaces`：哪些方言有接口、各自加什么。
+
+## CPU 机器码
+
+`target.x86_64` 和 `target.aarch64` 把 llvm 方言变成机器码，做法和 LLVM 的快速指令选择器（`-O0` 和 LLVM 的 JIT
+用的那个）一样，一次一个 op：
+
+- `scripts/isel.py` 从 llvm-project 23.1.5 的 TableGen 生成 `src/targets/{x86_64,aarch64}/isel.gen.rs`：
+  `llvm-tblgen -gen-fast-isel` 给出的模式（单个节点、寄存器和立即数操作数、值类型、立即数谓词、选中的指令，
+  按 x86-64 v1 / Armv8-A 取），以及 `--dump-json` 里这些指令和手写部分用到的指令：操作数、绑定操作数、隐式寄存器、
+  编码；寄存器类、C 调用约定（`CallingConv.td`）、被调用者保存寄存器，和 `AArch64ExpandPseudo` 展开成真指令的伪指令。
+  `--check` 在生成物过期时报错。
+
+  ```sh
+  python3 scripts/isel.py --llvm $LLVM          # llvm-tblgen 取 $LLVM/build/bin，或 --tblgen 指定
+  ```
+
+- `X86FastISel.cpp` / `AArch64FastISel.cpp` 手写的部分在 `src/targets/{x86_64,aarch64}/mod.rs`：读写内存、比较、
+  分支、select、调用、除法；编码照 LLVM（`X86MCCodeEmitter` 的传统编码路径、AArch64 的 `Inst` 位和操作数编码函数），
+  由表驱动。
+- 值放在寄存器（线性扫描）或帧槽；带 `stencil` 属性的函数是 JIT 的模板（`Stencils`，帧槽、常量、跳转三种空位）。
+- `tests/machine_code.rs`：选择器会发的每条指令编码后，用 `llvm-mc` 反汇编必须是同一条 LLVM 指令；函数和拼好的
+  模板在本机真跑。AArch64 那一半在 x86-64 上用 qemu 跑：
+
+  ```sh
+  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="qemu-aarch64-static -L /usr/aarch64-linux-gnu" \
+  cargo test --target aarch64-unknown-linux-gnu --test machine_code
+  ```
 
 ## Fixtures
 

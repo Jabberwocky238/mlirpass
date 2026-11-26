@@ -8,6 +8,12 @@ mod spirv;
 mod glsl;
 #[cfg(any(feature = "target.spirv", feature = "target.glsl"))]
 mod tree;
+#[cfg(feature = "target.x86_64")]
+mod x86_64;
+#[cfg(feature = "target.aarch64")]
+mod aarch64;
+#[cfg(any(feature = "target.x86_64", feature = "target.aarch64"))]
+mod machine;
 mod stencil;
 
 use alloc::vec::Vec;
@@ -25,6 +31,12 @@ pub use llvm::*;
 pub use spirv::*;
 #[cfg(feature = "target.glsl")]
 pub use glsl::*;
+#[cfg(feature = "target.x86_64")]
+pub use x86_64::{X86_64Code, X86_64Emit, X86_64Reloc};
+#[cfg(feature = "target.aarch64")]
+pub use aarch64::{AArch64Code, AArch64Emit, AArch64Reloc};
+#[cfg(any(feature = "target.x86_64", feature = "target.aarch64"))]
+pub use machine::{Callee, Fast, FastEmit, Isd, Kinds, MachineOperand, Mvt, OperandKind, Template};
 
 /// A backend, one folder under `src/targets`: its name (also its `target.<name>` feature) and the
 /// passes that lower its input to what it emits.

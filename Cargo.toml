@@ -1,6 +1,6 @@
 [package]
 name = "mlirpass"
-version = "0.13.4"
+version = "0.14.0"
 edition = "2024"
 description = "MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion and the upstream lowerings, on top of mlirformat"
 license = "MIT"
@@ -85,11 +85,15 @@ all-dialects = ["dialect.acc", "dialect.affine", "dialect.amdgpu", "dialect.arit
 "dialect.nir" = []
 # One feature per backend (`src/targets`): its type converter, `convert-to-*`, the lowerings
 # into it, and what it emits.
-all-targets = ["target.llvm", "target.emitc", "target.spirv", "target.glsl"]
+all-targets = ["target.llvm", "target.emitc", "target.spirv", "target.glsl", "target.x86_64", "target.aarch64"]
 "target.llvm" = ["dialect.llvm"]
 "target.emitc" = ["dialect.emitc"]
 "target.spirv" = ["dialect.spirv"]
 "target.glsl" = ["dialect.glsl", "target.spirv"]
+# CPU machine code from the llvm dialect: whole functions (x86-64, `X86_64Emit`) and a JIT's
+# stencils (`StencilEmit`, both).
+"target.x86_64" = ["dialect.llvm"]
+"target.aarch64" = ["dialect.llvm"]
 
 [[bin]]
 name = "mlirpass"
@@ -98,6 +102,8 @@ required-features = ["cli"]
 
 # The fixtures run every dialect's and backend's passes.
 [dev-dependencies]
+# Executable memory for the machine code tests.
+libc = "0.2"
 
 [[test]]
 name = "passes"
@@ -127,6 +133,11 @@ required-features = ["dialect.glsl"]
 [[test]]
 name = "gl"
 required-features = ["target.glsl"]
+
+# The CPU targets: encodings against llvm-mc, machine code run in process.
+[[test]]
+name = "machine_code"
+required-features = ["target.x86_64", "target.aarch64"]
 
 [[test]]
 name = "vulkan"

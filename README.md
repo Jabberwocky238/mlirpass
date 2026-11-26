@@ -6,10 +6,11 @@ MLIR passes in Rust: mutable IR, pattern rewriting, dialect conversion, the pass
 upstream lowerings and transforms — on top of [mlirformat](https://github.com/Jabberwocky238/mlirformat),
 which owns the syntax, the dialects and MLIR bytecode (MLIR text ⇄ IR ⇄ typed Rust ops).
 
-Four targets, as upstream MLIR's `mlir/lib/Target`: `llvm`, `emitc`, `spirv` (SPIR-V binaries written
-and read as `mlir-translate` does) and `glsl` (GLSL source read and written). GPUs' own machine code
-is not here: [detour](https://github.com/0x00-Community/detour) adds its GPU dialects and lowerings as
-plugins (`MlirOpt::load`, `Passes::with`).
+Six targets: the four of upstream MLIR's `mlir/lib/Target` — `llvm`, `emitc`, `spirv` (SPIR-V binaries
+written and read as `mlir-translate` does) and `glsl` (GLSL source read and written) — and CPU machine
+code from the llvm dialect, `x86_64` and `aarch64` (below). GPUs' own machine code is not here:
+[detour](https://github.com/0x00-Community/detour) adds its GPU dialects and lowerings as plugins
+(`MlirOpt::load`, `Passes::with`).
 
 MLIR behavior follows **MLIR 23.1.5** (llvm-project `llvmorg-23.1.5`): every pass is checked against
 what `mlir-opt` 23.1.5 prints for the same input and pipeline.
@@ -41,11 +42,11 @@ own target env (`tests/support/vkinfo.c`) is checked against the host's product 
 | `patterns` | ⭐ rule sets, one directory per source dialect: `<d>/canonicalize.rs` (its folds, constant materialization and canonicalization patterns, `<D>Canon`), `<d>/to_<target>.rs` (`scf/to_cf.rs`, `arith/to_llvm.rs`), and its own transforms' rules | `*Ops.cpp`, `mlir/lib/Conversion`, `Dialect/*/Transforms` |
 | `passes` | ⭐ pipeline units, one directory per source dialect, one file per pass (`scf/convert_scf_to_cf.rs`, `linalg/linalg_fold_unit_extent_dims.rs`); `transforms/` the dialect-independent ones | `mlir/lib/Conversion`, `Dialect/*/Transforms`, `mlir/lib/Transforms` |
 | `dialects` | each upstream dialect's `OpInterfaces`, one unit struct each (`ScfDialect`, ...) | `mlir/lib/Dialect/*/IR` |
-| `targets` | the `Emit` trait, and what each backend below shares (type converters, `convert-to-*` interfaces, SPIR-V binaries, GLSL source); `Stencils`, the fast path: template functions go through the pipeline and a backend's `StencilEmit` once, and afterwards a JIT only copies their machine code and patches the holes (`Abs64` / `Disp32` / `Rel32` / `Branch26`) | `mlir-translate` |
+| `targets` | the `Emit` trait, and what each backend below shares (type converters, `convert-to-*` interfaces, SPIR-V binaries, GLSL source, the CPU targets' generated instruction selection); `Stencils`, the fast path: template functions go through the pipeline and a backend's `StencilEmit` once, and afterwards a JIT only copies their machine code and patches the holes (`Abs64` / `Disp32` / `Rel32` / `Branch26`) | `mlir-translate` |
 
 ## Features
 
-The default build has every upstream dialect and the three upstream backends (`all-dialects`,
+The default build has every upstream dialect and every backend (`all-dialects`,
 `all-targets`); a user builds only what it runs (`default-features = false, features = ["std",
 "dialect.scf", "dialect.arith", "target.llvm"]`):
 
@@ -67,7 +68,7 @@ A pass is listed under the feature that compiles it in, with the others it needs
 | `std` | yes | the standard library (without it the crate is `no_std` and needs `alloc`), threads (moremath's `ThreadMulti`, the default `Exec`), mlirformat's `std` |
 | `cli` | yes | the `mlirpass` command line: `mlir-opt`'s, for the passes this crate has, with jemalloc as its global allocator (not on MSVC); turns on `std` |
 | `all-dialects` | yes | every upstream `dialect.*` below (not the GPU instruction sets) |
-| `all-targets` | yes | `target.llvm`, `target.emitc`, `target.spirv` and `target.glsl` |
+| `all-targets` | yes | `target.llvm`, `target.emitc`, `target.spirv`, `target.glsl`, `target.x86_64` and `target.aarch64` |
 | `dialect.acc` | yes | `acc`: its op interfaces, folds and patterns |
 | `dialect.affine` | yes | `affine`: its op interfaces, folds and patterns; turns on `dialect.arith`; passes: `convert-affine-for-to-gpu`, `lower-affine` |
 | `dialect.amdgpu` | yes | `amdgpu`: its op interfaces, folds and patterns; turns on `dialect.memref`; passes: `convert-amdgpu-to-rocdl` (with `target.llvm`), `convert-arith-to-amdgpu` (with `dialect.vector`, one of `target.emitc` / `target.llvm` / `target.spirv`) |
@@ -104,10 +105,12 @@ A pass is listed under the feature that compiles it in, with the others it needs
 | `dialect.xevm` | yes | `xevm`: its op interfaces, folds and patterns; passes: `convert-xevm-to-llvm` (with `target.llvm`) |
 | `dialect.glsl` | yes | GLSL (ES 1.00 / 3.00) shaders: the `glsl` dialect is mlirformat's (`glsl.shader`, its globals, loads / stores, constructors, built-in functions, derivatives, texture sampling, `discard`; the rest of a shader is `func` / `arith` / `math` / `vector` / `scf`, aggregates and samplers `!spirv.*` types), GLSL source is read and written with `target.glsl`; the passes lower it: `convert-glsl-to-spirv{client=opengl}` keeps what Mesa's GLSL compiler computes, checked pixel for pixel against the local OpenGL (`tests/gl.rs`) (not an upstream dialect); turns on `target.spirv`; passes: `convert-glsl-to-spirv` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-default-block` (with `dialect.math`, `dialect.scf`, `dialect.func`), `glsl-link` (with `dialect.math`, `dialect.scf`, `dialect.func`) |
 | `dialect.nir` | no | Mesa's NIR ALU opcodes (mlirformat's `nir` dialect, generated from Mesa 25.2.8's `nir_opcodes.py`) and the algebraic rules of Mesa's `nir_opt_algebraic` / `_before_ffma` / `_late` / `_distribute_src_mods`, written by `scripts/nir_algebraic.py` from `nir_opt_algebraic.py` as Mesa's own parser reads it (`NirRules`) (not an upstream dialect) |
+| `target.aarch64` | yes | AArch64 machine code from the llvm dialect, whole functions (`AArch64Emit`, AAPCS) and a JIT's stencils (`StencilEmit`); its instruction selection is LLVM's fast selector, generated from LLVM's AArch64 TableGen by `scripts/isel.py`, and every instruction it emits is checked against `llvm-mc`'s disassembler (`tests/machine_code.rs`); turns on `dialect.llvm` |
 | `target.emitc` | yes | dialect → `emitc`: the EmitC type converter; turns on `dialect.emitc`; passes: `convert-to-emitc` |
 | `target.glsl` | yes | GLSL (ES 1.00 / 3.00) source read into the `glsl` dialect and written back (`GlslFormat`, `GlslReader` puts a shader in a body), and a `spirv.module` written as GLSL 4.50 for Vulkan (`SpirvGlsl`); turns on `dialect.glsl`, `target.spirv` |
 | `target.llvm` | yes | the type converter, dialect → `llvm` (the CPU dialect `x86` too: `convert-vector-to-llvm=enable-x86`), the llvm folds and memory-slot interfaces; turns on `dialect.llvm`; passes: `convert-to-llvm`, `llvm-request-c-wrappers`, `set-llvm-module-datalayout` |
 | `target.spirv` | yes | target env, type converter, dialect → `spirv`, the spirv dialect's own transforms; SPIR-V binaries written and read as `mlir-translate --serialize-spirv` / `--deserialize-spirv` do (`SpirvWriter`, `SpirvReader`, `SpirvBinary` from a body); turns on `dialect.spirv`; passes: `convert-spirv-cf-to-cf`, `convert-spirv-entry-points`, `decorate-spirv-composite-type-layout`, `spirv-attach-target`, `spirv-canonicalize-gl`, `spirv-lower-abi-attrs`, `spirv-promote-to-replicated-constants`, `spirv-rewrite-inserts`, `spirv-unify-aliased-resource`, `spirv-update-vce`, `spirv-webgpu-prepare` |
+| `target.x86_64` | yes | x86-64 machine code from the llvm dialect, whole functions (`X86_64Emit`, the C convention) and a JIT's stencils (`StencilEmit`); its instruction selection is LLVM's fast selector, generated from LLVM's X86 TableGen by `scripts/isel.py`, and every instruction it emits is checked against `llvm-mc`'s disassembler (`tests/machine_code.rs`); turns on `dialect.llvm` |
 
 Always compiled in, whatever the features: `canonicalize`, `cse`, `inline`, `loop-invariant-code-motion`, `mem2reg`, `reconcile-unrealized-casts`, `remove-dead-values`, `sccp`, `sroa`, `strip-debuginfo`, `symbol-dce`, `symbol-privatize`.
 <!-- /features -->
@@ -238,6 +241,38 @@ the `Interfaces` holding each dialect's `OpInterfaces` (what upstream computes i
 speculatability, branch and region-branch successors, calls), so core names no dialect's op
 (`Body::parse(Ctx::new(&opt, &Interfaces::upstream()), src)`). `convert-to-llvm` / `convert-to-emitc` ask the
 `DialectInterfaces` they hold which dialects have an interface and what each adds.
+
+## CPU machine code
+
+`target.x86_64` and `target.aarch64` turn the llvm dialect into machine code the way LLVM's fast
+instruction selector (the one of `-O0` and LLVM's JITs) does, one op at a time:
+
+- `scripts/isel.py` generates `src/targets/{x86_64,aarch64}/isel.gen.rs` from llvm-project 23.1.5's
+  TableGen: the patterns `llvm-tblgen -gen-fast-isel` emits (one node over registers and immediates,
+  its value types, immediate predicate and instruction, for x86-64 v1 / Armv8-A), and from
+  `--dump-json` those instructions and the ones the hand-written part uses, with their operands, tied
+  operands, implicit registers and encodings, the register classes, the C calling convention
+  (`CallingConv.td`), callee-saved registers and the pseudo instructions `AArch64ExpandPseudo` turns
+  into real ones. `--check` fails when they are stale.
+
+  ```sh
+  python3 scripts/isel.py --llvm $LLVM          # llvm-tblgen from $LLVM/build/bin, or --tblgen
+  ```
+
+- What `X86FastISel.cpp` / `AArch64FastISel.cpp` write by hand is in `src/targets/{x86_64,aarch64}/mod.rs`:
+  loads and stores, compares, branches, selects, calls, divisions; the encoding is LLVM's
+  (`X86MCCodeEmitter`'s legacy path, AArch64's `Inst` bits and operand encoders) driven by the tables.
+- Values live in registers (a linear scan) or frame slots; functions with the `stencil` attribute are
+  a JIT's stencils (`Stencils`, holes for frame slots, constants and jumps).
+- `tests/machine_code.rs`: every instruction a selector emits, encoded, disassembles with `llvm-mc`
+  to the same LLVM instruction; functions and stitched stencils run on the machine. The AArch64 half
+  runs on x86-64 under qemu:
+
+  ```sh
+  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="qemu-aarch64-static -L /usr/aarch64-linux-gnu" \
+  cargo test --target aarch64-unknown-linux-gnu --test machine_code
+  ```
 
 ## Fixtures
 
